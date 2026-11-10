@@ -32,6 +32,7 @@ Files in the pages directory map directly to URLs. The scanner handles three fil
 | `[slug].twig` | `/{slug}` — dynamic segment |
 | `[...path].twig` | `/{path}` — catch-all (matches slashes too) |
 | `_layout.twig` | excluded (underscore prefix) |
+| `_views/`, `blog/_partials/` | excluded with everything inside (any depth) |
 
 Example structure:
 

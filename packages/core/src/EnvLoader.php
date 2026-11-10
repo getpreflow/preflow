@@ -47,23 +47,23 @@ final class EnvLoader
     }
 
     /**
-     * The value as written after "=": "double quoted" (\" is a quote, # is text), 'single quoted'
-     * (literal), or unquoted (" #" starts a comment). Text after a closing quote is ignored;
-     * a quote that never closes leaves the value as written.
+     * The value as written after "=". One well-formed quoted string, optionally followed by
+     * whitespace and a # comment: "double quoted" (\" is a quote, # is text) or 'single quoted'
+     * (literal). Otherwise the rule before 0.63.2: a value that starts and ends with the same
+     * quote is the text between them ("{"a":1}", 'Steffen's site'); an unquoted value ends at " #".
      */
     private static function value(string $raw): string
     {
         $quote = $raw[0] ?? '';
 
-        if ($quote === '"') {
-            if (preg_match('/^"((?:[^"\\\\]|\\\\.)*)"/s', $raw, $m) === 1) {
-                return str_replace('\\"', '"', $m[1]);
-            }
-        } elseif ($quote === "'") {
-            $end = strpos($raw, "'", 1);
-            if ($end !== false) {
-                return substr($raw, 1, $end - 1);
-            }
+        if ($quote === '"' && preg_match('/^"((?:[^"\\\\]|\\\\.)*)"\s*(?:#.*)?$/s', $raw, $m) === 1) {
+            return str_replace('\\"', '"', $m[1]);
+        }
+        if ($quote === "'" && preg_match("/^'([^']*)'\\s*(?:#.*)?$/s", $raw, $m) === 1) {
+            return $m[1];
+        }
+        if (($quote === '"' || $quote === "'") && strlen($raw) >= 2 && str_ends_with($raw, $quote)) {
+            return substr($raw, 1, -1);
         }
 
         $commentPos = strpos($raw, ' #');

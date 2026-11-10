@@ -20,7 +20,7 @@ final class EnvLoaderTest extends TestCase
     protected function tearDown(): void
     {
         // Clean up env vars set during tests
-        foreach (['TEST_NAME', 'TEST_DEBUG', 'TEST_KEY', 'TEST_QUOTED', 'TEST_SINGLE', 'TEST_EMPTY', 'TEST_EQUALS', 'TEST_INLINE', 'TEST_EXISTING', 'TEST_SPACES', 'T_DQ', 'T_SQ', 'T_UQ', 'T_HASH', 'T_ESC', 'T_DQC', 'T_SQC', 'T_PLAIN', 'T_NOSPACE', 'T_URL', 'T_UNTERM'] as $key) {
+        foreach (['TEST_NAME', 'TEST_DEBUG', 'TEST_KEY', 'TEST_QUOTED', 'TEST_SINGLE', 'TEST_EMPTY', 'TEST_EQUALS', 'TEST_INLINE', 'TEST_EXISTING', 'TEST_SPACES', 'T_DQ', 'T_SQ', 'T_UQ', 'T_HASH', 'T_ESC', 'T_DQC', 'T_SQC', 'T_PLAIN', 'T_NOSPACE', 'T_URL', 'T_UNTERM', 'T_JSON', 'T_APOS', 'T_WIN'] as $key) {
             putenv($key);
             unset($_ENV[$key]);
         }
@@ -135,6 +135,10 @@ final class EnvLoaderTest extends TestCase
         yield 'hash without space stays' => ['T_NOSPACE', 'T_NOSPACE=a#b', 'a#b'];
         yield 'url unquoted' => ['T_URL', 'T_URL=https://x.test/a?b=c', 'https://x.test/a?b=c'];
         yield 'unterminated quote kept as written' => ['T_UNTERM', 'T_UNTERM="abc', '"abc'];
+        // Values that parsed before 0.63.2 keep parsing the same.
+        yield 'json in double quotes' => ['T_JSON', 'T_JSON="{"a":1}"', '{"a":1}'];
+        yield 'apostrophe in single quotes' => ['T_APOS', "T_APOS='Steffen's site'", "Steffen's site"];
+        yield 'trailing backslash in double quotes' => ['T_WIN', 'T_WIN="C:\dir\"', 'C:\dir\\'];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('values')]

@@ -22,20 +22,8 @@ final class LocaleSwitcher extends Component
     {
         $currentLocale = $this->translator->getLocale();
         $availableLocales = $this->props['locales'] ?? [];
+        // RequestContext's path has no locale prefix (since 0.63.2): /de/blog arrives as /blog.
         $currentPath = $this->requestContext->path;
-
-        // RequestContext's path has no locale prefix since 0.63.2; strip one anyway,
-        // for a context bound before the locale middleware ran (/de/blog → /blog)
-        foreach ($availableLocales as $code) {
-            if ($currentPath === '/' . $code) {
-                $currentPath = '/';
-                break;
-            }
-            if (str_starts_with($currentPath, '/' . $code . '/')) {
-                $currentPath = substr($currentPath, strlen($code) + 1);
-                break;
-            }
-        }
 
         foreach ($availableLocales as $code) {
             $url = '/' . $code . ($currentPath === '/' ? '' : $currentPath);
