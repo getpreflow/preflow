@@ -414,6 +414,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Release checklist (every release):** bump `preflow/*` in `packages/starter/composer.json` and
     `packages/starter-folio/composer.json` to the new minor (`bin/starter` derives the versions from that pin, so a stale
     one is not caught by anything).
+    preflow.dev: `php preflow starters:sync`, `php preflow packages:refresh`, and `php tools/capture/capture.php` when the starters' pages or Folio's admin changed; then test and deploy like the other sites.
   - **Tests:** 0.63 full monorepo run: 6537 tests, 31382 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
   - **0.63.1** (2026-11-10): starter-folio gets a small Folio extension, the example preflow.dev shows (`app/Folio/Jobs`: an "Open jobs" column on the company list and a dashboard notice for jobs that are drafts; the link follows `config/folio.php` `path`). README section "Make Folio yours". Framework packages unchanged; full monorepo run 6537 tests; starter-folio suite 121 tests.
   - **Follow-ups:**
