@@ -135,10 +135,11 @@ final class QueryBuilder
         return $this;
     }
 
+    /** See Query::where(): where($field, $value) compares with "=". */
     public function where(string $field, mixed $operator, mixed $value = null): self
     {
         $this->filters++;
-        $this->query->where($field, $operator, $value);
+        func_num_args() === 2 ? $this->query->where($field, $operator) : $this->query->where($field, $operator, $value);
         return $this;
     }
 
@@ -153,7 +154,7 @@ final class QueryBuilder
     public function orWhere(string $field, mixed $operator, mixed $value = null): self
     {
         $this->filters++;
-        $this->query->orWhere($field, $operator, $value);
+        func_num_args() === 2 ? $this->query->orWhere($field, $operator) : $this->query->orWhere($field, $operator, $value);
         return $this;
     }
 

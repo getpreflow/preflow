@@ -8,6 +8,7 @@ use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Id;
 use Preflow\Data\Attributes\Timestamps;
+use Preflow\Data\Transform\DateTimeTransformer;
 use Preflow\Validation\Attributes\Validate;
 
 final class ModelMetadata
@@ -61,7 +62,7 @@ final class ModelMetadata
         $idField = 'uuid';
         $fields = [];
         $searchable = [];
-        $hasTimestamps = false;
+        $hasTimestamps = $ref->getAttributes(Timestamps::class) !== [];
 
         foreach ($ref->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
             $name = $prop->getName();
@@ -96,6 +97,16 @@ final class ModelMetadata
                     throw new \RuntimeException("Transformer class not found: {$transformerClass}");
                 }
                 $transformers[$name] = new $transformerClass();
+            }
+        }
+
+        // Timestamps a plain model holds as dates are stored as text (a class-backed type stores
+        // its fields as its type says).
+        if ($hasTimestamps && $entity->type === null) {
+            foreach ([Timestamps::CREATED_AT, Timestamps::UPDATED_AT] as $name) {
+                if (!isset($transformers[$name]) && $ref->hasProperty($name) && self::holdsDates($ref->getProperty($name))) {
+                    $transformers[$name] = new DateTimeTransformer();
+                }
             }
         }
 
@@ -135,6 +146,15 @@ final class ModelMetadata
         self::$cache[$modelClass] = $meta;
 
         return $meta;
+    }
+
+    /** Whether the property takes a \DateTimeImmutable (and nothing else built in). */
+    private static function holdsDates(\ReflectionProperty $prop): bool
+    {
+        $type = $prop->getType();
+
+        return $type instanceof \ReflectionNamedType
+            && in_array($type->getName(), [\DateTimeImmutable::class, \DateTimeInterface::class], true);
     }
 
     /**

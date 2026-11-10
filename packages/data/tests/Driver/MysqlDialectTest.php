@@ -19,6 +19,7 @@ final class MysqlDialectTest extends TestCase
     public function test_quotes_identifier_with_backticks(): void
     {
         $this->assertSame('`users`', $this->dialect->quoteIdentifier('users'));
+        $this->assertSame('`title`` OR 1=1 --`', $this->dialect->quoteIdentifier('title` OR 1=1 --'));
     }
 
     public function test_numeric_value_compares_empty_as_text_and_adds_a_double(): void

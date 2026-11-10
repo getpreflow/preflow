@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Driver;
 
 require_once __DIR__ . '/OrGroupScenarios.php';
+require_once __DIR__ . '/WhereScenarios.php';
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\SqliteDriver;
@@ -14,6 +15,7 @@ use Preflow\Data\SortDirection;
 final class SqliteDriverTest extends TestCase
 {
     use OrGroupScenarios;
+    use WhereScenarios;
 
     private \PDO $pdo;
     private SqliteDriver $driver;
@@ -290,5 +292,31 @@ final class SqliteDriverTest extends TestCase
         $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
         $driver = $this->driver;
         $this->checkOrWhereChainIsGroupedBeforeGroupsAreAnded($driver);
+    }
+
+    public function test_where_null_finds_the_null_row(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $this->checkWhereNullFindsTheNullRow($this->driver);
+    }
+
+    public function test_where_in_and_not_in(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $this->checkWhereInAndNotIn($this->driver);
+    }
+
+    public function test_where_like_not_like_and_angle_not_equals(): void
+    {
+        $this->pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, tags TEXT)');
+        $this->checkWhereLikeNotLikeAndAngleNotEquals($this->driver);
+    }
+
+    public function test_a_quote_in_an_identifier_stays_inside_the_identifier(): void
+    {
+        $this->pdo->exec('CREATE TABLE "it""ems" (uuid TEXT PRIMARY KEY, title TEXT)');
+        $this->driver->save('it"ems', 'a', ['uuid' => 'a', 'title' => 'T']);
+
+        $this->assertSame('T', $this->driver->findOne('it"ems', 'a')['title']);
     }
 }

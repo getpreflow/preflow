@@ -113,4 +113,101 @@ final class QueryTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         (new Query())->whereAny([['field' => 'a', 'operator' => 'DROP', 'value' => 1]]);
     }
+
+    public function test_where_rejects_an_injected_operator(): void
+    {
+        foreach (['where', 'orWhere'] as $method) {
+            try {
+                (new Query())->{$method}('status', '= 1 OR 1=1 --', 'x');
+                $this->fail("{$method}() took an injected operator");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('= 1 OR 1=1 --', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_where_rejects_operators_outside_the_whitelist(): void
+    {
+        foreach (['DROP', '==', 'IS', 'REGEXP', ';', '', 'LIKE; --'] as $operator) {
+            try {
+                (new Query())->where('status', $operator, 'x');
+                $this->fail("where() took operator \"{$operator}\"");
+            } catch (\InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        $this->expectException(\InvalidArgumentException::class);
+        (new Query())->where('status', ['='], 'x');
+    }
+
+    public function test_where_takes_the_whitelisted_operators_in_any_case_and_stores_them_upper_case(): void
+    {
+        $cases = [
+            '=' => '=', '!=' => '!=', '<>' => '<>', '<' => '<', '>' => '>', '<=' => '<=', '>=' => '>=',
+            'like' => 'LIKE', 'Like' => 'LIKE', 'not like' => 'NOT LIKE', 'NOT  LIKE' => 'NOT LIKE',
+            'in' => 'IN', 'not in' => 'NOT IN',
+        ];
+        foreach ($cases as $given => $stored) {
+            $value = in_array($stored, ['IN', 'NOT IN'], true) ? ['a'] : 'a';
+            $this->assertSame($stored, (new Query())->where('status', $given, $value)->getWheres()[0]['operator'], $given);
+        }
+    }
+
+    public function test_in_and_not_in_need_a_list(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new Query())->where('status', 'IN', 'a');
+    }
+
+    public function test_the_two_argument_form_takes_any_value_as_the_compared_value(): void
+    {
+        $w = (new Query())->where('status', '> 1 OR 1=1')->getWheres()[0];
+        $this->assertSame('=', $w['operator']);
+        $this->assertSame('> 1 OR 1=1', $w['value']);
+    }
+
+    public function test_where_null_compares_with_null_in_both_forms(): void
+    {
+        $two = (new Query())->where('deleted', null)->getWheres()[0];
+        $three = (new Query())->where('deleted', '=', null)->getWheres()[0];
+        $or = (new Query())->where('a', 1)->orWhere('deleted', '!=', null)->getWheres()[1];
+
+        $this->assertSame(['=', null], [$two['operator'], $two['value']]);
+        $this->assertSame(['=', null], [$three['operator'], $three['value']]);
+        $this->assertSame(['!=', null], [$or['operator'], $or['value']]);
+    }
+
+    public function test_field_names_must_be_identifiers(): void
+    {
+        $calls = [
+            'where' => fn (string $f) => (new Query())->where($f, 'x'),
+            'orWhere' => fn (string $f) => (new Query())->orWhere($f, '=', 'x'),
+            'orderBy' => fn (string $f) => (new Query())->orderBy($f),
+            'whereAny' => fn (string $f) => (new Query())->whereAny([['field' => $f, 'operator' => '=', 'value' => 'x']]),
+            'search' => fn (string $f) => (new Query())->search('x', [$f]),
+        ];
+        foreach ($calls as $name => $call) {
+            foreach (['title" OR 1=1 --', 'title` OR 1=1 --', 'data.title', 'my-field', '1st', '', 'a b'] as $field) {
+                try {
+                    $call($field);
+                    $this->fail("{$name}() took field \"{$field}\"");
+                } catch (\InvalidArgumentException $e) {
+                    $this->assertStringContainsString('field', strtolower($e->getMessage()));
+                }
+            }
+            $call('_published_at');
+            $call('Title2');
+        }
+    }
+
+    public function test_the_message_shows_the_bad_value_escaped(): void
+    {
+        try {
+            (new Query())->where("a\"\nb", 'x');
+            $this->fail('took the field');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringNotContainsString("\n", $e->getMessage());
+            $this->assertStringContainsString('a\"\nb', $e->getMessage());
+        }
+    }
 }

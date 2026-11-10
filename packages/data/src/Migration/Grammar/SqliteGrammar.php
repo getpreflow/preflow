@@ -14,7 +14,7 @@ final class SqliteGrammar implements SchemaGrammar
 
     public function quote(string $identifier): string
     {
-        return '"' . $identifier . '"';
+        return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
     public function columnType(string $kind, ?int $length = null): string

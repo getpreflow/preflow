@@ -19,6 +19,7 @@ final class SqliteDialectTest extends TestCase
     public function test_quotes_identifier_with_double_quotes(): void
     {
         $this->assertSame('"users"', $this->dialect->quoteIdentifier('users'));
+        $this->assertSame('"title"" OR 1=1 --"', $this->dialect->quoteIdentifier('title" OR 1=1 --'));
     }
 
     public function test_numeric_value_keeps_zero_and_drops_empty(): void

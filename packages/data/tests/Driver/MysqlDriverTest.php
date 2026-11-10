@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Driver;
 
 require_once __DIR__ . '/OrGroupScenarios.php';
+require_once __DIR__ . '/WhereScenarios.php';
 
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -17,6 +18,7 @@ use Preflow\Testing\MysqlTestDatabase;
 final class MysqlDriverTest extends TestCase
 {
     use OrGroupScenarios;
+    use WhereScenarios;
 
     public function test_mysql_driver_uses_mysql_dialect(): void
     {
@@ -153,5 +155,38 @@ final class MysqlDriverTest extends TestCase
     public function test_or_group_or_where_chain_is_grouped_before_groups_are_anded(): void
     {
         $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkOrWhereChainIsGroupedBeforeGroupsAreAnded($driver));
+    }
+
+    #[Group('mysql')]
+    public function test_where_null_finds_the_null_row(): void
+    {
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkWhereNullFindsTheNullRow($driver));
+    }
+
+    #[Group('mysql')]
+    public function test_where_in_and_not_in(): void
+    {
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkWhereInAndNotIn($driver));
+    }
+
+    #[Group('mysql')]
+    public function test_where_like_not_like_and_angle_not_equals(): void
+    {
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkWhereLikeNotLikeAndAngleNotEquals($driver));
+    }
+
+    #[Group('mysql')]
+    public function test_a_backtick_in_an_identifier_stays_inside_the_identifier(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        $pdo->exec('CREATE TABLE `it``ems` (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255))');
+        try {
+            $driver = new MysqlDriver($pdo);
+            $driver->save('it`ems', 'a', ['uuid' => 'a', 'title' => 'T']);
+            $this->assertSame('T', $driver->findOne('it`ems', 'a')['title']);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
     }
 }

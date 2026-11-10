@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
+use Preflow\Data\Attributes\Timestamps;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Observe\DataObserver;
 use Preflow\Data\Observe\SqlTables;
@@ -457,6 +458,7 @@ final class DataManager
     {
         $this->assertWritable($model);
         $meta = ModelMetadata::for($model::class);
+        $this->stamp($model, $meta);
         $def = $this->classType($meta);
         if ($def !== null) {
             $this->writeClassType($model, $meta, $def, 'save', $validate, $rules, $scenario);
@@ -464,6 +466,7 @@ final class DataManager
             return;
         }
 
+        $this->giveStringId($model, $meta);
         if ($validate) {
             $this->validateModel($model, $rules, $scenario);
         }
@@ -491,6 +494,7 @@ final class DataManager
     {
         $this->assertWritable($model);
         $meta = ModelMetadata::for($model::class);
+        $this->stamp($model, $meta);
         $def = $this->classType($meta);
         if ($def !== null) {
             $this->writeClassType($model, $meta, $def, 'insert', $validate, $rules, $scenario);
@@ -498,11 +502,25 @@ final class DataManager
             return;
         }
 
+        $this->giveStringId($model, $meta);
         if ($validate) {
             $this->validateModel($model, $rules, $scenario);
         }
 
         $driver = $this->resolveDriver($meta->storage);
+        if (self::hasStringId($meta)) {
+            // A string id is never the storage's to give: the given one, or the new UUID.
+            $data = $this->modelData($meta, $model);
+            $id = (string) $data[$meta->idField];
+            if ($driver->exists($meta->table, $id, $meta->idField)) {
+                throw new \RuntimeException('Cannot insert ' . $model::class . " {$id}: a record with this id exists. Use save() or update().");
+            }
+            $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id, $data, $meta->idField));
+            $this->wroteModel($meta, $model);
+
+            return;
+        }
+
         $data = $this->modelData($meta, $model);
 
         // Force INSERT by passing empty ID (PdoDriver strips the ID field and does plain INSERT)
@@ -510,6 +528,57 @@ final class DataManager
 
         $this->takeInsertId($driver, $meta, $model);
         $this->wroteModel($meta, $model);
+    }
+
+    /**
+     * A plain model whose string id is empty (or not set) gets a UUID v4 before its first write,
+     * as a class-backed type gets its id: the storage gives only auto-increment numbers.
+     */
+    private function giveStringId(Model $model, ModelMetadata $meta): void
+    {
+        if (!self::hasStringId($meta)) {
+            return;
+        }
+        $prop = new \ReflectionProperty($model, $meta->idField);
+        if ($prop->isInitialized($model) && !self::emptyId($model->{$meta->idField})) {
+            return;
+        }
+        $b = random_bytes(16);
+        $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+        $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+        $model->{$meta->idField} = vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
+    }
+
+    /**
+     * #[Timestamps]: createdAt when it is empty, updatedAt always (each where the model has it),
+     * as the property's type takes the time: a date, 'Y-m-d H:i:s' text or the Unix time.
+     */
+    private function stamp(Model $model, ModelMetadata $meta): void
+    {
+        if (!$meta->hasTimestamps) {
+            return;
+        }
+        $now = new \DateTimeImmutable();
+        foreach ([Timestamps::CREATED_AT => false, Timestamps::UPDATED_AT => true] as $name => $always) {
+            if (!property_exists($model, $name)) {
+                continue;
+            }
+            $prop = new \ReflectionProperty($model, $name);
+            if (!$prop->isPublic() || $prop->isStatic() || $prop->isReadOnly()) {
+                continue;
+            }
+            if (!$always && $prop->isInitialized($model) && $model->{$name} !== null && $model->{$name} !== '' && $model->{$name} !== 0) {
+                continue;
+            }
+            $type = $prop->getType();
+            $kind = $type instanceof \ReflectionNamedType ? $type->getName() : null;
+            $model->{$name} = match ($kind) {
+                'string' => $now->format('Y-m-d H:i:s'),
+                'int' => $now->getTimestamp(),
+                \DateTime::class => \DateTime::createFromImmutable($now),
+                default => $now,
+            };
+        }
     }
 
     /**
@@ -522,6 +591,7 @@ final class DataManager
     {
         $this->assertWritable($model);
         $meta = ModelMetadata::for($model::class);
+        $this->stamp($model, $meta);
         $def = $this->classType($meta);
         if ($def !== null) {
             $this->writeClassType($model, $meta, $def, 'update', $validate, $rules, $scenario);

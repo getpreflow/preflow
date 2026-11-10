@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Driver;
 
 require_once __DIR__ . '/OrGroupScenarios.php';
+require_once __DIR__ . '/WhereScenarios.php';
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\JsonFileDriver;
@@ -14,6 +15,7 @@ use Preflow\Data\SortDirection;
 final class JsonFileDriverTest extends TestCase
 {
     use OrGroupScenarios;
+    use WhereScenarios;
 
     private string $dataDir;
     private JsonFileDriver $driver;
@@ -603,5 +605,20 @@ final class JsonFileDriverTest extends TestCase
 
         $this->assertSame(['uuid' => 'v1.2'], $this->driver->findOne('post', 'v1.2'));
         $this->assertTrue($this->driver->exists('post', 'v1.2'));
+    }
+
+    public function test_where_null_finds_the_null_row(): void
+    {
+        $this->checkWhereNullFindsTheNullRow($this->driver);
+    }
+
+    public function test_where_in_and_not_in(): void
+    {
+        $this->checkWhereInAndNotIn($this->driver);
+    }
+
+    public function test_where_like_not_like_and_angle_not_equals(): void
+    {
+        $this->checkWhereLikeNotLikeAndAngleNotEquals($this->driver);
     }
 }

@@ -10,7 +10,7 @@ final class SqliteDialect implements Dialect
 {
     public function quoteIdentifier(string $name): string
     {
-        return '"' . $name . '"';
+        return '"' . str_replace('"', '""', $name) . '"';
     }
 
     public function updateSql(string $table, array $columns, string $idField): string

@@ -8,6 +8,7 @@ use Preflow\Data\UniqueViolation;
 
 interface Dialect
 {
+    /** The name as a quoted identifier; a quote character inside it is doubled (escaped). */
     public function quoteIdentifier(string $name): string;
 
     /** UPDATE of the given columns of the one row whose id column equals the last binding. */

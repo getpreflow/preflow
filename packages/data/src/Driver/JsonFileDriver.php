@@ -681,14 +681,29 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         $fieldValue = $this->value($item, $where['field'], $query);
         $condValue = $where['value'];
 
-        return match ($where['operator']) {
+        $operator = $where['operator'];
+        if ($operator === 'IN' || $operator === 'NOT IN') {
+            // As SQL: a missing (NULL) field is in no list and not "not in" one either.
+            if (!is_scalar($fieldValue)) {
+                return false;
+            }
+            $listed = in_array((string) $fieldValue, array_map('strval', array_filter((array) $condValue, 'is_scalar')), true);
+
+            return $operator === 'IN' ? $listed : !$listed;
+        }
+        if ($condValue === null && !in_array($operator, ['=', '!=', '<>'], true)) {
+            return false; // as SQL: only (not) equal to NULL matches anything
+        }
+
+        return match ($operator) {
             '=' => $fieldValue === $condValue,
-            '!=' => $fieldValue !== $condValue,
+            '!=', '<>' => $fieldValue !== $condValue,
             '>' => $fieldValue > $condValue,
             '>=' => $fieldValue >= $condValue,
             '<' => $fieldValue < $condValue,
             '<=' => $fieldValue <= $condValue,
-            'LIKE' => $this->matchLike((string)($fieldValue ?? ''), (string)$condValue),
+            'LIKE' => $fieldValue !== null && $this->matchLike((string) $fieldValue, (string) $condValue),
+            'NOT LIKE' => $fieldValue !== null && !$this->matchLike((string) $fieldValue, (string) $condValue),
             default => false,
         };
     }

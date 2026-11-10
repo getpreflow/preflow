@@ -176,8 +176,7 @@ class QueryCompiler
 
         $parts = [];
         foreach ($wheres as $i => $where) {
-            $clause = $this->column($where['field'], $query) . " {$where['operator']} ?";
-            $bindings[] = $where['value'];
+            $clause = $this->compileWhere($where, $query, $bindings);
 
             if ($i === 0) {
                 $parts[] = $clause;
@@ -187,6 +186,45 @@ class QueryCompiler
         }
 
         return implode(' ', $parts);
+    }
+
+    /**
+     * One where() condition. The operator is one of Query::OPERATORS (checked when it was
+     * added); a null value compares with NULL ("=": IS NULL, "!=" / "<>": IS NOT NULL, any other
+     * operator matches nothing), IN / NOT IN take a list (an empty IN matches nothing, an empty
+     * NOT IN everything).
+     *
+     * @param array{field: string, operator: string, value: mixed, boolean: string} $where
+     * @param array<int, mixed> $bindings
+     */
+    private function compileWhere(array $where, Query $query, array &$bindings): string
+    {
+        $column = $this->column($where['field'], $query);
+        $operator = $where['operator'];
+        if (!in_array($operator, Query::OPERATORS, true)) {
+            throw new \InvalidArgumentException('Unsupported operator in a where condition.');
+        }
+        $value = $where['value'];
+
+        if ($operator === 'IN' || $operator === 'NOT IN') {
+            $values = array_values((array) $value);
+            if ($values === []) {
+                return $operator === 'IN' ? '0 = 1' : '1 = 1';
+            }
+            array_push($bindings, ...$values);
+
+            return "{$column} {$operator} (" . implode(', ', array_fill(0, count($values), '?')) . ')';
+        }
+        if ($value === null) {
+            return match ($operator) {
+                '=' => "{$column} IS NULL",
+                '!=', '<>' => "{$column} IS NOT NULL",
+                default => '0 = 1',
+            };
+        }
+        $bindings[] = $value;
+
+        return "{$column} {$operator} ?";
     }
 
     /**

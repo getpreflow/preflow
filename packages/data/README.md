@@ -23,7 +23,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Entity(table: 'posts', storage: 'sqlite')]` | Class | Maps model to a table/collection and a named driver. `storage` defaults to `'default'`. |
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
-| `#[Timestamps]` | Class | Adds `created_at` / `updated_at` handling. |
+| `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` set the `createdAt` property when it is empty and `updatedAt` on every write. A `?\DateTimeImmutable` property is stored as `Y-m-d H:i:s` text. |
 
 ### `Model`
 
@@ -38,7 +38,7 @@ $model->toArray(): array          // export public properties
 $dm->find(Post::class, $id): ?Post
 $dm->query(Post::class): QueryBuilder<Post>
 $dm->save(Model $model): void           // INSERT when ID is empty, UPDATE otherwise
-$dm->insert(Model $model): void         // explicit INSERT; reads back lastInsertId()
+$dm->insert(Model $model): void         // explicit INSERT; an int id reads back lastInsertId()
 $dm->update(Model $model): void         // explicit UPDATE
 $dm->delete(Post::class, $id): void     // delete by class + ID
 $dm->delete($model): void               // delete by model instance
@@ -46,7 +46,7 @@ $dm->raw(string $sql, array $bindings, string $storage): array  // raw SQL query
 $dm->saveTypeIfVersion(DynamicRecord $record, int $expected): bool // compare-and-set, see below
 ```
 
-`save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables.
+`save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables. A `string` id that is empty (or unset) gets a UUID v4 before the write instead; `insert()` refuses an id that exists.
 
 ### `QueryBuilder`
 
@@ -56,6 +56,8 @@ All methods return `$this` for chaining except the terminal methods.
 ->where('status', 'published')
 ->where('views', '>', 100)
 ->orWhere('featured', true)
+->where('deleted_at', null)      // IS NULL; '!=' / '<>' with null: IS NOT NULL
+->where('status', 'IN', ['draft', 'review'])
 ->orderBy('created_at', SortDirection::Desc)
 ->limit(10)->offset(20)
 ->search('php')          // searches all #[Field(searchable: true)] fields
@@ -63,6 +65,12 @@ All methods return `$this` for chaining except the terminal methods.
 ->first(): ?Model
 ->paginate(perPage: 15, currentPage: 2): PaginatedResult
 ```
+
+`where()` / `orWhere()` take `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`, `LIKE`, `NOT LIKE`, `IN`,
+`NOT IN` (any case; `IN` / `NOT IN` take a list); `where($field, $value)` is `=`. Field names in
+`where()`, `orWhere()`, `whereAny()`, `orderBy()` and `search()` are identifiers
+(`[A-Za-z_][A-Za-z0-9_]*`). Anything else throws `\InvalidArgumentException` before any SQL is
+built: never pass a request's operator or column name unchecked.
 
 ### Storage drivers
 
@@ -306,6 +314,11 @@ fields (unique within them), and may carry an index and a length:
   too. Translatable unique fields (stored as JSON, no index) and every unique field on JSON
   storage are checked and written under the type's lock; the JSON check reads every record of
   the type, so unique fields on large JSON types are slow.
+- **Plain models need the index in their migration.** Tables of types (model JSON files,
+  `#[Entity(type: …)]` classes) are made by sync, unique indexes included. A plain `#[Entity]`
+  model's table comes only from the app's migration: `#[Field(unique: true)]` there adds the
+  validation rule, not the index, so put `->unique()` on the column in the migration. Without
+  it the rule alone does not stop two concurrent saves of the same value on SQL storage.
 - **Empty is NULL.** An empty value in a unique field is stored as `NULL` (a unique index would
   refuse a second `''`). For a `Model`, the property must accept `null`.
 - **Index and length.** `unique` and `index` make a short text column: `VARCHAR(length)` (default
@@ -874,6 +887,9 @@ final class Post extends Model
     public string $body;
 
     public string $status = 'draft';
+
+    public ?\DateTimeImmutable $createdAt = null; // set by #[Timestamps]
+    public ?\DateTimeImmutable $updatedAt = null;
 }
 ```
 
@@ -886,7 +902,7 @@ $post = $dm->find(Post::class, 'abc-123');
 // Filtered query
 $posts = $dm->query(Post::class)
     ->where('status', 'published')
-    ->orderBy('created_at', SortDirection::Desc)
+    ->orderBy('createdAt', SortDirection::Desc)
     ->paginate(perPage: 10, currentPage: 1);
 
 // Full-text search across searchable fields
@@ -915,7 +931,8 @@ final class CreatePostsTable extends Migration
             $t->string('title')->index();
             $t->text('body');
             $t->string('status');
-            $t->timestamps();
+            $t->string('createdAt')->nullable(); // the model's property names
+            $t->string('updatedAt')->nullable();
         });
     }
 
