@@ -458,8 +458,10 @@ final class DataManager
     {
         $this->assertWritable($model);
         $meta = ModelMetadata::for($model::class);
-        $this->stamp($model, $meta);
         $def = $this->classType($meta);
+        if ($def === null) {
+            $this->stamp($model, $meta); // a class-backed type stores what its type says
+        }
         if ($def !== null) {
             $this->writeClassType($model, $meta, $def, 'save', $validate, $rules, $scenario);
 
@@ -494,8 +496,10 @@ final class DataManager
     {
         $this->assertWritable($model);
         $meta = ModelMetadata::for($model::class);
-        $this->stamp($model, $meta);
         $def = $this->classType($meta);
+        if ($def === null) {
+            $this->stamp($model, $meta); // a class-backed type stores what its type says
+        }
         if ($def !== null) {
             $this->writeClassType($model, $meta, $def, 'insert', $validate, $rules, $scenario);
 
@@ -550,8 +554,9 @@ final class DataManager
     }
 
     /**
-     * #[Timestamps]: createdAt when it is empty, updatedAt always (each where the model has it),
-     * as the property's type takes the time: a date, 'Y-m-d H:i:s' text or the Unix time.
+     * #[Timestamps] on a plain model: the created property (createdAt or created_at) when it is
+     * empty, the updated one (updatedAt or updated_at) always, each where the model has it, as
+     * the property's type takes the time: a date, 'Y-m-d H:i:s' text or the Unix time.
      */
     private function stamp(Model $model, ModelMetadata $meta): void
     {
@@ -559,8 +564,9 @@ final class DataManager
             return;
         }
         $now = new \DateTimeImmutable();
-        foreach ([Timestamps::CREATED_AT => false, Timestamps::UPDATED_AT => true] as $name => $always) {
-            if (!property_exists($model, $name)) {
+        foreach ([[Timestamps::CREATED_NAMES, false], [Timestamps::UPDATED_NAMES, true]] as [$names, $always]) {
+            $name = Timestamps::propertyOf($model::class, $names);
+            if ($name === null) {
                 continue;
             }
             $prop = new \ReflectionProperty($model, $name);
@@ -591,8 +597,10 @@ final class DataManager
     {
         $this->assertWritable($model);
         $meta = ModelMetadata::for($model::class);
-        $this->stamp($model, $meta);
         $def = $this->classType($meta);
+        if ($def === null) {
+            $this->stamp($model, $meta); // a class-backed type stores what its type says
+        }
         if ($def !== null) {
             $this->writeClassType($model, $meta, $def, 'update', $validate, $rules, $scenario);
 

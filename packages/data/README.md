@@ -23,7 +23,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Entity(table: 'posts', storage: 'sqlite')]` | Class | Maps model to a table/collection and a named driver. `storage` defaults to `'default'`. |
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
-| `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` set the `createdAt` property when it is empty and `updatedAt` on every write. A `?\DateTimeImmutable` property is stored as `Y-m-d H:i:s` text. |
+| `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `created_at` (or `createdAt`) when it is empty and `updated_at` (or `updatedAt`) on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text; a `?\DateTimeImmutable` one is stored as that text. |
 
 ### `Model`
 
@@ -888,8 +888,8 @@ final class Post extends Model
 
     public string $status = 'draft';
 
-    public ?\DateTimeImmutable $createdAt = null; // set by #[Timestamps]
-    public ?\DateTimeImmutable $updatedAt = null;
+    public ?string $created_at = null; // set by #[Timestamps] (createdAt / updatedAt work too)
+    public ?string $updated_at = null;
 }
 ```
 
@@ -902,7 +902,7 @@ $post = $dm->find(Post::class, 'abc-123');
 // Filtered query
 $posts = $dm->query(Post::class)
     ->where('status', 'published')
-    ->orderBy('createdAt', SortDirection::Desc)
+    ->orderBy('created_at', SortDirection::Desc)
     ->paginate(perPage: 10, currentPage: 1);
 
 // Full-text search across searchable fields
@@ -931,8 +931,7 @@ final class CreatePostsTable extends Migration
             $t->string('title')->index();
             $t->text('body');
             $t->string('status');
-            $t->string('createdAt')->nullable(); // the model's property names
-            $t->string('updatedAt')->nullable();
+            $t->timestamps(); // created_at, updated_at
         });
     }
 

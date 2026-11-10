@@ -683,6 +683,9 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
         $operator = $where['operator'];
         if ($operator === 'IN' || $operator === 'NOT IN') {
+            if ($operator === 'NOT IN' && (array) $condValue === []) {
+                return true; // as SQL (1 = 1): an empty NOT IN takes every row, null fields too
+            }
             // As SQL: a missing (NULL) field is in no list and not "not in" one either.
             if (!is_scalar($fieldValue)) {
                 return false;

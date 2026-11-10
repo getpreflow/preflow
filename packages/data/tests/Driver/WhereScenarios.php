@@ -51,6 +51,8 @@ trait WhereScenarios
         $this->assertSame(['2'], $this->whereIds($d, (new Query())->where('title', 'NOT IN', ['Apple', 'Cherry'])));
         $this->assertSame([], $this->whereIds($d, (new Query())->where('title', 'IN', [])));
         $this->assertSame(['1', '2', '3'], $this->whereIds($d, (new Query())->where('title', 'NOT IN', [])));
+        $this->assertSame(['1', '2', '3'], $this->whereIds($d, (new Query())->where('tags', 'NOT IN', [])), 'an empty NOT IN takes null fields too');
+        $this->assertSame(['3'], $this->whereIds($d, (new Query())->where('tags', 'NOT IN', ['x'])), 'a NOT IN never takes a null field');
     }
 
     private function checkWhereLikeNotLikeAndAngleNotEquals(StorageDriver $d): void

@@ -103,8 +103,9 @@ final class ModelMetadata
         // Timestamps a plain model holds as dates are stored as text (a class-backed type stores
         // its fields as its type says).
         if ($hasTimestamps && $entity->type === null) {
-            foreach ([Timestamps::CREATED_AT, Timestamps::UPDATED_AT] as $name) {
-                if (!isset($transformers[$name]) && $ref->hasProperty($name) && self::holdsDates($ref->getProperty($name))) {
+            foreach ([Timestamps::CREATED_NAMES, Timestamps::UPDATED_NAMES] as $names) {
+                $name = Timestamps::propertyOf($modelClass, $names);
+                if ($name !== null && !isset($transformers[$name]) && self::holdsDates($ref->getProperty($name))) {
                     $transformers[$name] = new DateTimeTransformer();
                 }
             }

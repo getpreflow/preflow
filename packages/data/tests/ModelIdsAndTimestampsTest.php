@@ -14,7 +14,11 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Model;
+use Preflow\Data\Locales;
+use Preflow\Data\Migration\Schema;
+use Preflow\Data\Migration\Table;
 use Preflow\Data\ModelMetadata;
+use Preflow\Data\TypeRegistry;
 
 #[Entity(table: 'notes', storage: 'sqlite')]
 class StringIdNote extends Model
@@ -86,12 +90,43 @@ class UnstampedNote extends Model
     public ?\DateTimeImmutable $updatedAt = null;
 }
 
+/** As the data README shows it: the class attribute, snake_case properties, a timestamps() table. */
+#[Entity(table: 'snake_stamped', storage: 'sqlite')]
+#[Timestamps]
+class SnakeStampedNote extends Model
+{
+    #[Id]
+    public string $uuid = '';
+
+    #[Field]
+    public string $title = '';
+
+    public ?string $created_at = null;
+    public ?string $updated_at = null;
+}
+
+/** A class-backed type: it stores what its type says, #[Timestamps] does not stamp it. */
+#[Entity(table: 'stamped_type', storage: 'sqlite', type: 'stamped_type')]
+#[Timestamps]
+class StampedTypeNote extends Model
+{
+    #[Id]
+    public string $uuid = '';
+
+    #[Field]
+    public ?string $title = null;
+
+    public ?string $createdAt = null;
+    public ?string $updatedAt = null;
+}
+
 final class ModelIdsAndTimestampsTest extends TestCase
 {
     private const UUID_V4 = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/';
 
     private string $jsonDir;
     private DataManager $dm;
+    private \PDO $pdo;
 
     protected function setUp(): void
     {
@@ -99,6 +134,13 @@ final class ModelIdsAndTimestampsTest extends TestCase
         $pdo = new \PDO('sqlite::memory:');
         $pdo->exec('CREATE TABLE notes (uuid TEXT PRIMARY KEY, title TEXT)');
         $pdo->exec('CREATE TABLE stamped (uuid TEXT PRIMARY KEY, title TEXT, createdAt TEXT, updatedAt TEXT)');
+        (new Schema($pdo))->create('snake_stamped', function (Table $t): void {
+            $t->uuid('uuid')->primary();
+            $t->string('title');
+            $t->timestamps();
+        });
+        $pdo->exec('CREATE TABLE stamped_type (uuid TEXT PRIMARY KEY, title TEXT, createdAt TEXT, updatedAt TEXT)');
+        $this->pdo = $pdo;
         $this->jsonDir = sys_get_temp_dir() . '/preflow_ids_test_' . uniqid();
         mkdir($this->jsonDir, 0755, true);
         $this->dm = new DataManager(['sqlite' => new SqliteDriver($pdo), 'json' => new JsonFileDriver($this->jsonDir)]);
@@ -197,5 +239,47 @@ final class ModelIdsAndTimestampsTest extends TestCase
 
         $this->assertNull($note->createdAt);
         $this->assertNull($note->updatedAt);
+    }
+
+    public function test_snake_case_timestamps_on_a_timestamps_table_are_set_and_read_back(): void
+    {
+        $before = (new \DateTimeImmutable('-1 second'))->format('Y-m-d H:i:s');
+        $note = new SnakeStampedNote();
+        $note->title = 'One';
+        $this->dm->insert($note);
+
+        $this->assertNotNull($note->created_at);
+        $this->assertNotNull($note->updated_at);
+        $this->assertGreaterThanOrEqual($before, $note->created_at);
+        $found = $this->dm->find(SnakeStampedNote::class, $note->uuid);
+        $this->assertSame($note->created_at, $found->created_at);
+        $this->assertSame($note->updated_at, $found->updated_at);
+
+        $found->created_at = '2020-01-02 03:04:05';
+        $found->updated_at = '2020-01-02 03:04:05';
+        $this->dm->update($found);
+
+        $again = $this->dm->find(SnakeStampedNote::class, $note->uuid);
+        $this->assertSame('2020-01-02 03:04:05', $again->created_at, 'created is kept');
+        $this->assertGreaterThanOrEqual($before, $again->updated_at, 'updated is set again');
+    }
+
+    public function test_a_class_backed_type_is_not_stamped(): void
+    {
+        $dir = sys_get_temp_dir() . '/preflow_stamped_type_' . uniqid();
+        mkdir($dir);
+        try {
+            $types = new TypeRegistry($dir, new Locales(['en'], 'en'), ['stamped_type' => StampedTypeNote::class]);
+            $dm = new DataManager(['sqlite' => new SqliteDriver($this->pdo)], 'sqlite', $types);
+            $note = new StampedTypeNote();
+            $note->title = 'Typed';
+            $dm->insert($note);
+
+            $this->assertNull($note->createdAt);
+            $this->assertNull($note->updatedAt);
+            $this->assertSame([null, null], array_values($this->pdo->query('SELECT createdAt, updatedAt FROM stamped_type')->fetch(\PDO::FETCH_NUM)));
+        } finally {
+            rmdir($dir);
+        }
     }
 }
