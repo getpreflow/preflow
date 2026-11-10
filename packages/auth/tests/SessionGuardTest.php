@@ -133,6 +133,69 @@ final class SessionGuardTest extends TestCase
         $this->assertFalse($result);
     }
 
+    public function test_validate_with_unknown_email_still_verifies_once_against_a_dummy_hash(): void
+    {
+        $spy = new class implements \Preflow\Auth\PasswordHasherInterface {
+            /** @var list<array{string, string}> */
+            public array $verified = [];
+            public int $hashed = 0;
+            private NativePasswordHasher $native;
+
+            public function __construct()
+            {
+                $this->native = new NativePasswordHasher();
+            }
+
+            public function hash(string $password): string
+            {
+                $this->hashed++;
+
+                return $this->native->hash($password);
+            }
+
+            public function verify(string $password, string $hash): bool
+            {
+                $this->verified[] = [$password, $hash];
+
+                return $this->native->verify($password, $hash);
+            }
+
+            public function needsRehash(string $hash): bool
+            {
+                return false;
+            }
+        };
+        $guard = new SessionGuard($this->provider, $spy);
+
+        $this->assertFalse($guard->validate(['email' => 'nobody@example.com', 'password' => 'secret']));
+        $this->assertCount(1, $spy->verified, 'an unknown address costs one verify, like a wrong password');
+        $this->assertSame('secret', $spy->verified[0][0]);
+        $this->assertStringStartsWith('$', $spy->verified[0][1], 'against a hash made by the configured hasher');
+
+        // The dummy hash is made once per guard, not per attempt.
+        $this->assertFalse($guard->validate(['email' => 'other@example.com', 'password' => 'secret']));
+        $this->assertCount(2, $spy->verified);
+        $this->assertSame(1, $spy->hashed);
+        $this->assertSame($spy->verified[0][1], $spy->verified[1][1]);
+
+        // A known address still verifies once against its own hash.
+        $this->assertTrue($guard->validate(['email' => 'test@example.com', 'password' => 'secret']));
+        $this->assertCount(3, $spy->verified);
+        $this->assertSame($this->user->passwordHash, $spy->verified[2][1]);
+    }
+
+    public function test_the_ready_dummy_hash_matches_the_native_defaults(): void
+    {
+        // The native hasher with the defaults verifies unknown addresses against it without hashing first;
+        // were PHP's default cost to change, this fails and the hash needs making again.
+        $hash = (new \ReflectionClassConstant(SessionGuard::class, 'DUMMY_HASH'))->getValue();
+        $this->assertFalse((new NativePasswordHasher())->needsRehash($hash));
+        $this->assertTrue((new NativePasswordHasher(PASSWORD_BCRYPT, ['cost' => 4]))->needsRehash($hash), 'other options make their own');
+
+        $guard = new SessionGuard($this->provider, new NativePasswordHasher(PASSWORD_BCRYPT, ['cost' => 4]));
+        $this->assertFalse($guard->validate(['email' => 'nobody@example.com', 'password' => 'secret']));
+    }
+
     public function test_two_guards_keep_separate_users(): void
     {
         $members = new SessionGuard($this->provider, $this->hasher, '_auth_user_id.members', ['_auth_user_id']);

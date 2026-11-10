@@ -82,6 +82,23 @@ final class LandingTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_default_guard_user_who_is_not_staff_gets_no_staff_treatment(): void
+    {
+        // As the starter: the default guard signs in employers, and nothing makes it a staff guard.
+        $this->flowSite();
+        $auth = (string) file_get_contents($this->dir . '/config/auth.php');
+        $this->write('config/auth.php', str_replace("'population' => 'staff',", '', $auth));
+        $this->flow = $this->app();
+        $this->signInStaff();
+
+        $account = $this->send('GET', '/members/account');
+        $this->assertSame(303, $account->getStatusCode());
+        $this->assertSame('/members/login?next=/members/account', $account->getHeaderLine('Location'), 'the login, as for any visitor');
+        $this->assertSame('/members/login', $this->send('GET', '/members')->getHeaderLine('Location'));
+        $this->assertSame(200, $this->send('GET', '/members/login')->getStatusCode(), 'the login form, not a redirect');
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_waiting_member_is_not_let_in(): void
     {
         $this->flowSite();

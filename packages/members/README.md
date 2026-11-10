@@ -147,7 +147,9 @@ default locale without a prefix). `path` is registered as non-public (`NonPublic
   keeps its page; otherwise the package serves `@members/landing.twig` (a greeting, the account
   link and sign out; signed out or not admitted: to the login). Only routes registered before
   members boots count: a provider that adds the same path must be listed before
-  `MembersServiceProvider`. Sign-out and staff who open the account page go to `{path}`;
+  `MembersServiceProvider`. Sign-out and staff who open the account page go to `{path}`
+  (staff: signed in on the default guard when it is a staff guard, as Folio's is or as
+  `'population' => 'staff'` makes it);
   sign-in, reset and an accepted confirmation go to `landing`.
 - After a confirmation `Decision::Accept` makes a member, signs them in (remembered) and
   redirects to `landing`; `Decision::Pending` gives the `pending` role, shows the thanks page

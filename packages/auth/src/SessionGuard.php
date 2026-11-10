@@ -19,6 +19,18 @@ final class SessionGuard implements GuardInterface
     public const string SIGNED_IN_COOKIE = 'preflow_auth';
 
     /**
+     * A hash of a password nobody knows, made with PASSWORD_DEFAULT (bcrypt, cost 12 on PHP 8.4+), which
+     * an unknown address is verified against when the hasher would make the same kind of hash.
+     */
+    private const string DUMMY_HASH = '$2y$12$KNmNhb/PvNx5W6wlxpjoZu8WssTSqwelChXgMTynidjLFS2NSMEJm';
+
+    /** @var list<string> dummy hashes NativePasswordHashers with other options made in this process */
+    private static array $dummies = [];
+
+    /** This guard's dummy hash, once known ({@see dummyHash()}). */
+    private ?string $dummyHash = null;
+
+    /**
      * @param string       $sessionKey where this guard keeps its user id (one key per guard)
      * @param list<string> $otherKeys  other guards' keys: logging out keeps the session while one is set
      * @param string       $name       this guard's name (the remember rows are per guard)
@@ -76,12 +88,14 @@ final class SessionGuard implements GuardInterface
     public function validate(array $credentials): bool
     {
         $user = $this->provider->findByCredentials($credentials);
+        $password = $credentials['password'] ?? '';
 
         if ($user === null) {
+            // An unknown address costs one verify too, so the answer takes as long as a wrong password.
+            $this->hasher->verify($password, $this->dummyHash());
+
             return false;
         }
-
-        $password = $credentials['password'] ?? '';
 
         return $this->hasher->verify($password, $user->getPasswordHash());
     }
@@ -184,6 +198,32 @@ final class SessionGuard implements GuardInterface
         }
         $session->invalidate();
         $this->queueMarker(false, false);
+    }
+
+    /**
+     * A hash with the cost and algorithm of this guard's hasher. The native hasher with the defaults
+     * takes the ready one, so an unknown address costs exactly one verify; other options (or another
+     * hasher) make one, once per process for the native hasher and once per guard for others.
+     */
+    private function dummyHash(): string
+    {
+        if ($this->dummyHash !== null) {
+            return $this->dummyHash;
+        }
+        $native = $this->hasher instanceof NativePasswordHasher;
+        if ($native) {
+            foreach ([self::DUMMY_HASH, ...self::$dummies] as $hash) {
+                if (!$this->hasher->needsRehash($hash)) {
+                    return $this->dummyHash = $hash;
+                }
+            }
+        }
+        $hash = $this->hasher->hash(bin2hex(random_bytes(16)));
+        if ($native) {
+            self::$dummies[] = $hash;
+        }
+
+        return $this->dummyHash = $hash;
     }
 
     /** Where the session keeps the user's epoch at sign-in ({@see HasSessionEpoch}). */

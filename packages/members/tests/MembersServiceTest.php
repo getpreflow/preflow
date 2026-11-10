@@ -239,6 +239,12 @@ final class MembersServiceTest extends TestCase
 
         $c->get(AuthManager::class)->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'session');
         $this->assertTrue($viewer->isStaff(), 'the default guard is staff');
+
+        // A default guard of the members population (the starter's employers) is no staff.
+        $auth = $c->get(AuthManager::class);
+        $notStaff = new Viewer($auth, new \Preflow\Auth\Access\Access($auth, $c->get(\Preflow\Auth\Access\PermissionRegistry::class), false, ['session' => 'members']), $this->members());
+        $auth->addUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
+        $this->assertFalse($notStaff->isStaff());
     }
 
     private function members(): Members
