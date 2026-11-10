@@ -345,6 +345,27 @@ final class AssetCollectorTest extends TestCase
         $this->assertStringContainsString('@keyframes x { to { opacity: 0; } } .a { animation: x 1s; }', $plain->renderCss());
     }
 
+    public function test_scoped_css_is_the_same_when_it_comes_from_the_scopers_cache(): void
+    {
+        $css = '.spin { animation: spin 1s; } @keyframes spin { to { transform: rotate(1turn); } } @media (min-width: 1px) { .spin { color: red; } }';
+        $render = function (string $scope) use ($css): string {
+            $assets = $this->collector();
+            $assets->setCssScope($scope);
+            $assets->addCss($css);
+
+            return preg_replace('/nonce="[^"]*"/', '', $assets->renderCss());
+        };
+
+        $first = $render('card-a');
+        $this->assertSame($first, $render('card-a'), 'a second collector in the process: cached');
+        $this->assertStringContainsString('.card-a {', $first);
+        // Another scope for the same text gets its own result.
+        $other = $render('card-b');
+        $this->assertStringContainsString('.card-b {', $other);
+        $this->assertStringNotContainsString('card-a', $other);
+        $this->assertSame(str_replace('card-a', 'card-b', $first), $other);
+    }
+
     private function cacheDir(): string
     {
         $dir = sys_get_temp_dir() . '/preflow-assets-' . bin2hex(random_bytes(4));

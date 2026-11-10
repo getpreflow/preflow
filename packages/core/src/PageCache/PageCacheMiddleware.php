@@ -233,6 +233,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
         if ($page !== null) {
             try {
                 return $this->serve($key, $page);
+            } catch (\Preflow\Core\Exceptions\HttpException $e) {
+                throw $e; // a live part refused this visitor: the answer, as on a miss
             } catch (\Throwable $e) {
                 // A per-request value or carried state that fails: render the page as on a miss.
                 $this->log('page cache: ' . $key->url() . ' could not be served: ' . $e->getMessage());

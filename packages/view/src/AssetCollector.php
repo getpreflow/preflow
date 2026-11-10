@@ -76,13 +76,34 @@ final class AssetCollector
     {
         // Wrap in scope selector if CSS scoping is active (native CSS nesting)
         if ($this->cssScope !== null) {
-            [$global, $scoped] = self::splitUnnestable($css);
-            $css = ($global !== '' ? $global . "\n" : '')
-                . (trim($scoped) !== '' ? '.' . $this->cssScope . " {\n" . $scoped . "\n}" : '');
+            $css = self::scoped($css, $this->cssScope);
         }
 
         $key ??= hash('xxh3', $css);
         $this->cssRegistry[$key] ??= $css;
+    }
+
+    /** @var array<string, string> scoped CSS by scope and text, for the process (a component renders many times) */
+    private static array $scopedCache = [];
+
+    /** Entries kept in $scopedCache before it starts over. */
+    private const SCOPED_CACHE_SIZE = 256;
+
+    /** $css nested under the class $scope, with the at-rules that can't be nested before it. */
+    private static function scoped(string $css, string $scope): string
+    {
+        $key = $scope . "\0" . hash('xxh128', $css);
+        if (isset(self::$scopedCache[$key])) {
+            return self::$scopedCache[$key];
+        }
+        [$global, $nested] = self::splitUnnestable($css);
+        $scoped = ($global !== '' ? $global . "\n" : '')
+            . (trim($nested) !== '' ? '.' . $scope . " {\n" . $nested . "\n}" : '');
+        if (count(self::$scopedCache) >= self::SCOPED_CACHE_SIZE) {
+            self::$scopedCache = [];
+        }
+
+        return self::$scopedCache[$key] = $scoped;
     }
 
     /** At-rules a scope's nesting would drop (lowercase, without a vendor prefix). */

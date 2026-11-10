@@ -11,6 +11,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\Rendering\RenderingBroken;
+use Preflow\Core\Tests\Fixtures\Rendering\RenderingLiveGate;
 use Preflow\Core\Tests\Fixtures\Rendering\RenderingOuter;
 use Psr\Http\Message\ResponseInterface;
 
@@ -125,4 +126,50 @@ final class PageRenderingTest extends TestCase
         $this->assertSame(403, $response->getStatusCode());
         $this->assertStringContainsString('Only staff', (string) $response->getBody());
     }
+
+    #[RunInSeparateProcess]
+    public function test_a_live_parts_http_exception_answers_with_its_status_on_a_miss_and_on_a_hit(): void
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'off'];\n");
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['default'=>'json','drivers'=>['json'=>['path'=>'{$this->dir}/storage/data']]];\n");
+        ini_set('error_log', $this->dir . '/php.log');
+        $gate = addslashes(RenderingLiveGate::class);
+        $this->page('gate.twig', '<html><body><main>Gate {{ component("' . $gate . '") }}</main></body></html>');
+        $this->page('closed.twig', '<html><body><main>Closed {{ component("' . $gate . '") }}</main></body></html>');
+        file_put_contents(
+            $this->dir . '/config/app.php',
+            "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'page-rendering-test-key-0123456789','url'=>'https://site.test'];\n",
+        );
+        $app = Application::create($this->dir);
+        $app->setRunningInConsole(false);
+        $app->boot();
+        $get = static fn (string $path): ResponseInterface => $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $path));
+        $assertForbidden = function (ResponseInterface $response): void {
+            $body = (string) $response->getBody();
+            $this->assertSame(403, $response->getStatusCode(), $body);
+            $this->assertStringNotContainsString('Only staff', $body);
+            $this->assertStringNotContainsString('Fallback shown', $body);
+            $this->assertStringNotContainsString('data-live-error', $body);
+        };
+
+        // A miss: the page is rendered (and stored with the placeholder), the visitor's part refuses.
+        RenderingLiveGate::$forbidden = true;
+        $assertForbidden($get('/closed'));
+
+        // A visitor the part lets in gets the page; it is stored.
+        RenderingLiveGate::$forbidden = false;
+        $open = $get('/gate');
+        $this->assertSame(200, $open->getStatusCode());
+        $this->assertStringContainsString('Live gate open', (string) $open->getBody());
+        $this->assertSame('hit', $get('/gate')->getHeaderLine('X-Page-Cache'));
+
+        // A hit for a visitor it refuses: the same status as on the miss, served from the cache.
+        RenderingLiveGate::$forbidden = true;
+        $assertForbidden($get('/gate'));
+        $assertForbidden($get('/closed'));
+        $log = (string) @file_get_contents($this->dir . '/php.log');
+        $this->assertStringNotContainsString('could not be served', $log);
+        $this->assertStringNotContainsString('a live part', $log);
+    }
 }
+

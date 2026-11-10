@@ -77,7 +77,9 @@ final class BlockRenderer
             $component->setProps([...$block, 'key' => (string) ($block['_uid'] ?? '')]);
         } catch (\Throwable) {
             // Could not be built (unresolvable dependency, bad data): skip this block,
-            // never the page. Render-time errors are handled by the error boundary.
+            // never the page. Render-time errors are handled by the error boundary, except
+            // an HttpException (since 0.63.2): that is the page's status (a block whose
+            // record is gone should render an empty state instead of throwing a 404).
             // A page missing a block is not stored by the page cache.
             if (class_exists(\Preflow\Core\PageCache\PageCache::class) && $this->container->bound(\Preflow\Core\PageCache\PageCache::class)) {
                 $this->container->get(\Preflow\Core\PageCache\PageCache::class)->refuse('block-error');

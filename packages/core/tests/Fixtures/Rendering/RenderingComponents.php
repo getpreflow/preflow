@@ -35,3 +35,22 @@ class RenderingBroken extends Component
         return '<p>Fallback shown</p>';
     }
 }
+
+/** A live part that decides per visitor; $forbidden is the test's stand-in for that decision. */
+#[\Preflow\Components\Live]
+class RenderingLiveGate extends Component
+{
+    public static bool $forbidden = false;
+
+    public function resolveState(): void
+    {
+        if (self::$forbidden) {
+            throw new ForbiddenHttpException('Only staff of App\Secret\StaffArea');
+        }
+    }
+
+    public function fallback(\Throwable $e): ?string
+    {
+        return '<p>Fallback shown</p>';
+    }
+}

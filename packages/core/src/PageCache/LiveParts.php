@@ -92,7 +92,8 @@ final class LiveParts
 
     /**
      * $body with every signed placeholder replaced by its part, rendered for this request.
-     * Markers that don't verify, or name a kind nobody registered, stay as they are.
+     * Markers that don't verify, or name a kind nobody registered, stay as they are. A part
+     * that throws an HttpException (since 0.63.2) lets it through: the response is that error.
      */
     public function fill(string $body): string
     {
@@ -154,6 +155,10 @@ final class LiveParts
                 $map[$marker] = ($this->kinds[$kind][0])($recipe);
             } catch (LiveRecipeRejected) {
                 continue; // stays the comment it is; counted by fill()
+            } catch (\Preflow\Core\Exceptions\HttpException $e) {
+                // A part that refuses this visitor (403, 404…) answers the page with its status,
+                // on a hit as on a render without the cache.
+                throw $e;
             } catch (\Throwable $e) {
                 $this->log("page cache: a live part ({$kind}) failed: " . $e->getMessage());
                 $map[$marker] = self::ERROR;
