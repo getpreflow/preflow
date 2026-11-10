@@ -431,6 +431,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `page_description()`).
     - The component endpoint resolves the default state before it runs an action (the starter's search runs twice).
     - Optional: a Folio slug generated from the title (starter-folio requires the slug).
+    - starter-folio: the Hero block's link check lets URLs with control characters or whitespace through (`/\t/host` is followed as `//host` by browsers) — refuse them as preflow.dev's `safe_link()` does; and `CompanyAdmin::drafts()` should escape the admin path in its href. Next patch release.
 - **REST pieces (0.62):** released in 0.62.0 (owner, 2026-11-09). What a JSON API needs from the framework, as small
   parts with public interfaces; Folio is not involved.
   - **What it is:**
