@@ -90,8 +90,9 @@ final class SessionGuard implements GuardInterface
         $user = $this->provider->findByCredentials($credentials);
         $password = $credentials['password'] ?? '';
 
-        if ($user === null) {
-            // An unknown address costs one verify too, so the answer takes as long as a wrong password.
+        if ($user === null || $user->getPasswordHash() === '') {
+            // An unknown address (or an account without a password yet) costs one verify too, so the
+            // answer takes as long as a wrong password.
             $this->hasher->verify($password, $this->dummyHash());
 
             return false;

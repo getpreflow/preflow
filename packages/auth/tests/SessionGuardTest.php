@@ -184,6 +184,43 @@ final class SessionGuardTest extends TestCase
         $this->assertSame($this->user->passwordHash, $spy->verified[2][1]);
     }
 
+    public function test_a_known_user_without_a_password_hash_costs_a_verify_too(): void
+    {
+        $spy = new class implements \Preflow\Auth\PasswordHasherInterface {
+            /** @var list<string> the hashes verified against */
+            public array $verified = [];
+            private NativePasswordHasher $native;
+
+            public function __construct()
+            {
+                $this->native = new NativePasswordHasher();
+            }
+
+            public function hash(string $password): string
+            {
+                return $this->native->hash($password);
+            }
+
+            public function verify(string $password, string $hash): bool
+            {
+                $this->verified[] = $hash;
+
+                return $this->native->verify($password, $hash);
+            }
+
+            public function needsRehash(string $hash): bool
+            {
+                return false;
+            }
+        };
+        $this->user->passwordHash = '';
+        $guard = new SessionGuard($this->provider, $spy);
+
+        $this->assertFalse($guard->validate(['email' => 'test@example.com', 'password' => '']));
+        $this->assertCount(1, $spy->verified, 'no password yet answers as slowly as an unknown address');
+        $this->assertNotSame('', $spy->verified[0], 'against the dummy hash, not the empty one');
+    }
+
     public function test_the_ready_dummy_hash_matches_the_native_defaults(): void
     {
         // The native hasher with the defaults verifies unknown addresses against it without hashing first;
