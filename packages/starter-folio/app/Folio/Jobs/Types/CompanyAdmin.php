@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Folio\Jobs\Types;
 
 use App\Models\Job;
-use Preflow\Core\Config\Config;
+use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\Attributes\FolioType;
@@ -24,7 +24,7 @@ final class CompanyAdmin
     public function __construct(
         private readonly Publisher $publisher,
         private readonly DataManager $data,
-        private readonly Config $config,
+        private readonly Application $app,
     ) {}
 
     #[ListColumn('Open jobs')]
@@ -45,8 +45,8 @@ final class CompanyAdmin
         }
 
         $text = $drafts === 1 ? '1 job is a draft' : "{$drafts} jobs are drafts";
-        $list = rtrim((string) $this->config->get('folio.path', '/folio'), '/') . '/job';
+        $admin = rtrim((string) ($this->app->configFile('folio')['path'] ?? '/folio'), '/');
 
-        return '<p><a href="' . $list . '">' . $text . '</a></p>';
+        return '<p><a href="' . $admin . '/job">' . $text . '</a></p>';
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Site;
 
+use App\Folio\Jobs\Types\CompanyAdmin;
 use App\Models\Company;
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
@@ -82,6 +83,16 @@ final class JobsExtensionTest extends TestCase
 
         $this->leaveDrafts(2);
         $this->get('/folio', $this->admin())->assertSee('2 jobs are drafts');
+    }
+
+    public function test_notice_links_to_the_jobs_where_the_admin_lives(): void
+    {
+        $this->leaveDrafts(1);
+        file_put_contents($this->starterRoot . '/config/folio.php', "<?php\n\nreturn ['path' => '/cms/'];\n");
+
+        $notice = $this->app()->container()->get(CompanyAdmin::class)->drafts();
+
+        $this->assertSame('<p><a href="/cms/job">1 job is a draft</a></p>', $notice);
     }
 
     public function test_notice_prints_no_stored_text(): void
