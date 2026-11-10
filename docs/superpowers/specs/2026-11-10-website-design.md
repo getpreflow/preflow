@@ -46,7 +46,7 @@ Under all four, one line: **runs on ordinary shared hosting** — no Node, no Re
   4. Make it yours: a short Folio extension next to how it looks. The principle: Folio is only the UI; features live in the framework behind interfaces.
   5. From starter to starter-folio: the steps from the starter README, and what stays unchanged.
   6. Try it: `composer create-project preflow/starter-folio`, demo logins printed by the install, links to the reference sites that run Folio.
-- **References:** holz-objekte.org, BG Genius (spielegesellschaft.ch), languagecorner.ch, smart-stack.works, smeyer.me, plus preflow.dev itself. Each: name, link, one line, a screenshot, which parts of Preflow it uses (e.g. Folio, members, AI translation). A list the owner extends in Folio without touching code.
+- **References:** holz-objekte.org, BG Genius (boardgamegenius.net), languagecorner.ch, smart-stack.works, smeyer.me, plus preflow.dev itself. Each: name, link, one line, a screenshot, which parts of Preflow it uses (e.g. Folio, members, AI translation). A list the owner extends in Folio without touching code.
 - **Packages:** every published `preflow/*` package except the starters and the abandoned skeleton (today 22), grouped, each with its one-line description and a link to its docs page or, where none exists yet, its GitHub repository. The list must not fall behind again (see Constraints).
 - **Upgrade** to Preflow `^0.63` with Folio, and keep the site current after every release like the other five sites (it becomes the sixth).
 
