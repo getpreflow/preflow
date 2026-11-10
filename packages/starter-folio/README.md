@@ -103,6 +103,24 @@ Unchanged from `preflow/starter`: the same routes, fields, paging (12 per page),
 - Writing `"status":"published"` publishes through `JobWriter`, so a draft that staff saved in Folio with a broken field answers 422 instead of going live.
 - `published_at` is the job's "Posted on" date, or the time Folio published it.
 
+### Make Folio yours
+
+The starter ships one Folio extension, `app/Folio/Jobs`: an "Open jobs" column on the company
+list (the jobs the public sees, counted from the published copies) and a notice on the
+dashboard ("2 jobs are drafts", linking to the job list) while jobs wait unpublished. It needs no
+new permission and no seed. The code is in
+[`app/Folio/Jobs/Types/CompanyAdmin.php`](app/Folio/Jobs/Types/CompanyAdmin.php).
+
+To add your own, you write two files and list the extension:
+
+1. `app/Folio/<Name>/Extension.php`: a class extending `Preflow\Folio\Extension\Extension` with
+   `#[FolioExtension(name: ..., label: ..., description: ...)]`. Folio finds it there.
+2. `app/Folio/<Name>/Types/<Type>Admin.php`: a class with `#[FolioType('<type key>')]` whose
+   methods carry `#[ListColumn]`, `#[DashboardNotice]`, `#[FormPanel]`, `#[RecordAction]` or a
+   save hook. Its constructor is autowired.
+3. Enable it in `config/folio/extensions.json`:
+   `{"enabled": {"<name>": {"disabled_parts": []}}}`.
+
 ### Tests
 
 ```bash
