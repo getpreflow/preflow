@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-11 (v0.63.2)
+> Last updated: 2026-11-11 (v0.64.0)
 
 ## Current State
 
-**v0.63.2** — 6616 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.64.0** — 6718 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -381,7 +381,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Contract suites (v0.64.0, unreleased):** abstract PHPUnit suites in `preflow/testing` that check a third-party
+- **Contract suites (v0.64.0, released 2026-11-11):** abstract PHPUnit suites in `preflow/testing` that check a third-party
   adapter (a Datastar hypermedia driver, a PostgreSQL storage driver, another template engine) against its interface;
   the built-in adapters run them too. Plan: `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 1).
   - **What it is:**
