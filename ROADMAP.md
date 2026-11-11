@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.63.2** — 6613 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.63.2** — 6616 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -429,18 +429,21 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `NOT IN` everything. The JSON driver gains `<>`, `NOT LIKE`, `IN` and `NOT IN`.
     - data: a plain model with a `string` `#[Id]` gets a UUID v4 on `save()` / `insert()`. `insert()` keeps a given id
       and refuses one that exists (it dropped the id before).
-    - data: `#[Timestamps]` works, on the class or a property. It sets `created_at` (or `createdAt`) when empty and
-      `updated_at` (or `updatedAt`) on every write, on plain models. DateTime properties get `DateTimeTransformer`.
+    - data: `#[Timestamps]` works, on the class or a property. It sets `createdAt` or `created_at` (the first the
+      model has) when empty and `updatedAt` or `updated_at` on every write, on plain models. `DateTimeImmutable`
+      properties get `DateTimeTransformer`; `string` ones get `Y-m-d H:i:s` text, `int` ones the Unix time; a
+      mutable `\DateTime` property is not stamped.
     - auth (security): `SessionGuard::validate()` spends one password verify on an unknown address or an account
       without a hash, the same as a wrong password.
+    - members (security): sign-in spends one hash on a member without a password hash, as on an unknown address.
     - members: `Viewer::isStaff()` is true only when the default guard's population is `staff`.
     - routing: files and folders starting with `_` are never routes, at any depth (`_views/`, `blog/_partials/`).
     - core: production 403, 404 and 405 pages show only the status text, not the exception message.
     - core: `.env` reads `A="x" # note` as `x`, `\"` inside double quotes as `"`, and `A='x # y' # z` as `x # y`.
     - core: `RequestContext` (`request.path`) has no locale prefix once the locale middleware has run: controller
       pages, rebuilds and `seo:audit` renders too.
-    - view: GEO `.md` views of pages held by the page cache keep their geo blocks (the sub-request is an internal
-      render).
+    - view: GEO `.md` views (and `Accept: text/markdown` answers) of pages held by the page cache keep their geo
+      blocks (the sub-request is an internal render). `llms-full.txt` still takes cached pages from the page cache.
     - blade: file pages (`about.blade.php`, `blog/[slug].blade.php`) render; they were not found.
     - view: `js('inline')` blocks are printed on full pages, after body JS, once.
     - components: an `HttpException` thrown by a component (render, template, re-render after an action, `#[Live]`
@@ -453,7 +456,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       inside scripts and styles.
     - starter-folio: the Hero link refuses whitespace and control characters (`safe_link()` rules). The drafts notice
       escapes the admin path. Publishing, in the employer area and through the API, needs `job.publish`, which
-      `config/roles.php` gives the `employer` member role.
+      `config/roles.php` gives the `employer` member role. Without it the employer area goes back to the job list
+      with a notice; the API answers 403.
     - Both starters: the employer form keeps input saved after an expired session. `config/data.php` lost the unread
       `driver` key.
     - READMEs checked against the code: form (`overrides`, radio groups, value order), ai (`models` has no fallback,
@@ -466,13 +470,16 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - The starters keep `preflow/*` at `^0.63` (the release checklist bumps on a new minor only).
     - **Upgrading:**
       1. data: `where()` throws `InvalidArgumentException` for another operator, for `IN` / `NOT IN` without an
-         array, and for a field name that is not an identifier (no dots, hyphens or spaces). Type field keys must be
-         identifiers to be filtered or sorted.
+         array, and for a field name that is not an identifier (no dots, hyphens or spaces);
+         `orWhere()`, `whereAny()`, `orderBy()` and `search()` throw for such a field name too. Type field keys must
+         be identifiers to be filtered or sorted.
       2. data: `where(f, '=', null)` now means `IS NULL` (it meant `f = '='`). `where($field, $value)` with a null
          `$value` now matches rows where the field is NULL on SQL (it matched nothing). Guard nullable variables.
-      3. data, JSON driver: `LIKE`, `NOT LIKE`, `IN` and `NOT IN` never match a null field, as in SQL.
+      3. data, JSON driver: `LIKE`, `NOT LIKE`, `IN` and `NOT IN` never match a null field, as in SQL (an empty
+         `NOT IN` takes every row).
       4. data: `insert()` of a string-id plain model keeps or creates the id and throws when it exists.
-         `#[Timestamps]` now sets the values; DateTime properties of plain models are stored as `Y-m-d H:i:s` text.
+         `#[Timestamps]` now sets the values; `DateTimeImmutable` properties of plain models are stored as
+         `Y-m-d H:i:s` text.
          Class-backed types are not stamped.
       5. auth: a custom `PasswordHasherInterface` gets one extra `hash()` per guard instance, the first time an
          unknown address signs in. The native hasher with default options makes none.
@@ -490,7 +497,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       10. core: code that stripped the locale prefix from `RequestContext->path` itself should drop that code, or a
           path whose first segment is a locale code is stripped twice (demodemo and folio-demo carry the old
           `LocaleSwitcher`). Code that needs `/de/…` adds the prefix back (`LocaleMiddleware::urlPrefix()`).
-      11. components: an `HttpException` from a component answers the whole page (or the `/--component` request)
+      11. components: an `HttpException` from a component or a template function answers the whole page (or the `/--component` request)
           with its status, through the error page. Before, the component's `fallback()` showed with a 200. A
           component that should show an empty state catches the exception itself. This holds for Folio blocks too
           (public page and the editor's live preview), and for `#[Live]` parts; htmx does not swap a 4xx answer.
@@ -498,11 +505,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       13. components: an unscoped child's CSS is no longer nested under its parent's class (one class less
           specificity). `@keyframes` / `@font-face` in scoped CSS now apply; their names are global, so prefix them
           per component. preflow.dev: check the home and docs pages (Spotlight animations now move).
-      14. view: `.md` views of cached pages render on each request (one render each; `Cache-Control: public,
-          max-age=3600`).
+      14. view: `.md` views and `Accept: text/markdown` answers of cached pages render on each request (one render
+          each; `Cache-Control: public, max-age=3600`). `llms-full.txt` reads cached pages from the page cache as
+          before, so their `{% apply geo %}` blocks are still missing there.
       15. starter-folio sites made from 0.63.0 / 0.63.1 that copy the publish check also need the `members` section
-          in `config/roles.php`, or their employers get 403 on publish.
-    - **Tests:** full monorepo run: 6613 tests, 31723 assertions (190 skipped); `composer test:mysql`: 185 tests, 830 assertions; starter suite 87 tests,
+          in `config/roles.php`, or their employers can't publish.
+    - **Tests:** full monorepo run: 6616 tests, 31740 assertions (190 skipped); `composer test:mysql`: 185 tests, 830 assertions; starter suite 87 tests,
       starter-folio suite 127 tests.
   - **Follow-ups:**
     - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
@@ -541,10 +549,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       smeyer.me, time0-web have one), so visitors see the generic page.
     - core: a production JSON 404 still says `No route matches [GET /api/x]` (the client's own method and path; kept
       under the 0.62 JSON contract).
-    - core: the `RequestContext` docblock says `$request` is null in an internal render, but `handle()` always binds
-      the request.
+    - ~~core: the `RequestContext` docblock says `$request` is null in an internal render, but `handle()` always binds
+      the request.~~ done in 0.63.2 (the docblock: null or the render's own clean anonymous request).
     - GEO: store the converted Markdown of a cached page in the page cache under its own key, invalidated by the
       page's tags (each `.md` request renders since 0.63.2).
+    - llms-full.txt: entries served from the page cache lose their {% apply geo %} blocks; store the markdown variant
+      in the page cache.
     - view: the production CSS minifier strips the quotes of `url("…")`, which breaks URLs with spaces or parentheses.
     - components: move `@import`, `@namespace` and `@layer a, b;` out of scoped CSS too (documented as unsupported).
     - devtools `routes:list`: the fallback scan after a failed boot is not caught, and the command exits 0 when boot
