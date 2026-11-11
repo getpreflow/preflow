@@ -176,6 +176,14 @@ of hand-collecting hosts. Design points:
   answers), without Preflow storing consent itself.
 - The security-headers docs and the assets guide show it; `config/security.php` stays for site-wide rules.
 
+### Starters' test copies can't see packages (found 2026-11-11, for 0.66.1)
+
+`tests/Support/StarterApp.php` in preflow/starter and starter-folio copies the project without `vendor/`, but core
+reads installed packages from `vendor/composer/installed.json` (`Application.php` `installedPackages()`), so in those
+copies a package's `extra.folio` field types and blocks (0.66) are never registered and a test of them fails. Give the
+copies the project's `vendor/composer/installed.json` (or point core at the original vendor dir), with a starter test
+that proves a package-registered field type is seen.
+
 ### Datastar's CSP mode (owner, 2026-11-11)
 
 Datastar compiles its expressions with `Function()`, so under Preflow's CSP it needs `'unsafe-eval'` in `script-src`
