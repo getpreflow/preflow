@@ -68,8 +68,9 @@ trait AiScaffold
             static fn (): FakeAiClient => $fake,
         );
         $c->instance(Ai::class, $ai);
-        $c->instance(MachineTranslator::class, new AiTranslator($ai, $c->get(TranslationSettings::class)));
-        $c->instance(Estimator::class, new Estimator($ai));
+        $translator = new AiTranslator($ai, $c->get(TranslationSettings::class));
+        $c->instance(MachineTranslator::class, $translator);
+        $c->instance(Estimator::class, new Estimator($translator));
 
         return $app;
     }

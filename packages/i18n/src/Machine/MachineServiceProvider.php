@@ -42,7 +42,7 @@ final class MachineServiceProvider extends ServiceProvider
             return $c->make($class, ['batchChars' => self::batchChars($c)]);
         });
         $container->singleton(Estimator::class, static fn (Container $c): Estimator => new Estimator(
-            $c->get(Ai::class),
+            $c->get(MachineTranslator::class),
             self::batchChars($c),
         ));
         $container->singleton(TextSources::class, static fn (): TextSources => new TextSources());
@@ -59,7 +59,7 @@ final class MachineServiceProvider extends ServiceProvider
         $container->singleton(TranslationWorker::class, static fn (Container $c): TranslationWorker => new TranslationWorker(
             $c->get(JobRunner::class),
             $c->get(JobStore::class),
-            $c->get(Ai::class),
+            $c->get(MachineTranslator::class),
             self::storage($c) . '/worker.json',
         ));
     }

@@ -110,6 +110,31 @@ final class AiServiceProviderTest extends TestCase
         $this->assertStringContainsString("OK\n", $printed);
     }
 
+    public function test_on_a_live_site_the_fake_is_off_and_ai_check_says_why(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'storage' => 'var/ai'];\n");
+        $app = $this->app();
+        $this->assertFalse($app->container()->get(Ai::class)->enabled());
+
+        $err = fopen('php://memory', 'w+');
+        ob_start();
+        $code = (new AiCheckCommand(static fn (): Application => $app, $err))->execute([]);
+        ob_end_clean();
+        rewind($err);
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('only while developing', (string) stream_get_contents($err));
+    }
+
+    public function test_on_a_live_site_the_fake_answers_with_allow_live(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'options' => ['fake' => ['allow_live' => true]], 'storage' => 'var/ai'];\n");
+
+        $this->assertTrue($this->app()->container()->get(Ai::class)->enabled());
+    }
+
     public function test_a_factory_class_is_built_by_the_container_after_the_providers(): void
     {
         file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => \\" . ContainerBuiltFactory::class . "::class, 'storage' => 'var/ai'];\n");

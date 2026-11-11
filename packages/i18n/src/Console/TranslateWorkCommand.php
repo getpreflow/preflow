@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Console;
 
-use Preflow\Ai\Ai;
 use Preflow\Core\Application;
 use Preflow\DevTools\Command\CommandInterface;
+use Preflow\I18n\Machine\MachineTranslator;
 use Preflow\I18n\Machine\TranslationWorker;
 
 /**
@@ -38,13 +38,13 @@ final class TranslateWorkCommand implements CommandInterface
         }
 
         $container = $this->app()->container();
-        if (!$container->bound(TranslationWorker::class) || !$container->bound(Ai::class)) {
+        if (!$container->bound(TranslationWorker::class) || !$container->bound(MachineTranslator::class)) {
             fwrite(STDERR, "Machine translation is not set up: add Preflow\\I18n\\Machine\\MachineServiceProvider to config/providers.php.\n");
 
             return 1;
         }
-        // Always run the worker: it writes the heartbeat even with AI off. Then there is nothing to say.
-        $quiet = !$container->get(Ai::class)->enabled();
+        // Always run the worker: it writes the heartbeat even when the translator is not available. Then there is nothing to say.
+        $quiet = !$container->get(MachineTranslator::class)->available();
 
         $report = $container->get(TranslationWorker::class)->work($seconds, static function (string $line): void {
             echo $line, "\n";

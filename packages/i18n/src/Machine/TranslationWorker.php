@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
-use Preflow\Ai\Ai;
 use Preflow\Ai\AiUnavailable;
 
 /**
@@ -12,7 +11,7 @@ use Preflow\Ai\AiUnavailable;
  * steps queued and running jobs (oldest first, one record per step) until nothing moves any more
  * or the time budget is used. A job still marked running is continued, since its driver may have
  * crashed; the record lease keeps two drivers off the same record. Every run leaves a heartbeat
- * so an admin screen can tell whether the cron job runs at all, also when AI is off. An error in
+ * so an admin screen can tell whether the cron job runs at all, also when the translator is not available. An error in
  * one job is logged (error_log) and the run goes on with the next job.
  */
 final class TranslationWorker
@@ -23,7 +22,8 @@ final class TranslationWorker
     public function __construct(
         private readonly JobRunner $runner,
         private readonly JobStore $jobs,
-        private readonly Ai $ai,
+        /** Asked whether it can translate now (since 0.66; before, the AI connection was). */
+        private readonly MachineTranslator $translator,
         private readonly string $stateFile,
         private readonly ?\Closure $now = null,
     ) {}
@@ -37,7 +37,7 @@ final class TranslationWorker
         $start = $this->now();
         $this->writeHeartbeat($start);
 
-        if (!$this->ai->enabled()) {
+        if (!$this->translator->available()) {
             return new WorkReport(0, 0.0, false, null);
         }
 

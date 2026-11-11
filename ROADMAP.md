@@ -462,13 +462,20 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     (`ClaudeClientFactory`, `GeminiClientFactory`), a local server may need none. Anything else stops the boot
     (`AiServiceProvider::boot()`), naming the accepted forms. `'fake'` (`Testing\FakeAiClientFactory`) runs without a
     key or cost: `options.fake.answer` (array → JSON, string → text; default `{"ok":true}`) and `options.fake.usage`;
-    model `fake-model`, priced "unknown". `AiStatus` gains `available` and `usesKey`; `ai:check` says "Key: not used"
-    and why AI is off. The usage log and `ai:usage` already priced an unknown model as unknown (null), unchanged.
+    model `fake-model`, priced "unknown", no request history kept (`FakeAiClient` `record:`). With `app.debug` off the
+    fake reports "not available" (AI off) unless `options.fake.allow_live` is true; it logs one warning and says why.
+    `ExplainsUnavailability` (`unavailableReason()`) lets a factory say why it is not available; an `available()` that
+    throws counts as not available, with its message as the reason. `AiStatus` gains `available` (null → `enabled`),
+    `usesKey` and `reason`; `ai:check` says "Key: not used" and why AI is off. The usage log and `ai:usage` already priced an unknown model as unknown (null), unchanged.
     Folio's Settings → AI shows "the provider says it is not available" for a keyless provider instead of "key
     missing", and "Not used" as its key.
-  - **The machine translator is swappable (i18n):** `config/ai.php` `translation.translator` names a
+  - **The machine translator is swappable (i18n, folio):** `config/ai.php` `translation.translator` names a
     `MachineTranslator` class, built by the container (with `batchChars` if it takes it); default `AiTranslator`. A
-    class that is no `MachineTranslator` stops the boot.
+    class that is no `MachineTranslator` stops the boot. A translator answers its own availability and price
+    (`MachineTranslator::available()`, `estimateCost(Estimate $size): ?float`), so one that is no AI needs no AI key:
+    Folio's Translate routes and buttons (records, labels, media), `TranslationWorker`, `translate:work` and the
+    `Estimator` ask the translator, not `Ai`. `AiTranslator` answers through `Ai` (available = AI on; priced by the
+    model's tokens), so apps on claude/gemini behave as before.
   - **Guards are built like the rest (core, auth):** a guard of the app's own class is built through the container on
     first use (`Preflow\Auth\LazyGuard`), after the service providers, with `provider` (its built user provider) and
     `config` (its whole `config/auth.php` entry), so it may take services and `#[Config]` values. A class that doesn't
@@ -487,8 +494,10 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     `AssetCollector::reprinting()` renders with nothing marked printed. Without `app/pages/_errors/` nothing changes.
   - **Folio field rules may be objects:** `FieldType::rules()` may return any `ValidationRule`; `RecordValidator` and
     `BlocksFieldType` merge rule lists with `Preflow\Folio\Field\FieldRules::merge()` (names once, objects once per
-    instance) instead of `array_unique()`, which cast them to strings (a non-Stringable rule answered 500).
-  - **Packages register field types and blocks (folio, core):** a package's `composer.json`
+    instance) instead of `array_unique()`, which cast them to strings (a non-Stringable rule answered 500); a Stringable object is
+    still kept once against its name.
+  - **Packages register field types and blocks (folio, core):** (blocks must carry `#[Block]`; a duplicate block key
+    fails at boot, also against a package) a package's `composer.json`
     `extra.folio.field_types` / `extra.folio.blocks` (class names; `InstalledPackages` keeps them, cache format v2)
     are registered like `config/folio.php`'s: built by the container, after the built-ins and before the app's
     config (the app wins), with their field kinds. A listed class that is no field type stops the boot, naming the
@@ -506,8 +515,16 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     others have none (default `'claude'`, off); BG's one Folio field type returns no rules; BG's `app/Rules/` are
     registered as before (now before the data layer, same factory); none has `app/pages/_errors/` or a package with
     `extra.folio` field types or blocks. Check only, for other apps:
-    - `config/ai.php` with a `provider` that is not `claude`, `gemini`, `fake` or an `AiClientFactory` class (it threw
-      only when a request was made) now stops the boot.
+    - `config/ai.php` with a `provider` that is not `claude`, `gemini`, `fake` or an `AiClientFactory` class was
+      treated as AI off (or threw at the first AI request when a key was configured); it now stops the boot. Use
+      `'enabled' => false` to keep AI off.
+    - **Interface change:** `MachineTranslator` gains `available(): bool` and `estimateCost(Estimate $size): ?float`;
+      a translator of your own must add them. `Estimator` takes the `MachineTranslator` (was `Ai`), `TranslationWorker`
+      takes the `MachineTranslator` in place of `Ai`. Folio's `AdminController`, `AssetLibraryController` and
+      `TranslationsController` take `translator:` (a `MachineTranslator`) in place of `ai:`; `AiTranslateController`
+      lost its `Ai` argument.
+    - `AiStatus`'s `available` defaults to `enabled` when not given.
+    - `'fake'` answers only with `app.debug` on, or with `options.fake.allow_live` (tests that run with debug off).
     - `Ai`'s constructor: the fifth argument (a closure building the client) still works; a sixth, `make:`, builds
       factories. `Ai::enabled()` asks the provider's `available()` (built-ins: unchanged).
     - A custom guard is no longer built during boot but on first use; a constructor that must run at boot (it
@@ -517,7 +534,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       (`inner()` gives the real one); the container's binding is the real one.
     - An app with its own 404 middleware keeps it; it may drop it for `app/pages/_errors/404.<ext>`.
     - A `config/folio.php` field type with the key of a package's type replaces it, as with built-ins.
-    - Constraints: core conflicts auth and view <0.66; view requires core ^0.66; folio requires ai and core ^0.66.
+    - Constraints: core conflicts auth and view <0.66; view requires core ^0.66; folio requires ai, core and i18n ^0.66.
 - **Pluggable adapters (v0.65.0, released 2026-11-11):** a third-party template engine, hypermedia driver or storage driver is
   registered through config, no workaround. Found by the Extend guides of docs phase 3 (Task 5); plan
   `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 5b).

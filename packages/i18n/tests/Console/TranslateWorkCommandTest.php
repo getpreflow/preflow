@@ -14,6 +14,7 @@ use Preflow\I18n\Machine\Estimator;
 use Preflow\I18n\Machine\FileJobStore;
 use Preflow\I18n\Machine\FileRecordLease;
 use Preflow\I18n\Machine\JobRunner;
+use Preflow\I18n\Machine\MachineTranslator;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\TranslationWorker;
@@ -44,18 +45,20 @@ final class TranslateWorkCommandTest extends TestCase
         $ai = $this->ai(new FakeAiClient([self::echo()]), [], $enabled);
         $sources = new TextSources();
         $sources->add('games', fn () => new ArrayTextSource(['1' => ['title' => 'One'], '2' => ['title' => 'Two']]));
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $store, new FileRecordLease($dir . '/ai/leases'));
+        $translator = new AiTranslator($ai, $this->settings());
+        $runner = new JobRunner($sources, $translator, new Estimator($translator), $store, new FileRecordLease($dir . '/ai/leases'));
         if ($queue) {
             $job = $runner->plan('games', ['de'], Scope::Needed);
             $runner->start($job->id);
         }
 
         ob_start();
-        $code = (new TranslateWorkCommand(static function () use ($dir, $ai, $store, $runner): Application {
+        $code = (new TranslateWorkCommand(static function () use ($dir, $ai, $store, $runner, $translator): Application {
             $app = Application::create($dir);
             $app->boot();
             $app->container()->instance(Ai::class, $ai);
-            $app->container()->instance(TranslationWorker::class, new TranslationWorker($runner, $store, $ai, $dir . '/ai/worker.json'));
+            $app->container()->instance(MachineTranslator::class, $translator);
+            $app->container()->instance(TranslationWorker::class, new TranslationWorker($runner, $store, $translator, $dir . '/ai/worker.json'));
 
             return $app;
         }))->execute($args);

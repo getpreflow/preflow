@@ -37,6 +37,24 @@ final class FieldRuleObjectsTest extends TestCase
         $this->assertSame(['required', 'url', $rule, $other], $merged);
     }
 
+    public function test_a_stringable_object_is_kept_once_against_its_name(): void
+    {
+        $required = new class implements ValidationRule, \Stringable {
+            public function validate(mixed $value, ValidationContext $context): true|string|Message
+            {
+                return true;
+            }
+
+            public function __toString(): string
+            {
+                return 'required';
+            }
+        };
+
+        $this->assertSame(['required'], FieldRules::merge(['required'], [$required]));
+        $this->assertSame([$required], FieldRules::merge([$required], ['required']));
+    }
+
     public function test_the_record_validator_runs_a_rule_object_of_a_field_type(): void
     {
         $dir = sys_get_temp_dir() . '/fro_' . bin2hex(random_bytes(4));

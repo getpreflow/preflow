@@ -61,9 +61,9 @@ final class TranslationWorkerTest extends TestCase
         $ai = $this->ai($fake, [], $enabled);
         $this->sources = $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), $this->store, new FileRecordLease($this->dir . '/leases'));
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), $this->store, new FileRecordLease($this->dir . '/leases'));
 
-        return new TranslationWorker($runner, $this->store, $ai, $this->dir . '/worker.json', fn () => new \DateTimeImmutable('@' . $this->clock));
+        return new TranslationWorker($runner, $this->store, new AiTranslator($ai, $this->settings()), $this->dir . '/worker.json', fn () => new \DateTimeImmutable('@' . $this->clock));
     }
 
     private function queued(JobRunner $runner, string $at, string $collection = 'games'): string

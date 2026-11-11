@@ -188,7 +188,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $components,
                 $app->basePath('app/Blocks'),
                 // Installed packages' blocks (composer.json extra.folio.blocks), then config/folio.php's.
-                [...self::packageClasses($app, 'folio_blocks'), ...array_values((array) ($folioCfg['blocks']['classes'] ?? []))],
+                [...self::packageClasses($app, 'folio_blocks', attribute: \Preflow\Folio\Block\Block::class), ...array_values((array) ($folioCfg['blocks']['classes'] ?? []))],
                 $this->cacheDir($app) . '/folio-blocks.cache',
                 useCache: !$app->config()->get('app.debug', false),
             )->toArray(), [$app->basePath('app/Blocks'), $app->basePath('app/Components')]));
@@ -462,7 +462,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
-            $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             $c->get(\Preflow\Auth\Access\Access::class),
         ));
         $container->bind(\Preflow\Folio\Http\CacheController::class, fn (Container $c) => new \Preflow\Folio\Http\CacheController(
@@ -505,7 +505,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Media\MediaConfig::class),
             $c->get(\Preflow\Media\Image\Formats::class),
             $c->get(\Preflow\Media\Cleanup\AssetCleanup::class),
-            $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             $c->get(\Preflow\Auth\Access\Access::class),
         ));
 
@@ -700,7 +700,7 @@ final class FolioServiceProvider extends ServiceProvider
             pageAssets: $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
-            ai: $c->get(\Preflow\Ai\Ai::class),
+            translator: $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             review: $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
             jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
@@ -720,7 +720,6 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\I18n\Machine\TextSources::class),
             $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             $c->get(\Preflow\I18n\Machine\Estimator::class),
-            $c->get(\Preflow\Ai\Ai::class),
             $c->get(\Preflow\I18n\Machine\JobRunner::class),
             $c->get(\Preflow\I18n\Machine\JobStore::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
@@ -1670,8 +1669,8 @@ final class FolioServiceProvider extends ServiceProvider
                         $this->prefix($app),
                         $authEnabled,
                         $authEnabled && self::recordProviders($container) !== [],
-                        // The AI endpoints exist only while AI is on (config/ai.php and the key).
-                        $container->get(\Preflow\Ai\Ai::class)->enabled(),
+                        // The translate endpoints exist only while the machine translator is available (AiTranslator: AI is on).
+                        $container->get(\Preflow\I18n\Machine\MachineTranslator::class)->available(),
                         self::aiSettingsVisible($container),
                     ),
                 ]);
@@ -1746,12 +1745,10 @@ final class FolioServiceProvider extends ServiceProvider
         }
     }
 
-    /** Whether the Settings → AI screens exist: the owner's switch in config/ai.php is on or the provider's key is present. */
+    /** Whether the Settings → AI screens exist (AiSettingsController::visible()). */
     private static function aiSettingsVisible(Container $container): bool
     {
-        $ai = $container->get(\Preflow\Ai\Ai::class);
-
-        return $ai->switchedOn() || $ai->status()->keyPresent;
+        return \Preflow\Folio\Http\AiSettingsController::visible($container->get(\Preflow\Ai\Ai::class));
     }
 
     /**
@@ -2057,9 +2054,10 @@ final class FolioServiceProvider extends ServiceProvider
      *
      * @param 'folio_field_types'|'folio_blocks' $key
      * @param class-string|null $mustBe the interface each class implements, or null
+     * @param class-string|null $attribute the attribute each class carries (#[Block]), or null
      * @return list<class-string>
      */
-    private static function packageClasses(Application $app, string $key, ?string $mustBe = null): array
+    private static function packageClasses(Application $app, string $key, ?string $mustBe = null, ?string $attribute = null): array
     {
         $classes = [];
         foreach ($app->installedPackages() as $package) {
@@ -2078,6 +2076,9 @@ final class FolioServiceProvider extends ServiceProvider
                 }
                 if ($mustBe !== null && !is_subclass_of($class, $mustBe)) {
                     throw new \RuntimeException("Package {$name}: {$what} lists {$class}, which is not a {$mustBe}.");
+                }
+                if ($attribute !== null && (new \ReflectionClass($class))->getAttributes($attribute) === []) {
+                    throw new \RuntimeException("Package {$name}: {$what} lists {$class}, which has no #[{$attribute}].");
                 }
                 $classes[] = $class;
             }

@@ -565,6 +565,7 @@ return [
         'unavailable' => 'AI is switched on in config/ai.php, but the provider says it is not available.',
         'key_not_used' => 'Not used',
         'switched_off' => 'A key is present, but AI is switched off in config/ai.php ("enabled").',
+        'switched_off_ready' => 'The provider is ready, but AI is switched off in config/ai.php ("enabled").',
         'test' => 'Test connection',
         'test_help' => 'Sends one tiny request and reports tokens and cost.',
         'test_ok' => 'The connection works: :input tokens in, :output out, cost :cost.',

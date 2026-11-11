@@ -133,6 +133,11 @@ final class LocalModels implements Preflow\Ai\AiClientFactory
   present"; `Ai::status()` reports `available`, `keyPresent` and `usesKey` (whether a key variable
   is configured), never the key.
 - `create()` is called once; throw `AiUnavailable` when the provider can't be used after all.
+- Keep `available()` cheap. If it throws, AI counts as not available and the message is shown as
+  the reason. A factory that can say why it isn't available implements `ExplainsUnavailability`
+  (`unavailableReason(array $options): ?string`).
+- PHP does not inherit `#[\SensitiveParameter]` from the interface: repeat it on both methods, as
+  above, or a debug page's stack trace shows the key.
 - Everything that uses `Ai` works with it: the usage log (the client's model and provider names
   are logged; a model the price table doesn't know has an unknown cost, never 0, so add it to
   `pricing` if you want a cost), `ai:check`, `ai:usage`, the machine translator of `preflow/i18n`,
@@ -239,7 +244,10 @@ model.
 ### Trying it without a key
 
 `'provider' => 'fake'` runs everything AI without a key and without cost, **on your machine and in
-tests only** (it gives every request the same answer):
+tests only** (it gives every request the same answer). With `app.debug` off it reports "not
+available", so AI stays off on a live site even when the setting ships by mistake; `ai:check` and
+Settings → AI say why, and one warning goes to the PHP log. Tests that run with debug off set
+`'allow_live' => true` in `options.fake`:
 
 ```php
 'enabled'  => true,

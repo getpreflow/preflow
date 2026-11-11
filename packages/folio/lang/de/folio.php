@@ -546,6 +546,7 @@ return [
         'unavailable' => 'KI ist in config/ai.php eingeschaltet, aber der Anbieter meldet, dass er nicht verfügbar ist.',
         'key_not_used' => 'Nicht verwendet',
         'switched_off' => 'Ein Schlüssel ist vorhanden, aber KI ist in config/ai.php ausgeschaltet („enabled“).',
+        'switched_off_ready' => 'Der Anbieter ist bereit, aber KI ist in config/ai.php ausgeschaltet („enabled“).',
         'test' => 'Verbindung testen',
         'test_help' => 'Sendet eine winzige Anfrage und zeigt Tokens und Kosten.',
         'test_ok' => 'Die Verbindung funktioniert: :input Tokens hinein, :output heraus, Kosten :cost.',

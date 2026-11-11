@@ -20,8 +20,15 @@ final class FakeAiClient implements AiClient
     private array $requests = [];
     private int $position = 0;
 
-    /** @param list<AiResponse|\Throwable|callable(AiRequest): (AiResponse|\Throwable)> $script consumed in order; the last entry repeats */
-    public function __construct(private readonly array $script = [], private readonly string $model = 'fake-model') {}
+    /**
+     * @param list<AiResponse|\Throwable|callable(AiRequest): (AiResponse|\Throwable)> $script consumed in order; the last entry repeats
+     * @param bool $record keep every request for requests() (tests); the 'fake' provider passes false, so a long run keeps no prompts
+     */
+    public function __construct(
+        private readonly array $script = [],
+        private readonly string $model = 'fake-model',
+        private readonly bool $record = true,
+    ) {}
 
     /** A Complete response whose text is the JSON encoding of $data. */
     public static function json(mixed $data, TokenUsage $usage = new TokenUsage(10, 10)): AiResponse
@@ -31,7 +38,9 @@ final class FakeAiClient implements AiClient
 
     public function complete(AiRequest $request): AiResponse
     {
-        $this->requests[] = $request;
+        if ($this->record) {
+            $this->requests[] = $request;
+        }
 
         if ($this->script === []) {
             throw new \LogicException('FakeAiClient has an empty script.');

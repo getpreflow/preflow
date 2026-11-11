@@ -54,6 +54,18 @@ final class AiTranslator implements MachineTranslator, ReportsCost, ReportsProgr
         private readonly int $batchChars = 12000,
     ) {}
 
+    /** AI is on (config/ai.php "enabled" and the provider available). */
+    public function available(): bool
+    {
+        return $this->ai->enabled();
+    }
+
+    /** By the tokens, at the configured model's price; null when the price table doesn't know it. */
+    public function estimateCost(Estimate $size): ?float
+    {
+        return $this->ai->pricing()->cost($this->ai->status()->model, new \Preflow\Ai\TokenUsage($size->inputTokens, $size->outputTokens));
+    }
+
     public function reportCostTo(?\Closure $listener): void
     {
         $this->costListener = $listener;

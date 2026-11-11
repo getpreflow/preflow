@@ -5,9 +5,12 @@
 {% block content %}
     {% include '@folio/admin/ai/_tabs.twig' %}
     {% if switched_on and not available %}
-        <div class="folio-alert folio-alert-error" role="alert"><p>{{ uses_key and not key_present ? t('folio.ai_settings.key_missing') : t('folio.ai_settings.unavailable') }}</p></div>
+        {% set key_missing = uses_key and not key_present %}
+        <div class="folio-alert folio-alert-error" role="alert"><p>{{ key_missing ? t('folio.ai_settings.key_missing') : t('folio.ai_settings.unavailable') }}</p>{% if reason and not key_missing %}<p>{{ reason }}</p>{% endif %}</div>
     {% elseif key_present and not switched_on %}
         <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.switched_off') }}</p></div>
+    {% elseif available and not switched_on %}
+        <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.switched_off_ready') }}</p></div>
     {% endif %}
     <div class="folio-table-wrap">
     <table class="folio-table">

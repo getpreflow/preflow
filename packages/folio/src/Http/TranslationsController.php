@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
-use Preflow\Ai\Ai;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Folio\FolioText;
@@ -33,7 +32,8 @@ final class TranslationsController
         private readonly InterfaceLocales $locales,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
-        private readonly ?Ai $ai = null,
+        /** Asked whether machine translation is available (since 0.66; before, the AI connection). */
+        private readonly ?\Preflow\I18n\Machine\MachineTranslator $translator = null,
         private readonly ?Access $access = null,
     ) {}
 
@@ -111,7 +111,7 @@ final class TranslationsController
 
     private function aiOn(): bool
     {
-        return ($this->ai?->enabled() ?? false) && ($this->access?->can('ai.translate') ?? true);
+        return ($this->translator?->available() ?? false) && ($this->access?->can('ai.translate') ?? true);
     }
 
     /**

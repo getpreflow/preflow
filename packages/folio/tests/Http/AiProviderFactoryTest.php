@@ -107,6 +107,32 @@ final class AiProviderFactoryTest extends TestCase
         $this->assertStringContainsString('says it is not available', $html);
         $this->assertStringNotContainsString('key is missing', $html);
     }
+
+    #[RunInSeparateProcess]
+    public function test_the_fake_on_a_live_site_is_off_and_settings_say_why(): void
+    {
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake'];\n");
+        putenv('APP_DEBUG');
+        ini_set('error_log', $this->dir . '/php.log');
+
+        $html = (string) $this->send('GET', '/folio/ai')->getBody();
+        $this->assertSame(1, substr_count((string) file_get_contents($this->dir . '/php.log'), 'fake AI provider answers only'), 'one warning in the log');
+
+        $this->assertStringContainsString('only while developing', $html);
+        $this->assertStringContainsString('allow_live', $html);
+        $this->assertSame(404, $this->send('POST', '/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode(), 'no Translate');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_ready_keyless_provider_switched_off_gets_the_switched_off_notice(): void
+    {
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => false, 'provider' => \\" . LocalEchoFactory::class . "::class];\n");
+
+        $html = (string) $this->send('GET', '/folio/ai')->getBody();
+
+        $this->assertStringContainsString('The provider is ready, but AI is switched off', $html);
+    }
 }
 
 /** A keyless local provider: answers the connection test with {"ok":true} and translations with "DE:" + the text. */

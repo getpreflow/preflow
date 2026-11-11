@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
-use Preflow\Ai\Ai;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
@@ -67,7 +66,6 @@ final class AiTranslateController
         private readonly TextSources $sources,
         private readonly MachineTranslator $translator,
         private readonly Estimator $estimator,
-        private readonly Ai $ai,
         private readonly JobRunner $runner,
         private readonly JobStore $jobs,
         private readonly TemplateEngineInterface $engine,
@@ -325,7 +323,7 @@ final class AiTranslateController
      */
     public function suggestLabels(ServerRequestInterface $request): ResponseInterface
     {
-        if (!$this->ai->enabled() || $this->labels === null) {
+        if (!$this->translator->available() || $this->labels === null) {
             return new Response(404, [], 'Not found');
         }
         if (!($this->access?->can('ai.translate') ?? true) || !($this->access?->can('translations.edit') ?? true)) {
@@ -358,7 +356,7 @@ final class AiTranslateController
      */
     public function suggestAlt(ServerRequestInterface $request): ResponseInterface
     {
-        if (!$this->ai->enabled() || $this->media === null || $this->mediaLocales === null) {
+        if (!$this->translator->available() || $this->media === null || $this->mediaLocales === null) {
             return new Response(404, [], 'Not found');
         }
         if (!($this->access?->can('ai.translate') ?? true) || !($this->access?->can('assets.edit') ?? true)) {
@@ -482,7 +480,7 @@ final class AiTranslateController
      */
     private function target(ServerRequestInterface $request): array|ResponseInterface
     {
-        if (!$this->ai->enabled()) {
+        if (!$this->translator->available()) {
             return new Response(404, [], 'Not found');
         }
         $type = (string) $request->getAttribute('type', '');
@@ -518,7 +516,7 @@ final class AiTranslateController
      */
     private function runType(ServerRequestInterface $request): string|ResponseInterface
     {
-        if (!$this->ai->enabled()) {
+        if (!$this->translator->available()) {
             return new Response(404, [], 'Not found');
         }
         $type = (string) $request->getAttribute('type', '');

@@ -105,6 +105,19 @@ final class PackageFieldTypesTest extends TestCase
         $this->expectExceptionMessage('acme/broken');
         $this->booted()->container()->get(FieldTypeRegistry::class);
     }
+
+    #[RunInSeparateProcess]
+    public function test_a_listed_class_that_is_no_block_stops_the_boot(): void
+    {
+        $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [[
+            'name' => 'acme/not-a-block',
+            'extra' => ['folio' => ['blocks' => [LinkPolicy::class]]],
+        ]]]));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('acme/not-a-block');
+        $this->booted()->container()->get(BlockRegistry::class);
+    }
 }
 
 /** A service the package's field type takes. */

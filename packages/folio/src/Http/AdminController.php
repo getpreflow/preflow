@@ -79,7 +79,8 @@ final class AdminController
         private readonly ?\Preflow\Folio\Extension\Screen\PageAssets $pageAssets = null,
         ?DisplayLabels $labels = null,
         ?TranslationStatus $translations = null,
-        private readonly ?\Preflow\Ai\Ai $ai = null,
+        /** Asked whether machine translation is available (since 0.66; before, the AI connection). */
+        private readonly ?\Preflow\I18n\Machine\MachineTranslator $translator = null,
         private readonly ?ReviewIndexUpdater $review = null,
         private readonly ?\Preflow\I18n\Machine\JobRunner $jobs = null,
         private readonly ?\Preflow\I18n\Machine\ReviewIndex $reviewIndex = null,
@@ -149,7 +150,7 @@ final class AdminController
      */
     private function reviewSection(): ?array
     {
-        if (!($this->ai?->enabled() ?? false) || !$this->can('ai.translate') || $this->reviewIndex === null) {
+        if (!($this->translator?->available() ?? false) || !$this->can('ai.translate') || $this->reviewIndex === null) {
             return null;
         }
 
@@ -1041,7 +1042,7 @@ final class AdminController
      */
     private function aiRunUrl(string $type, TypeDefinition $typeDef): ?string
     {
-        if (!($this->ai?->enabled() ?? false) || $typeDef->translatableFields() === [] || !$typeDef->locales->isMultilingual()
+        if (!($this->translator?->available() ?? false) || $typeDef->translatableFields() === [] || !$typeDef->locales->isMultilingual()
             || !$this->can('ai.translate') || !$this->can($type . '.edit')) {
             return null;
         }
@@ -1455,7 +1456,7 @@ final class AdminController
      */
     private function aiTranslate(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew, bool $multilingual): ?array
     {
-        if (!($this->ai?->enabled() ?? false) || $isNew || !$multilingual || !$typeDef->locales->isMultilingual()
+        if (!($this->translator?->available() ?? false) || $isNew || !$multilingual || !$typeDef->locales->isMultilingual()
             || $locale === $typeDef->locales->default || !isset($values[$typeDef->idField])
             || !$this->can('ai.translate') || !$this->can($type . '.edit')) {
             return null;
@@ -1485,7 +1486,7 @@ final class AdminController
     private function aiPending(string $type, TypeDefinition $typeDef, array $values): array
     {
         $id = $values[$typeDef->idField] ?? null;
-        if (!($this->ai?->enabled() ?? false) || $this->jobs === null || !is_string($id) || $id === '' || !$typeDef->locales->isMultilingual()) {
+        if (!($this->translator?->available() ?? false) || $this->jobs === null || !is_string($id) || $id === '' || !$typeDef->locales->isMultilingual()) {
             return [];
         }
         $lines = [];

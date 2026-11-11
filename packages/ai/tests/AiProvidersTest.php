@@ -82,7 +82,7 @@ final class AiProvidersTest extends TestCase
     public function test_the_fake_runs_without_a_key_and_answers_ok_by_default(): void
     {
         $log = $this->log();
-        $ai = $this->ai(['provider' => 'fake'], $log);
+        $ai = $this->ai(['provider' => 'fake', 'options' => ['fake' => ['allow_live' => true]]], $log);
 
         $this->assertTrue($ai->enabled());
         $status = $ai->status();
@@ -104,7 +104,7 @@ final class AiProvidersTest extends TestCase
         $ai = $this->ai([
             'provider' => 'fake',
             'models' => ['fake' => 'my-model'],
-            'options' => ['fake' => ['answer' => ['summary' => 'A designer.'], 'usage' => [310, 42]]],
+            'options' => ['fake' => ['answer' => ['summary' => 'A designer.'], 'usage' => [310, 42], 'allow_live' => true]],
         ]);
 
         $response = $ai->client()->complete(new AiRequest('job-summary', 'x'));
@@ -117,7 +117,7 @@ final class AiProvidersTest extends TestCase
 
     public function test_the_fake_answers_text(): void
     {
-        $ai = $this->ai(['provider' => 'fake', 'options' => ['fake' => ['answer' => 'Hello.']]]);
+        $ai = $this->ai(['provider' => 'fake', 'options' => ['fake' => ['answer' => 'Hello.', 'allow_live' => true]]]);
 
         $this->assertSame('Hello.', $ai->client()->complete(new AiRequest('x', 'y'))->text);
     }
@@ -188,6 +188,68 @@ final class AiProvidersTest extends TestCase
 
         $this->expectException(AiUnavailable::class);
         $ai->client();
+    }
+
+    public function test_the_fake_is_off_on_a_live_site_and_says_why(): void
+    {
+        $ai = $this->ai(['provider' => 'fake'], null, static fn (string $class): object => new $class(0));
+
+        $this->assertTrue($ai->switchedOn());
+        $this->assertFalse($ai->enabled(), 'app.debug off: no canned answers on a live site');
+        $status = $ai->status();
+        $this->assertFalse($status->available);
+        $this->assertStringContainsString('allow_live', (string) $status->reason);
+        $this->assertStringContainsString('app.debug', (string) $status->reason);
+    }
+
+    public function test_the_fake_answers_while_developing(): void
+    {
+        $ai = $this->ai(['provider' => 'fake'], null, static fn (string $class): object => new $class(1));
+
+        $this->assertTrue($ai->enabled());
+        $this->assertNull($ai->status()->reason);
+        $this->assertSame(['ok' => true], $ai->client()->complete(new AiRequest('x', 'y'))->json());
+    }
+
+    public function test_the_fake_keeps_no_request_history(): void
+    {
+        $ai = $this->ai(['provider' => 'fake', 'options' => ['fake' => ['allow_live' => true]]]);
+        $client = $ai->client();
+        $client->complete(new AiRequest('x', 'a long prompt'));
+
+        $inner = (new \ReflectionProperty(\Preflow\Ai\LoggedAiClient::class, 'inner'))->getValue($client);
+        $this->assertInstanceOf(FakeAiClient::class, $inner);
+        $this->assertSame([], $inner->requests());
+    }
+
+    public function test_an_availability_check_that_throws_is_not_available_with_its_reason(): void
+    {
+        $ai = $this->ai(['provider' => ThrowingFactory::class]);
+
+        $this->assertFalse($ai->enabled());
+        $status = $ai->status();
+        $this->assertFalse($status->available);
+        $this->assertStringContainsString('connection refused', (string) $status->reason);
+    }
+
+    public function test_status_available_defaults_to_enabled(): void
+    {
+        $this->assertTrue((new \Preflow\Ai\AiStatus(true, 'claude', 'm', true))->available);
+        $this->assertFalse((new \Preflow\Ai\AiStatus(false, 'claude', 'm', false))->available);
+    }
+}
+
+/** A factory whose probe of its server fails. */
+final class ThrowingFactory implements AiClientFactory
+{
+    public function available(#[\SensitiveParameter] array $options): bool
+    {
+        throw new \RuntimeException('connection refused');
+    }
+
+    public function create(#[\SensitiveParameter] array $options): AiClient
+    {
+        throw new AiUnavailable('never');
     }
 }
 

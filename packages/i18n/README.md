@@ -259,6 +259,18 @@ The container builds it (it gets the `batchChars` argument if it takes one, and 
 services such as `TranslationSettings`); the job runner, Folio's Translate and everything else
 that translates use it. A class that is not a `MachineTranslator` stops the boot.
 
+A translator answers its own availability and price, so one that is no AI needs no AI key and
+leaves the rest of AI off:
+
+- `available(): bool`: whether it can translate now. Folio's Translate buttons and routes, the
+  worker and `translate:work` ask it. Keep it cheap; it is asked on admin requests.
+- `estimateCost(Estimate $size): ?float`: the price in USD of a run of that size (units,
+  characters, requests, and the tokens an AI would use); null when unknown. The `Estimator` sizes
+  the run and asks the translator for the price.
+
+`AiTranslator` answers both through `preflow/ai`: available when AI is on, priced by the model's
+tokens.
+
 ### MachineTranslator
 
 ```php

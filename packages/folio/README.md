@@ -721,8 +721,9 @@ container; `SearchableText`, `HasColumnKind` and the field kinds apply):
 ```
 
 The order is built-ins, then packages' types, then `config/folio.php`'s: a later type with a key
-already taken replaces the earlier one, so the app's config wins. A listed class that is no field
-type (or no class) stops the boot naming the package. A type a provider registers itself later
+already taken replaces the earlier one, so the app's config wins. Blocks are different: two blocks
+with the same key fail at boot, also when one comes from a package. A listed class that is no field
+type, or no class with `#[Block]`, stops the boot naming the package. A type a provider registers itself later
 (`$container->get(FieldTypeRegistry::class)->register(…)` in `boot()`) gets its field kinds too.
 
 A field type's `assets()` names the `.css` and `.js` files its editor needs; Folio loads
@@ -2224,12 +2225,12 @@ needed). This one answers every text with "[de] " and the text:
 // app/Ai/FakeTranslations.php (local only)
 final class FakeTranslations implements \Preflow\Ai\AiClientFactory
 {
-    public function available(array $options): bool
+    public function available(#[\SensitiveParameter] array $options): bool
     {
         return true;
     }
 
-    public function create(array $options): \Preflow\Ai\AiClient
+    public function create(#[\SensitiveParameter] array $options): \Preflow\Ai\AiClient
     {
         return new \Preflow\Ai\Testing\FakeAiClient([static function (\Preflow\Ai\AiRequest $r) {
             $items = json_decode(substr($r->prompt, (int) strrpos($r->prompt, "\n")), true); // the texts: the prompt's last line

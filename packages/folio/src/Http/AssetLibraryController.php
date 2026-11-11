@@ -66,7 +66,8 @@ final class AssetLibraryController
         private readonly MediaConfig $media,
         private readonly Formats $formats,
         private readonly AssetCleanup $cleanup,
-        private readonly ?\Preflow\Ai\Ai $ai = null,
+        /** Asked whether machine translation is available (since 0.66; before, the AI connection). */
+        private readonly ?\Preflow\I18n\Machine\MachineTranslator $translator = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
     ) {}
 
@@ -747,7 +748,7 @@ final class AssetLibraryController
      */
     private function aiTranslate(Asset $asset): array
     {
-        if (!($this->ai?->enabled() ?? false) || !$this->locales->isMultilingual()
+        if (!($this->translator?->available() ?? false) || !$this->locales->isMultilingual()
             || !($this->access?->can('ai.translate') ?? true) || !($this->access?->can('assets.edit') ?? true)
             || trim($asset->alt[$this->locales->default] ?? '') === '') {
             return [];

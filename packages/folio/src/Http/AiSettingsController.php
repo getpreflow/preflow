@@ -170,10 +170,21 @@ final class AiSettingsController
         return new Response(302, ['Location' => $this->prefix . '/ai/glossary']);
     }
 
-    /** 404 unless the owner switched AI on in config/ai.php or a key is present. */
+    /**
+     * Whether the Settings → AI screens exist: the owner's switch in config/ai.php is on, the
+     * provider's key is present, or a provider without a key is ready (only the switch is missing).
+     */
+    public static function visible(Ai $ai): bool
+    {
+        $status = $ai->status();
+
+        return $ai->switchedOn() || $status->keyPresent || ($status->available && !$status->usesKey);
+    }
+
+    /** 404 unless the screens exist (visible()). */
     private function guard(): ?ResponseInterface
     {
-        if (!$this->ai->switchedOn() && !$this->ai->status()->keyPresent) {
+        if (!self::visible($this->ai)) {
             return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Not found');
         }
 
@@ -196,6 +207,7 @@ final class AiSettingsController
             'key_present' => $status->keyPresent,
             'uses_key' => $status->usesKey,
             'available' => $status->available,
+            'reason' => $status->reason,
             'switched_on' => $this->ai->switchedOn(),
             'active' => $status->enabled,
             'test' => $test,

@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
-use Preflow\Ai\Ai;
-use Preflow\Ai\TokenUsage;
 
 /**
- * Sizes a run before it starts, so the admin can show what it will cost. Tokens are counted
+ * Sizes a run before it starts, so the admin can show what it will cost; the translator prices it. Tokens are counted
  * as a quarter of the characters, which is close enough for European languages. The estimate
  * leaves out project tuning and glossary lines, which are small next to the texts.
  *
@@ -25,7 +23,8 @@ final class Estimator
     private const OUTPUT_FACTOR = 1.3;
 
     public function __construct(
-        private readonly Ai $ai,
+        /** Prices the size (since 0.66; before, the AI connection did). */
+        private readonly MachineTranslator $translator,
         private readonly int $batchChars = 12000,
     ) {}
 
@@ -45,14 +44,9 @@ final class Estimator
         $characters = array_sum(array_map(static fn (TranslationUnit $u): int => mb_strlen($u->source), $units));
         $output = (int) ceil(self::OUTPUT_FACTOR * self::tokens($characters));
 
-        return new Estimate(
-            count($units),
-            $characters,
-            $input,
-            $output,
-            $this->ai->pricing()->cost($this->ai->status()->model, new TokenUsage($input, $output)),
-            count($batches),
-        );
+        $size = new Estimate(count($units), $characters, $input, $output, null, count($batches));
+
+        return new Estimate($size->units, $size->characters, $size->inputTokens, $size->outputTokens, $this->translator->estimateCost($size), $size->requests);
     }
 
     /**

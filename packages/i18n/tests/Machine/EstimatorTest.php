@@ -8,7 +8,10 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Ai\Testing\FakeAiClient;
 use Preflow\Ai\TokenUsage;
 use Preflow\Ai\Usage\Pricing;
+use Preflow\I18n\Machine\AiTranslator;
+use Preflow\I18n\Machine\Estimate;
 use Preflow\I18n\Machine\Estimator;
+use Preflow\I18n\Machine\MachineTranslator;
 use Preflow\I18n\Machine\TranslationUnit;
 
 /** An estimate sizes the requests a run would send, without sending any. */
@@ -31,7 +34,7 @@ final class EstimatorTest extends TestCase
     public function test_counts_tokens_requests_and_cost(): void
     {
         $fake = new FakeAiClient([FakeAiClient::json([])]);
-        $estimate = (new Estimator($this->ai($fake), 200))->estimate($this->units());
+        $estimate = (new Estimator(new AiTranslator($this->ai($fake), $this->settings()), 200))->estimate($this->units());
 
         $this->assertSame(11, $estimate->units);
         $this->assertSame(440, $estimate->characters);
@@ -53,10 +56,45 @@ final class EstimatorTest extends TestCase
     public function test_unknown_model_cost_null(): void
     {
         $ai = $this->ai(new FakeAiClient([FakeAiClient::json([])]), ['models' => ['claude' => 'claude-unknown']]);
-        $estimate = (new Estimator($ai))->estimate($this->units());
+        $estimate = (new Estimator(new AiTranslator($ai, $this->settings())))->estimate($this->units());
 
         $this->assertNull($estimate->costUsd);
         $this->assertSame(2, $estimate->requests);
         $this->assertGreaterThan(0, $estimate->inputTokens);
+    }
+
+    public function test_the_translator_prices_the_size(): void
+    {
+        $translator = new class implements MachineTranslator {
+            public ?Estimate $asked = null;
+
+            public function available(): bool
+            {
+                return true;
+            }
+
+            public function estimateCost(Estimate $size): ?float
+            {
+                $this->asked = $size;
+
+                return $size->characters * 0.00002; // a per-character API
+            }
+
+            public function translate(string $text, string $to, ?\Preflow\Ai\Tuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
+            {
+                return $text;
+            }
+
+            public function translateUnits(array $units, ?string $note = null): array
+            {
+                return [];
+            }
+        };
+
+        $estimate = (new Estimator($translator))->estimate($this->units());
+
+        $this->assertEqualsWithDelta(440 * 0.00002, $estimate->costUsd, 1e-12);
+        $this->assertSame(440, $translator->asked?->characters);
+        $this->assertNull($translator->asked?->costUsd);
     }
 }

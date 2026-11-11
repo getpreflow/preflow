@@ -35,6 +35,9 @@ final class Ai
 
     private ?AiClientFactory $factory = null;
 
+    /** Why the factory's availability check threw, if it did (once per instance). */
+    private ?string $failure = null;
+
     private ?AiClient $client = null;
 
     /**
@@ -101,13 +104,16 @@ final class Ai
 
     public function status(): AiStatus
     {
+        $available = $this->available();
+
         return new AiStatus(
-            $this->enabled(),
+            $this->switchedOn() && $available,
             $this->provider(),
             $this->model(),
             $this->key() !== null,
-            $this->available(),
+            $available,
             $this->keyName() !== null,
+            $available ? null : $this->reason(),
         );
     }
 
@@ -136,9 +142,34 @@ final class Ai
         return $this->pricing;
     }
 
+    /** The factory's answer; a check that throws counts as "not available", with its message as the reason. */
     private function available(): bool
     {
-        return $this->factory()->available($this->options());
+        if ($this->failure !== null) {
+            return false;
+        }
+        $factory = $this->factory();
+        try {
+            return $factory->available($this->options());
+        } catch (\Throwable $e) {
+            $this->failure = 'The provider\'s availability check failed: ' . $e::class . ': ' . $e->getMessage();
+            error_log('Preflow AI: ' . $this->failure);
+
+            return false;
+        }
+    }
+
+    private function reason(): ?string
+    {
+        if ($this->failure !== null) {
+            return $this->failure;
+        }
+        $factory = $this->factory();
+        if ($factory instanceof ExplainsUnavailability) {
+            return $factory->unavailableReason($this->options());
+        }
+
+        return $this->keyName() !== null && $this->key() === null ? 'The provider\'s key is missing in the environment.' : null;
     }
 
     private function factory(): AiClientFactory

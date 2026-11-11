@@ -125,4 +125,14 @@ final class UpperTranslator implements MachineTranslator
     {
         return [];
     }
+
+    public function available(): bool
+    {
+        return true;
+    }
+
+    public function estimateCost(\Preflow\I18n\Machine\Estimate $size): ?float
+    {
+        return null;
+    }
 }

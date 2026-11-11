@@ -60,7 +60,7 @@ final class JobRunnerTest extends TestCase
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
 
-        return new JobRunner($sources, new AiTranslator($ai, $this->settings(), $batchChars), new Estimator($ai), $store ?? new FileJobStore($this->dir), $this->lease);
+        return new JobRunner($sources, new AiTranslator($ai, $this->settings(), $batchChars), new Estimator(new AiTranslator($ai, $this->settings())), $store ?? new FileJobStore($this->dir), $this->lease);
     }
 
     public function test_plan_estimates_without_writing(): void
@@ -126,7 +126,7 @@ final class JobRunnerTest extends TestCase
         $ai = $this->ai($this->fake, ['models' => ['claude' => 'unpriced-model']]);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir), $this->lease);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), new FileJobStore($this->dir), $this->lease);
         $job = $runner->plan('games', ['de'], Scope::Needed);
         $this->assertFalse($job->costUnknown);
 
@@ -211,7 +211,7 @@ final class JobRunnerTest extends TestCase
         $ai = $this->ai($fake);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir), $this->lease);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), new FileJobStore($this->dir), $this->lease);
         $job = $runner->plan('games', ['de'], Scope::Needed);
 
         $this->assertSame('stopped', $runner->stop($job->id)->state);
@@ -422,7 +422,7 @@ final class JobRunnerTest extends TestCase
         $ai = $this->ai($this->fake);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator($ai), new FileJobStore($this->dir), $lease);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), new FileJobStore($this->dir), $lease);
         $job = $runner->plan('games', ['de', 'fr', 'it'], Scope::Needed, ['1']);
         $runner->start($job->id);
 
@@ -650,7 +650,7 @@ final class JobRunnerTest extends TestCase
         $ai = $this->ai($this->fake, ['models' => ['claude' => 'unpriced-model']]);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings(), 5), new Estimator($ai), $store, $this->lease);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings(), 5), new Estimator(new AiTranslator($ai, $this->settings())), $store, $this->lease);
         $job = $runner->plan('games', ['de'], Scope::Needed, ['1']);
         $jobId = $job->id;
 

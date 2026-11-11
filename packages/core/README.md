@@ -1064,6 +1064,8 @@ app/pages/_errors/error.twig   any status without a page of its own (optional)
 - A status without a page (and no `error` page) gets the built-in page. A page that fails to render
   gets the built-in page too, never a blank one; the reason goes to the log.
 - An `HttpException`'s headers (`Retry-After` on a 503) are kept.
+- Error pages are never stored by the page cache, so every 404 (bots' probes too) renders your
+  layout. Keep the 404 page light.
 
 ### Non-public paths
 
