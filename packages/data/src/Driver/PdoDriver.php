@@ -285,8 +285,9 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         $table = $this->dialect->quoteIdentifier($type);
         $version = $this->dialect->quoteIdentifier($versionField);
         $col = $this->dialect->quoteIdentifier($idField);
-        // Compared as text: the column is text in Folio's tables, and a number column takes it too.
-        $matches = $expected === 0 ? "({$version} IS NULL OR {$version} = '' OR {$version} = ?)" : "{$version} = ?";
+        // Compared as text (the column is text in Folio's tables); "no version yet" is NULL or '',
+        // which the dialect checks without comparing a number column with '' (PostgreSQL refuses that).
+        $matches = $expected === 0 ? '(' . $this->dialect->wholeNumber($version) . " IS NULL OR {$version} = ?)" : "{$version} = ?";
 
         $update = "UPDATE {$table} SET {$version} = ? WHERE {$col} = ? AND {$matches}";
         if ($this->write($type, $update, [$next, $id, (string) $expected])->rowCount() > 0) {

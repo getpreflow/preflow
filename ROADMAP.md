@@ -191,9 +191,12 @@ starters (the copy's packages equal the project's; in starter-folio a tiny path 
 **Upgrading:** a project made from a starter keeps the `tests/Support/StarterApp.php` it was created with. Copy the new
 file from preflow/starter or preflow/starter-folio 0.66.1, or apply the change by hand: after the copy loop in
 `bootStarter()` add `symlink($this->projectVendor(), $this->starterRoot . '/vendor');`, add
-`->ignore('{starterTmp}/vendor')` after `->root('{starterTmp}', …)`, and add a `projectVendor()` method that returns
-`dirname(__DIR__, 2) . '/vendor'`. It needs preflow/testing 0.66.1 (`composer update preflow/testing`): 0.66.0 refuses
-any symlink under a snapshot root.
+`->ignore('{starterTmp}/vendor')` after `->root('{starterTmp}', …)`, add a `projectVendor()` method that returns
+`dirname(__DIR__, 2) . '/vendor'`, and name the seed step after the installed packages
+(`'seeded ' . hash('xxh3', (string) @file_get_contents($this->starterRoot . '/vendor/composer/installed.json'))`
+instead of `'seeded'`, so a snapshot is never reused across different packages). It needs preflow/testing 0.66.1
+(`composer require --dev preflow/testing:^0.66.1`; the starters now ask for it): 0.66.0 refuses any symlink under a
+snapshot root. Creating the link needs symlink rights (on Windows, Developer Mode or WSL).
 
 ### ~~Throttle and codes SQL bypass the `Dialect` (found 2026-11-11, final docs review)~~ — done in v0.66.1
 
@@ -204,16 +207,25 @@ ran on a third-party SQL dialect. Two `Dialect` methods (preflow/data) now write
 row with that id: SQLite `ON CONFLICT(id) DO UPDATE`, MySQL `ON DUPLICATE KEY UPDATE`; null where a dialect has none,
 and the throttle then counts under its file lock) and `wholeNumber($expr)` (NULL for NULL and `''`, the whole part of
 a number or of text holding one, 0 for other text; safe in an `UPDATE` under MySQL's strict mode, never compares a
-number with `''`). Codes' limit is "`wholeNumber(max_uses)` is NULL or the count is below it". SQLite's results are
-unchanged. MySQL now reads loose text like SQLite: `uses` stored as `'3.0'` counts as 3 (it was read as 0), a
-`max_uses` of `'2.5'` allows 2 uses (it allowed 3), and a negative text value is read as that number. A grep of the
+number with `''`). Codes' limit is "`wholeNumber(max_uses)` is NULL or the count is below it". The throttle's expressions read the
+existing row through table-qualified columns, which PostgreSQL requires in `ON CONFLICT DO UPDATE` (a review found a
+bare name fails there with "column reference is ambiguous"); the `Dialect` docblock asks for that form, and a test
+checks the throttle sends it. `PdoDriver`'s version check (compare-and-set saves) no longer compares the version
+column with `''` either: "no version yet" is `wholeNumber(version) IS NULL`. preflow/testing has a new contract
+suite, `DialectContract`, that runs both methods on a dialect's real database (SQLite and MySQL run it). SQLite's
+results are unchanged. A grep of the
 packages found no other dialect or driver-class checks: `Grammars` picks a schema grammar by PDO driver name, which is
 its registry for third-party grammars; `Application` maps the built-in driver names to their classes; the page cache's
 `TagIndex` and `RefreshQueue` use their own SQLite files. Tests: both methods on SQLite and on MySQL (strict mode, in
 an `UPDATE`), and the throttle and codes on a third-party `PdoDriver` whose dialect records what it is asked (with and
 without an insert-or-update statement).
-**Upgrading:** a custom `Dialect` (a third-party SQL driver) must implement `insertOrUpdateSql()` and `wholeNumber()`;
-return null from `insertOrUpdateSql()` when the database has no such statement. preflow/core and preflow/codes 0.66.1
+**Upgrading:** codes on MySQL now reads odd text values in `uses` and `max_uses` the way SQLite and PHP's `(int)`
+do (owner-approved; no live site holds such values): `uses` stored as `'3.0'` counts as 3 (before, MySQL read it as 0
+and the next redeem wrote 1), a `max_uses` of `'2.5'` allows 2 uses (before, the SQL check allowed a third), and
+negative text is read as that negative number (before, 0). A custom `Dialect` (a third-party SQL driver) must
+implement `insertOrUpdateSql()` and `wholeNumber()`, return null from `insertOrUpdateSql()` when the database has no
+such statement, and can check both with `DialectContract`. Your own `insertOrUpdateSql()` callers must qualify the
+columns their expressions read with the table. preflow/core and preflow/codes 0.66.1
 conflict with preflow/data before 0.66.1, so `composer update` brings them together.
 
 ### Datastar's CSP mode (owner, 2026-11-11)

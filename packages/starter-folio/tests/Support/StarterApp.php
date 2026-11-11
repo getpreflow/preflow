@@ -87,7 +87,10 @@ trait StarterApp
             ->onRestore(fn () => $this->starterApp = null);
         $this->starterApp = null;
 
-        $this->snapshots->step('seeded', function (): bool {
+        // The link is no part of the state, so the step is keyed by what it installs: a package
+        // can bring migrations and seeds, and a copy linked to another vendor/ seeds anew.
+        $installed = (string) @file_get_contents($this->starterRoot . '/vendor/composer/installed.json');
+        $this->snapshots->step('seeded ' . hash('xxh3', $installed), function (): bool {
             $this->console('migrate');
             $this->console('db:seed');
 

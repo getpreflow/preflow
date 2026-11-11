@@ -220,6 +220,24 @@ final class ThrottleTest extends DataTestCase
         $this->assertNotEmpty(array_filter($driver->executed, static fn (string $sql): bool => str_contains($sql, 'ON CONFLICT')));
     }
 
+    /**
+     * PostgreSQL rejects a bare column name in ON CONFLICT DO UPDATE as ambiguous (the table's or
+     * EXCLUDED's), and a dialect cannot repair the caller's expressions: every column the
+     * expressions read is qualified with the table.
+     */
+    public function test_the_counting_expressions_read_table_qualified_columns(): void
+    {
+        $driver = new ThirdPartyDriver($this->getPdo());
+        (new Throttle(new DataManager(['default' => $driver]), 'secret', 'default', fn (): int => $this->now))->hit('code', 'c1', 60);
+
+        $sets = $driver->dialect()->sets;
+        $this->assertCount(1, $sets);
+        foreach ($sets[0] as $column => $expression) {
+            $this->assertMatchesRegularExpression('/"preflow_throttle"\."[a-z_]+"/', $expression, $column);
+            $this->assertStringNotContainsString('"', (string) preg_replace('/"preflow_throttle"\."[a-z_]+"/', '', $expression), "{$column}: a bare column in {$expression}");
+        }
+    }
+
     /** A dialect without a single insert-or-update statement counts under the lock instead. */
     public function test_a_dialect_without_insert_or_update_counts_under_the_lock(): void
     {
@@ -494,9 +512,13 @@ final class ThirdPartyDialect implements Dialect
         $this->inner = new SqliteDialect();
     }
 
+    /** @var list<array<string, string>> the $set of each insertOrUpdateSql() */
+    public array $sets = [];
+
     public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string
     {
         $this->asked[] = 'insertOrUpdateSql';
+        $this->sets[] = $set;
 
         return $this->insertOrUpdate ? $this->inner->insertOrUpdateSql($table, $columns, $idField, $set) : null;
     }

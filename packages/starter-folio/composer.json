@@ -27,7 +27,7 @@
         "league/commonmark": "^2.5"
     },
     "require-dev": {
-        "preflow/testing": "^0.66",
+        "preflow/testing": "^0.66.1",
         "phpunit/phpunit": "^11.0"
     },
     "autoload": {

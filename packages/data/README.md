@@ -260,12 +260,13 @@ take the last seat. A package writing its own SQL asks the driver for `PdoDriver
 lets the `Dialect` write what differs between databases, never checking for `MysqlDialect` or
 `SqliteDialect`, so the SQL also runs on a third-party dialect (PostgreSQL, say):
 `quoteIdentifier()`; `insertOrUpdateSql($table, $columns, $idField, $set)` for one statement that
-inserts a row or updates the one with that id with SQL expressions (null where the dialect has
-none: then read and write under a lock; preflow/core's throttle does); `wholeNumber($expr)` for a
+inserts a row or updates the one with that id with SQL expressions, which read the existing row
+through table-qualified columns (`"table"."column"`: PostgreSQL rejects a bare name there), null
+where the dialect has none (then read and write under a lock; preflow/core's throttle does); `wholeNumber($expr)` for a
 column that may hold a number or text such as `''` or `'3.0'`, safe inside an `UPDATE` under
 MySQL's strict mode (preflow/codes' use counting); `numericValue()`, `lockingRead()` and the others
 in `Dialect`. A custom `Dialect` must provide `insertOrUpdateSql()` and `wholeNumber()` since
-0.66.1.
+0.66.1; preflow/testing's `DialectContract` checks them on its database.
 
 ### Observing reads and writes (the page cache)
 

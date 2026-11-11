@@ -28,10 +28,12 @@ interface Dialect
      * of $set (column => SQL expression) on it instead; null where the dialect has none (the
      * caller then reads and writes under a lock). The bindings are the inserted values in the
      * order of $columns, then those of the expressions in the order of $set. The expressions read
-     * the existing row; one must not read a column $set assigns before it (MySQL reads the new
-     * value there, SQLite and PostgreSQL the old one). For a table whose only unique key is the
-     * id: MySQL's ON DUPLICATE KEY UPDATE also fires on another unique index. Throttle's hit is
-     * one (since 0.66.1).
+     * the existing row through table-qualified columns ("table"."column", both quoted with
+     * quoteIdentifier()): PostgreSQL rejects a bare column name there as ambiguous with EXCLUDED's.
+     * An expression must not read a column $set assigns before it (MySQL reads the new value there,
+     * SQLite and PostgreSQL the old one). For a table whose only unique key is the id: MySQL's
+     * ON DUPLICATE KEY UPDATE also fires on another unique index. Throttle's hit is one (since
+     * 0.66.1). DialectContract (preflow/testing) checks an implementation on its database.
      *
      * @param list<string> $columns
      * @param non-empty-array<string, string> $set
@@ -67,9 +69,12 @@ interface Dialect
     /**
      * SQL expression for a value as a whole number, also where the column stores text, that is
      * safe inside an UPDATE (MySQL's strict mode makes a failed conversion an error there):
-     * NULL for NULL and '', the whole part, towards zero, of a number or of text holding one
-     * ('3.0' is 3, '2.5' is 2, '-2.5' is -2), 0 for other text. Never compares a number with ''
-     * (PostgreSQL refuses that). Codes' use counting is one (since 0.66.1).
+     * NULL for NULL and '', the whole part, towards zero, of a number or of text that is one
+     * ('3.0' is 3, '2.5' is 2, '-2.5' is -2), 0 for text with no number in it ('abc'). Text that
+     * only starts with a number or has spaces around it ('3abc', ' 3') is up to the dialect
+     * (SQLite reads its leading number, MySQL 0), as are numbers beyond a 64-bit integer. Never
+     * compares a number with '' (PostgreSQL refuses that). Codes' use counting and PdoDriver's
+     * version check are ones (since 0.66.1). DialectContract (preflow/testing) checks it.
      */
     public function wholeNumber(string $expression): string;
 

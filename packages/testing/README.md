@@ -149,16 +149,17 @@ final class PostRepositoryTest extends DataTestCase
 ## Contract suites
 
 Abstract PHPUnit test cases that check an adapter against the interface it implements. Write your
-own template engine, hypermedia driver or storage driver, extend the matching suite, implement its
+own template engine, hypermedia driver, storage driver or SQL dialect, extend the matching suite, implement its
 hooks, and run it with PHPUnit like any other test. The built-in adapters run the same suites
 (`TwigContractTest`, `BladeContractTest`, `HtmxContractTest`, `SqliteContractTest`,
-`JsonContractTest`, `MysqlContractTest`).
+`JsonContractTest`, `MysqlContractTest`, `SqliteDialectContractTest`, `MysqlDialectContractTest`).
 
 | Suite | Interface | Hooks |
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
 | `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)` |
 | `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `supportsRawQuery()` |
+| `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |
 
 ```php
 use Preflow\Data\StorageDriver;
@@ -203,6 +204,11 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
   `where` operator, `IN` / `NOT IN` (empty lists too), `where(field, null)`, `orWhere`, ordering,
   limit, offset and `total()`. Search, `whereAny()` groups and the optional interfaces
   (`VersionedStorage`, `AggregatingStorage`, `ExclusiveWrites`) are not part of it yet.
+- **DialectContract** runs a `Dialect`'s SQL on its real database: `wholeNumber()` inside an `UPDATE` on a number
+  column and on a text column holding numbers, `''` and other text, and `insertOrUpdateSql()` inserting a row and then
+  updating it by its id with expressions that read the existing row through table-qualified columns (as preflow/core's
+  throttle does; PostgreSQL rejects bare names there). A dialect whose `insertOrUpdateSql()` returns null skips that
+  test. The rest of `Dialect` is covered through StorageDriverContract.
 
 Each test starts from a fresh adapter (`createEngine()` / `createDriver()` run in `setUp()`), so
 a storage driver needs an empty store per test.

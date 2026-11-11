@@ -141,14 +141,17 @@ final class Throttle
 
     /**
      * One statement the driver's Dialect writes: insert the row, or count the hit on it,
-     * restarting the window when it has expired. Neither expression reads a column assigned
-     * before it (MySQL would read the new value). False when the dialect has no such statement.
+     * restarting the window when it has expired. The expressions read the existing row through
+     * table-qualified columns (PostgreSQL finds a bare name ambiguous with EXCLUDED's), and neither
+     * reads a column assigned before it (MySQL would read the new value). False when the dialect
+     * has no such statement.
      */
     private function upsert(PdoDriver $driver, string $id, string $purpose, int $windowSeconds): bool
     {
         $dialect = $driver->dialect();
-        $hits = $dialect->quoteIdentifier('hits');
-        $start = $dialect->quoteIdentifier('window_start');
+        $table = $dialect->quoteIdentifier(self::TABLE);
+        $hits = $table . '.' . $dialect->quoteIdentifier('hits');
+        $start = $table . '.' . $dialect->quoteIdentifier('window_start');
         $sql = $dialect->insertOrUpdateSql(self::TABLE, ['id', 'purpose', 'hits', 'window_start'], 'id', [
             'hits' => "CASE WHEN ? >= {$start} + ? THEN 1 ELSE {$hits} + 1 END",
             'window_start' => "CASE WHEN ? >= {$start} + ? THEN ? ELSE {$start} END",

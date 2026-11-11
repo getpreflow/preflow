@@ -757,9 +757,13 @@ final class ThirdPartyDialect implements Dialect
         $this->inner = new SqliteDialect();
     }
 
+    /** @var list<array<string, string>> the $set of each insertOrUpdateSql() */
+    public array $sets = [];
+
     public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string
     {
         $this->asked[] = 'insertOrUpdateSql';
+        $this->sets[] = $set;
 
         return $this->insertOrUpdate ? $this->inner->insertOrUpdateSql($table, $columns, $idField, $set) : null;
     }

@@ -156,7 +156,7 @@ partial state, also when you ran the steps below first; on a fresh install it ch
 composer test
 ```
 
-The suites are the same as in `preflow/starter` (`Unit`, `Site`, `Api`, `ApiOnly`). `Site` adds Folio's access rules, publishing, the home page blocks, news and the seeds. Every test boots the real app on a temporary copy with its own SQLite file, so `storage/data` is never touched. The copy links to the project's `vendor/`, so the packages you install (and the field types, blocks, translations and commands they bring) are there in tests too.
+The suites are the same as in `preflow/starter` (`Unit`, `Site`, `Api`, `ApiOnly`). `Site` adds Folio's access rules, publishing, the home page blocks, news and the seeds. Every test boots the real app on a temporary copy with its own SQLite file, so `storage/data` is never touched. The copy links to the project's `vendor/`, so the packages you install (and the field types, blocks, translations and commands they bring) are there in tests too. Making that link needs the right to create symbolic links: on Windows, turn on Developer Mode (or run the tests in WSL).
 
 ## Editor tour
 

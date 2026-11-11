@@ -24,9 +24,16 @@ final class InstalledPackagesTest extends TestCase
     /** A vendor folder this test installs a package into, or null for the project's own. */
     private ?string $vendor = null;
 
+    /** @var list<\Closure(string): void> the class loaders vendorWith() registered */
+    private array $loaders = [];
+
     protected function tearDown(): void
     {
         $this->removeStarter();
+        foreach ($this->loaders as $loader) {
+            spl_autoload_unregister($loader);
+        }
+        $this->loaders = [];
         if ($this->vendor !== null) {
             exec('rm -rf ' . escapeshellarg($this->vendor));
             $this->vendor = null;
@@ -85,11 +92,13 @@ final class InstalledPackagesTest extends TestCase
         file_put_contents($vendor . '/composer/installed.json', json_encode($installed, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         foreach ($composer['autoload']['psr-4'] as $prefix => $dir) {
-            spl_autoload_register(static function (string $class) use ($prefix, $package, $dir): void {
+            $loader = static function (string $class) use ($prefix, $package, $dir): void {
                 if (str_starts_with($class, $prefix)) {
                     require_once $package . '/' . $dir . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
                 }
-            });
+            };
+            spl_autoload_register($loader);
+            $this->loaders[] = $loader;
         }
 
         return $vendor;
