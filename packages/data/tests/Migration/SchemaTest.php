@@ -259,12 +259,43 @@ final class SchemaTest extends TestCase
                 $this->fail('dropped an indexed column');
             } catch (\LogicException $e) {
                 $this->assertStringContainsString('uniq_t_a_b', $e->getMessage());
-                $this->assertStringContainsString('index', $e->getMessage());
+                $this->assertStringContainsString('Schema::dropIndex()', $e->getMessage());
             }
         }
         $this->assertSame(['uuid', 'a', 'b', 'c'], $this->schema->columns('t'));
         $this->schema->dropColumn('t', 'c');
         $this->assertSame(['uuid', 'a', 'b'], $this->schema->columns('t'));
+    }
+
+    public function test_drop_index_then_drop_column_round_trip(): void
+    {
+        $this->schema->create('t', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('a');
+            $table->string('b');
+            $table->unique('a', 'b');
+        });
+        $this->schema->dropIndex('t', 'UNIQ_T_A_B');
+        $this->assertNotContains('uniq_t_a_b', $this->schema->indexes('t'));
+        $this->schema->dropColumn('t', 'b');
+        $this->assertSame(['uuid', 'a'], $this->schema->columns('t'));
+    }
+
+    public function test_drop_index_refuses_missing_and_automatic_indexes(): void
+    {
+        $this->schema->create('t', function (Table $table) {
+            $table->string('k')->primary();
+            $table->string('a');
+        });
+        foreach (['ghost', 'sqlite_autoindex_t_1'] as $index) {
+            try {
+                $this->schema->dropIndex('t', $index);
+                $this->fail('dropped ' . $index);
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString($index, $e->getMessage());
+            }
+        }
+        $this->assertContains('sqlite_autoindex_t_1', $this->schema->indexes('t'));
     }
 
     public function test_drop_column_refuses_old_sqlite_before_any_sql(): void

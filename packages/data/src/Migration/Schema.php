@@ -109,6 +109,20 @@ final class Schema
     }
 
     /**
+     * Drops an index (not its columns). Refuses (LogicException, nothing changed) an index the table
+     * doesn't have (names compared without case) and, on SQLite, an automatic sqlite_autoindex_* index
+     * (SQLite creates it for a PRIMARY KEY or UNIQUE constraint and cannot drop it).
+     */
+    public function dropIndex(string $table, string $index): void
+    {
+        $own = self::find($this->indexes($table), $index);
+        if ($own === null) {
+            throw new \LogicException("Cannot drop the index \"{$index}\": \"{$table}\" has no such index.");
+        }
+        $this->pdo->exec($this->grammar->dropIndex($table, $own));
+    }
+
+    /**
      * Drops a column and its data (SQLite 3.35+, MySQL). Refuses (LogicException, nothing changed) a
      * column the table doesn't have, a column that belongs to any index (SQLite would fail, MySQL would
      * silently narrow the index: drop the index first), and an SQLite older than 3.35.
@@ -119,7 +133,7 @@ final class Schema
         $own = $this->existing($table, $this->columns($table), $column);
         foreach ($this->grammar->indexColumns($this->pdo, $table) as $index => $indexed) {
             if (self::find($indexed, $own) !== null) {
-                throw new \LogicException("Cannot drop \"{$table}.{$own}\": it is part of the index \"{$index}\". Drop the index first.");
+                throw new \LogicException("Cannot drop \"{$table}.{$own}\": it is part of the index \"{$index}\". Drop the index first with Schema::dropIndex().");
             }
         }
         $this->pdo->exec($this->grammar->dropColumn($table, $own));

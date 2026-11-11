@@ -233,4 +233,25 @@ final class MysqlMigrationsTest extends TestCase
         $schema->dropColumn('t', 'c');
         $this->assertSame(['uuid', 'a', 'b'], $schema->columns('t'));
     }
+
+    public function test_drop_index_then_drop_column_on_mysql(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('t', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('a');
+            $table->string('b');
+            $table->unique('a', 'b');
+        });
+        try {
+            $schema->dropIndex('t', 'ghost');
+            $this->fail('dropped a missing index');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('ghost', $e->getMessage());
+        }
+        $schema->dropIndex('t', 'UNIQ_T_A_B');
+        $this->assertNotContains('uniq_t_a_b', $schema->indexes('t'));
+        $schema->dropColumn('t', 'b');
+        $this->assertSame(['uuid', 'a'], $schema->columns('t'));
+    }
 }

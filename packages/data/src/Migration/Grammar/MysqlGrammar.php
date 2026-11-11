@@ -162,6 +162,11 @@ final class MysqlGrammar implements SchemaGrammar
         return $result;
     }
 
+    public function dropIndex(string $table, string $index): string
+    {
+        return 'ALTER TABLE ' . $this->quote($table) . ' DROP INDEX ' . $this->quote($index);
+    }
+
     public function assertCanDropColumn(\PDO $pdo): void
     {
     }

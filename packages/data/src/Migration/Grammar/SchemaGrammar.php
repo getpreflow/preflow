@@ -56,6 +56,9 @@ interface SchemaGrammar
     /** @return array<string, list<string>> each index's columns, by index name */
     public function indexColumns(\PDO $pdo, string $table): array;
 
+    /** The SQL that drops the index $index of $table. */
+    public function dropIndex(string $table, string $index): string;
+
     /** Throws LogicException when this server cannot drop a column (before any SQL runs); a no-op when it can. */
     public function assertCanDropColumn(\PDO $pdo): void;
 

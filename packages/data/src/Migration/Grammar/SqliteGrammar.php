@@ -132,6 +132,15 @@ final class SqliteGrammar implements SchemaGrammar
         return $result;
     }
 
+    public function dropIndex(string $table, string $index): string
+    {
+        if (str_starts_with(strtolower($index), 'sqlite_autoindex_')) {
+            throw new \LogicException("Cannot drop the index \"{$index}\": SQLite creates it for a PRIMARY KEY or UNIQUE constraint of the table and cannot drop it.");
+        }
+
+        return 'DROP INDEX ' . $this->quote($index);
+    }
+
     public function assertCanDropColumn(\PDO $pdo): void
     {
         $version = $this->version !== null ? ($this->version)($pdo) : (string) $pdo->query('SELECT sqlite_version()')->fetchColumn();
