@@ -414,6 +414,13 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - starter-folio shows raw staff ids as revision authors, and its `staff:create` accepts only `admin` and
       `editor`, so roles made in Folio's RBAC screens can't be given to its staff (ties in with the starter-folio +
       rbac staff table clash above).
+    - Folio README vs. code: only the dashboard (`AdminController::index`) looks for an override, not "any core
+      action"; screens and record actions declare their permissions themselves (README says to declare each with
+      `#[DeclaresPermission]`); BeforeSave/AfterSave also run on the bulk "Set …" save.
+    - `Extension::uninstall()` is never called. starter-folio's create-project doesn't run
+      `folio:extensions:apply`, so a fresh install lists `jobs` as "Not installed".
+    - Signed-in admin screens carry the GEO `<link rel="alternate" type="text/markdown">` (e.g.
+      `/folio/stale.md`); the admin layout should not get it.
 - **Starters (0.63):** released in 0.63.0 (2026-11-10). Two project templates replace the skeleton, plus the three
   general pieces they needed (rule: general features live in the packages). Plan:
   `docs/superpowers/plans/2026-11-09-starters.md`.
