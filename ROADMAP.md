@@ -409,6 +409,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - The relation column kind (`FieldKinds` and `RelationFieldType::columnKind()`) reads a field-level `multiple`,
       but the relation field takes it from `relation.multiple`. Harmless unless the field is unique or indexed (Short
       stays Short then): a unique/indexed multiple relation gets VARCHAR(255) on MySQL. None of the six sites has one.
+    - `folio:assets:import --dry-run` reports records to rewrite on a site with no old uploads; a real run
+      rewrites those rows for nothing.
+    - starter-folio shows raw staff ids as revision authors, and its `staff:create` accepts only `admin` and
+      `editor`, so roles made in Folio's RBAC screens can't be given to its staff (ties in with the starter-folio +
+      rbac staff table clash above).
 - **Starters (0.63):** released in 0.63.0 (2026-11-10). Two project templates replace the skeleton, plus the three
   general pieces they needed (rule: general features live in the packages). Plan:
   `docs/superpowers/plans/2026-11-09-starters.md`.
