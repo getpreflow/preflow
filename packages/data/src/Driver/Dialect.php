@@ -23,6 +23,21 @@ interface Dialect
      */
     public function upsertSql(string $table, array $columns, string $idField): ?string;
 
+    /**
+     * One statement that inserts the row, or, when a row with that id exists, sets the columns
+     * of $set (column => SQL expression) on it instead; null where the dialect has none (the
+     * caller then reads and writes under a lock). The bindings are the inserted values in the
+     * order of $columns, then those of the expressions in the order of $set. The expressions read
+     * the existing row; one must not read a column $set assigns before it (MySQL reads the new
+     * value there, SQLite and PostgreSQL the old one). For a table whose only unique key is the
+     * id: MySQL's ON DUPLICATE KEY UPDATE also fires on another unique index. Throttle's hit is
+     * one (since 0.66.1).
+     *
+     * @param list<string> $columns
+     * @param non-empty-array<string, string> $set
+     */
+    public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string;
+
     /** Whether the failure is a duplicate on the primary key (not on another unique index). */
     public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool;
 
@@ -48,6 +63,15 @@ interface Dialect
      * converted to a number, also where the column stores text.
      */
     public function numericValue(string $expression): string;
+
+    /**
+     * SQL expression for a value as a whole number, also where the column stores text, that is
+     * safe inside an UPDATE (MySQL's strict mode makes a failed conversion an error there):
+     * NULL for NULL and '', the whole part, towards zero, of a number or of text holding one
+     * ('3.0' is 3, '2.5' is 2, '-2.5' is -2), 0 for other text. Never compares a number with ''
+     * (PostgreSQL refuses that). Codes' use counting is one (since 0.66.1).
+     */
+    public function wholeNumber(string $expression): string;
 
     /**
      * SQL expression for a text value that groups, compares and sorts by its exact characters

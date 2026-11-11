@@ -6,7 +6,6 @@ namespace Preflow\Codes;
 
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\SortDirection;
@@ -323,10 +322,10 @@ final class Codes
         $driver = $this->dm->driver($type->storage);
 
         if ($driver instanceof PdoDriver) {
-            [$table, $id, $uses, $max, $count, $limit, $empty] = $this->sql($driver, $type);
+            [$table, $id, $uses, $count, $limit] = $this->sql($driver, $type);
 
             return $this->dm->execute(
-                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$max} IS NULL OR {$empty} OR {$count} < {$limit})",
+                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$limit} IS NULL OR {$count} < {$limit})",
                 [$codeId],
                 $type->storage,
             ) === 1;
@@ -356,7 +355,7 @@ final class Codes
         $driver = $this->dm->driver($type->storage);
 
         if ($driver instanceof PdoDriver) {
-            [$table, $id, $uses, , $count] = $this->sql($driver, $type);
+            [$table, $id, $uses, $count] = $this->sql($driver, $type);
             $this->dm->execute(
                 "UPDATE {$table} SET {$uses} = {$count} - 1 WHERE {$id} = ? AND {$count} > 0",
                 [$codeId],
@@ -379,33 +378,25 @@ final class Codes
     }
 
     /**
-     * Quoted names and the numeric expressions for the use counting UPDATEs.
+     * Quoted names and the numeric expressions for the use counting UPDATEs, from the driver's
+     * Dialect: TEXT on tables made before typed columns (holding '' or '3.0'), numbers after, so
+     * both are read as whole numbers, never compared as strings or with ''. A max of NULL or ''
+     * is no limit; uses of NULL or '' count as 0.
      *
-     * @return array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string, 6: string} table, id, uses, max, count, limit, max-is-empty
+     * @return array{0: string, 1: string, 2: string, 3: string, 4: string} table, id, uses, count, limit (NULL for none)
      */
     private function sql(PdoDriver $driver, TypeDefinition $type): array
     {
         $dialect = $driver->dialect();
-        $table = $dialect->quoteIdentifier($type->table);
-        $id = $dialect->quoteIdentifier($type->idField);
         $uses = $dialect->quoteIdentifier('uses');
-        $max = $dialect->quoteIdentifier('max_uses');
-        // TEXT on tables made before typed columns (and holding '' or '3.0'), numbers after:
-        // compare as numbers, never as strings, and check for '' only on the text form.
-        if ($dialect instanceof MysqlDialect) {
-            // Strict mode turns CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) into errors
-            // inside an UPDATE, so only well-formed numbers are cast; '' uses count as 0.
-            $count = "(CASE WHEN {$uses} REGEXP '^[0-9]+$' THEN CAST({$uses} AS SIGNED) ELSE 0 END)";
-            $limit = "(CASE WHEN {$max} REGEXP '^[0-9]+([.][0-9]*)?$' THEN CAST({$max} AS DECIMAL(65,10)) ELSE 0 END)";
-            // A DOUBLE column compared with '' is an error in an UPDATE under strict mode.
-            $empty = "CAST({$max} AS CHAR) = ''";
-        } else {
-            $count = "CAST(COALESCE({$uses}, 0) AS INTEGER)";
-            $limit = "CAST({$max} AS INTEGER)";
-            $empty = "{$max} = ''";
-        }
 
-        return [$table, $id, $uses, $max, $count, $limit, $empty];
+        return [
+            $dialect->quoteIdentifier($type->table),
+            $dialect->quoteIdentifier($type->idField),
+            $uses,
+            'COALESCE(' . $dialect->wholeNumber($uses) . ', 0)',
+            $dialect->wholeNumber($dialect->quoteIdentifier('max_uses')),
+        ];
     }
 
     /** Runs $fn holding an exclusive lock on codes-{id}.lock in the lock directory. */

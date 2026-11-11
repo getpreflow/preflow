@@ -44,6 +44,13 @@ final class MysqlDialect implements Dialect
         return null;
     }
 
+    /** ON DUPLICATE KEY UPDATE, which also fires on another unique index (see Dialect). */
+    public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string
+    {
+        return $this->insertSql($table, $columns) . ' ON DUPLICATE KEY UPDATE '
+            . implode(', ', array_map(fn (string $column, string $expression): string => $this->quoteIdentifier($column) . ' = ' . $expression, array_keys($set), $set));
+    }
+
     /**
      * Error 1062 on the key named PRIMARY; any other unique index is a different failure. The key
      * ends the message ("for key 'PRIMARY'", MySQL 8: "for key 'table.PRIMARY'"); the duplicate
@@ -101,6 +108,19 @@ final class MysqlDialect implements Dialect
     public function numericValue(string $expression): string
     {
         return "(NULLIF(CAST({$expression} AS CHAR), '') + 0e0)";
+    }
+
+    /**
+     * Strict mode makes CAST('' AS SIGNED) and CAST('3.0' AS SIGNED) errors inside an UPDATE, and
+     * a number column compared with '' too: only text that is a number is cast (through DECIMAL),
+     * and '' is checked on the text form.
+     */
+    public function wholeNumber(string $expression): string
+    {
+        $text = "CAST({$expression} AS CHAR)";
+
+        return "(CASE WHEN {$expression} IS NULL OR {$text} = '' THEN NULL WHEN {$text} REGEXP '^-?[0-9]+([.][0-9]*)?$' "
+            . "THEN CAST(TRUNCATE(CAST({$text} AS DECIMAL(65,10)), 0) AS SIGNED) ELSE 0 END)";
     }
 
     /** MySQL's LIKE ignores case under the tables' case-insensitive collation. */

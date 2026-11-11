@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * "^0.37 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing codes with a release that lacks the APIs it calls: i18n 0.37 (translation scopes), core 0.38 (ensureTypeRegistry, Container::bound, RecordTableSync), data 0.42 (RecordTables, unique fields and the ValidationException they raise, typed columns), validation 0.26 (ValidationException).
+ * Composer from pairing codes with a release that lacks the APIs it calls: i18n 0.37 (translation scopes), core 0.38 (ensureTypeRegistry, Container::bound, RecordTableSync), data 0.66.1 (Dialect::wholeNumber() for the use counting; since 0.42 RecordTables, unique fields and the ValidationException they raise, typed columns), validation 0.26 (ValidationException).
  * Folio is not required (it carries the codes admin and conflicts with codes before 0.40).
  */
 final class ComposerConstraintsTest extends TestCase
@@ -19,7 +19,7 @@ final class ComposerConstraintsTest extends TestCase
 
         $this->assertSame([
             'preflow/core' => '<0.38',
-            'preflow/data' => '<0.42',
+            'preflow/data' => '<0.66.1',
             'preflow/folio' => '<0.40',
             'preflow/i18n' => '<0.37',
         ], $composer['conflict'] ?? null);

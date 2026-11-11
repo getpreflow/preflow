@@ -17,7 +17,7 @@
     },
     "conflict": {
         "preflow/core": "<0.38",
-        "preflow/data": "<0.42",
+        "preflow/data": "<0.66.1",
         "preflow/folio": "<0.40",
         "preflow/i18n": "<0.37"
     },

@@ -6,6 +6,7 @@ namespace Preflow\Data\Tests\Driver;
 
 require_once __DIR__ . '/OrGroupScenarios.php';
 require_once __DIR__ . '/WhereScenarios.php';
+require_once __DIR__ . '/WholeNumberScenarios.php';
 
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -19,6 +20,7 @@ final class MysqlDriverTest extends TestCase
 {
     use OrGroupScenarios;
     use WhereScenarios;
+    use WholeNumberScenarios;
 
     public function test_mysql_driver_uses_mysql_dialect(): void
     {
@@ -185,6 +187,31 @@ final class MysqlDriverTest extends TestCase
             $driver = new MysqlDriver($pdo);
             $driver->save('it`ems', 'a', ['uuid' => 'a', 'title' => 'T']);
             $this->assertSame('T', $driver->findOne('it`ems', 'a')['title']);
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+    /** Strict mode: '', '3.0' and 'abc' must not be cast in a way that errors inside an UPDATE. */
+    #[Group('mysql')]
+    public function test_whole_numbers_in_an_update(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        try {
+            $this->assertWholeNumbersInAnUpdate($pdo, new \Preflow\Data\Driver\MysqlDialect(), 'DOUBLE');
+        } finally {
+            MysqlTestDatabase::dropAllTables($pdo);
+        }
+    }
+
+    #[Group('mysql')]
+    public function test_insert_or_update_counts_on_the_id(): void
+    {
+        $pdo = MysqlTestDatabase::pdo();
+        MysqlTestDatabase::dropAllTables($pdo);
+        try {
+            $this->assertInsertOrUpdateCounts($pdo, new \Preflow\Data\Driver\MysqlDialect());
         } finally {
             MysqlTestDatabase::dropAllTables($pdo);
         }

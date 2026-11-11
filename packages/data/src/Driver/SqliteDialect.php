@@ -53,6 +53,18 @@ final class SqliteDialect implements Dialect
             . ($updates === [] ? 'DO NOTHING' : 'DO UPDATE SET ' . implode(', ', $updates));
     }
 
+    public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string
+    {
+        return $this->insertSql($table, $columns)
+            . ' ON CONFLICT(' . $this->quoteIdentifier($idField) . ') DO UPDATE SET ' . $this->assignments($set);
+    }
+
+    /** @param array<string, string> $set */
+    private function assignments(array $set): string
+    {
+        return implode(', ', array_map(fn (string $column, string $expression): string => $this->quoteIdentifier($column) . ' = ' . $expression, array_keys($set), $set));
+    }
+
     /** SQLite names the violated columns, the primary key alone ("UNIQUE constraint failed: posts.uuid"). */
     public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool
     {
@@ -102,6 +114,12 @@ final class SqliteDialect implements Dialect
     public function numericValue(string $expression): string
     {
         return "CAST(NULLIF({$expression}, '') AS REAL)";
+    }
+
+    /** CAST takes the leading number of any text (0 when there is none) and never fails. */
+    public function wholeNumber(string $expression): string
+    {
+        return "CAST(NULLIF({$expression}, '') AS INTEGER)";
     }
 
     /** SQLite compares text with BINARY unless a column says otherwise; the tables here do not. */

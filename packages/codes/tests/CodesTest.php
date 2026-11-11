@@ -10,10 +10,14 @@ use Preflow\Codes\Codes;
 use Preflow\Core\Application;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\Dialect;
 use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\Driver\QueryCompiler;
+use Preflow\Data\Driver\SqliteDialect;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 use Preflow\Data\Schema\RecordTableSync;
+use Preflow\Data\UniqueViolation;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\Exporter;
 use Preflow\Testing\MysqlTestDatabase;
@@ -649,6 +653,44 @@ final class CodesTest extends TestCase
         $this->assertCount(1, $codes->redemptions($id));
     }
 
+    /**
+     * A third-party SQL database (PostgreSQL, say): the use counting asks its Dialect for the
+     * numbers and never compares the number columns with '' (PostgreSQL refuses that).
+     */
+    public function test_a_third_party_dialect_writes_the_use_counting(): void
+    {
+        $this->write('config/data.php', "<?php\nreturn " . var_export([
+            'default' => 'json',
+            'models_path' => $this->dir . '/config/models',
+            'drivers' => [
+                'json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => $this->dir . '/storage/data'],
+                'thirdparty' => ['driver' => ThirdPartyDriver::class, 'path' => $this->dir . '/storage/codes.sqlite'],
+            ],
+            'aliases' => ['codes' => 'thirdparty'],
+        ], true) . ";\n");
+
+        $this->test_throwing_listener_undoes_use_and_redemption();
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'TWICE', maxUses: 2);
+        $this->assertTrue($codes->redeem('TWICE', 'members.book')->ok);
+        $this->assertTrue($codes->redeem('TWICE', 'members.book')->ok);
+        $this->assertSame('used_up', $codes->redeem('TWICE', 'members.book')->reason);
+        $codes->issue('members.book', [], 'UNLIMITED');
+        $this->assertTrue($codes->redeem('UNLIMITED', 'members.book')->ok);
+
+        $driver = $this->app()->container()->get(DataManager::class)->driver('codes');
+        $this->assertInstanceOf(ThirdPartyDriver::class, $driver);
+        $this->assertContains('wholeNumber', $driver->dialect()->asked);
+        $counting = array_filter($driver->executed, static fn (string $sql): bool => str_contains($sql, '"uses"'));
+        $this->assertNotEmpty($counting);
+        $dialect = $driver->dialect();
+        $own = [$dialect->wholeNumber('"uses"'), $dialect->wholeNumber('"max_uses"')];
+        foreach ($counting as $sql) {
+            // What the dialect wrote is its own business; the rest is the package's SQL.
+            $this->assertStringNotContainsString("''", str_replace($own, 'N', $sql), 'no comparison of a number column with the empty string');
+        }
+    }
+
     #[Group('mysql')]
     public function test_throwing_listener_undo_on_mysql(): void
     {
@@ -696,5 +738,138 @@ final class CodesTest extends TestCase
     {
         $this->onMysql();
         $this->test_codes_and_redemptions_not_exported();
+    }
+}
+
+/**
+ * A third party's SQL dialect (PostgreSQL, say), run on SQLite: it delegates to SQLite's, records
+ * which methods were asked, and can say it has no single insert-or-update statement.
+ */
+final class ThirdPartyDialect implements Dialect
+{
+    /** @var list<string> */
+    public array $asked = [];
+
+    private SqliteDialect $inner;
+
+    public function __construct(private readonly bool $insertOrUpdate = true)
+    {
+        $this->inner = new SqliteDialect();
+    }
+
+    public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string
+    {
+        $this->asked[] = 'insertOrUpdateSql';
+
+        return $this->insertOrUpdate ? $this->inner->insertOrUpdateSql($table, $columns, $idField, $set) : null;
+    }
+
+    public function wholeNumber(string $expression): string
+    {
+        $this->asked[] = 'wholeNumber';
+
+        return $this->inner->wholeNumber($expression);
+    }
+
+    public function quoteIdentifier(string $name): string
+    {
+        return $this->inner->quoteIdentifier($name);
+    }
+
+    public function updateSql(string $table, array $columns, string $idField): string
+    {
+        return $this->inner->updateSql($table, $columns, $idField);
+    }
+
+    public function insertSql(string $table, array $columns): string
+    {
+        return $this->inner->insertSql($table, $columns);
+    }
+
+    public function upsertSql(string $table, array $columns, string $idField): ?string
+    {
+        return $this->inner->upsertSql($table, $columns, $idField);
+    }
+
+    public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool
+    {
+        return $this->inner->isPrimaryKeyViolation($e, $table, $idField);
+    }
+
+    public function uniqueViolation(\PDOException $e, string $table, string $idField): ?UniqueViolation
+    {
+        return $this->inner->uniqueViolation($e, $table, $idField);
+    }
+
+    public function lockingRead(): string
+    {
+        return $this->inner->lockingRead();
+    }
+
+    public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string
+    {
+        return $this->inner->localizedColumn($quotedColumn, $locale, $isDefault);
+    }
+
+    public function numericValue(string $expression): string
+    {
+        return $this->inner->numericValue($expression);
+    }
+
+    public function exactText(string $expression): string
+    {
+        return $this->inner->exactText($expression);
+    }
+
+    public function likeOperator(): string
+    {
+        return $this->inner->likeOperator();
+    }
+
+    public function numericOrder(string $expression): string
+    {
+        return $this->inner->numericOrder($expression);
+    }
+
+    public function missingColumn(\PDOException $e): ?string
+    {
+        return $this->inner->missingColumn($e);
+    }
+
+    public function inList(string $quotedColumn, array $ids, array &$bindings): string
+    {
+        return $this->inner->inList($quotedColumn, $ids, $bindings);
+    }
+
+    public function jsonArrayHasAny(string $quotedColumn, array $ids, array &$bindings): string
+    {
+        return $this->inner->jsonArrayHasAny($quotedColumn, $ids, $bindings);
+    }
+}
+
+/** A third party's PdoDriver with its own dialect; it records the SQL it is asked to execute. */
+final class ThirdPartyDriver extends PdoDriver
+{
+    /** @var list<string> */
+    public array $executed = [];
+
+    /** Built from config/data.php ('driver' => ThirdPartyDriver::class, 'path' => ...). */
+    public function __construct(string $path)
+    {
+        $dialect = new ThirdPartyDialect();
+        parent::__construct(static fn (): \PDO => new \PDO('sqlite:' . $path), $dialect, new QueryCompiler($dialect));
+    }
+
+    /** One test process writes: running $fn is enough (a real driver takes its database's lock). */
+    public function exclusive(string $type, \Closure $fn): mixed
+    {
+        return $fn();
+    }
+
+    public function execute(string $sql, array $bindings = []): int
+    {
+        $this->executed[] = $sql;
+
+        return parent::execute($sql, $bindings);
     }
 }

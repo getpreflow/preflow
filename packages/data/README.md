@@ -121,7 +121,7 @@ The class is built on its first use (the DataManager takes a closure for it): af
 providers ran, so its constructor may take services a provider binds. The class and the option
 keys are checked at boot.
 
-For another SQL database, a `PdoDriver` subclass supplies a `Dialect` (`likeOperator()` decides
+For another SQL database, a `PdoDriver` subclass supplies a `Dialect` (every method of the interface, see "Raw writes"; `likeOperator()` decides
 the case-insensitive match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`;
 `numericOrder()` the numeric sort; `missingColumn(\PDOException)` reads the column a failed write
 names, so the "run `preflow migrate`" message works on that database) and registers its schema grammar for its PDO driver name, so
@@ -256,8 +256,16 @@ $taken = $dm->execute(
 ```
 
 One conditional statement decides by its affected rows, so concurrent requests cannot both
-take the last seat. A package writing its own SQL for both SQLite and MySQL asks the driver
-for `PdoDriver::dialect()` (`quoteIdentifier()`, `MysqlDialect`).
+take the last seat. A package writing its own SQL asks the driver for `PdoDriver::dialect()` and
+lets the `Dialect` write what differs between databases, never checking for `MysqlDialect` or
+`SqliteDialect`, so the SQL also runs on a third-party dialect (PostgreSQL, say):
+`quoteIdentifier()`; `insertOrUpdateSql($table, $columns, $idField, $set)` for one statement that
+inserts a row or updates the one with that id with SQL expressions (null where the dialect has
+none: then read and write under a lock; preflow/core's throttle does); `wholeNumber($expr)` for a
+column that may hold a number or text such as `''` or `'3.0'`, safe inside an `UPDATE` under
+MySQL's strict mode (preflow/codes' use counting); `numericValue()`, `lockingRead()` and the others
+in `Dialect`. A custom `Dialect` must provide `insertOrUpdateSql()` and `wholeNumber()` since
+0.66.1.
 
 ### Observing reads and writes (the page cache)
 

@@ -9,12 +9,17 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\Dialect;
+use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\Driver\QueryCompiler;
+use Preflow\Data\Driver\SqliteDialect;
 use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\DataTestCase;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Data\UniqueViolation;
 
 final class ThrottleTest extends DataTestCase
 {
@@ -202,6 +207,41 @@ final class ThrottleTest extends DataTestCase
         $this->oldRow('old2', $this->now - 2 * 86400 - 10);
         $t->hit('code', 'c2', 60);
         $this->assertTrue($this->rowExists('old2'));
+    }
+
+    /** A third-party SQL database: the hit is one statement its Dialect writes, not MySQL's or SQLite's. */
+    public function test_a_third_party_dialect_writes_the_counting_statement(): void
+    {
+        $driver = new ThirdPartyDriver($this->getPdo());
+        $t = new Throttle(new DataManager(['default' => $driver]), 'secret', 'default', fn (): int => $this->now);
+
+        $this->countsAndRestarts($t);
+        $this->assertContains('insertOrUpdateSql', $driver->dialect()->asked);
+        $this->assertNotEmpty(array_filter($driver->executed, static fn (string $sql): bool => str_contains($sql, 'ON CONFLICT')));
+    }
+
+    /** A dialect without a single insert-or-update statement counts under the lock instead. */
+    public function test_a_dialect_without_insert_or_update_counts_under_the_lock(): void
+    {
+        $driver = new ThirdPartyDriver($this->getPdo(), new ThirdPartyDialect(insertOrUpdate: false));
+        $t = new Throttle(new DataManager(['default' => $driver]), 'secret', 'default', fn (): int => $this->now);
+
+        $this->countsAndRestarts($t);
+        $this->assertContains('insertOrUpdateSql', $driver->dialect()->asked);
+        $this->assertSame([], array_filter($driver->executed, static fn (string $sql): bool => str_starts_with($sql, 'INSERT')));
+    }
+
+    private function countsAndRestarts(Throttle $t): void
+    {
+        $t->hit('code', 'c1', 60);
+        $t->hit('code', 'c1', 60);
+        $this->assertTrue($t->tooMany('code', 'c1', 2, 60));
+        $this->assertFalse($t->tooMany('code', 'c1', 3, 60));
+        $this->now += 60;
+        $this->assertFalse($t->tooMany('code', 'c1', 1, 60));
+        $t->hit('code', 'c1', 60);
+        $this->assertTrue($t->tooMany('code', 'c1', 1, 60));
+        $this->assertFalse($t->tooMany('code', 'c1', 2, 60), 'the window restarted at one hit');
     }
 
     public function test_window_expires_exactly_at_boundary(): void
@@ -434,5 +474,138 @@ final class ThrottleTest extends DataTestCase
 
         $this->assertTrue($t->tooMany('login', 'c1', 3, 60));
         $this->assertFalse($t->tooMany('login', 'c1', 4, 60));
+    }
+}
+
+
+/**
+ * A third party's SQL dialect (PostgreSQL, say), run on SQLite: it delegates to SQLite's, records
+ * which methods were asked, and can say it has no single insert-or-update statement.
+ */
+final class ThirdPartyDialect implements Dialect
+{
+    /** @var list<string> */
+    public array $asked = [];
+
+    private SqliteDialect $inner;
+
+    public function __construct(private readonly bool $insertOrUpdate = true)
+    {
+        $this->inner = new SqliteDialect();
+    }
+
+    public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string
+    {
+        $this->asked[] = 'insertOrUpdateSql';
+
+        return $this->insertOrUpdate ? $this->inner->insertOrUpdateSql($table, $columns, $idField, $set) : null;
+    }
+
+    public function wholeNumber(string $expression): string
+    {
+        $this->asked[] = 'wholeNumber';
+
+        return $this->inner->wholeNumber($expression);
+    }
+
+    public function quoteIdentifier(string $name): string
+    {
+        return $this->inner->quoteIdentifier($name);
+    }
+
+    public function updateSql(string $table, array $columns, string $idField): string
+    {
+        return $this->inner->updateSql($table, $columns, $idField);
+    }
+
+    public function insertSql(string $table, array $columns): string
+    {
+        return $this->inner->insertSql($table, $columns);
+    }
+
+    public function upsertSql(string $table, array $columns, string $idField): ?string
+    {
+        return $this->inner->upsertSql($table, $columns, $idField);
+    }
+
+    public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool
+    {
+        return $this->inner->isPrimaryKeyViolation($e, $table, $idField);
+    }
+
+    public function uniqueViolation(\PDOException $e, string $table, string $idField): ?UniqueViolation
+    {
+        return $this->inner->uniqueViolation($e, $table, $idField);
+    }
+
+    public function lockingRead(): string
+    {
+        return $this->inner->lockingRead();
+    }
+
+    public function localizedColumn(string $quotedColumn, string $locale, bool $isDefault): string
+    {
+        return $this->inner->localizedColumn($quotedColumn, $locale, $isDefault);
+    }
+
+    public function numericValue(string $expression): string
+    {
+        return $this->inner->numericValue($expression);
+    }
+
+    public function exactText(string $expression): string
+    {
+        return $this->inner->exactText($expression);
+    }
+
+    public function likeOperator(): string
+    {
+        return $this->inner->likeOperator();
+    }
+
+    public function numericOrder(string $expression): string
+    {
+        return $this->inner->numericOrder($expression);
+    }
+
+    public function missingColumn(\PDOException $e): ?string
+    {
+        return $this->inner->missingColumn($e);
+    }
+
+    public function inList(string $quotedColumn, array $ids, array &$bindings): string
+    {
+        return $this->inner->inList($quotedColumn, $ids, $bindings);
+    }
+
+    public function jsonArrayHasAny(string $quotedColumn, array $ids, array &$bindings): string
+    {
+        return $this->inner->jsonArrayHasAny($quotedColumn, $ids, $bindings);
+    }
+}
+
+/** A third party's PdoDriver with its own dialect; it records the SQL it is asked to execute. */
+final class ThirdPartyDriver extends PdoDriver
+{
+    /** @var list<string> */
+    public array $executed = [];
+
+    public function __construct(\PDO|\Closure $pdo, ?Dialect $dialect = null)
+    {
+        $dialect ??= new ThirdPartyDialect();
+        parent::__construct($pdo, $dialect, new QueryCompiler($dialect));
+    }
+
+    /** One test process writes: running $fn is enough (a real driver takes its database's lock). */
+    public function exclusive(string $type, \Closure $fn): mixed
+    {
+        return $fn();
+    }
+
+    public function execute(string $sql, array $bindings = []): int
+    {
+        $this->executed[] = $sql;
+
+        return parent::execute($sql, $bindings);
     }
 }

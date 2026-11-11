@@ -10,6 +10,8 @@ use PHPUnit\Framework\TestCase;
  * Since 0.66: auth 0.66 (LazyGuard, LazyPasswordHasher: guards of the app's own classes are built on first use,
  * the hasher is a container binding) and view 0.66 (ErrorPageRenderer, the app's error pages).
  *
+ * Since 0.66.1: data 0.66.1 (Dialect::insertOrUpdateSql(), which the throttle's hit asks for).
+ *
  * Since 0.65: data 0.65 (DataManager takes a closure for a class-named storage driver), htmx 0.65
  * (LazyHypermediaDriver; HypermediaDriver extends core's HypermediaProtocol, which HypermediaProtocols
  * holds) and view 0.65 (LazyTemplateEngine, TemplateEngineContext, NonceGenerator::adopt(), the
@@ -39,7 +41,7 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/auth' => '<0.66',
             'preflow/components' => '<0.60',
-            'preflow/data' => '<0.65',
+            'preflow/data' => '<0.66.1',
             'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.46',
             'preflow/routing' => '<0.62',

@@ -151,6 +151,16 @@ final class IlikeDialect implements Dialect
         return $this->inner->localizedColumn($quotedColumn, $locale, $isDefault);
     }
 
+    public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string
+    {
+        return $this->inner->insertOrUpdateSql($table, $columns, $idField, $set);
+    }
+
+    public function wholeNumber(string $expression): string
+    {
+        return $this->inner->wholeNumber($expression);
+    }
+
     public function numericValue(string $expression): string
     {
         return $this->inner->numericValue($expression);

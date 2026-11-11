@@ -195,6 +195,27 @@ file from preflow/starter or preflow/starter-folio 0.66.1, or apply the change b
 `dirname(__DIR__, 2) . '/vendor'`. It needs preflow/testing 0.66.1 (`composer update preflow/testing`): 0.66.0 refuses
 any symlink under a snapshot root.
 
+### ~~Throttle and codes SQL bypass the `Dialect` (found 2026-11-11, final docs review)~~ — done in v0.66.1
+
+**v0.66.1:** core's `Throttle` hit and codes' use counting wrote their own SQL by checking `instanceof MysqlDialect`
+(else SQLite's syntax), and codes compared the `max_uses` number column with `''`, which PostgreSQL refuses, so neither
+ran on a third-party SQL dialect. Two `Dialect` methods (preflow/data) now write that SQL:
+`insertOrUpdateSql($table, $columns, $idField, $set)` (one statement inserting the row or setting SQL expressions on the
+row with that id: SQLite `ON CONFLICT(id) DO UPDATE`, MySQL `ON DUPLICATE KEY UPDATE`; null where a dialect has none,
+and the throttle then counts under its file lock) and `wholeNumber($expr)` (NULL for NULL and `''`, the whole part of
+a number or of text holding one, 0 for other text; safe in an `UPDATE` under MySQL's strict mode, never compares a
+number with `''`). Codes' limit is "`wholeNumber(max_uses)` is NULL or the count is below it". SQLite's results are
+unchanged. MySQL now reads loose text like SQLite: `uses` stored as `'3.0'` counts as 3 (it was read as 0), a
+`max_uses` of `'2.5'` allows 2 uses (it allowed 3), and a negative text value is read as that number. A grep of the
+packages found no other dialect or driver-class checks: `Grammars` picks a schema grammar by PDO driver name, which is
+its registry for third-party grammars; `Application` maps the built-in driver names to their classes; the page cache's
+`TagIndex` and `RefreshQueue` use their own SQLite files. Tests: both methods on SQLite and on MySQL (strict mode, in
+an `UPDATE`), and the throttle and codes on a third-party `PdoDriver` whose dialect records what it is asked (with and
+without an insert-or-update statement).
+**Upgrading:** a custom `Dialect` (a third-party SQL driver) must implement `insertOrUpdateSql()` and `wholeNumber()`;
+return null from `insertOrUpdateSql()` when the database has no such statement. preflow/core and preflow/codes 0.66.1
+conflict with preflow/data before 0.66.1, so `composer update` brings them together.
+
 ### Datastar's CSP mode (owner, 2026-11-11)
 
 Datastar compiles its expressions with `Function()`, so under Preflow's CSP it needs `'unsafe-eval'` in `script-src`

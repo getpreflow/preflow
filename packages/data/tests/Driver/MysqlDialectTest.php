@@ -63,4 +63,12 @@ final class MysqlDialectTest extends TestCase
         $this->assertSame('uniq_posts_slug', $this->dialect->uniqueViolation($sneaky, 'posts', 'uuid')?->index);
         $this->assertNull($this->dialect->uniqueViolation($error("Duplicate entry 'a' for key 'PRIMARY'"), 'posts', 'uuid'));
     }
+
+    public function test_insert_or_update_uses_on_duplicate_key(): void
+    {
+        $this->assertSame(
+            'INSERT INTO `c` (`id`, `n`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `n` = `n` + 1',
+            $this->dialect->insertOrUpdateSql('c', ['id', 'n'], 'id', ['n' => '`n` + 1']),
+        );
+    }
 }

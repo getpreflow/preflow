@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Driver;
 
+require_once __DIR__ . '/WholeNumberScenarios.php';
+
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\SqliteDialect;
 
 final class SqliteDialectTest extends TestCase
 {
+    use WholeNumberScenarios;
+
     private SqliteDialect $dialect;
 
     protected function setUp(): void
@@ -68,5 +72,19 @@ final class SqliteDialectTest extends TestCase
         $this->assertFalse($this->dialect->isPrimaryKeyViolation($error('NOT NULL constraint failed: posts.uuid'), 'posts', 'uuid'));
         $this->assertSame(['code', 'purpose'], $this->dialect->uniqueViolation($error('UNIQUE constraint failed: posts.code, posts.purpose'), 'posts', 'uuid')?->columns);
         $this->assertNull($this->dialect->uniqueViolation($error('UNIQUE constraint failed: posts.uuid'), 'posts', 'uuid'));
+    }
+
+    public function test_whole_numbers_in_an_update(): void
+    {
+        $this->assertWholeNumbersInAnUpdate(new \PDO('sqlite::memory:', options: [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]), $this->dialect, 'NUMERIC');
+    }
+
+    public function test_insert_or_update_counts_on_the_id(): void
+    {
+        $this->assertSame(
+            'INSERT INTO "c" ("id", "n") VALUES (?, ?) ON CONFLICT("id") DO UPDATE SET "n" = "n" + 1',
+            $this->dialect->insertOrUpdateSql('c', ['id', 'n'], 'id', ['n' => '"n" + 1']),
+        );
+        $this->assertInsertOrUpdateCounts(new \PDO('sqlite::memory:', options: [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]), $this->dialect);
     }
 }

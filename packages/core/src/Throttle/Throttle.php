@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Core\Throttle;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
@@ -113,9 +112,9 @@ final class Throttle
                     $this->prune();
                 }
             }
-            $this->upsert($driver, $id, $purpose, $windowSeconds);
-
-            return;
+            if ($this->upsert($driver, $id, $purpose, $windowSeconds)) {
+                return;
+            }
         }
 
         $this->locked($id, function () use ($id, $purpose, $windowSeconds): void {
@@ -141,29 +140,31 @@ final class Throttle
     }
 
     /**
-     * One statement: insert the row, or count the hit on it, restarting the
-     * window when it has expired. MySQL applies the assignments left to right,
-     * so hits is set first, while window_start still holds the old value.
+     * One statement the driver's Dialect writes: insert the row, or count the hit on it,
+     * restarting the window when it has expired. Neither expression reads a column assigned
+     * before it (MySQL would read the new value). False when the dialect has no such statement.
      */
-    private function upsert(PdoDriver $driver, string $id, string $purpose, int $windowSeconds): void
+    private function upsert(PdoDriver $driver, string $id, string $purpose, int $windowSeconds): bool
     {
         $dialect = $driver->dialect();
-        $table = $dialect->quoteIdentifier(self::TABLE);
         $hits = $dialect->quoteIdentifier('hits');
         $start = $dialect->quoteIdentifier('window_start');
-        $columns = implode(', ', array_map($dialect->quoteIdentifier(...), ['id', 'purpose', 'hits', 'window_start']));
-        $update = "{$hits} = CASE WHEN ? >= {$start} + ? THEN 1 ELSE {$hits} + 1 END, "
-            . "{$start} = CASE WHEN ? >= {$start} + ? THEN ? ELSE {$start} END";
-        $conflict = $dialect instanceof MysqlDialect
-            ? "ON DUPLICATE KEY UPDATE {$update}"
-            : 'ON CONFLICT(' . $dialect->quoteIdentifier('id') . ") DO UPDATE SET {$update}";
+        $sql = $dialect->insertOrUpdateSql(self::TABLE, ['id', 'purpose', 'hits', 'window_start'], 'id', [
+            'hits' => "CASE WHEN ? >= {$start} + ? THEN 1 ELSE {$hits} + 1 END",
+            'window_start' => "CASE WHEN ? >= {$start} + ? THEN ? ELSE {$start} END",
+        ]);
+        if ($sql === null) {
+            return false;
+        }
         $now = ($this->clock)();
 
         $this->dm->execute(
-            "INSERT INTO {$table} ({$columns}) VALUES (?, ?, 1, ?) {$conflict}",
-            [$id, $purpose, $now, $now, $windowSeconds, $now, $windowSeconds, $now],
+            $sql,
+            [$id, $purpose, 1, $now, $now, $windowSeconds, $now, $windowSeconds, $now],
             $this->type->storage,
         );
+
+        return true;
     }
 
     /** Runs $fn holding an exclusive lock on throttle-{id}.lock in the lock directory. */
