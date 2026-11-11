@@ -17,12 +17,12 @@ final class AuthManager
     private array $resolvedUsers = [];
 
     /**
-     * @param array<string, GuardInterface> $guards
+     * @param array<string, GuardInterface|LazyGuard> $guards a LazyGuard is built on first use (since 0.66)
      * @param array<string, string> $loginPaths each guard's `login` path from config/auth.php, by guard name
      * @param array<string, UserProviderInterface> $providers each guard's user provider, by guard name
      */
     public function __construct(
-        private readonly array $guards,
+        private array $guards,
         private readonly string $defaultGuard,
         private readonly array $loginPaths = [],
         private readonly array $providers = [],
@@ -48,7 +48,8 @@ final class AuthManager
         if (!isset($this->guards[$name])) {
             throw new \RuntimeException("Auth guard [{$name}] is not configured.");
         }
-        return $this->guards[$name];
+
+        return $this->guards[$name] = LazyGuard::of($this->guards[$name]);
     }
 
     /** The user signed in for this request, and the guard that signed them in. */
@@ -84,15 +85,21 @@ final class AuthManager
     {
         if ($preferred !== null) {
             // A named guard that is no TokenGuard is refused, not replaced: a session guard must never pass a token route.
-            return ($this->guards[$preferred] ?? null) instanceof TokenGuard ? $preferred : null;
+            return self::isTokenGuard($this->guards[$preferred] ?? null) ? $preferred : null;
         }
         foreach ($this->guards as $name => $guard) {
-            if ($guard instanceof TokenGuard) {
+            if (self::isTokenGuard($guard)) {
                 return (string) $name;
             }
         }
 
         return null;
+    }
+
+    /** A built guard, or a guard built on first use whose class is a TokenGuard (it isn't built to find out). */
+    private static function isTokenGuard(GuardInterface|LazyGuard|null $guard): bool
+    {
+        return $guard instanceof TokenGuard || ($guard instanceof LazyGuard && $guard->is(TokenGuard::class));
     }
 
     public function defaultGuardName(): string

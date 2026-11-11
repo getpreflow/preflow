@@ -239,10 +239,9 @@ final class TwoRolesTest extends TestCase
         ], true) . ";\n");
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
         $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
-        // AI on (its key from a test env var), so Folio registers the AI routes and the table covers them.
-        // The provider is unknown on purpose: the Test button then fails before any request leaves the machine.
-        putenv('RBAC_AI_TEST_KEY=test-key');
-        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'nonesuch', 'models' => ['nonesuch' => 'none'], 'keys' => ['nonesuch' => 'RBAC_AI_TEST_KEY']];\n");
+        // AI on, so Folio registers the AI routes and the table covers them. The fake provider (0.66)
+        // needs no key and answers locally: no request leaves the machine (an unknown provider now stops the boot).
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake'];\n");
 
         $this->install();
         $this->role('r-super', 'staff', 'super_admin', ['*']);

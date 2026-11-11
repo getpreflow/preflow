@@ -233,6 +233,17 @@ final class SessionGuardTest extends TestCase
         $this->assertFalse($guard->validate(['email' => 'nobody@example.com', 'password' => 'secret']));
     }
 
+    public function test_the_native_hasher_behind_the_lazy_one_uses_the_ready_dummy_hash(): void
+    {
+        // The application hands guards the container's hasher behind a LazyPasswordHasher (0.66).
+        $hasher = new NativePasswordHasher();
+        $guard = new SessionGuard($this->provider, new \Preflow\Auth\LazyPasswordHasher(static fn (): NativePasswordHasher => $hasher));
+        $dummy = (new \ReflectionClassConstant(SessionGuard::class, 'DUMMY_HASH'))->getValue();
+
+        $this->assertFalse($guard->validate(['email' => 'nobody@example.com', 'password' => 'secret']));
+        $this->assertSame($dummy, (new \ReflectionProperty(SessionGuard::class, 'dummyHash'))->getValue($guard), 'no hash made first');
+    }
+
     public function test_two_guards_keep_separate_users(): void
     {
         $members = new SessionGuard($this->provider, $this->hasher, '_auth_user_id.members', ['_auth_user_id']);

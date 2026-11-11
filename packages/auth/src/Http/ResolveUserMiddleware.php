@@ -7,6 +7,7 @@ namespace Preflow\Auth\Http;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\GuardInterface;
+use Preflow\Auth\LazyGuard;
 use Preflow\Auth\SessionGuard;
 use Preflow\Core\Http\Session\SessionInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -28,7 +29,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class ResolveUserMiddleware implements MiddlewareInterface
 {
-    /** @param array<string, GuardInterface> $guards name => guard, in the order to ask */
+    /** @param array<string, GuardInterface|LazyGuard> $guards name => guard, in the order to ask; a LazyGuard is built when first asked (since 0.66) */
     public function __construct(
         private readonly AuthManager $authManager,
         private readonly array $guards,
@@ -48,6 +49,7 @@ final class ResolveUserMiddleware implements MiddlewareInterface
         } else {
             $user = null;
             foreach ($this->guards as $guardName => $guard) {
+                $guard = LazyGuard::of($guard);
                 $found = $guard->user($request);
                 if ($found === null && $guard instanceof SessionGuard) {
                     $found = $guard->restore($request);
@@ -95,6 +97,8 @@ final class ResolveUserMiddleware implements MiddlewareInterface
     {
         $cookies = [];
         foreach ($this->guards as $guard) {
+            // A guard not built yet has queued nothing.
+            $guard = $guard instanceof LazyGuard ? $guard->built() : $guard;
             if ($guard instanceof SessionGuard) {
                 array_push($cookies, ...$guard->pullCookies());
             }

@@ -79,4 +79,77 @@ final class AiServiceProviderTest extends TestCase
         $this->assertSame('ai:check', (new AiCheckCommand())->getName());
         $this->assertSame('ai:usage', (new AiUsageCommand())->getName());
     }
+
+    public function test_an_unknown_provider_stops_the_boot_naming_the_accepted_forms(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => false, 'provider' => 'openai'];\n");
+
+        try {
+            $this->app();
+            $this->fail('expected the boot to stop');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('"openai"', $e->getMessage());
+            $this->assertStringContainsString("'claude', 'gemini', 'fake'", $e->getMessage());
+        }
+    }
+
+    public function test_the_fake_provider_runs_ai_check_without_a_key(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'storage' => 'var/ai'];\n");
+        $app = $this->app();
+
+        $out = fopen('php://memory', 'w+');
+        ob_start();
+        $code = (new AiCheckCommand(static fn (): Application => $app, $out))->execute([]);
+        $printed = (string) ob_get_clean();
+
+        $this->assertSame(0, $code, $printed);
+        $this->assertStringContainsString('Provider: fake', $printed);
+        $this->assertStringContainsString('Key:      not used', $printed);
+        $this->assertStringContainsString('cost unknown', $printed);
+        $this->assertStringContainsString("OK\n", $printed);
+    }
+
+    public function test_a_factory_class_is_built_by_the_container_after_the_providers(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => \\" . ContainerBuiltFactory::class . "::class, 'storage' => 'var/ai'];\n");
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\Preflow\\Ai\\AiServiceProvider::class, \\" . EndpointProvider::class . "::class];\n");
+        $c = $this->app()->container();
+
+        $ai = $c->get(Ai::class);
+        $this->assertTrue($ai->enabled());
+        $this->assertSame('Ai at http://127.0.0.1:11434', $ai->client()->complete(new \Preflow\Ai\AiRequest('x', 'y'))->text);
+    }
+}
+
+/** A service an app's provider binds, which the factory below takes. */
+final class LocalEndpoint
+{
+    public function __construct(public readonly string $url) {}
+}
+
+final class EndpointProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(LocalEndpoint::class, static fn (): LocalEndpoint => new LocalEndpoint('http://127.0.0.1:11434'));
+    }
+}
+
+final class ContainerBuiltFactory implements \Preflow\Ai\AiClientFactory
+{
+    public function __construct(
+        private readonly LocalEndpoint $endpoint,
+        #[\Preflow\Core\Container\Attributes\Config('app.name')] private readonly string $appName,
+    ) {}
+
+    public function available(array $options): bool
+    {
+        return true;
+    }
+
+    public function create(array $options): \Preflow\Ai\AiClient
+    {
+        return new \Preflow\Ai\Testing\FakeAiClient([new \Preflow\Ai\AiResponse("{$this->appName} at {$this->endpoint->url}", \Preflow\Ai\StopReason::Complete, new \Preflow\Ai\TokenUsage(), 'local', 'local-model')]);
+    }
 }

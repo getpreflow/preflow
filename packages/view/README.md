@@ -186,6 +186,16 @@ if ($child->hasCss() || $child->hasJs()) {
 }
 ```
 
+`reprinting(fn () => …)` (0.66) runs a render with nothing marked as printed and no CSS scope, then
+puts both back: a page rendered after another one failed part-way (an app's error page) gets every
+collected asset again.
+
+## An app's error pages: `ErrorPageRenderer` (0.66)
+
+The application answers errors on a live site with `app/pages/_errors/<status>.<ext>` (else
+`_errors/error.<ext>`) through this renderer, falling back to the built-in page when there is no
+such template or it fails to render. See "Your own error pages" in the core README.
+
 ## GEO: Markdown for AI search
 
 GEO (generative engine optimisation) gives AI assistants and search engines a clean Markdown version of your public

@@ -32,8 +32,8 @@ final class DemoSeeder
         'editor@example.com' => ['demo-editor', ['editor']],
     ];
 
-    private const string EMPLOYER_EMAIL = 'employer@example.com';
-    private const string EMPLOYER_PASSWORD = 'demo-employer';
+    public const string EMPLOYER_EMAIL = 'employer@example.com';
+    public const string EMPLOYER_PASSWORD = 'demo-employer';
 
     private const string LOGOS = __DIR__ . '/../../resources/seed/logos';
     private const string NEWS_IMAGES = __DIR__ . '/../../resources/seed/news';

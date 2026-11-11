@@ -11,6 +11,8 @@ return [
     // links and the page cache's host. Without it the page cache caches nothing and says so.
     'url' => getenv('APP_URL') ?: '',
     // Template engine: 'twig', 'blade' or the class of a Preflow\View\TemplateEngineFactory.
-    // (A hypermedia driver other than htmx: 'hypermedia' => the class of a Preflow\Htmx\HypermediaDriver.)
     'engine' => getenv('APP_ENGINE') ?: 'twig',
+    // The hypermedia driver components talk through: the class of a Preflow\Htmx\HypermediaDriver,
+    // built by the container. Default: htmx (Preflow\Htmx\HtmxDriver).
+    // 'hypermedia' => \Preflow\Htmx\HtmxDriver::class,
 ];

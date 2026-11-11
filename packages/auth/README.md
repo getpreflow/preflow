@@ -300,6 +300,11 @@ $hasher->verify('secret', $hash);      // true
 $hasher->needsRehash($hash);           // false (current algorithm)
 ```
 
+The hasher is a container binding (since 0.66): `config/auth.php` `password_hasher` names its
+class (default `NativePasswordHasher`), which the container builds, so it may take services. An
+app's provider may bind `PasswordHasherInterface` itself instead; the session guards use whichever
+the container has when a password is checked.
+
 ### Middleware
 
 Protect routes with `#[Middleware]` attributes:
@@ -505,12 +510,30 @@ final class LdapGuard implements GuardInterface
 }
 ```
 
-Register it in `config/auth.php` under `guards`. It is built from the container
-with its user provider as the `provider` argument; a class that is not a
+Register it in `config/auth.php` under `guards`. A class that doesn't exist or is not a
 `GuardInterface` fails at boot:
 
 ```php
-'guards' => ['ldap' => ['class' => LdapGuard::class, 'provider' => 'users', 'population' => 'staff']],
+'guards' => ['ldap' => ['class' => LdapGuard::class, 'provider' => 'users', 'population' => 'staff', 'server' => 'ldaps://ldap.example.com']],
+```
+
+It is built through the container on first use (since 0.66), after the app's service providers
+ran, with these named arguments:
+
+- `provider`: its user provider, built;
+- `config`: its whole `config/auth.php` entry (`class`, `provider`, `population` and keys of its
+  own, such as `server` above), as user providers get theirs.
+
+Any other constructor parameter is resolved by the container: services a provider binds,
+`#[Config]` and `#[Env]` values. `AuthManager::guard('ldap')` hands out the guard itself, so
+`instanceof LdapGuard` works.
+
+```php
+public function __construct(
+    private readonly UserProviderInterface $provider,
+    private readonly array $config,
+    private readonly LdapConnection $ldap,          // bound by an app provider
+) {}
 ```
 
 ## Testing

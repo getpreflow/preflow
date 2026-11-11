@@ -562,6 +562,8 @@ return [
         'key' => 'Key present',
         'enabled' => 'Enabled',
         'key_missing' => 'AI is switched on in config/ai.php, but the provider\'s key is missing in the environment.',
+        'unavailable' => 'AI is switched on in config/ai.php, but the provider says it is not available.',
+        'key_not_used' => 'Not used',
         'switched_off' => 'A key is present, but AI is switched off in config/ai.php ("enabled").',
         'test' => 'Test connection',
         'test_help' => 'Sends one tiny request and reports tokens and cost.',

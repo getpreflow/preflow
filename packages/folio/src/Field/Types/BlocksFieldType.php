@@ -275,7 +275,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     $errors += $type->validateBlocks($block[$name] ?? [], $field->config, $locales, $prefix . $uid . '.' . $name . '.');
                     continue;
                 }
-                $fieldRules = array_values(array_unique([...$field->validate, ...$type->rules($field->config)]));
+                $fieldRules = \Preflow\Folio\Field\FieldRules::merge($field->validate, $type->rules($field->config));
                 if ($fieldRules === []) {
                     continue;
                 }

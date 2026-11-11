@@ -3,14 +3,15 @@
 declare(strict_types=1);
 
 /**
- * AI connection. Everything AI is off unless `enabled` is true AND the provider's key is set in
- * the environment (.env). Keys are never put in this file.
+ * AI connection. Everything AI is off unless `enabled` is true AND the provider is available: the
+ * built-ins need their key in the environment (.env). Keys are never put in this file.
  */
 return [
     // Master switch. Off: no AI buttons, endpoints answer 404.
     'enabled' => false,
 
-    // 'claude' or 'gemini'.
+    // 'claude', 'gemini', 'fake' (no key, no cost, the same answer to every request: your machine
+    // and tests only) or the class of a Preflow\Ai\AiClientFactory, built by the container.
     'provider' => 'claude',
 
     // The model each provider uses.
@@ -23,6 +24,12 @@ return [
     'keys' => [
         'claude' => 'ANTHROPIC_API_KEY',
         'gemini' => 'GEMINI_API_KEY',
+    ],
+
+    // More settings per provider, by its name or class; a factory gets them with `model` and `key`.
+    // 'fake' takes 'answer' (an array is sent as JSON, a string as text) and 'usage' ([input, output]).
+    'options' => [
+        // 'fake' => ['answer' => ['ok' => true]],
     ],
 
     // USD per million tokens [input, output]; merged over the built-in table, so list only
@@ -51,5 +58,9 @@ return [
 
         // Most characters of text sent in one request.
         'batch_chars' => 12000,
+
+        // The machine translator (preflow/i18n): the class of a Preflow\I18n\Machine\MachineTranslator,
+        // built by the container. Default: Preflow\I18n\Machine\AiTranslator, through the provider above.
+        // 'translator' => \App\Translation\MyTranslator::class,
     ],
 ];

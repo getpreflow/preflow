@@ -4,22 +4,64 @@
 
 {% block content %}
 <section class="employer-login">
-    <h1>{{ t('app.employer.sign_in') }}</h1>
-    {% if failed %}<p class="notice notice--error" role="alert">{{ t('app.employer.failed') }}</p>{% endif %}
+    <div class="login-card">
+        <h1>{{ t('app.employer.sign_in') }}</h1>
+        <p class="login-card__lead">{{ t('app.employer.sign_in_lead') }}</p>
+        {% if failed %}<p class="notice notice--error" role="alert">{{ t('app.employer.failed') }}</p>{% endif %}
 
-    {% set form = form_begin({ action: '/employer/login', csrf_token: csrf_token(), oldInput: { email: email } }) %}
-    {{ form.begin()|raw }}
-        {{ form.field('email', { type: 'email', label: t('app.employer.email'), required: true, attrs: { autocomplete: 'username' } })|raw }}
-        {{ form.field('password', { type: 'password', label: t('app.employer.password'), required: true, attrs: { autocomplete: 'current-password' } })|raw }}
-        {% if next %}{{ form.hidden('next', next)|raw }}{% endif %}
-        {{ form.submit(t('app.employer.sign_in_button'))|raw }}
-    {{ form_end()|raw }}
+        {% set form = form_begin({ action: '/employer/login', csrf_token: csrf_token(), oldInput: { email: email } }) %}
+        {{ form.begin()|raw }}
+            {{ form.field('email', { type: 'email', label: t('app.employer.email'), required: true, attrs: { autocomplete: 'username' } })|raw }}
+            {{ form.field('password', { type: 'password', label: t('app.employer.password'), required: true, attrs: { autocomplete: 'current-password' } })|raw }}
+            {% if next %}{{ form.hidden('next', next)|raw }}{% endif %}
+            {{ form.submit(t('app.employer.sign_in_button'))|raw }}
+        {{ form_end()|raw }}
+
+        {# Only while developing, and only when the demo seed made the account (DemoSeeder). #}
+        {% if demo %}
+        <aside class="login-hint" aria-label="{{ t('app.employer.demo_title') }}">
+            <p class="login-hint__title">{{ t('app.employer.demo_title') }}</p>
+            <p>{{ t('app.employer.demo_hint') }}</p>
+            <dl>
+                <dt>{{ t('app.employer.email') }}</dt><dd><code>{{ demo.email }}</code></dd>
+                <dt>{{ t('app.employer.password') }}</dt><dd><code>{{ demo.password }}</code></dd>
+            </dl>
+        </aside>
+        {% endif %}
+    </div>
 </section>
 
 {% apply css %}
-.employer-login { max-width: 24rem; }
-.employer-login form { margin-top: 1rem; display: grid; gap: 0.75rem; }
+.employer-login { display: grid; place-items: start center; padding: 1rem 0 2rem; }
+.login-card {
+    width: 100%; max-width: 26rem; padding: 1.75rem 1.5rem;
+    border: 1px solid var(--line); border-radius: 0.75rem; background: var(--card);
+}
+.login-card h1 { font-size: 1.5rem; }
+.login-card__lead { margin-top: 0.25rem; color: var(--muted); }
+.login-card form { margin-top: 1.25rem; display: grid; gap: 1rem; }
+.login-card label { display: block; font-weight: 600; margin-bottom: 0.3rem; }
+.login-card .form-required { color: var(--muted); font-weight: 400; }
+.login-card input[type=email], .login-card input[type=password] {
+    width: 100%; font: inherit; padding: 0.55rem 0.75rem; border: 1px solid var(--line); border-radius: 0.5rem;
+    background: var(--bg); color: var(--text);
+}
+.login-card input:focus-visible, .login-card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.login-card button[type=submit] {
+    width: 100%; margin-top: 0.25rem; font: inherit; font-weight: 600; padding: 0.6rem 1rem; border: 0;
+    border-radius: 0.5rem; background: var(--accent); color: var(--bg); cursor: pointer;
+}
+.login-card button[type=submit]:hover { filter: brightness(1.08); }
 .notice { margin-top: 1rem; padding: 0.6rem 0.9rem; border-radius: 0.5rem; border: 1px solid var(--line); background: var(--card); }
 .notice--error { border-color: var(--warn-line); background: var(--warn-bg); }
+.login-hint {
+    margin-top: 1.5rem; padding: 0.75rem 0.9rem; border: 1px dashed var(--line); border-radius: 0.5rem;
+    color: var(--muted); font-size: 0.875rem;
+}
+.login-hint__title { font-weight: 600; color: var(--text); }
+.login-hint dl { margin-top: 0.4rem; display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.75rem; }
+.login-hint dt { font-weight: 600; }
+.login-hint dd { overflow-wrap: anywhere; }
+.login-hint code { color: var(--text); }
 {% endapply %}
 {% endblock %}

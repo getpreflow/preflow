@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Tests;
 
 require_once __DIR__ . '/Fixtures/HeaderGuard.php';
+require_once __DIR__ . '/Fixtures/ConfiguredGuard.php';
 require_once __DIR__ . '/Fixtures/PipelineCounter/PipelineCounter.php';
 
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -42,12 +43,15 @@ final class AuthGuardsBootTest extends TestCase
         @rmdir($this->dir);
     }
 
-    /** @param array<string, array<string, mixed>> $guards */
-    private function boot(array $guards, string $default = 'staff'): Application
+    /**
+     * @param array<string, array<string, mixed>> $guards
+     * @param array<string, mixed> $more more config/auth.php keys
+     */
+    private function boot(array $guards, string $default = 'staff', array $more = []): Application
     {
         $users = [['id' => 'admin', 'email' => 'admin@site.test', 'password_hash' => '', 'roles' => []],
                   ['id' => 'member', 'email' => 'member@site.test', 'password_hash' => '', 'roles' => []]];
-        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export([
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export($more + [
             'default_guard' => $default,
             'guards' => $guards,
             'providers' => ['users' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => $users]],
@@ -197,5 +201,73 @@ final class AuthGuardsBootTest extends TestCase
 
         $this->expectException(\Preflow\Core\Exceptions\UnauthorizedHttpException::class);
         (new \Preflow\Auth\Http\AuthMiddleware($auth))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_custom_guard_gets_its_entry_and_is_built_after_the_providers_on_first_use(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\" . \Preflow\Core\Tests\Fixtures\GuardTestProvider::class . "::class];\n");
+        \Preflow\Core\Tests\Fixtures\ConfiguredGuard::$built = 0;
+        $app = $this->boot(['api' => ['class' => \Preflow\Core\Tests\Fixtures\ConfiguredGuard::class, 'provider' => 'users', 'population' => 'staff', 'header' => 'X-Api-User']], default: 'api');
+
+        $this->assertSame(0, \Preflow\Core\Tests\Fixtures\ConfiguredGuard::$built, 'not built during boot');
+        $res = $app->handle((new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-Api-User', $this->idOf('admin@site.test')));
+
+        $this->assertStringContainsString('yes', (string) $res->getBody());
+        $guard = $app->container()->get(AuthManager::class)->guard('api');
+        $this->assertInstanceOf(\Preflow\Core\Tests\Fixtures\ConfiguredGuard::class, $guard, 'the guard itself, not a stand-in');
+        $this->assertSame(1, \Preflow\Core\Tests\Fixtures\ConfiguredGuard::$built, 'built once');
+        $this->assertSame('X-Api-User', $guard->config['header']);
+        $this->assertSame('users', $guard->config['provider']);
+        $this->assertSame('t', $guard->appName);
+        $this->assertSame($app->container()->get(\Preflow\Core\Tests\Fixtures\GuardAudit::class), $guard->audit);
+        $this->assertSame([$this->idOf('admin@site.test')], $guard->audit->seen);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_password_hasher_is_a_binding_an_app_provider_replaces(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\" . \Preflow\Core\Tests\Fixtures\GuardTestProvider::class . "::class];\n");
+        \Preflow\Core\Tests\Fixtures\GuardTestProvider::$bindHasher = true;
+        $users = [['email' => 'a@site.test', 'password_hash' => 'app:secret', 'roles' => []]];
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export([
+            'default_guard' => 'staff',
+            'guards' => ['staff' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users']],
+            'providers' => ['users' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => $users]],
+        ], true) . ";\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $c = $app->container();
+
+        $this->assertInstanceOf(\Preflow\Core\Tests\Fixtures\PlainPrefixHasher::class, $c->get(\Preflow\Auth\PasswordHasherInterface::class));
+        $this->assertTrue($c->get(AuthManager::class)->guard('staff')->validate(['email' => 'a@site.test', 'password' => 'secret']), 'the session guard uses the app\'s hasher');
+        $this->assertFalse($c->get(AuthManager::class)->guard('staff')->validate(['email' => 'a@site.test', 'password' => 'wrong']));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_configured_password_hasher_is_built_by_the_container(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\" . \Preflow\Core\Tests\Fixtures\GuardTestProvider::class . "::class];\n");
+        $users = [['email' => 'a@site.test', 'password_hash' => 'audited:secret', 'roles' => []]];
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export([
+            'default_guard' => 'staff',
+            'guards' => ['staff' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users']],
+            'providers' => ['users' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => $users]],
+            'password_hasher' => \Preflow\Core\Tests\Fixtures\AuditedHasher::class,
+        ], true) . ";\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $c = $app->container();
+
+        $this->assertTrue($c->get(AuthManager::class)->guard('staff')->validate(['email' => 'a@site.test', 'password' => 'secret']));
+        $this->assertSame(['verify'], $c->get(\Preflow\Core\Tests\Fixtures\GuardAudit::class)->seen, 'its constructor got the provider\'s service');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_missing_guard_class_fails_boot(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('App\\Nope');
+        $this->boot(['staff' => ['class' => 'App\\Nope', 'provider' => 'users']]);
     }
 }

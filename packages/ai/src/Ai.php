@@ -4,38 +4,53 @@ declare(strict_types=1);
 
 namespace Preflow\Ai;
 
-use Preflow\Ai\Providers\ClaudeClient;
-use Preflow\Ai\Providers\GeminiClient;
+use Preflow\Ai\Providers\ClaudeClientFactory;
+use Preflow\Ai\Providers\GeminiClientFactory;
+use Preflow\Ai\Testing\FakeAiClientFactory;
 use Preflow\Ai\Usage\Pricing;
 use Preflow\Ai\Usage\UsageLog;
 
 /**
  * The entry point other code asks for an AI client. AI is on only when config/ai.php says
- * `enabled` AND the chosen provider's key is in the environment: the flag is the owner's
- * decision, the key is what makes it possible. Keys are read from the environment only and
- * never leave this class (status() reports just whether one exists).
+ * `enabled` AND the chosen provider is available: the flag is the owner's decision, the provider
+ * says whether it can run (the built-ins need their key in the environment; 'fake' and a local
+ * server need none). config/ai.php `provider` is 'claude', 'gemini', 'fake' or the class of an
+ * AiClientFactory. Keys are read from the environment only and never leave this class and the
+ * provider's factory (status() reports just whether one exists).
  */
 final class Ai
 {
+    /** The built-in provider names and their factories. */
+    public const array PROVIDERS = [
+        'claude' => ClaudeClientFactory::class,
+        'gemini' => GeminiClientFactory::class,
+        'fake' => FakeAiClientFactory::class,
+    ];
+
     /** @var \Closure(string): ?string */
     private readonly \Closure $env;
 
-    /** @var \Closure(string, string, string): AiClient provider, model, key */
-    private readonly \Closure $clientFactory;
+    /** @var \Closure(class-string<AiClientFactory>): object */
+    private readonly \Closure $make;
+
+    private ?AiClientFactory $factory = null;
 
     private ?AiClient $client = null;
 
     /**
      * @param array<string, mixed> $config config/ai.php
      * @param (\Closure(string): ?string)|null $env reads an env var; tests inject one
-     * @param (\Closure(string, string, string): AiClient)|null $clientFactory builds the provider client from provider, model, key; tests inject one
+     * @param (\Closure(string, string, string): AiClient)|null $clientFactory builds the client from provider, model, key in place
+     *        of the provider's factory (tests); whether AI is available is still the factory's answer
+     * @param (\Closure(class-string<AiClientFactory>): object)|null $make builds a provider's factory (AiServiceProvider: the container); default `new`
      */
     public function __construct(
         private readonly array $config,
         private readonly UsageLog $usage,
         private readonly Pricing $pricing,
         ?\Closure $env = null,
-        ?\Closure $clientFactory = null,
+        private readonly ?\Closure $clientFactory = null,
+        ?\Closure $make = null,
     ) {
         $this->env = $env ?? static function (string $name): ?string {
             // Some hosts load .env only into $_ENV, so getenv() alone misses the key.
@@ -46,20 +61,37 @@ final class Ai
 
             return is_string($value) ? $value : null;
         };
-        $this->clientFactory = $clientFactory ?? static fn (string $provider, string $model, #[\SensitiveParameter] string $key): AiClient => match ($provider) {
-            'claude' => ClaudeClient::fromKey($key, $model),
-            'gemini' => new GeminiClient($key, $model),
-            default => throw new AiUnavailable("Unknown AI provider \"{$provider}\"."),
-        };
+        $this->make = $make ?? static fn (string $class): object => new $class();
+    }
+
+    /**
+     * The factory class config/ai.php `provider` names: a built-in name or the class of an
+     * AiClientFactory.
+     *
+     * @return class-string<AiClientFactory>
+     * @throws \InvalidArgumentException naming the accepted forms
+     */
+    public static function factoryClass(string $provider): string
+    {
+        if (isset(self::PROVIDERS[$provider])) {
+            return self::PROVIDERS[$provider];
+        }
+        $class = ltrim($provider, '\\');
+        if ($class !== '' && class_exists($class) && is_subclass_of($class, AiClientFactory::class)) {
+            return $class;
+        }
+        $what = $class !== '' && class_exists($class) ? "{$class} is not an " . AiClientFactory::class : "\"{$provider}\" is unknown";
+
+        throw new \InvalidArgumentException("config/ai.php provider: {$what}. Use 'claude', 'gemini', 'fake' or the class of a " . AiClientFactory::class . '.');
     }
 
     public function enabled(): bool
     {
-        return $this->switchedOn() && $this->key() !== null;
+        return $this->switchedOn() && $this->available();
     }
 
     /**
-     * The owner's switch in config/ai.php alone, whether or not a key exists. The settings
+     * The owner's switch in config/ai.php alone, whether or not the provider can run. The settings
      * screens use it to stay reachable when the switch is on but the key is missing.
      */
     public function switchedOn(): bool
@@ -69,22 +101,34 @@ final class Ai
 
     public function status(): AiStatus
     {
-        return new AiStatus($this->enabled(), $this->provider(), $this->model(), $this->key() !== null);
+        return new AiStatus(
+            $this->enabled(),
+            $this->provider(),
+            $this->model(),
+            $this->key() !== null,
+            $this->available(),
+            $this->keyName() !== null,
+        );
     }
 
-    /** @throws AiUnavailable when AI is off or the key is missing */
+    /** @throws AiUnavailable when AI is off or the provider is not available */
     public function client(): AiClient
     {
-        $key = $this->key();
-        if (!$this->enabled() || $key === null) {
-            throw new AiUnavailable('AI is not enabled (config/ai.php "enabled" and the provider key).');
+        if ($this->client !== null) {
+            return $this->client;
+        }
+        if (!$this->enabled()) {
+            throw new AiUnavailable('AI is not enabled (config/ai.php "enabled", and the provider must be available: the built-ins need their key).');
+        }
+        $options = $this->options();
+        $client = $this->clientFactory !== null
+            ? ($this->clientFactory)($this->provider(), $this->model(), (string) ($options['key'] ?? ''))
+            : $this->factory()->create($options);
+        if (!$client instanceof AiClient) {
+            throw new AiUnavailable('The AI provider "' . $this->provider() . '" built no ' . AiClient::class . '.');
         }
 
-        return $this->client ??= new LoggedAiClient(
-            ($this->clientFactory)($this->provider(), $this->model(), $key),
-            $this->usage,
-            $this->pricing,
-        );
+        return $this->client = new LoggedAiClient($client, $this->usage, $this->pricing);
     }
 
     public function pricing(): Pricing
@@ -92,24 +136,59 @@ final class Ai
         return $this->pricing;
     }
 
+    private function available(): bool
+    {
+        return $this->factory()->available($this->options());
+    }
+
+    private function factory(): AiClientFactory
+    {
+        if ($this->factory === null) {
+            $class = self::factoryClass($this->provider());
+            $factory = ($this->make)($class);
+            if (!$factory instanceof AiClientFactory) {
+                throw new \InvalidArgumentException("config/ai.php provider: {$class} is not an " . AiClientFactory::class . '.');
+            }
+            $this->factory = $factory;
+        }
+
+        return $this->factory;
+    }
+
+    /** @return array<string, mixed> the provider's `options` entry, plus `model` and `key` */
+    private function options(): array
+    {
+        $own = $this->config['options'][$this->provider()] ?? [];
+
+        return ['model' => $this->model(), 'key' => $this->key()] + (is_array($own) ? $own : []);
+    }
+
     private function provider(): string
     {
         $provider = $this->config['provider'] ?? 'claude';
 
-        return is_string($provider) ? $provider : 'claude';
+        return is_string($provider) && $provider !== '' ? $provider : 'claude';
     }
 
     private function model(): string
     {
-        $model = $this->config['models'][$this->provider()] ?? '';
+        // The fake names its model even without a `models` entry, so status screens show one.
+        $model = $this->config['models'][$this->provider()] ?? ($this->provider() === 'fake' ? 'fake-model' : '');
 
         return is_string($model) ? $model : '';
     }
 
-    private function key(): ?string
+    private function keyName(): ?string
     {
         $name = $this->config['keys'][$this->provider()] ?? null;
-        if (!is_string($name) || $name === '') {
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    private function key(): ?string
+    {
+        $name = $this->keyName();
+        if ($name === null) {
             return null;
         }
         $value = ($this->env)($name);

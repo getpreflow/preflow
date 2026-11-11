@@ -17,7 +17,7 @@ Requires PHP 8.4+.
 | `Container` | PSR-11 container with autowiring and attribute injection |
 | `Config` | Dot-notation PHP array config |
 | `MiddlewarePipeline` | PSR-15 middleware stack |
-| `ErrorHandler` | Dev (rich HTML) / prod (minimal) error pages |
+| `ErrorHandler` | Dev (rich HTML) / prod (the app's `app/pages/_errors/`, else minimal) error pages |
 | `Kernel` | Dual-mode (Component/Action) request dispatcher |
 | `Application` | Bootstrap entry point |
 | `CsrfMiddleware` | CSRF check on every unsafe request (origin, session or stateless token), `#[CsrfExempt]`, expired-session handling |
@@ -1037,6 +1037,33 @@ throw new NotFoundHttpException('Page not found');
 throw new ForbiddenHttpException();
 throw new UnauthorizedHttpException('Login required');
 ```
+
+### Your own error pages
+
+A live site answers errors with a plain built-in page. Put templates in `app/pages/_errors/` to
+answer with your own pages instead, rendered through the app's engine like any file page, so they
+extend your layout (since 0.66):
+
+```
+app/pages/_errors/404.twig     the page for a 404 (any status: 403.twig, 500.twig, 503.twig, …)
+app/pages/_errors/error.twig   any status without a page of its own (optional)
+```
+
+```twig
+{% extends "_layout.twig" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}<h1>{{ status }}: {{ title }}</h1><p>{{ message }}</p><p><a href="/">Home</a></p>{% endblock %}
+```
+
+- Variables: `status` (404), `title` ("Not Found"), `message` (what a visitor may read: the status
+  text for 403, 404, 405 and any exception that is not an `HttpException`; an `HttpException`'s
+  own message otherwise), and `request` and `route` as file pages have them. The extension is the
+  engine's (`404.blade.php` with Blade). The leading `_` keeps the folder out of the routes.
+- Development (`APP_DEBUG` on) keeps the detailed debug page; internal renders (the SEO audit) get
+  your page. API paths and clients that ask for JSON keep the JSON answer.
+- A status without a page (and no `error` page) gets the built-in page. A page that fails to render
+  gets the built-in page too, never a blank one; the reason goes to the log.
+- An `HttpException`'s headers (`Retry-After` on a 503) are kept.
 
 ### Non-public paths
 

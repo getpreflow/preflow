@@ -244,6 +244,21 @@ return [
 `MachineServiceProvider` binds `MachineTranslator`, `Estimator`, `TextSources`, `JobStore`
 (files in `{storage}/jobs`), `JobRunner` and `TranslationSettings`, all from `config/ai.php`.
 
+The translator is `AiTranslator`, through the AI provider `config/ai.php` names (a provider of
+your own works too, see `preflow/ai`). To translate with something else (a translation API, a
+glossary service), name the class of your `MachineTranslator` (since 0.66):
+
+```php
+// config/ai.php
+'translation' => [
+    'translator' => App\Translation\DeeplTranslator::class,
+],
+```
+
+The container builds it (it gets the `batchChars` argument if it takes one, and may take
+services such as `TranslationSettings`); the job runner, Folio's Translate and everything else
+that translates use it. A class that is not a `MachineTranslator` stops the boot.
+
 ### MachineTranslator
 
 ```php

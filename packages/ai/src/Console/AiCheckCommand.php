@@ -30,10 +30,14 @@ final class AiCheckCommand implements CommandInterface
         $status = $ai->status();
         echo 'Provider: ' . $status->provider . "\n";
         echo 'Model:    ' . $status->model . "\n";
-        echo 'Key:      ' . ($status->keyPresent ? 'present' : 'missing') . "\n";
+        echo 'Key:      ' . (!$status->usesKey ? 'not used' : ($status->keyPresent ? 'present' : 'missing')) . "\n";
         echo 'Enabled:  ' . ($status->enabled ? 'yes' : 'no') . "\n";
         if (!$status->enabled) {
-            $this->error("AI is off: set \"enabled\" => true in config/ai.php and the provider's key in .env.\n");
+            $this->error(match (true) {
+                !$ai->switchedOn() => "AI is off: set \"enabled\" => true in config/ai.php.\n",
+                $status->usesKey && !$status->keyPresent => "AI is off: the provider's key is missing in the environment (.env).\n",
+                default => "AI is off: the provider says it is not available.\n",
+            });
 
             return 1;
         }

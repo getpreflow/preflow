@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Controllers\Site;
 
 use App\Models\User;
+use App\Seeds\DemoSeeder;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\AuthManager;
+use Preflow\Core\Container\Attributes\Config;
 use Preflow\Data\DataManager;
 use Preflow\Routing\Attributes\Get;
 use Preflow\Routing\Attributes\Post;
@@ -24,6 +26,7 @@ final class EmployerAuthController
         private readonly AuthManager $auth,
         private readonly DataManager $data,
         private readonly PageResponder $pages,
+        #[Config('app.debug', 0)] private readonly int|string|bool $debug = 0,
     ) {}
 
     #[Get('/login')]
@@ -33,6 +36,7 @@ final class EmployerAuthController
             'next' => self::safeNext($request->getQueryParams()['next'] ?? null),
             'email' => '',
             'failed' => false,
+            'demo' => $this->demo(),
         ]);
     }
 
@@ -52,7 +56,7 @@ final class EmployerAuthController
 
         // Employers only: an account without a company has nothing to do here.
         if (!$user instanceof User || $user->company === null) {
-            return $this->pages->render('_views/employer/login.twig', ['next' => $next, 'email' => $email, 'failed' => true], 422);
+            return $this->pages->render('_views/employer/login.twig', ['next' => $next, 'email' => $email, 'failed' => true, 'demo' => $this->demo()], 422);
         }
 
         $guard->login($user, $request);
@@ -66,6 +70,22 @@ final class EmployerAuthController
         $this->auth->guard(self::GUARD)->logout($request);
 
         return new Response(302, ['Location' => '/']);
+    }
+
+    /**
+     * The demo account to show on the sign-in page: only while developing (APP_DEBUG), and only when
+     * the demo seed made it. A live site never shows it (the seed refuses to run there anyway).
+     *
+     * @return array{email: string, password: string}|null
+     */
+    private function demo(): ?array
+    {
+        if ((int) $this->debug === 0) {
+            return null;
+        }
+        $user = $this->data->query(User::class)->where('email', DemoSeeder::EMPLOYER_EMAIL)->first();
+
+        return $user instanceof User ? ['email' => DemoSeeder::EMPLOYER_EMAIL, 'password' => DemoSeeder::EMPLOYER_PASSWORD] : null;
     }
 
     /** Only a path inside the employer area: never another site, never a protocol-relative URL. */

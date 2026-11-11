@@ -69,10 +69,11 @@ final class RecordValidator
                 $rules[$name] = [];
                 continue;
             }
-            $merged = array_values(array_unique([
-                ...$fieldDef->validate,
-                ...$this->fieldTypes->get($fieldDef->type)->rules($fieldDef->config),
-            ]));
+            // Names once, rule objects once per instance: no string cast (a rule object needn't be Stringable).
+            $merged = \Preflow\Folio\Field\FieldRules::merge(
+                $fieldDef->validate,
+                $this->fieldTypes->get($fieldDef->type)->rules($fieldDef->config),
+            );
             if (isset($lengthRules[$name])) {
                 $merged[] = $lengthRules[$name];
             }

@@ -4,8 +4,8 @@
 {% block page_title %}{{ t('folio.nav.ai') }}{% endblock %}
 {% block content %}
     {% include '@folio/admin/ai/_tabs.twig' %}
-    {% if switched_on and not key_present %}
-        <div class="folio-alert folio-alert-error" role="alert"><p>{{ t('folio.ai_settings.key_missing') }}</p></div>
+    {% if switched_on and not available %}
+        <div class="folio-alert folio-alert-error" role="alert"><p>{{ uses_key and not key_present ? t('folio.ai_settings.key_missing') : t('folio.ai_settings.unavailable') }}</p></div>
     {% elseif key_present and not switched_on %}
         <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.switched_off') }}</p></div>
     {% endif %}
@@ -14,7 +14,7 @@
         <tbody>
             <tr><th scope="row">{{ t('folio.ai_settings.provider') }}</th><td>{{ provider }}</td></tr>
             <tr><th scope="row">{{ t('folio.ai_settings.model') }}</th><td>{{ model }}</td></tr>
-            <tr><th scope="row">{{ t('folio.ai_settings.key') }}</th><td>{{ key_present ? t('folio.common.yes') : t('folio.common.no') }}</td></tr>
+            <tr><th scope="row">{{ t('folio.ai_settings.key') }}</th><td>{{ not uses_key ? t('folio.ai_settings.key_not_used') : (key_present ? t('folio.common.yes') : t('folio.common.no')) }}</td></tr>
             <tr><th scope="row">{{ t('folio.ai_settings.enabled') }}</th><td>{{ switched_on ? t('folio.common.yes') : t('folio.common.no') }}</td></tr>
         </tbody>
     </table>

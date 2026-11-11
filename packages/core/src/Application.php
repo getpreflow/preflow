@@ -355,6 +355,7 @@ final class Application
         }
 
         // Auto-discover installed packages and wire them up
+        $this->bootValidators();
         $this->bootDataLayer($collector);
         $this->bootViewLayer($debug);
         $this->bootSecurityHeaders($debug);
@@ -407,14 +408,16 @@ final class Application
         // The SEO audit's page renderer (through the whole pipeline built above)
         $this->bootAudit();
 
-        // Error handler
+        // Error handler. A visitor's page is the app's own (app/pages/_errors/) when it has one, else
+        // the built-in page; development keeps the detailed page.
+        $visitorPage = $this->appErrorPages(new ProdErrorRenderer($this->nonceProvider()));
         $renderer = $debug->isDebug()
             ? new DevErrorRenderer($collector, $this->nonceProvider())
-            : new ProdErrorRenderer($this->nonceProvider());
+            : $visitorPage;
         // Internal renders (the SEO audit) get the visitor's error page, even in debug mode.
         $errorHandler = new ErrorHandler(
             $renderer,
-            $debug->isDebug() ? new ProdErrorRenderer($this->nonceProvider()) : null,
+            $debug->isDebug() ? $visitorPage : null,
             $api,
             new JsonErrorRenderer($debug->isDebug()),
         );
@@ -804,30 +807,10 @@ final class Application
             $this->container->instance(\Preflow\Data\TypeRegistry::class, $typeRegistry);
         }
 
-        // Validation — optional: wire if preflow/validation is installed
-        $validatorFactory = null;
-        if (class_exists(\Preflow\Validation\RuleFactory::class)) {
-            $ruleFactory = new \Preflow\Validation\RuleFactory();
-
-            // Auto-discover custom rules from app/Rules/
-            $rulesPath = $this->basePath('app/Rules');
-            if (is_dir($rulesPath)) {
-                $ruleClasses = [];
-                foreach (glob($rulesPath . '/*.php') as $file) {
-                    $class = 'App\\Rules\\' . pathinfo($file, PATHINFO_FILENAME);
-                    if (class_exists($class)) {
-                        $ruleClasses[] = $class;
-                    }
-                }
-                if ($ruleClasses !== []) {
-                    $ruleFactory->discover($ruleClasses);
-                }
-            }
-
-            $validatorFactory = new \Preflow\Validation\ValidatorFactory($ruleFactory);
-            $this->container->instance(\Preflow\Validation\RuleFactory::class, $ruleFactory);
-            $this->container->instance(\Preflow\Validation\ValidatorFactory::class, $validatorFactory);
-        }
+        // Validation (bootValidators(), with or without config/data.php): models validate on save.
+        $validatorFactory = $this->container->bound(\Preflow\Validation\ValidatorFactory::class)
+            ? $this->container->get(\Preflow\Validation\ValidatorFactory::class)
+            : null;
 
         $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry, $validatorFactory);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
@@ -1509,11 +1492,11 @@ final class Application
     {
         $path = $this->absolutePath('storage/cache/composer');
 
-        $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
-            'composer',
-            'Decoded composer installed.json',
-            $path,
-        ));
+        // Registered once, however often the packages are read (installedPackages() is public).
+        $caches = $this->container->get(CacheRegistry::class);
+        if ($caches->get('composer') === null) {
+            $caches->register(new DirectoryCache('composer', 'Decoded composer installed.json', $path));
+        }
 
         return $path;
     }
@@ -1575,6 +1558,37 @@ final class Application
             liveParts: $context->liveParts,
             pageCache: $context->pageCache,
         );
+    }
+
+    /**
+     * RuleFactory (with the rules of app/Rules/) and ValidatorFactory, whenever preflow/validation is
+     * installed: an app validates forms without a database (config/data.php) too. Since 0.66; before,
+     * only the data layer bound them.
+     */
+    private function bootValidators(): void
+    {
+        if (!class_exists(\Preflow\Validation\RuleFactory::class)) {
+            return;
+        }
+        $ruleFactory = new \Preflow\Validation\RuleFactory();
+
+        // Auto-discover custom rules from app/Rules/
+        $rulesPath = $this->basePath('app/Rules');
+        if (is_dir($rulesPath)) {
+            $ruleClasses = [];
+            foreach (glob($rulesPath . '/*.php') ?: [] as $file) {
+                $class = 'App\\Rules\\' . pathinfo($file, PATHINFO_FILENAME);
+                if (class_exists($class)) {
+                    $ruleClasses[] = $class;
+                }
+            }
+            if ($ruleClasses !== []) {
+                $ruleFactory->discover($ruleClasses);
+            }
+        }
+
+        $this->container->instance(\Preflow\Validation\RuleFactory::class, $ruleFactory);
+        $this->container->instance(\Preflow\Validation\ValidatorFactory::class, new \Preflow\Validation\ValidatorFactory($ruleFactory));
     }
 
     private function bootValidation(): void
@@ -2493,7 +2507,29 @@ final class Application
         ));
     }
 
-    /** Debug-mode CSRF and redirect warnings: to the bound logger (a provider may bind it after boot), else the PHP log. */
+    /**
+     * The app's own error pages (preflow/view's ErrorPageRenderer) when app/pages/_errors/ exists and
+     * an engine is bound, falling back to $builtIn; else $builtIn itself.
+     */
+    private function appErrorPages(ProdErrorRenderer $builtIn): \Preflow\Core\Error\ErrorRendererInterface
+    {
+        if (!class_exists(\Preflow\View\ErrorPageRenderer::class)
+            || !is_dir($this->basePath('app/pages/' . \Preflow\View\ErrorPageRenderer::DIR))
+            || !$this->container->has(\Preflow\View\TemplateEngineInterface::class)
+            || !$this->container->bound(\Preflow\View\AssetCollector::class)) {
+            return $builtIn;
+        }
+
+        return new \Preflow\View\ErrorPageRenderer(
+            $this->container->get(\Preflow\View\TemplateEngineInterface::class),
+            $this->container->get(\Preflow\View\AssetCollector::class),
+            $builtIn,
+            $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+            $this->csrfWarning(...),
+        );
+    }
+
+    /** Debug-mode CSRF and redirect warnings, and failed error pages: to the bound logger (a provider may bind it after boot), else the PHP log. */
     private function csrfWarning(string $message): void
     {
         if ($this->container->has(\Psr\Log\LoggerInterface::class)) {
@@ -2501,6 +2537,24 @@ final class Application
             return;
         }
         error_log($message);
+    }
+
+    /**
+     * A guard of the app's own class (config/auth.php guards.<name>.class), checked now and built on
+     * first use through the container with `provider` (its built user provider) and `config` (its
+     * whole entry), so it may take services the providers bind and #[Config] values.
+     */
+    private function lazyGuard(string $name, string $class, \Preflow\Auth\UserProviderInterface $provider, array $config): \Preflow\Auth\LazyGuard
+    {
+        if (!class_exists($class)) {
+            throw new \RuntimeException("Guard \"{$name}\": class {$class} not found.");
+        }
+        if (!is_subclass_of($class, \Preflow\Auth\GuardInterface::class)) {
+            throw new \RuntimeException("Guard \"{$name}\" ({$class}) does not implement " . \Preflow\Auth\GuardInterface::class . '.');
+        }
+        $container = $this->container;
+
+        return new \Preflow\Auth\LazyGuard($name, $class, static fn (): object => $container->make($class, ['provider' => $provider, 'config' => $config]));
     }
 
     /** Build the config-named user providers now that all services exist: a bad class fails during boot. */
@@ -2537,10 +2591,21 @@ final class Application
 
         $authConfig = $this->authConfig();
 
-        // Password hasher
-        $hasherClass = $authConfig['password_hasher'] ?? \Preflow\Auth\NativePasswordHasher::class;
-        $hasher = new $hasherClass();
-        $this->container->instance(\Preflow\Auth\PasswordHasherInterface::class, $hasher);
+        // Password hasher: a container binding (config/auth.php password_hasher, default
+        // NativePasswordHasher, built by the container), which an app's provider may replace. Session
+        // guards are made now, before the providers, so they ask the container on each use.
+        $hasherClass = (string) ($authConfig['password_hasher'] ?? \Preflow\Auth\NativePasswordHasher::class);
+        if (!class_exists($hasherClass) || !is_subclass_of($hasherClass, \Preflow\Auth\PasswordHasherInterface::class)) {
+            throw new \RuntimeException("config/auth.php password_hasher: {$hasherClass} is not the class of a " . \Preflow\Auth\PasswordHasherInterface::class . '.');
+        }
+        if (!$this->container->bound(\Preflow\Auth\PasswordHasherInterface::class)) {
+            $this->container->singleton(
+                \Preflow\Auth\PasswordHasherInterface::class,
+                static fn (Container $c): object => $c->make($hasherClass),
+            );
+        }
+        $container = $this->container;
+        $hasher = new \Preflow\Auth\LazyPasswordHasher(static fn (): \Preflow\Auth\PasswordHasherInterface => $container->get(\Preflow\Auth\PasswordHasherInterface::class));
 
         // Record users from config/auth.php without a package that binds its own (Folio does, later).
         if (!$this->container->bound(\Preflow\Auth\Record\RecordUserProvider::class)) {
@@ -2655,9 +2720,11 @@ final class Application
                         $this->container->get(\Preflow\Data\DataManager::class),
                     )
                     : null,
-                default => $this->container->make($guardClass, ['provider' => $provider]),
+                // Any other class: built by the container on first use, after the service providers ran, with
+                // its user provider and its whole config entry (as user providers get theirs).
+                default => $this->lazyGuard($name, $guardClass, $provider, (array) $guardConfig),
             };
-            if ($guard !== null && !$guard instanceof \Preflow\Auth\GuardInterface) {
+            if ($guard !== null && !$guard instanceof \Preflow\Auth\GuardInterface && !$guard instanceof \Preflow\Auth\LazyGuard) {
                 throw new \RuntimeException("Guard \"{$name}\" ({$guardClass}) does not implement " . \Preflow\Auth\GuardInterface::class . '.');
             }
             if ($guard !== null) {

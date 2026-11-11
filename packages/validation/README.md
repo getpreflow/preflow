@@ -38,3 +38,18 @@ $rules = ['price' => ['required', new WhenFilled(new Numeric(), new Step(0.5))]]
 
 `WhenFilled` is used as an object only: it has no string alias, and a rule string naming its class would
 build it without rules, so it would check nothing.
+
+## In an app
+
+When `preflow/validation` is installed, the application binds `RuleFactory` and `ValidatorFactory`
+in the container, and registers the rules in `app/Rules/` (classes `App\Rules\*` with
+`#[RuleAlias('name')]`). Since 0.66 this needs no database: it works without `config/data.php`
+too, for forms that are not models. With `config/data.php`, models validate on save through the
+same factory.
+
+```php
+$result = $container->get(ValidatorFactory::class)->make(['to' => ['required', 'not_below:from']], $input)->validate();
+```
+
+A package registers its own rule names with `RuleFactory::register('name', RuleClass::class)` in
+its provider.

@@ -464,6 +464,29 @@ final class AssetCollector
         }
     }
 
+    /**
+     * Run $render with nothing marked as printed and no CSS scope, then put both back: a page
+     * rendered after another one failed part-way (an app's error page) gets every collected asset,
+     * even those the failed page's head had printed already.
+     *
+     * @since 0.66
+     * @template T
+     * @param callable(): T $render
+     * @return T
+     */
+    public function reprinting(callable $render): mixed
+    {
+        $saved = [$this->printed, $this->cssScope];
+        $this->printed = self::NOTHING_PRINTED;
+        $this->cssScope = null;
+
+        try {
+            return $render();
+        } finally {
+            [$this->printed, $this->cssScope] = $saved;
+        }
+    }
+
     public function hasCss(): bool
     {
         return $this->cssRegistry !== [];

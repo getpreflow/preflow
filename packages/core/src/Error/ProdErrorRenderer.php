@@ -32,18 +32,8 @@ final class ProdErrorRenderer implements ErrorRendererInterface
         $nonceAttr = $nonceValue !== null && $nonceValue !== ''
             ? ' nonce="' . htmlspecialchars($nonceValue, ENT_QUOTES, 'UTF-8') . '"'
             : '';
-        if ($exception instanceof HttpException) {
-            $title = self::STATUS_MESSAGES[$statusCode] ?? 'Error';
-            // A 404/405 message names the router's view of the request ("No route matches [GET /x]"),
-            // a 403's the check that refused (a component class, a CSRF reason, a token check):
-            // a visitor gets the plain status text; the debug page keeps the message.
-            $message = in_array($statusCode, [403, 404, 405], true) || $exception->getMessage() === ''
-                ? $title
-                : $exception->getMessage();
-        } else {
-            $title = self::STATUS_MESSAGES[$statusCode] ?? 'Internal Server Error';
-            $message = $title;
-        }
+        $title = self::title($exception, $statusCode);
+        $message = self::message($exception, $statusCode);
 
         return <<<HTML
         <!DOCTYPE html>
@@ -67,6 +57,28 @@ final class ProdErrorRenderer implements ErrorRendererInterface
         </body>
         </html>
         HTML;
+    }
+
+    /** The status text a visitor sees ("Not Found"); also the app's error pages' `title` (since 0.66). */
+    public static function title(\Throwable $exception, int $statusCode): string
+    {
+        return self::STATUS_MESSAGES[$statusCode] ?? ($exception instanceof HttpException ? 'Error' : 'Internal Server Error');
+    }
+
+    /**
+     * What a visitor may read about the error; also the app's error pages' `message` (since 0.66).
+     * A 404/405 message names the router's view of the request ("No route matches [GET /x]"), a
+     * 403's the check that refused (a component class, a CSRF reason, a token check): a visitor
+     * gets the plain status text; the debug page keeps the message. Any exception that is no
+     * HttpException shows only the status text, never its message.
+     */
+    public static function message(\Throwable $exception, int $statusCode): string
+    {
+        if ($exception instanceof HttpException && !in_array($statusCode, [403, 404, 405], true) && $exception->getMessage() !== '') {
+            return $exception->getMessage();
+        }
+
+        return self::title($exception, $statusCode);
     }
 
     private function escape(string $value): string

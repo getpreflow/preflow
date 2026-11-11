@@ -146,7 +146,7 @@ Plan:
 3. **Do it together with phase 4**, which shrinks the package READMEs. The detail a README drops goes into the docblocks and the guides, so it isn't lost.
 4. **Ratchet, so it stays done.** Once a kind is complete, `docs:check` fails on a new entry of that kind without a description, instead of only warning. Start with classes, interfaces, enums, commands and config keys.
 
-### Starter: a polished employer sign-in (owner, 2026-11-11)
+### ~~Starter: a polished employer sign-in (owner, 2026-11-11)~~ — done in 0.66: a centred card with a lead line, labelled fields and a full-width button, the error as an alert, the demo account as a dashed hint (only while developing and while the demo seed's account exists), both themes, 375 px. starter-folio's public pages and Folio's sign-in were checked at 375 px in both themes and needed nothing. Sync the starter files into the website with the release.
 
 The employer sign-in of `preflow/starter` (`/employer`, `app/pages/_views/employer/login.twig`, from
 `EmployerAuthController`) looks unstyled. Even as a demo it must not look careless: give it the same care as the
@@ -452,6 +452,72 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Extension points without workarounds (v0.66.0):** the Extend guides of docs phase 3 (Tasks 6 and 7) found places
+  where an app or package couldn't plug in its own piece cleanly; plan `docs/superpowers/plans/2026-11-11-docs-phase3.md`
+  (task 6b), report `.superpowers/sdd/2026-11-11-docs-phase3/task-6b-report.md`.
+  - **AI providers are pluggable (ai):** `config/ai.php` `provider` is `'claude'`, `'gemini'`, `'fake'` or the class of a
+    `Preflow\Ai\AiClientFactory` (`available(array $options): bool`, `create(array $options): AiClient`), built by the
+    container on first use. `$options` = the provider's `options` entry + `model` + `key` (from its `keys` entry; null
+    without one). AI is on when `enabled` and the provider is available: the built-ins need their key
+    (`ClaudeClientFactory`, `GeminiClientFactory`), a local server may need none. Anything else stops the boot
+    (`AiServiceProvider::boot()`), naming the accepted forms. `'fake'` (`Testing\FakeAiClientFactory`) runs without a
+    key or cost: `options.fake.answer` (array → JSON, string → text; default `{"ok":true}`) and `options.fake.usage`;
+    model `fake-model`, priced "unknown". `AiStatus` gains `available` and `usesKey`; `ai:check` says "Key: not used"
+    and why AI is off. The usage log and `ai:usage` already priced an unknown model as unknown (null), unchanged.
+    Folio's Settings → AI shows "the provider says it is not available" for a keyless provider instead of "key
+    missing", and "Not used" as its key.
+  - **The machine translator is swappable (i18n):** `config/ai.php` `translation.translator` names a
+    `MachineTranslator` class, built by the container (with `batchChars` if it takes it); default `AiTranslator`. A
+    class that is no `MachineTranslator` stops the boot.
+  - **Guards are built like the rest (core, auth):** a guard of the app's own class is built through the container on
+    first use (`Preflow\Auth\LazyGuard`), after the service providers, with `provider` (its built user provider) and
+    `config` (its whole `config/auth.php` entry), so it may take services and `#[Config]` values. A class that doesn't
+    exist or is no `GuardInterface` still fails at boot. `AuthManager` and `ResolveUserMiddleware` take
+    `GuardInterface|LazyGuard` and hand out the built guard. The password hasher is a container binding:
+    `password_hasher` (default `NativePasswordHasher`) is built by the container, an app provider may bind
+    `PasswordHasherInterface` itself; session guards get a `LazyPasswordHasher` that asks the container on each use.
+    SessionGuard and TokenGuard are built as before.
+  - **Validation without a database (core):** `RuleFactory`, `ValidatorFactory` and `app/Rules/` discovery are bound
+    whenever preflow/validation is installed (`bootValidators()`), also without `config/data.php`.
+  - **App error pages (core, view):** convention, not a config key: `app/pages/_errors/<status>.<ext>`, else
+    `_errors/error.<ext>`, rendered through the app's engine (`Preflow\View\ErrorPageRenderer`) with `status`,
+    `title`, `message`, `request`, `route`, so they extend the site's layout. Live site and internal renders only;
+    development keeps the debug page, API paths and JSON clients keep JSON; no template, or one that fails to render
+    (logged), gives the built-in page. `ProdErrorRenderer::title()` / `message()` are public;
+    `AssetCollector::reprinting()` renders with nothing marked printed. Without `app/pages/_errors/` nothing changes.
+  - **Folio field rules may be objects:** `FieldType::rules()` may return any `ValidationRule`; `RecordValidator` and
+    `BlocksFieldType` merge rule lists with `Preflow\Folio\Field\FieldRules::merge()` (names once, objects once per
+    instance) instead of `array_unique()`, which cast them to strings (a non-Stringable rule answered 500).
+  - **Packages register field types and blocks (folio, core):** a package's `composer.json`
+    `extra.folio.field_types` / `extra.folio.blocks` (class names; `InstalledPackages` keeps them, cache format v2)
+    are registered like `config/folio.php`'s: built by the container, after the built-ins and before the app's
+    config (the app wins), with their field kinds. A listed class that is no field type stops the boot, naming the
+    package. `FieldTypeRegistry::whenRegistered()`: a type a provider registers after Folio booted gets its field
+    kinds too.
+  - **Config reference:** the starters' `config/app.php` declare `'hypermedia'` as a commented key, so
+    `docs:reference` lists `app.hypermedia`.
+  - **Starter sign-in polished:** see "Starter: a polished employer sign-in" (Medium Term). `DemoSeeder::EMPLOYER_EMAIL`
+    and `EMPLOYER_PASSWORD` are public; `EmployerAuthController` takes `#[Config('app.debug')]`.
+  - **Fix:** `Application::installedPackages()` could register the `composer` cache source twice (a `LogicException`)
+    when called more than once without a boot manifest.
+  - **Upgrading:** nothing to do for the six sites (checked, read only: smeyer.me, smart-stack.works, holz-objekte.org,
+    bggenius-preflow, languagecorner-preflow, preflow-website). Their `config/auth.php` use only `SessionGuard` (built
+    as before) and `NativePasswordHasher`; BG Genius's `config/ai.php` names `'claude'` (unchanged: switch + key), the
+    others have none (default `'claude'`, off); BG's one Folio field type returns no rules; BG's `app/Rules/` are
+    registered as before (now before the data layer, same factory); none has `app/pages/_errors/` or a package with
+    `extra.folio` field types or blocks. Check only, for other apps:
+    - `config/ai.php` with a `provider` that is not `claude`, `gemini`, `fake` or an `AiClientFactory` class (it threw
+      only when a request was made) now stops the boot.
+    - `Ai`'s constructor: the fifth argument (a closure building the client) still works; a sixth, `make:`, builds
+      factories. `Ai::enabled()` asks the provider's `available()` (built-ins: unchanged).
+    - A custom guard is no longer built during boot but on first use; a constructor that must run at boot (it
+      shouldn't) runs later. It now also receives `config:`; a constructor with a parameter named `config` gets the
+      entry instead of the container's value.
+    - Code that `instanceof`-checks the `PasswordHasherInterface` a SessionGuard holds sees a `LazyPasswordHasher`
+      (`inner()` gives the real one); the container's binding is the real one.
+    - An app with its own 404 middleware keeps it; it may drop it for `app/pages/_errors/404.<ext>`.
+    - A `config/folio.php` field type with the key of a package's type replaces it, as with built-ins.
+    - Constraints: core conflicts auth and view <0.66; view requires core ^0.66; folio requires ai and core ^0.66.
 - **Pluggable adapters (v0.65.0, released 2026-11-11):** a third-party template engine, hypermedia driver or storage driver is
   registered through config, no workaround. Found by the Extend guides of docs phase 3 (Task 5); plan
   `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 5b).

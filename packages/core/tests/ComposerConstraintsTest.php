@@ -7,6 +7,9 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.66: auth 0.66 (LazyGuard, LazyPasswordHasher: guards of the app's own classes are built on first use,
+ * the hasher is a container binding) and view 0.66 (ErrorPageRenderer, the app's error pages).
+ *
  * Since 0.65: data 0.65 (DataManager takes a closure for a class-named storage driver), htmx 0.65
  * (LazyHypermediaDriver; HypermediaDriver extends core's HypermediaProtocol, which HypermediaProtocols
  * holds) and view 0.65 (LazyTemplateEngine, TemplateEngineContext, NonceGenerator::adopt(), the
@@ -34,13 +37,13 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame([
-            'preflow/auth' => '<0.62',
+            'preflow/auth' => '<0.66',
             'preflow/components' => '<0.60',
             'preflow/data' => '<0.65',
             'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.46',
             'preflow/routing' => '<0.62',
-            'preflow/view' => '<0.65',
+            'preflow/view' => '<0.66',
             'preflow/twig' => '<0.60',
             'preflow/blade' => '<0.60',
         ], $composer['conflict'] ?? null);

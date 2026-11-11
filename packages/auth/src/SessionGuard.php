@@ -211,7 +211,8 @@ final class SessionGuard implements GuardInterface
         if ($this->dummyHash !== null) {
             return $this->dummyHash;
         }
-        $native = $this->hasher instanceof NativePasswordHasher;
+        // The application hands guards the container's hasher behind a LazyPasswordHasher (0.66).
+        $native = ($this->hasher instanceof LazyPasswordHasher ? $this->hasher->inner() : $this->hasher) instanceof NativePasswordHasher;
         if ($native) {
             foreach ([self::DUMMY_HASH, ...self::$dummies] as $hash) {
                 if (!$this->hasher->needsRehash($hash)) {

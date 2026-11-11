@@ -28,6 +28,7 @@ use Preflow\Folio\Http\FrontendController;
 use Preflow\Folio\Http\PreviewController;
 use Preflow\Folio\Http\UploadController;
 use Preflow\Folio\Field\FieldTypeRegistry;
+use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\Types\AssetFieldType;
 use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Field\Types\BooleanFieldType;
@@ -186,7 +187,8 @@ final class FolioServiceProvider extends ServiceProvider
             return BlockRegistry::fromArray($app->bootManifest()->remember('folio.blocks', fn (): array => BlockRegistry::discover(
                 $components,
                 $app->basePath('app/Blocks'),
-                array_values((array) ($folioCfg['blocks']['classes'] ?? [])),
+                // Installed packages' blocks (composer.json extra.folio.blocks), then config/folio.php's.
+                [...self::packageClasses($app, 'folio_blocks'), ...array_values((array) ($folioCfg['blocks']['classes'] ?? []))],
                 $this->cacheDir($app) . '/folio-blocks.cache',
                 useCache: !$app->config()->get('app.debug', false),
             )->toArray(), [$app->basePath('app/Blocks'), $app->basePath('app/Components')]));
@@ -617,8 +619,12 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->alias('integer', 'number');
             $registry->alias('float', 'number');
 
-            // App-registered field types (config/folio.php 'field_types'); registered
-            // last, so one with a built-in's key replaces it.
+            // Field types of installed packages (composer.json extra.folio.field_types), then the app's
+            // (config/folio.php 'field_types'): built by the container; a later one with a key already
+            // taken replaces it, so the app's win over the packages', and both over the built-ins.
+            foreach (self::packageClasses($c->get(Application::class), 'folio_field_types', FieldType::class) as $class) {
+                $registry->register($c->get($class));
+            }
             foreach ((array) ($folioConfig['field_types'] ?? []) as $class) {
                 $registry->register($c->get($class));
             }
@@ -2027,15 +2033,57 @@ final class FolioServiceProvider extends ServiceProvider
             return;
         }
         $kinds = $dm->fieldKinds();
-        foreach ($container->get(FieldTypeRegistry::class)->all() as $key => $type) {
+        $tell = static function (FieldType $type) use ($kinds): void {
+            $key = $type->key();
             if ($type instanceof \Preflow\Folio\Field\SearchableText) {
                 $kinds->text($key);
             }
             if ($type instanceof \Preflow\Folio\Field\HasColumnKind) {
                 $kinds->column($key, static fn (array $config): \Preflow\Data\Schema\ColumnKind => $type->columnKind($config));
             }
+        };
+        $registry = $container->get(FieldTypeRegistry::class);
+        foreach ($registry->all() as $type) {
+            $tell($type);
         }
+        // Types registered later (a package's provider booting after Folio) get the same treatment.
+        $registry->whenRegistered($tell);
         $kinds->relation('relation');
+    }
+
+    /**
+     * Classes installed packages list in composer.json extra.folio.<field_types|blocks> (read from
+     * vendor/composer/installed.json through the boot manifest). Installing the package is enough.
+     *
+     * @param 'folio_field_types'|'folio_blocks' $key
+     * @param class-string|null $mustBe the interface each class implements, or null
+     * @return list<class-string>
+     */
+    private static function packageClasses(Application $app, string $key, ?string $mustBe = null): array
+    {
+        $classes = [];
+        foreach ($app->installedPackages() as $package) {
+            if (!array_key_exists($key, $package)) {
+                continue;
+            }
+            $what = 'extra.folio.' . substr($key, 6);
+            $name = (string) ($package['name'] ?? '?');
+            if (!is_array($package[$key])) {
+                throw new \RuntimeException("Package {$name}: {$what} must be a list of class names.");
+            }
+            foreach ($package[$key] as $class) {
+                $class = is_string($class) ? ltrim($class, '\\') : '';
+                if ($class === '' || !class_exists($class)) {
+                    throw new \RuntimeException("Package {$name}: {$what} lists " . ($class !== '' ? "{$class}, which is not a class" : 'a value that is not a class name') . '.');
+                }
+                if ($mustBe !== null && !is_subclass_of($class, $mustBe)) {
+                    throw new \RuntimeException("Package {$name}: {$what} lists {$class}, which is not a {$mustBe}.");
+                }
+                $classes[] = $class;
+            }
+        }
+
+        return $classes;
     }
 
     /** The app's DataManager (core builds it from config/data.php), or null without one. */

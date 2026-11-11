@@ -543,6 +543,8 @@ return [
         'key' => 'Schlüssel vorhanden',
         'enabled' => 'Eingeschaltet',
         'key_missing' => 'KI ist in config/ai.php eingeschaltet, aber der Schlüssel des Anbieters fehlt in der Umgebung.',
+        'unavailable' => 'KI ist in config/ai.php eingeschaltet, aber der Anbieter meldet, dass er nicht verfügbar ist.',
+        'key_not_used' => 'Nicht verwendet',
         'switched_off' => 'Ein Schlüssel ist vorhanden, aber KI ist in config/ai.php ausgeschaltet („enabled“).',
         'test' => 'Verbindung testen',
         'test_help' => 'Sendet eine winzige Anfrage und zeigt Tokens und Kosten.',

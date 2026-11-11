@@ -194,6 +194,8 @@ final class AiSettingsController
             'provider' => $status->provider,
             'model' => $status->model,
             'key_present' => $status->keyPresent,
+            'uses_key' => $status->usesKey,
+            'available' => $status->available,
             'switched_on' => $this->ai->switchedOn(),
             'active' => $status->enabled,
             'test' => $test,

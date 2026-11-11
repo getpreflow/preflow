@@ -699,11 +699,31 @@ shipped types do (`number` is a number, `boolean` yes/no, `date` an ISO text, `s
 is stored as text.
 
 A field type's own rules (e.g. `select`'s allowed values) are enforced in addition to
-`validate`. To add or replace a type, list the classes in `config/folio.php`:
+`validate`. `rules()` returns rule names or `ValidationRule` objects; an object needn't be
+`Stringable` (since 0.66: Folio keeps each name once and each object once, without casting). To add
+or replace a type, list the classes in `config/folio.php`:
 
 ```php
 return ['field_types' => [App\Folio\ColorFieldType::class]];
 ```
+
+**From a package (since 0.66).** A package adds its field types and blocks by being installed:
+list them in its `composer.json`, and they are registered like `config/folio.php`'s (built by the
+container; `SearchableText`, `HasColumnKind` and the field kinds apply):
+
+```json
+"extra": {
+    "folio": {
+        "field_types": ["Acme\\Links\\LinkFieldType"],
+        "blocks": ["Acme\\Links\\Cta"]
+    }
+}
+```
+
+The order is built-ins, then packages' types, then `config/folio.php`'s: a later type with a key
+already taken replaces the earlier one, so the app's config wins. A listed class that is no field
+type (or no class) stops the boot naming the package. A type a provider registers itself later
+(`$container->get(FieldTypeRegistry::class)->register(…)` in `boot()`) gets its field kinds too.
 
 A field type's `assets()` names the `.css` and `.js` files its editor needs; Folio loads
 them only on forms that render the field, from `{prefix}/_assets/{file}`. A package
@@ -741,7 +761,8 @@ final class Hero extends BlockComponent
 - **Data-only blocks** are plain classes with the attributes, in `app/Blocks/` under the
   `App\Blocks\…` namespace (or listed in `config/folio.php`).
   They have no template; the parent's template iterates them (`{% for link in links %}`).
-- **Discovery:** blocks are found in `app/Components`, `app/Blocks`, and in
+- **Discovery:** blocks are found in `app/Components`, `app/Blocks`, in installed packages'
+  `composer.json` `extra.folio.blocks` (since 0.66, see "From a package" above), and in
   `config/folio.php` `'blocks' => ['classes' => [...], 'max_depth' => 4]`. Duplicate keys
   fail at boot. When debug is off the registry is cached in `storage/cache`; the cache
   is keyed by the block classes and their files' modification times, so it rebuilds by
@@ -2195,26 +2216,26 @@ fingerprints, and both screens are reviewed in full anyway.
 
 #### Trying it without a key
 
-Bind an `Ai` whose client is `Preflow\Ai\Testing\FakeAiClient` in a provider listed after
-Folio, on your machine only. This one answers every text with "[de] " and the text:
+Name a provider of your own that returns `Preflow\Ai\Testing\FakeAiClient`, on your machine only
+(`config/ai.php` `'provider' => App\Ai\FakeTranslations::class` with `'enabled' => true`; no key
+needed). This one answers every text with "[de] " and the text:
 
 ```php
-// app/FakeAiProvider.php (local only; list it after FolioServiceProvider in config/providers.php)
-final class FakeAiProvider extends \Preflow\Core\Container\ServiceProvider
+// app/Ai/FakeTranslations.php (local only)
+final class FakeTranslations implements \Preflow\Ai\AiClientFactory
 {
-    public function register(\Preflow\Core\Container\Container $container): void
+    public function available(array $options): bool
     {
-        $container->singleton(\Preflow\Ai\Ai::class, static fn ($c) => new \Preflow\Ai\Ai(
-            ['enabled' => true, 'provider' => 'claude', 'models' => ['claude' => 'claude-sonnet-5-5'], 'keys' => ['claude' => 'FAKE']],
-            $c->get(\Preflow\Ai\Usage\UsageLog::class),
-            $c->get(\Preflow\Ai\Usage\Pricing::class),
-            static fn (): string => 'fake', // the "key"
-            static fn () => new \Preflow\Ai\Testing\FakeAiClient([static function (\Preflow\Ai\AiRequest $r) {
-                $items = json_decode(substr($r->prompt, (int) strrpos($r->prompt, "\n")), true); // the texts: the prompt's last line
+        return true;
+    }
 
-                return \Preflow\Ai\Testing\FakeAiClient::json(array_map(static fn (array $i) => ['n' => $i['n'], 'text' => '[de] ' . $i['text']], $items));
-            }], 'claude-sonnet-5-5'),
-        ));
+    public function create(array $options): \Preflow\Ai\AiClient
+    {
+        return new \Preflow\Ai\Testing\FakeAiClient([static function (\Preflow\Ai\AiRequest $r) {
+            $items = json_decode(substr($r->prompt, (int) strrpos($r->prompt, "\n")), true); // the texts: the prompt's last line
+
+            return \Preflow\Ai\Testing\FakeAiClient::json(array_map(static fn (array $i) => ['n' => $i['n'], 'text' => '[de] ' . $i['text']], $items));
+        }]);
     }
 }
 ```

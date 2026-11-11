@@ -146,14 +146,14 @@ final class AiTest extends TestCase
         $this->assertSame(0, $log->entries[0]->usage->input);
     }
 
-    public function test_the_default_client_factory_marks_the_key_sensitive(): void
+    public function test_the_provider_factories_mark_the_options_with_the_key_sensitive(): void
     {
-        $ai = new Ai([], $this->log(), Pricing::withOverrides([]));
-        $factory = (new \ReflectionProperty(Ai::class, 'clientFactory'))->getValue($ai);
-
-        $key = (new \ReflectionFunction($factory))->getParameters()[2];
-
-        $this->assertSame('key', $key->getName());
-        $this->assertNotEmpty($key->getAttributes(\SensitiveParameter::class), 'kept out of stack traces');
+        foreach ([\Preflow\Ai\AiClientFactory::class, ...array_values(Ai::PROVIDERS)] as $class) {
+            foreach (['available', 'create'] as $method) {
+                $options = (new \ReflectionMethod($class, $method))->getParameters()[0];
+                $this->assertSame('options', $options->getName());
+                $this->assertNotEmpty($options->getAttributes(\SensitiveParameter::class), "{$class}::{$method}() keeps the key out of stack traces");
+            }
+        }
     }
 }

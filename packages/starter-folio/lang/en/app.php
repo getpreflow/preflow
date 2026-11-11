@@ -63,6 +63,9 @@ return [
     ],
     'employer' => [
         'sign_in' => 'Employer sign in',
+        'sign_in_lead' => 'Post and manage your company\'s jobs.',
+        'demo_title' => 'Demo account',
+        'demo_hint' => 'The demo seed made this account. It exists only while developing; sign in with:',
         'email' => 'Email',
         'password' => 'Password',
         'sign_in_button' => 'Sign in',

@@ -18,8 +18,8 @@ use Preflow\Data\DataManager;
  */
 final class DemoSeeder
 {
-    private const string EMPLOYER_EMAIL = 'employer@example.com';
-    private const string EMPLOYER_PASSWORD = 'demo-employer';
+    public const string EMPLOYER_EMAIL = 'employer@example.com';
+    public const string EMPLOYER_PASSWORD = 'demo-employer';
 
     public function __construct(private readonly Config $config) {}
 

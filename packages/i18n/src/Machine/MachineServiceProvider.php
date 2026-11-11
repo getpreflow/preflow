@@ -13,7 +13,8 @@ use Preflow\Core\Container\ServiceProvider;
 
 /**
  * Binds machine translation from config/ai.php. Everything resolves with AI off; only using the
- * translator throws AiUnavailable, so admin screens can depend on it unconditionally.
+ * translator throws AiUnavailable, so admin screens can depend on it unconditionally. The
+ * translator is AiTranslator unless `translation.translator` names a class of the app's own.
  */
 final class MachineServiceProvider extends ServiceProvider
 {
@@ -30,11 +31,16 @@ final class MachineServiceProvider extends ServiceProvider
             self::config($c),
             $c->get(AiSettingsStore::class),
         ));
-        $container->singleton(MachineTranslator::class, static fn (Container $c): MachineTranslator => new AiTranslator(
-            $c->get(Ai::class),
-            $c->get(TranslationSettings::class),
-            self::batchChars($c),
-        ));
+        // config/ai.php translation.translator: the class of a MachineTranslator of the app's own, built
+        // by the container (so it may take services); without it, AiTranslator through the AI provider.
+        $container->singleton(MachineTranslator::class, static function (Container $c): MachineTranslator {
+            $class = self::translatorClass($c);
+            if ($class === null) {
+                return new AiTranslator($c->get(Ai::class), $c->get(TranslationSettings::class), self::batchChars($c));
+            }
+
+            return $c->make($class, ['batchChars' => self::batchChars($c)]);
+        });
         $container->singleton(Estimator::class, static fn (Container $c): Estimator => new Estimator(
             $c->get(Ai::class),
             self::batchChars($c),
@@ -56,6 +62,33 @@ final class MachineServiceProvider extends ServiceProvider
             $c->get(Ai::class),
             self::storage($c) . '/worker.json',
         ));
+    }
+
+    /** A translator class config/ai.php can't mean stops the boot. */
+    public function boot(Container $container): void
+    {
+        self::translatorClass($container);
+    }
+
+    /**
+     * config/ai.php translation.translator, or null for the default AiTranslator.
+     *
+     * @return class-string<MachineTranslator>|null
+     * @throws \InvalidArgumentException when it names no MachineTranslator class
+     */
+    private static function translatorClass(Container $c): ?string
+    {
+        $translation = self::config($c)['translation'] ?? [];
+        $class = is_array($translation) ? ($translation['translator'] ?? null) : null;
+        if ($class === null || $class === '') {
+            return null;
+        }
+        $class = is_string($class) ? ltrim($class, '\\') : '';
+        if ($class === '' || !class_exists($class) || !is_subclass_of($class, MachineTranslator::class)) {
+            throw new \InvalidArgumentException('config/ai.php translation.translator: ' . ($class !== '' ? $class : 'the value') . ' is not the class of a ' . MachineTranslator::class . '.');
+        }
+
+        return $class;
     }
 
     /** Same location rule as the AI core: relative to the app, default storage/ai. */

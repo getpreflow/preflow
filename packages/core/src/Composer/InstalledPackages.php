@@ -15,13 +15,18 @@ namespace Preflow\Core\Composer;
  *   install-path  string|null
  *   translations  mixed (extra.preflow.translations, only when declared)
  *   extension     mixed (extra.folio.extension, only when declared)
+ *   folio_field_types  mixed (extra.folio.field_types, only when declared; since 0.66)
+ *   folio_blocks       mixed (extra.folio.blocks, only when declared; since 0.66)
  */
 final class InstalledPackages
 {
+    /** Part of the cache key: a cache written by an older reader (fewer keys kept) is a miss. */
+    private const FORMAT = 2;
+
     /** @var array<string, list<array<string, mixed>>> */
     private static array $memo = [];
 
-    /** @return list<array{name: string, install-path: string|null, translations?: mixed, extension?: mixed}> */
+    /** @return list<array{name: string, install-path: string|null, translations?: mixed, extension?: mixed, folio_field_types?: mixed, folio_blocks?: mixed}> */
     public static function read(string $installedJson, ?string $cacheDir = null): array
     {
         clearstatcache(true, $installedJson);
@@ -30,7 +35,7 @@ final class InstalledPackages
         if ($mtime === false || $size === false) {
             return [];
         }
-        $key = $installedJson . '|' . $mtime . '|' . $size;
+        $key = $installedJson . '|' . $mtime . '|' . $size . '|v' . self::FORMAT;
         if (isset(self::$memo[$key])) {
             return self::$memo[$key];
         }
@@ -76,6 +81,12 @@ final class InstalledPackages
             }
             if (isset($package['extra']['folio']['extension'])) {
                 $slim['extension'] = $package['extra']['folio']['extension'];
+            }
+            if (isset($package['extra']['folio']['field_types'])) {
+                $slim['folio_field_types'] = $package['extra']['folio']['field_types'];
+            }
+            if (isset($package['extra']['folio']['blocks'])) {
+                $slim['folio_blocks'] = $package['extra']['folio']['blocks'];
             }
             $packages[] = $slim;
         }

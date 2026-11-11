@@ -107,6 +107,29 @@ final class EmployerTest extends TestCase
         $this->get('/employer')->assertRedirect('/employer/login?next=%2Femployer');
     }
 
+    public function test_sign_in_page_is_a_labelled_card_with_the_demo_hint_while_developing(): void
+    {
+        $page = $this->get('/employer/login');
+
+        $page->assertOk();
+        $page->assertSee('class="login-card"');
+        $page->assertSee('<label for=');
+        $page->assertSee('autocomplete="current-password"');
+        $page->assertSee('class="login-hint"');
+        $page->assertSee('<code>employer@example.com</code>');
+        $page->assertSee('<code>demo-employer</code>');
+    }
+
+    public function test_no_demo_hint_once_the_demo_account_is_gone(): void
+    {
+        $data = $this->container()->get(DataManager::class);
+        $user = $data->query(User::class)->where('email', 'employer@example.com')->first();
+        $this->assertInstanceOf(User::class, $user);
+        $data->delete(User::class, (string) $user->uuid);
+
+        $this->get('/employer/login')->assertNotSee('class="login-hint"');
+    }
+
     public function test_wrong_password_shows_error(): void
     {
         $cookies = $this->cookiesOf($this->send('GET', '/employer/login'));

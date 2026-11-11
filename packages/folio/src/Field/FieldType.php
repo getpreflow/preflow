@@ -39,7 +39,8 @@ interface FieldType
 
     /**
      * Validation rules this field type contributes, given its config: rule strings or
-     * ValidationRule instances (the number field wraps its checks in WhenFilled).
+     * ValidationRule instances (the number field wraps its checks in WhenFilled). A rule object
+     * needn't be Stringable: Folio merges the lists by name and by instance (FieldRules, since 0.66).
      *
      * @param array<string, mixed> $config
      * @return list<string|\Preflow\Validation\ValidationRule>

@@ -85,4 +85,44 @@ final class MachineServiceProviderTest extends TestCase
         $c->get(JobStore::class)->save($job);
         $this->assertFileExists($this->dir . '/var/ai/jobs/j1.json');
     }
+
+    public function test_the_translator_is_the_configured_class_built_by_the_container(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['translation' => ['translator' => \\" . UpperTranslator::class . "::class]];\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $c = $app->container();
+
+        $translator = $c->get(MachineTranslator::class);
+        $this->assertInstanceOf(UpperTranslator::class, $translator);
+        $this->assertSame('HI', $translator->translate('Hi', 'de'));
+        $this->assertSame($translator->settings, $c->get(TranslationSettings::class), 'its constructor got a service');
+        $this->assertSame($translator, (new \ReflectionProperty(JobRunner::class, 'translator'))->getValue($c->get(JobRunner::class)), 'the job runner translates with it');
+    }
+
+    public function test_a_translator_class_that_is_no_machine_translator_stops_the_boot(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['translation' => ['translator' => \\stdClass::class]];\n");
+        $app = Application::create($this->dir);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('translation.translator');
+        $app->boot();
+    }
+}
+
+/** A translator of an app's own (a glossary service, a translation API): config/ai.php translation.translator. */
+final class UpperTranslator implements MachineTranslator
+{
+    public function __construct(public readonly TranslationSettings $settings) {}
+
+    public function translate(string $text, string $to, ?\Preflow\Ai\Tuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
+    {
+        return strtoupper($text);
+    }
+
+    public function translateUnits(array $units, ?string $note = null): array
+    {
+        return [];
+    }
 }

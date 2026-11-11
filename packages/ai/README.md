@@ -2,7 +2,8 @@
 
 A small, provider-neutral client for text and JSON completions. Callers build an `AiRequest`
 and get an `AiResponse` back from an `AiClient`; Claude and Gemini providers implement the
-interface, and `Preflow\Ai\Testing\FakeAiClient` stands in for them in tests.
+interface, `fake` answers without a key, and a provider of your own plugs in through config
+(an `AiClientFactory`).
 
 Nothing in this package knows about translation. It is the general AI connection; the machine
 translator in `preflow/i18n` and the AI screens in Folio are users of it. It does not depend on
@@ -25,19 +26,20 @@ return [
 
 ## Setup
 
-AI is off until you turn it on in two places: the switch in `config/ai.php` and the provider's
-key in the environment. Both are needed. Without either, `Ai::enabled()` is false, nothing is
-called, and nothing throws on render. Listing the provider without a `config/ai.php` is
-harmless.
+AI is off until you turn it on: the switch in `config/ai.php`, and a provider that can run. The
+built-ins need their key in the environment; `fake` and a provider of your own may need none (the
+provider says, see below). Without both, `Ai::enabled()` is false, nothing is called, and nothing
+throws on render. Listing the provider without a `config/ai.php` is harmless.
 
 `config/ai.php`:
 
 ```php
 return [
     'enabled'  => true,
-    'provider' => 'claude',                       // 'claude' or 'gemini'
+    'provider' => 'claude',                       // 'claude', 'gemini', 'fake' or an AiClientFactory class
     'models'   => ['claude' => 'claude-sonnet-5-5', 'gemini' => 'gemini-2.5-flash'],
     'keys'     => ['claude' => 'ANTHROPIC_API_KEY', 'gemini' => 'GEMINI_API_KEY'],
+    'options'  => [],                             // more settings per provider, by its name or class
     'pricing'  => [],                             // 'model' => [input, output] USD per million tokens
     'storage'  => 'storage/ai',
     'tuning'   => [],                             // instructions for the translator (preflow/i18n)
@@ -59,9 +61,12 @@ GEMINI_API_KEY=...
 ```
 
 - `enabled`: the master switch. Default `false`.
-- `provider`: which one is used. `models` has one model per provider, `keys` the name of the
-  environment variable that holds each provider's key. `models` has no fallback: without an entry
-  for the chosen provider every request goes out without a model and fails (`ai:check` too).
+- `provider`: which one is used: `'claude'`, `'gemini'`, `'fake'` or the class of a
+  `Preflow\Ai\AiClientFactory`. Anything else stops the boot with a message naming these forms.
+  `models` has one model per provider, `keys` the name of the environment variable that holds each
+  provider's key, and `options` more settings per provider; all three are keyed by the provider's
+  name or class. `models` has no fallback for the built-ins: without an entry for the chosen
+  provider every request goes out without a model and fails (`ai:check` too).
 - Keys come from the environment only. They are never read from `config/ai.php`, never stored,
   logged or rendered. `Ai::status()` and the admin screens say only "key present: yes/no".
 - `storage`: where runtime files go, relative to the app root (or absolute). It holds
@@ -89,6 +94,49 @@ translation: Claude gets effort `low` (`output_config.effort`; current Claude mo
 
 Claude requests mark the tuning (the stable system part) for prompt caching, so the later
 requests of a batch read it from the cache at a fraction of the price.
+
+### A provider of your own
+
+A local model server, another vendor, a proxy: write an `AiClient` (see Concepts) and a factory
+that builds it, and name the factory in `config/ai.php`:
+
+```php
+'provider' => App\Ai\LocalModels::class,
+'models'   => [App\Ai\LocalModels::class => 'llama-3.1-8b'],
+'options'  => [App\Ai\LocalModels::class => ['url' => 'http://127.0.0.1:11434/v1']],
+// 'keys'  => [App\Ai\LocalModels::class => 'LOCAL_AI_KEY'],   // only if it needs one
+```
+
+```php
+final class LocalModels implements Preflow\Ai\AiClientFactory
+{
+    public function __construct(private readonly Psr\Http\Client\ClientInterface $http) {}
+
+    public function available(#[\SensitiveParameter] array $options): bool
+    {
+        return ($options['url'] ?? '') !== '';      // no key needed: the server says whether it runs
+    }
+
+    public function create(#[\SensitiveParameter] array $options): Preflow\Ai\AiClient
+    {
+        return new OpenAiCompatibleClient($this->http, $options['url'], $options['model'], $options['key']);
+    }
+}
+```
+
+- The container builds the factory on first use, after every service provider registered, so its
+  constructor may take services and `#[Config]` values.
+- `$options` is the provider's `options` entry plus `model` (its `models` entry, `''` when none) and
+  `key` (the value of the variable its `keys` entry names; `null` when none). Never put the key in
+  an exception message.
+- `available()` decides whether AI is on (with the switch). The built-ins answer "the key is
+  present"; `Ai::status()` reports `available`, `keyPresent` and `usesKey` (whether a key variable
+  is configured), never the key.
+- `create()` is called once; throw `AiUnavailable` when the provider can't be used after all.
+- Everything that uses `Ai` works with it: the usage log (the client's model and provider names
+  are logged; a model the price table doesn't know has an unknown cost, never 0, so add it to
+  `pricing` if you want a cost), `ai:check`, `ai:usage`, the machine translator of `preflow/i18n`,
+  and Folio's Translate and Settings → AI.
 
 ## Concepts
 
@@ -190,27 +238,22 @@ model.
 
 ### Trying it without a key
 
-To click through the AI screens locally without a provider, bind an `Ai` whose client is a
-`FakeAiClient`. The constructor takes the config, the usage log, the pricing, a function that
-returns the "key" and a function that builds the client. Put this in a provider listed after the
-Folio and AI providers, **on your machine only**:
+`'provider' => 'fake'` runs everything AI without a key and without cost, **on your machine and in
+tests only** (it gives every request the same answer):
 
 ```php
-final class FakeAiProvider extends Preflow\Core\Container\ServiceProvider
-{
-    public function register(Preflow\Core\Container\Container $container): void
-    {
-        $container->singleton(Preflow\Ai\Ai::class, static fn ($c) => new Preflow\Ai\Ai(
-            ['enabled' => true, 'provider' => 'claude', 'models' => ['claude' => 'claude-sonnet-5-5'], 'keys' => ['claude' => 'FAKE']],
-            $c->get(Preflow\Ai\Usage\UsageLog::class),
-            $c->get(Preflow\Ai\Usage\Pricing::class),
-            static fn (): string => 'fake',
-            static fn () => new Preflow\Ai\Testing\FakeAiClient([Preflow\Ai\Testing\FakeAiClient::json(['ok' => true])], 'claude-sonnet-5-5'),
-        ));
-    }
-}
+'enabled'  => true,
+'provider' => 'fake',
+'options'  => ['fake' => ['answer' => ['summary' => 'A designer for a small studio.'], 'usage' => [310, 42]]],
 ```
 
-For translation, the client's answer has to be the numbered items back in the shape the translator
-asks for; `packages/folio/README.md` ("Trying it without a key") has a fake that answers every
-text with `[de] ` and the text.
+- `answer`: an array is sent as JSON, a string as text. Default `{"ok":true}`, which `ai:check`
+  accepts.
+- `usage`: the tokens each call reports, `[input, output]` (default `[10, 10]`).
+- The model is `models.fake`, default `fake-model`; the price table doesn't know it, so costs show
+  as unknown.
+
+For a script (answers in order, an answer per request, failures), write a factory of your own
+that returns a `FakeAiClient` and name it as the provider. For translation, the client's answer has
+to be the numbered items back in the shape the translator asks for; `packages/folio/README.md`
+("Trying it without a key") has such a script.

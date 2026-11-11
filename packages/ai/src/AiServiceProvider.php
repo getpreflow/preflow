@@ -16,7 +16,8 @@ use Preflow\I18n\Translator;
 
 /**
  * Binds the AI service, usage log, pricing and settings store from config/ai.php. A missing file
- * means AI is off (enabled defaults to false), so listing this provider is harmless. The
+ * means AI is off (enabled defaults to false), so listing this provider is harmless. An unknown
+ * `provider` stops the boot. The
  * ai:check and ai:usage commands are listed in composer.json (extra.preflow.commands).
  */
 final class AiServiceProvider extends ServiceProvider
@@ -28,15 +29,22 @@ final class AiServiceProvider extends ServiceProvider
         ));
         $container->singleton(UsageLog::class, static fn (Container $c): UsageLog => new FileUsageLog(self::storage($c)));
         $container->singleton(AiSettingsStore::class, static fn (Container $c): AiSettingsStore => new FileAiSettingsStore(self::storage($c)));
+        // The provider's factory (a built-in or config/ai.php's class) is built by the container on first
+        // use, after every provider ran, so its constructor may take their services and #[Config] values.
         $container->singleton(Ai::class, static fn (Container $c): Ai => new Ai(
             self::config($c),
             $c->get(UsageLog::class),
             $c->get(Pricing::class),
+            make: static fn (string $class): object => $c->get($class),
         ));
     }
 
     public function boot(Container $container): void
     {
+        // A provider name config/ai.php can't mean stops the boot, naming the accepted forms.
+        $provider = self::config($container)['provider'] ?? 'claude';
+        Ai::factoryClass(is_string($provider) && $provider !== '' ? $provider : 'claude');
+
         // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer metadata doesn't list the package.
         if ($container->has(Translator::class)) {
             $container->get(Translator::class)->addDefaultsIfMissing('ai', dirname(__DIR__) . '/lang', 'admin');
