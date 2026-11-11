@@ -223,6 +223,12 @@ class QueryCompiler
             };
         }
         $bindings[] = $value;
+        // LIKE matches case-insensitively, with the dialect's operator for it.
+        $operator = match ($operator) {
+            'LIKE' => $this->dialect->likeOperator(),
+            'NOT LIKE' => 'NOT ' . $this->dialect->likeOperator(),
+            default => $operator,
+        };
 
         return "{$column} {$operator} ?";
     }
@@ -286,7 +292,7 @@ class QueryCompiler
         switch ($condition['operator']) {
             case 'CONTAINS':
                 $bindings[] = '%' . strtr((string) $value, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
-                return "{$column} LIKE ? ESCAPE '!'";
+                return "{$column} {$this->dialect->likeOperator()} ? ESCAPE '!'";
             case 'IN':
                 $ids = array_values((array) $value);
                 if ($ids === []) {
@@ -323,7 +329,7 @@ class QueryCompiler
 
         $parts = [];
         foreach ($fields as $field) {
-            $parts[] = $this->column($field, $query) . ' LIKE ?';
+            $parts[] = $this->column($field, $query) . ' ' . $this->dialect->likeOperator() . ' ?';
             $bindings[] = '%' . $term . '%';
         }
 
@@ -341,8 +347,7 @@ class QueryCompiler
         $parts = [];
         foreach ($orders as $order) {
             $column = $this->column($order['field'], $query);
-            // "+ 0" makes stored text numeric in SQLite and MySQL alike.
-            $parts[] = (($order['numeric'] ?? false) ? "({$column} + 0)" : $column) . " {$order['direction']->value}";
+            $parts[] = (($order['numeric'] ?? false) ? $this->dialect->numericOrder($column) : $column) . " {$order['direction']->value}";
         }
 
         return 'ORDER BY ' . implode(', ', $parts);

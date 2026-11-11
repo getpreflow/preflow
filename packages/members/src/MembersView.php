@@ -34,6 +34,7 @@ final class MembersView
         private readonly Translator $translator,
         private readonly ?PageLocale $pageLocale = null,
         private readonly ?OldInput $oldInput = null,
+        private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
     ) {}
 
     /**
@@ -99,7 +100,21 @@ final class MembersView
         return $vars;
     }
 
-    /** For an htmx request: the browser navigates to $location; there is nothing to swap in. */
+    /**
+     * Send the browser to $location: a hypermedia client's request (htmx, the app's driver) is
+     * told to navigate (there is nothing to swap in), any other request gets a 303.
+     */
+    public function navigate(\Psr\Http\Message\ServerRequestInterface $request, string $location): ResponseInterface
+    {
+        return $this->hypermedia?->navigate($request, new Response(200, ['Cache-Control' => self::CACHE]), $location)
+            ?? $this->redirect($location);
+    }
+
+    /**
+     * For an htmx request: the browser navigates to $location; there is nothing to swap in.
+     *
+     * @deprecated htmx only; navigate($request, $location) asks the client that sent the request.
+     */
     public function hxRedirect(string $location): ResponseInterface
     {
         return new Response(200, ['HX-Redirect' => $location, 'Cache-Control' => self::CACHE]);

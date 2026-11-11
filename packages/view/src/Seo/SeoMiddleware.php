@@ -60,6 +60,7 @@ final class SeoMiddleware implements MiddlewareInterface
         private readonly \Closure $now,
         private readonly ?string $sessionCookie = null,
         ?\Closure $sentHeaders = null,
+        private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_list();
     }
@@ -244,7 +245,7 @@ final class SeoMiddleware implements MiddlewareInterface
 
         // The browser keeps its cached page and the policy that came with it: the
         // CSP the inner middleware added carries this request's nonce, not that page's.
-        return SecurityHeadersMiddleware::withoutNonce($response)
+        return SecurityHeadersMiddleware::withoutNonce($response, $this->hypermedia?->nonceHeaders() ?? [])
             ->withStatus(304)
             ->withoutHeader('Content-Length')
             ->withBody(Stream::create(''));

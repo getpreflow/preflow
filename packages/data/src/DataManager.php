@@ -20,7 +20,9 @@ use Preflow\Validation\ValidatorFactory;
 final class DataManager
 {
     /**
-     * @param array<string, StorageDriver> $drivers Named drivers (e.g., 'sqlite' => SqliteDriver)
+     * @param array<string, StorageDriver|\Closure(): StorageDriver> $drivers Named drivers (e.g.,
+     *        'sqlite' => SqliteDriver). A closure is called on the first use of its name and its
+     *        driver kept; names given the same closure (aliases) share that driver.
      */
     public function __construct(
         private readonly array $drivers,
@@ -1555,10 +1557,21 @@ final class DataManager
         return $this->resolveDriver($name);
     }
 
+    /** @var array<int, StorageDriver> drivers built from closures, by the closure's object id */
+    private array $built = [];
+
     private function resolveDriver(string $name): StorageDriver
     {
         if (isset($this->drivers[$name])) {
-            return $this->drivers[$name];
+            $driver = $this->drivers[$name];
+            if ($driver instanceof \Closure) {
+                $driver = $this->built[spl_object_id($driver)] ??= $driver();
+                if (!$driver instanceof StorageDriver) {
+                    throw new \RuntimeException("Storage driver [{$name}] is no StorageDriver.");
+                }
+            }
+
+            return $driver;
         }
 
         throw new \RuntimeException("Storage driver [{$name}] is not configured (config/data.php drivers).");

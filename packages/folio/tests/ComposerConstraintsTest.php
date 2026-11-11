@@ -23,6 +23,7 @@ use PHPUnit\Framework\TestCase;
  * interfaces Folio implements), media 0.50 (MediaLibrary::shareImage() for share cards; since 0.43 the bin: findBinned(), binned(), restoreFromBin(),
  * AssetUsageEntry::$blocksDelete; AssetCleanup for the "Unused only" filter; since 0.36 box presets, edits and
  * writeEdited, the asset classes Folio's library and field build on),
+ * htmx 0.65 (HtmxDriver is a core HypermediaProtocol: Folio adds its own htmx to HypermediaProtocols),
  * view 0.54 (the SEO audit's AuditReport, AuditRegistry::setTargets() and Target, which Settings → SEO audit
  * and AuditTargets use; since 0.50 PublicPages, PublicPage, SeoSite, SeoContext, PageMeta, the SEO head tags), validation 0.52 (the slug rule; since 0.46 the step rule, since 0.37 Message, ValidatorFactory::useTranslator()).
  * preflow/members is only suggested (Folio carries its admin when it is installed); a members
@@ -37,7 +38,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.61', 'preflow/data' => '<0.61', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.54'],
+            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.61', 'preflow/data' => '<0.61', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.54'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.

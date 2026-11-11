@@ -603,6 +603,7 @@ final class AiTranslateController
     private function progress(ServerRequestInterface $request, Job $job, ?string $error = null, int $status = 200): ResponseInterface
     {
         $view = $this->progressView($request, $job, $error);
+        // Folio's own htmx (@folio/htmx.js, not the app's driver) polls the progress partial.
         if ($request->getHeaderLine('HX-Request') !== 'true') {
             return $this->page($request, $job->collection, ['progress' => $view], $status);
         }

@@ -102,6 +102,7 @@ final class AdminController
 
         // The review section refreshing itself while a job is queued or running: the section alone,
         // without counting every type's records again each time.
+        // Folio's own htmx (@folio/htmx.js, not the app's driver) polls the review partial.
         if ($request->getHeaderLine('HX-Request') === 'true' && ($request->getQueryParams()['review'] ?? '') === '1') {
             $review = $this->reviewSection();
 

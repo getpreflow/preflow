@@ -237,9 +237,34 @@ Page templates rendered through the Component kernel receive a `request` variabl
 ```twig
 {{ request.path }}       {# /blog/hello-world #}
 {{ request.method }}     {# GET #}
-{{ request.isHtmx }}     {# true when HX-Request header is present #}
+{{ request.isFragment }} {# a hypermedia client (the app's driver) asked for a fragment #}
+{{ request.isHtmx }}     {# a client sent it at all, history restores too (older name, any driver) #}
 {{ request.query.page }} {# query string parameter #}
 ```
+
+### Hypermedia clients (`HypermediaProtocol`, 0.65)
+
+Core never reads a client library's headers itself. `Preflow\Core\Http\Hypermedia\HypermediaProtocol`
+says what core needs to know about a client (htmx, Datastar…), and `HypermediaProtocols` (bound in
+the container, and the request attribute `HypermediaProtocols::class` on every request `handle()`
+passes on) holds the app's: the app's hypermedia driver first (`config/app.php` `hypermedia`,
+htmx by default; `Preflow\Htmx\HypermediaDriver` extends the interface), then those packages add
+for their own screens (Folio's admin ships htmx). `for($request)` finds the client that sent a
+request.
+
+| Method | Used by |
+|---|---|
+| `isFragmentRequest($request)` | AuthMiddleware, the expired-session answer, the page cache, GEO, `request.isHtmx` |
+| `isHistoryRestore($request)` | the page cache (a restore is served the full page, never stored), `request.isFragment` |
+| `fragmentTarget($request)` | the component endpoint (a fragment without the wrapper) |
+| `varyHeaders()` | the page cache key and the `Vary` names a stored response may use |
+| `navigate($response, ?$url)` | AuthMiddleware (to the login), the expired-session answer (reload), `MembersView::navigate()` |
+| `announceNonce($response, $nonce)`, `nonceHeaders()` | SecurityHeadersMiddleware (htmx: `HX-Nonce`); the page cache never stores those headers, a 304 drops them |
+| `pageNonce($request)` | `handle()`: a client that sends its page's CSP nonce back is answered with it (`NonceGenerator::adopt()`), so the scripts and styles the response puts into the page pass the page's policy |
+
+With htmx (every built-in path) the behaviour is what it was. An app on another driver gets its
+driver's answers everywhere; a stray `HX-Request` header means nothing to it (unless a package
+added htmx, as Folio does for its admin).
 
 ### config/middleware.php
 
@@ -534,7 +559,7 @@ return [
     'rebuild_budget' => 2.0,         // seconds of rebuilding after a response
     'cache_query' => true,           // cache pages with a query string (search, filters)
     'ignore_query' => ['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'],
-    'vary_headers' => ['HX-Request', 'HX-Target'],
+    'vary_headers' => [],            // besides the hypermedia clients' own (htmx: HX-Request, HX-Target)
     'signed_in_cookies' => [],       // added to the auth marker and the remember cookies
     'hosts' => [],                   // hosts cached besides the host of app.url
     'max_query_variants' => 50,      // pages with a query kept per URL path, oldest evicted first
@@ -647,10 +672,11 @@ return [
   with its sign-in, admin and component paths.
 - **The key** is the URL as the visitor asked for it (the locale prefix included), the locale
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
-  normalised query, the `vary_headers` values, and a forwarded scheme and host
+  normalised query, the values of the hypermedia clients' `varyHeaders()` and the `vary_headers`, and a forwarded scheme and host
   (`X-Forwarded-Proto`, `X-Forwarded-Host`), so http and https never share a copy.
-- **htmx headers.** Only the `vary_headers` are in the key: `HX-Request` and `HX-Target` by
-  default. A fragment handler that answers differently by `HX-Trigger`, `HX-Trigger-Name`,
+- **htmx headers.** Only the clients' `varyHeaders()` (htmx: `HX-Request`, `HX-Target`) and the
+  `vary_headers` are in the key (since 0.65 `vary_headers` lists only headers beyond the clients';
+  a list that repeats `HX-Request`/`HX-Target` keeps working). A fragment handler that answers differently by `HX-Trigger`, `HX-Trigger-Name`,
   `HX-Boosted`, `HX-Current-URL` or a site header must add it to `vary_headers` (or send
   `Vary` for it, which keeps the response from being stored), or the fragments of one target
   overwrite each other. A history restore (`HX-History-Restore-Request`) is served the full
@@ -691,7 +717,7 @@ return [
   never reach a stored page, and refuses a page rendered with working copies anyway
   (`refused:working-copy`, a share preview).
 - **Stored headers** are the response's own, without `Set-Cookie`, the security headers
-  (`Content-Security-Policy`, `HX-Nonce`, `Strict-Transport-Security`, which are added fresh to
+  (`Content-Security-Policy`, the clients' `nonceHeaders()` such as `HX-Nonce`, `Strict-Transport-Security`, which are added fresh to
   every hit) and `Date`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Keep-Alive`.
 - **Per-request values.** The CSP nonce and the CSRF token are stored as signed placeholders
   and filled in on each hit, so every visitor gets their own (and a form from a hit posts).

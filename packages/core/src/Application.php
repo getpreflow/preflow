@@ -303,6 +303,8 @@ final class Application
     public function boot(): void
     {
         $this->resolveManifest();
+        // The hypermedia clients (the app's driver, packages' own): filled while the boot runs, read per request
+        $this->container->instance(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class, new \Preflow\Core\Http\Hypermedia\HypermediaProtocols());
         $this->bootPageCache();
 
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
@@ -450,6 +452,15 @@ final class Application
         // once more after the locale middleware strips the prefix (bootI18n()).
         $this->bindRequestContext($request);
 
+        // A hypermedia client that sends back its page's nonce gets an answer with that nonce,
+        // so the scripts and styles it puts into the page pass the page's CSP.
+        $this->adoptPageNonce($request);
+        // The hypermedia clients ride along, for middleware an app builds itself (AuthMiddleware).
+        $request = $request->withAttribute(
+            \Preflow\Core\Http\Hypermedia\HypermediaProtocols::class,
+            $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+        );
+
         // An internal render (the SEO audit) sends no mail: what it queues is not flushed here.
         $flush = !$this->emitting && !$internal;
 
@@ -521,6 +532,17 @@ final class Application
      *
      * @param \Closure(): void $work
      */
+    private function adoptPageNonce(ServerRequestInterface $request): void
+    {
+        if (!class_exists(\Preflow\View\NonceGenerator::class) || !$this->container->bound(\Preflow\View\NonceGenerator::class)) {
+            return;
+        }
+        $nonce = $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)->for($request)?->pageNonce($request);
+        if ($nonce !== null) {
+            $this->container->get(\Preflow\View\NonceGenerator::class)->adopt($nonce);
+        }
+    }
+
     public function afterResponse(\Closure $work): void
     {
         $this->afterResponse[] = $work;
@@ -684,17 +706,21 @@ final class Application
         $drivers = [];
 
         foreach ($dataConfig['drivers'] ?? [] as $name => $driverConfig) {
-            $drivers[$name] = match ($name) {
+            $driverConfig = is_array($driverConfig) ? $driverConfig : [];
+            // The entry's 'driver' (a built-in name or class, or a StorageDriver class), else its name.
+            $kind = $driverConfig['driver'] ?? $name;
+            $kind = is_string($kind) ? (self::BUILT_IN_STORAGE[$kind] ?? $kind) : '';
+            $drivers[$name] = match ($kind) {
                 'sqlite' => $this->createSqliteDriver($driverConfig, $collector),
                 'mysql' => $this->createMysqlDriver($driverConfig, $collector),
                 'json' => $jsonDriver = new \Preflow\Data\Driver\JsonFileDriver(
                     $driverConfig['path'] ?? $this->basePath('storage/data'),
                     cacheDir: $this->dataCachePath(),
                 ),
-                default => null,
+                default => $this->createStorageDriver((string) $name, $kind, $driverConfig),
             };
 
-            if ($name === 'json') {
+            if ($kind === 'json') {
                 $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
                     'data.json',
                     'JSON storage query cache',
@@ -707,8 +733,6 @@ final class Application
                 ));
             }
         }
-
-        $drivers = array_filter($drivers);
 
         $default = $dataConfig['default'] ?? 'sqlite';
         if (isset($drivers[$default])) {
@@ -854,6 +878,61 @@ final class Application
         return $driver;
     }
 
+    /** The built-in storage drivers by the names and classes config/data.php may give them. */
+    private const array BUILT_IN_STORAGE = [
+        'sqlite' => 'sqlite',
+        'mysql' => 'mysql',
+        'json' => 'json',
+        \Preflow\Data\Driver\SqliteDriver::class => 'sqlite',
+        \Preflow\Data\Driver\MysqlDriver::class => 'mysql',
+        \Preflow\Data\Driver\JsonFileDriver::class => 'json',
+    ];
+
+    /**
+     * A storage driver config/data.php names by class: built by the container on first use (the
+     * DataManager resolves the closure), the entry's other keys passed as the constructor's
+     * parameters by name (the rest are autowired). The class and the keys are checked now.
+     *
+     * @param array<string, mixed> $config
+     */
+    private function createStorageDriver(string $name, string $class, array $config): \Closure
+    {
+        $where = "drivers.{$name} in config/data.php";
+        if ($class === '' || !class_exists($class)) {
+            throw new \RuntimeException(sprintf(
+                'Unknown storage driver "%s" for %s. Use sqlite, mysql or json (as the entry\'s name or its \'driver\'),'
+                . ' or \'driver\' => the class of a %s.',
+                $class,
+                $where,
+                \Preflow\Data\StorageDriver::class,
+            ));
+        }
+        if (!is_subclass_of($class, \Preflow\Data\StorageDriver::class)) {
+            throw new \RuntimeException(sprintf('Storage driver %s for %s does not implement %s.', $class, $where, \Preflow\Data\StorageDriver::class));
+        }
+        unset($config['driver']);
+        $parameters = array_map(
+            static fn (\ReflectionParameter $parameter): string => $parameter->getName(),
+            (new \ReflectionClass($class))->getConstructor()?->getParameters() ?? [],
+        );
+        foreach (array_keys($config) as $option) {
+            if (!in_array($option, $parameters, true)) {
+                throw new \RuntimeException(sprintf(
+                    'Storage driver %s for %s has no constructor parameter "%s" (it takes: %s).',
+                    $class,
+                    $where,
+                    $option,
+                    $parameters === [] ? 'nothing' : implode(', ', $parameters),
+                ));
+            }
+        }
+
+        // Built on first use (after the providers ran), so its constructor may take services a provider binds.
+        $container = $this->container;
+
+        return static fn (): \Preflow\Data\StorageDriver => $container->make($class, $config);
+    }
+
     private function bootViewLayer(DebugLevel $debug): void
     {
         $nonce = new \Preflow\View\NonceGenerator();
@@ -972,7 +1051,7 @@ final class Application
     {
         $config = (array) ($this->configFile('security') ?? []);
 
-        $this->securityHeaders = new \Preflow\Core\Http\SecurityHeadersMiddleware($this->nonceProvider(), $config, $debug->isDebug());
+        $this->securityHeaders = new \Preflow\Core\Http\SecurityHeadersMiddleware($this->nonceProvider(), $config, $debug->isDebug(), $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class));
         $this->addMiddleware($this->securityHeaders);
     }
 
@@ -1000,8 +1079,59 @@ final class Application
             'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
                 ? $this->createBladeEngine($templateDirs, $assets, $debug, $geo, $seo)
                 : null,
-            default => throw new \RuntimeException("Unknown template engine: {$name}. Supported: twig, blade"),
+            default => $this->createFactoryEngine($name, $templateDirs, $assets, $debug, $geo, $seo),
         };
+    }
+
+    /**
+     * The engine of the TemplateEngineFactory app.engine names, built on its first render (a
+     * LazyTemplateEngine stands in until then, so the factory may take services a provider
+     * binds): the factory comes from the container and gets what the built-in engines get, plus
+     * storage/cache/templates for compiled templates (registered, so cache:clear empties it).
+     */
+    private function createFactoryEngine(
+        string $class,
+        array $templateDirs,
+        \Preflow\View\AssetCollector $assets,
+        DebugLevel $debug,
+        ?\Preflow\View\Geo\GeoCollector $geo = null,
+        ?\Preflow\View\Seo\SeoContext $seo = null,
+    ): \Preflow\View\TemplateEngineInterface {
+        if (!class_exists($class) || !is_subclass_of($class, \Preflow\View\TemplateEngineFactory::class)) {
+            throw new \RuntimeException(sprintf(
+                "Unknown template engine: %s. Use 'twig', 'blade' or the class name of a %s.",
+                $class,
+                \Preflow\View\TemplateEngineFactory::class,
+            ));
+        }
+        $cachePath = $this->absolutePath('storage/cache/templates');
+        $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
+            'templates',
+            'Compiled templates',
+            $cachePath,
+        ));
+
+        $context = new \Preflow\View\TemplateEngineContext(
+            templateDirs: $templateDirs,
+            assets: $assets,
+            debug: $debug->isDebug(),
+            cachePath: $cachePath,
+            geo: $geo,
+            seo: $seo,
+            liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
+            pageCache: $this->container->get(\Preflow\Core\PageCache\PageCache::class),
+        );
+        $container = $this->container;
+
+        return new \Preflow\View\LazyTemplateEngine(
+            static function () use ($container, $class, $context): \Preflow\View\TemplateEngineInterface {
+                /** @var \Preflow\View\TemplateEngineFactory $factory */
+                $factory = $container->get($class);
+
+                return $factory->create($context);
+            },
+            $class::templateExtension(),
+        );
     }
 
     /**
@@ -1271,6 +1401,7 @@ final class Application
             },
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
             rebuildOnly: $this->runningInConsole(),
+            hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);
@@ -1552,27 +1683,35 @@ final class Application
         );
         $this->registerExtensionProvider($engine, $componentProvider);
 
-        // HTMX driver
+        // Hypermedia driver: htmx, or the class app.hypermedia names (built by the container)
         if (class_exists(\Preflow\Htmx\HtmxDriver::class)) {
-            $responseHeaders = new \Preflow\Htmx\ResponseHeaders();
-            $htmxDriver = new \Preflow\Htmx\HtmxDriver($responseHeaders);
             $componentToken = new \Preflow\Htmx\ComponentToken($secretKey);
-
-            $this->container->instance(\Preflow\Htmx\ResponseHeaders::class, $responseHeaders);
-            $this->container->instance(\Preflow\Htmx\HypermediaDriver::class, $htmxDriver);
-            $this->container->instance(\Preflow\Htmx\HtmxDriver::class, $htmxDriver);
-            $this->container->instance(\Preflow\View\FormHypermediaDriver::class, $htmxDriver);
             $this->container->instance(\Preflow\Htmx\ComponentToken::class, $componentToken);
+            $driver = $this->createHypermediaDriver();
+            $this->container->instance(\Preflow\Htmx\HypermediaDriver::class, $driver);
+            if ($driver instanceof \Preflow\Htmx\HtmxDriver) {
+                $this->container->instance(\Preflow\Htmx\HtmxDriver::class, $driver);
+            }
+            // First of the clients core asks about requests (auth, CSRF, security headers, page cache, GEO)
+            $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)->add($driver);
+            // Form helpers write the driver's attributes when it has form attributes
+            if ($driver instanceof \Preflow\View\FormHypermediaDriver) {
+                $this->container->instance(\Preflow\View\FormHypermediaDriver::class, $driver);
+            }
 
             // htmx itself: vendored and inlined (no external request). Included
             // always (default), on demand (when a template uses hd.*), or never.
-            $assets = $this->container->get(\Preflow\View\AssetCollector::class);
-            $htmxConfig = (array) ($this->configFile('htmx') ?? []);
-            $htmxAssets = new \Preflow\Htmx\HtmxAssets($assets, (string) ($htmxConfig['include'] ?? 'always'));
-            $this->container->instance(\Preflow\Htmx\HtmxAssets::class, $htmxAssets);
-            $htmxDriver->useAssets($htmxAssets); // form helpers (form_begin, inline validation) need htmx too
-            if ($htmxAssets->mode() === 'always') {
-                $htmxAssets->require();
+            // Another driver brings its own client (assetTag(), or its templates).
+            $htmxAssets = null;
+            if ($driver instanceof \Preflow\Htmx\HtmxDriver) {
+                $assets = $this->container->get(\Preflow\View\AssetCollector::class);
+                $htmxConfig = (array) ($this->configFile('htmx') ?? []);
+                $htmxAssets = new \Preflow\Htmx\HtmxAssets($assets, (string) ($htmxConfig['include'] ?? 'always'));
+                $this->container->instance(\Preflow\Htmx\HtmxAssets::class, $htmxAssets);
+                $driver->useAssets($htmxAssets); // form helpers (form_begin, inline validation) need htmx too
+                if ($htmxAssets->mode() === 'always') {
+                    $htmxAssets->require();
+                }
             }
 
             // Register hd template functions
@@ -1580,7 +1719,7 @@ final class Application
             // locale. Lazy: the locale middleware is registered later (bootI18n).
             $container = $this->container;
             $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider(
-                $htmxDriver,
+                $driver,
                 $componentToken,
                 assets: $htmxAssets,
                 pathPrefix: fn (): string => $container->bound(\Preflow\I18n\LocaleMiddleware::class)
@@ -1593,7 +1732,7 @@ final class Application
             $endpoint = new \Preflow\Htmx\ComponentEndpoint(
                 token: $componentToken,
                 renderer: $renderer,
-                driver: $htmxDriver,
+                driver: $driver,
                 componentFactory: function (string $class, array $props) use ($container) {
                     $component = $container->has($class) ? $container->get($class) : $container->make($class);
                     $component->setProps($props);
@@ -1604,6 +1743,46 @@ final class Application
             $this->container->instance('preflow.component_endpoint', $endpoint);
             $this->container->instance(\Preflow\Htmx\ComponentEndpoint::class, $endpoint);
         }
+    }
+
+    /**
+     * The app's hypermedia driver: HtmxDriver (with the ResponseHeaders it records into), or the
+     * HypermediaDriver class config/app.php 'hypermedia' names, built by the container.
+     */
+    private function createHypermediaDriver(): \Preflow\Htmx\HypermediaDriver
+    {
+        $class = $this->config->get('app.hypermedia') ?: \Preflow\Htmx\HtmxDriver::class; // unset, null or '': htmx
+        if ($class === \Preflow\Htmx\HtmxDriver::class) {
+            $responseHeaders = new \Preflow\Htmx\ResponseHeaders();
+            $this->container->instance(\Preflow\Htmx\ResponseHeaders::class, $responseHeaders);
+
+            return new \Preflow\Htmx\HtmxDriver($responseHeaders);
+        }
+        if (!is_string($class) || !class_exists($class) || !is_subclass_of($class, \Preflow\Htmx\HypermediaDriver::class)) {
+            throw new \RuntimeException(sprintf(
+                'Unknown hypermedia driver: %s. Set app.hypermedia to the class name of a %s (default: %s).',
+                is_string($class) ? $class : get_debug_type($class),
+                \Preflow\Htmx\HypermediaDriver::class,
+                \Preflow\Htmx\HtmxDriver::class,
+            ));
+        }
+
+        // Built on first use (after the providers ran), shared: the container's $class (a
+        // provider may bind it), so a component that type-hints the class gets the same one.
+        $container = $this->container;
+        $container->singleton($class);
+        $resolve = static function () use ($container, $class): \Preflow\Htmx\HypermediaDriver {
+            $driver = $container->get($class);
+            if (!$driver instanceof \Preflow\Htmx\HypermediaDriver) {
+                throw new \RuntimeException(sprintf('app.hypermedia: the container gave %s for %s, which is no HypermediaDriver.', get_debug_type($driver), $class));
+            }
+
+            return $driver;
+        };
+
+        return is_subclass_of($class, \Preflow\View\FormHypermediaDriver::class)
+            ? new \Preflow\Htmx\LazyFormHypermediaDriver($resolve)
+            : new \Preflow\Htmx\LazyHypermediaDriver($resolve);
     }
 
     private function bootRouting(): void
@@ -1927,6 +2106,7 @@ final class Application
             $geo->enabled(),
             static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
             $this->sessionCookieName(),
+            hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         );
         $this->container->instance(\Preflow\View\Seo\SeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
@@ -2051,6 +2231,7 @@ final class Application
 
                 return $translator;
             },
+            hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         );
         $this->container->instance(\Preflow\View\Geo\GeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
@@ -2226,6 +2407,7 @@ final class Application
                 ? $container->get(\Preflow\I18n\Translator::class)
                 : null,
             $appUrl,
+            $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         );
 
         // A site's ExpiredSessionHandler is bound by its providers, which run after this:
@@ -2454,6 +2636,7 @@ final class Application
                 $authManager,
                 null,
                 $this->container->has(\Preflow\Core\Http\Api\ApiConfig::class) ? $this->container->get(\Preflow\Core\Http\Api\ApiConfig::class) : null,
+                $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
             ),
         );
         $this->container->instance(
@@ -2649,6 +2832,7 @@ final class Application
                     $c->get(\Preflow\View\TemplateEngineInterface::class),
                     $c->get(\Preflow\View\AssetCollector::class),
                     $c->bound(RequestContext::class) ? $c->get(RequestContext::class) : null,
+                    $c->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
                 ),
             );
         }
@@ -2662,7 +2846,7 @@ final class Application
                 $engine = $container->get(\Preflow\View\TemplateEngineInterface::class);
                 $html = $engine->render($route->handler, [
                     'route' => (object) $route->parameters,
-                    'request' => \Preflow\View\PageResponder::requestVariable($request),
+                    'request' => \Preflow\View\PageResponder::requestVariable($request, $container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)),
                 ]);
 
                 // Post-process: inject collected assets into the HTML

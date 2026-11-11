@@ -11,7 +11,8 @@ use PHPUnit\Framework\TestCase;
  * Composer from pairing testing with a release that lacks what it relies on: core 0.60
  * (Application::setPageCacheVerify(), with which WebApplication verifies every stored page; since 0.58 it reads
  * DATA_CACHE_PATH, which TestDataPaths sets so per-test JSON caches stay under the test's temp
- * root) and data 0.25.
+ * root), data 0.25 and htmx 0.65 (HypermediaDriver::fragmentTarget() and applyEffects(), which
+ * HypermediaDriverContract tests).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -19,7 +20,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.60', 'preflow/data' => '<0.25'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.60', 'preflow/data' => '<0.25', 'preflow/htmx' => '<0.65'], $composer['conflict'] ?? null);
         $this->assertSame('^0.60 || @dev', $composer['require']['preflow/core'] ?? null);
     }
 }

@@ -19,7 +19,10 @@ composer require preflow/blade  # Laravel Blade
 
 | Component | Description |
 |---|---|
-| `TemplateEngineInterface` | Engine contract: render, exists, addFunction, addGlobal, getTemplateExtension |
+| `TemplateEngineInterface` | Engine contract: render, exists, addFunction, addGlobal, getTemplateExtension, addNamespace |
+| `TemplateEngineFactory` | Builds a third template engine named by `app.engine` (0.65) |
+| `LazyTemplateEngine` | Stands in for the factory's engine until its first render (keeps what was registered) |
+| `TemplateEngineContext` | What core passes the factory: template dirs, assets, debug, cache path, GEO, SEO, live parts, page cache |
 | `TemplateFunctionDefinition` | Value object describing a template function (name, callable, isSafe) |
 | `TemplateExtensionProvider` | Interface for packages that supply template functions and globals |
 | `AssetCollector` | Collects CSS/JS across components, deduplicates by xxh3 hash |
@@ -43,6 +46,49 @@ $engine->addFunction(new TemplateFunctionDefinition(
     isSafe: true,                                         // skip output escaping
 ));
 ```
+
+### Your own engine: `TemplateEngineFactory` (0.65)
+
+`app.engine` in `config/app.php` is `'twig'`, `'blade'`, or the class name of a
+`Preflow\View\TemplateEngineFactory`. Core stands a `LazyTemplateEngine` in for the engine while it boots (packages register their
+functions, routing scans `app/pages` for `templateExtension()`, a static method of the factory),
+and on the first render (or `exists()`) gets the factory from the container — after the service
+providers ran, so its constructor may take services a provider binds — calls `create()` and hands
+the engine everything registered until then. The engine then gets every package's template
+functions (`component()`, `hd`, `csp_nonce()`, the form helpers, `t()`…), renders file pages
+(`app/pages/*.{extension}`) and components (`Name/Name.{extension}`, passed as an absolute path).
+
+```php
+// config/app.php
+'engine' => App\View\PhpTemplateEngineFactory::class,
+
+final class PhpTemplateEngineFactory implements TemplateEngineFactory
+{
+    public static function templateExtension(): string
+    {
+        return 'phtml';
+    }
+
+    public function create(TemplateEngineContext $context): TemplateEngineInterface
+    {
+        return new PhpTemplateEngine($context->templateDirs);
+    }
+}
+```
+
+`TemplateEngineContext` (readonly) carries what the built-in engines get: `templateDirs`
+(`app/pages`, then the project root), `assets` (the `AssetCollector`), `debug`, `cachePath`
+(`storage/cache/templates`, emptied by `cache:clear`, may not exist yet), `geo`, `seo` (null while
+SEO is off), `liveParts` and `pageCache`. Pick a template extension that isn't `php`: a
+component's template sits beside its class. Any other name throws at boot, listing the accepted
+forms. Check the engine with `Preflow\Testing\Contract\TemplateEngineContract` (preflow/testing).
+
+### A fragment answered with its page's nonce: `NonceGenerator::adopt()` (0.65)
+
+`NonceGenerator::adopt(string $nonce): bool` makes the request use another nonce (a base64 value;
+anything else is ignored). Core calls it with `HypermediaProtocol::pageNonce()` when a client sends
+its page's nonce back, so a fragment's scripts and styles (component assets, a driver's effect
+scripts) carry the page's nonce and pass its Content-Security-Policy.
 
 ## TemplateExtensionProvider
 

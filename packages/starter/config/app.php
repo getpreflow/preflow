@@ -10,6 +10,7 @@ return [
     // The site's address with its scheme (https://example.com): CSRF origin checks, absolute
     // links and the page cache's host. Without it the page cache caches nothing and says so.
     'url' => getenv('APP_URL') ?: '',
-    // Template engine: 'twig' or 'blade'
+    // Template engine: 'twig', 'blade' or the class of a Preflow\View\TemplateEngineFactory.
+    // (A hypermedia driver other than htmx: 'hypermedia' => the class of a Preflow\Htmx\HypermediaDriver.)
     'engine' => getenv('APP_ENGINE') ?: 'twig',
 ];

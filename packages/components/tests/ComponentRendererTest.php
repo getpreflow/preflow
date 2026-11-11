@@ -144,6 +144,24 @@ final class ComponentRendererTest extends TestCase
         $this->assertSame(1, substr_count($html, 'id="'));
     }
 
+    public function test_root_attributes_may_be_datastar_style(): void
+    {
+        $component = new RenderableComponent();
+        $component->setRootAttribute('data-on:click__debounce.500ms', '@post("/x")');
+        $component->setRootAttribute('data-signals:count', '0');
+        $component->setRootAttribute('data-on:click x="y"', 'no'); // a space or quote would break the attribute
+        $component->setRootAttribute('data-on:<b>', 'no');
+        $component->setRootAttribute('data-', 'no');
+
+        $html = $this->renderer->render($component);
+
+        $this->assertMatchesRegularExpression(
+            '#^<div id="RenderableComponent-[^"]+" data-on:click__debounce.500ms="@post\(&quot;/x&quot;\)" data-signals:count="0">#',
+            $html,
+        );
+        $this->assertStringNotContainsString('no', substr($html, 0, (int) strpos($html, '>')));
+    }
+
     public function test_wrapper_has_component_id(): void
     {
         $component = new RenderableComponent();

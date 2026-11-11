@@ -129,7 +129,7 @@ public string $password = '';
 
 ## Hypermedia Integration
 
-When inside a component with a hypermedia driver active, the form builder can auto-add inline validation attributes. The `attrs` escape hatch lets you pass any driver-specific attributes:
+When inside a component with a hypermedia driver active, the form builder can auto-add inline validation attributes. The driver is the app's `HypermediaDriver` (htmx, or the class `app.hypermedia` names) when it also implements `Preflow\View\FormHypermediaDriver`; otherwise forms are plain. The `attrs` escape hatch lets you pass any driver-specific attributes:
 
 ```twig
 {{ form.field('email', {

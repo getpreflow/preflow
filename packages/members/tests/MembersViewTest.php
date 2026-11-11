@@ -160,6 +160,13 @@ TWIG;
         $this->assertSame('/members', $hx->getHeaderLine('HX-Redirect'));
         $this->assertSame('private, no-store', $hx->getHeaderLine('Cache-Control'));
 
+        // navigate(): the client that sent the request is told (htmx: HX-Redirect), a browser gets a 303.
+        $request = (new Psr17Factory())->createServerRequest('POST', 'https://site.test/members/login');
+        $told = $this->view()->navigate($request->withHeader('HX-Request', 'true'), '/members');
+        $this->assertSame('/members', $told->getHeaderLine('HX-Redirect'));
+        $this->assertSame('private, no-store', $told->getHeaderLine('Cache-Control'));
+        $this->assertSame(303, $this->view()->navigate($request, '/members')->getStatusCode());
+
         $see = $this->view()->redirect('/members/login');
         $this->assertSame(303, $see->getStatusCode());
         $this->assertSame('/members/login', $see->getHeaderLine('Location'));

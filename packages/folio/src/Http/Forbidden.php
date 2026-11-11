@@ -11,7 +11,11 @@ use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** The admin's 403: a page in the admin layout, or for htmx a message the toast shows. */
+/**
+ * The admin's 403: a page in the admin layout, or for htmx a message the toast shows. Folio's
+ * admin ships its own htmx (@folio/htmx.js), whatever the app's hypermedia driver is, so its
+ * headers are read and written here directly.
+ */
 final class Forbidden
 {
     /** The English text (folio.errors.forbidden); responses carry it in the user's interface language. */

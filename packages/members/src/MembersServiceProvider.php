@@ -125,6 +125,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(Translator::class),
             $c->bound(PageLocale::class) ? $c->get(PageLocale::class) : null,
             $c->bound(OldInput::class) ? $c->get(OldInput::class) : null,
+            $c->bound(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class) ? $c->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class) : null,
         ));
         $container->singleton(Admission::class, static function (Container $c): Admission {
             $class = $c->get(MembersConfig::class)->admission();

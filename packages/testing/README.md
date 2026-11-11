@@ -157,7 +157,7 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 | Suite | Interface | Hooks |
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
-| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `effects()` |
+| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)` |
 | `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `supportsRawQuery()` |
 
 ```php
@@ -188,8 +188,16 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
   namespaces (first registered path wins) and that a missing template throws.
 - **HypermediaDriverContract** asserts no attribute or header names: the URL, method, target and
   event must appear in the attributes, effects (`triggerEvent`, `redirect`, `pushUrl`) in what
-  `effects()` lists, and `isFragmentRequest()` must recognise a request marked by
-  `fragmentRequest()`.
+  `effects()` lists and in the response `applyEffects()` returns (which keeps its status, headers
+  and content), `isFragmentRequest()` must recognise a request marked by `fragmentRequest()`, and
+  `fragmentTarget()` must return the id `targetRequest()` sent (null for a plain request). Since
+  0.65 `effects()` is optional: by default it lists the headers and body `applyEffects()` gives an
+  empty response. The core side (`HypermediaProtocol`): a plain request is no history restore and
+  sends no page nonce; a history restore is also a fragment request; `varyHeaders()` are header
+  names; `navigate()` puts the URL in a header or the body and changes the response for a reload;
+  `announceNonce()` keeps the content and writes only headers `nonceHeaders()` lists;
+  `pageNonce()` returns what `pageNonceRequest()` sent (the two optional hooks skip their test when
+  they return null).
 - **StorageDriverContract** checks the round trip of each field kind (null and Unicode too),
   updates, `exists`, `delete`, a custom id field, generated ids, and `findMany()` with every
   `where` operator, `IN` / `NOT IN` (empty lists too), `where(field, null)`, `orWhere`, ordering,

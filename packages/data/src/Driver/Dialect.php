@@ -56,6 +56,24 @@ interface Dialect
     public function exactText(string $expression): string;
 
     /**
+     * The operator for case-insensitive pattern matching (where LIKE / NOT LIKE, search(),
+     * CONTAINS): 'LIKE' in SQLite and MySQL, whose LIKE ignores case; PostgreSQL's would be 'ILIKE'.
+     */
+    public function likeOperator(): string;
+
+    /**
+     * ORDER BY expression sorting a value as a number, also where the column stores text
+     * (orderBy(..., numeric: true)): '({expression} + 0)' in SQLite and MySQL.
+     */
+    public function numericOrder(string $expression): string;
+
+    /**
+     * The column the failure says a table lacks (a type whose table was not migrated since a
+     * field was added), or null when it is another failure. PdoDriver then names the fix.
+     */
+    public function missingColumn(\PDOException $e): ?string;
+
+    /**
      * SQL true when the column equals any of the ids (a non-empty list). Appends its bindings,
      * as few as the dialect allows: their number must not grow with the ids where avoidable.
      *

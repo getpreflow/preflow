@@ -6,6 +6,7 @@ namespace Preflow\View;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Http\RequestContext;
+use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -20,17 +21,22 @@ final class PageResponder
         private readonly TemplateEngineInterface $engine,
         private readonly AssetCollector $assets,
         private readonly ?RequestContext $context = null,
+        private readonly ?HypermediaProtocols $hypermedia = null,
     ) {}
 
     /**
-     * The `request` template variable. File pages and controller pages share it.
+     * The `request` template variable. File pages and controller pages share it. `isFragment`:
+     * a hypermedia client (the app's driver) sent it to put the answer into the page (not a
+     * history restore); `isHtmx`: a client sent it at all (history restores too) — the name
+     * is older than other drivers, it is not about htmx only.
      */
-    public static function requestVariable(ServerRequestInterface $request): object
+    public static function requestVariable(ServerRequestInterface $request, ?HypermediaProtocols $hypermedia = null): object
     {
         return (object) [
             'path' => $request->getUri()->getPath(),
             'method' => $request->getMethod(),
-            'isHtmx' => $request->getHeaderLine('HX-Request') === 'true',
+            'isHtmx' => $hypermedia?->isFragmentRequest($request) ?? false,
+            'isFragment' => $hypermedia?->wantsFragment($request) ?? false,
             'query' => $request->getQueryParams(),
         ];
     }
@@ -46,11 +52,12 @@ final class PageResponder
             // Route parameters are the controller's own business: pass `route` to override.
             'route' => (object) [],
             'request' => $request !== null
-                ? self::requestVariable($request)
+                ? self::requestVariable($request, $this->hypermedia)
                 : (object) [
                     'path' => $this->context?->path ?? '',
                     'method' => $this->context?->method ?? 'GET',
                     'isHtmx' => false,
+                    'isFragment' => false,
                     'query' => [],
                 ],
         ];

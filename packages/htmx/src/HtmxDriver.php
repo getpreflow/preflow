@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Htmx;
 
 use Preflow\View\FormHypermediaDriver;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
@@ -65,9 +66,67 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
         $this->responseHeaders->set('HX-Push-Url', $url);
     }
 
+    /** htmx marks its requests with HX-Request: true (a history restore too). */
     public function isFragmentRequest(ServerRequestInterface $request): bool
     {
-        return $request->hasHeader('HX-Request');
+        return $request->getHeaderLine('HX-Request') === 'true';
+    }
+
+    /** htmx asks for the whole page again with HX-History-Restore-Request: true. */
+    public function isHistoryRestore(ServerRequestInterface $request): bool
+    {
+        return $request->getHeaderLine('HX-History-Restore-Request') === 'true';
+    }
+
+    /** HX-History-Restore-Request is never on a keyed request (a restore drops these): listed so a response may vary on it. */
+    public function varyHeaders(): array
+    {
+        return ['HX-Request', 'HX-Target', 'HX-History-Restore-Request'];
+    }
+
+    /** HX-Redirect: htmx loads the URL as a page; HX-Refresh: it reloads the page. */
+    public function navigate(ResponseInterface $response, ?string $url): ResponseInterface
+    {
+        return $url === null ? $response->withHeader('HX-Refresh', 'true') : $response->withHeader('HX-Redirect', $url);
+    }
+
+    /** HX-Nonce, unless the response has one: the page's nonce guard keeps only scripts with it (see HtmxAssets). */
+    public function announceNonce(ResponseInterface $response, string $nonce): ResponseInterface
+    {
+        return $nonce === '' || $response->hasHeader('HX-Nonce') ? $response : $response->withHeader('HX-Nonce', $nonce);
+    }
+
+    public function nonceHeaders(): array
+    {
+        return ['HX-Nonce'];
+    }
+
+    /** htmx re-stamps the scripts it inserts with the page's nonce itself (inlineScriptNonce): none comes back. */
+    public function pageNonce(ServerRequestInterface $request): ?string
+    {
+        return null;
+    }
+
+    /** htmx sends the target element's id in HX-Target. */
+    public function fragmentTarget(ServerRequestInterface $request): ?string
+    {
+        $target = $request->getHeaderLine('HX-Target');
+
+        return $target === '' ? null : $target;
+    }
+
+    /**
+     * The recorded HX-* headers, plus HX-Nonce: the nonce this response's own <script>/<style>
+     * carry, which the page's nonce guard lets through (see HtmxAssets).
+     */
+    public function applyEffects(ResponseInterface $response): ResponseInterface
+    {
+        foreach ($this->responseHeaders->all() as $name => $value) {
+            $response = $response->withHeader($name, $value);
+        }
+        $nonce = $this->assets?->nonce();
+
+        return $nonce === null ? $response : $this->announceNonce($response, $nonce);
     }
 
     /**

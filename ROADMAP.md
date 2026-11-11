@@ -381,6 +381,61 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Pluggable adapters (v0.65.0):** a third-party template engine, hypermedia driver or storage driver is
+  registered through config, no workaround. Found by the Extend guides of docs phase 3 (Task 5); plan
+  `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 5b).
+  - **Template engines:** `app.engine` is `'twig'`, `'blade'` or the class name of a
+    `Preflow\View\TemplateEngineFactory` (`create(TemplateEngineContext $context): TemplateEngineInterface`). The
+    factory is built by the container and called where Twig and Blade are built, so its engine gets the packages'
+    template functions and renders file pages and components. `Preflow\View\TemplateEngineContext` (readonly):
+    `templateDirs`, `assets`, `debug`, `cachePath` (`storage/cache/templates`, cache key `templates`), `geo`, `seo`,
+    `liveParts`, `pageCache`. Anything else throws, listing the accepted forms. Twig and Blade are built as before.
+  - **Hypermedia drivers:** `app.hypermedia` names the class of a `HypermediaDriver` (default `HtmxDriver`), built by
+    the container and bound as `HypermediaDriver` and its own class; the `hd.*` helpers, `ComponentEndpoint`, and the
+    form helpers (when the driver implements `FormHypermediaDriver`) use it. `HypermediaDriver` gains
+    `fragmentTarget(ServerRequestInterface): ?string` and `applyEffects(ResponseInterface): ResponseInterface`; the
+    endpoint asks the driver for the target and lets it apply the effects (no more reflection on `HtmxDriver` or
+    `HX-Target` read directly). `HtmxDriver::applyEffects()` sends the recorded `HX-*` headers plus `HX-Nonce` (from
+    `HtmxAssets::nonce()`, new). With another driver, htmx is not inlined and `HtmxAssets`/`ResponseHeaders` are not
+    bound. `Component::setRootAttribute()` accepts `data-` + `[a-z0-9:._-]+` (Datastar's `data-on:click__debounce.500ms`).
+  - **Storage drivers:** a `config/data.php` entry's `'driver'` may be `sqlite`/`mysql`/`json`, a built-in class, or the
+    class of a `StorageDriver`, built by the container with the entry's other keys as constructor parameters by name
+    (one it doesn't take throws). An unknown driver throws at boot (it was dropped silently). `Grammars::register(string
+    $pdoDriver, SchemaGrammar $grammar)` / `forget()` / `named()`: a registered grammar serves `Schema`, `Migrator`,
+    `RecordTableSync`. `Dialect` gains `likeOperator()` (where LIKE / NOT LIKE, `search()`, `CONTAINS`) and
+    `numericOrder()` (numeric `orderBy`); both built-in dialects return today's SQL (`LIKE`, `(x + 0)`). No PostgreSQL
+    driver ships.
+  - **Hypermedia clients everywhere (owner ruling, same release):** core's `Preflow\Core\Http\Hypermedia\HypermediaProtocol`
+    (`isFragmentRequest`, `isHistoryRestore`, `fragmentTarget`, `varyHeaders`, `navigate`, `announceNonce`,
+    `nonceHeaders`, `pageNonce`), which `HypermediaDriver` extends, and `HypermediaProtocols` (bound from the start of
+    the boot; also the request attribute `HypermediaProtocols::class`). Nothing outside preflow/htmx reads htmx headers
+    any more: AuthMiddleware (navigate to the login; an app-built one finds the clients on the request), the
+    expired-session answer (reload), SecurityHeadersMiddleware (`announceNonce`; `NONCE_HEADERS` no longer lists
+    `HX-Nonce`, `withoutNonce($response, $more)`), the page cache (`PageKey::fromRequest(…, $hypermedia)`, vary =
+    clients' `varyHeaders()` + `vary_headers`, restores, unstored nonce headers), GEO, `request.isHtmx` /
+    new `request.isFragment` (PageResponder), `MembersView::navigate()` (`hxRedirect()` deprecated). Folio's admin
+    keeps its own htmx and adds it to `HypermediaProtocols` (commented in each place).
+  - **Page nonce for fragments:** `HypermediaProtocol::pageNonce()` + `NonceGenerator::adopt()`: a client that sends
+    its page's CSP nonce back is answered with it (core, `Application::handle()`), so effect scripts and component
+    assets in the fragment pass the page's CSP.
+  - **Built after the providers:** the factory's engine (`LazyTemplateEngine`; `TemplateEngineFactory::templateExtension()`
+    is static), the configured hypermedia driver (`LazyHypermediaDriver` / `LazyFormHypermediaDriver`; the driver is the
+    container's shared class) and class-named storage drivers (`DataManager` takes closures) are built on first use,
+    so their constructors may take services a provider binds.
+  - **Dialect::missingColumn(\PDOException): ?string:** PdoDriver asks the dialect which column a failed write names.
+  - **Contract suite:** `HypermediaDriverContract` gains the hook `targetRequest($request, string $targetId)`, the
+    optional hooks `historyRestoreRequest()` and `pageNonceRequest()`, and tests for `fragmentTarget()`,
+    `applyEffects()` (effects reach the response, which keeps status, headers and content) and the protocol methods;
+    `effects()` is now optional (default: the headers and body `applyEffects()` gives an empty response).
+  - **Upgrading:** nothing to do for apps on twig/blade, htmx and sqlite/mysql/json. Check only: a `config/data.php`
+    entry with an unknown name and no `'driver'` (dropped silently before) now stops the boot; a class implementing
+    `HypermediaDriver` or `Dialect` must add the new methods; a `HypermediaDriverContract` subclass must add
+    `targetRequest()`; a `TemplateEngineFactory` needs the static `templateExtension()`. `PageCacheConfig::DEFAULT_VARY_HEADERS`
+    is `[]` (the clients add `HX-Request`, `HX-Target`; keys stay the same); `HtmxDriver::isFragmentRequest()` is
+    `HX-Request: true` (was: the header present); code calling `PageKey::fromRequest()` or building
+    `SecurityHeadersMiddleware` / `ExpiredSessionResponder` itself passes `HypermediaProtocols` to keep htmx handling.
+    Constraints: core conflicts data/htmx/view <0.65, htmx conflicts core <0.65, folio htmx <0.65, testing htmx <0.65. The six production sites' configs were checked: all entries are sqlite/mysql/json, some with
+    their built-in class as `'driver'`, which keeps working.
 - **Contract suites (v0.64.0, released 2026-11-11):** abstract PHPUnit suites in `preflow/testing` that check a third-party
   adapter (a Datastar hypermedia driver, a PostgreSQL storage driver, another template engine) against its interface;
   the built-in adapters run them too. Plan: `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 1).
@@ -555,7 +610,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Follow-ups:**
     - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
       the Skeleton suite in `phpunit.xml`, the migration copy in `AuthTokenCommandTest`, and the skeleton's
-      `config/data.php` `driver` keys (unread; the starters dropped theirs in 0.63.2).
+      `config/data.php` `driver` keys (read since 0.65 and matching their entries; the starters dropped theirs in 0.63.2).
     - CSRF: exempt API prefixes that are outside the session paths by default (the starters set
       `csrf.exempt = ['/api']` by hand, so 401/404/405 answer JSON).
     - `folio.tables` does not index relation columns (starter-folio adds `jobs.company` indexes in an after-migrate

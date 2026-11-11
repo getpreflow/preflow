@@ -110,6 +110,24 @@ final class SqliteDialect implements Dialect
         return $expression;
     }
 
+    /** SQLite's LIKE ignores case (ASCII letters). */
+    public function likeOperator(): string
+    {
+        return 'LIKE';
+    }
+
+    /** "no such column: x" (a read), "table t has no column named x" (a write). */
+    public function missingColumn(\PDOException $e): ?string
+    {
+        return preg_match('/(?:no such column:|has no column named)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1 ? $m[1] : null;
+    }
+
+    /** "+ 0" makes stored text numeric. */
+    public function numericOrder(string $expression): string
+    {
+        return "({$expression} + 0)";
+    }
+
     /** One binding however many ids: the ids as a JSON array, read back with json_each(). */
     public function inList(string $quotedColumn, array $ids, array &$bindings): string
     {

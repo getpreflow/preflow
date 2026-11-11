@@ -346,8 +346,9 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         } catch (\PDOException $e) {
             // The exception's trace holds the statement; reset it, or SQLite keeps its read open.
             $stmt?->closeCursor();
-            if (preg_match('/(?:no such column:|has no column named|Unknown column)\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1) {
-                throw new \RuntimeException("Table {$table} has no column {$m[1]}; run `preflow migrate`.", 0, $e);
+            $column = $this->dialect->missingColumn($e);
+            if ($column !== null) {
+                throw new \RuntimeException("Table {$table} has no column {$column}; run `preflow migrate`.", 0, $e);
             }
             $unique = $idField === null ? null : $this->dialect->uniqueViolation($e, $table, $idField);
             throw $unique ?? $e;

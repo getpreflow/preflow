@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Http;
 
+use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -16,8 +17,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class SecurityHeadersMiddleware implements MiddlewareInterface
 {
-    /** The headers whose value holds the request's nonce. */
-    public const array NONCE_HEADERS = ['Content-Security-Policy', 'Content-Security-Policy-Report-Only', 'HX-Nonce'];
+    /** The headers whose value holds the request's nonce (with the hypermedia clients' nonceHeaders()). */
+    public const array NONCE_HEADERS = ['Content-Security-Policy', 'Content-Security-Policy-Report-Only'];
 
     /** @var array{csp: array<string, list<string>>, report_only: bool, headers: array<string, string|null>, hsts: bool} */
     private readonly array $config;
@@ -26,11 +27,13 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
      * @param \Closure(): ?string  $nonce      the request nonce (AssetCollector::getNonce)
      * @param array<string, mixed> $config     contents of config/security.php
      * @param bool                 $reportOnly force Content-Security-Policy-Report-Only (debug mode)
+     * @param HypermediaProtocols|null $hypermedia the clients told the nonce of their requests' responses
      */
     public function __construct(
         private readonly \Closure $nonce,
         array $config = [],
         private readonly bool $reportOnly = false,
+        private readonly ?HypermediaProtocols $hypermedia = null,
     ) {
         $defaults = self::defaults();
         $this->config = [
@@ -83,7 +86,7 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
         // A 304 keeps the cached page's policy (see withoutNonce()), whoever made it.
         $notModified = $response->getStatusCode() === 304;
         if ($notModified) {
-            $response = self::withoutNonce($response);
+            $response = self::withoutNonce($response, $this->hypermedia?->nonceHeaders() ?? []);
         }
 
         $cspHeader = ($this->reportOnly || $this->config['report_only'])
@@ -96,11 +99,12 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
             $response = $response->withHeader($cspHeader, $this->policy());
         }
 
-        // For htmx requests: the nonce this response's own scripts carry, so the
-        // page's htmx nonce guard can drop any script that lacks it.
+        // For a hypermedia client's request: the nonce this response's own scripts carry, told
+        // the way the client reads it (htmx: HX-Nonce, which the page's nonce guard checks).
         $nonce = ($this->nonce)();
-        if (!$notModified && $request->hasHeader('HX-Request') && $nonce !== null && $nonce !== '' && !$response->hasHeader('HX-Nonce')) {
-            $response = $response->withHeader('HX-Nonce', $nonce);
+        $client = $this->hypermedia?->for($request);
+        if (!$notModified && $client !== null && $nonce !== null && $nonce !== '') {
+            $response = $client->announceNonce($response, $nonce);
         }
 
         foreach ($this->config['headers'] as $name => $value) {
@@ -124,9 +128,10 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
      * cached policy stands. Anything that turns a full response into a 304
      * after this middleware ran (an ETag check further out) calls this too.
      */
-    public static function withoutNonce(ResponseInterface $response): ResponseInterface
+    /** @param list<string> $more further headers that carry it (HypermediaProtocols::nonceHeaders()) */
+    public static function withoutNonce(ResponseInterface $response, array $more = []): ResponseInterface
     {
-        foreach (self::NONCE_HEADERS as $name) {
+        foreach ([...self::NONCE_HEADERS, ...$more] as $name) {
             $response = $response->withoutHeader($name);
         }
 

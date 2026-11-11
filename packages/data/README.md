@@ -96,6 +96,39 @@ changes for site code:
   must not touch the connection in the constructor; per-connection setup belongs in
   `configure()`. Read the connection through `$this->pdo` (or `pdo()`), never keep your own `\PDO`.
 
+### Your own storage driver (0.65)
+
+A `config/data.php` entry names its driver by its key (`sqlite`, `mysql`, `json`) or by a
+`'driver'` key: one of those names, a built-in class, or the class of your own
+`Preflow\Data\StorageDriver`. Core builds that class through the container: the entry's other
+keys are passed to its constructor by parameter name, the other parameters are autowired. An
+unknown driver, a class that is no `StorageDriver` or a key the constructor doesn't take throws at
+boot.
+
+```php
+'drivers' => [
+    'sqlite' => ['path' => __DIR__ . '/../storage/data/app.sqlite'],
+    'archive' => ['driver' => 'sqlite', 'path' => __DIR__ . '/../storage/data/archive.sqlite'],
+    'pg' => ['driver' => App\Data\PgsqlDriver::class, 'dsn' => getenv('PG_DSN') ?: ''],
+],
+```
+
+The class is built on its first use (the DataManager takes a closure for it): after the service
+providers ran, so its constructor may take services a provider binds. The class and the option
+keys are checked at boot.
+
+For another SQL database, a `PdoDriver` subclass supplies a `Dialect` (`likeOperator()` decides
+the case-insensitive match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`;
+`numericOrder()` the numeric sort; `missingColumn(\PDOException)` reads the column a failed write
+names, so the "run `preflow migrate`" message works on that database) and registers its schema grammar for its PDO driver name, so
+`Schema`, `RecordTableSync` and `preflow migrate` work:
+
+```php
+Grammars::register('pgsql', new PgsqlGrammar()); // a SchemaGrammar; in the driver or a provider's register()
+```
+
+Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/testing).
+
 ### Migrations
 
 ```php

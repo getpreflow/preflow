@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * The cache key of a request: scheme + host + path + the normalised query + the values of the
- * configured vary headers (HX-Request, HX-Target, ...). The locale is part of the path (/de/x,
+ * vary headers: the hypermedia clients' (HypermediaProtocol::varyHeaders(); htmx: HX-Request,
+ * HX-Target) and the configured ones. The locale is part of the path (/de/x,
  * /fr/x), so it is part of the key.
  *
  * The query is normalised: parameters matching an ignore_query pattern (utm_*, fbclid, ...) are
@@ -20,8 +22,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * key, so it can be answered from the cache, but its (empty) response is never stored:
  * PageStore::put() refuses a HEAD key.
  *
- * A history-restore request (HX-History-Restore-Request) asks for a full page: its key leaves the
- * HX-* headers out, so it is the same key as a plain visit, and isFragment() is false.
+ * A history restore (HypermediaProtocol::isHistoryRestore(); htmx: HX-History-Restore-Request)
+ * asks for a full page: its key leaves its client's vary headers out, so it is the same key as a
+ * plain visit, and isFragment() is false. Without $hypermedia no request is a fragment.
  */
 final readonly class PageKey
 {
@@ -43,8 +46,9 @@ final readonly class PageKey
      * @param array<string, string> $parts more of what the response depends on, name => value
      *        (the page cache middleware adds the locale LocaleMiddleware resolved and the
      *        forwarded scheme/host); none gives the same id as before they existed
+     * @param HypermediaProtocols|null $hypermedia the clients: which request is a fragment, and their vary headers
      */
-    public static function fromRequest(ServerRequestInterface $request, PageCacheConfig $config, array $parts = []): ?self
+    public static function fromRequest(ServerRequestInterface $request, PageCacheConfig $config, array $parts = [], ?HypermediaProtocols $hypermedia = null): ?self
     {
         $method = strtoupper($request->getMethod());
         if ($method !== 'GET' && $method !== 'HEAD') {
@@ -67,13 +71,15 @@ final readonly class PageKey
             return null;
         }
 
-        $restore = $request->getHeaderLine('HX-History-Restore-Request') === 'true';
-        $fragment = !$restore && $request->getHeaderLine('HX-Request') === 'true';
+        $client = $hypermedia?->for($request);
+        $restore = $client?->isHistoryRestore($request) ?? false;
+        $fragment = !$restore && ($client?->isFragmentRequest($request) ?? false);
+        $own = $restore ? array_map(strtolower(...), $client->varyHeaders()) : [];
 
         $vary = [];
-        foreach ($config->varyHeaders as $header) {
+        foreach ([...($hypermedia?->varyHeaders() ?? []), ...$config->varyHeaders] as $header) {
             $name = strtolower($header);
-            if ($restore && str_starts_with($name, 'hx-')) {
+            if (in_array($name, $own, true)) {
                 continue; // a history restore is the full page
             }
             $value = $request->getHeaderLine($header);

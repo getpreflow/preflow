@@ -29,7 +29,50 @@ $driver->listenAttrs(event: 'itemSaved', url: $url, targetId: $id): HtmlAttribut
 $driver->triggerEvent('itemSaved')    // HX-Trigger
 $driver->redirect('/dashboard')      // HX-Redirect
 $driver->pushUrl('/posts/1')         // HX-Push-Url
+
+// Requests and responses (0.65; the component endpoint and core call these)
+$driver->fragmentTarget($request)    // the HX-Target id, or null
+$driver->applyEffects($response)     // the recorded HX-* headers, plus HX-Nonce
+$driver->isFragmentRequest($request) // HX-Request: true
+$driver->isHistoryRestore($request)  // HX-History-Restore-Request: true
+$driver->varyHeaders()               // HX-Request, HX-Target, HX-History-Restore-Request
+$driver->navigate($response, $url)   // HX-Redirect: $url, or HX-Refresh: true for null
+$driver->announceNonce($response, $n)// HX-Nonce: $n (nonceHeaders(): HX-Nonce)
+$driver->pageNonce($request)         // null: htmx re-stamps scripts with the page nonce itself
 ```
+
+### Another client library: `app.hypermedia` (0.65)
+
+`HtmxDriver` implements `HypermediaDriver`, and an app has one driver: `config/app.php`
+`'hypermedia'` names the class of another `HypermediaDriver` (default `HtmxDriver`), and the
+container builds it (constructor parameters autowired, e.g. the `AssetCollector`). It is bound as
+`HypermediaDriver`, and everything uses that binding: the `hd.*` helpers, `ComponentEndpoint`,
+components that type-hint `HypermediaDriver` or the class, and the form helpers when the driver
+also implements `Preflow\View\FormHypermediaDriver` (otherwise forms stay plain). Core also adds
+it to `HypermediaProtocols` (preflow/core): auth, the expired-session answer, the security headers,
+the page cache and GEO ask it about requests (see core's README, "Hypermedia clients").
+
+The driver is built on its first use: `HypermediaDriver` is a `LazyHypermediaDriver`
+(`LazyFormHypermediaDriver` for a form driver) standing in until then, and the driver itself is the
+container's shared `$class` — after the service providers ran, so its constructor may take services
+a provider binds, and a provider may bind `$class` itself.
+With another driver htmx isn't inlined (`config/htmx.php` then does nothing); the driver's
+`assetTag()` or your layout loads its client.
+
+```php
+// config/app.php
+'hypermedia' => App\Hypermedia\DatastarDriver::class,
+```
+
+Besides the attribute methods and `triggerEvent()` / `redirect()` / `pushUrl()`, a driver
+implements `fragmentTarget(ServerRequestInterface): ?string` (the id of the element the client
+swaps the response into; the endpoint renders the component without its wrapper when that is
+another element), `applyEffects(ResponseInterface): ResponseInterface` (the recorded effects as
+the client reads them: headers, or events in the body; called on every endpoint response) and
+core's `HypermediaProtocol`: `isFragmentRequest()`, `isHistoryRestore()`, `varyHeaders()`,
+`navigate()`, `announceNonce()` / `nonceHeaders()` and `pageNonce()` (a client that sends its
+page's CSP nonce back is answered with it, so its effect scripts pass the page's policy). An unknown class throws at boot. Check a driver with
+`Preflow\Testing\Contract\HypermediaDriverContract` (preflow/testing).
 
 ### `ComponentToken`
 
@@ -194,6 +237,6 @@ $response = $endpoint->handle($request);
 
 ### Fragment rendering
 
-When the `HX-Target` header does not match the component's own ID, `ComponentEndpoint` returns a fragment response via `renderFragment()` / `renderResolvedFragment()` rather than the full wrapped component. This lets a single component handle both full-page renders and targeted partial swaps.
+When the driver's `fragmentTarget()` (htmx: the `HX-Target` header) does not match the component's own ID, `ComponentEndpoint` returns a fragment response via `renderFragment()` / `renderResolvedFragment()` rather than the full wrapped component. This lets a single component handle both full-page renders and targeted partial swaps.
 
 `ComponentRenderer::renderResolvedFragment()` skips `resolveState()` and renders inner HTML only — used after an action has already mutated state.

@@ -120,6 +120,11 @@ driver (e.g. `sqlite`); the admin and rendering are storage-agnostic.
 Admin and frontend templates live under `@folio/*` and are overridable: drop a same-named
 template in `resources/folio/` to replace the shipped one.
 
+The admin ships its own htmx (`@folio/htmx.js`) whatever the app's hypermedia driver
+(`config/app.php` `hypermedia`) is: its screens never use the app's driver, and Folio adds htmx to
+core's `HypermediaProtocols`, so its requests are treated as htmx requests (an expired session
+reloads the editor, a signed-out one is sent to the login) next to the app's own driver.
+
 ## Access
 
 Every admin action asks one permission through `can()` (see `preflow/auth`).

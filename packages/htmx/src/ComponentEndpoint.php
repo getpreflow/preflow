@@ -69,10 +69,10 @@ final class ComponentEndpoint
             $component->authorize($payload->action, $request);
         }
 
-        // Determine if HTMX is targeting a different element (partial swap)
-        $hxTarget = $request->getHeaderLine('HX-Target');
-        $isFragmentRequest = $hxTarget !== ''
-            && $hxTarget !== $component->getComponentId();
+        // The client swaps the response into another element than the component: no wrapper
+        $target = $this->driver->fragmentTarget($request);
+        $isFragmentRequest = $target !== null && $target !== ''
+            && $target !== $component->getComponentId();
 
         // Dispatch action or resolve initial state
         if ($payload->action !== 'render') {
@@ -113,36 +113,9 @@ final class ComponentEndpoint
             }
         }
 
-        // Build response with driver headers
-        $response = new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
-
-        // The nonce this fragment's own <script>/<style> carry: the page's htmx
-        // nonce guard only lets those through (see HtmxAssets::NONCE_GUARD).
-        if ($this->assetCollector !== null) {
-            $response = $response->withHeader('HX-Nonce', $this->assetCollector->getNonce());
-        }
-
-        if ($this->driver instanceof HtmxDriver) {
-            $headers = $this->getDriverHeaders();
-            foreach ($headers as $name => $value) {
-                $response = $response->withHeader($name, $value);
-            }
-        }
-
-        return $response;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function getDriverHeaders(): array
-    {
-        // Access response headers via reflection or direct access
-        // The ResponseHeaders object is shared with the driver
-        $ref = new \ReflectionClass($this->driver);
-        $prop = $ref->getProperty('responseHeaders');
-        $headers = $prop->getValue($this->driver);
-
-        return $headers instanceof ResponseHeaders ? $headers->all() : [];
+        // The effects the action asked for (events, redirect, URL), as the driver's client reads them
+        return $this->driver->applyEffects(
+            new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html),
+        );
     }
 }

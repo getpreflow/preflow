@@ -103,6 +103,24 @@ final class MysqlDialect implements Dialect
         return "(NULLIF(CAST({$expression} AS CHAR), '') + 0e0)";
     }
 
+    /** MySQL's LIKE ignores case under the tables' case-insensitive collation. */
+    public function likeOperator(): string
+    {
+        return 'LIKE';
+    }
+
+    /** "Unknown column 'x' in 'field list'" (error 1054). */
+    public function missingColumn(\PDOException $e): ?string
+    {
+        return preg_match('/Unknown column\s*[\'"`]?([A-Za-z0-9_]+)/', $e->getMessage(), $m) === 1 ? $m[1] : null;
+    }
+
+    /** "+ 0" makes stored text numeric. */
+    public function numericOrder(string $expression): string
+    {
+        return "({$expression} + 0)";
+    }
+
     /**
      * The tables' collations ignore case; utf8mb4_bin compares code points. The cast first
      * gives any expression (a JSON value, a column of another charset) the charset utf8mb4_bin

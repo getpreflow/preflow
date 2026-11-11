@@ -7,6 +7,11 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.65: data 0.65 (DataManager takes a closure for a class-named storage driver), htmx 0.65
+ * (LazyHypermediaDriver; HypermediaDriver extends core's HypermediaProtocol, which HypermediaProtocols
+ * holds) and view 0.65 (LazyTemplateEngine, TemplateEngineContext, NonceGenerator::adopt(), the
+ * hypermedia: parameters of GeoMiddleware, SeoMiddleware and PageResponder).
+ *
  * Core requires none of auth, components, data, htmx, i18n, routing, view, twig or blade, but boots them when they are installed,
  * so only "conflict" keeps Composer from pairing core with a release that lacks the APIs it calls: auth 0.62
  * (TokenAuthMiddleware, which bootAuth registers; 0.60: SessionGuard takes marker:, the signed-in marker the page cache bypasses on; since 0.38 bootAuth binds Preflow\Auth\Record\RecordUserProvider::factory() for record users from
@@ -31,11 +36,11 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/auth' => '<0.62',
             'preflow/components' => '<0.60',
-            'preflow/data' => '<0.61',
-            'preflow/htmx' => '<0.60',
+            'preflow/data' => '<0.65',
+            'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.46',
             'preflow/routing' => '<0.62',
-            'preflow/view' => '<0.63',
+            'preflow/view' => '<0.65',
             'preflow/twig' => '<0.60',
             'preflow/blade' => '<0.60',
         ], $composer['conflict'] ?? null);

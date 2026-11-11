@@ -57,6 +57,14 @@ final class FolioServiceProvider extends ServiceProvider
 
     public function register(Container $container): void
     {
+        // Folio's admin ships its own htmx (@folio/htmx.js), whatever the app's hypermedia driver
+        // is: its requests are htmx requests. Added as a client so core treats them as such (an
+        // expired session reloads, the security headers send HX-Nonce); with an htmx app it is
+        // the same class as the app's driver and ignored.
+        if ($container->bound(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)) {
+            $container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)
+                ->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+        }
         // The media core first (once, also when the app lists it): Folio adapts its services below.
         if (!$container->hasProvider(\Preflow\Media\MediaServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Media\MediaServiceProvider());

@@ -134,12 +134,14 @@ abstract class Component
 
     /**
      * Add a data-* attribute to the wrapper element (e.g. editor markers in a
-     * preview), without changing the component's markup or layout. Other
-     * names are ignored: the wrapper's id and class stay the component's.
+     * preview, or a Datastar-style data-on:click__debounce.500ms), without
+     * changing the component's markup or layout. The name is "data-" and then
+     * lower-case letters, digits and : . _ - only; other names are ignored, so
+     * the wrapper's id and class stay the component's.
      */
     public function setRootAttribute(string $name, string $value): void
     {
-        if (preg_match('/^data-[a-z0-9-]+$/', $name) === 1) {
+        if (preg_match('/^data-[a-z0-9:._-]+$/', $name) === 1) {
             $this->rootAttributes[$name] = $value;
         }
     }

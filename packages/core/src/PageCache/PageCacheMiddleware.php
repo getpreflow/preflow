@@ -55,8 +55,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * as `X-Page-Cache-Skip`:
  * - `status`: the status is not 200 (404s and redirects are never cached);
  * - `restore` / `kind`: the render is not of the kind the key stands for: a full page's key
- *   rendered for a request with HX-Request (a history restore, which may be served the full
- *   page but is never stored), or a fragment's key without it;
+ *   rendered for a hypermedia client's request (a history restore, which may be served the full
+ *   page but is never stored), or a fragment's key without one;
  * - `app-key`: app.key is empty or the public default, so placeholders could be forged;
  * - `stream`: the body can't be read twice (a streamed export);
  * - `set-cookie`: the response sets a cookie (a header, or a native one through header());
@@ -64,7 +64,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `signed-in`: a guard resolved a user;
  * - `cache-control`: Cache-Control is private or no-store;
  * - `vary`: the response varies on a request header the key doesn't hold (anything but
- *   vary_headers, Accept-Encoding and HX-History-Restore-Request);
+ *   vary_headers, the hypermedia clients' varyHeaders() and Accept-Encoding);
  * - `content-type`: not text, JSON, XML or JavaScript;
  * - `size`: the body is larger than MAX_BODY;
  * - `refused:{reason}`: code called PageCache::refuse(), or a store check a package registered
@@ -87,7 +87,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * Stored headers: everything the response had when it left the handler, except Set-Cookie,
  * the headers SecurityHeadersMiddleware adds per request (Content-Security-Policy(-Report-Only),
- * HX-Nonce, Strict-Transport-Security; it runs outside this middleware, so it adds them fresh
+ * the clients' nonceHeaders() such as HX-Nonce, Strict-Transport-Security; it runs outside this middleware, so it adds them fresh
  * to every hit), and the hop and framing headers (Date, Content-Length, Transfer-Encoding,
  * Connection, Keep-Alive).
  */
@@ -107,7 +107,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     /** Response headers never stored (lowercase). */
     public const array UNSTORED_HEADERS = [
-        'set-cookie', 'content-security-policy', 'content-security-policy-report-only', 'hx-nonce',
+        'set-cookie', 'content-security-policy', 'content-security-policy-report-only',
         'strict-transport-security', 'date', 'content-length', 'transfer-encoding', 'connection',
         'keep-alive', 'x-page-cache', 'x-page-cache-skip',
     ];
@@ -118,7 +118,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * Vary and is not cached, unless vary_headers names it; the locale LocaleMiddleware resolved
      * from it (url_strategy none) is in the key anyway.
      */
-    private const array VARY_ALLOWED = ['accept-encoding', 'hx-history-restore-request'];
+    private const array VARY_ALLOWED = ['accept-encoding'];
 
     /** @var \Closure(): float */
     private readonly \Closure $clock;
@@ -183,6 +183,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly ?\Closure $applyPending = null,
         private readonly bool $rebuildOnly = false,
         private readonly ?\Closure $sessionActive = null,
+        private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
         $this->clock = $clock ?? static fn (): float => microtime(true);
@@ -279,7 +280,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
             $request = $request->withUri($uri->withPath($prefix . ($path === '/' || $path === '' ? '' : $path)), true);
         }
 
-        return PageKey::fromRequest($request, $this->config, $parts);
+        return PageKey::fromRequest($request, $this->config, $parts, $this->hypermedia);
     }
 
     private function carriesSignIn(ServerRequestInterface $request): bool
@@ -655,10 +656,11 @@ final class PageCacheMiddleware implements MiddlewareInterface
         if ($response->getStatusCode() !== 200) {
             return 'status';
         }
-        // Only a render of the kind the key stands for: a history restore (HX-Request with the
-        // full page's key) may be answered with a fragment by an app that branches on HX-Request.
-        if ($key->isFragment() !== $request->hasHeader('HX-Request')) {
-            return $request->hasHeader('HX-History-Restore-Request') ? 'restore' : 'kind';
+        // Only a render of the kind the key stands for: a history restore (a client's request with
+        // the full page's key) may be answered with a fragment by an app that branches on it.
+        $client = $this->hypermedia?->for($request);
+        if ($key->isFragment() !== ($client?->isFragmentRequest($request) ?? false)) {
+            return ($client?->isHistoryRestore($request) ?? false) ? 'restore' : 'kind';
         }
         if (!$this->values->signed()) {
             return 'app-key';
@@ -686,7 +688,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         }
         $vary = $response->getHeaderLine('Vary');
         if ($vary !== '') {
-            $allowed = [...self::VARY_ALLOWED, ...array_map(strtolower(...), $this->config->varyHeaders)];
+            $allowed = array_map(strtolower(...), [...self::VARY_ALLOWED, ...$this->config->varyHeaders, ...($this->hypermedia?->varyHeaders() ?? [])]);
             foreach (explode(',', strtolower($vary)) as $name) {
                 $name = trim($name);
                 if ($name !== '' && !in_array($name, $allowed, true)) {
@@ -808,8 +810,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
     private function storedHeaders(ResponseInterface $response): array
     {
         $headers = [];
+        $unstored = [...self::UNSTORED_HEADERS, ...array_map(strtolower(...), $this->hypermedia?->nonceHeaders() ?? [])];
         foreach ($response->getHeaders() as $name => $values) {
-            if (!in_array(strtolower((string) $name), self::UNSTORED_HEADERS, true)) {
+            if (!in_array(strtolower((string) $name), $unstored, true)) {
                 $headers[(string) $name] = array_values($values);
             }
         }

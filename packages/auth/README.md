@@ -337,8 +337,10 @@ When nobody is signed in on the guard:
 
 - `GET`/`HEAD` for a browser (not an API path, no `Accept: application/json` without `text/html`, no `HX-Request`) gets
   `302 Location: /employer/login?next=<path and query, url-encoded>`. `next` holds the path and query only, never a host.
-- An htmx request (`HX-Request: true`) gets 401 with `HX-Redirect: /employer/login`, so the browser navigates instead of
-  swapping the login page into a fragment.
+- A hypermedia client's request (htmx: `HX-Request: true`) is told to navigate (htmx: 401 with
+  `HX-Redirect: /employer/login`), so the browser navigates instead of swapping the login page into a fragment. The
+  client is the app's driver (`HypermediaProtocol::navigate()`, core); an `AuthMiddleware` you build yourself finds
+  the clients on the request (0.65), or pass `HypermediaProtocols` as the fourth argument.
 - Everything else (API paths, JSON clients, `POST` and other methods) still gets 401.
 
 Without a `login` key nothing changes. The container instance receives the core `ApiConfig` to tell browsers from API

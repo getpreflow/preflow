@@ -17,7 +17,9 @@ namespace Preflow\Core\PageCache;
  *   rebuild_budget     float seconds, 2.0: after-response rebuilds stop after this per request
  *   cache_query        bool, true: pages with a query string (search, filters) are cached
  *   ignore_query       list of fnmatch() patterns of query parameters left out of the key
- *   vary_headers       list of request headers a cached fragment's key includes
+ *   vary_headers       list of request headers a cached response's key includes, besides the
+ *                      hypermedia clients' own (HypermediaProtocol::varyHeaders(); htmx:
+ *                      HX-Request, HX-Target), which are always included
  *   signed_in_cookies  list of cookie names that mean "signed in" (bypass the cache); the auth
  *                      marker and the guards' remember cookies are added by the wiring
  *   hosts              list of extra host names that are cached (lowercase, no port); the host of
@@ -52,7 +54,8 @@ final readonly class PageCacheConfig
 
     public const array DEFAULT_IGNORE_QUERY = ['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'];
 
-    public const array DEFAULT_VARY_HEADERS = ['HX-Request', 'HX-Target'];
+    /** None: the hypermedia clients' vary headers (htmx: HX-Request, HX-Target) are always keyed on. */
+    public const array DEFAULT_VARY_HEADERS = [];
 
     public const int DEFAULT_MAX_QUERY_VARIANTS = 50;
 

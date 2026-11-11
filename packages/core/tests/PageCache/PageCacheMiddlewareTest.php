@@ -208,9 +208,12 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('hit', $again->getHeaderLine('X-Page-Cache'));
         $this->assertSame('<html><ul><li>fragment</li></ul></html>', (string) $again->getBody());
 
-        // Served from the full page once it is there, and an HX-Request other than "true" stores nothing.
+        // Served from the full page once it is there. An HX-Request other than "true" is no htmx
+        // request (HtmxDriver::isFragmentRequest()): a page under its own key (the header's value is in it).
         $this->assertSame('hit', $mw->process($this->get('/gallery')->withHeader('HX-Request', 'true')->withHeader('HX-History-Restore-Request', 'true'), $handler)->getHeaderLine('X-Page-Cache'));
-        $this->assertSame('kind', $mw->process($this->get('/other')->withHeader('HX-Request', 'false'), $handler)->getHeaderLine('X-Page-Cache-Skip'));
+        $false = $mw->process($this->get('/other')->withHeader('HX-Request', 'false'), $handler);
+        $this->assertSame('', $false->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNotSame($this->key('/other')->id(), $this->key('/other', ['HX-Request' => 'false'])->id());
     }
 
     public function test_native_cookies_streams_and_a_public_app_key_are_not_stored(): void
@@ -1266,6 +1269,7 @@ final class PageCacheMiddlewareTest extends TestCase
             verify: $verify,
             applyPending: $applyPending,
             rebuildOnly: $rebuildOnly,
+            hypermedia: self::htmx(),
         );
     }
 
@@ -1486,7 +1490,7 @@ final class PageCacheMiddlewareTest extends TestCase
             $request = $request->withHeader($name, $value);
         }
 
-        return PageKey::fromRequest($request, $this->config) ?? throw new \RuntimeException('no key');
+        return PageKey::fromRequest($request, $this->config, [], self::htmx()) ?? throw new \RuntimeException('no key');
     }
 
     private function pageFile(string $path): string
@@ -1579,5 +1583,14 @@ final class PageCacheMiddlewareTest extends TestCase
         $path = $this->dir . '/' . $rel;
         @mkdir(dirname($path), 0777, true);
         file_put_contents($path, $content);
+    }
+
+    /** htmx as the app's hypermedia client (what core binds by default). */
+    private static function htmx(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
+    {
+        $protocols = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+
+        return $protocols;
     }
 }

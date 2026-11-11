@@ -43,6 +43,12 @@ final class HtmxAssets
         return $this->mode;
     }
 
+    /** The page's CSP nonce, which htmx's fragments announce in HX-Nonce. */
+    public function nonce(): string
+    {
+        return $this->assets->getNonce();
+    }
+
     public function require(): void
     {
         if ($this->mode === 'never') {

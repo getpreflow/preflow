@@ -165,7 +165,7 @@ final class SecurityHeadersMiddlewareTest extends TestCase
         // The browser keeps the cached page and stores the 304's headers over its
         // own: a new nonce would not match the nonces in the cached page.
         foreach ([false, true] as $reportOnly) {
-            $middleware = new SecurityHeadersMiddleware(fn () => self::NONCE, [], $reportOnly);
+            $middleware = new SecurityHeadersMiddleware(fn () => self::NONCE, [], $reportOnly, self::htmx());
             $request = (new Psr17Factory())->createServerRequest('GET', 'https://x.test/')->withHeader('HX-Request', 'true');
             $response = $middleware->decorate($request, new Response(304, ['ETag' => '"v1"']));
 
@@ -204,6 +204,15 @@ final class SecurityHeadersMiddlewareTest extends TestCase
             }
         };
 
-        return (new SecurityHeadersMiddleware(fn () => self::NONCE, $config, $reportOnly))->process($request, $handler);
+        return (new SecurityHeadersMiddleware(fn () => self::NONCE, $config, $reportOnly, self::htmx()))->process($request, $handler);
+    }
+
+    /** htmx as the app's hypermedia client (what core binds by default). */
+    private static function htmx(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
+    {
+        $protocols = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+
+        return $protocols;
     }
 }

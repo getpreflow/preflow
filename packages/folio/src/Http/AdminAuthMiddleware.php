@@ -34,7 +34,8 @@ final class AdminAuthMiddleware implements MiddlewareInterface
             : $this->auth->guard()->user($request);
         if ($user === null) {
             // htmx requests (autosave, block picker) would follow a 302 and swap the
-            // login page into the editor: tell htmx to navigate instead.
+            // login page into the editor: tell htmx to navigate instead. Folio's admin ships its
+            // own htmx (@folio/htmx.js), whatever the app's hypermedia driver is, so its header is read here.
             if ($request->getHeaderLine('HX-Request') === 'true') {
                 return new Response(401, ['HX-Redirect' => $this->prefix . '/login']);
             }

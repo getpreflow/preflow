@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests\Http\Csrf;
 
+require_once __DIR__ . '/../../Fixtures/Pluggable/SignalDriver.php';
+
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Http\Csrf\ExpiredSessionResponder;
@@ -73,13 +75,28 @@ final class ExpiredSessionResponderTest extends TestCase
 
     public function test_htmx_gets_refresh(): void
     {
-        $response = (new ExpiredSessionResponder('en'))($this->post(['HX-Request' => 'true', 'Referer' => 'https://site.test/contact']));
+        $response = (new ExpiredSessionResponder('en', null, null, self::htmx()))($this->post(['HX-Request' => 'true', 'Referer' => 'https://site.test/contact']));
 
         $this->assertSame(204, $response->getStatusCode());
         $this->assertSame('true', $response->getHeaderLine('HX-Refresh'));
         $this->assertSame('', $response->getHeaderLine('Location'));
         $this->assertSame('Your session had expired. Please send the form again.', $this->session->getFlash('warning'));
         $this->assertSame(['name' => 'Ada'], $this->session->getFlash(OldInput::FLASH_KEY));
+    }
+
+    public function test_another_clients_request_is_told_to_reload_its_way(): void
+    {
+        $clients = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $clients->add(new \Preflow\Core\Tests\Fixtures\Pluggable\SignalDriver(new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator())));
+        $responder = new ExpiredSessionResponder('en', null, null, $clients);
+
+        $told = $responder($this->post(['Signal-Request' => 'true', 'Referer' => 'https://site.test/contact']));
+        $this->assertSame(204, $told->getStatusCode());
+        $this->assertSame('reload', $told->getHeaderLine('Signal-Location'));
+        $this->assertSame('', $told->getHeaderLine('HX-Refresh'));
+
+        // An htmx header means nothing to this app: back to the form.
+        $this->assertSame(303, $responder($this->post(['HX-Request' => 'true', 'Referer' => 'https://site.test/contact']))->getStatusCode());
     }
 
     public function test_json_gets_409(): void
@@ -136,5 +153,14 @@ final class ExpiredSessionResponderTest extends TestCase
         }
 
         return $request;
+    }
+
+    /** htmx as the app's hypermedia client (what core binds by default). */
+    private static function htmx(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
+    {
+        $protocols = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+
+        return $protocols;
     }
 }

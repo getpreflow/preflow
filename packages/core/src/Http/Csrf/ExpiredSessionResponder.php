@@ -41,15 +41,18 @@ final class ExpiredSessionResponder
         private readonly string $defaultLocale = 'en',
         private readonly ?\Closure $translator = null,
         ?string $appUrl = null,
+        private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
     ) {
         $this->appOrigin = $appUrl !== null ? OriginCheck::normalize($appUrl) : null;
     }
 
     public function __invoke(ServerRequestInterface $request): ResponseInterface
     {
-        $htmx = $request->getHeaderLine('HX-Request') === 'true';
+        // A hypermedia client's request (htmx, or the app's driver) reloads the page instead
+        $client = $this->hypermedia?->for($request);
+        $fragment = $client !== null && $client->isFragmentRequest($request);
 
-        if (!$htmx && str_contains(strtolower($request->getHeaderLine('Accept')), 'application/json')) {
+        if (!$fragment && str_contains(strtolower($request->getHeaderLine('Accept')), 'application/json')) {
             return new Response(409, ['Content-Type' => 'application/json'], json_encode(['error' => 'session_expired'], JSON_THROW_ON_ERROR));
         }
 
@@ -62,8 +65,8 @@ final class ExpiredSessionResponder
             $session->flash('warning', $this->message($request));
         }
 
-        if ($htmx) {
-            return new Response(204, ['HX-Refresh' => 'true']);
+        if ($fragment) {
+            return $client->navigate(new Response(204), null);
         }
 
         return new Response(303, ['Location' => $this->back($request)]);

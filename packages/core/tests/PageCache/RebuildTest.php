@@ -91,7 +91,7 @@ final class RebuildTest extends TestCase
                 if ($refused !== null) {
                     return $refused;
                 }
-                $key = PageKey::fromRequest($request, $this->config, array_filter(['locale' => $request->getHeaderLine('Accept-Language')]));
+                $key = PageKey::fromRequest($request, $this->config, array_filter(['locale' => $request->getHeaderLine('Accept-Language')]), self::htmx());
                 $index = TagIndex::forStore($store, $this->config, fn (): float => $this->now);
                 $index->record($key->id(), $key->url(), $key->isFragment(), $key->hasQuery(), ['default:job' => [Freshness::Fresh, null]], $key->parts());
                 $store->put($key, new StoredPage('<p>new ' . $key->url() . '</p>', [], $started));
@@ -123,7 +123,7 @@ final class RebuildTest extends TestCase
     private function cache(PageStore $store, string $path, array $reads, array $headers = [], Freshness $freshness = Freshness::Fresh): PageKey
     {
         $request = new ServerRequest('GET', 'https://example.com' . $path, $headers);
-        $key = PageKey::fromRequest($request, $this->config);
+        $key = PageKey::fromRequest($request, $this->config, [], self::htmx());
         $tags = [];
         foreach ($reads as $read) {
             foreach (DataTags::dependencies($read) as $tag) {
@@ -572,9 +572,18 @@ final class RebuildTest extends TestCase
         $visitor = (new ServerRequest('GET', 'http://example.com/x'))->withHeader('X-Forwarded-Proto', 'https')->withHeader('HX-Target', 'list');
         $parts = ['locale' => 'de', 'proto' => 'https'];
         $this->assertSame(
-            PageKey::fromRequest($visitor, $this->config, $parts)->id(),
-            PageKey::fromRequest($request, $this->config, $parts)->id(),
+            PageKey::fromRequest($visitor, $this->config, $parts, self::htmx())->id(),
+            PageKey::fromRequest($request, $this->config, $parts, self::htmx())->id(),
         );
-        $this->assertSame(['locale' => 'de', 'proto' => 'https', 'vary' => ['hx-target' => 'list']], PageKey::fromRequest($visitor, $this->config, $parts)->parts());
+        $this->assertSame(['locale' => 'de', 'proto' => 'https', 'vary' => ['hx-target' => 'list']], PageKey::fromRequest($visitor, $this->config, $parts, self::htmx())->parts());
+    }
+
+    /** htmx as the app's hypermedia client (what core binds by default). */
+    private static function htmx(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
+    {
+        $protocols = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+
+        return $protocols;
     }
 }

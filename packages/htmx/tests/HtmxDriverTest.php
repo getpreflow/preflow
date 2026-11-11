@@ -111,4 +111,33 @@ final class HtmxDriverTest extends TestCase
         // htmx is inlined by HtmxAssets; the driver no longer emits an external <script src>.
         $this->assertSame('', $this->driver->assetTag());
     }
+
+    public function test_fragment_target_is_hx_target(): void
+    {
+        $this->assertSame('cart', $this->driver->fragmentTarget($this->createRequest(['HX-Target' => 'cart'])));
+        $this->assertNull($this->driver->fragmentTarget($this->createRequest(['HX-Request' => 'true'])));
+    }
+
+    public function test_apply_effects_sends_the_recorded_headers(): void
+    {
+        $this->driver->triggerEvent('saved');
+        $this->driver->pushUrl('/items/2');
+
+        $response = $this->driver->applyEffects(new \Nyholm\Psr7\Response(200));
+
+        $this->assertSame('saved', $response->getHeaderLine('HX-Trigger'));
+        $this->assertSame('/items/2', $response->getHeaderLine('HX-Push-Url'));
+        $this->assertFalse($response->hasHeader('HX-Nonce'), 'no nonce without the htmx assets');
+    }
+
+    public function test_apply_effects_announces_the_page_nonce(): void
+    {
+        $collector = new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator());
+        $this->driver->useAssets(new \Preflow\Htmx\HtmxAssets($collector, 'never'));
+
+        $response = $this->driver->applyEffects(new \Nyholm\Psr7\Response(200));
+
+        $this->assertSame($collector->getNonce(), $response->getHeaderLine('HX-Nonce'));
+    }
 }
+

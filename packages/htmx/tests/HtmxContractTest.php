@@ -13,11 +13,9 @@ use Psr\Http\Message\ServerRequestInterface;
 /** The hypermedia driver contract on htmx. */
 final class HtmxContractTest extends HypermediaDriverContract
 {
-    private ResponseHeaders $headers;
-
     protected function createDriver(): HypermediaDriver
     {
-        return new HtmxDriver($this->headers = new ResponseHeaders());
+        return new HtmxDriver(new ResponseHeaders());
     }
 
     protected function fragmentRequest(ServerRequestInterface $request): ServerRequestInterface
@@ -25,13 +23,13 @@ final class HtmxContractTest extends HypermediaDriverContract
         return $request->withHeader('HX-Request', 'true');
     }
 
-    protected function effects(): array
+    protected function targetRequest(ServerRequestInterface $request, string $targetId): ServerRequestInterface
     {
-        $effects = [];
-        foreach ($this->headers->all() as $name => $value) {
-            $effects[] = "{$name}: {$value}";
-        }
+        return $request->withHeader('HX-Target', $targetId);
+    }
 
-        return $effects;
+    protected function historyRestoreRequest(ServerRequestInterface $request): ?ServerRequestInterface
+    {
+        return $request->withHeader('HX-Request', 'true')->withHeader('HX-History-Restore-Request', 'true');
     }
 }

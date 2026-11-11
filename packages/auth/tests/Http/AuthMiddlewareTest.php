@@ -11,6 +11,10 @@ use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\GuardInterface;
 use Preflow\Auth\Http\AuthMiddleware;
+use Preflow\Core\Http\Hypermedia\HypermediaProtocol;
+use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
+use Preflow\Htmx\HtmxDriver;
+use Preflow\Htmx\ResponseHeaders;
 use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Core\Exceptions\UnauthorizedHttpException;
 use Preflow\Core\Http\Api\ApiConfig;
@@ -172,12 +176,59 @@ final class AuthMiddlewareTest extends TestCase
 
     public function test_htmx_request_gets_401_with_hx_redirect(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig(), self::clients(new HtmxDriver(new ResponseHeaders())));
 
         $e = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['HX-Request' => 'true']));
 
         $this->assertInstanceOf(UnauthorizedHttpException::class, $e);
         $this->assertSame(['HX-Redirect' => '/employer/login'], $e->headers);
+    }
+
+    public function test_an_app_built_middleware_finds_the_clients_on_the_request(): void
+    {
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+        $request = $this->request('GET', '/employer/jobs', ['HX-Request' => 'true'])
+            ->withAttribute(HypermediaProtocols::class, self::clients(new HtmxDriver(new ResponseHeaders())));
+
+        $e = $this->outcome($middleware, $request);
+
+        $this->assertInstanceOf(UnauthorizedHttpException::class, $e);
+        $this->assertSame(['HX-Redirect' => '/employer/login'], $e->headers);
+    }
+
+    public function test_another_clients_request_is_told_to_navigate_its_way(): void
+    {
+        $client = new class implements HypermediaProtocol {
+            public function isFragmentRequest(ServerRequestInterface $request): bool { return $request->hasHeader('Other-Request'); }
+            public function isHistoryRestore(ServerRequestInterface $request): bool { return false; }
+            public function fragmentTarget(ServerRequestInterface $request): ?string { return null; }
+            public function varyHeaders(): array { return ['Other-Request']; }
+            public function navigate(ResponseInterface $response, ?string $url): ResponseInterface
+            {
+                return $response->withStatus(200)->withBody(\Nyholm\Psr7\Stream::create('go ' . $url));
+            }
+            public function announceNonce(ResponseInterface $response, string $nonce): ResponseInterface { return $response; }
+            public function nonceHeaders(): array { return []; }
+            public function pageNonce(ServerRequestInterface $request): ?string { return null; }
+        };
+        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig(), self::clients($client));
+
+        $told = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['Other-Request' => '1']));
+        $this->assertInstanceOf(ResponseInterface::class, $told, 'a navigation in the body is sent as it is');
+        $this->assertSame('go /employer/login', (string) $told->getBody());
+
+        // An htmx header means nothing to this app: a plain browser request, redirected.
+        $plain = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['HX-Request' => 'true']));
+        $this->assertInstanceOf(ResponseInterface::class, $plain);
+        $this->assertSame(302, $plain->getStatusCode());
+    }
+
+    private static function clients(HypermediaProtocol $client): HypermediaProtocols
+    {
+        $clients = new HypermediaProtocols();
+        $clients->add($client);
+
+        return $clients;
     }
 
     public function test_without_login_key_behaviour_is_unchanged(): void

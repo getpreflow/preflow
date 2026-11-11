@@ -17,6 +17,7 @@ use Preflow\Core\Exceptions\SecurityException;
 use Preflow\Htmx\ComponentEndpoint;
 use Preflow\Htmx\ComponentToken;
 use Preflow\Htmx\Guarded;
+use Preflow\Htmx\HtmxAssets;
 use Preflow\Htmx\HtmxDriver;
 use Preflow\Htmx\ResponseHeaders;
 use Preflow\View\AssetCollector;
@@ -337,14 +338,17 @@ final class ComponentEndpointTest extends TestCase
 
     public function test_fragment_response_announces_its_nonce(): void
     {
-        // The page only trusts scripts carrying this nonce when htmx re-stamps them.
+        // The page only trusts scripts carrying this nonce when htmx re-stamps them;
+        // the htmx driver announces it with the effects.
         $assetCollector = new AssetCollector(new NonceGenerator());
         $engine = new EndpointFakeEngineWithAssets($assetCollector);
         $renderer = new ComponentRenderer($engine, new ErrorBoundary(debug: DebugLevel::On));
+        $driver = new HtmxDriver(new ResponseHeaders());
+        $driver->useAssets(new HtmxAssets($assetCollector, 'never'));
         $endpoint = new ComponentEndpoint(
             token: $this->tokenService,
             renderer: $renderer,
-            driver: new HtmxDriver(new ResponseHeaders()),
+            driver: $driver,
             componentFactory: fn (string $class, array $props) => $this->makeComponent($class, $props),
             assetCollector: $assetCollector,
         );
@@ -470,5 +474,96 @@ final class ComponentEndpointTest extends TestCase
 
         $this->expectException(\Preflow\Core\Exceptions\NotFoundHttpException::class);
         $this->endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $token]));
+    }
+
+    public function test_another_driver_decides_the_target_and_applies_the_effects(): void
+    {
+        $driver = new EndpointOtherDriver();
+        $endpoint = new ComponentEndpoint(
+            token: $this->tokenService,
+            renderer: new ComponentRenderer(new EndpointFakeEngine(), new ErrorBoundary(debug: DebugLevel::On)),
+            driver: $driver,
+            componentFactory: fn (string $class, array $props) => $this->makeComponent($class, $props),
+        );
+        $token = $this->tokenService->encode(EndpointTestComponent::class, ['title' => 'Hello']);
+
+        $fragment = $endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $token], headers: ['Other-Target' => 'elsewhere']));
+        $this->assertStringNotContainsString('id="EndpointTestComponent-', (string) $fragment->getBody());
+        $this->assertSame('applied', $fragment->getHeaderLine('Other-Effects'));
+
+        // HX-Target means nothing to this driver: the whole component, wrapper included
+        $whole = $endpoint->handle($this->createRequest('GET', '/--component/render', ['token' => $token], headers: ['HX-Target' => 'elsewhere']));
+        $this->assertStringContainsString('id="EndpointTestComponent-', (string) $whole->getBody());
+        $this->assertSame('', $whole->getHeaderLine('HX-Nonce'));
+    }
+}
+
+/** A driver that is not htmx: its own target header and effects header. */
+final class EndpointOtherDriver implements \Preflow\Htmx\HypermediaDriver
+{
+    public function actionAttrs(string $method, string $url, string $targetId, \Preflow\Htmx\SwapStrategy $swap, array $extra = []): \Preflow\Htmx\HtmlAttributes
+    {
+        return new \Preflow\Htmx\HtmlAttributes(['data-' . $method => $url]);
+    }
+
+    public function listenAttrs(string $event, string $url, string $targetId): \Preflow\Htmx\HtmlAttributes
+    {
+        return new \Preflow\Htmx\HtmlAttributes(['data-on-' . $event => $url]);
+    }
+
+    public function triggerEvent(string $event): void {}
+
+    public function redirect(string $url): void {}
+
+    public function pushUrl(string $url): void {}
+
+    public function isFragmentRequest(ServerRequestInterface $request): bool
+    {
+        return $request->hasHeader('Other-Request');
+    }
+
+    public function fragmentTarget(ServerRequestInterface $request): ?string
+    {
+        return $request->getHeaderLine('Other-Target') ?: null;
+    }
+
+    public function applyEffects(\Psr\Http\Message\ResponseInterface $response): \Psr\Http\Message\ResponseInterface
+    {
+        return $response->withHeader('Other-Effects', 'applied');
+    }
+
+    public function assetTag(): string
+    {
+        return '';
+    }
+
+    public function isHistoryRestore(ServerRequestInterface $request): bool
+    {
+        return false;
+    }
+
+    public function varyHeaders(): array
+    {
+        return ['Other-Request', 'Other-Target'];
+    }
+
+    public function navigate(\Psr\Http\Message\ResponseInterface $response, ?string $url): \Psr\Http\Message\ResponseInterface
+    {
+        return $response->withHeader('Other-Location', $url ?? 'reload');
+    }
+
+    public function announceNonce(\Psr\Http\Message\ResponseInterface $response, string $nonce): \Psr\Http\Message\ResponseInterface
+    {
+        return $response;
+    }
+
+    public function nonceHeaders(): array
+    {
+        return [];
+    }
+
+    public function pageNonce(ServerRequestInterface $request): ?string
+    {
+        return $request->getHeaderLine('Other-Nonce') ?: null;
     }
 }

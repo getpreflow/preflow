@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests\PageCache;
 
+require_once __DIR__ . '/../Fixtures/Pluggable/SignalDriver.php';
+
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\PageCacheConfig;
@@ -15,7 +17,7 @@ final class PageKeyTest extends TestCase
     {
         $config += ['hosts' => ['example.com', 'other.example']];
 
-        return PageKey::fromRequest(new ServerRequest($method, $url, $headers), PageCacheConfig::fromArray($config));
+        return PageKey::fromRequest(new ServerRequest($method, $url, $headers), PageCacheConfig::fromArray($config), [], self::htmx());
     }
 
     public function test_the_query_is_sorted(): void
@@ -178,5 +180,30 @@ final class PageKeyTest extends TestCase
     public function test_the_id_is_a_sha1(): void
     {
         $this->assertMatchesRegularExpression('/^[0-9a-f]{40}$/', $this->key('https://example.com/')->id());
+    }
+
+    public function test_the_clients_headers_decide_fragments_and_vary(): void
+    {
+        $clients = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $clients->add(new \Preflow\Core\Tests\Fixtures\Pluggable\SignalDriver(new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator())));
+        $key = static fn (array $headers): PageKey => PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/g', $headers), PageCacheConfig::fromArray(['hosts' => ['example.com']]), [], $clients);
+
+        $page = $key([]);
+        $fragment = $key(['Signal-Request' => 'true', 'Signal-Target' => 'list']);
+        $this->assertFalse($page->isFragment());
+        $this->assertTrue($fragment->isFragment());
+        $this->assertNotSame($fragment->id(), $key(['Signal-Request' => 'true', 'Signal-Target' => 'detail'])->id(), 'keyed on the client\'s headers');
+        $htmx = $key(['HX-Request' => 'true', 'HX-Target' => 'list']);
+        $this->assertFalse($htmx->isFragment(), 'htmx headers mean nothing to this app');
+        $this->assertSame($page->id(), $htmx->id());
+    }
+
+    /** htmx as the app's hypermedia client (what core binds by default). */
+    private static function htmx(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
+    {
+        $protocols = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+
+        return $protocols;
     }
 }

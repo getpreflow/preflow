@@ -67,6 +67,7 @@ final class GeoMiddleware implements MiddlewareInterface
         private readonly array $locales = [],
         private readonly string $defaultLocale = '',
         private readonly ?\Closure $translator = null,
+        private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -402,7 +403,7 @@ final class GeoMiddleware implements MiddlewareInterface
         if (
             $response->getStatusCode() !== 200
             || !$this->isHtml($response)
-            || $request->getHeaderLine('HX-Request') === 'true'
+            || ($this->hypermedia?->isFragmentRequest($request) ?? false)
             || $this->config->excludes($path)
             || PageSignals::noindexHeader($response)
         ) {
