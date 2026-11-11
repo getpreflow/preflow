@@ -19,12 +19,20 @@ final class AuthManager
     /**
      * @param array<string, GuardInterface> $guards
      * @param array<string, string> $loginPaths each guard's `login` path from config/auth.php, by guard name
+     * @param array<string, UserProviderInterface> $providers each guard's user provider, by guard name
      */
     public function __construct(
         private readonly array $guards,
         private readonly string $defaultGuard,
         private readonly array $loginPaths = [],
+        private readonly array $providers = [],
     ) {}
+
+    /** The user provider of a guard (guards.<name>.provider); null names the default guard. Null when unknown. */
+    public function provider(?string $guard = null): ?UserProviderInterface
+    {
+        return $this->providers[$guard ?? $this->defaultGuard] ?? null;
+    }
 
     /** Where signed-out browsers of a guard are sent (guards.<name>.login); null when it has none. Null names the default guard. */
     public function loginPath(?string $guard = null): ?string

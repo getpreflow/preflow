@@ -22,7 +22,8 @@ composer require preflow/blade  # Laravel Blade
 | `TemplateEngineInterface` | Engine contract: render, exists, addFunction, addGlobal, getTemplateExtension, addNamespace |
 | `TemplateEngineFactory` | Builds a third template engine named by `app.engine` (0.65) |
 | `LazyTemplateEngine` | Stands in for the factory's engine until its first render (keeps what was registered) |
-| `TemplateEngineContext` | What core passes the factory: template dirs, assets, debug, cache path, GEO, SEO, live parts, page cache |
+| `TemplateEngineContext` | What core passes the factory: template dirs, assets, debug, cache path, GEO, SEO, live parts, page cache; bound in the container for every engine |
+| `SharingTemplateEngine` | The app's engine when it is not Twig: keeps every function and global, so another engine can `share()` them (0.65) |
 | `TemplateFunctionDefinition` | Value object describing a template function (name, callable, isSafe) |
 | `TemplateExtensionProvider` | Interface for packages that supply template functions and globals |
 | `AssetCollector` | Collects CSS/JS across components, deduplicates by xxh3 hash |
@@ -82,6 +83,18 @@ final class PhpTemplateEngineFactory implements TemplateEngineFactory
 SEO is off), `liveParts` and `pageCache`. Pick a template extension that isn't `php`: a
 component's template sits beside its class. Any other name throws at boot, listing the accepted
 forms. Check the engine with `Preflow\Testing\Contract\TemplateEngineContract` (preflow/testing).
+
+### Another engine beside the app's: `TemplateEngineContext`, `SharingTemplateEngine` (0.65)
+
+Core binds the `TemplateEngineContext` it built the app's engine from in the container, for every
+engine (Twig: `cachePath` is `storage/cache/twig/…`; Blade: `storage/cache/blade`; a factory:
+`storage/cache/templates`), so a package can build another engine like it. When the app's engine
+is not Twig, the container's `TemplateEngineInterface` is a `SharingTemplateEngine` wrapping it
+(`engine()` gives the wrapped one, a `LazyTemplateEngine` for a factory): it renders as that engine
+and keeps every function and global registered on it, and `share($other)` gives `$other` all of
+them, those registered before and after. Namespaces stay the app engine's. Folio renders its own Twig
+templates so on any app engine (see the Folio README, "Template engines"). A Twig app's engine is the
+`TwigEngine` itself, as before.
 
 ### A fragment answered with its page's nonce: `NonceGenerator::adopt()` (0.65)
 

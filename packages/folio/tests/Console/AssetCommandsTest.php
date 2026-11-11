@@ -107,6 +107,26 @@ final class AssetCommandsTest extends TestCase
         $this->assertSame($legacy, $this->stored('post', 'p1')->get('cover'));
     }
 
+    /**
+     * A site without old uploads: values that only read differently once decoded and encoded again
+     * (a JSON list with spaces, blocks with escaped slashes) are not counted, nor rewritten.
+     */
+    public function test_rows_without_a_legacy_path_are_neither_counted_nor_rewritten(): void
+    {
+        $id = str_repeat('a', 32);
+        $this->working('post', 'p1', ['title' => ['en' => 'A'], 'slug' => ['en' => 'a'], 'cover' => '[ "' . $id . '" ]']);
+        $before = $this->stored('post', 'p1')->toArray();
+
+        [$code, $out] = $this->runCommand(new AssetsImportCommand(fn () => $this->app()), ['--dry-run']);
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('Would import 0 files, rewrite 0 records, 0 missing', $out);
+
+        [$code, $out] = $this->runCommand(new AssetsImportCommand(fn () => $this->app()));
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('Imported 0 files, rewrote 0 records, 0 missing', $out);
+        $this->assertSame($before, $this->stored('post', 'p1')->toArray(), 'the row is left as it was');
+    }
+
     private function legacyFile(): string
     {
         $path = '2026/10/' . str_repeat('e', 32) . '.png';

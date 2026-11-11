@@ -262,6 +262,10 @@ request.
 | `announceNonce($response, $nonce)`, `nonceHeaders()` | SecurityHeadersMiddleware (htmx: `HX-Nonce`); the page cache never stores those headers, a 304 drops them |
 | `pageNonce($request)` | `handle()`: a client that sends its page's CSP nonce back is answered with it (`NonceGenerator::adopt()`), so the scripts and styles the response puts into the page pass the page's policy |
 
+The configured driver (`hypermedia` other than htmx) is built eagerly at the end of the boot, right
+after the service providers (also on the CLI), so its constructor may only depend on services bound
+by then; a driver that can't be built stops the boot.
+
 With htmx (every built-in path) the behaviour is what it was: core adds the header-only htmx
 client at the start of the boot whenever preflow/htmx is installed and `hypermedia` is htmx, so
 an app without components or a template engine still treats htmx requests as such. An app on
@@ -568,7 +572,7 @@ return [
     'rebuild_budget' => 2.0,         // seconds of rebuilding after a response
     'cache_query' => true,           // cache pages with a query string (search, filters)
     'ignore_query' => ['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'],
-    'vary_headers' => ['HX-Request', 'HX-Target'], // plus the hypermedia clients' own varyHeaders()
+    'vary_headers' => ['HX-Request', 'HX-Target', 'HX-History-Restore-Request'], // plus the hypermedia clients' own varyHeaders()
     'signed_in_cookies' => [],       // added to the auth marker and the remember cookies
     'hosts' => [],                   // hosts cached besides the host of app.url
     'max_query_variants' => 50,      // pages with a query kept per URL path, oldest evicted first
@@ -683,8 +687,10 @@ return [
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
   normalised query, the values of the hypermedia clients' `varyHeaders()` and the `vary_headers`, and a forwarded scheme and host
   (`X-Forwarded-Proto`, `X-Forwarded-Host`), so http and https never share a copy.
-- **htmx headers.** Only the `vary_headers` (default `HX-Request`, `HX-Target`, kept for apps that
-  load htmx without preflow/htmx) and the hypermedia clients' `varyHeaders()` are in the key (a
+- **htmx headers.** Only the `vary_headers` (default `HX-Request`, `HX-Target`,
+  `HX-History-Restore-Request`, kept for apps that load htmx without preflow/htmx, so a restore
+  never shares a fragment's key; since 0.65 with the third, which htmx's own client already adds, so
+  htmx apps keep their keys) and the hypermedia clients' `varyHeaders()` are in the key (a
   header in both counts once). A fragment handler that answers differently by `HX-Trigger`, `HX-Trigger-Name`,
   `HX-Boosted`, `HX-Current-URL` or a site header must add it to `vary_headers` (or send
   `Vary` for it, which keeps the response from being stored), or the fragments of one target

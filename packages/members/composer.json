@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "nyholm/psr7": "^1.8",
-        "preflow/auth": "^0.38 || @dev",
+        "preflow/auth": "^0.65 || @dev",
         "preflow/core": "^0.38 || @dev",
         "preflow/data": "^0.42 || @dev",
         "preflow/devtools": "^0.26 || @dev",
@@ -24,7 +24,7 @@
         "preflow/rbac": "Roles and permissions beyond members.access (Folio's members admin needs it)"
     },
     "conflict": {
-        "preflow/auth": "<0.38",
+        "preflow/auth": "<0.65",
         "preflow/core": "<0.38",
         "preflow/data": "<0.42",
         "preflow/folio": "<0.38",

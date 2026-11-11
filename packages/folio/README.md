@@ -120,6 +120,22 @@ driver (e.g. `sqlite`); the admin and rendering are storage-agnostic.
 Admin and frontend templates live under `@folio/*` and are overridable: drop a same-named
 template in `resources/folio/` to replace the shipped one.
 
+**Template engines.** Folio's own templates are Twig: the admin, its fallback frontend templates
+(`@folio/frontend/page.twig`, `@folio/frontend/{type}.twig`), extensions' `@{name}/…` templates and
+their overrides in `resources/folio/`. They render through a Twig engine Folio owns, whatever
+`config/app.php` `engine` is (Twig, Blade or a `TemplateEngineFactory`): every template name
+ending in `.twig` goes there. Any other name is an app template, such as a type's
+`frontend.template` written for the app's engine (`"template": "pages/job.phtml"`), and renders
+through the app's engine, where the `folio_*` functions (`folio_get`, `folio_list`, `folio_find`,
+`folio_blocks`, `folio_alternate_links`, …) are registered too. Folio's Twig engine is built like
+the app's (core's `TemplateEngineContext`; compiled templates under the app engine's cache folder,
+`…/folio-twig`) and gets every function and global of the app's engine (`SharingTemplateEngine`),
+so `csrf_field()`, `t()`, `hd` work in Folio's templates as before. On a Twig app both are the app's
+engine: nothing changes there. `Preflow\Folio\View\FolioEngine` (a container service) is the
+engine Folio renders with; a package that renders Folio's or its own Folio extension's Twig
+templates uses it (preflow/rbac does). Block components and other components render through the
+app's engine, as everywhere else.
+
 The admin ships its own htmx (`@folio/htmx.js`) whatever the app's hypermedia driver
 (`config/app.php` `hypermedia`) is: its screens never use the app's driver, and Folio adds htmx to
 core's `HypermediaProtocols`, so its requests are treated as htmx requests (an expired session
@@ -185,12 +201,34 @@ without roles too. Any other admin handler without a rule is refused (fail close
 
 ### Staff login
 
+**Who may sign in.** Only staff: Folio signs them in through one guard of `config/auth.php`,
+named by `config/folio.php` `'guard'` (default: the app's default guard, as before 0.65). Its
+population must be staff:
+
+- a guard with `'population' => 'staff'`, or one without a population (Folio marks it as staff,
+  as before), is used;
+- a guard that declares another population (`'members'`, or an app's own such as
+  `preflow/starter`'s `'employers'`) stops the boot with a `RuntimeException` naming the guard and
+  its population, so the admin never opens to the people that guard signs in. Set up a staff
+  guard (a `SessionGuard` on your staff accounts, `'population' => 'staff'`, as
+  `preflow/starter-folio` has) and make it the default guard or name it here:
+
+```php
+// config/folio.php: the app's default guard stays the employers'
+return ['path' => '/folio', 'guard' => 'staff'];
+```
+
+A guard that `config/auth.php` does not define stops the boot too. Folio marks its guard as
+staff (`Access::markStaffGuard()`); preflow/members' `Viewer::isStaff()` counts a user of any staff
+guard, so it agrees with `guard`. A user signed in on another guard on the same request (an
+employer, a member) is sent to the admin login.
+
 The login page has the same options for every site:
 
-- **Remember me.** The checkbox appears when the default guard has `remember` configured
+- **Remember me.** The checkbox appears when the staff guard has `remember` configured
   (see preflow/auth). A config-only site gets it too once it configures one.
 
-The rest applies only when the default guard has **record users**: a `RecordUserProvider`,
+The rest applies only when the staff guard has **record users**: a `RecordUserProvider`,
 directly or in a `ChainUserProvider`. A site whose staff are config users only keeps its
 login exactly as before: the same page, no throttle, no forgot link, and no new routes.
 
@@ -214,7 +252,7 @@ login exactly as before: the same page, no throttle, no forgot link, and no new 
   sign-in links.". Staff mode needs `config/notify.php`, `APP_KEY` and `app.url`.
 
 `Preflow\Folio\Users\StaffPasswords` (a container service) is the API for packages that
-manage the accounts (preflow/rbac). It works for any record user type of the default guard:
+manage the accounts (preflow/rbac). It works for any record user type of the staff guard:
 
 - `invite()`: a link valid for 7 days, voiding earlier invites.
 - `sendReset()`: a link valid for 1 hour.
@@ -230,14 +268,18 @@ manage the accounts (preflow/rbac). It works for any record user type of the def
 Records are saved without hooks or revisions.
 
 **Revision authors.** Revisions store who saved them: the e-mail for a config user, the
-record id for a record user. `Preflow\Folio\Users\AuthorNames` shows an id as the account's
-name (else its e-mail), a disabled account included. It shows an e-mail or an unknown value
-as stored. Without record users nothing changes.
+id for any other. `Preflow\Folio\Users\AuthorNames` shows an id as the account's
+name (else its e-mail), a disabled account included: a record user's from its record, any other
+user from the staff guard's provider (`findById()`; its `name`/`email`, as public properties or
+`getName()`/`getEmail()`, so a model behind `DataManagerUserProvider` shows by name too). It shows
+an e-mail or an unknown value as stored.
 
-## Overriding a core admin action
+## Overriding the dashboard
 
-Shadow a single core action without forking by adding a class under
-`App\Folio\Overrides\{Controller}\{Action}` implementing `OverridableAction`:
+The dashboard is the one core admin action an app can replace without forking: a class
+`App\Folio\Overrides\Content\Index` implementing `OverridableAction` is shown instead of
+Folio's dashboard (the list, form and other screens look for no override; change those with
+type customizations and screens, see [Extensions](#extensions)):
 
 ```php
 namespace App\Folio\Overrides\Content;
@@ -1141,7 +1183,9 @@ errors on boot in debug (in production they are logged and the part is skipped);
 
 **Permissions.** An extension declares each permission it uses with `#[DeclaresPermission]`;
 the name must start with `{extension}.`, and the extension's label is its group in
-`preflow/roles`. An undeclared permission throws in debug. While the extension or the part
+`preflow/roles`. The permission of a `#[FolioScreen]` and of a `#[RecordAction]` is declared by
+the screen or action itself (labelled with its label); repeat it with `#[DeclaresPermission]` only
+to give it a label of its own. A `#[BulkAction]`'s permission is not: declare it. An undeclared permission throws in debug. While the extension or the part
 is disabled its permissions are denied (and logged once), never a 500.
 
 **Management.** *Settings → Extensions* (`{prefix}/extensions`, permission
@@ -1155,6 +1199,7 @@ php preflow folio:extensions:enable  <name> [--part=<id>]
 php preflow folio:extensions:disable <name> [--part=<id>]
 php preflow folio:extensions:apply
 php preflow folio:extensions:check
+php preflow folio:extensions:uninstall <name> [--force]
 ```
 
 - `disable <name>` works without booting the app, so it is the recovery path for an
@@ -1165,6 +1210,11 @@ php preflow folio:extensions:check
   environment's own storage, never exported) and `seed()` on every run (since 0.53). Run it on
   every deploy.
 - `check` boots with debug forced on and exits 1 on any extension error; use it in CI.
+- `uninstall <name>` runs the extension's `uninstall()` in this environment and forgets its
+  installed version, so a later `apply` installs it afresh. It refuses an enabled extension
+  (disable it first), one whose types a site model file extends, and one not installed here; it
+  asks before it runs (`[y/N]`), `--force` skips the question. Nothing else ever calls
+  `uninstall()`: disabling keeps the data. A failing `uninstall()` keeps the installed version.
 
 ### Seeding on every deploy
 
@@ -1379,8 +1429,8 @@ final class NoteTweaks
 | `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[DashboardNotice]` | `fn(): ?string` | A notice above the dashboard's cards (since 0.53), the same rules as `#[ListNotice]`. Only called for a user who may view the type (`{type}.view`); the notices are grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
-| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). |
-| `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored. |
+| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). Runs on every Folio save of the record: the form, autosave, and each record of the bulk bar's "Set …". |
+| `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored, on the same saves as `#[BeforeSave]` (the bulk "Set …" included). |
 | `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |
 | `#[AfterDelete]` | `fn(DynamicRecord): void` | After the record is gone. |
 
@@ -1761,7 +1811,8 @@ php preflow migrate
   about them meanwhile.
 - It **creates and adds only**: missing tables and columns are added, nothing is ever
   dropped, renamed or altered. Re-running it is safe.
-- **SQLite only for now.** A Folio type stored on MySQL makes the step throw.
+- It runs on SQLite and MySQL (and on any storage whose PDO driver has a registered schema
+  grammar, see `preflow/data` `Grammars::register()`).
 - A record key without a column (a JSON field added to the model before migrating) fails
   with a message naming `preflow migrate`, not a raw PDO error.
 - JSON-stored types are left alone. `folio:extensions:apply` runs the same sync.

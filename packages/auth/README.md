@@ -361,6 +361,8 @@ final class EmployerAuth implements MiddlewareInterface
 ```
 
 `AuthManager::loginPath('employers')` returns the configured path (null for none; null as the name is the default guard).
+`AuthManager::provider('staff')` returns a guard's user provider (since 0.65; null for an unknown guard, null as the name
+is the default guard's, which is also bound as `UserProviderInterface`).
 
 Check `next` before redirecting back after login: accept only a value that starts with `/` and not `//` (and no
 backslash), otherwise go to your default page. Otherwise the login page is an open redirect.
@@ -457,7 +459,11 @@ $registry->declarePattern('invoice.*'); // groups the family (role editors, docs
 ```
 
 A package that signs staff in, such as Folio, marks its guard as staff itself;
-config wins. A guard with no population serves members.
+config wins. A guard with no population serves members. A population of the app's own
+(`'population' => 'employers'` in preflow/starter) counts as members for permissions, and a
+package's mark never makes it staff (since 0.65; Folio refuses to sign staff in through such a
+guard). `$access->declaredPopulation($guard)` returns what the config says (null for none),
+`populationOf($guard)` what counts (`staff` or `members`).
 
 Every request asks each guard who is signed in, the default guard first; the first
 user found counts (`auth_user()`, `can()`, `AuthManager::guardName()`). Sign members
@@ -474,6 +480,13 @@ $permission, $subject)` and register it with `$access->setResolver(...)` in a
 service provider. `$access->resolver()` returns the one answering now, so a package can wrap it
 or leave another package's in place (the members core wraps only the `DefaultResolver`, giving
 an admitted member `members.access`; with rbac, rbac decides).
+
+**Which roles exist.** A resolver that also implements `Preflow\Auth\Access\ListsRoles`
+(`roles(string $population): list<string>`) tells which role names a population has:
+preflow/roles (the keys of `config/roles.php`), preflow/rbac (the role records), the members
+core (`member`, and the staff roles of the resolver before it). `$access->roles('staff')` asks the
+resolver answering now; null when it lists none (the default resolver). Tools check a role with
+it before they give it to an account (preflow/starter-folio's `staff:create`). Since 0.65.
 
 ## Custom guards
 

@@ -79,10 +79,8 @@ do_install() {
     write_dev_composer composer.json composer.dev.json "../*" "$root/packages"
     COMPOSER=composer.dev.json composer update --no-interaction
     if [ ! -f .env ]; then
-        cp .env.example .env
-        php preflow key:generate
-        php preflow migrate
-        php preflow db:seed
+        # The steps composer create-project runs (the starter's post-create-project-cmd).
+        COMPOSER=composer.dev.json composer run-script post-create-project-cmd --no-interaction
     fi
 }
 
@@ -125,6 +123,14 @@ do_fresh() {
     composer install --no-scripts --no-interaction
     composer run-script post-create-project-cmd --no-interaction
     composer test --no-interaction
+
+    # Folio's extensions are installed by create-project (folio:extensions:apply), so none is listed
+    # as "installed: none" on a fresh install.
+    if [ -f config/folio/extensions.json ] && php preflow folio:extensions:list | grep -q 'enabled  installed: none'; then
+        echo "An enabled Folio extension is not installed after create-project:" >&2
+        php preflow folio:extensions:list >&2
+        exit 1
+    fi
 
     port="$(php -r '$s = stream_socket_server("tcp://127.0.0.1:0"); echo parse_url(stream_socket_get_name($s, false), PHP_URL_PORT);')"
     php preflow serve --host=127.0.0.1 --port="$port" >"$scratch/serve.log" 2>&1 &

@@ -1100,24 +1100,59 @@ final class Application
         ?\Preflow\View\Geo\GeoCollector $geo = null,
         ?\Preflow\View\Seo\SeoContext $seo = null,
     ): ?\Preflow\View\TemplateEngineInterface {
-        return match ($name) {
-            'twig' => class_exists(\Preflow\Twig\TwigEngine::class)
-                ? new \Preflow\Twig\TwigEngine(
-                    templateDirs: $templateDirs,
-                    assetCollector: $assets,
-                    debug: $debug->isDebug(),
-                    cachePath: $this->twigCachePath(),
-                    geoCollector: $geo,
-                    seoContext: $seo,
-                    liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
-                    pageCache: $this->container->get(\Preflow\Core\PageCache\PageCache::class),
-                )
-                : null,
-            'blade' => class_exists(\Preflow\Blade\BladeEngine::class)
-                ? $this->createBladeEngine($templateDirs, $assets, $debug, $geo, $seo)
-                : null,
-            default => $this->createFactoryEngine($name, $templateDirs, $assets, $debug, $geo, $seo),
-        };
+        if ($name === 'twig') {
+            if (!class_exists(\Preflow\Twig\TwigEngine::class)) {
+                return null;
+            }
+            $context = $this->engineContext($templateDirs, $assets, $debug, $this->twigCachePath(), $geo, $seo);
+
+            return new \Preflow\Twig\TwigEngine(
+                templateDirs: $context->templateDirs,
+                assetCollector: $context->assets,
+                debug: $context->debug,
+                cachePath: $context->cachePath,
+                geoCollector: $context->geo,
+                seoContext: $context->seo,
+                liveParts: $context->liveParts,
+                pageCache: $context->pageCache,
+            );
+        }
+        // Any other engine keeps the functions and globals registered on it, so a package can give
+        // them to an engine of its own (Folio renders its Twig templates so).
+        $engine = $name === 'blade'
+            ? (class_exists(\Preflow\Blade\BladeEngine::class) ? $this->createBladeEngine($templateDirs, $assets, $debug, $geo, $seo) : null)
+            : $this->createFactoryEngine($name, $templateDirs, $assets, $debug, $geo, $seo);
+
+        return $engine === null ? null : new \Preflow\View\SharingTemplateEngine($engine);
+    }
+
+    /**
+     * What the app's engine is built from, bound in the container as TemplateEngineContext (for
+     * every engine), so a package can build another engine like it.
+     *
+     * @param list<string> $templateDirs
+     */
+    private function engineContext(
+        array $templateDirs,
+        \Preflow\View\AssetCollector $assets,
+        DebugLevel $debug,
+        string $cachePath,
+        ?\Preflow\View\Geo\GeoCollector $geo,
+        ?\Preflow\View\Seo\SeoContext $seo,
+    ): \Preflow\View\TemplateEngineContext {
+        $context = new \Preflow\View\TemplateEngineContext(
+            templateDirs: $templateDirs,
+            assets: $assets,
+            debug: $debug->isDebug(),
+            cachePath: $cachePath,
+            geo: $geo,
+            seo: $seo,
+            liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
+            pageCache: $this->container->get(\Preflow\Core\PageCache\PageCache::class),
+        );
+        $this->container->instance(\Preflow\View\TemplateEngineContext::class, $context);
+
+        return $context;
     }
 
     /**
@@ -1151,16 +1186,7 @@ final class Application
             $cachePath,
         ));
 
-        $context = new \Preflow\View\TemplateEngineContext(
-            templateDirs: $templateDirs,
-            assets: $assets,
-            debug: $debug->isDebug(),
-            cachePath: $cachePath,
-            geo: $geo,
-            seo: $seo,
-            liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
-            pageCache: $this->container->get(\Preflow\Core\PageCache\PageCache::class),
-        );
+        $context = $this->engineContext($templateDirs, $assets, $debug, $cachePath, $geo, $seo);
         $container = $this->container;
 
         return new \Preflow\View\LazyTemplateEngine(
@@ -1537,15 +1563,17 @@ final class Application
             $cachePath,
         ));
 
+        $context = $this->engineContext($templateDirs, $assets, $debug, $cachePath, $geo, $seo);
+
         return new \Preflow\Blade\BladeEngine(
-            templateDirs: $templateDirs,
-            assetCollector: $assets,
-            debug: $debug->isDebug(),
-            cachePath: $cachePath,
-            geoCollector: $geo,
-            seoContext: $seo,
-            liveParts: $this->container->get(\Preflow\Core\PageCache\LiveParts::class),
-            pageCache: $this->container->get(\Preflow\Core\PageCache\PageCache::class),
+            templateDirs: $context->templateDirs,
+            assetCollector: $context->assets,
+            debug: $context->debug,
+            cachePath: $context->cachePath,
+            geoCollector: $context->geo,
+            seoContext: $context->seo,
+            liveParts: $context->liveParts,
+            pageCache: $context->pageCache,
         );
     }
 
@@ -2638,12 +2666,16 @@ final class Application
         }
 
         $loginPaths = [];
+        $guardProviders = [];
         foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
             if (is_string($guardConfig['login'] ?? null)) {
                 $loginPaths[(string) $name] = $guardConfig['login'];
             }
+            if (isset($guards[(string) $name], $providers[$guardConfig['provider'] ?? ''])) {
+                $guardProviders[(string) $name] = $providers[$guardConfig['provider']];
+            }
         }
-        $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard, $loginPaths);
+        $authManager = new \Preflow\Auth\AuthManager($guards, $defaultGuard, $loginPaths, $guardProviders);
         $this->container->instance(\Preflow\Auth\AuthManager::class, $authManager);
 
         // The permission question: staff/members per guard (config), default resolver until a package sets one.

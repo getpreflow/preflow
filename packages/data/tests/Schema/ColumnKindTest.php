@@ -52,7 +52,7 @@ final class ColumnKindTest extends TestCase
         $this->assertSame(ColumnKind::Short, $kinds->columnKindOf(new TypeFieldDefinition('s', 'string', unique: true)));
         $this->assertSame(ColumnKind::Short, $kinds->columnKindOf(new TypeFieldDefinition('s', 'string', index: true)));
         $this->assertSame(ColumnKind::Text, $kinds->columnKindOf(new TypeFieldDefinition('s', 'string', translatable: true, unique: true)));
-        $this->assertSame(ColumnKind::Text, $kinds->columnKindOf(new TypeFieldDefinition('r', 'relation', config: ['multiple' => true], unique: true)));
+        $this->assertSame(ColumnKind::Text, $kinds->columnKindOf(new TypeFieldDefinition('r', 'relation', config: ['relation' => ['to' => 't', 'multiple' => true]], unique: true)));
         $this->assertSame(ColumnKind::Short, $kinds->columnKindOf(new TypeFieldDefinition('r', 'relation', unique: true)));
         $this->assertSame(ColumnKind::Text, $kinds->columnKindOf(new TypeFieldDefinition('x', 'mystery', unique: true)));
     }

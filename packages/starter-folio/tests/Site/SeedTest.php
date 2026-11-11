@@ -261,7 +261,7 @@ final class SeedTest extends TestCase
         foreach (['admin@example.com' => ['demo-admin', ['admin']], 'editor@example.com' => ['demo-editor', ['editor']]] as $email => [$password, $roles]) {
             $staff = $this->data()->query(Staff::class)->where('email', $email)->first();
             $this->assertNotNull($staff, $email);
-            $this->assertTrue(password_verify($password, $staff->passwordHash), $email);
+            $this->assertTrue(password_verify($password, $staff->password_hash), $email);
             $this->assertSame($roles, $staff->roles);
         }
 

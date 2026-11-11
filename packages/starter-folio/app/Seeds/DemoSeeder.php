@@ -132,10 +132,10 @@ final class DemoSeeder
             $staff = new Staff();
             $staff->uuid = md5('starter-staff-' . ++$n);
             $staff->email = $email;
-            $staff->passwordHash = $hasher->hash($password);
+            $staff->password_hash = $hasher->hash($password);
             $staff->roles = $roles;
             $staff->name = 'Demo ' . ucfirst($roles[0]);
-            $staff->createdAt = '2026-09-01 08:00:00';
+            $staff->created_at = '2026-09-01 08:00:00';
             $data->save($staff);
         }
 

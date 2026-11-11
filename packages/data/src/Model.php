@@ -19,10 +19,36 @@ abstract class Model
             if (property_exists($this, $key)) {
                 if (isset($meta->transformers[$key])) {
                     $value = $meta->transformers[$key]->fromStorage($value);
+                } elseif (is_int($value) || is_string($value)) {
+                    $value = self::storedBool(static::class, $key, $value);
                 }
                 $this->{$key} = $value;
             }
         }
+    }
+
+    /** @var array<string, array<string, bool>> class => property => whether it is declared bool (or ?bool) */
+    private static array $boolProperties = [];
+
+    /**
+     * What SQL stores for a bool property (1/0, '1'/'0': SQLite and MySQL have no boolean) as a
+     * bool; any other value, and the value of a property that isn't bool, as given.
+     */
+    private static function storedBool(string $class, string $property, int|string $value): int|string|bool
+    {
+        if (!isset(self::$boolProperties[$class][$property])) {
+            $type = (new \ReflectionProperty($class, $property))->getType();
+            self::$boolProperties[$class][$property] = $type instanceof \ReflectionNamedType && $type->getName() === 'bool';
+        }
+        if (!self::$boolProperties[$class][$property]) {
+            return $value;
+        }
+
+        return match ((string) $value) {
+            '1' => true,
+            '0', '' => false,
+            default => $value,
+        };
     }
 
     /**

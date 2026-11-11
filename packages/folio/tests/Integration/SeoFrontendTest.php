@@ -244,7 +244,9 @@ final class SeoFrontendTest extends TestCase
         $this->assertSame(200, $admin->getStatusCode());
         $this->assertStringContainsString('</head>', (string) $admin->getBody());
         $this->assertStringNotContainsString('twitter:card', (string) $admin->getBody());
-        $this->assertStringNotContainsString('name="robots"', (string) $admin->getBody());
+        // SEO adds no robots tag of its own; the admin layout's noindex is the only one (it keeps GEO's Markdown alternate off too).
+        $this->assertSame(1, substr_count((string) $admin->getBody(), 'name="robots"'));
+        $this->assertStringContainsString('<meta name="robots" content="noindex">', (string) $admin->getBody());
     }
 
     #[RunInSeparateProcess]

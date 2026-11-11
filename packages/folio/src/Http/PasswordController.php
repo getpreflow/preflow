@@ -14,7 +14,7 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * "Forgot password" and the set-password page of the Folio login (public, CSRF-protected,
- * throttled; routed only when the default guard has record users).
+ * throttled; routed only when the staff guard has record users).
  *
  * Forgot answers alike for every address and mails a reset link only to an active record
  * account. The set-password page takes reset and invite links: opening one only shows the form
@@ -38,6 +38,8 @@ final class PasswordController
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
         private readonly int $passwordMin = 10,
+        /** Folio's staff guard (StaffGuard); null: the default guard */
+        private readonly ?string $guard = null,
     ) {}
 
     public function forgotForm(ServerRequestInterface $request): ResponseInterface
@@ -108,7 +110,7 @@ final class PasswordController
         if ($user === null) {
             return $this->expiredPage();
         }
-        $this->auth->guard()->login($user, $request);
+        $this->auth->guard($this->guard)->login($user, $request);
 
         return new Response(302, ['Location' => $this->prefix]);
     }

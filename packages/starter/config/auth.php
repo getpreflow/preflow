@@ -5,10 +5,13 @@ return [
     'api_guard' => 'token',
 
     'guards' => [
-        // Employers sign in with the form at /employer/login.
+        // Employers sign in with the form at /employer/login. Their population is not staff, so
+        // preflow/folio refuses to boot on this guard: adding Folio needs a staff guard of its own
+        // (as preflow/starter-folio has), never the employers'. For permissions they count as members.
         'employers' => [
             'class' => Preflow\Auth\SessionGuard::class,
             'provider' => 'users',
+            'population' => 'employers',
             'login' => '/employer/login',
         ],
         // API clients send "Authorization: Bearer <token>" (preflow auth:token).

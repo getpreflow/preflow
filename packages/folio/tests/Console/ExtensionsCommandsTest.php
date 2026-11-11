@@ -13,6 +13,7 @@ use Preflow\Folio\Console\ExtensionsCheckCommand;
 use Preflow\Folio\Console\ExtensionsDisableCommand;
 use Preflow\Folio\Console\ExtensionsEnableCommand;
 use Preflow\Folio\Console\ExtensionsListCommand;
+use Preflow\Folio\Console\ExtensionsUninstallCommand;
 use Preflow\Folio\Console\FolioCommands;
 use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Folio\Tests\Support\CounterExtension;
@@ -35,7 +36,7 @@ final class ExtensionsCommandsTest extends TestCase
 
     public function test_folio_lists_the_extension_commands(): void
     {
-        foreach ([ExtensionsListCommand::class, ExtensionsEnableCommand::class, ExtensionsDisableCommand::class, ExtensionsApplyCommand::class, ExtensionsCheckCommand::class] as $class) {
+        foreach ([ExtensionsListCommand::class, ExtensionsEnableCommand::class, ExtensionsDisableCommand::class, ExtensionsApplyCommand::class, ExtensionsCheckCommand::class, ExtensionsUninstallCommand::class] as $class) {
             $this->assertContains($class, FolioCommands::all());
         }
     }
@@ -102,6 +103,104 @@ final class ExtensionsCommandsTest extends TestCase
         $this->assertStringContainsString('installed counter 1.0.0', $out);
         $this->assertSame('1.0.0', $this->app()->container()->get(ExtensionState::class)->installedVersion('counter'));
         $this->assertSame("nothing to do\n", $this->runCommand(new ExtensionsApplyCommand(fn () => $this->app()))[1]);
+    }
+
+    /** @return resource an input stream holding $answer, for the confirmation */
+    private function answer(string $answer)
+    {
+        $in = fopen('php://memory', 'r+');
+        fwrite($in, $answer);
+        rewind($in);
+
+        return $in;
+    }
+
+    #[RunInSeparateProcess]
+    public function test_uninstall_refuses_an_enabled_extension(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter();
+        $this->runCommand(new ExtensionsApplyCommand(fn () => $this->app()));
+
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app()), ['counter', '--force']);
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('enabled', $out);
+        $this->assertStringContainsString('folio:extensions:disable counter', $out);
+        $this->assertFileDoesNotExist($this->dir . '/uninstalls.log');
+        $this->assertSame('1.0.0', $this->app()->container()->get(ExtensionState::class)->installedVersion('counter'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_uninstall_asks_then_runs_uninstall_and_forgets_the_installed_version(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter();
+        $this->runCommand(new ExtensionsApplyCommand(fn () => $this->app()));
+        $this->runCommand(new ExtensionsDisableCommand($this->dir), ['counter']);
+
+        // Anything but yes cancels.
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app(), $this->answer("n\n")), ['counter']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('[y/N]', $out);
+        $this->assertStringContainsString('Cancelled', $out);
+        $this->assertFileDoesNotExist($this->dir . '/uninstalls.log');
+
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app(), $this->answer("y\n")), ['counter']);
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('uninstalled counter 1.0.0', $out);
+        $this->assertSame("uninstall\n", (string) file_get_contents($this->dir . '/uninstalls.log'));
+        $this->assertNull($this->app()->container()->get(ExtensionState::class)->installedVersion('counter'));
+
+        // Nothing left to uninstall.
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app()), ['counter', '--force']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('not installed', $out);
+        $this->assertSame("uninstall\n", (string) file_get_contents($this->dir . '/uninstalls.log'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_uninstall_with_force_asks_nothing_and_unknown_or_bad_usage_exits_1(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter();
+        $this->runCommand(new ExtensionsApplyCommand(fn () => $this->app()));
+        $this->runCommand(new ExtensionsDisableCommand($this->dir), ['counter']);
+
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app(), $this->answer('')), ['counter', '--force']);
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('[y/N]', $out);
+        $this->assertFileExists($this->dir . '/uninstalls.log');
+
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app()), ['ghost', '--force']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Unknown extension "ghost"', $out);
+        foreach ([[], ['a', 'b'], ['counter', '--yes']] as $args) {
+            [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app()), $args);
+            $this->assertSame(1, $code);
+            $this->assertStringContainsString('Usage: preflow folio:extensions:uninstall <name> [--force]', $out);
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_uninstall_refuses_while_a_site_model_extends_its_type(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter();
+        $this->write('app/Folio/Counter/models/tally.json', (string) json_encode([
+            'key' => 'tally', 'table' => 'tally', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Tallies',
+            'fields' => ['title' => ['type' => 'string']],
+        ]));
+        $this->runCommand(new ExtensionsApplyCommand(fn () => $this->app()));
+        $this->write('config/models/tally.json', (string) json_encode(['key' => 'tally', 'extends' => true, 'fields' => ['note' => ['type' => 'string']]]));
+        $this->write('config/folio/extensions.json', '{"enabled": {}}'); // switched off by hand, the patch left behind
+
+        // Such a patch stops the boot, and nothing is uninstalled.
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app()), ['counter', '--force']);
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('tally.json', $out);
+        $this->assertFileDoesNotExist($this->dir . '/uninstalls.log');
     }
 
     #[RunInSeparateProcess]

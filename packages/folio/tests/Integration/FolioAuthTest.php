@@ -122,6 +122,28 @@ final class FolioAuthTest extends TestCase
         $this->assertMatchesRegularExpression('~^folio_remember=[^;]+; Max-Age=~', implode("\n", $login->getHeader('Set-Cookie')));
     }
 
+    /** GEO on: the signed-in admin is no public page, so it carries no Markdown alternate (link or header). */
+    #[RunInSeparateProcess]
+    public function test_signed_in_admin_pages_carry_no_markdown_alternate(): void
+    {
+        file_put_contents($this->dir . '/config/geo.php', "<?php\nreturn ['enabled' => true, 'types' => ['page']];\n");
+        $app = $this->app();
+        $f = new Psr17Factory();
+        $loginPage = (string) $app->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
+        preg_match('/name="_csrf_token" value="([^"]+)"/', $loginPage, $m);
+        $app->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
+            '_csrf_token' => $m[1] ?? '', 'email' => 'admin@site.test', 'password' => 'secret',
+        ]));
+        $this->assertStringContainsString('text/markdown', (string) $app->handle($f->createServerRequest('GET', '/'))->getHeaderLine('Link'), 'GEO is on for the site');
+
+        foreach (['/folio', '/folio/page'] as $path) {
+            $res = $app->handle($f->createServerRequest('GET', $path));
+            $this->assertSame(200, $res->getStatusCode(), $path);
+            $this->assertStringNotContainsString('type="text/markdown"', (string) $res->getBody(), $path);
+            $this->assertStringNotContainsString('text/markdown', $res->getHeaderLine('Link'), $path);
+        }
+    }
+
     #[RunInSeparateProcess]
     public function test_assets_are_public_while_unauthenticated(): void
     {

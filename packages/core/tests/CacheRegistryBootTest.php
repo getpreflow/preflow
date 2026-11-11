@@ -126,7 +126,7 @@ final class CacheRegistryBootTest extends TestCase
         $this->assertFalse($config->enabled);
         $this->assertSame(14400, $config->maxAge);
         $this->assertSame(['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'], $config->ignoreQuery);
-        $this->assertSame(['HX-Request', 'HX-Target'], $config->varyHeaders);
+        $this->assertSame(['HX-Request', 'HX-Target', 'HX-History-Restore-Request'], $config->varyHeaders);
         $this->assertTrue($config->cacheQuery);
     }
 

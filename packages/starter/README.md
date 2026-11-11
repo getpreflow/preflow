@@ -36,6 +36,7 @@ A few more things to know:
 - Both the pages and the API read through `app/Jobs/JobSearch.php` and write through `app/Jobs/JobWriter.php`. The rules for a job live once, in `app/Models/Job.php`.
 - `app/Jobs/JobResource.php` is the one place that decides how a job looks as an array, for the job cards and for JSON.
 - `php preflow routes:list` lists the routed paths. What middleware answers, such as `/sitemap.xml` and `/robots.txt`, isn't listed.
+- Employers sign in on the `employers` guard (`config/auth.php`), the default one, with `'population' => 'employers'`: they are no staff. Adding `preflow/folio` to this starter as it is stops the boot with a message, so the content admin never opens to employers. Folio needs a staff guard of its own; `preflow/starter-folio` is this starter with one, and Folio's README ("Staff login") shows how to set one up.
 
 ## Try this
 

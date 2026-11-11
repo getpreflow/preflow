@@ -32,6 +32,10 @@ $model->fill(array $data): void   // hydrate from associative array
 $model->toArray(): array          // export public properties
 ```
 
+A `bool` (or `?bool`) property reads what SQL stores for it: `1`/`0` and `'1'`/`'0'` (SQLite and
+MySQL have no boolean type) become `true`/`false` in `fill()`, and null stays null (since 0.65;
+before, such a property threw a `TypeError` on a SQL storage).
+
 ### `DataManager`
 
 ```php

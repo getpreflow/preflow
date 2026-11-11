@@ -45,6 +45,7 @@
             "@php -r \"copy('.env.example', '.env');\"",
             "@php preflow key:generate",
             "@php preflow migrate",
+            "@php preflow folio:extensions:apply",
             "@php preflow db:seed"
         ],
         "test": [

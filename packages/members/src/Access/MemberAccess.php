@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Members\Access;
 
+use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Auth\Authenticatable;
 use Preflow\Members\MemberRoles;
@@ -15,7 +16,7 @@ use Preflow\Members\MembersConfig;
  * nothing, also when "member" is among their roles ({@see MemberRoles::admitted()}). Every other question goes to the resolver before it (auth's default: staff may do
  * everything). With rbac, rbac's resolver answers instead (MembersServiceProvider leaves it).
  */
-final class MemberAccess implements PermissionResolver
+final class MemberAccess implements PermissionResolver, ListsRoles
 {
     public function __construct(
         private readonly PermissionResolver $fallback,
@@ -28,5 +29,15 @@ final class MemberAccess implements PermissionResolver
         }
 
         return $this->fallback->allows($user, $population, $permission, $subject);
+    }
+
+    /** Members have the one role "member"; another population's roles are the resolver's before it (none when it lists none). */
+    public function roles(string $population): array
+    {
+        if ($population === 'members') {
+            return ['member'];
+        }
+
+        return $this->fallback instanceof ListsRoles ? $this->fallback->roles($population) : [];
     }
 }

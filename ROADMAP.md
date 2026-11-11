@@ -446,7 +446,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `GeoMiddleware`, `SeoMiddleware` (its 304 keeps `HX-Nonce` then), `MembersView`. Pass the container's
       `HypermediaProtocols`. `AuthMiddleware` built by hand reads it from the request (core puts it there).
     - No driver at all (preflow/htmx not installed): no request is a fragment for core (no HX-Nonce, no HX-Redirect or
-      HX-Refresh); the default `vary_headers` (`HX-Request`, `HX-Target`, kept) still keep fragments' cache keys apart.
+      HX-Refresh); the default `vary_headers` (`HX-Request`, `HX-Target`, and since Task 5c `HX-History-Restore-Request`)
+      still keep fragments' and restores' cache keys apart.
       With preflow/htmx installed core adds the header-only htmx client at the start of the boot, so apps without
       components or an engine behave as before.
     - A history restore drops only its client's vary headers from the key (htmx: `HX-Request`, `HX-Target`,
@@ -454,6 +455,61 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `vary_headers` gets a separate (cache-miss) key for restores; nothing wrong is served.
     Constraints: core conflicts data/htmx/view <0.65, htmx conflicts core <0.65, folio htmx <0.65, testing htmx <0.65. The six production sites' configs were checked: all entries are sqlite/mysql/json, some with
     their built-in class as `'driver'`, which keeps working.
+  - **Folio follow-ups from the Folio guides (Task 5c, same release):** plan
+    `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 5c).
+    - **Staff-only sign-in:** Folio signs staff in through `config/folio.php` `'guard'` (new; default: the app's default
+      guard, as before), `Preflow\Folio\Users\StaffGuard`. At boot a guard that declares a population other than
+      `staff` (members, the plain starter's new `'population' => 'employers'`), or that `config/auth.php` doesn't
+      define, stops the boot with a `RuntimeException` naming the guard, its population and what to configure. A guard
+      without a population works as before (Folio marks it staff). Login, logout, the admin gate, the password pages,
+      the account page, `StaffPasswords` and the record providers all use that guard; a user of another guard on the
+      request is sent to the login. auth: `AuthManager::provider(?string $guard)` (core passes each guard's provider),
+      `Access::declaredPopulation()`, and a declared population other than `staff` is never made staff by a package's
+      mark (`populationOf()` counts it as members). members: `Viewer::isStaff()`/`name()` take the user of any guard of
+      the staff population (was: the default guard), so they follow `folio.guard`.
+    - **Uninstall:** `folio:extensions:uninstall <name> [--force]` runs `Extension::uninstall()` for a disabled extension
+      installed here (none whose types a site model extends), after a `[y/N]` question (`--force` skips it), then forgets
+      its installed version (`ExtensionState::forget()`). Nothing calls `uninstall()` implicitly.
+    - **Folio on any template engine:** `Preflow\Folio\View\FolioEngine` renders every `*.twig` name (the admin, the
+      fallback frontend templates, extensions' templates, `resources/folio` overrides) through a Twig engine Folio owns,
+      built from core's `TemplateEngineContext` (now bound for every engine) with every function and global of the app's
+      engine (`Preflow\View\SharingTemplateEngine`, which wraps a non-Twig app engine; `share()`); other names (a type's
+      `frontend.template` for the app's engine) through the app's engine, which has the `folio_*` functions. On a Twig app
+      both are the app's `TwigEngine`: nothing changes. rbac renders its templates through `FolioEngine`. Folio requires
+      `preflow/twig`.
+    - **Guide fixes:** Folio README (table sync on SQLite and MySQL; only the dashboard is overridable; screens and record
+      actions declare their permissions, bulk actions don't; `BeforeSave`/`AfterSave` run on the bulk "Set …" save).
+      The relation column kind reads `relation.multiple` (`FieldKinds`, `RelationFieldType::columnKind()`).
+      `folio:assets:import` counts and rewrites only rows where a legacy path became an asset id (`--dry-run` no longer
+      counts rows it wouldn't change). The admin layouts carry `<meta name="robots" content="noindex">`, so GEO adds no
+      Markdown alternate to signed-in admin pages.
+    - **starter-folio:** revision authors by name (`AuthorNames` asks the staff guard's provider by id when it is no
+      record provider: a model's public `name`/`email`); `staff:create --role=<role>` accepts every staff role that
+      exists (auth `ListsRoles` + `Access::roles(string $population)`, implemented by preflow/roles' `ConfigRoleResolver`,
+      rbac's `RbacResolver` and members' `MemberAccess`); the staff table and `App\Models\Staff` use rbac's column names
+      (`password_hash`, `active`, `auth_epoch`, `last_login_at`, `created_at`) so switching to rbac's staff accounts keeps
+      the table and its accounts (README "Roles edited in Folio"; proved by rbac's `StarterStaffTableTest`);
+      `create-project` runs `folio:extensions:apply` (`bin/starter` runs the starter's `post-create-project-cmd` and
+      `fresh` fails when an enabled extension is not installed). data: a `bool`/`?bool` model property reads SQL's
+      1/0 (`Model::fill()`; it threw a `TypeError` before).
+    - **Core/htmx:** `PageCacheConfig::DEFAULT_VARY_HEADERS` adds `HX-History-Restore-Request` (an app that loads htmx
+      without preflow/htmx keeps restores apart from fragments; htmx apps keep identical keys, `PageKeyTest`). README: the
+      configured hypermedia driver is built eagerly at the end of the boot, right after the providers (also on the CLI).
+    - **Note (no code):** a nested non-internal `handle()` inside a request whose page nonce was adopted releases the
+      adoption early (`NonceGenerator::release()` after the inner kernel); a streamed body emitted after that release
+      carries the request's own nonce, not the adopted one. Internal renders are unaffected; revisit if a site nests
+      `handle()` or streams fragments.
+    - **Upgrading:** nothing to do for the six sites (their Folio guards are the default guard with no population or
+      `population` `staff`; Twig + htmx; no app config changes). A `preflow/starter` app that added Folio must set up
+      a staff guard (a `SessionGuard` on staff accounts with `'population' => 'staff'`) and make it the default guard or
+      name it in `config/folio.php` `'guard'`: the employers guard now declares `'population' => 'employers'`, and Folio
+      refuses to boot on it. An app whose staff guard declares `'population' => 'members'` (or another non-staff name)
+      fails the same way. Existing starter-folio projects keep their own code (the staff table change is for new
+      projects; to adopt it, rename the columns `passwordHash` → `password_hash`, `createdAt` → `created_at` and add
+      `active`, `auth_epoch`, `last_login_at`).
+      Constraints: folio requires auth/core/view/twig ^0.65; roles, rbac and members conflict auth <0.65 (`ListsRoles`);
+      rbac conflicts folio <0.65 (`FolioEngine`). The starters still require `^0.64`: the release commit raises them to
+      `^0.65` (as 0.64's did), or `create-project` can't resolve (folio conflicts core/htmx <0.65).
 - **Contract suites (v0.64.0, released 2026-11-11):** abstract PHPUnit suites in `preflow/testing` that check a third-party
   adapter (a Datastar hypermedia driver, a PostgreSQL storage driver, another template engine) against its interface;
   the built-in adapters run them too. Plan: `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 1).
@@ -473,7 +529,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Not covered yet:** `search()`, `whereAny()` groups, localized queries and the optional storage interfaces
     (`VersionedStorage`, `AggregatingStorage`, `ExclusiveWrites`); rendering a template by absolute path or by
     `@namespace/…` name directly.
-  - **Follow-ups found while writing the Folio guides (docs phase 3):**
+  - **Follow-ups found while writing the Folio guides (docs phase 3):** all done in 0.65.0 (Task 5c, see
+    "Pluggable adapters (v0.65.0)" → "Folio follow-ups from the Folio guides"):
     - Folio's admin signs in through the app's default guard. In `preflow/starter` that guard is the employers', so
       adding Folio to it as-is lets any employer into the admin with every right (checked on 0.64.0). Proposal, for
       the owner to decide: Folio refuses admin sign-in unless its guard's population is `staff`, like the 0.63.2
@@ -642,7 +699,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - Optional: a Folio slug generated from the title (starter-folio requires the slug).
     - ~~starter-folio: the Hero block's link check lets URLs with control characters or whitespace through (`/\t/host` is followed as `//host` by browsers) — refuse them as preflow.dev's `safe_link()` does; and `CompanyAdmin::drafts()` should escape the admin path in its href.~~ done in 0.63.2 (`Hero::safeLink()`, escaped drafts href).
     - ~~components: an unscoped component rendered inside a scoped one inherits the parent's CSS scope (`ComponentRenderer::renderTemplate`), so its `@keyframes` (and `@font-face`) end up nested in the parent's scope and browsers drop them. Hoist at-rules like `@keyframes`/`@font-face` out of the scope (or don't inherit scope for unscoped children).~~ done in 0.63.2 (both: unscoped children get no scope, non-nestable at-rules are kept outside it). preflow.dev can drop its workaround in `app/Components/Animation/Animation.php`.
-    - starter-folio with preflow/rbac: rbac's opt-in staff accounts (`model:staff`) clash with the starter's own `App\Models\Staff` (sign-in config, password hashes), so a site switching the starter to rbac can't assign roles to staff in Folio without manual fix-ups. Provide a documented path (or make the starter's staff the rbac staff type). Investigated in 0.63.2, not fixed: both use the table `staff` (starter camelCase `passwordHash`, `createdAt` with `DataManagerUserProvider`; rbac snake_case `password_hash`, `active`, `auth_epoch` with `RecordUserProvider`), so `folio.tables` adds empty snake_case columns and existing staff can't sign in. Needs a decision: an rbac staff type with configurable column names or an import command, or the starter's staff table with rbac's column names.
+    - ~~starter-folio with preflow/rbac: rbac's opt-in staff accounts (`model:staff`) clash with the starter's own `App\Models\Staff` (sign-in config, password hashes), so a site switching the starter to rbac can't assign roles to staff in Folio without manual fix-ups. Provide a documented path (or make the starter's staff the rbac staff type). Investigated in 0.63.2, not fixed: both use the table `staff` (starter camelCase `passwordHash`, `createdAt` with `DataManagerUserProvider`; rbac snake_case `password_hash`, `active`, `auth_epoch` with `RecordUserProvider`), so `folio.tables` adds empty snake_case columns and existing staff can't sign in. Needs a decision: an rbac staff type with configurable column names or an import command, or the starter's staff table with rbac's column names.~~ done in 0.65.0: the starter's staff table has rbac's column names (README "Roles edited in Folio").
     - Page cache: a per-path `cache_query` (it is one switch for the whole site today).
     - Page cache: component tokens are issued per request for cached pages.
     - core: `Config` holds only `app.*`.

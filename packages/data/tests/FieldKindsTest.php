@@ -39,4 +39,13 @@ final class FieldKindsTest extends TestCase
 
         $this->assertSame($dm->fieldKinds(), $dm->fieldKinds());
     }
+
+    public function test_a_unique_relation_is_short_unless_its_relation_is_multiple(): void
+    {
+        $kinds = new FieldKinds();
+        $field = static fn (array $relation): \Preflow\Data\TypeFieldDefinition => new \Preflow\Data\TypeFieldDefinition('tags', 'relation', config: ['relation' => ['to' => 'tag'] + $relation], unique: true);
+
+        $this->assertSame(\Preflow\Data\Schema\ColumnKind::Short, $kinds->columnKindOf($field([])));
+        $this->assertSame(\Preflow\Data\Schema\ColumnKind::Text, $kinds->columnKindOf($field(['multiple' => true])), 'relation.multiple, as the relation field reads it');
+    }
 }

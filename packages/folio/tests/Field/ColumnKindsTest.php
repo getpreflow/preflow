@@ -35,6 +35,8 @@ final class ColumnKindsTest extends TestCase
     {
         $rel = (new \ReflectionClass(RelationFieldType::class))->newInstanceWithoutConstructor();
         $this->assertSame(ColumnKind::Short, $rel->columnKind([]));
-        $this->assertSame(ColumnKind::Text, $rel->columnKind(['multiple' => true]));
+        $this->assertSame(ColumnKind::Text, $rel->columnKind(['relation' => ['to' => 'tag', 'multiple' => true]]), 'the relation\'s own multiple');
+        $this->assertSame(ColumnKind::Short, $rel->columnKind(['relation' => ['to' => 'tag']]));
+        $this->assertSame(ColumnKind::Short, $rel->columnKind(['multiple' => true]), 'a field-level multiple is not the relation\'s');
     }
 }

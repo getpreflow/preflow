@@ -104,7 +104,7 @@ final class FolioAccessTest extends TestCase
         $this->assertSame(1, substr_count($output, $match[1]));
         $staff = $this->container()->get(DataManager::class)->query(Staff::class)->where('email', 'new@example.com')->first();
         $this->assertSame(['editor'], $staff->roles);
-        $this->assertTrue(password_verify($match[1], $staff->passwordHash));
+        $this->assertTrue(password_verify($match[1], $staff->password_hash));
 
         // The new account signs in to Folio with the printed password.
         $cookies = $this->signInStaff('new@example.com', $match[1]);
@@ -112,12 +112,45 @@ final class FolioAccessTest extends TestCase
 
         [$code, $output] = $this->runStaffCreate(['other@example.com', '--role=owner']);
         $this->assertSame(1, $code);
-        $this->assertStringContainsString('Role must be admin or editor.', $output);
+        $this->assertStringContainsString('Role must be one of: admin, editor.', $output);
 
         [$code, $output] = $this->runStaffCreate(['NEW@example.com', '--role=admin']);
         $this->assertSame(1, $code);
         $this->assertStringContainsString('already exists', $output);
         $this->assertStringNotContainsString('Password', $output);
+    }
+
+    /** Any staff role the app defines: one added to config/roles.php (or made in Folio with rbac) too. */
+    public function test_staff_create_accepts_every_defined_staff_role(): void
+    {
+        $roles = require $this->starterRoot . '/config/roles.php';
+        $roles['staff']['seo'] = ['folio.dashboard', 'page.view', 'page.edit'];
+        file_put_contents($this->starterRoot . '/config/roles.php', "<?php\nreturn " . var_export($roles, true) . ";\n");
+
+        [$code, $output] = $this->runStaffCreate(['seo@example.com', '--role=seo']);
+        $this->assertSame(0, $code, $output);
+        $this->assertSame(['seo'], $this->container()->get(DataManager::class)->query(Staff::class)->where('email', 'seo@example.com')->first()->roles);
+
+        [$code, $output] = $this->runStaffCreate(['nobody@example.com', '--role=owner']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Role must be one of: admin, editor, seo.', $output);
+    }
+
+    /** The revisions panel names staff by their name, not their id (AuthorNames asks the staff guard's provider). */
+    public function test_revision_authors_are_shown_by_name(): void
+    {
+        $job = md5('starter-job-2');
+        $editor = md5('starter-staff-2'); // the demo seed's editor@example.com, "Demo Editor"
+        $record = $this->container()->get(DataManager::class)->findType('job', $job);
+        $this->assertNotNull($record);
+        $this->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($record, $editor);
+
+        $cookies = ['Cookie' => $this->cookieHeader($this->signInStaff('admin@example.com', 'demo-admin'))];
+        $body = $this->get('/folio/job/' . $job . '/edit', $cookies)->assertOk()->body();
+        preg_match_all('~<span class="folio-revision-by">([^<]*)</span>~', $body, $by);
+
+        $this->assertContains('Demo Editor', $by[1], 'the editor\'s name');
+        $this->assertNotContains($editor, $by[1], 'not the raw id');
     }
 
     /** @return array{int, string} exit code and output */

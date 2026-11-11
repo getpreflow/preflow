@@ -28,6 +28,7 @@ final class FolioCommands
             ExtensionsDisableCommand::class,
             ExtensionsApplyCommand::class,
             ExtensionsCheckCommand::class,
+            ExtensionsUninstallCommand::class,
         ];
     }
 }

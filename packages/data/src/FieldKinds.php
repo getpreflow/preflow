@@ -32,7 +32,8 @@ final class FieldKinds
             'boolean' => ColumnKind::Boolean,
             'date' => ColumnKind::Date,
             'string' => ColumnKind::Short,
-            'relation' => static fn (array $config): ColumnKind => ($config['multiple'] ?? false) ? ColumnKind::Text : ColumnKind::Short,
+            // A relation field holds a list of ids when its relation says so (relation.multiple), one id otherwise.
+            'relation' => static fn (array $config): ColumnKind => (is_array($config['relation'] ?? null) && ($config['relation']['multiple'] ?? false)) ? ColumnKind::Text : ColumnKind::Short,
         ];
     }
 

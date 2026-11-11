@@ -22,16 +22,20 @@ final class AdminAuthMiddleware implements MiddlewareInterface
         private readonly AuthManager $auth,
         private readonly string $prefix,
         private readonly AdminNav $nav,
+        /** Folio's staff guard (StaffGuard); null: the default guard */
+        private readonly ?string $guard = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        // Folio's guard is the default one; a user resolved for it already (or set in tests) counts.
+        // Only Folio's staff guard signs into the admin; a user resolved for it already (or set in
+        // tests) counts. A user of another guard on the request (an employer, a member) does not.
+        $guard = $this->guard ?? $this->auth->defaultGuardName();
         $preset = $request->getAttribute(Authenticatable::class);
         $presetGuard = $request->getAttribute(AuthManager::GUARD_ATTRIBUTE) ?? $this->auth->defaultGuardName();
-        $user = $preset instanceof Authenticatable && $presetGuard === $this->auth->defaultGuardName()
+        $user = $preset instanceof Authenticatable && $presetGuard === $guard
             ? $preset
-            : $this->auth->guard()->user($request);
+            : $this->auth->guard($guard)->user($request);
         if ($user === null) {
             // htmx requests (autosave, block picker) would follow a 302 and swap the
             // login page into the editor: tell htmx to navigate instead. Folio's admin ships its
@@ -41,7 +45,7 @@ final class AdminAuthMiddleware implements MiddlewareInterface
             }
             return new Response(302, ['Location' => $this->prefix . '/login']);
         }
-        $this->auth->setUser($user, $this->auth->defaultGuardName());
+        $this->auth->setUser($user, $guard);
         $this->nav->setCurrentPath($request->getUri()->getPath());
         $request = $request->withAttribute(Authenticatable::class, $user);
         return $handler->handle($request);

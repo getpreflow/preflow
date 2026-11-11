@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Roles;
 
+use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Auth\Authenticatable;
@@ -13,7 +14,7 @@ use Preflow\Auth\Authenticatable;
  * patterns. A user may do X when any of their roles (getRoles()) in their
  * population has a pattern matching X. Unknown roles grant nothing.
  */
-final class ConfigRoleResolver implements PermissionResolver
+final class ConfigRoleResolver implements PermissionResolver, ListsRoles
 {
     /** @var array<string, true> unknown roles already logged this request */
     private array $logged = [];
@@ -50,6 +51,13 @@ final class ConfigRoleResolver implements PermissionResolver
         }
 
         return false;
+    }
+
+    public function roles(string $population): array
+    {
+        $defined = is_array($this->roles[$population] ?? null) ? $this->roles[$population] : [];
+
+        return array_map('strval', array_keys($defined));
     }
 
     private function logUnknown(string $population, string $role): void

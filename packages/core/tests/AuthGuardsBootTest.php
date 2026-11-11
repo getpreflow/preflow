@@ -76,6 +76,20 @@ final class AuthGuardsBootTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_each_guard_s_provider_is_on_the_auth_manager(): void
+    {
+        $app = $this->boot([
+            'staff' => ['class' => HeaderGuard::class, 'provider' => 'users', 'population' => 'staff'],
+            'members' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users', 'population' => 'members'],
+        ]);
+        $auth = $app->container()->get(AuthManager::class);
+
+        $this->assertInstanceOf(\Preflow\Auth\ConfigUserProvider::class, $auth->provider('members'));
+        $this->assertSame($app->container()->get(\Preflow\Auth\UserProviderInterface::class), $auth->provider());
+        $this->assertNull($auth->provider('nope'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_non_guard_class_fails_boot(): void
     {
         $this->expectException(\RuntimeException::class);

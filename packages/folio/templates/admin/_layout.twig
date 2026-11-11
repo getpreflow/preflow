@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="csp-nonce" content="{{ csp_nonce() }}">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {# The admin is no public page: not indexed, and no GEO Markdown alternate (GEO skips noindex pages). #}
+    <meta name="robots" content="noindex">
     <title>{% block title %}Folio{% endblock %}</title>
     {# No-flash theme: apply the stored choice before first paint. Plain inline
        script because action-mode responses bypass the asset collector. #}

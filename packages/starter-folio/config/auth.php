@@ -1,8 +1,9 @@
 <?php
 
 return [
-    // Folio's admin checks only the default guard, so staff get it. Employers sign in on a
-    // guard of their own: a session of one never opens the other's area.
+    // Folio signs staff in through the default guard (config/folio.php 'guard' could name
+    // another), so staff get it. Employers sign in on a guard of their own: a session of one never
+    // opens the other's area.
     'default_guard' => 'staff',
     'api_guard' => 'token',
 

@@ -25,7 +25,7 @@ final class Access
     private array $staffGuards = [];
 
     /**
-     * @param array<string, string> $populations guard name => 'staff'|'members' from config/auth.php
+     * @param array<string, string> $populations guard name => population ('staff', 'members' or the app's own name) from config/auth.php
      */
     public function __construct(
         private readonly ?AuthManager $auth,
@@ -34,6 +34,17 @@ final class Access
         private readonly array $populations,
     ) {
         $this->resolver = new DefaultResolver();
+    }
+
+    /**
+     * The names of the roles defined for a population, when the resolver lists them (ListsRoles:
+     * preflow/roles, preflow/rbac); null when it has no roles to list (the default resolver).
+     *
+     * @return list<string>|null
+     */
+    public function roles(string $population): ?array
+    {
+        return $this->resolver instanceof ListsRoles ? $this->resolver->roles($population) : null;
     }
 
     public function setResolver(PermissionResolver $resolver): void
@@ -53,15 +64,29 @@ final class Access
         $this->staffGuards[$guard] = true;
     }
 
-    /** @return 'staff'|'members' */
+    /**
+     * A guard declared 'staff' is staff; one declared any other population ('members', or a name of
+     * the app's own, such as the starter's 'employers') counts as members, and a package's mark never
+     * makes it staff. A guard without a population is staff when a package marked it, else members.
+     *
+     * @return 'staff'|'members'
+     */
     public function populationOf(string $guard): string
     {
-        $configured = $this->populations[$guard] ?? null;
-        if ($configured === 'staff' || $configured === 'members') {
-            return $configured;
+        $configured = $this->declaredPopulation($guard);
+        if ($configured !== null) {
+            return $configured === 'staff' ? 'staff' : 'members';
         }
 
         return isset($this->staffGuards[$guard]) ? 'staff' : 'members';
+    }
+
+    /** The population config/auth.php declares for the guard (guards.<name>.population), as written; null when none. */
+    public function declaredPopulation(string $guard): ?string
+    {
+        $configured = $this->populations[$guard] ?? null;
+
+        return is_string($configured) && $configured !== '' ? $configured : null;
     }
 
     /** The population ('staff'|'members') of the user signed in for this request; null when nobody is, or no auth is configured. */

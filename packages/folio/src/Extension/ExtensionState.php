@@ -74,6 +74,14 @@ final class ExtensionState
         return $rows;
     }
 
+    /** Forgets the extension's installed version here (folio:extensions:uninstall): a later apply installs it afresh. */
+    public function forget(string $name): void
+    {
+        if ($this->dm->findIn($this->definition(), $name) !== null) {
+            $this->dm->deleteIn($this->definition(), $name);
+        }
+    }
+
     public function markInstalled(string $name, string $version): void
     {
         $this->dm->saveType(DynamicRecord::fromArray($this->definition(), [

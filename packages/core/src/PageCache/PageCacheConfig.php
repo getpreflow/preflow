@@ -56,10 +56,11 @@ final readonly class PageCacheConfig
 
     /**
      * htmx's, also for an app without preflow/htmx that loads htmx itself (no client knows its
-     * headers then): a fragment never shares a page's key. The hypermedia clients' varyHeaders()
-     * are added to these (a header in both counts once).
+     * headers then): a fragment never shares a page's key, nor a history restore a fragment's. The
+     * hypermedia clients' varyHeaders() are added to these (a header in both counts once), so an
+     * htmx app keys pages as with htmx's own three.
      */
-    public const array DEFAULT_VARY_HEADERS = ['HX-Request', 'HX-Target'];
+    public const array DEFAULT_VARY_HEADERS = ['HX-Request', 'HX-Target', 'HX-History-Restore-Request'];
 
     public const int DEFAULT_MAX_QUERY_VARIANTS = 50;
 

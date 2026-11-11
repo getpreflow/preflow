@@ -52,10 +52,13 @@ also implements `Preflow\View\FormHypermediaDriver` (otherwise forms stay plain)
 it to `HypermediaProtocols` (preflow/core): auth, the expired-session answer, the security headers,
 the page cache and GEO ask it about requests (see core's README, "Hypermedia clients").
 
-The driver is built on its first use: `HypermediaDriver` is a `LazyHypermediaDriver`
-(`LazyFormHypermediaDriver` for a form driver) standing in until then, and the driver itself is the
-container's shared `$class` — after the service providers ran, so its constructor may take services
-a provider binds, and a provider may bind `$class` itself.
+`HypermediaDriver` is a `LazyHypermediaDriver` (`LazyFormHypermediaDriver` for a form driver)
+standing in for the driver, which is the container's shared `$class`. Core builds it eagerly at the
+end of the boot, right after the service providers ran (on the CLI too), so a driver that can't be
+built stops the boot ("app.hypermedia: could not build …") instead of a later request. Its
+constructor may therefore depend only on services bound by then: core's and those the providers
+bind (a provider may bind `$class` itself), not on anything bound later (in a request, or by
+middleware).
 With another driver htmx isn't inlined (`config/htmx.php` then does nothing); the driver's
 `assetTag()` or your layout loads its client.
 

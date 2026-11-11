@@ -71,6 +71,15 @@ final class RbacResolverTest extends TestCase
         $this->assertFalse($resolver->allows($editor, 'staff', 'rbac_role.edit', null));
     }
 
+    public function test_it_lists_the_roles_defined_for_a_population(): void
+    {
+        $resolver = $this->resolver([['staff', 'admin', ['*']], ['staff', 'seo', ['page.*']], ['members', 'member', ['members.access']]]);
+
+        $this->assertInstanceOf(\Preflow\Auth\Access\ListsRoles::class, $resolver);
+        $this->assertSame(['admin', 'seo'], $resolver->roles('staff'));
+        $this->assertSame(['member'], $resolver->roles('members'));
+    }
+
     public function test_patterns_are_the_users_roles_patterns_in_their_population(): void
     {
         $resolver = $this->resolver([

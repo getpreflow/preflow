@@ -11,7 +11,7 @@ use Preflow\Auth\Record\RecordUser;
 
 /**
  * Who is looking at the member pages: a signed-in member (guard "members"), staff (signed in
- * with the default guard, as Folio's admins are, when that guard's population is staff) or nobody.
+ * with a guard of the staff population, as Folio's admins are) or nobody.
  */
 final class Viewer
 {
@@ -32,15 +32,25 @@ final class Viewer
     }
 
     /**
-     * Signed in with the default guard, and that guard signs in staff: Folio marks it so, or
-     * config/auth.php gives it 'population' => 'staff'. A default guard of another population
-     * (the starter's employers) is no staff here.
+     * Signed in with a guard that signs in staff: Folio marks its staff guard so (config/folio.php
+     * 'guard', else the default guard), or config/auth.php gives it 'population' => 'staff'. A guard
+     * of another population (the starter's employers, the members) is no staff here.
      */
     public function isStaff(): bool
     {
-        $guard = $this->auth->defaultGuardName();
+        return $this->staff() !== null;
+    }
 
-        return array_key_exists($guard, $this->auth->users()) && $this->access->populationOf($guard) === 'staff';
+    /** The staff user signed in for this request (the first staff guard's), or null. */
+    private function staff(): ?object
+    {
+        foreach ($this->auth->users() as $guard => $user) {
+            if ($this->access->populationOf((string) $guard) === 'staff') {
+                return $user;
+            }
+        }
+
+        return null;
     }
 
     public function canAccess(): bool
@@ -54,7 +64,7 @@ final class Viewer
         if ($member !== null) {
             return (string) $member->get('name');
         }
-        $staff = $this->isStaff() ? ($this->auth->users()[$this->auth->defaultGuardName()] ?? null) : null;
+        $staff = $this->staff();
 
         return $staff !== null && method_exists($staff, 'getEmail') ? (string) $staff->getEmail() : '';
     }

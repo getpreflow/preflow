@@ -33,7 +33,7 @@ final class FolioRoutes
     private const AI_SETTINGS = 'Preflow\\Folio\\Http\\AiSettingsController';
 
     /**
-     * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the default guard)
+     * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the staff guard)
      * @param bool $ai the AI translation endpoints (only while AI is on: otherwise they do not exist and answer 404)
      * @param bool $aiSettings the Settings → AI screens (while AI is switched on or a key is present)
      * @return RouteEntry[]

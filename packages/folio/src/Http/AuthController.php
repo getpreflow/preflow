@@ -20,7 +20,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Folio admin login/logout through the default session guard (post-Redirect-Get flow).
+ * Folio admin login/logout through the staff guard (StaffGuard: folio.guard, else the default guard; post-Redirect-Get flow).
  *
  * With record users behind the guard ($passwords enabled) the login is throttled per client and
  * per e-mail (purpose folio.login), an unknown address or an account without a password costs a
@@ -47,11 +47,13 @@ final class AuthController
         private readonly ?StaffPasswords $passwords = null,
         private readonly ?Throttle $throttle = null,
         private readonly ?PasswordHasherInterface $hasher = null,
+        /** Folio's staff guard (StaffGuard); null: the default guard */
+        private readonly ?string $guard = null,
     ) {}
 
     public function loginForm(ServerRequestInterface $request): ResponseInterface
     {
-        if ($this->auth->guard()->user($request) !== null) {
+        if ($this->auth->guard($this->guard)->user($request) !== null) {
             return new Response(302, ['Location' => $this->prefix]);
         }
 
@@ -72,7 +74,7 @@ final class AuthController
             return $this->staffLogin($request, $email, $password, $remember);
         }
 
-        $guard = $this->auth->guard();
+        $guard = $this->auth->guard($this->guard);
         if (!$guard->validate(['email' => $email, 'password' => $password])) {
             return $this->refuse($request);
         }
@@ -88,7 +90,7 @@ final class AuthController
 
     public function logout(ServerRequestInterface $request): ResponseInterface
     {
-        $this->auth->guard()->logout($request);
+        $this->auth->guard($this->guard)->logout($request);
         return new Response(302, ['Location' => $this->prefix . '/login']);
     }
 
@@ -130,10 +132,10 @@ final class AuthController
         return new Response(302, ['Location' => $this->prefix]);
     }
 
-    /** Signs in through the default guard, with its remember-me cookie when asked for and configured. */
+    /** Signs in through the staff guard, with its remember-me cookie when asked for and configured. */
     private function signIn(Authenticatable $user, ServerRequestInterface $request, bool $remember): void
     {
-        $guard = $this->auth->guard();
+        $guard = $this->auth->guard($this->guard);
         if ($guard instanceof SessionGuard) {
             $guard->login($user, $request, $remember && $guard->remembers());
         } else {
@@ -158,7 +160,7 @@ final class AuthController
             'login_action' => $this->prefix . '/login',
             'login_error' => $error,
         ];
-        $guard = $this->auth->guard();
+        $guard = $this->auth->guard($this->guard);
         if ($guard instanceof SessionGuard && $guard->remembers()) {
             $context['remember_offered'] = true;
         }

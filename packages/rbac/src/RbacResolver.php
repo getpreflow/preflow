@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac;
 
+use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Auth\Authenticatable;
@@ -16,7 +17,7 @@ use Preflow\Folio\Extension\ExtensionState;
  * the staff role "admin"), staff may do everything, so turning RBAC on never locks out the
  * admin. Once installed, staff without a granting role get nothing.
  */
-final class RbacResolver implements PermissionResolver
+final class RbacResolver implements PermissionResolver, ListsRoles
 {
     /** @var array<string, true> messages already logged this request */
     private array $logged = [];
@@ -28,6 +29,12 @@ final class RbacResolver implements PermissionResolver
         private readonly ExtensionState $state,
         private readonly bool $debug = false,
     ) {}
+
+    /** The roles defined for the population (rbac_role records). */
+    public function roles(string $population): array
+    {
+        return array_map('strval', array_keys($this->store->rolesFor($population)));
+    }
 
     public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
     {

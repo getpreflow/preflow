@@ -14,7 +14,7 @@ php preflow serve
 
 Open `http://localhost:8080`. Use that exact address: `APP_URL` in `.env` and the CSRF origin check both expect it. If you open the app as `127.0.0.1:8080`, the login forms will refuse you.
 
-`create-project` copies `.env`, makes an app key, creates the database and fills it with demo data. At the end it prints three demo logins:
+`create-project` copies `.env`, makes an app key, creates the database, installs the Folio extension `jobs` (`folio:extensions:apply`) and fills the database with demo data. At the end it prints three demo logins:
 
 ```
 Demo employer: employer@example.com / demo-employer (sign in at /employer)
@@ -55,7 +55,7 @@ A known limit: Folio's own login at `/folio/login` compares the email case-sensi
 1. **The class says so.** `#[Entity(table: 'jobs', storage: 'default', type: 'job')]`. Folio reads the fields (`#[Field]`, `#[Relation]`, `#[Validate]`) from the class, so the admin form and the app use the same rules. `Job::company` is a `#[Relation]`, so Folio shows a pick from the companies. `Company::logo` is a `type: 'asset'` field, so Folio shows the media library's picker.
 2. **An admin file says how Folio lists it.** `config/models/job.json` and `config/models/company.json` hold the label, the place in the sidebar, the list columns and filters, and `"publishing": true`. The fields are not repeated there.
 
-Staff accounts follow the same pattern: `app/Models/Staff.php` is a plain model (table `staff`) that the `staff` guard reads.
+Staff accounts follow the same pattern: `app/Models/Staff.php` is a plain model (table `staff`) that the `staff` guard reads. Its fields have the names of `preflow/rbac`'s staff accounts (`password_hash`, `active`, `auth_epoch`, `last_login_at`, `created_at`), so the table stays when you move the roles into Folio (see [Roles edited in Folio](#roles-edited-in-folio)). Folio's revisions show a staff account by its name.
 
 ### Publishing goes through Folio
 
@@ -122,6 +122,24 @@ To add your own, you write two files and a config entry:
    save hook. Its constructor is autowired.
 3. Enable it in `config/folio/extensions.json`:
    `{"enabled": {"<name>": {"disabled_parts": []}}}`.
+
+### Roles edited in Folio
+
+The roles live in `config/roles.php`. To edit roles and staff accounts in Folio instead (Settings →
+Roles and Settings → Staff, with invitations and password links), switch to `preflow/rbac`. The
+`staff` table already has the columns rbac's staff accounts use, so the accounts you have keep
+signing in:
+
+1. `composer require preflow/rbac`, and add `\Preflow\Rbac\RbacServiceProvider::class` after
+   Folio in `config/providers.php`.
+2. Enable the extension with its staff accounts in `config/folio/extensions.json`:
+   `"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}`.
+3. In `config/auth.php`, let the `staff` provider read those accounts:
+   `'staff' => ['class' => Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active']`.
+4. Run `php preflow migrate` and `php preflow folio:extensions:apply`. The extension creates the
+   role `admin`; create `editor` (and any other) under Settings → Roles.
+
+`staff:create` keeps working: it accepts the roles that exist, from `config/roles.php` or from Folio.
 
 ### Tests
 
@@ -219,8 +237,8 @@ Ask an admin when you need more. Admins are the staff with the `admin` role in `
 | Folio config | `config/folio.php` (admin at `/folio`), `config/media.php` (the library, on SQLite), `config/image.php` |
 | Admin files | `config/models/job.json`, `company.json`, `page.json`, `news.json`, and the singletons `jobs_page.json`, `job_page.json`, `company_page.json` |
 | SEO and GEO | `config/geo.php` (`/llms.txt`), and the `types` entry in `config/seo.php` |
-| Guards | `staff` in `config/auth.php`, the default guard, because Folio's admin checks only the default one; `employers` is marked `'population' => 'members'`, and `config/roles.php` gives their `employer` role `job.publish` |
-| Staff | `app/Models/Staff.php`, the `staff` table (`migrations/2026_11_09_004_create_staff.php`), `config/roles.php` (admin, editor), `app/Console/StaffCreateCommand.php` |
+| Guards | `staff` in `config/auth.php`, the default guard, so Folio signs staff in through it (Folio's `guard` setting defaults to the default guard, and Folio refuses a guard whose population is not staff); `employers` is marked `'population' => 'members'`, and `config/roles.php` gives their `employer` role `job.publish` |
+| Staff | `app/Models/Staff.php`, the `staff` table (`migrations/2026_11_09_004_create_staff.php`, with rbac's column names), `config/roles.php` (admin, editor), `app/Console/StaffCreateCommand.php` |
 | Seeds | `app/Seeds/ContentSeeder.php` (required content: home page and page texts); `DemoSeeder` now also adds staff, logos and news |
 | Blocks | `app/Components/Blocks/{Hero,Text,LatestJobsBlock,LatestNews}` |
 | Folio templates | `resources/folio/frontend/page.twig` and `news.twig`, `app/pages/news/index.twig` |
@@ -278,7 +296,7 @@ Publishing in Folio, or an employer publishing a job, refreshes the pages that s
    ```bash
    php preflow staff:create you@example.com --role=admin
    ```
-   Further staff are created the same way, with `--role=editor` for an editor. For an employer: `php preflow employer:create you@example.com --company="Your Company"`.
+   Further staff are created the same way, with `--role=editor` for an editor (any staff role in `config/roles.php` works). For an employer: `php preflow employer:create you@example.com --company="Your Company"`.
 7. Add these two cron jobs. The first rebuilds the pages that the page cache marked as outdated. The second publishes the content that staff scheduled with "Publish at":
    ```
    * * * * * cd /path/to/app && php preflow pages:work

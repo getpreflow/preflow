@@ -247,6 +247,25 @@ final class MembersServiceTest extends TestCase
         $this->assertFalse($notStaff->isStaff());
     }
 
+    public function test_viewer_finds_staff_on_folio_s_guard_beside_another_default_guard(): void
+    {
+        $c = $this->container();
+        $auth = $c->get(AuthManager::class);
+        // The starter's employers guard is the default; Folio signs staff in through the "staff" guard (folio.guard),
+        // which it marks as staff.
+        $access = new \Preflow\Auth\Access\Access($auth, $c->get(\Preflow\Auth\Access\PermissionRegistry::class), false, ['session' => 'employers']);
+        $access->markStaffGuard('staff');
+        $viewer = new Viewer($auth, $access, $this->members());
+
+        $auth->setUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
+        $this->assertFalse($viewer->isStaff(), 'an employer is no staff');
+        $this->assertSame('', $viewer->name());
+
+        $auth->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'staff');
+        $this->assertTrue($viewer->isStaff());
+        $this->assertSame('admin@site.test', $viewer->name());
+    }
+
     private function members(): Members
     {
         return $this->container()->get(Members::class);

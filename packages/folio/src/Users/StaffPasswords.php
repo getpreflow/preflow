@@ -14,7 +14,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 
 /**
- * Passwords of the Folio accounts that are records (any Folio user type behind the default guard,
+ * Passwords of the Folio accounts that are records (any Folio user type behind the staff guard (StaffGuard),
  * see RecordProviders): invite and reset links by mail (in the account's interface language), the
  * set-password page's token, the new password. Generic, so Folio needs no user package; rbac's staff actions call it.
  *
@@ -33,7 +33,7 @@ final class StaffPasswords
     private ?StaffMailer $builtMailer = null;
 
     /**
-     * @param list<RecordUserProvider> $providers the default guard's record providers
+     * @param list<RecordUserProvider> $providers the staff guard's record providers
      * @param \Closure(): StaffMailer $mailer       built on the first mail
      * @param string $passwordUrl                  absolute URL of the set-password page; the token is appended after "/"
      *                                             ('' when app.url is unset: invite and reset throw MissingAppUrl)
@@ -52,7 +52,7 @@ final class StaffPasswords
         private readonly ?UserPreferences $preferences = null,
     ) {}
 
-    /** Whether the default guard has record users at all (else there is no password page). */
+    /** Whether the staff guard has record users at all (else there is no password page). */
     public function enabled(): bool
     {
         return $this->providers !== [];
@@ -89,7 +89,7 @@ final class StaffPasswords
     }
 
     /**
-     * The active record account the default guard signs in with this e-mail, or null: unknown, a
+     * The active record account the staff guard signs in with this e-mail, or null: unknown, a
      * config user, an inactive record (a chain asks the provider that claims the address).
      */
     public function findActive(string $email): ?DynamicRecord
@@ -160,7 +160,7 @@ final class StaffPasswords
         $this->tokens->revokeAll(self::RESET, $this->subject($user));
     }
 
-    /** Ends the account's remember-me logins for the default guard. */
+    /** Ends the account's remember-me logins for the staff guard. */
     public function forgetDevices(DynamicRecord $user): void
     {
         $this->remember?->revokeAll($this->guard, (string) $user->getId());
@@ -243,6 +243,6 @@ final class StaffPasswords
     private function require(DynamicRecord $user): RecordUserProvider
     {
         return $this->provider($user)
-            ?? throw new \InvalidArgumentException("Type \"{$user->getType()->key}\" is not a user type of the default guard.");
+            ?? throw new \InvalidArgumentException("Type \"{$user->getType()->key}\" is not a user type of the staff guard.");
     }
 }

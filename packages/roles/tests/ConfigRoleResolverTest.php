@@ -103,4 +103,11 @@ final class ConfigRoleResolverTest extends TestCase
 
         $this->assertTrue($this->resolver()->allows($user, 'staff', 'page.edit', null));
     }
+
+    public function test_it_lists_the_roles_of_a_population(): void
+    {
+        $this->assertInstanceOf(\Preflow\Auth\Access\ListsRoles::class, $this->resolver());
+        $this->assertSame(['admin', 'editor'], $this->resolver()->roles('staff'));
+        $this->assertSame([], $this->resolver()->roles('nobody'));
+    }
 }

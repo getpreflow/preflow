@@ -129,6 +129,38 @@ final class AccessTest extends TestCase
         $this->assertSame('members', $access->populationOf('other'));
     }
 
+    public function test_a_declared_population_other_than_staff_is_never_made_staff_by_a_mark(): void
+    {
+        $access = $this->access(populations: ['employers' => 'employers', 'folio' => 'staff']);
+        $access->markStaffGuard('employers'); // config wins: employers stay out of staff
+
+        $this->assertSame('members', $access->populationOf('employers'));
+        $this->assertSame('employers', $access->declaredPopulation('employers'));
+        $this->assertSame('staff', $access->declaredPopulation('folio'));
+        $this->assertNull($access->declaredPopulation('other'), 'none declared');
+    }
+
+    public function test_roles_of_a_population_come_from_a_resolver_that_lists_them(): void
+    {
+        $access = $this->access();
+        $this->assertNull($access->roles('staff'), 'the default resolver has no roles');
+
+        $access->setResolver(new class implements \Preflow\Auth\Access\PermissionResolver, \Preflow\Auth\Access\ListsRoles {
+            public function allows(\Preflow\Auth\Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                return false;
+            }
+
+            public function roles(string $population): array
+            {
+                return $population === 'staff' ? ['admin', 'editor', 'seo'] : [];
+            }
+        });
+
+        $this->assertSame(['admin', 'editor', 'seo'], $access->roles('staff'));
+        $this->assertSame([], $access->roles('members'));
+    }
+
     public function test_population_of_the_signed_in_user(): void
     {
         $access = $this->access(populations: ['folio' => 'staff']);

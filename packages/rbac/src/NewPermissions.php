@@ -201,9 +201,10 @@ final class NewPermissions
         return $roles;
     }
 
+    /** Folio's engine: the @rbac Twig templates render through it whatever the app's engine is. */
     private function engine(): TemplateEngineInterface
     {
-        return $this->container->get(TemplateEngineInterface::class);
+        return $this->container->get(\Preflow\Folio\View\FolioEngine::class);
     }
 
     /** The session's CSRF token for the notice's forms. */

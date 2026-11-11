@@ -317,7 +317,8 @@ final class RecordUserProviderTest extends TestCase
         };
         $w('config/app.php', "<?php\nreturn ['name' => 'T', 'debug' => 0, 'engine' => 'twig', 'key' => 'record-user-test-key-0123456789'];\n");
         $w('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
-        $w('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
+        // Folio signs staff in through its own guard: a members default guard would stop the boot (0.65).
+        $w('config/folio.php', "<?php\nreturn ['path' => '/folio', 'guard' => 'staff'];\n");
         $w('config/data.php', "<?php\nreturn " . var_export([
             'default' => $storage,
             'models_path' => $dir . '/config/models',
@@ -325,8 +326,14 @@ final class RecordUserProviderTest extends TestCase
         ], true) . ";\n");
         $w('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'member',
-            'guards' => ['member' => ['class' => SessionGuard::class, 'provider' => 'members', 'population' => 'members']],
-            'providers' => ['members' => ['class' => RecordUserProvider::class, 'type' => 'member']],
+            'guards' => [
+                'member' => ['class' => SessionGuard::class, 'provider' => 'members', 'population' => 'members'],
+                'staff' => ['class' => SessionGuard::class, 'provider' => 'staff', 'population' => 'staff'],
+            ],
+            'providers' => [
+                'members' => ['class' => RecordUserProvider::class, 'type' => 'member'],
+                'staff' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => []],
+            ],
             'session' => ['cookie' => 'record_user_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
         $w('config/models/member.json', (string) json_encode(['storage' => $storage] + self::MEMBER));

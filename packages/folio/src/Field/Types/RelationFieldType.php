@@ -47,7 +47,8 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
 
     public function columnKind(array $config): \Preflow\Data\Schema\ColumnKind
     {
-        return ($config['multiple'] ?? false) ? \Preflow\Data\Schema\ColumnKind::Text : \Preflow\Data\Schema\ColumnKind::Short;
+        // A list of ids when the relation is multiple (relation.multiple, as the editor reads it), one id otherwise.
+        return $this->relationConfig($config)['multiple'] ? \Preflow\Data\Schema\ColumnKind::Text : \Preflow\Data\Schema\ColumnKind::Short;
     }
 
     public function renderEditor(FieldContext $ctx): string

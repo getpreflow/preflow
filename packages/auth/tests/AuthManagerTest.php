@@ -71,4 +71,16 @@ final class AuthManagerTest extends TestCase
 
         $this->assertSame($user, $manager->user());
     }
+
+    public function test_provider_of_a_guard(): void
+    {
+        $staff = new \Preflow\Auth\ConfigUserProvider([]);
+        $members = new \Preflow\Auth\ConfigUserProvider([]);
+        $manager = new AuthManager(['web' => $this->makeGuard(), 'staff' => $this->makeGuard()], 'web', [], ['web' => $members, 'staff' => $staff]);
+
+        $this->assertSame($staff, $manager->provider('staff'));
+        $this->assertSame($members, $manager->provider(), 'null names the default guard');
+        $this->assertNull($manager->provider('unknown'));
+        $this->assertNull((new AuthManager(['web' => $this->makeGuard()], 'web'))->provider(), 'built without providers');
+    }
 }

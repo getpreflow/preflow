@@ -50,27 +50,16 @@ final class AssetsImportCommand implements CommandInterface
         $missing = [];
         $failed = [];
         $rewritten = 0;
-        $convert = function (string $value) use ($field, $library, $dry, &$imported, &$missing, &$failed): string {
-            if (preg_match('#^\d{4}/\d{2}/[a-f0-9]{32}\.[a-z0-9]{1,8}$#', $value) !== 1) {
-                return $value; // an asset id or something else: not a legacy path
+        // Values the conversion changed: a row counts (and is saved) only when one of its legacy paths
+        // becomes an asset id, never because a JSON value reads differently once encoded again.
+        $changes = 0;
+        $convert = function (string $value) use ($field, $library, $dry, &$imported, &$missing, &$failed, &$changes): string {
+            $converted = $this->convert($value, $field, $library, $dry, $imported, $missing, $failed);
+            if ($converted !== $value) {
+                $changes++;
             }
-            if (isset($imported[$value])) {
-                return $imported[$value];
-            }
-            $file = $field->legacyFile($value);
-            if ($file === null) {
-                $missing[$value] = true;
-                return $value;
-            }
-            if ($dry) {
-                return $imported[$value] = 'dry-run:' . $value;
-            }
-            try {
-                return $imported[$value] = $library->importFile($file, basename($value), 'import')->id;
-            } catch (AssetUploadException $e) {
-                $failed[$value] = $e->getMessage();
-                return $value;
-            }
+
+            return $converted;
         };
 
         foreach ($c->get(TypeCatalog::class)->all() as $listing) {
@@ -82,15 +71,16 @@ final class AssetsImportCommand implements CommandInterface
             foreach ($sources as $source) {
                 foreach ($dm->queryIn($source)->get()->items() as $record) {
                     $data = $record->toArray();
+                    $before = $changes;
                     $mapped = $references->map($def, $data, $convert);
-                    if ($mapped !== $data) {
+                    if ($changes > $before) {
                         $rewritten++;
                         $dry || $dm->saveType(DynamicRecord::fromArray($source, $mapped), false);
                     }
                 }
             }
             if ($listing->publishing) {
-                $rewritten += $this->rewriteRevisions($dm, $references, $def, $convert, $dry);
+                $rewritten += $this->rewriteRevisions($dm, $references, $def, $convert, $dry, $changes);
             }
         }
 
@@ -110,7 +100,7 @@ final class AssetsImportCommand implements CommandInterface
     }
 
     /** Revisions hold full copies as JSON in "data": rewrite those too, so restoring keeps working. */
-    private function rewriteRevisions(DataManager $dm, AssetReferences $references, TypeDefinition $def, \Closure $convert, bool $dry): int
+    private function rewriteRevisions(DataManager $dm, AssetReferences $references, TypeDefinition $def, \Closure $convert, bool $dry, int &$changes): int
     {
         $count = 0;
         $revisions = ShadowTypes::revisions($def);
@@ -119,8 +109,9 @@ final class AssetsImportCommand implements CommandInterface
             if (!is_array($data)) {
                 continue;
             }
+            $before = $changes;
             $mapped = $references->map($def, $data, $convert);
-            if ($mapped !== $data) {
+            if ($changes > $before) {
                 $count++;
                 if (!$dry) {
                     $row->set('data', json_encode($mapped));
@@ -130,5 +121,37 @@ final class AssetsImportCommand implements CommandInterface
         }
 
         return $count;
+    }
+
+    /**
+     * A legacy upload path as its asset id (imported once; "dry-run:…" in a dry run); anything
+     * else, a missing file and a failed import as given.
+     *
+     * @param array<string, string> $imported
+     * @param array<string, true>   $missing
+     * @param array<string, string> $failed
+     */
+    private function convert(string $value, AssetFieldType $field, MediaLibrary $library, bool $dry, array &$imported, array &$missing, array &$failed): string
+    {
+        if (preg_match('#^\d{4}/\d{2}/[a-f0-9]{32}\.[a-z0-9]{1,8}$#', $value) !== 1) {
+            return $value; // an asset id or something else: not a legacy path
+        }
+        if (isset($imported[$value])) {
+            return $imported[$value];
+        }
+        $file = $field->legacyFile($value);
+        if ($file === null) {
+            $missing[$value] = true;
+            return $value;
+        }
+        if ($dry) {
+            return $imported[$value] = 'dry-run:' . $value;
+        }
+        try {
+            return $imported[$value] = $library->importFile($file, basename($value), 'import')->id;
+        } catch (AssetUploadException $e) {
+            $failed[$value] = $e->getMessage();
+            return $value;
+        }
     }
 }

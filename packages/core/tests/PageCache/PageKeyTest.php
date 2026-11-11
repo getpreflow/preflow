@@ -207,6 +207,45 @@ final class PageKeyTest extends TestCase
         $this->assertNotSame($page->id(), $fragment->id(), 'an app without preflow/htmx that loads htmx itself');
     }
 
+    public function test_without_a_client_an_htmx_history_restore_gets_its_own_key(): void
+    {
+        $this->assertContains('HX-History-Restore-Request', PageCacheConfig::DEFAULT_VARY_HEADERS);
+        $config = PageCacheConfig::fromArray(['hosts' => ['example.com']]);
+        $page = PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/g'), $config);
+        $restore = PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/g', ['HX-Request' => 'true', 'HX-History-Restore-Request' => 'true']), $config);
+        $fragment = PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/g', ['HX-Request' => 'true']), $config);
+
+        $this->assertNotSame($page->id(), $restore->id());
+        $this->assertNotSame($fragment->id(), $restore->id(), 'an app that loads htmx itself keeps restores apart from fragments');
+    }
+
+    /**
+     * The six sites (Twig, htmx, default vary_headers or none configured) keep every page-cache key:
+     * htmx already varies on HX-History-Restore-Request, so adding it to the defaults changes nothing.
+     */
+    public function test_an_htmx_app_keeps_its_keys_with_the_new_default_vary_headers(): void
+    {
+        $before = PageCacheConfig::fromArray(['hosts' => ['example.com'], 'vary_headers' => ['HX-Request', 'HX-Target']]); // 0.64's default
+        $now = PageCacheConfig::fromArray(['hosts' => ['example.com']]);
+        $requests = [
+            [],
+            ['HX-Request' => 'true'],
+            ['HX-Request' => 'true', 'HX-Target' => 'list'],
+            ['HX-Request' => 'true', 'HX-History-Restore-Request' => 'true'],
+            ['HX-History-Restore-Request' => 'true'],
+            ['HX-Request' => 'true', 'HX-Target' => 'list', 'HX-Trigger' => 'x', 'Accept' => 'text/html'],
+        ];
+        foreach (['https://example.com/', 'https://example.com/jobs?page=2', 'https://example.com/de/about'] as $url) {
+            foreach ($requests as $headers) {
+                $old = PageKey::fromRequest(new ServerRequest('GET', $url, $headers), $before, [], self::htmx());
+                $new = PageKey::fromRequest(new ServerRequest('GET', $url, $headers), $now, [], self::htmx());
+                $this->assertSame($old->id(), $new->id(), $url . ' ' . json_encode($headers));
+                $this->assertSame($old->parts(), $new->parts());
+                $this->assertSame($old->isFragment(), $new->isFragment());
+            }
+        }
+    }
+
     /** htmx as the app's hypermedia client (what core binds by default). */
     private static function htmx(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
     {

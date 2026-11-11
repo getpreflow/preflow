@@ -424,7 +424,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->bound(\Preflow\Core\Http\NonPublicPaths::class) ? $c->get(\Preflow\Core\Http\NonPublicPaths::class) : new \Preflow\Core\Http\NonPublicPaths(),
                 $locales ?? \Preflow\Data\Locales::single('en'),
                 self::prefixedUrls($app),
-                $c->get(TemplateEngineInterface::class),
+                $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
                 $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
             ));
@@ -436,7 +436,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ExtensionRegistry::class),
             $c->get(\Preflow\Folio\Extension\ExtensionState::class),
             new \Preflow\Folio\Extension\ExtensionsFile($app->basePath('config/folio/extensions.json'), $modelsPath),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(TypeCatalog::class),
             $prefix,
             // Toggling on the screen: development by default; elsewhere the committed file is the source.
@@ -458,7 +458,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Translations\StoredOverrides::class),
             $c->get(\Preflow\Folio\Translations\EditableTexts::class),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             $c->get(\Preflow\Ai\Ai::class),
             $c->get(\Preflow\Auth\Access\Access::class),
@@ -466,7 +466,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Http\CacheController::class, fn (Container $c) => new \Preflow\Folio\Http\CacheController(
             $c->get(\Preflow\Core\Cache\CacheRegistry::class),
             $c->get(\Preflow\Core\Cache\OpcacheStatus::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             // The page cache's refresh actions, when it is on (core's Refresher).
             $c->bound(\Preflow\Core\PageCache\Refresher::class) ? $c->get(\Preflow\Core\PageCache\Refresher::class) : null,
@@ -475,7 +475,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Http\SeoAuditController::class, static fn (Container $c) => new \Preflow\Folio\Http\SeoAuditController(
             \Preflow\View\Audit\AuditReport::file($app->basePath()),
             $c->get(TypeCatalog::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
         ));
@@ -495,7 +495,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Http\AssetLibraryController::class, fn (Container $c) => new \Preflow\Folio\Http\AssetLibraryController(
             $c->get(\Preflow\Media\MediaLibrary::class),
             $c->get(\Preflow\Media\Usage\AssetUsage::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(TypeCatalog::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
             $prefix,
@@ -580,7 +580,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $registry,
                 (int) ($folioConfig['blocks']['max_depth'] ?? 4),
                 self::validatorFactory($c),
-                $c->get(TemplateEngineInterface::class),
+                $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
             ));
             // The sanitizer is built on the first sanitize call, not on every request.
@@ -607,7 +607,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeCatalog::class),
                 $c->get(TypeRegistry::class),
                 $c->get(\Preflow\Data\DataManager::class),
-                new RecordRenderer($registry, $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
+                new RecordRenderer($registry, $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
                 new RecordLabeler(),
                 $prefix,
                 $c->get(\Preflow\Folio\Content\LiveContent::class),
@@ -678,7 +678,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(ActionResolver::class),
             $c->get(FieldTypeRegistry::class),
             $prefix,
@@ -690,7 +690,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(Customizations::class),
-            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c)),
+            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
             pageAssets: $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
@@ -717,14 +717,14 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Ai\Ai::class),
             $c->get(\Preflow\I18n\Machine\JobRunner::class),
             $c->get(\Preflow\I18n\Machine\JobStore::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(\Preflow\Folio\Translations\LabelUnits::class),
             $c->get(\Preflow\Media\MediaLibrary::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
             $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
-            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c)),
+            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
         ));
         $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
             $c->get(\Preflow\Ai\Ai::class),
@@ -733,7 +733,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
             $c->get(ContentLocale::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
@@ -742,7 +742,7 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             $c->get(DataManager::class),
             $c->get(DraftRecordFactory::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Auth\Access\Access::class),
@@ -753,8 +753,8 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
-            $c->get(TemplateEngineInterface::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
             $c->get(ContentLocale::class),
             $c->get(DataManager::class),
             $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
@@ -782,8 +782,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
             $c->get(FieldTypeRegistry::class),
-            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(TemplateEngineInterface::class), $c->get(ContentLocale::class)),
-            $c->get(TemplateEngineInterface::class),
+            new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
             $c->get(ContentLocale::class),
@@ -838,10 +838,36 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(UploadController::class, fn (Container $c) => new UploadController($uploadsDir));
 
+        // The engine Folio renders with: its Twig templates (*.twig) through a Twig engine of its own,
+        // whatever app.engine is, built like the app's (TemplateEngineContext) with the app engine's
+        // functions; app templates through the app's engine. On a Twig app both are the app's engine.
+        $container->singleton(\Preflow\Folio\View\FolioEngine::class, static fn (Container $c): \Preflow\Folio\View\FolioEngine => \Preflow\Folio\View\FolioEngine::for(
+            $c->get(TemplateEngineInterface::class),
+            static function () use ($c): TemplateEngineInterface {
+                $context = $c->get(\Preflow\View\TemplateEngineContext::class);
+
+                return new \Preflow\Twig\TwigEngine(
+                    templateDirs: $context->templateDirs,
+                    assetCollector: $context->assets,
+                    debug: $context->debug,
+                    cachePath: rtrim($context->cachePath, '/') . '/folio-twig',
+                    geoCollector: $context->geo,
+                    seoContext: $context->seo,
+                    liveParts: $context->liveParts,
+                    pageCache: $context->pageCache,
+                );
+            },
+        ));
+        // The guard staff sign in through: config/folio.php 'guard', else the default guard (checked in boot()).
+        $container->singleton(\Preflow\Folio\Users\StaffGuard::class, static fn (): \Preflow\Folio\Users\StaffGuard => \Preflow\Folio\Users\StaffGuard::fromConfig(
+            $folioCfg,
+            is_array($auth = $app->configFile('auth')) ? $auth : null,
+        ));
         $container->bind(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware(
             $c->get(\Preflow\Auth\AuthManager::class),
             $prefix,
             $c->get(\Preflow\Folio\Http\AdminNav::class),
+            $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
         ));
         // Each user's interface language (UserPreferences), applied per admin request.
         $container->singleton(\Preflow\Folio\Users\UserPreferences::class, fn (Container $c) => new \Preflow\Folio\Users\UserPreferences(
@@ -862,7 +888,7 @@ final class FolioServiceProvider extends ServiceProvider
             self::translator($c, $app),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
-            $c->has(TemplateEngineInterface::class) ? $c->get(TemplateEngineInterface::class) : null,
+            $c->has(TemplateEngineInterface::class) ? $c->get(\Preflow\Folio\View\FolioEngine::class) : null,
             static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),
             self::validatorFactory($c),
         ));
@@ -879,7 +905,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(TypeCatalog::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             $c->get(ScreenRegistry::class),
         ));
@@ -898,7 +924,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Extension\Screen\ScreenDispatcher::class, fn (Container $c) => new \Preflow\Folio\Extension\Screen\ScreenDispatcher(
             $c,
             $c->get(ScreenRegistry::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
         ));
@@ -913,12 +939,13 @@ final class FolioServiceProvider extends ServiceProvider
 
             return new AuthController(
                 $c->get(\Preflow\Auth\AuthManager::class),
-                $c->get(\Preflow\Auth\UserProviderInterface::class),
-                $c->get(TemplateEngineInterface::class),
+                self::staffProvider($c),
+                $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
                 $passwords,
                 $passwords === null ? null : $c->get(\Preflow\Core\Throttle\Throttle::class),
                 $passwords === null ? null : $c->get(\Preflow\Auth\PasswordHasherInterface::class),
+                $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
             );
         });
         $container->singleton(\Preflow\Folio\Users\StaffPasswords::class, fn (Container $c) => self::staffPasswords($c, $prefix));
@@ -926,18 +953,20 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Users\StaffPasswords::class),
             $c->get(\Preflow\Core\Throttle\Throttle::class),
             $c->get(\Preflow\Auth\AuthManager::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $c->get(TypeCatalog::class),
             $prefix,
             max(1, (int) ($this->folioConfig($app)['password_min'] ?? 10)),
+            $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
         ));
         $container->bind(\Preflow\Folio\Http\PasswordController::class, fn (Container $c) => new \Preflow\Folio\Http\PasswordController(
             $c->get(\Preflow\Folio\Users\StaffPasswords::class),
             $c->get(\Preflow\Core\Throttle\Throttle::class),
             $c->get(\Preflow\Auth\AuthManager::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             max(1, (int) ($this->folioConfig($app)['password_min'] ?? 10)),
+            $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
         ));
     }
 
@@ -977,14 +1006,14 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /**
-     * The record providers (Folio user types) behind the default guard; none without auth.
+     * The record providers (Folio user types) behind the staff guard; none without auth.
      *
      * @return list<\Preflow\Auth\Record\RecordUserProvider>
      */
     private static function recordProviders(Container $c): array
     {
         try {
-            $users = $c->get(\Preflow\Auth\UserProviderInterface::class);
+            $users = self::staffProvider($c);
         } catch (\Throwable) { // no config/auth.php: nothing bound
             return [];
         }
@@ -992,19 +1021,37 @@ final class FolioServiceProvider extends ServiceProvider
         return \Preflow\Folio\Users\RecordProviders::of($users);
     }
 
+    /** The staff guard's user provider; null without auth. */
+    private static function staffProviderOrNone(Container $c): ?\Preflow\Auth\UserProviderInterface
+    {
+        try {
+            return self::staffProvider($c);
+        } catch (\Throwable) { // no config/auth.php: nothing bound
+            return null;
+        }
+    }
+
+    /** The user provider of the staff guard (StaffGuard): the default guard's binding, or the named guard's. */
+    private static function staffProvider(Container $c): \Preflow\Auth\UserProviderInterface
+    {
+        return $c->get(\Preflow\Folio\Users\StaffGuard::class)->provider(
+            $c->get(\Preflow\Auth\AuthManager::class),
+            static fn (): \Preflow\Auth\UserProviderInterface => $c->get(\Preflow\Auth\UserProviderInterface::class),
+        );
+    }
+
     private static function staffPasswords(Container $c, string $prefix): \Preflow\Folio\Users\StaffPasswords
     {
         $app = $c->get(Application::class);
         $url = $app->config()->get('app.url');
         $base = is_string($url) ? rtrim(trim($url), '/') : ''; // unset: no links are mailed (StaffPasswords::canMail)
-        $auth = $c->get(\Preflow\Auth\AuthManager::class);
 
         return new \Preflow\Folio\Users\StaffPasswords(
             $c->get(\Preflow\Auth\Tokens\Tokens::class),
             $c->has(\Preflow\Auth\Remember\RememberMe::class) ? $c->get(\Preflow\Auth\Remember\RememberMe::class) : null,
             $c->get(\Preflow\Auth\PasswordHasherInterface::class),
             $c->get(DataManager::class),
-            $c->get(\Preflow\Auth\UserProviderInterface::class),
+            self::staffProvider($c),
             self::recordProviders($c),
             static function () use ($c, $app): \Preflow\Folio\Users\StaffMailer {
                 return new \Preflow\Folio\Users\StaffMailer(
@@ -1014,7 +1061,7 @@ final class FolioServiceProvider extends ServiceProvider
                     (string) $app->config()->get('app.name', 'Folio'),
                 );
             },
-            $auth->defaultGuardName(),
+            $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
             $base === '' ? '' : $base . $prefix . '/password',
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
         );
@@ -1328,7 +1375,9 @@ final class FolioServiceProvider extends ServiceProvider
 
         // 1. Twig namespace: userland override dir first, package templates second.
         if ($container->has(TemplateEngineInterface::class)) {
-            $engine = $container->get(TemplateEngineInterface::class);
+            // Folio's engine: its Twig templates through its own Twig engine, app templates through the
+            // app's; on a Twig app both are the app's engine (FolioEngine).
+            $engine = $container->get(\Preflow\Folio\View\FolioEngine::class);
             $userDir = $app->basePath('resources/folio');
             if (is_dir($userDir)) {
                 $engine->addNamespace('folio', $userDir);
@@ -1521,7 +1570,7 @@ final class FolioServiceProvider extends ServiceProvider
                 isSafe: true,
             ));
 
-            // The user menu's link to the own account page: only for a record user of the default guard.
+            // The user menu's link to the own account page: only for a record user of the staff guard.
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_account_url',
                 callable: function () use ($container, $app): ?string {
@@ -1777,7 +1826,10 @@ final class FolioServiceProvider extends ServiceProvider
         $this->declareExtensionPermissions($registry, $container->get(ExtensionRegistry::class), $container->get(TypeCatalog::class));
 
         if ($app->hasConfigFile('auth')) {
-            $access->markStaffGuard($container->get(\Preflow\Auth\AuthManager::class)->defaultGuardName());
+            // Only staff get into the admin: a guard declaring another population stops the boot here.
+            $staffGuard = $container->get(\Preflow\Folio\Users\StaffGuard::class);
+            $staffGuard->assertStaff((array) $app->configFile('auth'));
+            $access->markStaffGuard($staffGuard->name);
         }
     }
 

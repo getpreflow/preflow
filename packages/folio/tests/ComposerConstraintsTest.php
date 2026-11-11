@@ -8,9 +8,11 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing Folio with a release that lacks the APIs it calls: auth 0.38 (RecordUser and
+ * Composer from pairing Folio with a release that lacks the APIs it calls: auth 0.65 (AuthManager::provider() for a
+ * staff guard that is not the default one, folio.guard; since 0.38 RecordUser and
  * RecordUserProvider moved to Preflow\Auth\Record, PasswordRehash; since 0.27 the chain
- * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.61 (the Application registers model classes as types, found with data's ModelClasses, so a class-backed type Folio lists is in the registry; since 0.60 the page cache: PageCache::isolate() and refuseWhen(), Refresher and DataTags for
+ * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.65 (a non-Twig app engine is a SharingTemplateEngine and
+ * TemplateEngineContext is bound, from which Folio builds its own Twig engine; since 0.61 the Application registers model classes as types, found with data's ModelClasses, so a class-backed type Folio lists is in the registry; since 0.60 the page cache: PageCache::isolate() and refuseWhen(), Refresher and DataTags for
  * Settings → Cache and publishing; since 0.59 Application::onRequest() and runningInConsole(), with which the admin is set up on demand; since 0.58 Composer\InstalledPackages and Config\ParsedJsonFiles,
  * which the extension registry, ModelExtension and TypeCatalog read through; since 0.52 NonPublicPaths, where Folio registers its admin; since
  * 0.50 it binds PublicPages, SeoSite and SeoContext, which FolioServiceProvider fills; since 0.34 Container::hasProvider(),
@@ -24,7 +26,7 @@ use PHPUnit\Framework\TestCase;
  * AssetUsageEntry::$blocksDelete; AssetCleanup for the "Unused only" filter; since 0.36 box presets, edits and
  * writeEdited, the asset classes Folio's library and field build on),
  * htmx 0.65 (HtmxDriver is a core HypermediaProtocol: Folio adds its own htmx to HypermediaProtocols),
- * view 0.54 (the SEO audit's AuditReport, AuditRegistry::setTargets() and Target, which Settings → SEO audit
+ * twig 0.65 and view 0.65 (Folio's own Twig engine: TwigEngine, LazyTemplateEngine, SharingTemplateEngine; since 0.54 the SEO audit's AuditReport, AuditRegistry::setTargets() and Target, which Settings → SEO audit
  * and AuditTargets use; since 0.50 PublicPages, PublicPage, SeoSite, SeoContext, PageMeta, the SEO head tags), validation 0.52 (the slug rule; since 0.46 the step rule, since 0.37 Message, ValidatorFactory::useTranslator()).
  * preflow/members is only suggested (Folio carries its admin when it is installed); a members
  * release before 0.39 lacks Members::lock(), unlock(), isLocked(), endSessions() and resendConfirmation()
@@ -38,7 +40,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.38', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.61', 'preflow/data' => '<0.61', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.54'],
+            ['preflow/ai' => '<0.47', 'preflow/auth' => '<0.65', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.65', 'preflow/data' => '<0.61', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.47', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.

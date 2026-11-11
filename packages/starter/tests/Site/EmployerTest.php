@@ -25,6 +25,19 @@ final class EmployerTest extends TestCase
         $this->removeStarter();
     }
 
+    /**
+     * The employers guard declares its own population: never staff (Folio refuses to boot on it), a
+     * member for permissions.
+     */
+    public function test_employers_are_their_own_population_and_never_staff(): void
+    {
+        $access = $this->container()->get(\Preflow\Auth\Access\Access::class);
+        $access->markStaffGuard('employers'); // what Folio would do: the declared population wins
+
+        $this->assertSame('employers', $access->declaredPopulation('employers'));
+        $this->assertSame('members', $access->populationOf('employers'));
+    }
+
     /** @return array<string, string> */
     private function input(array $override = []): array
     {
