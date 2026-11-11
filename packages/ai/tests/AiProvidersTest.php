@@ -232,6 +232,62 @@ final class AiProvidersTest extends TestCase
         $this->assertStringContainsString('connection refused', (string) $status->reason);
     }
 
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function test_the_fake_refusing_on_a_live_site_is_reported_once(): void
+    {
+        $reports = [];
+        $ai = new Ai(
+            ['enabled' => true, 'provider' => 'fake'],
+            $this->log(),
+            Pricing::withOverrides([]),
+            static fn (): ?string => null,
+            make: static fn (string $class): object => new $class(0),
+            report: static function (string $message) use (&$reports): void {
+                $reports[] = $message;
+            },
+        );
+
+        $ai->enabled();
+        $ai->status();
+        $ai->enabled();
+
+        $this->assertCount(1, $reports);
+        $this->assertStringContainsString('allow_live', $reports[0]);
+        $this->assertStringContainsString('AI is off', $reports[0]);
+    }
+
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function test_a_failed_availability_check_is_reported(): void
+    {
+        $reports = [];
+        $ai = new Ai(
+            ['enabled' => true, 'provider' => ThrowingFactory::class],
+            $this->log(),
+            Pricing::withOverrides([]),
+            static fn (): ?string => null,
+            report: static function (string $message) use (&$reports): void {
+                $reports[] = $message;
+            },
+        );
+
+        $ai->enabled();
+
+        $this->assertCount(1, $reports);
+        $this->assertStringContainsString('connection refused', $reports[0]);
+    }
+
+    public function test_a_fake_switched_off_is_not_reported(): void
+    {
+        $reports = [];
+        $ai = new Ai(['enabled' => false, 'provider' => 'fake'], $this->log(), Pricing::withOverrides([]), make: static fn (string $class): object => new $class(0), report: static function (string $m) use (&$reports): void {
+            $reports[] = $m;
+        });
+
+        $ai->status();
+
+        $this->assertSame([], $reports, 'nothing to warn about while AI is switched off');
+    }
+
     public function test_status_available_defaults_to_enabled(): void
     {
         $this->assertTrue((new \Preflow\Ai\AiStatus(true, 'claude', 'm', true))->available);

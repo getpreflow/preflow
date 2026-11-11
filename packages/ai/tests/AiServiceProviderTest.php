@@ -127,6 +127,35 @@ final class AiServiceProviderTest extends TestCase
         $this->assertStringContainsString('only while developing', (string) stream_get_contents($err));
     }
 
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function test_the_warning_goes_to_the_app_s_bound_logger(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'storage' => 'var/ai'];\n");
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\Preflow\\Ai\\AiServiceProvider::class, \\" . MemoryLoggerProvider::class . "::class];\n");
+        ini_set('error_log', $this->dir . '/php.log');
+        $c = $this->app()->container();
+
+        $c->get(Ai::class)->enabled();
+
+        $logger = $c->get(\Psr\Log\LoggerInterface::class);
+        $this->assertCount(1, $logger->warnings);
+        $this->assertStringContainsString('only while developing', $logger->warnings[0]);
+        $this->assertFileDoesNotExist($this->dir . '/php.log', 'not also in the PHP log');
+    }
+
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function test_without_a_logger_the_warning_goes_to_the_php_log(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'storage' => 'var/ai'];\n");
+        ini_set('error_log', $this->dir . '/php.log');
+
+        $this->app()->container()->get(Ai::class)->enabled();
+
+        $this->assertStringContainsString('only while developing', (string) file_get_contents($this->dir . '/php.log'));
+    }
+
     public function test_on_a_live_site_the_fake_answers_with_allow_live(): void
     {
         file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
@@ -176,5 +205,27 @@ final class ContainerBuiltFactory implements \Preflow\Ai\AiClientFactory
     public function create(array $options): \Preflow\Ai\AiClient
     {
         return new \Preflow\Ai\Testing\FakeAiClient([new \Preflow\Ai\AiResponse("{$this->appName} at {$this->endpoint->url}", \Preflow\Ai\StopReason::Complete, new \Preflow\Ai\TokenUsage(), 'local', 'local-model')]);
+    }
+}
+
+/** An app's PSR-3 logger, keeping warnings in memory. */
+final class MemoryLogger extends \Psr\Log\AbstractLogger
+{
+    /** @var list<string> */
+    public array $warnings = [];
+
+    public function log($level, string|\Stringable $message, array $context = []): void
+    {
+        if ($level === \Psr\Log\LogLevel::WARNING) {
+            $this->warnings[] = (string) $message;
+        }
+    }
+}
+
+final class MemoryLoggerProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(\Psr\Log\LoggerInterface::class, static fn (): MemoryLogger => new MemoryLogger());
     }
 }

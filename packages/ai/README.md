@@ -246,7 +246,8 @@ model.
 `'provider' => 'fake'` runs everything AI without a key and without cost, **on your machine and in
 tests only** (it gives every request the same answer). With `app.debug` off it reports "not
 available", so AI stays off on a live site even when the setting ships by mistake; `ai:check` and
-Settings → AI say why, and one warning goes to the PHP log. Tests that run with debug off set
+Settings → AI say why, and one warning goes to the app's PSR-3 logger (a bound
+`Psr\Log\LoggerInterface`), else the PHP log. Tests that run with debug off set
 `'allow_live' => true` in `options.fake`:
 
 ```php

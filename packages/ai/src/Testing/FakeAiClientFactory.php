@@ -21,8 +21,8 @@ use Preflow\Core\Container\Attributes\Config;
  *
  * Only while developing: with app.debug off it reports "not available", so AI stays off and a
  * live site never writes its canned answers into content, unless `options.fake.allow_live` is
- * true (tests that run with debug off). The refusal is logged once and shown by ai:check and
- * Settings → AI. For a script (answers in order, a function per request), write a factory of
+ * true (tests that run with debug off). Ai logs the refusal once (the app's logger, else the PHP
+ * log), and ai:check and Settings → AI show it. For a script (answers in order, a function per request), write a factory of
  * your own that returns a FakeAiClient.
  *
  * @since 0.66
@@ -31,23 +31,14 @@ final class FakeAiClientFactory implements AiClientFactory, ExplainsUnavailabili
 {
     private const string REASON = 'The fake AI provider answers only while developing (app.debug on), or with options.fake.allow_live set to true.';
 
-    private static bool $warned = false;
-
     public function __construct(
         #[Config('app.debug', 0)] private readonly int|bool|string|null $debug = 0,
     ) {}
 
     public function available(#[\SensitiveParameter] array $options): bool
     {
-        if ($this->allowed($options)) {
-            return true;
-        }
-        if (!self::$warned) {
-            self::$warned = true;
-            error_log('Preflow AI: ' . self::REASON . ' AI is off.');
-        }
-
-        return false;
+        // Ai reports the refusal once, with unavailableReason(), to the app's logger.
+        return $this->allowed($options);
     }
 
     public function unavailableReason(#[\SensitiveParameter] array $options): ?string

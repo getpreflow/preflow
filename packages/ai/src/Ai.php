@@ -38,6 +38,12 @@ final class Ai
     /** Why the factory's availability check threw, if it did (once per instance). */
     private ?string $failure = null;
 
+    /** @var \Closure(string): void */
+    private readonly \Closure $report;
+
+    /** @var array<string, true> warnings already reported in this process */
+    private static array $reported = [];
+
     private ?AiClient $client = null;
 
     /**
@@ -46,6 +52,9 @@ final class Ai
      * @param (\Closure(string, string, string): AiClient)|null $clientFactory builds the client from provider, model, key in place
      *        of the provider's factory (tests); whether AI is available is still the factory's answer
      * @param (\Closure(class-string<AiClientFactory>): object)|null $make builds a provider's factory (AiServiceProvider: the container); default `new`
+     * @param (\Closure(string): void)|null $report gets warnings (a failed availability check; AI switched on but the
+     *        provider says why it can't run, e.g. the fake on a live site): AiServiceProvider passes the app's
+     *        logger when one is bound; default the PHP log
      */
     public function __construct(
         private readonly array $config,
@@ -54,7 +63,11 @@ final class Ai
         ?\Closure $env = null,
         private readonly ?\Closure $clientFactory = null,
         ?\Closure $make = null,
+        ?\Closure $report = null,
     ) {
+        $this->report = $report ?? static function (string $message): void {
+            error_log($message);
+        };
         $this->env = $env ?? static function (string $name): ?string {
             // Some hosts load .env only into $_ENV, so getenv() alone misses the key.
             $value = getenv($name);
@@ -150,13 +163,32 @@ final class Ai
         }
         $factory = $this->factory();
         try {
-            return $factory->available($this->options());
+            $available = $factory->available($this->options());
         } catch (\Throwable $e) {
             $this->failure = 'The provider\'s availability check failed: ' . $e::class . ': ' . $e->getMessage();
-            error_log('Preflow AI: ' . $this->failure);
+            $this->warnOnce($this->failure);
 
             return false;
         }
+        // Switched on but refused with a reason (the fake on a live site): said once, so it isn't silent.
+        if (!$available && $this->switchedOn() && $factory instanceof ExplainsUnavailability) {
+            $reason = $factory->unavailableReason($this->options());
+            if ($reason !== null) {
+                $this->warnOnce($reason . ' AI is off.');
+            }
+        }
+
+        return $available;
+    }
+
+    private function warnOnce(string $message): void
+    {
+        $message = 'Preflow AI: ' . $message;
+        if (isset(self::$reported[$message])) {
+            return;
+        }
+        self::$reported[$message] = true;
+        ($this->report)($message);
     }
 
     private function reason(): ?string

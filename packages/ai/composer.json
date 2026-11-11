@@ -44,6 +44,7 @@
     },
     "suggest": {
         "preflow/devtools": "The ai:check and ai:usage commands",
+        "psr/log": "Warnings go to the app's bound Psr\\Log\\LoggerInterface (else the PHP log)",
         "preflow/i18n": "Admin UI texts of this package"
     }
 }

@@ -463,7 +463,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     (`AiServiceProvider::boot()`), naming the accepted forms. `'fake'` (`Testing\FakeAiClientFactory`) runs without a
     key or cost: `options.fake.answer` (array → JSON, string → text; default `{"ok":true}`) and `options.fake.usage`;
     model `fake-model`, priced "unknown", no request history kept (`FakeAiClient` `record:`). With `app.debug` off the
-    fake reports "not available" (AI off) unless `options.fake.allow_live` is true; it logs one warning and says why.
+    fake reports "not available" (AI off) unless `options.fake.allow_live` is true, and says why. `Ai` reports
+    warnings (that refusal while AI is switched on, a failed availability check) once per process through a `report:`
+    closure: `AiServiceProvider` sends them to the app's bound PSR-3 `LoggerInterface`, else `error_log`.
     `ExplainsUnavailability` (`unavailableReason()`) lets a factory say why it is not available; an `available()` that
     throws counts as not available, with its message as the reason. `AiStatus` gains `available` (null → `enabled`),
     `usesKey` and `reason`; `ai:check` says "Key: not used" and why AI is off. The usage log and `ai:usage` already priced an unknown model as unknown (null), unchanged.
@@ -496,12 +498,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     `BlocksFieldType` merge rule lists with `Preflow\Folio\Field\FieldRules::merge()` (names once, objects once per
     instance) instead of `array_unique()`, which cast them to strings (a non-Stringable rule answered 500); a Stringable object is
     still kept once against its name.
-  - **Packages register field types and blocks (folio, core):** (blocks must carry `#[Block]`; a duplicate block key
-    fails at boot, also against a package) a package's `composer.json`
+  - **Packages register field types and blocks (folio, core):** a package's `composer.json`
     `extra.folio.field_types` / `extra.folio.blocks` (class names; `InstalledPackages` keeps them, cache format v2)
     are registered like `config/folio.php`'s: built by the container, after the built-ins and before the app's
     config (the app wins), with their field kinds. A listed class that is no field type stops the boot, naming the
-    package. `FieldTypeRegistry::whenRegistered()`: a type a provider registers after Folio booted gets its field
+    package; a listed block must carry `#[Block]`, and a duplicate block key fails at boot, also against a package.
+    `FieldTypeRegistry::whenRegistered()`: a type a provider registers after Folio booted gets its field
     kinds too.
   - **Config reference:** the starters' `config/app.php` declare `'hypermedia'` as a commented key, so
     `docs:reference` lists `app.hypermedia`.

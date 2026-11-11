@@ -36,6 +36,16 @@ final class AiServiceProvider extends ServiceProvider
             $c->get(UsageLog::class),
             $c->get(Pricing::class),
             make: static fn (string $class): object => $c->get($class),
+            // Warnings to the app's PSR-3 logger when one is bound (asked when warning: a provider may
+            // bind it later), else the PHP log.
+            report: static function (string $message) use ($c): void {
+                if ($c->bound(\Psr\Log\LoggerInterface::class)) {
+                    $c->get(\Psr\Log\LoggerInterface::class)->warning($message);
+
+                    return;
+                }
+                error_log($message);
+            },
         ));
     }
 
