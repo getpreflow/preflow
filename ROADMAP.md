@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-11 (v0.64.0)
+> Last updated: 2026-11-11 (v0.65.0)
 
 ## Current State
 
-**v0.64.0** — 6718 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.65.0** — 6838 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -381,7 +381,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Pluggable adapters (v0.65.0):** a third-party template engine, hypermedia driver or storage driver is
+- **Pluggable adapters (v0.65.0, released 2026-11-11):** a third-party template engine, hypermedia driver or storage driver is
   registered through config, no workaround. Found by the Extend guides of docs phase 3 (Task 5); plan
   `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 5b).
   - **Template engines:** `app.engine` is `'twig'`, `'blade'` or the class name of a
@@ -530,10 +530,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `app/Console/StaffCreateCommand.php` and `app/Seeds/DemoSeeder.php` together. A project template's migrations
       can't arrive by `composer update` (the project is no dependency of itself), hence the copy.
       A `SchemaGrammar` registered with `Grammars::register()` (new in 0.65) implements `renameColumn()`,
-      `copyColumn()` and `dropColumn()`.
+      `copyColumn()`, `dropColumn()`, `dropIndex()`, `indexColumns()` and `assertCanDropColumn()`.
       Constraints: folio requires auth/core/view/twig ^0.65; roles, rbac and members conflict auth <0.65 (`ListsRoles`);
-      rbac conflicts folio <0.65 (`FolioEngine`). The starters still require `^0.64`: the release commit raises them to
-      `^0.65` (as 0.64's did), or `create-project` can't resolve (folio conflicts core/htmx <0.65).
+      rbac conflicts folio <0.65 (`FolioEngine`). The starters require `^0.65` (raised in the release commit).
 - **Contract suites (v0.64.0, released 2026-11-11):** abstract PHPUnit suites in `preflow/testing` that check a third-party
   adapter (a Datastar hypermedia driver, a PostgreSQL storage driver, another template engine) against its interface;
   the built-in adapters run them too. Plan: `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 1).
