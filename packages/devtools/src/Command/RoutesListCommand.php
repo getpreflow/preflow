@@ -10,9 +10,10 @@ use Preflow\Routing\RouteEntry;
 use Preflow\Routing\Router;
 
 /**
- * routes:list prints the routes of the booted app, in the order they match: file pages,
- * attribute controllers, and the routes packages add (Folio's admin and frontend, media), then
- * the component endpoint. Redirects are not routes (the redirect middleware answers them first).
+ * routes:list prints the routes of the booted app, in the order they match: the component
+ * endpoint (the kernel answers /--component before routing), then file pages, attribute
+ * controllers and the routes packages add (media, Folio's admin and frontend). What middleware
+ * answers (redirects, sitemap, robots.txt, llms.txt) is not a route and not listed.
  * When the app can't boot, it lists the file pages alone and says so.
  */
 final class RoutesListCommand implements CommandInterface
@@ -31,14 +32,14 @@ final class RoutesListCommand implements CommandInterface
         try {
             $app = $this->app();
             $container = $app->container();
+            if ($container->has('preflow.component_endpoint')) {
+                $rows[] = ['ANY', '/--component/*', 'endpoint', get_class($container->get('preflow.component_endpoint'))];
+            }
             $router = $container->has(RouterInterface::class) ? $container->get(RouterInterface::class) : null;
             if ($router instanceof Router) {
                 foreach ($router->getCollection()->all() as $entry) {
                     $rows[] = self::row($entry);
                 }
-            }
-            if ($container->has('preflow.component_endpoint')) {
-                $rows[] = ['ANY', '/--component/*', 'endpoint', get_class($container->get('preflow.component_endpoint'))];
             }
         } catch (\Throwable $e) {
             fwrite(STDERR, 'The app did not boot (' . $e->getMessage() . "); listing the file pages only.\n");

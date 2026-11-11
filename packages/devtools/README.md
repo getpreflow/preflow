@@ -163,9 +163,10 @@ php preflow make:migration create_comments
 
 ### `routes:list` — print the route table
 
-Boots the app and prints its routes in the order they match: file pages, controllers, the
-routes packages add (Folio, media), then the component endpoint. Redirects are not routes. If the
-app doesn't boot, it lists the file pages only and says why.
+Boots the app and prints its routes in the order they match: the component endpoint (answered
+before routing), then file pages, controllers and the routes packages add (media, Folio). What
+middleware answers (redirects, sitemap, robots.txt, llms.txt) isn't listed. If the app doesn't
+boot, it lists the file pages only and says why.
 
 ```
 php preflow routes:list
@@ -173,9 +174,9 @@ php preflow routes:list
 # ──────────────────────────────────────────────────────────────────────
 # Method  Pattern                            Mode        Handler
 # ──────────────────────────────────────────────────────────────────────
+# ANY     /--component/*                     endpoint    Preflow\Htmx\ComponentEndpoint
 # GET     /                                  component   index.twig
 # GET     /api/places                        action      App\Controllers\Api\PlacesController@index
-# ANY     /--component/*                     endpoint    Preflow\Htmx\ComponentEndpoint
 # ──────────────────────────────────────────────────────────────────────
 ```
 

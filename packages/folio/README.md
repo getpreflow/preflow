@@ -1,8 +1,8 @@
 # preflow/folio
 
-Folio is a drop-in CMS for Preflow. Require it into any Preflow app and you get a
-shipped admin (mounted at a configurable path), content types defined as JSON, and
-slug-based frontend rendering — without touching the framework.
+Folio is the admin for Preflow sites. Require it into any Preflow app and you get an
+admin (mounted at a configurable path) to edit and publish the site's models and pages,
+a media library, and rendering of the pages it manages — without touching the framework.
 
 ## Installation
 

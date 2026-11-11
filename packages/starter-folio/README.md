@@ -46,7 +46,7 @@ A known limit: Folio's own login at `/folio/login` compares the email case-sensi
 | `/api/jobs` | The same jobs as JSON | `app/Controllers/Api/JobsController.php` |
 | `/llms.txt`, `/index.md`, `/sitemap.xml`, `/robots.txt` | Pages for AI assistants and search engines | `config/geo.php`, `config/seo.php` |
 
-`php preflow routes:list` shows every route.
+`php preflow routes:list` lists the routed paths. What middleware answers (`/sitemap.xml`, `/robots.txt`, `/llms.txt`, redirects) isn't listed, and Folio's pages, `/` among them, are one catch-all row, `/{...path}`.
 
 ### Where the models are, and how Folio sees them
 

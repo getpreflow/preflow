@@ -166,6 +166,8 @@ final class EmployerTest extends TestCase
         $this->get('/jobs/' . $job->slug)->assertNotFound();
         $this->assertStringNotContainsString($job->slug, $this->get('/jobs?q=Wrangler')->body());
 
+        // The seeded employer has the employer role, which may publish: the button is there.
+        $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertSee('/employer/jobs/' . $job->uuid . '/publish"');
         $published = $this->postAs($cookies, '/employer/jobs/' . $job->uuid . '/publish', [], '/employer');
         $this->assertSame(302, $published->status());
         $published->assertRedirect('/employer');
