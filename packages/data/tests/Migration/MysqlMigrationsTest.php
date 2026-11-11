@@ -194,4 +194,21 @@ final class MysqlMigrationsTest extends TestCase
         $this->assertSame(['tinyint(1)', 'varchar(255)'], array_values(array_slice($schema->columnTypes('staff'), 1)));
         $this->assertSame(['1', '0'], array_map('strval', $this->pdo->query('SELECT active, auth_epoch FROM staff')->fetch(\PDO::FETCH_NUM)));
     }
+
+    public function test_copy_and_drop_column_on_mysql(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('createdAt')->nullable();
+            $table->string('created_at')->nullable();
+        });
+        $this->pdo->exec("INSERT INTO staff VALUES ('a', 'old', NULL), ('b', 'old', 'kept')");
+
+        $this->assertSame(1, $schema->copyColumn('staff', 'createdAt', 'created_at'));
+        $schema->dropColumn('staff', 'createdAt');
+
+        $this->assertSame(['uuid', 'created_at'], $schema->columns('staff'));
+        $this->assertSame([['a', 'old'], ['b', 'kept']], $this->pdo->query('SELECT uuid, created_at FROM staff ORDER BY uuid')->fetchAll(\PDO::FETCH_NUM));
+    }
 }

@@ -224,4 +224,72 @@ final class SchemaTest extends TestCase
 
         $this->assertSame([['a', 1], ['b', 0]], $this->pdo->query('SELECT uuid, active FROM staff ORDER BY uuid')->fetchAll(\PDO::FETCH_NUM));
     }
+
+    public function test_copy_column_fills_only_empty_target_rows_and_drop_column_removes_it(): void
+    {
+        $this->schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('passwordHash')->nullable();
+            $table->string('password_hash')->nullable();
+        });
+        $this->pdo->exec("INSERT INTO staff VALUES ('a', 'old-a', NULL), ('b', 'old-b', 'new-b')");
+
+        $this->assertSame(1, $this->schema->copyColumn('staff', 'passwordHash', 'password_hash'));
+        $this->schema->dropColumn('staff', 'passwordHash');
+
+        $this->assertSame(['uuid', 'password_hash'], $this->schema->columns('staff'));
+        $this->assertSame([['a', 'old-a'], ['b', 'new-b']], $this->pdo->query('SELECT uuid, password_hash FROM staff ORDER BY uuid')->fetchAll(\PDO::FETCH_NUM), 'a value already there wins');
+    }
+
+    public function test_copy_and_drop_refuse_missing_columns(): void
+    {
+        $this->schema->create('staff', fn (Table $table) => $table->uuid('uuid')->primary());
+        foreach ([fn () => $this->schema->copyColumn('staff', 'ghost', 'uuid'), fn () => $this->schema->copyColumn('staff', 'uuid', 'ghost'), fn () => $this->schema->dropColumn('staff', 'ghost')] as $call) {
+            try {
+                $call();
+                $this->fail('accepted a missing column');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('"ghost"', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_column_names_are_compared_without_case(): void
+    {
+        $this->schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('email')->nullable();
+            $table->string('name')->nullable();
+        });
+
+        foreach ([fn () => $this->schema->renameColumn('staff', 'email', 'Name'), fn () => $this->schema->addColumns('staff', fn (Table $t) => $t->string('NAME'))] as $call) {
+            try {
+                $call();
+                $this->fail('a case clash passed');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('already has a column', $e->getMessage());
+            }
+        }
+        $this->schema->renameColumn('staff', 'EMAIL', 'mail'); // the table's own spelling is found too
+        $this->assertSame(['uuid', 'mail', 'name'], $this->schema->columns('staff'));
+    }
+
+    public function test_add_columns_checks_its_indexes_before_any_sql(): void
+    {
+        $this->schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('email')->nullable();
+        });
+
+        try {
+            $this->schema->addColumns('staff', fn (Table $t) => $t->string('a')->index('nope'));
+            $this->fail('indexed an unknown column');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('"staff.nope"', $e->getMessage());
+        }
+        $this->assertSame(['uuid', 'email'], $this->schema->columns('staff'), 'nothing was added');
+
+        $this->schema->addColumns('staff', fn (Table $t) => $t->string('a')->index('a', 'email')); // an existing column may be indexed with it
+        $this->assertSame(['uuid', 'email', 'a'], $this->schema->columns('staff'));
+    }
 }

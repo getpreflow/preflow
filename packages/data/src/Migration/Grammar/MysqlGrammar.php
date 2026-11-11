@@ -160,6 +160,16 @@ final class MysqlGrammar implements SchemaGrammar
         return 'ALTER TABLE ' . $this->quote($table) . ' RENAME COLUMN ' . $this->quote($from) . ' TO ' . $this->quote($to);
     }
 
+    public function copyColumn(string $table, string $from, string $to): string
+    {
+        return 'UPDATE ' . $this->quote($table) . ' SET ' . $this->quote($to) . ' = ' . $this->quote($from) . ' WHERE ' . $this->quote($to) . ' IS NULL';
+    }
+
+    public function dropColumn(string $table, string $column): string
+    {
+        return 'ALTER TABLE ' . $this->quote($table) . ' DROP COLUMN ' . $this->quote($column);
+    }
+
     public function createMigrationsTable(): string
     {
         return 'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '

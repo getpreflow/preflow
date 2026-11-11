@@ -23,33 +23,9 @@ final class Schema
         $callback($builder);
 
         // Validate before touching the database, so a refused index never leaves a half-made table.
-        $kinds = array_column($builder->columns(), 'kind', 'name');
-        $definitions = $builder->getIndexDefinitions();
-        foreach ($definitions as $definition) {
-            foreach ($definition['columns'] as $column) {
-                if (!isset($kinds[$column])) {
-                    throw new \LogicException("Cannot index unknown column \"{$table}.{$column}\".");
-                }
-                if (!$this->grammar->canIndex($kinds[$column])) {
-                    throw new \LogicException(
-                        "Cannot index TEXT column \"{$table}.{$column}\" on MySQL: use string() for indexed columns."
-                    );
-                }
-            }
-        }
-
+        $indexes = $this->indexStatements($table, $builder, array_column($builder->columns(), 'kind', 'name'));
         // Built first too: the grammar may refuse a name (MySQL's 64-character limit).
         $create = $this->grammar->createTable($builder->getName(), $builder->columns());
-        $indexes = [];
-        foreach ($definitions as $definition) {
-            $columns = $definition['columns'];
-            if (count($columns) === 1 && !$definition['unique']) {
-                $indexes[] = $this->grammar->createIndex($table, $columns[0]);
-                continue;
-            }
-            $name = $this->grammar->indexName($definition['unique'] ? 'uniq' : 'idx', $table, implode('_', $columns));
-            $indexes[] = $this->grammar->createRecordIndex($name, $table, $columns, $definition['unique']);
-        }
 
         $this->pdo->exec($create);
         foreach ($indexes as $sql) {
@@ -99,32 +75,43 @@ final class Schema
         $callback($builder);
         $existing = $this->columns($table);
         foreach ($builder->columns() as $column) {
-            if (in_array($column['name'], $existing, true)) {
+            if (self::find($existing, $column['name']) !== null) {
                 throw new \LogicException("Cannot add \"{$table}.{$column['name']}\": the table already has a column \"{$column['name']}\".");
             }
             if ($column['primary']) {
                 throw new \LogicException("Cannot add the primary key \"{$table}.{$column['name']}\" to an existing table.");
             }
         }
+        // An index may name the added columns and those the table has (their kind unknown: not refused for it).
+        $kinds = array_fill_keys($existing, null) + array_column($builder->columns(), 'kind', 'name');
+        $indexes = $this->indexStatements($table, $builder, $kinds);
         $statements = [];
         foreach ($builder->columns() as $column) {
             $statements[] = $this->grammar->addColumn($table, $column['name'], $this->grammar->columnType($column['kind'], $column['length']));
         }
-        $kinds = array_column($builder->columns(), 'kind', 'name');
-        foreach ($builder->getIndexDefinitions() as $definition) {
-            foreach ($definition['columns'] as $name) {
-                if (isset($kinds[$name]) && !$this->grammar->canIndex($kinds[$name])) {
-                    throw new \LogicException("Cannot index TEXT column \"{$table}.{$name}\" on MySQL: use string() for indexed columns.");
-                }
-            }
-            $columns = $definition['columns'];
-            $statements[] = count($columns) === 1 && !$definition['unique']
-                ? $this->grammar->createIndex($table, $columns[0])
-                : $this->grammar->createRecordIndex($this->grammar->indexName($definition['unique'] ? 'uniq' : 'idx', $table, implode('_', $columns)), $table, $columns, $definition['unique']);
-        }
-        foreach ($statements as $sql) {
+        foreach ([...$statements, ...$indexes] as $sql) {
             $this->pdo->exec($sql);
         }
+    }
+
+    /**
+     * Copies $from into $to on every row where $to is NULL (merging an old column into its
+     * replacement; a value already in $to wins); returns how many rows. Refuses (LogicException) a
+     * column the table doesn't have.
+     */
+    public function copyColumn(string $table, string $from, string $to): int
+    {
+        $columns = $this->columns($table);
+        $stmt = $this->pdo->prepare($this->grammar->copyColumn($table, $this->existing($table, $columns, $from), $this->existing($table, $columns, $to)));
+        $stmt->execute();
+
+        return $stmt->rowCount();
+    }
+
+    /** Drops a column and its data (SQLite 3.35+, MySQL). Refuses (LogicException) a column the table doesn't have. */
+    public function dropColumn(string $table, string $column): void
+    {
+        $this->pdo->exec($this->grammar->dropColumn($table, $this->existing($table, $this->columns($table), $column)));
     }
 
     /** Sets the column to $value on every row where it is NULL (a backfill after addColumns()); returns how many rows. */
@@ -144,18 +131,75 @@ final class Schema
     public function renameColumn(string $table, string $from, string $to): void
     {
         $columns = $this->columns($table);
-        if (!in_array($from, $columns, true)) {
+        $own = self::find($columns, $from);
+        if ($own === null) {
             throw new \LogicException("Cannot rename \"{$table}.{$from}\": the table has no column \"{$from}\".");
         }
-        if (in_array($to, $columns, true)) {
+        if (self::find($columns, $to) !== null && strcasecmp($own, $to) !== 0) {
             throw new \LogicException("Cannot rename \"{$table}.{$from}\" to \"{$to}\": the table already has a column \"{$to}\".");
         }
-        $this->pdo->exec($this->grammar->renameColumn($table, $from, $to));
+        $this->pdo->exec($this->grammar->renameColumn($table, $own, $to));
     }
 
     /** Adds a nullable column to an existing table; a null type is free text (TEXT / LONGTEXT). */
     public function addColumn(string $table, string $column, ?string $type = null): void
     {
         $this->pdo->exec($this->grammar->addColumn($table, $column, $type));
+    }
+
+    /**
+     * Checks a builder's indexes and returns their SQL, before anything runs: every indexed column
+     * must be in $kinds (name => kind, or null for a column the table has), and MySQL can't index TEXT.
+     *
+     * @param array<string, ?string> $kinds
+     * @return list<string>
+     */
+    private function indexStatements(string $table, Table $builder, array $kinds): array
+    {
+        $statements = [];
+        foreach ($builder->getIndexDefinitions() as $definition) {
+            foreach ($definition['columns'] as $column) {
+                $known = self::find(array_keys($kinds), $column);
+                if ($known === null) {
+                    throw new \LogicException("Cannot index unknown column \"{$table}.{$column}\".");
+                }
+                if ($kinds[$known] !== null && !$this->grammar->canIndex($kinds[$known])) {
+                    throw new \LogicException(
+                        "Cannot index TEXT column \"{$table}.{$column}\" on MySQL: use string() for indexed columns."
+                    );
+                }
+            }
+            $columns = $definition['columns'];
+            if (count($columns) === 1 && !$definition['unique']) {
+                $statements[] = $this->grammar->createIndex($table, $columns[0]);
+                continue;
+            }
+            $name = $this->grammar->indexName($definition['unique'] ? 'uniq' : 'idx', $table, implode('_', $columns));
+            $statements[] = $this->grammar->createRecordIndex($name, $table, $columns, $definition['unique']);
+        }
+
+        return $statements;
+    }
+
+    /**
+     * The table's own spelling of a column name, compared without case (as SQLite and MySQL do); null when absent.
+     *
+     * @param list<string> $columns
+     */
+    private static function find(array $columns, string $name): ?string
+    {
+        foreach ($columns as $column) {
+            if (strcasecmp($column, $name) === 0) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param list<string> $columns */
+    private function existing(string $table, array $columns, string $name): string
+    {
+        return self::find($columns, $name) ?? throw new \LogicException("Cannot change \"{$table}.{$name}\": the table has no column \"{$name}\".");
     }
 }

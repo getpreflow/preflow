@@ -165,15 +165,21 @@ migration file.
 $schema->renameColumn('staff', 'passwordHash', 'password_hash'); // data, type and indexes kept
 $schema->addColumns('staff', function (Table $table) {           // the create() builder; every column added nullable
     $table->boolean('active');
-    $table->string('auth_epoch')->index('auth_epoch');
+    $table->string('auth_epoch')->index();
 });
 $schema->fillNulls('staff', 'active', true);                     // backfill: rows where it is NULL; returns the count
+$schema->copyColumn('staff', 'createdAt', 'created_at');         // old into new where new is NULL; returns the count
+$schema->dropColumn('staff', 'createdAt');                       // SQLite 3.35+, MySQL
 ```
 
-`renameColumn()` refuses (`LogicException`, nothing changed) a column the table doesn't have and
-a new name it already has; `addColumns()` refuses a column it already has and a primary key. Check
-with `columns()` first to write a migration that is safe to run on any shape of the table. A
-registered `SchemaGrammar` implements `renameColumn(string $table, string $from, string $to): string`.
+All checks run before any SQL and throw `LogicException` (nothing changed): `renameColumn()`
+refuses a column the table doesn't have and a new name it already has; `addColumns()` refuses a
+column it already has, a primary key, and an index on a column that is neither added nor in the
+table; `copyColumn()` and `dropColumn()` refuse a missing column. Column names are compared without
+case, as SQLite and MySQL do. Check with `columns()` first to write a migration that converges from
+any shape of the table (preflow/starter-folio's staff upgrade merges an old column into its new one
+with `copyColumn()` + `dropColumn()`). A registered `SchemaGrammar` implements `renameColumn()`,
+`copyColumn()` and `dropColumn()` (each returns the SQL).
 
 **Several migration paths.** `new Migrator($pdo, [$dir1, $dir2])` takes one path or a list
 and runs the files of all of them in name order; the same file name in two paths is one

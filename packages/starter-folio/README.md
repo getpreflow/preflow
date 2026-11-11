@@ -128,7 +128,16 @@ To add your own, you write two files and a config entry:
 The roles live in `config/roles.php`. To edit roles and staff accounts in Folio instead (Settings →
 Roles and Settings → Staff, with invitations and password links), switch to `preflow/rbac`. The
 `staff` table already has the columns rbac's staff accounts use, so the accounts you have keep
-signing in:
+signing in.
+
+**A project made from starter-folio before 0.65: do this first.** Its staff table still has the old
+columns (`passwordHash`, `createdAt`). Copy `migrations/2026_11_11_005_upgrade_staff_columns.php`
+into your project's `migrations/` and run `php preflow migrate`, then take the new
+`app/Models/Staff.php`, `app/Console/StaffCreateCommand.php` and `app/Seeds/DemoSeeder.php`
+together (the model must match the table). The migration renames the two columns (or, where the
+new ones exist already, moves their values over and drops the old ones), adds `active`,
+`auth_epoch` and `last_login_at`, and makes every account active at epoch `0`. It works from any
+partial state, also when you ran the steps below first; on a fresh install it changes nothing.
 
 1. `composer require preflow/rbac`, and add `\Preflow\Rbac\RbacServiceProvider::class` after
    Folio in `config/providers.php`.
@@ -140,14 +149,6 @@ signing in:
    role `admin`; create `editor` (and any other) under Settings → Roles.
 
 `staff:create` keeps working: it accepts the roles that exist, from `config/roles.php` or from Folio.
-
-**A project made from starter-folio before 0.65** has the old staff columns (`passwordHash`,
-`createdAt`). Copy `migrations/2026_11_11_005_upgrade_staff_columns.php` into your project's
-`migrations/` and run `php preflow migrate`: it renames the two columns, adds `active`,
-`auth_epoch` and `last_login_at`, and makes every existing account active at epoch `0`. Then take
-the new `app/Models/Staff.php`, `app/Console/StaffCreateCommand.php` and
-`app/Seeds/DemoSeeder.php` together (the model must match the table). On a fresh install the
-migration finds the new shape and does nothing.
 
 ### Tests
 

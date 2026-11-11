@@ -59,6 +59,12 @@ interface SchemaGrammar
     /** ALTER TABLE … RENAME COLUMN … TO … (SQLite 3.25+, MySQL 8, PostgreSQL); the data stays. Since 0.65. */
     public function renameColumn(string $table, string $from, string $to): string;
 
+    /** UPDATE … SET <to> = <from> WHERE <to> IS NULL (merging an old column into its replacement). Since 0.65. */
+    public function copyColumn(string $table, string $from, string $to): string;
+
+    /** ALTER TABLE … DROP COLUMN … (SQLite 3.35+, MySQL). Since 0.65. */
+    public function dropColumn(string $table, string $column): string;
+
     public function createMigrationsTable(): string;
 
     /** Whether a column of this kind can carry an index. */
