@@ -160,4 +160,38 @@ final class MysqlMigrationsTest extends TestCase
 
         $this->assertSame(2, (int) $this->pdo->query('SELECT COUNT(*) FROM `preflow_migrations`')->fetchColumn());
     }
+
+    public function test_rename_column_on_mysql(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('createdAt')->nullable();
+        });
+        $this->pdo->exec("INSERT INTO staff (uuid, createdAt) VALUES ('a', '2026-09-01')");
+
+        $schema->renameColumn('staff', 'createdAt', 'created_at');
+
+        $this->assertSame(['uuid', 'created_at'], $schema->columns('staff'));
+        $this->assertSame('2026-09-01', $this->pdo->query('SELECT created_at FROM staff')->fetchColumn());
+        $this->expectException(\LogicException::class);
+        $schema->renameColumn('staff', 'createdAt', 'created');
+    }
+
+    public function test_add_columns_and_fill_nulls_on_mysql(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('staff', fn (Table $table) => $table->uuid('uuid')->primary());
+        $this->pdo->exec("INSERT INTO staff (uuid) VALUES ('a')");
+
+        $schema->addColumns('staff', function (Table $table) {
+            $table->boolean('active');
+            $table->string('auth_epoch');
+        });
+        $this->assertSame(1, $schema->fillNulls('staff', 'auth_epoch', '0'));
+        $schema->fillNulls('staff', 'active', true);
+
+        $this->assertSame(['tinyint(1)', 'varchar(255)'], array_values(array_slice($schema->columnTypes('staff'), 1)));
+        $this->assertSame(['1', '0'], array_map('strval', $this->pdo->query('SELECT active, auth_epoch FROM staff')->fetch(\PDO::FETCH_NUM)));
+    }
 }

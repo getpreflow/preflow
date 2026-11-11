@@ -150,4 +150,78 @@ final class SchemaTest extends TestCase
         }
         $this->assertFalse($this->schema->hasTable('t'));
     }
+
+    public function test_rename_column_keeps_the_data(): void
+    {
+        $this->schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('passwordHash')->nullable();
+        });
+        $this->pdo->exec("INSERT INTO staff (uuid, passwordHash) VALUES ('a', 'h')");
+
+        $this->schema->renameColumn('staff', 'passwordHash', 'password_hash');
+
+        $this->assertSame(['uuid', 'password_hash'], $this->schema->columns('staff'));
+        $this->assertSame('h', $this->pdo->query('SELECT password_hash FROM staff')->fetchColumn());
+    }
+
+    public function test_rename_column_refuses_a_missing_column_or_a_taken_name(): void
+    {
+        $this->schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('email')->nullable();
+            $table->string('name')->nullable();
+        });
+
+        foreach ([['ghost', 'x', 'has no column "ghost"'], ['email', 'name', 'already has a column "name"']] as [$from, $to, $message]) {
+            try {
+                $this->schema->renameColumn('staff', $from, $to);
+                $this->fail("renamed {$from}");
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString($message, $e->getMessage());
+                $this->assertStringContainsString('staff', $e->getMessage());
+            }
+        }
+        $this->assertSame(['uuid', 'email', 'name'], $this->schema->columns('staff'), 'nothing changed');
+    }
+
+    public function test_the_rename_is_quoted_by_the_grammar(): void
+    {
+        $this->assertSame('ALTER TABLE "staff" RENAME COLUMN "a" TO "b"', (new \Preflow\Data\Migration\Grammar\SqliteGrammar())->renameColumn('staff', 'a', 'b'));
+        $this->assertSame('ALTER TABLE `staff` RENAME COLUMN `a` TO `b`', (new \Preflow\Data\Migration\Grammar\MysqlGrammar())->renameColumn('staff', 'a', 'b'));
+    }
+
+    public function test_add_columns_to_an_existing_table_typed_by_the_grammar(): void
+    {
+        $this->schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+        });
+        $this->pdo->exec("INSERT INTO staff (uuid) VALUES ('a')");
+
+        $this->schema->addColumns('staff', function (Table $table) {
+            $table->boolean('active');
+            $table->string('auth_epoch')->index('auth_epoch');
+        });
+
+        $this->assertSame(['uuid' => 'text', 'active' => 'integer', 'auth_epoch' => 'text'], $this->schema->columnTypes('staff'));
+        $this->assertNotSame([], $this->schema->indexes('staff'));
+        $this->assertNull($this->pdo->query('SELECT active FROM staff')->fetchColumn(), 'added nullable');
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('already has a column "active"');
+        $this->schema->addColumns('staff', fn (Table $table) => $table->boolean('active'));
+    }
+
+    public function test_fill_nulls_backfills_only_empty_rows(): void
+    {
+        $this->schema->create('staff', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->boolean('active')->nullable();
+        });
+        $this->pdo->exec("INSERT INTO staff (uuid, active) VALUES ('a', NULL), ('b', 0)");
+
+        $this->assertSame(1, $this->schema->fillNulls('staff', 'active', true));
+
+        $this->assertSame([['a', 1], ['b', 0]], $this->pdo->query('SELECT uuid, active FROM staff ORDER BY uuid')->fetchAll(\PDO::FETCH_NUM));
+    }
 }

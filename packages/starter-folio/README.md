@@ -142,20 +142,12 @@ signing in:
 `staff:create` keeps working: it accepts the roles that exist, from `config/roles.php` or from Folio.
 
 **A project made from starter-folio before 0.65** has the old staff columns (`passwordHash`,
-`createdAt`). Rename them once, then take the new `app/Models/Staff.php`,
-`app/Console/StaffCreateCommand.php` and `app/Seeds/DemoSeeder.php` together (never one of them
-alone: the model must match the table). On SQLite (back up `storage/data` first):
-
-```sql
-ALTER TABLE staff RENAME COLUMN passwordHash TO password_hash;
-ALTER TABLE staff RENAME COLUMN createdAt TO created_at;
-ALTER TABLE staff ADD COLUMN active INTEGER;
-ALTER TABLE staff ADD COLUMN auth_epoch TEXT;
-ALTER TABLE staff ADD COLUMN last_login_at TEXT;
-UPDATE staff SET active = 1, auth_epoch = '0';
-```
-
-Leave the migration that created the table as it is.
+`createdAt`). Copy `migrations/2026_11_11_005_upgrade_staff_columns.php` into your project's
+`migrations/` and run `php preflow migrate`: it renames the two columns, adds `active`,
+`auth_epoch` and `last_login_at`, and makes every existing account active at epoch `0`. Then take
+the new `app/Models/Staff.php`, `app/Console/StaffCreateCommand.php` and
+`app/Seeds/DemoSeeder.php` together (the model must match the table). On a fresh install the
+migration finds the new shape and does nothing.
 
 ### Tests
 

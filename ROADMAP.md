@@ -457,6 +457,10 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     their built-in class as `'driver'`, which keeps working.
   - **Folio follow-ups from the Folio guides (Task 5c, same release):** plan
     `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 5c).
+    - **Fix round 2 (data):** `Schema::renameColumn()`, `Schema::addColumns()` (the `create()` builder on an existing
+      table, columns added nullable) and `Schema::fillNulls()` (backfill), for SQLite 3.25+ and MySQL 8 through the
+      grammar; `SchemaGrammar` gains `renameColumn()` (a registered grammar must implement it). starter-folio ships
+      `migrations/2026_11_11_005_upgrade_staff_columns.php` (idempotent) instead of hand-written SQL.
     - **Fix round 1 (review):** rbac's config-user check (`StaffRules`) and `folio:staff:import-config` read Folio's
       staff guard's provider through the new public service `Preflow\Folio\Users\StaffUsers` (`guard()`,
       `provider()`), not the default guard's; `SharingTemplateEngine` logs instead of throwing when a sharer (a Twig
@@ -513,11 +517,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `'population' => 'staff'`) and make it the default guard or name it in `config/folio.php` `'guard'`. New projects
       from the starter declare the population already. An app whose staff guard declares `'population' => 'members'` (or another non-staff name)
       fails the same way. Existing starter-folio projects keep their own code (the staff table change is for new
-      projects). To adopt it, take `app/Models/Staff.php`, `app/Console/StaffCreateCommand.php` and
-      `app/Seeds/DemoSeeder.php` together, never one alone, after renaming `passwordHash` → `password_hash` and
-      `createdAt` → `created_at` and adding `active`, `auth_epoch`, `last_login_at` (with `active = 1`,
-      `auth_epoch = '0'` on the existing rows) once by SQL; the migration that ran stays as it is (the starter-folio
-      README "Roles edited in Folio" has the SQL; the migration API has no rename).
+      projects). To adopt it, copy starter-folio's
+      `migrations/2026_11_11_005_upgrade_staff_columns.php` into the project's `migrations/` and run `php preflow migrate`
+      (renames `passwordHash`/`createdAt`, adds `active`/`auth_epoch`/`last_login_at`, backfills `active = 1`,
+      `auth_epoch = '0'`; it does nothing on a table of the new shape), then take `app/Models/Staff.php`,
+      `app/Console/StaffCreateCommand.php` and `app/Seeds/DemoSeeder.php` together. A project template's migrations
+      can't arrive by `composer update` (the project is no dependency of itself), hence the copy.
       Constraints: folio requires auth/core/view/twig ^0.65; roles, rbac and members conflict auth <0.65 (`ListsRoles`);
       rbac conflicts folio <0.65 (`FolioEngine`). The starters still require `^0.64`: the release commit raises them to
       `^0.65` (as 0.64's did), or `create-project` can't resolve (folio conflicts core/htmx <0.65).

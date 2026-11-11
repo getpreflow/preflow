@@ -158,6 +158,23 @@ $schema->addColumn('post', 'subtitle');    // nullable column; type TEXT on SQLi
 `addColumn()` is what lets a re-runnable step add what a newer model needs without a
 migration file.
 
+**Changing a table in a migration** (since 0.65; SQLite 3.25+ and MySQL 8, through the storage's
+`SchemaGrammar`, identifiers quoted as everywhere else):
+
+```php
+$schema->renameColumn('staff', 'passwordHash', 'password_hash'); // data, type and indexes kept
+$schema->addColumns('staff', function (Table $table) {           // the create() builder; every column added nullable
+    $table->boolean('active');
+    $table->string('auth_epoch')->index('auth_epoch');
+});
+$schema->fillNulls('staff', 'active', true);                     // backfill: rows where it is NULL; returns the count
+```
+
+`renameColumn()` refuses (`LogicException`, nothing changed) a column the table doesn't have and
+a new name it already has; `addColumns()` refuses a column it already has and a primary key. Check
+with `columns()` first to write a migration that is safe to run on any shape of the table. A
+registered `SchemaGrammar` implements `renameColumn(string $table, string $from, string $to): string`.
+
 **Several migration paths.** `new Migrator($pdo, [$dir1, $dir2])` takes one path or a list
 and runs the files of all of them in name order; the same file name in two paths is one
 migration. `preflow migrate` (see `preflow/devtools`) uses the paths of

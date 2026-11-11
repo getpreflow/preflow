@@ -121,6 +121,11 @@ final class SqliteGrammar implements SchemaGrammar
         return 'ALTER TABLE ' . $this->quote($table) . ' ADD COLUMN ' . $this->quote($column) . ' ' . ($type ?? 'TEXT');
     }
 
+    public function renameColumn(string $table, string $from, string $to): string
+    {
+        return 'ALTER TABLE ' . $this->quote($table) . ' RENAME COLUMN ' . $this->quote($from) . ' TO ' . $this->quote($to);
+    }
+
     public function createMigrationsTable(): string
     {
         return 'CREATE TABLE IF NOT EXISTS preflow_migrations (

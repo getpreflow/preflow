@@ -56,6 +56,9 @@ interface SchemaGrammar
     /** Adds a nullable column; a null type means the grammar's free-text type. */
     public function addColumn(string $table, string $column, ?string $type = null): string;
 
+    /** ALTER TABLE … RENAME COLUMN … TO … (SQLite 3.25+, MySQL 8, PostgreSQL); the data stays. Since 0.65. */
+    public function renameColumn(string $table, string $from, string $to): string;
+
     public function createMigrationsTable(): string;
 
     /** Whether a column of this kind can carry an index. */
