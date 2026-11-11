@@ -145,6 +145,14 @@ Plan:
 3. **Do it together with phase 4**, which shrinks the package READMEs. The detail a README drops goes into the docblocks and the guides, so it isn't lost.
 4. **Ratchet, so it stays done.** Once a kind is complete, `docs:check` fails on a new entry of that kind without a description, instead of only warning. Start with classes, interfaces, enums, commands and config keys.
 
+### Starter: a polished employer sign-in (owner, 2026-11-11)
+
+The employer sign-in of `preflow/starter` (`/employer`, `app/pages/_views/employer/login.twig`, from
+`EmployerAuthController`) looks unstyled. Even as a demo it must not look careless: give it the same care as the
+public job pages: a centred card, clear labels and errors, the demo login hint styled as a hint, both themes and
+375 px. Check starter-folio's public pages and Folio's own sign-in with the same eye. Sync the starter files into the
+website afterwards, since the docs show them.
+
 ### Datastar's CSP mode (owner, 2026-11-11)
 
 Datastar compiles its expressions with `Function()`, so under Preflow's CSP it needs `'unsafe-eval'` in `script-src`
