@@ -440,12 +440,13 @@ final class SetupSnapshots
                 \RecursiveIteratorIterator::SELF_FIRST,
             );
             foreach ($rii as $f) {
-                if ($f->isLink()) {
-                    throw new \LogicException("{$f->getPathname()} is a symlink: symlinks under a snapshot root aren't supported. Copy the file or register its target as a root.");
-                }
                 $path = $placeholder . substr($f->getPathname(), strlen($root));
+                // An ignored link (a test copy's link to the project's vendor/) is left alone like any ignored path.
                 if ($this->isIgnored($path)) {
                     continue;
+                }
+                if ($f->isLink()) {
+                    throw new \LogicException("{$f->getPathname()} is a symlink: symlinks under a snapshot root aren't supported. Copy the file, register its target as a root, or ignore() the link.");
                 }
                 $files[$path . ($f->isDir() ? '/' : '')] = $f->isDir() ? '' : $this->withoutRoots((string) file_get_contents($f->getPathname()), $roots);
             }

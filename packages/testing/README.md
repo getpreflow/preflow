@@ -313,8 +313,10 @@ $report = $snapshots->step('seed', fn () => ['users' => $this->runSeed()]);
   An empty string path throws. Roots must not overlap: one root inside another throws a `LogicException` when the step runs.
   A step that changes which directory a root is (a closure that returns another path afterwards) is not kept.
 - **`ignore($path)`**: a path under a root, written like `{siteTmp}/error.log`. It is left out of the state and kept on
-  restore. Use it for logs. Its placeholder must be a registered root when the step runs (it may be registered after
-  `ignore()`); otherwise the step throws.
+  restore. Use it for logs, and for a link to a folder outside the root (a test copy's `vendor/` that links to the
+  project's): an ignored symlink is kept and never followed, while any other symlink under a root throws (since 0.66.1).
+  Its placeholder must be a registered root when the step runs (it may be registered after `ignore()`); otherwise the step
+  throws.
 - **`onRestore(Closure)`**: called after a restored step's files are in place. Drop your booted app, PDO handles and
   in-process caches here. Do not hold an open SQLite connection across a step. The `-wal` and `-shm` files are files under
   the root like any other. SQLite needs no adapter: its database is a file under a root.

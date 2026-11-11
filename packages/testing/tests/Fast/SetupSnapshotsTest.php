@@ -493,6 +493,25 @@ final class SetupSnapshotsTest extends TestCase
         $this->assertSame('outside the root', file_get_contents($outside . '/secret.txt'), 'never followed');
     }
 
+    public function test_an_ignored_symlink_is_kept_and_never_followed(): void
+    {
+        // A test copy of a project links to the project's vendor/ (Tests\Support\StarterApp).
+        $vendor = $this->tempDir();
+        file_put_contents($vendor . '/installed.json', 'the project\'s packages');
+        $first = $this->tempDir();
+        symlink($vendor, $first . '/vendor');
+        $this->probe($this->snapshots($first)->ignore('{root}/vendor'), $first);
+
+        $second = $this->tempDir();
+        symlink($vendor, $second . '/vendor');
+        $this->probe($this->snapshots($second)->ignore('{root}/vendor'), $second);
+
+        $this->assertSame(1, $this->runs, 'the link is not part of the state');
+        $this->assertTrue(is_link($second . '/vendor'), 'restore keeps the link');
+        $this->assertSame(['installed.json'], array_values(array_diff(scandir($vendor) ?: [], ['.', '..'])), 'nothing written or removed behind the link');
+        $this->assertSame('written by the step', file_get_contents($second . '/data/made.txt'));
+    }
+
     public function test_environment_changes_made_by_the_step_are_restored(): void
     {
         $step = function (string $root): string {

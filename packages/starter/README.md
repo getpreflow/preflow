@@ -154,7 +154,7 @@ This runs PHPUnit with four parts:
 - `Api`: the REST API.
 - `ApiOnly`: `tests/ApiOnlyTest.php`, which runs the `Api` suite on a copy without the frontend.
 
-Run one part with `vendor/bin/phpunit --testsuite Api`. Every test boots the real app on a temporary copy with its own SQLite file, so `storage/data` is never touched.
+Run one part with `vendor/bin/phpunit --testsuite Api`. Every test boots the real app on a temporary copy with its own SQLite file, so `storage/data` is never touched. The copy links to the project's `vendor/`, so the packages you install (and the field types, blocks, translations and commands they bring) are there in tests too.
 
 ## Deploy on shared hosting
 

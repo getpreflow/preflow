@@ -176,13 +176,24 @@ of hand-collecting hosts. Design points:
   answers), without Preflow storing consent itself.
 - The security-headers docs and the assets guide show it; `config/security.php` stays for site-wide rules.
 
-### Starters' test copies can't see packages (found 2026-11-11, for 0.66.1)
+### ~~Starters' test copies can't see packages (found 2026-11-11)~~ — done in v0.66.1
 
-`tests/Support/StarterApp.php` in preflow/starter and starter-folio copies the project without `vendor/`, but core
-reads installed packages from `vendor/composer/installed.json` (`Application.php` `installedPackages()`), so in those
-copies a package's `extra.folio` field types and blocks (0.66) are never registered and a test of them fails. Give the
-copies the project's `vendor/composer/installed.json` (or point core at the original vendor dir), with a starter test
-that proves a package-registered field type is seen.
+**v0.66.1:** `tests/Support/StarterApp.php` in preflow/starter and starter-folio copied the project without `vendor/`,
+while core reads installed packages from `vendor/composer/installed.json`, so a test copy saw none of them (80 in the
+project, 0 in the copy): a package's `extra.folio` field types fell back to `StringFieldType`, its blocks,
+translations (`extra.preflow.translations`) and console commands (`extra.preflow.commands`) were missing, and the boot
+manifest (`preflow optimize`) and page cache key were built without them. Each copy now links `vendor/` to the
+project's (`projectVendor()`), so every reader of the installed packages sees exactly what the project sees; no core
+change was needed. `SetupSnapshots` (preflow/testing) keeps an `ignore()`d symlink and never follows it (any other
+symlink under a root still throws), and the copy ignores `{starterTmp}/vendor`. Tests: `InstalledPackagesTest` in both
+starters (the copy's packages equal the project's; in starter-folio a tiny path package declaring a field type through
+`extra.folio` resolves in the copy), and `SetupSnapshotsTest` for the ignored link.
+**Upgrading:** a project made from a starter keeps the `tests/Support/StarterApp.php` it was created with. Copy the new
+file from preflow/starter or preflow/starter-folio 0.66.1, or apply the change by hand: after the copy loop in
+`bootStarter()` add `symlink($this->projectVendor(), $this->starterRoot . '/vendor');`, add
+`->ignore('{starterTmp}/vendor')` after `->root('{starterTmp}', …)`, and add a `projectVendor()` method that returns
+`dirname(__DIR__, 2) . '/vendor'`. It needs preflow/testing 0.66.1 (`composer update preflow/testing`): 0.66.0 refuses
+any symlink under a snapshot root.
 
 ### Datastar's CSP mode (owner, 2026-11-11)
 

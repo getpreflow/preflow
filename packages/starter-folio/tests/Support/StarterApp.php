@@ -21,7 +21,10 @@ use Psr\Http\Message\ResponseInterface;
  */
 trait StarterApp
 {
-    /** Never copied: the code runs from the project, the copy only holds config, templates and data. */
+    /**
+     * Never copied: the code runs from the project, the copy only holds config, templates and data.
+     * vendor/ is linked instead (see projectVendor()).
+     */
     private const array NOT_COPIED = ['vendor', 'storage', 'tests', '.env', '.git'];
 
     /** Left out of an API-only copy (the README says to delete the same three paths). */
@@ -49,6 +52,9 @@ trait StarterApp
             }
             exec('cp -R ' . escapeshellarg($project . '/' . $entry) . ' ' . escapeshellarg($this->starterRoot . '/' . $entry));
         }
+        // The project's packages, as the site has them: core reads them from vendor/composer/installed.json
+        // (field types, blocks, translations and commands a package brings by being installed).
+        symlink($this->projectVendor(), $this->starterRoot . '/vendor');
         // STARTER_API_ONLY=1 forces this for a whole run (ApiOnlyTest starts one as a subprocess).
         if ($apiOnly || getenv('STARTER_API_ONLY') === '1') {
             foreach (self::SITE_PATHS as $path) {
@@ -75,6 +81,8 @@ trait StarterApp
 
         $this->snapshots = (new SetupSnapshots())
             ->root('{starterTmp}', $this->starterRoot)
+            // The link to the project's vendor/: not part of a step's state, and kept on restore.
+            ->ignore('{starterTmp}/vendor')
             // A restored step replaced the files under the app booted before it.
             ->onRestore(fn () => $this->starterApp = null);
         $this->starterApp = null;
@@ -263,6 +271,12 @@ trait StarterApp
             ob_end_clean();
             chdir($previous ?: '/');
         }
+    }
+
+    /** The vendor folder each copy links to: the project's own, so a copy has its installed packages. */
+    private function projectVendor(): string
+    {
+        return dirname(__DIR__, 2) . '/vendor';
     }
 
     private function setEnv(string $name, string $value): void
