@@ -23,7 +23,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Entity(table: 'posts', storage: 'sqlite')]` | Class | Maps model to a table/collection and a named driver. `storage` defaults to `'default'`. |
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
-| `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `created_at` (or `createdAt`) when it is empty and `updated_at` (or `updatedAt`) on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text; a `?\DateTimeImmutable` one is stored as that text. A class-backed type (`#[Entity(type: …)]`) is not stamped: it stores what its type definition says, so it sets these values itself or declares them as type fields. |
+| `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `createdAt` or `created_at` (the first the model has) when it is empty and `updatedAt` or `updated_at` on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text, an `?int` one the Unix time; a `?\DateTimeImmutable` one is stored as that text. Other types (a mutable `\DateTime` too) are not stamped. A class-backed type (`#[Entity(type: …)]`) is not stamped: it stores what its type definition says, so it sets these values itself or declares them as type fields. |
 
 ### `Model`
 

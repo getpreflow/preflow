@@ -12,7 +12,6 @@ use App\Models\User;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
-use Preflow\Core\Exceptions\ForbiddenHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
@@ -101,8 +100,9 @@ final class EmployerJobController
     {
         $job = $this->owned($request);
         // config/roles.php gives job.publish to the employer role; an account without it posts drafts.
+        // Back to the list with the reason: a production 403 page would only say "Forbidden".
         if (!$this->access->can('job.publish')) {
-            throw new ForbiddenHttpException('Your account may post drafts; publishing needs a full employer account.');
+            return $this->back($request, 'Your account may post drafts; publishing needs a full employer account.', 'error');
         }
         try {
             $this->writer->publish($job, $this->user($request));
@@ -161,9 +161,10 @@ final class EmployerJobController
         ], $error === null ? 200 : 422);
     }
 
-    private function back(ServerRequestInterface $request, string $message): ResponseInterface
+    /** @param 'success'|'error' $kind */
+    private function back(ServerRequestInterface $request, string $message, string $kind = 'success'): ResponseInterface
     {
-        $request->getAttribute(SessionInterface::class)?->flash('success', $message);
+        $request->getAttribute(SessionInterface::class)?->flash($kind, $message);
 
         return new Response(302, ['Location' => '/employer']);
     }

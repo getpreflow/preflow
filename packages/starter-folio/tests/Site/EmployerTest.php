@@ -191,7 +191,11 @@ final class EmployerTest extends TestCase
         $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertSee('Platform Wrangler')->assertNotSee('/publish"');
         $refused = $this->postAs($cookies, '/employer/jobs/' . $job->uuid . '/publish', [], '/employer');
 
-        $this->assertSame(403, $refused->status());
+        // Back to the list with the reason (a production 403 page would only say "Forbidden").
+        $refused->assertRedirect('/employer');
+        $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])
+            ->assertSee('Your account may post drafts; publishing needs a full employer account.')
+            ->assertSee('notice--error');
         $this->assertSame('draft', $this->container()->get(JobWriter::class)->state($job));
     }
 

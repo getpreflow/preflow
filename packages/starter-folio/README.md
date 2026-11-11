@@ -68,7 +68,7 @@ Employers do not bypass this. `app/Jobs/JobWriter.php` is the one place that cha
 - `unpublish()` and `delete()` go through the `Publisher` too, so no published copy is left behind.
 - `state()` is `draft`, `published`, or `changed` (published, with edits not yet published). The employer's job list and the API's owner view show it.
 
-Publishing needs the permission `job.publish`, which `config/roles.php` gives the `employer` role (`employer:create` and the demo seed give every employer that role). The employer area and the API ask before they publish; an account without the role posts drafts and gets 403 when it tries to publish.
+Publishing needs the permission `job.publish`, which `config/roles.php` gives the `employer` role (`employer:create` and the demo seed give every employer that role). The employer area and the API ask before they publish; an account without the role posts drafts. When it tries to publish, the employer area goes back to the job list with a notice and the API answers 403.
 
 A job that staff publish straight from Folio without a "Posted on" date is listed after the dated ones, until an editor sets the date.
 

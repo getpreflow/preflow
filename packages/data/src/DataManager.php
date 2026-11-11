@@ -577,13 +577,16 @@ final class DataManager
                 continue;
             }
             $type = $prop->getType();
-            $kind = $type instanceof \ReflectionNamedType ? $type->getName() : null;
-            $model->{$name} = match ($kind) {
-                'string' => $now->format('Y-m-d H:i:s'),
+            $kind = $type === null ? 'mixed' : ($type instanceof \ReflectionNamedType ? $type->getName() : null);
+            $value = match ($kind) {
+                'string', 'mixed' => $now->format('Y-m-d H:i:s'),
                 'int' => $now->getTimestamp(),
-                \DateTime::class => \DateTime::createFromImmutable($now),
-                default => $now,
+                \DateTimeImmutable::class, \DateTimeInterface::class => $now, // stored as text (DateTimeTransformer)
+                default => null, // \DateTime and others: no value that is stored and read back
             };
+            if ($value !== null) {
+                $model->{$name} = $value;
+            }
         }
     }
 

@@ -131,6 +131,28 @@ final class MemberLoginTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_member_without_a_password_hash_costs_a_hash_and_is_refused(): void
+    {
+        // As a staff member may create one in Folio's member admin: a record without a password yet.
+        $member = $this->makeMember();
+        $member->set('password_hash', '');
+        $this->flow->container()->get(\Preflow\Data\DataManager::class)->saveType($member, false);
+        $spy = new class extends \stdClass implements PasswordHasherInterface {
+            public int $hashes = 0;
+            public int $verifies = 0;
+            public function hash(string $password): string { $this->hashes++; return (new NativePasswordHasher())->hash($password); }
+            public function verify(string $password, string $hash): bool { $this->verifies++; return (new NativePasswordHasher())->verify($password, $hash); }
+            public function needsRehash(string $hash): bool { return false; }
+        };
+        $this->flow->container()->instance(PasswordHasherInterface::class, $spy);
+
+        $response = $this->post('/members/login', ['email' => 'ada@example.com', 'password' => 'whatever it is']);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame([1, 0], [$spy->hashes, $spy->verifies], 'no hash: one hash, like an unknown address');
+    }
+
+    #[RunInSeparateProcess]
     public function test_unconfirmed_with_correct_password_offers_resend(): void
     {
         $this->makeMember('ada@example.com', 'unconfirmed');

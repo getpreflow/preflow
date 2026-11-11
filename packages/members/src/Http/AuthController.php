@@ -78,8 +78,10 @@ final class AuthController
         }
 
         $member = $email === '' ? null : $this->members->findByEmail($email);
-        if ($member === null) {
-            $this->hasher->hash($password); // an unknown address costs a hash too, so the answer takes as long as a wrong password
+        if ($member === null || (string) $member->get('password_hash') === '') {
+            // An unknown address (or a member without a password yet) costs a hash too, so the
+            // answer takes as long as a wrong password.
+            $this->hasher->hash($password);
             $ok = false;
         } else {
             $ok = $this->hasher->verify($password, (string) $member->get('password_hash'));

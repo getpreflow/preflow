@@ -120,6 +120,21 @@ class StampedTypeNote extends Model
     public ?string $updatedAt = null;
 }
 
+/** A mutable \DateTime can't be stored (no transformer), so #[Timestamps] leaves it alone. */
+#[Entity(table: 'stamped', storage: 'sqlite')]
+#[Timestamps]
+class MutableStampedNote extends Model
+{
+    #[Id]
+    public string $uuid = '';
+
+    #[Field]
+    public string $title = '';
+
+    public ?\DateTime $createdAt = null;
+    public ?\DateTime $updatedAt = null;
+}
+
 final class ModelIdsAndTimestampsTest extends TestCase
 {
     private const UUID_V4 = '/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/';
@@ -281,5 +296,16 @@ final class ModelIdsAndTimestampsTest extends TestCase
         } finally {
             rmdir($dir);
         }
+    }
+
+    public function test_a_mutable_datetime_property_is_not_stamped(): void
+    {
+        $note = new MutableStampedNote();
+        $note->title = 'Mutable';
+        $this->dm->insert($note);
+
+        $this->assertNull($note->createdAt);
+        $this->assertNull($note->updatedAt);
+        $this->assertSame(['Mutable', null, null], array_values($this->pdo->query('SELECT title, createdAt, updatedAt FROM stamped')->fetch(\PDO::FETCH_NUM)));
     }
 }

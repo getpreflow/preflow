@@ -4,9 +4,11 @@
 
 {% block content %}
 {% set notice = flash('success') %}
+{% set problem = flash('error') %}
 <section class="employer">
     <h1>{{ company ? t('app.employer.jobs_of', { company: company.name }) : t('app.employer.your_jobs') }}</h1>
     {% if notice %}<p class="notice" role="status">{{ notice }}</p>{% endif %}
+    {% if problem %}<p class="notice notice--error" role="alert">{{ problem }}</p>{% endif %}
 
     <p class="employer__actions">
         <a class="button" href="/employer/jobs/new">{{ t('app.employer.new_job') }}</a>
@@ -60,5 +62,6 @@
 }
 .button--plain { background: transparent; color: var(--accent); }
 .notice { margin-top: 1rem; padding: 0.6rem 0.9rem; border-radius: 0.5rem; border: 1px solid var(--line); background: var(--card); }
+.notice--error { border-color: var(--warn-line); background: var(--warn-bg); }
 {% endapply %}
 {% endblock %}

@@ -8,8 +8,9 @@ namespace Preflow\Data\Attributes;
  * empty and the updated property on every write: `createdAt` or `created_at`, `updatedAt` or
  * `updated_at`, the first the model has (snake_case matches the columns of the migrations'
  * `timestamps()`). Put it on the class or on one of the properties (as `preflow make:model`
- * does). A `?\DateTimeImmutable` property is stored as 'Y-m-d H:i:s' text; a `string` property
- * gets that text, an `int` one the Unix time.
+ * does). A `?\DateTimeImmutable` property is stored as 'Y-m-d H:i:s' text; a `string` (or
+ * untyped) property gets that text, an `int` one the Unix time. Other types (a mutable
+ * `\DateTime` too) are not stamped.
  */
 #[\Attribute(\Attribute::TARGET_CLASS | \Attribute::TARGET_PROPERTY)]
 final class Timestamps
