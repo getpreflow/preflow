@@ -27,26 +27,30 @@ abstract class Model
         }
     }
 
-    /** @var array<string, array<string, bool>> class => property => whether it is declared bool (or ?bool) */
+    /** @var array<string, array<string, 'bool'|'?bool'|''>> class => property => its bool type, '' when it is no bool */
     private static array $boolProperties = [];
 
     /**
      * What SQL stores for a bool property (1/0, '1'/'0': SQLite and MySQL have no boolean) as a
      * bool; any other value, and the value of a property that isn't bool, as given.
      */
-    private static function storedBool(string $class, string $property, int|string $value): int|string|bool
+    private static function storedBool(string $class, string $property, int|string $value): int|string|bool|null
     {
         if (!isset(self::$boolProperties[$class][$property])) {
             $type = (new \ReflectionProperty($class, $property))->getType();
-            self::$boolProperties[$class][$property] = $type instanceof \ReflectionNamedType && $type->getName() === 'bool';
+            self::$boolProperties[$class][$property] = $type instanceof \ReflectionNamedType && $type->getName() === 'bool'
+                ? ($type->allowsNull() ? '?bool' : 'bool')
+                : '';
         }
-        if (!self::$boolProperties[$class][$property]) {
+        $kind = self::$boolProperties[$class][$property];
+        if ($kind === '') {
             return $value;
         }
 
         return match ((string) $value) {
             '1' => true,
-            '0', '' => false,
+            '0' => false,
+            '' => $kind === '?bool' ? null : false, // empty: unset for a nullable bool
             default => $value,
         };
     }

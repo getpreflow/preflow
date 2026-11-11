@@ -39,6 +39,10 @@ final class ModelBoolFieldTest extends TestCase
         $this->assertTrue($model->active);
         $this->assertNull($model->checked, 'null stays null for a nullable bool');
 
+        $model->fill(['active' => '', 'checked' => '']);
+        $this->assertFalse($model->active, 'empty is false for a bool');
+        $this->assertNull($model->checked, 'and null for a nullable bool');
+
         $model->fill(['active' => false, 'checked' => '0']);
         $this->assertFalse($model->active);
         $this->assertFalse($model->checked);

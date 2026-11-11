@@ -51,13 +51,13 @@ final class SharingTemplateEngine implements TemplateEngineInterface
     public function addFunction(TemplateFunctionDefinition $function): void
     {
         $this->engine->addFunction($function);
-        $this->keep(static fn (TemplateEngineInterface $engine) => $engine->addFunction($function));
+        $this->keep(static fn (TemplateEngineInterface $engine) => $engine->addFunction($function), 'the function ' . $function->name);
     }
 
     public function addGlobal(string $name, mixed $value): void
     {
         $this->engine->addGlobal($name, $value);
-        $this->keep(static fn (TemplateEngineInterface $engine) => $engine->addGlobal($name, $value));
+        $this->keep(static fn (TemplateEngineInterface $engine) => $engine->addGlobal($name, $value), 'the global ' . $name);
     }
 
     public function getTemplateExtension(): string
@@ -70,12 +70,22 @@ final class SharingTemplateEngine implements TemplateEngineInterface
         $this->engine->addNamespace($namespace, $path);
     }
 
-    /** @param \Closure(TemplateEngineInterface): void $apply */
-    private function keep(\Closure $apply): void
+    /**
+     * A sharer that can no longer take a registration (a Twig engine that has rendered refuses new
+     * functions with LogicException) misses it, logged: the app's engine has it already, and the app
+     * keeps working as before 0.65. Register functions and globals before the first render.
+     *
+     * @param \Closure(TemplateEngineInterface): void $apply
+     */
+    private function keep(\Closure $apply, string $what): void
     {
         $this->shared[] = $apply;
         foreach ($this->sharers as $engine) {
-            $apply($engine);
+            try {
+                $apply($engine);
+            } catch (\LogicException $e) {
+                error_log('preflow/view: ' . $what . ' was registered after ' . $engine::class . ' rendered, so it misses it: ' . $e->getMessage());
+            }
         }
     }
 }

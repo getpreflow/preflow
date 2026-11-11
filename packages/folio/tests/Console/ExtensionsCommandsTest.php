@@ -146,6 +146,13 @@ final class ExtensionsCommandsTest extends TestCase
         $this->assertStringContainsString('Cancelled', $out);
         $this->assertFileDoesNotExist($this->dir . '/uninstalls.log');
 
+        // No answer at all (cron, CI: input at its end) cancels too, and says how to skip the question.
+        [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app(), $this->answer('')), ['counter']);
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Cancelled', $out);
+        $this->assertStringContainsString('--force', $out);
+        $this->assertFileDoesNotExist($this->dir . '/uninstalls.log');
+
         [$code, $out] = $this->runCommand(new ExtensionsUninstallCommand(fn () => $this->app(), $this->answer("y\n")), ['counter']);
         $this->assertSame(0, $code, $out);
         $this->assertStringContainsString('uninstalled counter 1.0.0', $out);

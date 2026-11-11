@@ -218,7 +218,16 @@ population must be staff:
 return ['path' => '/folio', 'guard' => 'staff'];
 ```
 
-A guard that `config/auth.php` does not define stops the boot too. Folio marks its guard as
+**Upgrading an app made from `preflow/starter` before 0.65 that added Folio:** its
+`config/auth.php` is its own copy, and its employers guard has no `population`. Folio then still
+takes that guard as staff, and **every employer keeps full admin access**. Add
+`'population' => 'employers'` to the employers guard yourself; Folio then refuses to boot until
+you set up a staff guard as above.
+
+A guard that `config/auth.php` does not define stops the boot too.
+`Preflow\Folio\Users\StaffUsers` (a container service) gives packages the staff guard's name
+(`guard()`) and user provider (`provider()`, null without auth); preflow/rbac's config-user check
+and `folio:staff:import-config` read it, so they follow `'guard'` too. Folio marks its guard as
 staff (`Access::markStaffGuard()`); preflow/members' `Viewer::isStaff()` counts a user of any staff
 guard, so it agrees with `guard`. A user signed in on another guard on the same request (an
 employer, a member) is sent to the admin login.

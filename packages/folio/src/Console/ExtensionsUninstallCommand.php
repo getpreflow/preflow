@@ -100,7 +100,7 @@ final class ExtensionsUninstallCommand implements CommandInterface
             echo "Uninstall {$name} {$installed}? Its uninstall() runs and may delete its data; this cannot be undone. [y/N] ";
             $answer = strtolower(trim((string) fgets($this->input)));
             if ($answer !== 'y' && $answer !== 'yes') {
-                echo "\nCancelled.\n";
+                echo "\nCancelled. (Without a terminal to answer, run it with --force.)\n";
 
                 return 1;
             }

@@ -13,7 +13,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Rbac\Console\ImportConfigStaffCommand;
 
 /**
- * folio:staff:import-config: the config users of the default guard become staff records with
+ * folio:staff:import-config: the config users of Folio's staff guard (folio.guard, else the default guard) become staff records with
  * their password hash as is, roles mapped by name to existing staff roles.
  */
 final class ImportConfigStaffTest extends TestCase
@@ -33,7 +33,7 @@ final class ImportConfigStaffTest extends TestCase
     }
 
     /** @param list<array<string, mixed>>|null $users config users (null: admin, editor, keeper) */
-    private function site(bool $staff = true, ?array $users = null, bool $chain = true): void
+    private function site(bool $staff = true, ?array $users = null, bool $chain = true, bool $staffGuard = false): void
     {
         if ($staff) {
             $this->write('config/folio/extensions.json', '{"enabled": {"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}}}');
@@ -54,8 +54,57 @@ final class ImportConfigStaffTest extends TestCase
             ],
             'session' => ['cookie' => 'rbac_import_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
+        if ($staffGuard) {
+            $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'guard' => 'staff'];\n");
+            $auth = require $this->dir . '/config/auth.php';
+            $auth['default_guard'] = 'employers';
+            $auth['guards'] = [
+                'employers' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'employers', 'population' => 'employers'],
+                'staff' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => $chain ? 'chain' : 'config', 'population' => 'staff'],
+            ];
+            $auth['providers']['employers'] = ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
+                ['email' => 'boss@company.test', 'password_hash' => $this->hash, 'roles' => ['admin']],
+            ]];
+            $this->write('config/auth.php', "<?php\nreturn " . var_export($auth, true) . ";\n");
+        }
         $this->install();
         $this->role('r-editor', 'staff', 'editor', ['folio.dashboard', 'page.*']);
+    }
+
+    /**
+     * The employers' guard is the default one (with config users of its own); Folio signs staff in
+     * through the "staff" guard (config/folio.php 'guard'), a chain of staff records and config users.
+     */
+    private function siteWithStaffGuard(): void
+    {
+        $this->site(staffGuard: true);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_import_reads_folio_s_staff_guard_not_the_default_one(): void
+    {
+        $this->siteWithStaffGuard();
+
+        [$code, $out] = $this->import();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertNotNull($this->staffByEmail('admin@site.test'));
+        $this->assertNull($this->staffByEmail('boss@company.test'), 'an employer never becomes staff');
+        $this->assertSame(3, $this->staffCount());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_config_email_check_reads_folio_s_staff_guard(): void
+    {
+        $this->siteWithStaffGuard();
+        $this->as('admin');
+
+        $taken = $this->send('POST', '/folio/staff', ['email' => 'editor@site.test', 'name' => 'E', 'roles' => [''], 'active' => '1']);
+        $this->assertSame(422, $taken->getStatusCode(), 'a config user of the staff guard has that address');
+        $this->assertNull($this->staffByEmail('editor@site.test'));
+
+        $free = $this->send('POST', '/folio/staff', ['email' => 'boss@company.test', 'name' => 'B', 'roles' => [''], 'active' => '1']);
+        $this->assertSame(302, $free->getStatusCode(), 'the employers\' config users are no staff');
     }
 
     /** @return array{0: int, 1: string} */

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac\Console;
 
-use Preflow\Auth\UserProviderInterface;
+use Preflow\Folio\Users\StaffUsers;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\CommandInterface;
@@ -17,7 +17,8 @@ use Preflow\Rbac\Types\StaffRules;
 use Preflow\Validation\ValidationException;
 
 /**
- * Moves the config users of the default guard (directly or inside a chain) into staff records:
+ * Moves the config users of Folio's staff guard (StaffUsers: config/folio.php 'guard', else the
+ * default guard; directly or inside a chain) into staff records:
  * one per e-mail that has no record yet, with the password hash as is (so the old password keeps
  * working, now decided by the record), roles mapped by name to the staff roles that exist (an
  * unknown name is skipped with a warning — StaffRules would refuse it), active from epoch "0".
@@ -29,7 +30,7 @@ final class ImportConfigStaffCommand implements CommandInterface
     use BootsApplication;
 
     public function getName(): string { return 'folio:staff:import-config'; }
-    public function getDescription(): string { return 'Create staff accounts from the config users of the default guard (repeatable)'; }
+    public function getDescription(): string { return 'Create staff accounts from the config users of Folio\'s staff guard (repeatable)'; }
 
     public function execute(array $args): int
     {
@@ -41,13 +42,11 @@ final class ImportConfigStaffCommand implements CommandInterface
             return 1;
         }
 
-        $users = [];
-        try {
-            $users = ConfigUsers::of($c->get(UserProviderInterface::class));
-        } catch (\Throwable) { // no config/auth.php: nothing bound
-        }
+        $staff = $c->get(StaffUsers::class);
+        $provider = $staff->provider();
+        $users = $provider === null ? [] : ConfigUsers::of($provider);
         if ($users === []) {
-            echo "folio:staff:import-config — the default guard has no config users to import.\n";
+            echo "folio:staff:import-config — Folio's staff guard \"{$staff->guard()}\" has no config users to import.\n";
 
             return 0;
         }

@@ -92,7 +92,9 @@ engine (Twig: `cachePath` is `storage/cache/twig/…`; Blade: `storage/cache/bla
 is not Twig, the container's `TemplateEngineInterface` is a `SharingTemplateEngine` wrapping it
 (`engine()` gives the wrapped one, a `LazyTemplateEngine` for a factory): it renders as that engine
 and keeps every function and global registered on it, and `share($other)` gives `$other` all of
-them, those registered before and after. Namespaces stay the app engine's. Folio renders its own Twig
+them, those registered before and after. Namespaces stay the app engine's. Register functions and
+globals at boot (in a provider): a Twig engine that has rendered refuses new ones, so one registered
+later still reaches the app's engine but that sharer misses it (logged with `error_log`, never thrown). Folio renders its own Twig
 templates so on any app engine (see the Folio README, "Template engines"). A Twig app's engine is the
 `TwigEngine` itself, as before.
 

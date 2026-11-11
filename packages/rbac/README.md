@@ -123,7 +123,7 @@ Staff accounts are records, managed in Folio by staff who may. The part `model:s
   never exported.
 - **Fields.**
   - `email`: stored trimmed and lowercased, unique. In the admin, a new or changed address
-    can't be one of a config user of the default guard ("This e-mail address belongs to a
+    can't be one of a config user of Folio's staff guard ("This e-mail address belongs to a
     configured admin."): the record would take over that sign-in. The import moves those.
   - `name`
   - `password_hash`: hidden.
@@ -197,8 +197,11 @@ Mails need `config/notify.php`; the throttles need `APP_KEY`. The action message
 
 ### Moving a config admin to staff
 
-`php preflow folio:staff:import-config` creates a staff record for each config user of the
-default guard's provider (directly, or inside a chain).
+`php preflow folio:staff:import-config` creates a staff record for each config user of Folio's
+staff guard (`config/folio.php` `'guard'`, else the default guard; directly, or inside a chain).
+Both this and the config-user check above read the provider from Folio's
+`Preflow\Folio\Users\StaffUsers` service (since 0.65), never the default guard's when `'guard'`
+names another, so an employers or members guard's users never become staff.
 
 - The e-mail is lowercased. The password hash moves as is, so the old password keeps
   working.

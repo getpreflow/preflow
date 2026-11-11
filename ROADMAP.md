@@ -457,6 +457,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     their built-in class as `'driver'`, which keeps working.
   - **Folio follow-ups from the Folio guides (Task 5c, same release):** plan
     `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 5c).
+    - **Fix round 1 (review):** rbac's config-user check (`StaffRules`) and `folio:staff:import-config` read Folio's
+      staff guard's provider through the new public service `Preflow\Folio\Users\StaffUsers` (`guard()`,
+      `provider()`), not the default guard's; `SharingTemplateEngine` logs instead of throwing when a sharer (a Twig
+      engine that rendered) refuses a late registration; an empty value is null for a `?bool` model property; the
+      uninstall question cancels without a terminal and names `--force`; the upgrade steps below spell out the
+      employers-guard step and the staff-table rename.
     - **Staff-only sign-in:** Folio signs staff in through `config/folio.php` `'guard'` (new; default: the app's default
       guard, as before), `Preflow\Folio\Users\StaffGuard`. At boot a guard that declares a population other than
       `staff` (members, the plain starter's new `'population' => 'employers'`), or that `config/auth.php` doesn't
@@ -500,13 +506,18 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       carries the request's own nonce, not the adopted one. Internal renders are unaffected; revisit if a site nests
       `handle()` or streams fragments.
     - **Upgrading:** nothing to do for the six sites (their Folio guards are the default guard with no population or
-      `population` `staff`; Twig + htmx; no app config changes). A `preflow/starter` app that added Folio must set up
-      a staff guard (a `SessionGuard` on staff accounts with `'population' => 'staff'`) and make it the default guard or
-      name it in `config/folio.php` `'guard'`: the employers guard now declares `'population' => 'employers'`, and Folio
-      refuses to boot on it. An app whose staff guard declares `'population' => 'members'` (or another non-staff name)
+      `population` `staff`; Twig + htmx; no app config changes). **An app made from `preflow/starter` before 0.65 that added Folio
+      is NOT protected by upgrading:** its own `config/auth.php` has no population on the employers guard, so Folio still
+      takes it as staff and every employer keeps full admin access. Step 1: add `'population' => 'employers'` to the
+      employers guard (Folio then refuses to boot). Step 2: set up a staff guard (a `SessionGuard` on staff accounts with
+      `'population' => 'staff'`) and make it the default guard or name it in `config/folio.php` `'guard'`. New projects
+      from the starter declare the population already. An app whose staff guard declares `'population' => 'members'` (or another non-staff name)
       fails the same way. Existing starter-folio projects keep their own code (the staff table change is for new
-      projects; to adopt it, rename the columns `passwordHash` → `password_hash`, `createdAt` → `created_at` and add
-      `active`, `auth_epoch`, `last_login_at`).
+      projects). To adopt it, take `app/Models/Staff.php`, `app/Console/StaffCreateCommand.php` and
+      `app/Seeds/DemoSeeder.php` together, never one alone, after renaming `passwordHash` → `password_hash` and
+      `createdAt` → `created_at` and adding `active`, `auth_epoch`, `last_login_at` (with `active = 1`,
+      `auth_epoch = '0'` on the existing rows) once by SQL; the migration that ran stays as it is (the starter-folio
+      README "Roles edited in Folio" has the SQL; the migration API has no rename).
       Constraints: folio requires auth/core/view/twig ^0.65; roles, rbac and members conflict auth <0.65 (`ListsRoles`);
       rbac conflicts folio <0.65 (`FolioEngine`). The starters still require `^0.64`: the release commit raises them to
       `^0.65` (as 0.64's did), or `create-project` can't resolve (folio conflicts core/htmx <0.65).

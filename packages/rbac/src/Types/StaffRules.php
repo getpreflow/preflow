@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac\Types;
 
-use Preflow\Auth\UserProviderInterface;
+use Preflow\Folio\Users\StaffUsers;
 use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -20,7 +20,7 @@ use Preflow\Validation\ValidationResult;
 /**
  * Staff accounts (models/staff.json, the opt-in part "model:staff"). Every save: the e-mail
  * stored lowercased and unique (and, with a signed-in user, a new or changed one not a config
- * user's of the default guard); a new account starts active, with epoch "0" and created_at.
+ * user's of Folio's staff guard); a new account starts active, with epoch "0" and created_at.
  * Delegation (PermissionCoverage), with a signed-in user: an account whose stored roles they
  * don't fully cover is not theirs to change or delete (viewing stays a matter of
  * permissions), and each role added or removed must be covered. Always (CLI too): a role is
@@ -133,16 +133,12 @@ final class StaffRules
         return $uncovered === [] ? null : $this->messages->get('delegation.grant', ['patterns' => implode(', ', $uncovered)]);
     }
 
-    /** Whether a config user of the default guard has this e-mail. */
+    /** Whether a config user of Folio's staff guard (StaffUsers: folio.guard, else the default guard) has this e-mail. */
     private function configEmail(string $email): bool
     {
-        try {
-            $users = $this->container->get(UserProviderInterface::class);
-        } catch (\Throwable) { // no config/auth.php: nothing bound
-            return false;
-        }
+        $users = $this->container->get(StaffUsers::class)->provider();
 
-        return ConfigUsers::hasEmail($users, $email);
+        return $users !== null && ConfigUsers::hasEmail($users, $email);
     }
 
     private function emailTaken(string $email, string $exceptId): bool

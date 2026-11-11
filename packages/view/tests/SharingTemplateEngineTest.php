@@ -83,4 +83,35 @@ final class SharingTemplateEngineTest extends TestCase
         $this->assertSame(['function csrf_field', 'global site', 'function folio_get', 'global later'], $other->calls);
         $this->assertSame(['function csrf_field', 'global site', 'namespace app', 'function folio_get', 'global later', 'namespace folio'], $app->calls);
     }
+
+    /**
+     * A sharer that can't take a late registration (a Twig engine that already rendered throws
+     * LogicException) misses it; the app's engine still gets it, and nothing throws.
+     */
+    public function test_a_late_registration_a_sharer_refuses_still_reaches_the_app_engine(): void
+    {
+        $log = tempnam(sys_get_temp_dir(), 'sharing_log');
+        $previous = ini_set('error_log', $log);
+        try {
+            $app = $this->recorder();
+            $engine = new SharingTemplateEngine($app);
+            $engine->share(new class implements TemplateEngineInterface {
+                public function render(string $template, array $context = []): string { return ''; }
+                public function exists(string $template): bool { return false; }
+                public function addFunction(TemplateFunctionDefinition $function): void { throw new \LogicException('Unable to add function "' . $function->name . '" as extensions have already been initialized.'); }
+                public function addGlobal(string $name, mixed $value): void { throw new \LogicException('Unable to add global "' . $name . '".'); }
+                public function getTemplateExtension(): string { return 'twig'; }
+                public function addNamespace(string $namespace, string $path): void {}
+            });
+
+            $engine->addFunction(new TemplateFunctionDefinition('late', static fn () => ''));
+            $engine->addGlobal('later', 1);
+
+            $this->assertSame(['function late', 'global later'], $app->calls);
+            $this->assertStringContainsString('late', (string) file_get_contents($log));
+        } finally {
+            ini_set('error_log', (string) $previous);
+            @unlink($log);
+        }
+    }
 }

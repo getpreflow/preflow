@@ -863,6 +863,18 @@ final class FolioServiceProvider extends ServiceProvider
             $folioCfg,
             is_array($auth = $app->configFile('auth')) ? $auth : null,
         ));
+        // The staff guard's user provider, for Folio and the packages that manage staff (preflow/rbac).
+        $container->singleton(\Preflow\Folio\Users\StaffUsers::class, static fn (Container $c): \Preflow\Folio\Users\StaffUsers => new \Preflow\Folio\Users\StaffUsers(
+            $c->get(\Preflow\Folio\Users\StaffGuard::class),
+            static fn (): ?\Preflow\Auth\AuthManager => $c->bound(\Preflow\Auth\AuthManager::class) ? $c->get(\Preflow\Auth\AuthManager::class) : null,
+            static function () use ($c): ?\Preflow\Auth\UserProviderInterface {
+                try {
+                    return $c->get(\Preflow\Auth\UserProviderInterface::class);
+                } catch (\Throwable) { // no config/auth.php: nothing bound
+                    return null;
+                }
+            },
+        ));
         $container->bind(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware(
             $c->get(\Preflow\Auth\AuthManager::class),
             $prefix,
@@ -1021,23 +1033,16 @@ final class FolioServiceProvider extends ServiceProvider
         return \Preflow\Folio\Users\RecordProviders::of($users);
     }
 
-    /** The staff guard's user provider; null without auth. */
+    /** The staff guard's user provider (StaffUsers); null without auth. */
     private static function staffProviderOrNone(Container $c): ?\Preflow\Auth\UserProviderInterface
     {
-        try {
-            return self::staffProvider($c);
-        } catch (\Throwable) { // no config/auth.php: nothing bound
-            return null;
-        }
+        return $c->get(\Preflow\Folio\Users\StaffUsers::class)->provider();
     }
 
-    /** The user provider of the staff guard (StaffGuard): the default guard's binding, or the named guard's. */
+    /** The staff guard's user provider; throws without auth (as the UserProviderInterface binding did). */
     private static function staffProvider(Container $c): \Preflow\Auth\UserProviderInterface
     {
-        return $c->get(\Preflow\Folio\Users\StaffGuard::class)->provider(
-            $c->get(\Preflow\Auth\AuthManager::class),
-            static fn (): \Preflow\Auth\UserProviderInterface => $c->get(\Preflow\Auth\UserProviderInterface::class),
-        );
+        return self::staffProviderOrNone($c) ?? throw new \RuntimeException('Folio has no staff guard: config/auth.php is missing.');
     }
 
     private static function staffPasswords(Container $c, string $prefix): \Preflow\Folio\Users\StaffPasswords
