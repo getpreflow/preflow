@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-11 (v0.65.0)
+> Last updated: 2026-11-11 (v0.66.0)
 
 ## Current State
 
-**v0.65.0** — 6838 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.66.0** — 6902 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -452,7 +452,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Extension points without workarounds (v0.66.0):** the Extend guides of docs phase 3 (Tasks 6 and 7) found places
+- **Extension points without workarounds (v0.66.0, released 2026-11-11):** the Extend guides of docs phase 3 (Tasks 6 and 7) found places
   where an app or package couldn't plug in its own piece cleanly; plan `docs/superpowers/plans/2026-11-11-docs-phase3.md`
   (task 6b), report `.superpowers/sdd/2026-11-11-docs-phase3/task-6b-report.md`.
   - **AI providers are pluggable (ai):** `config/ai.php` `provider` is `'claude'`, `'gemini'`, `'fake'` or the class of a
