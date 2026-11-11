@@ -96,7 +96,7 @@ came from one project's needs, and turn each into a hook, a config option or an 
 the project; note breaking changes for the consumers. Status (checked 2026-11-11): members was audited in 0.38
 (findings F1–F8 in `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`, waiting for the owner); no record
 for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
-**Order (owner, 2026-11-11):** after docs phase 3 and 0.66.0, before the external scripts/CSP release.
+**Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
 Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
 i18n"), controller discovery beyond `app/Controllers`, ~~CSRF without a session~~ (done, see "Security and data integrity"), staff mails in the
@@ -132,7 +132,7 @@ The distinction between component props (encoded in token) and action params (PO
 
 ## Medium Term
 
-### Reference descriptions (owner, 2026-11-11; after docs phase 3, together with phase 4)
+### Reference descriptions (owner, 2026-11-11; with docs phase 4, after the package audit)
 
 On preflow.dev's reference pages, many entries have an empty Description column; one example is the REST APIs topic: `TokenAuthMiddleware`, `PersonalAccessToken`, `TokenGuard`, `JsonBodyMiddleware`. The description is the first sentence of the entry's docblock in the framework. The website's `php preflow docs:check` counts what's missing. At v0.65.0, 3033 of 5499 entries have no description:
 - by kind: 1933 methods, 610 properties, 172 classes, 114 constants, 75 config keys, 58 enum cases, 31 template functions, 25 interfaces, 10 enums, 3 field types and 2 traits;
@@ -156,7 +156,7 @@ website afterwards, since the docs show them.
 
 ### External scripts and styles with a matching CSP (owner, 2026-11-11)
 
-**Order (owner, 2026-11-11):** its own release, after the audit of all packages against the rule (see "Next Up").
+**Order (owner, 2026-11-11):** its own release, after the audit of all packages against the rule (see "Next Up") and docs phase 4.
 
 Sites need third-party files: analytics (Google Analytics), consent managers (Usercentrics), maps, chat widgets.
 Today an app writes the tag by hand (`AssetCollector::addHeadTag()` or a template, with `nonce="{{ csp_nonce() }}"`)
