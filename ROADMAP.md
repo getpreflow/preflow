@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-10 (v0.63.1)
+> Last updated: 2026-11-11 (v0.63.2)
 
 ## Current State
 
-**v0.63.1** — 6537 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.63.2** — 6613 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -417,9 +417,97 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     preflow.dev: `php preflow starters:sync`, `php preflow packages:refresh`, and `php tools/capture/capture.php` when the starters' pages or Folio's admin changed; then test and deploy like the other sites.
   - **Tests:** 0.63 full monorepo run: 6537 tests, 31382 assertions (185 skipped); starter suite 86 tests, starter-folio suite 117 tests.
   - **0.63.1** (2026-11-10): starter-folio gets a small Folio extension, the example preflow.dev shows (`app/Folio/Jobs`: an "Open jobs" column on the company list and a dashboard notice for jobs that are drafts; the link follows `config/folio.php` `path`). README section "Make Folio yours". Framework packages unchanged; full monorepo run 6537 tests; starter-folio suite 121 tests.
+  - **0.63.2** (2026-11-11): a patch release of fixes from the 0.63 follow-up list; public APIs unchanged. Plan:
+    `docs/superpowers/plans/2026-11-10-063-2-patch.md`.
+    - data (security): `where()` / `orWhere()` take only `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`, `LIKE`, `NOT LIKE`,
+      `IN`, `NOT IN` (any case); anything else throws.
+    - data (security): field names in `where`, `orWhere`, `whereAny`, `orderBy` and `search` must be identifiers
+      (`^[A-Za-z_][A-Za-z0-9_]*$`). SQLite and MySQL identifier quoting escapes the quote character, in migrations too.
+    - data: `where(f, null)` and `where(f, '=', null)` mean `IS NULL`; `!=` / `<>` null mean `IS NOT NULL`. SQLite,
+      MySQL and JSON agree (shared test scenarios).
+    - data: `IN` / `NOT IN` work on SQL (they bound an array to one `?`). An empty `IN` matches nothing, an empty
+      `NOT IN` everything. The JSON driver gains `<>`, `NOT LIKE`, `IN` and `NOT IN`.
+    - data: a plain model with a `string` `#[Id]` gets a UUID v4 on `save()` / `insert()`. `insert()` keeps a given id
+      and refuses one that exists (it dropped the id before).
+    - data: `#[Timestamps]` works, on the class or a property. It sets `created_at` (or `createdAt`) when empty and
+      `updated_at` (or `updatedAt`) on every write, on plain models. DateTime properties get `DateTimeTransformer`.
+    - auth (security): `SessionGuard::validate()` spends one password verify on an unknown address or an account
+      without a hash, the same as a wrong password.
+    - members: `Viewer::isStaff()` is true only when the default guard's population is `staff`.
+    - routing: files and folders starting with `_` are never routes, at any depth (`_views/`, `blog/_partials/`).
+    - core: production 403, 404 and 405 pages show only the status text, not the exception message.
+    - core: `.env` reads `A="x" # note` as `x`, `\"` inside double quotes as `"`, and `A='x # y' # z` as `x # y`.
+    - core: `RequestContext` (`request.path`) has no locale prefix once the locale middleware has run: controller
+      pages, rebuilds and `seo:audit` renders too.
+    - view: GEO `.md` views of pages held by the page cache keep their geo blocks (the sub-request is an internal
+      render).
+    - blade: file pages (`about.blade.php`, `blog/[slug].blade.php`) render; they were not found.
+    - view: `js('inline')` blocks are printed on full pages, after body JS, once.
+    - components: an `HttpException` thrown by a component (render, template, re-render after an action, `#[Live]`
+      part, also on a page-cache hit) is the page's status. Twig and Blade unwrap it from their wrapper exceptions.
+      Other errors still show the component's fallback.
+    - components: an unscoped child component is no longer scoped by its parent. `@keyframes`, `@font-face` and the
+      other at-rules that can't be nested are kept outside the scope. Scoped CSS is cached per process.
+    - devtools: `routes:list` boots the app and lists every routed path (controllers, package routes, the component
+      endpoint first). The toolbar counts the page's CSS and JS blocks (it showed 0), and its CSP list ignores text
+      inside scripts and styles.
+    - starter-folio: the Hero link refuses whitespace and control characters (`safe_link()` rules). The drafts notice
+      escapes the admin path. Publishing, in the employer area and through the API, needs `job.publish`, which
+      `config/roles.php` gives the `employer` member role.
+    - Both starters: the employer form keeps input saved after an expired session. `config/data.php` lost the unread
+      `driver` key.
+    - READMEs checked against the code: form (`overrides`, radio groups, value order), ai (`models` has no fallback,
+      `tuning` is read by the translator only), media (videos get colours from their preview), components (id, where
+      CSS and JS are printed, at-rules in scoped CSS), routing (`_` folders), data (operators, identifiers,
+      timestamps, unique fields on plain models need the migration's index). Folio's composer description.
+    - Tests: `composer test:mysql` migrates each app template on its own with the library packages (the two starters
+      share a migration name and never share a database). Folio's case/accent revision tests use valid slugs. The
+      MySQL group is green again; it had failed since 0.52 at the latest.
+    - The starters keep `preflow/*` at `^0.63` (the release checklist bumps on a new minor only).
+    - **Upgrading:**
+      1. data: `where()` throws `InvalidArgumentException` for another operator, for `IN` / `NOT IN` without an
+         array, and for a field name that is not an identifier (no dots, hyphens or spaces). Type field keys must be
+         identifiers to be filtered or sorted.
+      2. data: `where(f, '=', null)` now means `IS NULL` (it meant `f = '='`). `where($field, $value)` with a null
+         `$value` now matches rows where the field is NULL on SQL (it matched nothing). Guard nullable variables.
+      3. data, JSON driver: `LIKE`, `NOT LIKE`, `IN` and `NOT IN` never match a null field, as in SQL.
+      4. data: `insert()` of a string-id plain model keeps or creates the id and throws when it exists.
+         `#[Timestamps]` now sets the values; DateTime properties of plain models are stored as `Y-m-d H:i:s` text.
+         Class-backed types are not stamped.
+      5. auth: a custom `PasswordHasherInterface` gets one extra `hash()` per guard instance, the first time an
+         unknown address signs in. The native hasher with default options makes none.
+      6. members: a site using members without Folio that wants its default-guard users treated as staff on
+         `/members/account` sets `'population' => 'staff'` on that guard in `config/auth.php`. Folio sites need
+         nothing.
+      7. routing: links to `_` paths (`/_views/job`) now get a 404. A hand-made route cache file (Router
+         `cachePath`) needs a rebuild; the boot manifest rebuilds itself.
+      8. core: in production 403, 404 and 405 pages show only "Forbidden" / "Not Found" / "Method Not Allowed"
+         (CSRF reasons and token checks appear only on the debug page). 400 and 422 messages, and JSON error bodies,
+         are unchanged.
+      9. core: `.env` values in one well-formed quoted string followed by a `#` comment lose quotes and comment now.
+         Other values that start and end with the same quote parse as before; unquoted values are unchanged.
+         Check server `.env` files for quoted values with comments.
+      10. core: code that stripped the locale prefix from `RequestContext->path` itself should drop that code, or a
+          path whose first segment is a locale code is stripped twice (demodemo and folio-demo carry the old
+          `LocaleSwitcher`). Code that needs `/de/…` adds the prefix back (`LocaleMiddleware::urlPrefix()`).
+      11. components: an `HttpException` from a component answers the whole page (or the `/--component` request)
+          with its status, through the error page. Before, the component's `fallback()` showed with a 200. A
+          component that should show an empty state catches the exception itself. This holds for Folio blocks too
+          (public page and the editor's live preview), and for `#[Live]` parts; htmx does not swap a 4xx answer.
+      12. view: `{{ assets() }}` and injected assets now include `js('inline')` blocks on full pages.
+      13. components: an unscoped child's CSS is no longer nested under its parent's class (one class less
+          specificity). `@keyframes` / `@font-face` in scoped CSS now apply; their names are global, so prefix them
+          per component. preflow.dev: check the home and docs pages (Spotlight animations now move).
+      14. view: `.md` views of cached pages render on each request (one render each; `Cache-Control: public,
+          max-age=3600`).
+      15. starter-folio sites made from 0.63.0 / 0.63.1 that copy the publish check also need the `members` section
+          in `config/roles.php`, or their employers get 403 on publish.
+    - **Tests:** full monorepo run: 6613 tests, 31723 assertions (190 skipped); `composer test:mysql`: 185 tests, 830 assertions; starter suite 87 tests,
+      starter-folio suite 127 tests.
   - **Follow-ups:**
     - Remove `packages/skeleton` (step 2 of its retirement): the split entry, the root autoload (`App\`, `Tests\`),
-      the Skeleton suite in `phpunit.xml`, and the migration copy in `AuthTokenCommandTest`.
+      the Skeleton suite in `phpunit.xml`, the migration copy in `AuthTokenCommandTest`, and the skeleton's
+      `config/data.php` `driver` keys (unread; the starters dropped theirs in 0.63.2).
     - CSRF: exempt API prefixes that are outside the session paths by default (the starters set
       `csrf.exempt = ['/api']` by hand, so 401/404/405 answer JSON).
     - `folio.tables` does not index relation columns (starter-folio adds `jobs.company` indexes in an after-migrate
@@ -431,9 +519,40 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `page_description()`).
     - The component endpoint resolves the default state before it runs an action (the starter's search runs twice).
     - Optional: a Folio slug generated from the title (starter-folio requires the slug).
-    - starter-folio: the Hero block's link check lets URLs with control characters or whitespace through (`/\t/host` is followed as `//host` by browsers) — refuse them as preflow.dev's `safe_link()` does; and `CompanyAdmin::drafts()` should escape the admin path in its href. Next patch release.
-    - components: an unscoped component rendered inside a scoped one inherits the parent's CSS scope (`ComponentRenderer::renderTemplate`), so its `@keyframes` (and `@font-face`) end up nested in the parent's scope and browsers drop them. Hoist at-rules like `@keyframes`/`@font-face` out of the scope (or don't inherit scope for unscoped children). preflow.dev works around it in `app/Components/Animation/Animation.php`.
-    - starter-folio with preflow/rbac: rbac's opt-in staff accounts (`model:staff`) clash with the starter's own `App\Models\Staff` (sign-in config, password hashes), so a site switching the starter to rbac can't assign roles to staff in Folio without manual fix-ups. Provide a documented path (or make the starter's staff the rbac staff type).
+    - ~~starter-folio: the Hero block's link check lets URLs with control characters or whitespace through (`/\t/host` is followed as `//host` by browsers) — refuse them as preflow.dev's `safe_link()` does; and `CompanyAdmin::drafts()` should escape the admin path in its href.~~ done in 0.63.2 (`Hero::safeLink()`, escaped drafts href).
+    - ~~components: an unscoped component rendered inside a scoped one inherits the parent's CSS scope (`ComponentRenderer::renderTemplate`), so its `@keyframes` (and `@font-face`) end up nested in the parent's scope and browsers drop them. Hoist at-rules like `@keyframes`/`@font-face` out of the scope (or don't inherit scope for unscoped children).~~ done in 0.63.2 (both: unscoped children get no scope, non-nestable at-rules are kept outside it). preflow.dev can drop its workaround in `app/Components/Animation/Animation.php`.
+    - starter-folio with preflow/rbac: rbac's opt-in staff accounts (`model:staff`) clash with the starter's own `App\Models\Staff` (sign-in config, password hashes), so a site switching the starter to rbac can't assign roles to staff in Folio without manual fix-ups. Provide a documented path (or make the starter's staff the rbac staff type). Investigated in 0.63.2, not fixed: both use the table `staff` (starter camelCase `passwordHash`, `createdAt` with `DataManagerUserProvider`; rbac snake_case `password_hash`, `active`, `auth_epoch` with `RecordUserProvider`), so `folio.tables` adds empty snake_case columns and existing staff can't sign in. Needs a decision: an rbac staff type with configurable column names or an import command, or the starter's staff table with rbac's column names.
+    - Page cache: a per-path `cache_query` (it is one switch for the whole site today).
+    - Page cache: component tokens are issued per request for cached pages.
+    - core: `Config` holds only `app.*`.
+    - core `Throttle`: trusted proxies for the client address.
+    - auth: a shared `SafeNext` helper for `?next=` checks (members has its own in `Members\Http\SafeNext`).
+    - Access: an explicit resolver decorator API; wrapping a resolver depends on provider order today.
+    - validation: `min` / `max` / `between` on numeric strings (a postcode `01234` is compared as a number).
+    - data, JSON driver: `!=` with a non-null value includes rows where the field is null; SQL excludes them.
+    - data: `insert()` with a given string id checks, then upserts, so two concurrent inserts are not refused; a plain
+      `INSERT` on `PdoDriver` would let the primary key refuse the duplicate (the class-type path too).
+    - data: validate type field keys as identifiers in `TypeRegistry` (a hyphenated key registers fine, then throws
+      on filter or sort).
+    - data: `Timestamps::propertyOf()` uses `property_exists`, so a non-public `createdAt` hides a public `created_at`.
+    - auth: a custom hasher's first unknown address per guard instance costs hash + verify (about twice a wrong
+      password); only the native hasher gets the ready dummy hash.
+    - core: an app error template convention. No code renders `_error.twig` / `_404.twig` (demodemo, folio-demo,
+      smeyer.me, time0-web have one), so visitors see the generic page.
+    - core: a production JSON 404 still says `No route matches [GET /api/x]` (the client's own method and path; kept
+      under the 0.62 JSON contract).
+    - core: the `RequestContext` docblock says `$request` is null in an internal render, but `handle()` always binds
+      the request.
+    - GEO: store the converted Markdown of a cached page in the page cache under its own key, invalidated by the
+      page's tags (each `.md` request renders since 0.63.2).
+    - view: the production CSS minifier strips the quotes of `url("…")`, which breaks URLs with spaces or parentheses.
+    - components: move `@import`, `@namespace` and `@layer a, b;` out of scoped CSS too (documented as unsupported).
+    - devtools `routes:list`: the fallback scan after a failed boot is not caught, and the command exits 0 when boot
+      failed.
+    - devtools: the CSP check empties every `<script>`, also `text/template` ones whose markup becomes DOM; the toolbar
+      counts `importmap` / `speculationrules` as JS blocks and shows 0/0 if PCRE hits its limit on a huge page.
+    - starter: the plain starter's API publishes for any token user (no permission package); the preflow.dev
+      permissions guide adds roles and the check. Consider adding roles to the plain starter.
 - **REST pieces (0.62):** released in 0.62.0 (owner, 2026-11-09). What a JSON API needs from the framework, as small
   parts with public interfaces; Folio is not involved.
   - **What it is:**
