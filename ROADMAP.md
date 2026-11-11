@@ -124,6 +124,20 @@ The distinction between component props (encoded in token) and action params (PO
 
 ## Medium Term
 
+### Reference descriptions (owner, 2026-11-11; after docs phase 3, together with phase 4)
+
+On preflow.dev's reference pages, many entries have an empty Description column; one example is the REST APIs topic: `TokenAuthMiddleware`, `PersonalAccessToken`, `TokenGuard`, `JsonBodyMiddleware`. The description is the first sentence of the entry's docblock in the framework. The website's `php preflow docs:check` counts what's missing. At v0.65.0, 3033 of 5499 entries have no description:
+- by kind: 1933 methods, 610 properties, 172 classes, 114 constants, 75 config keys, 58 enum cases, 31 template functions, 25 interfaces, 10 enums, 3 field types and 2 traits;
+- by package, the largest: folio 636, core 395, data 329, view 310, media 223.
+
+`docs:check --verbose` names each one.
+
+Plan:
+1. **Classes, interfaces, enums and traits first.** These are about 210 entries, and they are what the topic pages list. Then the config keys and template functions, then public methods. Skip properties, constants and cases whose name already says it all; private API never appears in the reference.
+2. **Write each description like the existing good ones:** one plain sentence that says what the thing is for, not how it is implemented, e.g. "CORS for the API paths (config/api.php `cors`)." Do one package per commit, and check it on the website: `docs:reference`, then the topic pages.
+3. **Do it together with phase 4**, which shrinks the package READMEs. The detail a README drops goes into the docblocks and the guides, so it isn't lost.
+4. **Ratchet, so it stays done.** Once a kind is complete, `docs:check` fails on a new entry of that kind without a description, instead of only warning. Start with classes, interfaces, enums, commands and config keys.
+
 ### Performance Benchmarks
 
 Owner todo (2026-10-26). Measure Preflow against other PHP frameworks (for example Laravel, Symfony, Slim) so claims about speed rest on numbers:
