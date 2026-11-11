@@ -400,6 +400,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Not covered yet:** `search()`, `whereAny()` groups, localized queries and the optional storage interfaces
     (`VersionedStorage`, `AggregatingStorage`, `ExclusiveWrites`); rendering a template by absolute path or by
     `@namespace/…` name directly.
+  - **Follow-ups found while writing the Folio guides (docs phase 3):**
+    - Folio's admin signs in through the app's default guard. In `preflow/starter` that guard is the employers', so
+      adding Folio to it as-is lets any employer into the admin with every right (checked on 0.64.0). Proposal, for
+      the owner to decide: Folio refuses admin sign-in unless its guard's population is `staff`, like the 0.63.2
+      members rule, or says so loudly. The Folio setup guide warns about it first.
+    - `packages/folio/README.md` says the table sync is SQLite only; since the grammars it also runs on MySQL.
 - **Starters (0.63):** released in 0.63.0 (2026-11-10). Two project templates replace the skeleton, plus the three
   general pieces they needed (rule: general features live in the packages). Plan:
   `docs/superpowers/plans/2026-11-09-starters.md`.
