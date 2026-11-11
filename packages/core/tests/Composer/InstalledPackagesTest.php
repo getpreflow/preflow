@@ -60,6 +60,34 @@ final class InstalledPackagesTest extends TestCase
         $this->assertSame('X', InstalledPackages::read($path, $cache)[0]['extension']);
     }
 
+    /**
+     * Like the other caches, the composer cache moves with the project (a release folder, a test's
+     * copy of the project): it names installed.json relative to the cache folder, never by the
+     * project's absolute path.
+     */
+    public function test_the_cache_moves_with_the_project(): void
+    {
+        $a = $this->dir . '/a';
+        mkdir($a . '/vendor/composer', 0777, true);
+        file_put_contents($a . '/vendor/composer/installed.json', json_encode(['packages' => [['name' => 'a/b', 'extra' => ['folio' => ['extension' => 'X']]]]]));
+        touch($a . '/vendor/composer/installed.json', 1_000_000);
+
+        InstalledPackages::read($a . '/vendor/composer/installed.json', $a . '/storage/cache/composer');
+        $files = glob($a . '/storage/cache/composer/installed-*.php') ?: [];
+        $this->assertCount(1, $files);
+        $this->assertStringNotContainsString($a, (string) file_get_contents($files[0]), 'no absolute path in the cache');
+
+        $b = $this->dir . '/b';
+        exec('cp -Rp ' . escapeshellarg($a) . ' ' . escapeshellarg($b));
+        // Same mtime and size, different content: only a cache hit still answers X.
+        file_put_contents($b . '/vendor/composer/installed.json', str_replace('"X"', '"Y"', (string) file_get_contents($b . '/vendor/composer/installed.json')));
+        touch($b . '/vendor/composer/installed.json', 1_000_000);
+        $this->reload();
+
+        $this->assertSame('X', InstalledPackages::read($b . '/vendor/composer/installed.json', $b . '/storage/cache/composer')[0]['extension']);
+        exec('rm -rf ' . escapeshellarg($a) . ' ' . escapeshellarg($b));
+    }
+
     public function test_a_changed_installed_json_is_read_again(): void
     {
         $path = $this->installed([['name' => 'a/b']], 1_000_000);

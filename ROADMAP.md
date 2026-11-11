@@ -198,6 +198,22 @@ instead of `'seeded'`, so a snapshot is never reused across different packages).
 (`composer require --dev preflow/testing:^0.66.1`; the starters now ask for it): 0.66.0 refuses any symlink under a
 snapshot root. Creating the link needs symlink rights (on Windows, Developer Mode or WSL).
 
+### ~~Starter set-up snapshots never reused since 0.66.1 (found 2026-11-12)~~ — done in v0.66.2
+
+**v0.66.2:** since 0.66.1 a starter's test copy links the project's `vendor/`, so core cached the installed packages in
+the copy's `storage/cache/composer/installed-<hash>.php`, and that file held the copy's absolute path (in its key, and
+its name was a hash of that path). `SetupSnapshots` rightly refuses a snapshot whose files name its root, so migrate
+and the demo seed ran for real in every test: a fresh starter's suite took 38 to 40 s instead of 18 s. The composer
+cache (`Preflow\Core\Composer\InstalledPackages`) now names installed.json relative to the cache folder, in the file
+name and the key, so it moves with the project like the other caches (release folders too) and holds no absolute
+path. A probe of a migrated and seeded copy of both starters found no other cache file naming the copy's path. The
+six sites' fast suites boot the real project directory, so their composer cache lives outside the snapshot roots
+and was never affected. Tests: core's `InstalledPackagesTest` (the cache holds no absolute path and is a hit in a
+copied project), both starters' `SetUpSnapshotTest` (a second copy gets its set-up from the snapshot; the harness's
+`onRestore` sets `$setUpRestored`).
+**Upgrading:** nothing to do for sites. Projects made from a starter may copy the new `tests/Support/StarterApp.php`
+and `tests/Site/SetUpSnapshotTest.php`; the speed comes back with preflow/core 0.66.2 alone.
+
 ### ~~Throttle and codes SQL bypass the `Dialect` (found 2026-11-11, final docs review)~~ — done in v0.66.1
 
 **v0.66.1:** core's `Throttle` hit and codes' use counting wrote their own SQL by checking `instanceof MysqlDialect`

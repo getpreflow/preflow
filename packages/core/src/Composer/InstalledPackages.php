@@ -8,7 +8,9 @@ namespace Preflow\Core\Composer;
  * What Preflow reads from Composer's vendor/composer/installed.json, decoded at most once per
  * change. The file is large and every request used to decode it (twice); here the small subset
  * the consumers need is cached as a PHP file (OPcache-friendly) keyed by path, mtime and size,
- * so a `composer install` or `update` shows up on the next request.
+ * so a `composer install` or `update` shows up on the next request. The path is installed.json's
+ * relative to the cache folder, so the cache moves with the project like the other caches (a
+ * release folder, a test's copy of the project) and never holds the project's absolute path.
  *
  * Each package comes back as:
  *   name          string
@@ -40,25 +42,48 @@ final class InstalledPackages
             return self::$memo[$key];
         }
 
-        $file = $cacheDir !== null ? rtrim($cacheDir, '/') . '/installed-' . hash('xxh3', $installedJson) . '.php' : null;
+        $file = null;
+        $stored = '';
+        if ($cacheDir !== null) {
+            $cacheDir = rtrim($cacheDir, '/');
+            $relative = self::relativePath($installedJson, $cacheDir);
+            $file = $cacheDir . '/installed-' . hash('xxh3', $relative) . '.php';
+            $stored = $relative . '|' . $mtime . '|' . $size . '|v' . self::FORMAT;
+        }
         if ($file !== null && is_file($file)) {
             try {
                 $hit = @include $file;
             } catch (\Throwable) {
                 $hit = null; // a corrupt cache file is a miss, never a fatal
             }
-            if (is_array($hit) && ($hit['key'] ?? null) === $key && is_array($hit['packages'] ?? null)) {
+            if (is_array($hit) && ($hit['key'] ?? null) === $stored && is_array($hit['packages'] ?? null)) {
                 return self::$memo[$key] = $hit['packages'];
             }
         }
 
         $packages = self::parse($installedJson);
         if ($file !== null) {
-            self::store($file, $key, $packages);
+            self::store($file, $stored, $packages);
         }
         self::$memo = [$key => $packages];
 
         return $packages;
+    }
+
+    /**
+     * $path as seen from $dir ("../../../vendor/composer/installed.json" from storage/cache/composer),
+     * by the paths as given (no realpath(): a linked vendor/ stays where the project has it).
+     */
+    private static function relativePath(string $path, string $dir): string
+    {
+        $from = array_values(array_filter(explode('/', $dir), static fn (string $part): bool => $part !== '' && $part !== '.'));
+        $to = array_values(array_filter(explode('/', $path), static fn (string $part): bool => $part !== '' && $part !== '.'));
+        $common = 0;
+        while ($common < count($from) && $common < count($to) - 1 && $from[$common] === $to[$common]) {
+            $common++;
+        }
+
+        return str_repeat('../', count($from) - $common) . implode('/', array_slice($to, $common));
     }
 
     /** @return list<array<string, mixed>> */

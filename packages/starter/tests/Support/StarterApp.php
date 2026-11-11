@@ -36,6 +36,9 @@ trait StarterApp
 
     private ?Application $starterApp = null;
 
+    /** Whether the last bootStarter() got its migrated and seeded set-up from a snapshot. */
+    private bool $setUpRestored = false;
+
     /** Boot as the web serves (the page cache serves and stores, and verifies what it stores). */
     private bool $asWeb = false;
 
@@ -84,7 +87,11 @@ trait StarterApp
             // The link to the project's vendor/: not part of a step's state, and kept on restore.
             ->ignore('{starterTmp}/vendor')
             // A restored step replaced the files under the app booted before it.
-            ->onRestore(fn () => $this->starterApp = null);
+            ->onRestore(function (): void {
+                $this->starterApp = null;
+                $this->setUpRestored = true;
+            });
+        $this->setUpRestored = false;
         $this->starterApp = null;
 
         // The link is no part of the state, so the step is keyed by what it installs: a package
