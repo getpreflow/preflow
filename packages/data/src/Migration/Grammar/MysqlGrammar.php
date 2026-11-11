@@ -150,6 +150,22 @@ final class MysqlGrammar implements SchemaGrammar
         return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
     }
 
+    public function indexColumns(\PDO $pdo, string $table): array
+    {
+        $stmt = $pdo->prepare('SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX');
+        $stmt->execute([$table]);
+        $result = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$name, $column]) {
+            $result[(string) $name][] = (string) $column;
+        }
+
+        return $result;
+    }
+
+    public function assertCanDropColumn(\PDO $pdo): void
+    {
+    }
+
     public function addColumn(string $table, string $column, ?string $type = null): string
     {
         return 'ALTER TABLE ' . $this->quote($table) . ' ADD COLUMN ' . $this->quote($column) . ' ' . ($type ?? 'LONGTEXT');

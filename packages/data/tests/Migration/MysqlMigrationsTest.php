@@ -211,4 +211,26 @@ final class MysqlMigrationsTest extends TestCase
         $this->assertSame(['uuid', 'created_at'], $schema->columns('staff'));
         $this->assertSame([['a', 'old'], ['b', 'kept']], $this->pdo->query('SELECT uuid, created_at FROM staff ORDER BY uuid')->fetchAll(\PDO::FETCH_NUM));
     }
+
+    public function test_drop_column_refuses_an_indexed_column_on_mysql(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('t', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('a');
+            $table->string('b');
+            $table->string('c')->nullable();
+            $table->unique('a', 'b');
+        });
+
+        try {
+            $schema->dropColumn('t', 'b');
+            $this->fail('dropped an indexed column');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('uniq_t_a_b', $e->getMessage());
+        }
+        $this->assertSame(['uuid', 'a', 'b', 'c'], $schema->columns('t'));
+        $schema->dropColumn('t', 'c');
+        $this->assertSame(['uuid', 'a', 'b'], $schema->columns('t'));
+    }
 }

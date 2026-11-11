@@ -108,10 +108,21 @@ final class Schema
         return $stmt->rowCount();
     }
 
-    /** Drops a column and its data (SQLite 3.35+, MySQL). Refuses (LogicException) a column the table doesn't have. */
+    /**
+     * Drops a column and its data (SQLite 3.35+, MySQL). Refuses (LogicException, nothing changed) a
+     * column the table doesn't have, a column that belongs to any index (SQLite would fail, MySQL would
+     * silently narrow the index: drop the index first), and an SQLite older than 3.35.
+     */
     public function dropColumn(string $table, string $column): void
     {
-        $this->pdo->exec($this->grammar->dropColumn($table, $this->existing($table, $this->columns($table), $column)));
+        $this->grammar->assertCanDropColumn($this->pdo);
+        $own = $this->existing($table, $this->columns($table), $column);
+        foreach ($this->grammar->indexColumns($this->pdo, $table) as $index => $indexed) {
+            if (self::find($indexed, $own) !== null) {
+                throw new \LogicException("Cannot drop \"{$table}.{$own}\": it is part of the index \"{$index}\". Drop the index first.");
+            }
+        }
+        $this->pdo->exec($this->grammar->dropColumn($table, $own));
     }
 
     /** Sets the column to $value on every row where it is NULL (a backfill after addColumns()); returns how many rows. */

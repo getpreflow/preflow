@@ -12,6 +12,11 @@ final class SqliteGrammar implements SchemaGrammar
 {
     use RecordIndexNames;
 
+    /** @param (\Closure(\PDO): string)|null $version reports the server's SQLite version (default: sqlite_version()); injectable for tests */
+    public function __construct(private readonly ?\Closure $version = null)
+    {
+    }
+
     public function quote(string $identifier): string
     {
         return '"' . str_replace('"', '""', $identifier) . '"';
@@ -114,6 +119,25 @@ final class SqliteGrammar implements SchemaGrammar
         $rows = $pdo->query('PRAGMA index_list(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC);
 
         return array_map(static fn (array $row): string => (string) $row['name'], $rows);
+    }
+
+    public function indexColumns(\PDO $pdo, string $table): array
+    {
+        $result = [];
+        foreach ($this->indexes($pdo, $table) as $name) {
+            $rows = $pdo->query('PRAGMA index_info(' . $this->quote($name) . ')')->fetchAll(\PDO::FETCH_ASSOC);
+            $result[$name] = array_map(static fn (array $row): string => (string) $row['name'], $rows);
+        }
+
+        return $result;
+    }
+
+    public function assertCanDropColumn(\PDO $pdo): void
+    {
+        $version = $this->version !== null ? ($this->version)($pdo) : (string) $pdo->query('SELECT sqlite_version()')->fetchColumn();
+        if (version_compare($version, '3.35.0', '<')) {
+            throw new \LogicException("dropColumn needs SQLite 3.35 or newer; this server has {$version}.");
+        }
     }
 
     public function addColumn(string $table, string $column, ?string $type = null): string

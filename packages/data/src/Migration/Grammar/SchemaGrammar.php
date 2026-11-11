@@ -53,6 +53,12 @@ interface SchemaGrammar
     /** @return list<string> the names of the table's indexes */
     public function indexes(\PDO $pdo, string $table): array;
 
+    /** @return array<string, list<string>> each index's columns, by index name */
+    public function indexColumns(\PDO $pdo, string $table): array;
+
+    /** Throws LogicException when this server cannot drop a column (before any SQL runs); a no-op when it can. */
+    public function assertCanDropColumn(\PDO $pdo): void;
+
     /** Adds a nullable column; a null type means the grammar's free-text type. */
     public function addColumn(string $table, string $column, ?string $type = null): string;
 

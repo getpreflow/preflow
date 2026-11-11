@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Migration;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Migration\Grammar\Grammars;
+use Preflow\Data\Migration\Grammar\SqliteGrammar;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Migration\Table;
 
@@ -239,6 +241,52 @@ final class SchemaTest extends TestCase
 
         $this->assertSame(['uuid', 'password_hash'], $this->schema->columns('staff'));
         $this->assertSame([['a', 'old-a'], ['b', 'new-b']], $this->pdo->query('SELECT uuid, password_hash FROM staff ORDER BY uuid')->fetchAll(\PDO::FETCH_NUM), 'a value already there wins');
+    }
+
+    public function test_drop_column_refuses_an_indexed_column_before_any_sql(): void
+    {
+        $this->schema->create('t', function (Table $table) {
+            $table->uuid('uuid')->primary();
+            $table->string('a');
+            $table->string('b');
+            $table->string('c')->nullable();
+            $table->unique('a', 'b');
+        });
+
+        foreach (['a', 'B'] as $column) {
+            try {
+                $this->schema->dropColumn('t', $column);
+                $this->fail('dropped an indexed column');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('uniq_t_a_b', $e->getMessage());
+                $this->assertStringContainsString('index', $e->getMessage());
+            }
+        }
+        $this->assertSame(['uuid', 'a', 'b', 'c'], $this->schema->columns('t'));
+        $this->schema->dropColumn('t', 'c');
+        $this->assertSame(['uuid', 'a', 'b'], $this->schema->columns('t'));
+    }
+
+    public function test_drop_column_refuses_old_sqlite_before_any_sql(): void
+    {
+        Grammars::register('sqlite', new SqliteGrammar(static fn (): string => '3.34.1'));
+        try {
+            $schema = new Schema($this->pdo);
+            $schema->create('t', function (Table $table) {
+                $table->uuid('uuid')->primary();
+                $table->string('x')->nullable();
+            });
+            try {
+                $schema->dropColumn('t', 'x');
+                $this->fail('dropped on old SQLite');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('SQLite 3.35 or newer', $e->getMessage());
+                $this->assertStringContainsString('3.34.1', $e->getMessage());
+            }
+            $this->assertSame(['uuid', 'x'], $schema->columns('t'));
+        } finally {
+            Grammars::forget('sqlite');
+        }
     }
 
     public function test_copy_and_drop_refuse_missing_columns(): void
