@@ -96,6 +96,7 @@ came from one project's needs, and turn each into a hook, a config option or an 
 the project; note breaking changes for the consumers. Status (checked 2026-11-11): members was audited in 0.38
 (findings F1–F8 in `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`, waiting for the owner); no record
 for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
+**Order (owner, 2026-11-11):** after docs phase 3 and 0.66.0, before the external scripts/CSP release.
 
 Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
 i18n"), controller discovery beyond `app/Controllers`, ~~CSRF without a session~~ (done, see "Security and data integrity"), staff mails in the
@@ -154,6 +155,8 @@ public job pages: a centred card, clear labels and errors, the demo login hint s
 website afterwards, since the docs show them.
 
 ### External scripts and styles with a matching CSP (owner, 2026-11-11)
+
+**Order (owner, 2026-11-11):** its own release, after the audit of all packages against the rule (see "Next Up").
 
 Sites need third-party files: analytics (Google Analytics), consent managers (Usercentrics), maps, chat widgets.
 Today an app writes the tag by hand (`AssetCollector::addHeadTag()` or a template, with `nonce="{{ csp_nonce() }}"`)
