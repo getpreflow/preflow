@@ -350,9 +350,13 @@ final class BladeEngine implements TemplateEngineInterface
         return 'blade.php';
     }
 
+    /**
+     * A Blade view namespace: templates reference it as "ns::name" (Blade's syntax, not
+     * Twig's "@namespace/…"). Paths are searched in registration order (first wins).
+     */
     public function addNamespace(string $namespace, string $path): void
     {
-        // Blade does not support Twig-style template namespaces; intentionally a no-op.
+        $this->viewFactory->addNamespace($namespace, $path);
     }
 
     /** A directive's arguments as a call's (Blade hands them over without their parentheses). */

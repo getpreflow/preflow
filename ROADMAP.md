@@ -381,6 +381,25 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Contract suites (v0.64.0, unreleased):** abstract PHPUnit suites in `preflow/testing` that check a third-party
+  adapter (a Datastar hypermedia driver, a PostgreSQL storage driver, another template engine) against its interface;
+  the built-in adapters run them too. Plan: `docs/superpowers/plans/2026-11-11-docs-phase3.md` (task 1).
+  - **What it is:**
+    - `Preflow\Testing\Contract\TemplateEngineContract` (hooks `createEngine(string $templateDir)`,
+      `fixture(string $name)`), `HypermediaDriverContract` (`createDriver()`, `fragmentRequest($request)`,
+      `effects()`), `StorageDriverContract` (`createDriver()`, `createType(string $type, array $fields)`; optional
+      `supportsAutoIds()` and `supportsRawQuery()`, default true). Each suite's class docblock says what the hooks
+      return and which value representations count as equal.
+    - An adapter author extends the suite in their own tests, implements the hooks and runs PHPUnit; see "Contract
+      suites" in `packages/testing/README.md`.
+    - Run by `TwigContractTest`, `BladeContractTest`, `HtmxContractTest`, `SqliteContractTest`, `JsonContractTest`
+      and `MysqlContractTest` (group `mysql`, `composer test:mysql`). twig, blade, htmx and data require-dev
+      `preflow/testing`.
+    - blade: `BladeEngine::addNamespace()` registers a Blade view namespace (it was a no-op); templates reference it
+      as `ns::name`, paths searched in registration order.
+  - **Not covered yet:** `search()`, `whereAny()` groups, localized queries and the optional storage interfaces
+    (`VersionedStorage`, `AggregatingStorage`, `ExclusiveWrites`); rendering a template by absolute path or by
+    `@namespace/…` name directly.
 - **Starters (0.63):** released in 0.63.0 (2026-11-10). Two project templates replace the skeleton, plus the three
   general pieces they needed (rule: general features live in the packages). Plan:
   `docs/superpowers/plans/2026-11-09-starters.md`.
