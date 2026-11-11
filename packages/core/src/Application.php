@@ -304,7 +304,15 @@ final class Application
     {
         $this->resolveManifest();
         // The hypermedia clients (the app's driver, packages' own): filled while the boot runs, read per request
-        $this->container->instance(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class, new \Preflow\Core\Http\Hypermedia\HypermediaProtocols());
+        $protocols = new \Preflow\Core\Http\Hypermedia\HypermediaProtocols();
+        $this->container->instance(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class, $protocols);
+        // An htmx app's requests are htmx requests even where no driver gets wired (no components,
+        // no template engine): the header-only htmx client from the start. The configured
+        // HtmxDriver later counts as the same client (one per class).
+        $hypermedia = $this->config->get('app.hypermedia') ?: \Preflow\Htmx\HtmxDriver::class;
+        if ($hypermedia === \Preflow\Htmx\HtmxDriver::class && class_exists(\Preflow\Htmx\HtmxDriver::class)) {
+            $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
+        }
         $this->bootPageCache();
 
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
@@ -366,6 +374,15 @@ final class Application
         // Register user service providers
         $this->bootProviders();
         $this->bootLazyUserProviders();
+
+        // The configured hypermedia driver, built now the providers ran: a failure stops the boot
+        // with its reason ("app.hypermedia: could not build …"), not a later request.
+        if (class_exists(\Preflow\Htmx\LazyHypermediaDriver::class) && $this->container->bound(\Preflow\Htmx\HypermediaDriver::class)) {
+            $driver = $this->container->get(\Preflow\Htmx\HypermediaDriver::class);
+            if ($driver instanceof \Preflow\Htmx\LazyHypermediaDriver) {
+                $driver->driver();
+            }
+        }
 
         // Load user-defined middleware from config/middleware.php
         $this->bootMiddleware();
@@ -452,9 +469,9 @@ final class Application
         // once more after the locale middleware strips the prefix (bootI18n()).
         $this->bindRequestContext($request);
 
-        // A hypermedia client that sends back its page's nonce gets an answer with that nonce,
-        // so the scripts and styles it puts into the page pass the page's CSP.
-        $this->adoptPageNonce($request);
+        // A fragment request whose client sends its page's nonce back is answered with that nonce
+        // (so what it puts into the page passes the page's CSP), for this request only.
+        $adopted = !$internal && $this->adoptPageNonce($request);
         // The hypermedia clients ride along, for middleware an app builds itself (AuthMiddleware).
         $request = $request->withAttribute(
             \Preflow\Core\Http\Hypermedia\HypermediaProtocols::class,
@@ -465,7 +482,14 @@ final class Application
         $flush = !$this->emitting && !$internal;
 
         try {
-            $response = $this->kernel->handle($request);
+            try {
+                $response = $this->kernel->handle($request);
+            } finally {
+                if ($adopted) {
+                    // Before any after-response work: rebuilds and internal renders get the own nonce.
+                    $this->container->get(\Preflow\View\NonceGenerator::class)->release();
+                }
+            }
         } catch (\Throwable $e) {
             // What the request wrote may be written (part of it, or by another connection).
             $this->pageChanges?->flush();
@@ -532,15 +556,19 @@ final class Application
      *
      * @param \Closure(): void $work
      */
-    private function adoptPageNonce(ServerRequestInterface $request): void
+    /**
+     * The page nonce a fragment request sent back, adopted (untrusted input: a fragment request
+     * only, a base64 value of 22+ characters; the page cache refuses to store the response,
+     * see bootViewLayer()). True when adopted: handle() releases it after the kernel ran.
+     */
+    private function adoptPageNonce(ServerRequestInterface $request): bool
     {
         if (!class_exists(\Preflow\View\NonceGenerator::class) || !$this->container->bound(\Preflow\View\NonceGenerator::class)) {
-            return;
+            return false;
         }
-        $nonce = $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)->for($request)?->pageNonce($request);
-        if ($nonce !== null) {
-            $this->container->get(\Preflow\View\NonceGenerator::class)->adopt($nonce);
-        }
+        $nonce = $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)->pageNonce($request);
+
+        return $nonce !== null && $this->container->get(\Preflow\View\NonceGenerator::class)->adopt($nonce);
     }
 
     public function afterResponse(\Closure $work): void
@@ -704,6 +732,7 @@ final class Application
         }
         $dataConfig = is_array($dataConfig) ? $dataConfig : [];
         $drivers = [];
+        $jsonKeys = [];
 
         foreach ($dataConfig['drivers'] ?? [] as $name => $driverConfig) {
             $driverConfig = is_array($driverConfig) ? $driverConfig : [];
@@ -721,17 +750,22 @@ final class Application
             };
 
             if ($kind === 'json') {
-                $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
-                    'data.json',
-                    'JSON storage query cache',
-                    $this->dataCachePath(absolute: true),
-                    // Every path key's .json caches and leftover .tmp-* files, plus the .gen files of
-                    // other data paths (old test runs, moved sites). This app's own .gen files stay:
-                    // they guard a cache write racing a save.
-                    pattern: 'json-*',
-                    exclude: 'json-*-' . $jsonDriver->pathKey() . '.gen',
-                ));
+                $jsonKeys[] = 'json-*-' . $jsonDriver->pathKey() . '.gen';
             }
+        }
+
+        // One cache source for every JSON storage (they share the folder).
+        if ($jsonKeys !== []) {
+            $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
+                'data.json',
+                'JSON storage query cache',
+                $this->dataCachePath(absolute: true),
+                // Every path key's .json caches and leftover .tmp-* files, plus the .gen files of
+                // other data paths (old test runs, moved sites). This app's own .gen files stay:
+                // they guard a cache write racing a save.
+                pattern: 'json-*',
+                exclude: count($jsonKeys) === 1 ? $jsonKeys[0] : array_values(array_unique($jsonKeys)),
+            ));
         }
 
         $default = $dataConfig['default'] ?? 'sqlite';
@@ -943,6 +977,9 @@ final class Application
         );
         $this->container->instance(\Preflow\View\AssetCollector::class, $assets);
         $this->container->instance(\Preflow\View\NonceGenerator::class, $nonce);
+        // A response answered with a nonce the client sent (a fragment's page nonce) is never stored:
+        // the cache would turn that client-chosen value into a placeholder in the stored body.
+        $this->container->get(\Preflow\Core\PageCache\PageCache::class)->refuseWhen('page-nonce', static fn (): bool => $nonce->adopted());
 
         // Markdown declared with {% apply geo %} / @geo; records only while GEO captures
         $geo = new \Preflow\View\Geo\GeoCollector();
@@ -1097,12 +1134,15 @@ final class Application
         ?\Preflow\View\Geo\GeoCollector $geo = null,
         ?\Preflow\View\Seo\SeoContext $seo = null,
     ): \Preflow\View\TemplateEngineInterface {
-        if (!class_exists($class) || !is_subclass_of($class, \Preflow\View\TemplateEngineFactory::class)) {
+        if (!class_exists($class)) {
             throw new \RuntimeException(sprintf(
                 "Unknown template engine: %s. Use 'twig', 'blade' or the class name of a %s.",
                 $class,
                 \Preflow\View\TemplateEngineFactory::class,
             ));
+        }
+        if (!is_subclass_of($class, \Preflow\View\TemplateEngineFactory::class)) {
+            throw new \RuntimeException(sprintf('Template engine %s (app.engine) does not implement %s.', $class, \Preflow\View\TemplateEngineFactory::class));
         }
         $cachePath = $this->absolutePath('storage/cache/templates');
         $this->container->get(CacheRegistry::class)->register(new DirectoryCache(
@@ -1781,8 +1821,8 @@ final class Application
         };
 
         return is_subclass_of($class, \Preflow\View\FormHypermediaDriver::class)
-            ? new \Preflow\Htmx\LazyFormHypermediaDriver($resolve)
-            : new \Preflow\Htmx\LazyHypermediaDriver($resolve);
+            ? new \Preflow\Htmx\LazyFormHypermediaDriver($resolve, $class)
+            : new \Preflow\Htmx\LazyHypermediaDriver($resolve, $class);
     }
 
     private function bootRouting(): void

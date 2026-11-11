@@ -192,6 +192,14 @@ final class HypermediaDriverConfigTest extends TestCase
         $this->assertInstanceOf(HtmxDriver::class, $this->app(HtmxDriver::class)->container()->get(HypermediaDriver::class));
     }
 
+    public function test_a_driver_that_cannot_be_built_stops_the_boot_and_says_why(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('app.hypermedia: could not build ' . GreetingSignalDriver::class . ':');
+
+        $this->app(GreetingSignalDriver::class); // its Greeting is bound by no provider here
+    }
+
     public function test_an_unknown_driver_throws_with_the_accepted_forms(): void
     {
         $this->expectException(\RuntimeException::class);

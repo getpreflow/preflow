@@ -194,8 +194,17 @@ final class PageKeyTest extends TestCase
         $this->assertTrue($fragment->isFragment());
         $this->assertNotSame($fragment->id(), $key(['Signal-Request' => 'true', 'Signal-Target' => 'detail'])->id(), 'keyed on the client\'s headers');
         $htmx = $key(['HX-Request' => 'true', 'HX-Target' => 'list']);
-        $this->assertFalse($htmx->isFragment(), 'htmx headers mean nothing to this app');
-        $this->assertSame($page->id(), $htmx->id());
+        $this->assertFalse($htmx->isFragment(), 'htmx headers make no fragment for this app');
+        $this->assertNotSame($page->id(), $htmx->id(), 'but the default vary_headers keep them apart from the page');
+    }
+
+    public function test_without_a_client_htmx_fragments_still_get_their_own_key(): void
+    {
+        $config = PageCacheConfig::fromArray(['hosts' => ['example.com']]);
+        $page = PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/g'), $config);
+        $fragment = PageKey::fromRequest(new ServerRequest('GET', 'https://example.com/g', ['HX-Request' => 'true', 'HX-Target' => 'list']), $config);
+
+        $this->assertNotSame($page->id(), $fragment->id(), 'an app without preflow/htmx that loads htmx itself');
     }
 
     /** htmx as the app's hypermedia client (what core binds by default). */

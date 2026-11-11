@@ -7,6 +7,7 @@ namespace Preflow\Testing\Contract;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Preflow\Htmx\HtmlAttributes;
 use Preflow\Htmx\HypermediaDriver;
 use Preflow\Htmx\SwapStrategy;
@@ -67,7 +68,8 @@ use Psr\Http\Message\ServerRequestInterface;
  *   varyHeaders() are header names; navigate() puts the URL in a header or the body and changes
  *   the response for a reload (null); announceNonce() keeps the content and writes only headers
  *   nonceHeaders() lists (the page cache never stores those); pageNonce() returns the nonce
- *   pageNonceRequest() sent.
+ *   pageNonceRequest() sent; core (HypermediaProtocols::pageNonce()) takes it from a fragment request only, never
+ *   from a plain request or a history restore.
  */
 abstract class HypermediaDriverContract extends TestCase
 {
@@ -264,6 +266,25 @@ abstract class HypermediaDriverContract extends TestCase
         }
 
         $this->assertSame('cGFnZS1ub25jZS0xMjM0NQ==', $this->driver->pageNonce($request));
+    }
+
+    public function test_core_takes_a_page_nonce_only_from_a_fragment_request(): void
+    {
+        $nonce = 'cGFnZS1ub25jZS0xMjM0NQ==';
+        $plain = $this->pageNonceRequest(new ServerRequest('GET', '/items'), $nonce);
+        if ($plain === null) {
+            $this->markTestSkipped('The client sends no page nonce (pageNonceRequest() is null).');
+        }
+        $clients = new HypermediaProtocols();
+        $clients->add($this->driver);
+
+        $this->assertNull($clients->pageNonce($plain), 'a plain request carrying a nonce adopts nothing');
+        $restore = $this->historyRestoreRequest(new ServerRequest('GET', '/items'));
+        if ($restore !== null) {
+            $this->assertNull($clients->pageNonce($this->pageNonceRequest($restore, $nonce) ?? $restore), 'a history restore adopts nothing');
+        }
+        $fragment = $this->pageNonceRequest($this->fragmentRequest(new ServerRequest('POST', '/items/7/save')), $nonce);
+        $this->assertSame($nonce, $clients->pageNonce($fragment ?? throw new \LogicException('pageNonceRequest() returned null')));
     }
 
     public function test_trigger_event_is_recorded(): void

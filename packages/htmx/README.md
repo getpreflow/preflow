@@ -71,7 +71,11 @@ another element), `applyEffects(ResponseInterface): ResponseInterface` (the reco
 the client reads them: headers, or events in the body; called on every endpoint response) and
 core's `HypermediaProtocol`: `isFragmentRequest()`, `isHistoryRestore()`, `varyHeaders()`,
 `navigate()`, `announceNonce()` / `nonceHeaders()` and `pageNonce()` (a client that sends its
-page's CSP nonce back is answered with it, so its effect scripts pass the page's policy). An unknown class throws at boot. Check a driver with
+page's CSP nonce back with a fragment request is answered with it, so its effect scripts pass the
+page's policy). `pageNonce()` returns untrusted input: core adopts it for fragment requests only
+(not plain requests or history restores), for that response only, never stores the response,
+and the driver must not print the nonce into the page — its client reads `script.nonce` at
+request time. An unknown class throws at boot. Check a driver with
 `Preflow\Testing\Contract\HypermediaDriverContract` (preflow/testing).
 
 ### `ComponentToken`

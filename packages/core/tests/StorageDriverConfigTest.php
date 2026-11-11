@@ -85,6 +85,15 @@ final class StorageDriverConfigTest extends TestCase
         $this->assertSame($driver, $dm->driver('memory'), 'built once');
     }
 
+    public function test_two_json_entries_boot(): void
+    {
+        $dm = $this->boot("'json' => ['path' => '{$this->dir}/a'], 'archive' => ['driver' => 'json', 'path' => '{$this->dir}/b']");
+
+        $this->assertInstanceOf(JsonFileDriver::class, $dm->driver('json'));
+        $this->assertInstanceOf(JsonFileDriver::class, $dm->driver('archive'));
+        $this->assertNotSame($dm->driver('json'), $dm->driver('archive'));
+    }
+
     public function test_a_class_named_driver_can_be_the_default(): void
     {
         $dm = $this->boot("'memory' => ['driver' => " . MemoryDriver::class . '::class]', 'memory');

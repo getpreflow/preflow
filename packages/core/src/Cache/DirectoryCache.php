@@ -11,7 +11,7 @@ namespace Preflow\Core\Cache;
  * them; the folder itself may be a symlink (a Deployer shared dir, say).
  * Subfolders that cannot be read are skipped.
  * $pattern is an fnmatch() pattern on file basenames, applied at every depth; files matching
- * $exclude are neither counted nor cleared.
+ * $exclude (one pattern or a list) are neither counted nor cleared.
  * The folder must be an absolute path other than the filesystem root.
  */
 final class DirectoryCache implements CacheSource
@@ -22,7 +22,7 @@ final class DirectoryCache implements CacheSource
         private readonly string $dir,
         private readonly ?string $pattern = null,
         private readonly ?string $note = null,
-        private readonly ?string $exclude = null,
+        private readonly string|array|null $exclude = null,
     ) {
         if ($dir === '' || $dir[0] !== '/' || rtrim($dir, '/') === '' || realpath($dir) === '/') {
             throw new \InvalidArgumentException(
@@ -109,7 +109,7 @@ final class DirectoryCache implements CacheSource
             if ($this->pattern !== null && !fnmatch($this->pattern, $name)) {
                 continue;
             }
-            if ($this->exclude !== null && fnmatch($this->exclude, $name)) {
+            if ($this->exclude !== null && array_any((array) $this->exclude, static fn (string $pattern): bool => fnmatch($pattern, $name))) {
                 continue;
             }
             yield $file;

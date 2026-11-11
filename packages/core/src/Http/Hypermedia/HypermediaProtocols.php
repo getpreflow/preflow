@@ -18,15 +18,23 @@ final class HypermediaProtocols
     /** @var list<HypermediaProtocol> */
     private array $protocols = [];
 
-    /** Adds $protocol; one of a class already added is ignored (the first one stays). */
+    /**
+     * Adds $protocol; one of a class already added is ignored (the first one stays). A StandIn
+     * counts as the class it stands in for.
+     */
     public function add(HypermediaProtocol $protocol): void
     {
         foreach ($this->protocols as $known) {
-            if ($known::class === $protocol::class) {
+            if (self::identity($known) === self::identity($protocol)) {
                 return;
             }
         }
         $this->protocols[] = $protocol;
+    }
+
+    private static function identity(HypermediaProtocol $protocol): string
+    {
+        return $protocol instanceof StandIn ? $protocol->standsInFor() : $protocol::class;
     }
 
     /** @return list<HypermediaProtocol> */
@@ -76,6 +84,16 @@ final class HypermediaProtocols
         $client = $this->for($request);
 
         return $client !== null && $client->isFragmentRequest($request) ? $client->navigate($response, $url) : null;
+    }
+
+    /**
+     * The page nonce a fragment request sent back (HypermediaProtocol::pageNonce()), or null:
+     * never from a plain request or a history restore (those are whole pages). Untrusted input;
+     * core adopts it for that response only (NonceGenerator::adopt()) and never stores it.
+     */
+    public function pageNonce(ServerRequestInterface $request): ?string
+    {
+        return $this->wantsFragment($request) ? $this->for($request)?->pageNonce($request) : null;
     }
 
     /** @return list<string> every client's varyHeaders(), each name once (case-insensitive) */

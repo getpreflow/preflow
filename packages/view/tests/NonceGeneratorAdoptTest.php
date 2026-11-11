@@ -14,8 +14,14 @@ final class NonceGeneratorAdoptTest extends TestCase
         $nonce = new NonceGenerator();
         $nonce->get();
 
+        $own = $nonce->get();
         $this->assertTrue($nonce->adopt('cGFnZS1ub25jZS0xMjM0NQ=='));
         $this->assertSame('cGFnZS1ub25jZS0xMjM0NQ==', $nonce->get());
+        $this->assertTrue($nonce->adopted());
+
+        $nonce->release();
+        $this->assertFalse($nonce->adopted());
+        $this->assertSame($own, $nonce->get(), 'release() goes back to the own nonce');
     }
 
     public function test_anything_but_a_base64_nonce_is_ignored(): void
@@ -23,7 +29,7 @@ final class NonceGeneratorAdoptTest extends TestCase
         $nonce = new NonceGenerator();
         $own = $nonce->get();
 
-        foreach (['', 'short', 'x" onload="alert(1)', str_repeat('a', 80), "abc\ndefghijklmnopq"] as $bad) {
+        foreach (['', 'short', 'abcdefghijklmnopqrstu', 'x" onload="alert(1)', str_repeat('a', 80), "abc\ndefghijklmnopqrstuvwxyz"] as $bad) {
             $this->assertFalse($nonce->adopt($bad), $bad);
         }
         $this->assertSame($own, $nonce->get());

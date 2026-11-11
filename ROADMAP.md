@@ -415,13 +415,20 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     clients' `varyHeaders()` + `vary_headers`, restores, unstored nonce headers), GEO, `request.isHtmx` /
     new `request.isFragment` (PageResponder), `MembersView::navigate()` (`hxRedirect()` deprecated). Folio's admin
     keeps its own htmx and adds it to `HypermediaProtocols` (commented in each place).
-  - **Page nonce for fragments:** `HypermediaProtocol::pageNonce()` + `NonceGenerator::adopt()`: a client that sends
-    its page's CSP nonce back is answered with it (core, `Application::handle()`), so effect scripts and component
-    assets in the fragment pass the page's CSP.
+  - **Page nonce for fragments:** `HypermediaProtocol::pageNonce()` + `HypermediaProtocols::pageNonce()` +
+    `NonceGenerator::adopt()` / `release()` / `adopted()`: a fragment request's client that sends its page's CSP nonce
+    back is answered with it (`Application::handle()`), so effect scripts and component assets in the fragment pass
+    the page's CSP. Untrusted input: fragment requests only (not plain requests or history restores), 22+ base64
+    characters, released after the kernel (before after-response work), and never stored by the page cache
+    (`refused:page-nonce`). Drivers read the nonce client-side (`script.nonce`), never print it into the page.
   - **Built after the providers:** the factory's engine (`LazyTemplateEngine`; `TemplateEngineFactory::templateExtension()`
     is static), the configured hypermedia driver (`LazyHypermediaDriver` / `LazyFormHypermediaDriver`; the driver is the
     container's shared class) and class-named storage drivers (`DataManager` takes closures) are built on first use,
     so their constructors may take services a provider binds.
+  - **Review fixes (same release):** the configured driver is built right after the providers (a failure stops the
+    boot: "app.hypermedia: could not build X: …"); `HypermediaProtocols` tells clients apart by the class a stand-in
+    (`Preflow\Core\Http\Hypermedia\StandIn`, the lazy driver) stands for; several JSON storages share one `data.json`
+    cache source (`DirectoryCache` takes a list of exclude patterns); an `app.engine` class that is no factory says so.
   - **Dialect::missingColumn(\PDOException): ?string:** PdoDriver asks the dialect which column a failed write names.
   - **Contract suite:** `HypermediaDriverContract` gains the hook `targetRequest($request, string $targetId)`, the
     optional hooks `historyRestoreRequest()` and `pageNonceRequest()`, and tests for `fragmentTarget()`,
@@ -430,10 +437,21 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Upgrading:** nothing to do for apps on twig/blade, htmx and sqlite/mysql/json. Check only: a `config/data.php`
     entry with an unknown name and no `'driver'` (dropped silently before) now stops the boot; a class implementing
     `HypermediaDriver` or `Dialect` must add the new methods; a `HypermediaDriverContract` subclass must add
-    `targetRequest()`; a `TemplateEngineFactory` needs the static `templateExtension()`. `PageCacheConfig::DEFAULT_VARY_HEADERS`
-    is `[]` (the clients add `HX-Request`, `HX-Target`; keys stay the same); `HtmxDriver::isFragmentRequest()` is
-    `HX-Request: true` (was: the header present); code calling `PageKey::fromRequest()` or building
-    `SecurityHeadersMiddleware` / `ExpiredSessionResponder` itself passes `HypermediaProtocols` to keep htmx handling.
+    `targetRequest()`; a `TemplateEngineFactory` needs the static `templateExtension()`. `HtmxDriver::isFragmentRequest()`
+    is `HX-Request: true` (was: the header present).
+    - The `'driver'` key of a `config/data.php` entry is now read: it decides the storage (before, only the entry's
+      name did). An entry whose `'driver'` names another built-in than its name changes storage — check it matches.
+    - Built by hand without `HypermediaProtocols`, these no longer recognise htmx: `PageKey::fromRequest()`,
+      `SecurityHeadersMiddleware`, `ExpiredSessionResponder`, `PageResponder` (and `requestVariable()`),
+      `GeoMiddleware`, `SeoMiddleware` (its 304 keeps `HX-Nonce` then), `MembersView`. Pass the container's
+      `HypermediaProtocols`. `AuthMiddleware` built by hand reads it from the request (core puts it there).
+    - No driver at all (preflow/htmx not installed): no request is a fragment for core (no HX-Nonce, no HX-Redirect or
+      HX-Refresh); the default `vary_headers` (`HX-Request`, `HX-Target`, kept) still keep fragments' cache keys apart.
+      With preflow/htmx installed core adds the header-only htmx client at the start of the boot, so apps without
+      components or an engine behave as before.
+    - A history restore drops only its client's vary headers from the key (htmx: `HX-Request`, `HX-Target`,
+      `HX-History-Restore-Request`), no longer every configured `hx-*` header: a site with an extra `HX-*` header in
+      `vary_headers` gets a separate (cache-miss) key for restores; nothing wrong is served.
     Constraints: core conflicts data/htmx/view <0.65, htmx conflicts core <0.65, folio htmx <0.65, testing htmx <0.65. The six production sites' configs were checked: all entries are sqlite/mysql/json, some with
     their built-in class as `'driver'`, which keeps working.
 - **Contract suites (v0.64.0, released 2026-11-11):** abstract PHPUnit suites in `preflow/testing` that check a third-party

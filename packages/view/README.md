@@ -85,10 +85,15 @@ forms. Check the engine with `Preflow\Testing\Contract\TemplateEngineContract` (
 
 ### A fragment answered with its page's nonce: `NonceGenerator::adopt()` (0.65)
 
-`NonceGenerator::adopt(string $nonce): bool` makes the request use another nonce (a base64 value;
-anything else is ignored). Core calls it with `HypermediaProtocol::pageNonce()` when a client sends
-its page's nonce back, so a fragment's scripts and styles (component assets, a driver's effect
-scripts) carry the page's nonce and pass its Content-Security-Policy.
+`NonceGenerator::adopt(string $nonce): bool` makes the request use another nonce (a base64 value
+of at least 22 characters; anything else is ignored); `release()` goes back to the request's own,
+`adopted()` tells. Core calls `adopt()` with `HypermediaProtocols::pageNonce()` when a fragment
+request's client sends its page's nonce back, so the fragment's scripts and styles (component
+assets, a driver's effect scripts) carry the page's nonce and pass its Content-Security-Policy.
+The value is untrusted client input: never from a plain request or a history restore, released
+when the kernel has answered (after-response rebuilds and internal renders use the own nonce), and
+the page cache never stores such a response (`refused:page-nonce`). A driver must not print the
+nonce into the page; its client reads `script.nonce` when it sends the request.
 
 ## TemplateExtensionProvider
 

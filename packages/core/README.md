@@ -262,9 +262,18 @@ request.
 | `announceNonce($response, $nonce)`, `nonceHeaders()` | SecurityHeadersMiddleware (htmx: `HX-Nonce`); the page cache never stores those headers, a 304 drops them |
 | `pageNonce($request)` | `handle()`: a client that sends its page's CSP nonce back is answered with it (`NonceGenerator::adopt()`), so the scripts and styles the response puts into the page pass the page's policy |
 
-With htmx (every built-in path) the behaviour is what it was. An app on another driver gets its
-driver's answers everywhere; a stray `HX-Request` header means nothing to it (unless a package
-added htmx, as Folio does for its admin).
+With htmx (every built-in path) the behaviour is what it was: core adds the header-only htmx
+client at the start of the boot whenever preflow/htmx is installed and `hypermedia` is htmx, so
+an app without components or a template engine still treats htmx requests as such. An app on
+another driver gets its driver's answers everywhere; a stray `HX-Request` header makes no
+fragment for it (unless a package added htmx, as Folio does for its admin), though the default
+`vary_headers` still keep such a request's cache key apart. An app without preflow/htmx has no
+client: no request is a fragment for core (the default `vary_headers` keep the keys apart).
+
+`pageNonce()` is untrusted client input: core takes it from a fragment request only (not a plain
+request or a history restore), a base64 value of 22+ characters, for that request only (released
+before after-response work), and the page cache never stores the response (`refused:page-nonce`).
+A driver reads the page's nonce client-side (`script.nonce`) and never prints it into the page.
 
 ### config/middleware.php
 
@@ -559,7 +568,7 @@ return [
     'rebuild_budget' => 2.0,         // seconds of rebuilding after a response
     'cache_query' => true,           // cache pages with a query string (search, filters)
     'ignore_query' => ['utm_*', 'fbclid', 'gclid', 'mc_cid', 'mc_eid'],
-    'vary_headers' => [],            // besides the hypermedia clients' own (htmx: HX-Request, HX-Target)
+    'vary_headers' => ['HX-Request', 'HX-Target'], // plus the hypermedia clients' own varyHeaders()
     'signed_in_cookies' => [],       // added to the auth marker and the remember cookies
     'hosts' => [],                   // hosts cached besides the host of app.url
     'max_query_variants' => 50,      // pages with a query kept per URL path, oldest evicted first
@@ -674,9 +683,9 @@ return [
   the locale middleware resolved (a cookie or `Accept-Language` on unprefixed paths), the
   normalised query, the values of the hypermedia clients' `varyHeaders()` and the `vary_headers`, and a forwarded scheme and host
   (`X-Forwarded-Proto`, `X-Forwarded-Host`), so http and https never share a copy.
-- **htmx headers.** Only the clients' `varyHeaders()` (htmx: `HX-Request`, `HX-Target`) and the
-  `vary_headers` are in the key (since 0.65 `vary_headers` lists only headers beyond the clients';
-  a list that repeats `HX-Request`/`HX-Target` keeps working). A fragment handler that answers differently by `HX-Trigger`, `HX-Trigger-Name`,
+- **htmx headers.** Only the `vary_headers` (default `HX-Request`, `HX-Target`, kept for apps that
+  load htmx without preflow/htmx) and the hypermedia clients' `varyHeaders()` are in the key (a
+  header in both counts once). A fragment handler that answers differently by `HX-Trigger`, `HX-Trigger-Name`,
   `HX-Boosted`, `HX-Current-URL` or a site header must add it to `vary_headers` (or send
   `Vary` for it, which keeps the response from being stored), or the fragments of one target
   overwrite each other. A history restore (`HX-History-Restore-Request`) is served the full

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Http\Hypermedia\StandIn;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -14,17 +15,39 @@ use Psr\Http\Message\ServerRequestInterface;
  * take services a provider binds. Every call goes to the one driver, built once through the
  * container.
  */
-class LazyHypermediaDriver implements HypermediaDriver
+class LazyHypermediaDriver implements HypermediaDriver, StandIn
 {
     private ?HypermediaDriver $driver = null;
 
-    /** @param \Closure(): HypermediaDriver $resolve */
-    public function __construct(private readonly \Closure $resolve) {}
+    /**
+     * @param \Closure(): HypermediaDriver $resolve
+     * @param class-string<HypermediaDriver> $class the driver's class (HypermediaProtocols tells clients apart by it)
+     */
+    public function __construct(
+        private readonly \Closure $resolve,
+        private readonly string $class = HypermediaDriver::class,
+    ) {}
 
-    /** The driver itself (built now if it wasn't yet). */
+    /**
+     * The driver itself (built now if it wasn't yet). A failure to build it is a RuntimeException
+     * naming the class: "app.hypermedia: could not build X: …".
+     */
     public function driver(): HypermediaDriver
     {
-        return $this->driver ??= ($this->resolve)();
+        if ($this->driver === null) {
+            try {
+                $this->driver = ($this->resolve)();
+            } catch (\Throwable $e) {
+                throw new \RuntimeException("app.hypermedia: could not build {$this->class}: {$e->getMessage()}", 0, $e);
+            }
+        }
+
+        return $this->driver;
+    }
+
+    public function standsInFor(): string
+    {
+        return $this->class;
     }
 
     public function actionAttrs(string $method, string $url, string $targetId, SwapStrategy $swap, array $extra = []): HtmlAttributes

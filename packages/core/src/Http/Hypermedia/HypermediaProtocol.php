@@ -73,6 +73,13 @@ interface HypermediaProtocol
      * The CSP nonce of the page the request came from, when the client sends it back (null
      * otherwise). Core then answers with that nonce, so the scripts and styles the response
      * puts into the page pass the page's Content-Security-Policy.
+     *
+     * The value is untrusted client input. Core takes it from a fragment request only (never a
+     * plain request or a history restore: HypermediaProtocols::pageNonce()), only a base64 value
+     * of 22+ characters, for that response only, and the page cache never stores that response.
+     * A driver must not print the nonce into the page (a data-* attribute, a meta tag): the
+     * browser hides a nonce attribute from CSS and the DOM for a reason. Read it client-side from
+     * the nonce property of a script element (script.nonce) when the request is sent.
      */
     public function pageNonce(ServerRequestInterface $request): ?string;
 }

@@ -119,7 +119,7 @@ final class TemplateEngineFactoryTest extends TestCase
     public function test_a_class_that_is_no_factory_throws(): void
     {
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Unknown template engine: ' . PhtmlEngine::class . '.');
+        $this->expectExceptionMessage('Template engine ' . PhtmlEngine::class . ' (app.engine) does not implement Preflow\\View\\TemplateEngineFactory.');
 
         $this->app(PhtmlEngine::class);
     }

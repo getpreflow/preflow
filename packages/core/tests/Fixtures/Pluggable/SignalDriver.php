@@ -51,7 +51,7 @@ class SignalDriver implements HypermediaDriver
 
     public function isFragmentRequest(ServerRequestInterface $request): bool
     {
-        return $request->hasHeader('Signal-Request');
+        return $request->hasHeader('Signal-Request') || $this->isHistoryRestore($request);
     }
 
     public function fragmentTarget(ServerRequestInterface $request): ?string
@@ -73,7 +73,7 @@ class SignalDriver implements HypermediaDriver
 
     public function isHistoryRestore(ServerRequestInterface $request): bool
     {
-        return false;
+        return $request->getHeaderLine('Signal-Restore') === 'true';
     }
 
     public function varyHeaders(): array
