@@ -38,12 +38,26 @@ use Preflow\Data\StorageDriver;
  *
  * Values read back may come in the store's own representation, as DataManager accepts them:
  * a number as an int, a float or a numeric string; a boolean as true/false, 1/0 or "1"/"0";
- * a `json` field (saved as an array) as that array or as JSON text; null as null or a missing
+ * a `json` field (saved as an array) as that array or as JSON text, where the keys of an object
+ * need not keep their order (a list's order and every value must); null as null or a missing
  * key. Strings come back exactly as saved.
  *
+ * Query semantics a driver implements (as SQLite and MySQL do):
+ * - `LIKE` / `NOT LIKE` ignore case (PostgreSQL needs ILIKE); `%` matches any text, `_` one
+ *   character.
+ * - A null field matches only `where(field, null)` (IS NULL); `=`, `!=`, `<>`, `<`, `>`, `<=`,
+ *   `>=`, `LIKE`, `NOT LIKE`, `IN` and `NOT IN` never match it. `!= null` / `<> null` is IS NOT
+ *   NULL. An empty `IN` list matches nothing, an empty `NOT IN` list everything (nulls too).
+ * - Numbers compare and sort as numbers. `where()` binds tighter than `orWhere()`, as AND before
+ *   OR in SQL. `total()` counts every match, ignoring limit and offset.
+ * - save() of an existing id updates that record; delete() of a missing id does nothing.
+ * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
+ *   a record whose id the store generates, and lastInsertId() returns it.
+ *
  * Optional hooks, for stores that cannot do something generic:
- * - supportsAutoIds() (default true): false skips the test that saves with an empty id and
- *   reads the new id from lastInsertId() (the JSON file driver needs the id from the caller).
+ * - supportsAutoIds() (default true): false skips the test that saves with each empty id ('',
+ *   0, '0') and reads the new id from lastInsertId() (the JSON file driver needs the id from
+ *   the caller).
  * - supportsRawQuery() (default true): false skips the rawQuery() test (SQL drivers only).
  */
 abstract class StorageDriverContract extends TestCase
@@ -118,7 +132,7 @@ abstract class StorageDriverContract extends TestCase
 
         $stored = $this->record('r1')['meta'] ?? null;
         $decoded = is_string($stored) ? json_decode($stored, true) : $stored;
-        $this->assertSame($meta, $decoded, 'a json field reads back as the saved array, or as JSON text of it');
+        $this->assertSame(self::keysSorted($meta), is_array($decoded) ? self::keysSorted($decoded) : $decoded, 'a json field reads back as the saved array, or as JSON text of it (object key order may differ)');
     }
 
     public function test_null_round_trips_in_every_kind(): void
@@ -197,15 +211,17 @@ abstract class StorageDriverContract extends TestCase
         }
         $this->createType('counters', ['id' => 'number', 'name' => 'string']);
 
-        $this->driver->save('counters', 0, ['name' => 'First'], 'id');
-        $first = $this->driver->lastInsertId();
-        $this->driver->save('counters', '', ['name' => 'Second'], 'id');
-        $second = $this->driver->lastInsertId();
+        $ids = [];
+        foreach (['empty string' => '', 'int 0' => 0, 'string "0"' => '0'] as $label => $empty) {
+            $this->driver->save('counters', $empty, ['name' => $label], 'id');
+            $id = $this->driver->lastInsertId();
 
-        $this->assertTrue(is_int($first) || (is_string($first) && $first !== ''), 'lastInsertId() gives the id the store generated');
-        $this->assertNotEquals($first, $second, 'each insert gets its own id');
-        $this->assertSame('First', $this->driver->findOne('counters', $first, 'id')['name'] ?? null);
-        $this->assertSame('Second', $this->driver->findOne('counters', $second, 'id')['name'] ?? null);
+            $this->assertTrue(is_int($id) || (is_string($id) && $id !== '' && $id !== '0'), "saving with the empty id {$label} makes lastInsertId() give the id the store generated");
+            $this->assertSame($label, $this->driver->findOne('counters', $id, 'id')['name'] ?? null, "the record saved with the empty id {$label} is found by its generated id");
+            $ids[] = (string) $id;
+        }
+        $this->assertSame($ids, array_unique($ids), 'each insert gets its own id');
+        $this->assertSame(3, $this->driver->findMany('counters', new Query())->total());
     }
 
     public function test_raw_query(): void
@@ -405,6 +421,23 @@ abstract class StorageDriverContract extends TestCase
         sort($ids);
 
         return $ids;
+    }
+
+    /**
+     * The value with the keys of every object (non-list array) sorted, so object key order does
+     * not count while list order does.
+     */
+    private static function keysSorted(mixed $value): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $value = array_map(self::keysSorted(...), $value);
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
     }
 
     private function assertNumber(int|float $expected, mixed $actual): void

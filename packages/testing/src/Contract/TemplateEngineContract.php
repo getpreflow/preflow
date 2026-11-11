@@ -28,9 +28,10 @@ use Preflow\View\TemplateFunctionDefinition;
  *         }
  *     }
  *
- * Each test writes the fixtures to a fresh temporary directory as "{name}.{extension}" (the
- * extension is the engine's getTemplateExtension()), calls createEngine() with that directory,
- * renders templates by that file name, and removes the directory afterwards.
+ * Each test calls createEngine() with a fresh, still empty temporary directory, then writes the
+ * fixtures into it as "{name}.{extension}" (the extension is that engine's
+ * getTemplateExtension()), renders templates by that file name, and removes the directory
+ * afterwards. So an engine must not list or compile its templates when it is created.
  *
  * fixture() returns the engine's source for these templates:
  *

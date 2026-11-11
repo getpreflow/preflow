@@ -41,10 +41,17 @@ use Psr\Http\Message\ServerRequestInterface;
  * - effects() lists what the driver recorded for the response (triggerEvent(), redirect(),
  *   pushUrl()) since createDriver(), as strings: for headers, "Name: value" lines work well.
  *
- * The suite asserts no attribute or header names: a driver chooses its own. It checks that the
- * URL and the target id a caller passes show up in the attribute values, the method and the
- * event in an attribute name or value (htmx writes `hx-post`, Datastar `data-on-…`), the
- * effects in effects(), and that the attributes render escaped.
+ * The suite asserts no attribute or header names: a driver chooses its own. It checks that:
+ *
+ * - the URL a caller passes appears verbatim in an attribute value: as the whole value (htmx:
+ *   `hx-get="/items"`), or, where the value is a JS expression (Datastar: `@get(…)`), as a JSON
+ *   string literal of it, json_encode($url, JSON_UNESCAPED_SLASHES) (JSON_UNESCAPED_UNICODE and
+ *   the JSON_HEX_* flags are allowed too). A URL pasted into a quoted JS string without encoding
+ *   fails: the test URL holds a `'`, a `"` and `<`;
+ * - the target id is in an attribute value; the method and the event are in an attribute name
+ *   or value (htmx writes `hx-post`, Datastar `data-on-…`);
+ * - the attributes render without a raw `<` or a quote that ends the attribute;
+ * - triggerEvent(), redirect() and pushUrl() show their event or URL in effects().
  */
 abstract class HypermediaDriverContract extends TestCase
 {
@@ -71,12 +78,13 @@ abstract class HypermediaDriverContract extends TestCase
 
     public function test_action_attributes_name_the_url_the_method_and_the_target(): void
     {
-        $attrs = $this->driver->actionAttrs('post', '/items/7/save', 'item-7', SwapStrategy::OuterHTML);
-        $values = implode("\n", $attrs->toArray());
+        foreach (['post', 'delete'] as $method) {
+            $attrs = $this->driver->actionAttrs($method, '/items/7/save', 'item-7', SwapStrategy::OuterHTML);
 
-        $this->assertStringContainsString('/items/7/save', $values, 'the URL is an attribute value');
-        $this->assertStringContainsString('item-7', $values, 'the target id is in an attribute value');
-        $this->assertStringContainsStringIgnoringCase('post', (string) $attrs, 'the method is in an attribute name or value');
+            $this->assertUrlInValues('/items/7/save', $attrs);
+            $this->assertStringContainsString('item-7', implode("\n", $attrs->toArray()), 'the target id is in an attribute value');
+            $this->assertStringContainsStringIgnoringCase($method, (string) $attrs, "the method {$method} is in an attribute name or value");
+        }
     }
 
     public function test_action_attributes_keep_the_extra_attributes(): void
@@ -92,19 +100,20 @@ abstract class HypermediaDriverContract extends TestCase
         $values = implode("\n", $attrs->toArray());
 
         $this->assertStringContainsString('cart-updated', (string) $attrs, 'the event is in an attribute name or value');
-        $this->assertStringContainsString('/cart/summary', $values, 'the URL is an attribute value');
+        $this->assertUrlInValues('/cart/summary', $attrs);
         $this->assertStringContainsString('cart-box', $values, 'the target id is in an attribute value');
     }
 
     public function test_attributes_render_escaped(): void
     {
-        $attrs = $this->driver->actionAttrs('get', '/search?q="<x>"&page=2', 'results', SwapStrategy::InnerHTML);
+        $url = '/search?q="<x>"&it\'s=2';
+        $attrs = $this->driver->actionAttrs('get', $url, 'results', SwapStrategy::InnerHTML);
 
         $this->assertInstanceOf(HtmlAttributes::class, $attrs);
+        $this->assertUrlInValues($url, $attrs);
         $html = (string) $attrs;
         $this->assertStringNotContainsString('<x>', $html, 'a value is HTML-escaped when the attributes render');
-        $this->assertStringNotContainsString('"<', $html);
-        $this->assertStringContainsString('&lt;x&gt;', $html);
+        $this->assertStringNotContainsString('"<', $html, 'a quote in a value does not end the attribute');
     }
 
     public function test_a_plain_request_is_not_a_fragment_request(): void
@@ -139,6 +148,40 @@ abstract class HypermediaDriverContract extends TestCase
 
         $this->assertEffect('/items?page=2', 'pushUrl()');
     }
+
+    /**
+     * The URL is one attribute's whole value, or sits in a value as a JSON string literal (for a
+     * value that is a JS expression).
+     */
+    private function assertUrlInValues(string $url, HtmlAttributes $attrs): void
+    {
+        $literals = [];
+        foreach (self::JSON_FLAG_SETS as $flags) {
+            $literals[] = json_encode($url, $flags | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        }
+        foreach ($attrs->toArray() as $value) {
+            if ($value === $url || array_any($literals, static fn (string $literal): bool => str_contains($value, $literal))) {
+                $this->addToAssertionCount(1);
+
+                return;
+            }
+        }
+        $this->fail(sprintf(
+            'The URL %s is an attribute value, or a JSON string literal in one (json_encode with JSON_UNESCAPED_SLASHES); the values are: %s',
+            $url,
+            implode(' | ', $attrs->toArray()),
+        ));
+    }
+
+    /** The json_encode() flag sets accepted for a URL literal (each also with JSON_UNESCAPED_SLASHES). */
+    private const array JSON_FLAG_SETS = [
+        0,
+        JSON_UNESCAPED_UNICODE,
+        JSON_HEX_APOS | JSON_HEX_QUOT,
+        JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT,
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE,
+    ];
 
     private function assertEffect(string $expected, string $call): void
     {
