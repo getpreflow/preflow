@@ -153,6 +153,26 @@ public job pages: a centred card, clear labels and errors, the demo login hint s
 375 px. Check starter-folio's public pages and Folio's own sign-in with the same eye. Sync the starter files into the
 website afterwards, since the docs show them.
 
+### External scripts and styles with a matching CSP (owner, 2026-11-11)
+
+Sites need third-party files: analytics (Google Analytics), consent managers (Usercentrics), maps, chat widgets.
+Today an app writes the tag by hand (`AssetCollector::addHeadTag()` or a template, with `nonce="{{ csp_nonce() }}"`)
+and edits `config/security.php` `csp` itself. A listed directive *replaces* the default sources, so it must repeat
+`'self'`, and the extra hosts those scripts call (`connect-src`, `img-src`, `frame-src`) are easy to miss.
+
+Wanted: one supported call that adds the file and widens the CSP to match, e.g. `addScriptFile($url, …)` /
+`addCssFile($url, …)` on the asset collector, with template functions for both, plus named integrations
+that declare the full set of sources a service needs, so a site turns on "Google Analytics" or "Usercentrics" instead
+of hand-collecting hosts. Design points:
+- The CSP stays strict by default. A source is added only for pages that use the file, or site-wide when
+  configured. Directives *add to* the defaults instead of replacing them. Script tags keep the request nonce.
+- The page cache stores each page's extra sources with the entry, so a cached page is sent with the same policy.
+- Subresource integrity (`integrity`, `crossorigin`) where a file has a fixed version. `async`/`defer`/`type=module`.
+- Consent: Preflow is cookie-free by default. An integration that sets cookies runs only after consent, and the
+  consent manager's own script loads first. Decide how consent gates other integrations (a hook the consent manager
+  answers), without Preflow storing consent itself.
+- The security-headers docs and the assets guide show it; `config/security.php` stays for site-wide rules.
+
 ### Datastar's CSP mode (owner, 2026-11-11)
 
 Datastar compiles its expressions with `Function()`, so under Preflow's CSP it needs `'unsafe-eval'` in `script-src`
