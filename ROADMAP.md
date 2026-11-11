@@ -50,9 +50,11 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    Later, from this step:
    - **Aggregates by time period** (group by day, month, year of a date field)
    - **Grouping by multiple relations** (refused today)
-   - **holz-objekte.org album on the PDF part** (replace its direct mPDF use)
-   - **Blade shared-finder partial-name collision** (pre-existing: Blade's shared view finder resolves a partial by
-     name, so two directories with the same partial name can collide)
+   - **holz-objekte.org album on the PDF part** (site work, not framework: `app/Album/AlbumPdf.php` still uses mPDF
+     directly; `PdfRenderer` exists since 0.44)
+   - **Blade shared-finder partial-name collision** (partly fixed: an entry template renders by absolute path, so it
+     no longer collides; still open: an `@include` by bare name can pick the same-named partial of another directory,
+     because each directory is added to the shared finder, `BladeEngine.php` `addLocation`)
 6. **Phase 3 framework part: translation status** — released in 0.45: `TranslationStatus` finds
    missing and outdated translations per text (fields, block leaves, custom field types through
    `ReportsTranslatableTexts`), fingerprints in `_translated_from`, list badges and language tabs with counts,
@@ -91,13 +93,15 @@ members and codes against this rule.
 **Audit of all packages against this rule** (after the BG Genius steps, or alongside when a package is touched):
 go through every package (Folio, media, rbac, i18n, auth, data, notify, validation, devtools, …) for features that
 came from one project's needs, and turn each into a hook, a config option or an extension example, or move it into
-the project; note breaking changes for the consumers.
+the project; note breaking changes for the consumers. Status (checked 2026-11-11): members was audited in 0.38
+(findings F1–F8 in `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`, waiting for the owner); no record
+for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
 
-Useful during BG Genius Phase 3, not blocking: route order by specificity, controller discovery beyond
-`app/Controllers`, ~~CSRF without a session~~ (done, see "Security and data integrity"), staff mails in the
+Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
+i18n"), controller discovery beyond `app/Controllers`, ~~CSRF without a session~~ (done, see "Security and data integrity"), staff mails in the
 site's mail layout.
 
-### Form Package
+### ~~Form Package~~ — done in 0.13.0 as `preflow/form` (`form_begin()`, `form.field()`, `form.submit()`, model binding, ErrorBag); the helper names sketched below were not used
 
 An `ActiveForm`-style template layer built on top of `preflow/validation`. Replaces repetitive field/error/old-input boilerplate with declarative helpers:
 
@@ -112,8 +116,11 @@ Error display, `is-invalid` class toggle, `old()` re-population, and help text h
 ### Guide-Level Tutorial
 
 A step-by-step guide building a complete small application covering file-based + attribute routing, components with HTMX actions, data models with validation, authentication, and deployment.
+Partly done (checked 2026-11-11): preflow.dev's Start part covers install, a tour, a file page and a `#[Route]`
+controller, a component with an action and its tests, and deploying. Still missing: a Start step that adds a model
+with validation and sign-in end to end (today those live in the Build guides).
 
-### Props vs Action Params Clarity
+### ~~Props vs Action Params Clarity~~ — done in 0.13.1: `$this->param()` (action params first, then props), documented in the Build guide (HTMX)
 
 The distinction between component props (encoded in token) and action params (POST body) caused bugs in admin components. Options:
 - Merge params into props automatically so actions always see the full picture
@@ -138,6 +145,20 @@ Plan:
 3. **Do it together with phase 4**, which shrinks the package READMEs. The detail a README drops goes into the docblocks and the guides, so it isn't lost.
 4. **Ratchet, so it stays done.** Once a kind is complete, `docs:check` fails on a new entry of that kind without a description, instead of only warning. Start with classes, interfaces, enums, commands and config keys.
 
+### Datastar's CSP mode (owner, 2026-11-11)
+
+Datastar compiles its expressions with `Function()`, so under Preflow's CSP it needs `'unsafe-eval'` in `script-src`
+(`config/security.php`); the hypermedia-driver guide documents that and its cost. Datastar's CSP mode avoids
+`'unsafe-eval'` but reads the page nonce from a data attribute on `<html>`, which Preflow's driver rule forbids (a
+nonce in a readable attribute can leak). Supporting it is a framework change with its own security design and review:
+how the nonce reaches Datastar without being readable by injected markup or CSS, then a release and an update of the
+guide to prefer that mode.
+
+### Config reference: `app.hypermedia` (found 2026-11-11)
+
+The core config reference has no entry for `app.hypermedia` (0.65), so the docs can't link it from the configuration
+table; add the entry with the next release.
+
 ### Performance Benchmarks
 
 Owner todo (2026-10-26). Measure Preflow against other PHP frameworks (for example Laravel, Symfony, Slim) so claims about speed rest on numbers:
@@ -150,7 +171,8 @@ Owner todo (2026-10-26). Measure Preflow against other PHP frameworks (for examp
 Owner todo (2026-10-26). Review and rewrite the preflow.dev docs so a newcomer can use them:
 - plain explanations first, internals second; task-oriented structure ("add a page", "protect a route", "send a mail") rather than one page per class
 - practical examples that run as written
-- Folio gets its own top-level navigation entry on preflow.dev, next to Home and Docs
+- ~~Folio gets its own top-level navigation entry on preflow.dev, next to Home and Docs~~ — done (website `_layout.twig`)
+- In progress as the docs rewrite (phases 1–2 live, phase 3 Folio and Extend in progress, phase 4 shrinks the READMEs)
 
 ### Database Relations
 
@@ -162,7 +184,7 @@ $posts = $manager->query(Post::class)->with('author')->get();
 
 Or relation attributes on models. The `raw()` method covers complex JOINs for now.
 
-### Route Caching
+### ~~Route Caching~~ — done in 0.59.0: compiled route sets in the boot manifest (`preflow optimize`, drift check `optimize --check`); the old `RouteCompiler` class is unused
 
 Compile the route collection to a PHP file for production. The `RouteCompiler` exists but isn't integrated into the Application boot lifecycle with automatic invalidation.
 
@@ -180,6 +202,9 @@ Track which CSS/JS blocks have already been sent to the client to avoid re-sendi
 ### Lifecycle Events
 
 `BeforeSave`, `AfterSave`, `BeforeDelete` events on DataManager. Would allow validation to move from direct integration to event listeners, and enable other cross-cutting concerns (audit logging, cache invalidation).
+Partly there (checked 2026-11-11): `#[BeforeSave]`/`#[AfterSave]`/`#[BeforeDelete]`/`#[AfterDelete]` exist for Folio types
+only, and data has one after-write `DataObserver` (0.60, cannot refuse). Still missing: before/after events on
+DataManager itself, with listeners that can refuse, for code outside Folio.
 
 ---
 
@@ -198,18 +223,19 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - ~~**Saving null clears SQL columns (data):**~~ done in 0.42 (`save()` writes nulls; a partial save leaves the other columns alone; SQLite upserts on the primary key, MySQL updates)
 - ~~**Unique fields and typed columns (data/Folio):**~~ done in 0.42 (`unique`, `index` and `length` field options, `Unique` rule plus the database guard, typed record tables, `RecordTables`, the conversion script)
 - ~~**Restoring a revision whose unique value is taken (Folio):**~~ done in 0.42 (restore and discard flash the field error and go back to the editor; autosave answers it in the save state; drafts and restores also check bounded lengths, `DataManager::validateStorable()`)
-- **Model unique property without null (data):** a `Model` unique property typed `string` (not `?string`) keeps `''`, so a second empty value is reported "already taken"; the property has to accept `null` (document it or store `null` through the hydrator)
-- **Raw `inTransaction()` inside SQLite `exclusive()` (data/Folio):** `DeletePlanner`, `Publisher` and `RecordDeleter` ask `$pdo->inTransaction()`, which on PHP 8.4 is true inside the driver's own `BEGIN IMMEDIATE` and would nest a `BEGIN` if they ever ran there (not today); ask the driver
-- **MySQL `GET_LOCK` inside a caller's transaction (data):** the unique check's lock is released at the end of `exclusive()`, before the caller's commit, so the check does not cover a write the caller commits later (the unique index still refuses it); document in `ExclusiveWrites` or hold the lock to the commit
+- ~~**Model unique property without null (data):**~~ done in 0.42 (a nullable property stores `''` as null; a non-nullable `string` is documented as unsupported): a `Model` unique property typed `string` (not `?string`) keeps `''`, so a second empty value is reported "already taken"; the property has to accept `null` (document it or store `null` through the hydrator)
+- **Raw `inTransaction()` inside SQLite `exclusive()` (data/Folio):** `DeletePlanner`, `Publisher`, `RecordDeleter` and `Transfer\Importer` ask `$pdo->inTransaction()`, which on PHP 8.4 is true inside the driver's own `BEGIN IMMEDIATE` and would nest a `BEGIN` if they ever ran there (not today); ask the driver
+- ~~**MySQL `GET_LOCK` inside a caller's transaction (data):**~~ documented in 0.42 on `MysqlDriver::exclusive()` (the unique index is the guard): the unique check's lock is released at the end of `exclusive()`, before the caller's commit, so the check does not cover a write the caller commits later (the unique index still refuses it); document in `ExclusiveWrites` or hold the lock to the commit
 - ~~**Compare-and-set draft save (Folio publishing):**~~ done in 0.41 (`VersionedStorage::saveIfVersion()` on SQLite, MySQL and JSON, `DataManager::saveTypeIfVersion()`; `Publisher::saveDraft()` checks in the write, autosave and form save with it; `Publisher::stateWith()`, `states($type, $ids)`)
 - **Sequences (data):** a sequence / next-number helper for public numbers
 - ~~**Version-checked publish (Folio):**~~ done in 0.41.1 (`Publisher::publish($record, $by, $loadedVersion)`: claims the working copy, version kept, then the snapshot, in one SQL transaction; `null` stays unchecked for the scheduler, CLI and importers; Folio's form publish passes its version; `discard()`/`restore()` take one too)
 - ~~**Member self-deletion and delete plans (members):**~~ done in 0.38 (`onSelfDelete`, `MemberEvents`, `DeletionResult`): `Members::delete()` (account page, `members:prune`) uses `deleteType()` and ignores relations and Folio's delete plan (`restrict` relations are bypassed, e.g. orders keep a dangling member id). Wanted: delete through the delete plan, or before/after hooks
-- **Private files: session and owners (media/Folio):** private files live at `/files/{id}`, outside Folio's session path, so sites must add `/files` to `session.paths`; serve them under Folio's own path (e.g. `{prefix}/files`) or start the session there. Optional: a per-owner rule (callback or record field) so members can see their own private files
+- **Private files: session and owners (media/Folio):** partly done: a per-owner rule is possible through the
+  `PrivateFileAccess` hook (Folio binds `FolioPrivateFileAccess`). Still open: private files live at `/files/{id}`, outside Folio's session path, so sites must add `/files` to `session.paths`; serve them under Folio's own path (e.g. `{prefix}/files`) or start the session there. Optional: a per-owner rule (callback or record field) so members can see their own private files
 
 ### Media and assets
 
-- **HEIC/HEIF uploads:** accept and convert iPhone photos (Imagick) on upload
+- ~~**HEIC/HEIF uploads:**~~ done in 0.46 (converted to JPEG with Imagick, `heic_max_pixels`)
 - ~~**`importFile(…, bool $private)`**~~ — done in 0.43
 - ~~**Derived assets** and **asset garbage collection**~~ — done in 0.43 (copies as stacks in the library; opt-in cleanup into a bin)
 - **External video embeds (later, if a project needs one):** YouTube/Vimeo as their own field type (an embed URL with a poster), not a media asset: the library holds files only
@@ -219,7 +245,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - **Types with files and `"transfer": false`:** refused today for types with `asset`, `blocks` or `matrix` fields; wanted: exclude single fields from transfer, or transfer a type's files without its records
 - **`list.filters` (and `list.sort`, `list.bulk`) in an `extends` model file:** only `fields` and `list.columns` are allowed (`ModelExtension::merge`)
 - **Staff mails with the site's mail layout:** `StaffMailer` sends plain text only; a `mail.layout` option like members' (lang, subject, paragraphs, optional action)
-- **Phone layout fixes:** `min-width: 0` on `.folio-form-extras > .folio-panel` and `.folio-side > .folio-panel` (a wide table makes the form page scroll sideways at 390 px); check the list's tab row at 390 px in WebKit (the table itself already has an `overflow-x` wrapper)
+- **Phone layout fixes:** (`.folio-side` itself has `min-width: 0`; its panels and `.folio-form-extras` don't) `min-width: 0` on `.folio-form-extras > .folio-panel` and `.folio-side > .folio-panel` (a wide table makes the form page scroll sideways at 390 px); check the list's tab row at 390 px in WebKit (the table itself already has an `overflow-x` wrapper)
 
 ### Members
 
@@ -229,7 +255,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - ~~**Primary link to the mail layout:**~~ done in 0.38 (`action` for confirm, reset and existing): `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
 - **Italian (`it`) texts:** the package ships en, de and fr
 - ~~**Member lock, sessions and sign-in info (after the split):**~~ done in 0.39 (`Members::lock()`, `unlock()`, `isLocked()`, `endSessions()`, `resendConfirmation()`, `locked_at`, `last_login_at`; Folio: Locked pill, Lock / Unlock / Resend confirmation in the Decision panel): `Members::lock()`, `unlock()` and `isLocked()` with a readonly `locked_at` (a lock covers every sign-in path and shows a "Gesperrt" pill, never "declined"); `Members::endSessions()` (`auth_epoch` + 1 and `RememberMe::revokeAll()`); `Members::resendConfirmation()` (the public resend shares its code path); a readonly `last_login_at` set on sign-in, reset and confirmation
-- **Folio hook bridge for member self-deletion:** a member's own deletion runs `MemberEvents` but not Folio's record hooks on `member`. Bridge them in Folio's members adapter: `DELETING` runs `#[BeforeSave]`/`#[BeforeDelete]` and can refuse, `DELETED` runs `#[AfterSave]`/`#[AfterDelete]`. Before holz-objekte.org drops its workaround
+- **Folio hook bridge for member self-deletion:** a member's own deletion runs `MemberEvents` but not Folio's record hooks on `member` (Folio already unpublishes the member's snapshots on `DELETED`, `PublishedMemberDeletion`). Bridge them in Folio's members adapter: `DELETING` runs `#[BeforeSave]`/`#[BeforeDelete]` and can refuse, `DELETED` runs `#[AfterSave]`/`#[AfterDelete]`. Before holz-objekte.org drops its workaround
 
 ### codes
 
@@ -256,10 +282,10 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 
 ### Routing, core and i18n
 
-- **Route order by specificity:** dynamic routes match in collection order (declaration order, then unsorted `DirectoryIterator` discovery across controllers); a static segment should win over a parameter regardless of controller
+- **Route order by specificity:** partly done: `RouteMatcher` tries static routes, then dynamic ones, then catch-alls, and file routes are sorted. Still open: between two dynamic routes (`/a/{x}` vs `/{x}/b`) dynamic routes match in collection order (declaration order, then unsorted `DirectoryIterator` discovery across controllers); a static segment should win over a parameter regardless of controller
 - **`#[Options]` route attribute** (sites subclass `HttpMethod` today)
 - **Controller discovery beyond `app/Controllers`:** configurable directories, or every `#[Route]` class autoloaded under `App\`
-- **JSON query cache follows the data path:** `Application` uses `storage/cache/data` whatever `json.path` is, and cache files are named by type only (tests with a temp `DATA_PATH` write into the project's cache)
+- ~~**JSON query cache follows the data path:**~~ done in 0.58 (cache files per data path, `DATA_CACHE_PATH`): `Application` uses `storage/cache/data` whatever `json.path` is, and cache files are named by type only (tests with a temp `DATA_PATH` write into the project's cache)
 - **Prefix the default locale (i18n):** an option to serve the default locale with its prefix (`/de/…` canonical, `/…` redirecting), for sites whose old URLs carried the default language
 
 ### Protected APIs (auth, later)
@@ -386,13 +412,13 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - Sites set `DATA_CACHE_PATH` (or use `TestDataPaths`) in their test scaffold, and run `preflow cache:clear` once
       locally.
     - A site that shares all of `storage` between releases should clear the caches after each deploy.
-  - **Next:**
-    - step 2, structural: lazy providers, a compiled boot manifest, a route cache;
-    - step 3: a page cache with rebuild on publish.
+  - **Next:** ~~step 2 (lazy providers, a compiled boot manifest, a route cache)~~ done in 0.59; ~~step 3 (a page cache
+    with rebuild on publish)~~ done in 0.60.
   - **Follow-ups:**
-    - FolioServiceProviderTest and LazyHtmlSanitizerTest boot with the repo root as base path, so a Folio run writes
-      `storage/cache/composer` into the monorepo root. Give them a temp root.
-    - `MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.
+    - ~~FolioServiceProviderTest and LazyHtmlSanitizerTest boot with the repo root as base path, so a Folio run writes
+      `storage/cache/composer` into the monorepo root. Give them a temp root.~~ done in 0.59 (`TempWorkingDirectory`)
+    - ~~`MediaLibrary::prefetch()` runs COUNT + SELECT through the query builder's `get()`; it should be one query.~~
+      done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
 - **Pluggable adapters (v0.65.0, released 2026-11-11):** a third-party template engine, hypermedia driver or storage driver is
@@ -565,7 +591,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       as `ns::name`, paths searched in registration order.
   - **Not covered yet:** `search()`, `whereAny()` groups, localized queries and the optional storage interfaces
     (`VersionedStorage`, `AggregatingStorage`, `ExclusiveWrites`); rendering a template by absolute path or by
-    `@namespace/…` name directly.
+    `@namespace/…` name directly. (The data package tests most of these driver by driver; moving them into
+    `StorageDriverContract` gives third-party drivers the same checks.)
   - **Follow-ups found while writing the Folio guides (docs phase 3):** all done in 0.65.0 (Task 5c, see
     "Pluggable adapters (v0.65.0)" → "Folio follow-ups from the Folio guides"):
     - Folio's admin signs in through the app's default guard. In `preflow/starter` that guard is the employers', so
@@ -1000,9 +1027,15 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 
 ## Lower Priority
 
-- **Error page customization** — app-level 404/500 templates
-- **Blade adapter testing** — stress test the Blade adapter like Twig was tested
-- **Testing utilities** — component render assertions, HTMX action dispatch helpers, snapshot testing
+- **Error page customization** — app-level 404/500 templates. None exists in core (renderers: Dev, Prod, Json), and
+  preflow.dev's errors guide shows a middleware to render your own 404, which is a workaround: per the owner's rule,
+  give apps a supported way and replace that section of the guide
+- **Blade adapter testing** — stress test the Blade adapter like Twig was tested. Partly done: Blade runs
+  `TemplateEngineContract` since 0.64; still missing a test of every template function and directive in Blade, like
+  Twig's `PreflowExtensionTest`
+- **Testing utilities** — component render assertions, HTMX action dispatch helpers, snapshot testing. Partly done:
+  `ComponentTestCase::renderComponent()` and `TestResponse` asserts exist; still missing an HTMX action dispatch helper
+  and snapshot testing
 
 ---
 
