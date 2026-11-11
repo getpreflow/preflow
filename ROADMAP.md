@@ -406,6 +406,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       the owner to decide: Folio refuses admin sign-in unless its guard's population is `staff`, like the 0.63.2
       members rule, or says so loudly. The Folio setup guide warns about it first.
     - `packages/folio/README.md` says the table sync is SQLite only; since the grammars it also runs on MySQL.
+    - The relation column kind (`FieldKinds` and `RelationFieldType::columnKind()`) reads a field-level `multiple`,
+      but the relation field takes it from `relation.multiple`. Harmless unless the field is unique or indexed (Short
+      stays Short then): a unique/indexed multiple relation gets VARCHAR(255) on MySQL. None of the six sites has one.
 - **Starters (0.63):** released in 0.63.0 (2026-11-10). Two project templates replace the skeleton, plus the three
   general pieces they needed (rule: general features live in the packages). Plan:
   `docs/superpowers/plans/2026-11-09-starters.md`.
