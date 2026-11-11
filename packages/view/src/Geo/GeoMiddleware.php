@@ -108,11 +108,16 @@ final class GeoMiddleware implements MiddlewareInterface
      * noindex, an HTTP error). Rendered anonymously through $handler with its own
      * assets and geo blocks, so several renders in one request stay independent.
      * Other failures are reported and give null; in debug mode they are rethrown.
+     *
+     * @param bool $cached false (a page's own Markdown view): an internal render, which the page
+     *                     cache always renders, so the page's geo blocks are there; true
+     *                     (llms-full.txt): a page the page cache holds is served from it, without
+     *                     its geo blocks, so one request doesn't render every listed page
      */
-    public function render(ServerRequestInterface $request, RequestHandlerInterface $handler, string $path): ?string
+    public function render(ServerRequestInterface $request, RequestHandlerInterface $handler, string $path, bool $cached = false): ?string
     {
         $origin = PageSignals::origin($this->appUrl, $request);
-        $sub = $this->subRequest($request, $path);
+        $sub = $this->subRequest($request, $path, !$cached);
 
         $this->collector->reset();
         $this->collector->capture(true);
@@ -236,7 +241,8 @@ final class GeoMiddleware implements MiddlewareInterface
             $pages = [];
             foreach ($entries as $entry) {
                 $path = $entry->full ? $this->localPath($entry->url, $origin) : null;
-                $markdown = $path !== null ? $this->render($request, $handler, $path) : null;
+                // From the page cache where it holds the page: one request must not render every page.
+                $markdown = $path !== null ? $this->render($request, $handler, $path, cached: true) : null;
                 if ($markdown !== null) {
                     $pages[] = ['entry' => $entry, 'markdown' => self::withoutHeader($markdown)];
                 }
@@ -308,8 +314,8 @@ final class GeoMiddleware implements MiddlewareInterface
         }
     }
 
-    /** A clean GET for $path: no cookies, credentials, query or attributes, and no session; marked InternalRender. */
-    private function subRequest(ServerRequestInterface $request, string $path): ServerRequestInterface
+    /** A clean GET for $path: no cookies, credentials, query or attributes, and no session; marked InternalRender if $internal. */
+    private function subRequest(ServerRequestInterface $request, string $path, bool $internal): ServerRequestInterface
     {
         $uri = $request->getUri()->withPath($path)->withQuery('')->withFragment('');
 
@@ -328,12 +334,12 @@ final class GeoMiddleware implements MiddlewareInterface
         );
         $server = ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => $path, 'QUERY_STRING' => ''] + $server;
 
+        $sub = (new ServerRequest('GET', $uri, $headers, null, $request->getProtocolVersion(), $server))
+            ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
+
         // An internal render: the page cache renders it (a stored page holds no geo blocks), and
         // it leaves no trace (no redirect hit, no image variant, no debug toolbar).
-        return InternalRender::mark(
-            (new ServerRequest('GET', $uri, $headers, null, $request->getProtocolVersion(), $server))
-                ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true),
-        );
+        return $internal ? InternalRender::mark($sub) : $sub;
     }
 
     /** Handle $sub inside every render scope. */

@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Preflow\Core\Tests\Geo;
 
 require_once __DIR__ . '/../Fixtures/Geo/GeoEntriesProvider.php';
+require_once __DIR__ . '/../Fixtures/Geo/GeoComponents.php';
 
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\Geo\GeoEntriesProvider;
+use Preflow\Core\Tests\Fixtures\Geo\GeoRenderCount;
 use Preflow\View\Geo\GeoEntry;
 use Psr\Http\Message\ResponseInterface;
 
@@ -289,5 +291,47 @@ final class LlmsEndpointsTest extends TestCase
             $this->assertSame($plain->getHeaderLine('Content-Type'), $res->getHeaderLine('Content-Type'), $path);
             $this->assertStringStartsWith('text/html', $res->getHeaderLine('Content-Type'), $path);
         }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_llms_full_serves_cached_pages_from_the_page_cache(): void
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'off'];\n");
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['default'=>'json','drivers'=>['json'=>['path'=>'{$this->dir}/storage/data']]];\n");
+        // No locale cookie: a response that sets one isn't stored.
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'fallback'=>'en','url_strategy'=>'prefix','cookie'=>false];\n");
+        $counter = '{{ component("' . addslashes(GeoRenderCount::class) . '") }}';
+        $page = static fn (string $title, string $main): string =>
+            '<html><head><title>' . $title . '</title></head><body><main>' . $main . '</main></body></html>';
+        $this->page('about', $page('About us', '<h1>About</h1>' . $counter));
+        $this->page('contact', $page('Contact', '<p>Write to us.</p>' . $counter));
+        GeoEntriesProvider::$source = static fn (string $locale): array => [
+            new GeoEntry('About', '/about'),
+            new GeoEntry('Contact', '/contact'),
+        ];
+        ini_set('error_log', $this->dir . '/php.log');
+        $app = Application::create($this->dir);
+        $app->setRunningInConsole(false);
+        $app->boot();
+        $get = static fn (string $path): ResponseInterface => $app->handle(
+            (new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $path)->withHeader('Accept', 'text/html'),
+        );
+
+        foreach (['/about', '/contact'] as $path) {
+            $res = $get($path);
+            $this->assertSame('miss', $res->getHeaderLine('X-Page-Cache'), $path . ': ' . $res->getHeaderLine('X-Page-Cache-Skip'));
+        }
+
+        // Both pages come from the page cache: not rendered again (and, as before 0.63.2, without their geo blocks).
+        GeoRenderCount::$renders = 0;
+        $body = $this->assertPlainText($get('/llms-full.txt'), '/llms-full.txt');
+        $this->assertSame(0, GeoRenderCount::$renders);
+        $this->assertStringContainsString("## About\n\nSource: https://site.test/about\n\n## About\n\nRendered\n", $body);
+        $this->assertStringContainsString("Write to us.", $body);
+
+        // A page's own Markdown view renders it, geo block and all.
+        $md = (string) $get('/about.md')->getBody();
+        $this->assertSame(1, GeoRenderCount::$renders);
+        $this->assertStringContainsString("## Counted block", $md);
     }
 }

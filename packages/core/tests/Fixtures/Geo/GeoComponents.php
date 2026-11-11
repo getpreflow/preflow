@@ -18,3 +18,14 @@ class GeoMdCard extends Component
 }
 
 class GeoMdPlain extends Component {}
+
+/** Counts its renders: LlmsEndpointsTest checks llms-full.txt serves cached pages without rendering them. */
+class GeoRenderCount extends Component
+{
+    public static int $renders = 0;
+
+    public function resolveState(): void
+    {
+        self::$renders++;
+    }
+}
