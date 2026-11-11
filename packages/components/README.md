@@ -18,7 +18,7 @@ Errors are caught by `ErrorBoundary`: in dev mode it renders an inline panel wit
 
 A component's `{% apply css %}` and `{% apply js('head') %}` are printed by the layout's `{{ head() }}`, its body and inline JS by `{{ assets() }}`; what is collected after those calls ran (a component rendered further down) goes in before `</head>` and `</body>`.
 
-A component with `$scopeCss = true` gets its CSS nested under its own class; a child component without it is not scoped by its parent. `@media` and `@supports` stay inside the scope; `@keyframes` and `@font-face` (and other at-rules that can't be nested) are kept outside it, so their names are global: give them names of the component's own (`card-spin`).
+A component with `$scopeCss = true` gets its CSS nested under its own class; a child component without it is not scoped by its parent. `@media` and `@supports` stay inside the scope; `@keyframes` and `@font-face` (and other at-rules that can't be nested) are kept outside it, so their names are global: give them names of the component's own (`card-spin`). `@import`, `@namespace` and the statement form `@layer a, b;` are left inside the scope, where browsers ignore them: put those in a stylesheet.
 
 A page where a boundary stood in for a component is never stored by the page cache (`refused:component-error`). To show what a boundary renders without failing (an error-boundary demo, a style guide), implement `Preflow\Components\PreviewsFailure`: the renderer prints `ErrorBoundary::preview()` of `previewFailure()` in place of the component, the same output a real failure in `resolveState` gets, and reports no error, so the page is cached. The skeleton's home page does this.
 
