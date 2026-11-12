@@ -43,6 +43,7 @@ return [
         'format' => 'Un code lisible compte de 4 à 64 lettres A à Z et chiffres (les espaces et tirets sont ignorés).',
         'taken' => 'Un code identique existe déjà pour cet usage.',
         'max_uses' => 'Les utilisations max. doivent être un nombre entier (vide : illimité).',
+        'changed' => 'Le code a changé entre-temps ; rechargez-le et réessayez.',
         'unknown_code' => 'Ce code n’existe plus.',
         'revoked' => 'Un code révoqué ne peut plus être modifié.',
         'used_up' => 'Un code épuisé ne peut plus être modifié.',

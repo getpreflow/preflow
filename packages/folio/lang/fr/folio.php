@@ -810,10 +810,12 @@ return [
     'mail' => [
         'invite' => [
             'subject' => 'Votre compte pour {site}',
+            'action' => 'Accepter l’invitation',
             'body' => "Bonjour {name},\n\nun compte a été créé pour vous permettre de modifier {site} dans Folio. Choisissez votre mot de passe ici : {link}\n\nLe lien est valable 7 jours.\n\nCordialement\n{site}",
         ],
         'reset' => [
             'subject' => 'Réinitialiser votre mot de passe Folio pour {site}',
+            'action' => 'Définir mon mot de passe',
             'body' => "Bonjour {name},\n\ndéfinissez un nouveau mot de passe pour {site} ici : {link}\n\nLe lien est valable une heure. Si vous n’avez rien demandé, ignorez ce message.\n\nCordialement\n{site}",
         ],
     ],
