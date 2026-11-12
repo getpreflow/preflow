@@ -20,7 +20,8 @@ abstract class Extension
     /**
      * Runs on every folio:extensions:apply (after install() when that runs), so it must be
      * idempotent: what a deploy brings, such as a permission added to a seed list, reaches
-     * sites that installed this version already. Prints nothing. Since 0.53.
+     * sites that installed this version already. Prints nothing unless it has something to report
+     * (the rbac extension lists the undeclared permissions it granted). Since 0.53.
      */
     public function seed(Container $c): void
     {

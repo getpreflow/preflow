@@ -254,9 +254,7 @@ final class CoreRbacTest extends TestCase
         $this->assertSame("rbac installed.\n" . $line('job.view', 'staff role "editor"') . "\n" . $line('job.publish', 'members role "employer"') . "\nstaff: admin, editor\nmembers: employer\n", $out);
         $this->assertSame(['page.edit', 'job.view'], $this->byName()['staff/editor']['permissions']);
         $this->assertSame(['job.publish', 'reports.*'], $this->byName()['members/employer']['permissions']);
-        $logged = array_values(array_filter($this->logLines(), static fn (string $l): bool => str_contains($l, 'not a declared permission')));
-        $this->assertCount(2, $logged);
-        $this->assertStringEndsWith('rbac: ' . $line('job.view', 'staff role "editor"'), $logged[0]);
+        $this->assertSame([], array_values(array_filter($this->logLines(), static fn (string $l): bool => str_contains($l, 'not a declared permission'))), 'a command that prints the lines does not also write them to stderr');
 
         ob_start();
         try {
@@ -266,6 +264,33 @@ final class CoreRbacTest extends TestCase
         }
         $this->assertStringContainsString($line('job.view', 'staff role "editor"'), $migrated);
         $this->assertStringContainsString($line('job.publish', 'members role "employer"'), $migrated);
+        $this->assertSame(1, substr_count($migrated, $line('job.view', 'staff role "editor"')));
+        $this->assertSame([], array_values(array_filter($this->logLines(), static fn (string $l): bool => str_contains($l, 'not a declared permission'))));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_seed_logs_undeclared_permissions_once_through_a_bound_logger(): void
+    {
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['job.view']]];\n");
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<array{mixed, string}> */
+            public array $records = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->records[] = [$level, (string) $message];
+            }
+        };
+        $app = $this->app();
+        $c = $app->container();
+        $store = new RoleStore($c->get(DataManager::class), $logger);
+        $store->install();
+
+        $report = $store->seed(RoleStore::config($app->basePath('config/roles.php')), $c->get(\Preflow\Auth\Access\PermissionRegistry::class));
+
+        $this->assertCount(1, $report);
+        $this->assertSame([['warning', 'rbac: ' . $report[0]]], $logger->records);
+        $this->assertSame([], array_values(array_filter($this->logLines(), static fn (string $l): bool => str_contains($l, 'not a declared permission'))));
     }
 
     #[RunInSeparateProcess]

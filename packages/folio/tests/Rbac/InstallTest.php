@@ -64,15 +64,15 @@ final class InstallTest extends TestCase
         rmdir($this->dir . '/config/models');
         $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['job.view']]];\n");
 
-        $this->assertStringContainsString('installed rbac', $this->apply());
+        $out = $this->apply();
+        $this->assertStringContainsString('installed rbac', $out);
+        $line = 'config/roles.php: "job.view" (staff role "editor") is not a declared permission; granted anyway.';
+        $this->assertSame(1, substr_count($out, $line), 'printed once by apply');
 
         $this->assertDirectoryDoesNotExist($this->dir . '/config/models');
         $this->assertSame(['staff/admin', 'staff/editor'], array_keys($this->byName()));
         $this->assertSame(['job.view'], $this->byName()['staff/editor']['permissions']);
-        $this->assertContains(
-            'rbac: config/roles.php: "job.view" (staff role "editor") is not a declared permission; granted anyway.',
-            array_map(static fn (string $l): string => (string) preg_replace('/^\[[^\]]*\] /', '', $l), $this->errorLog()),
-        );
+        $this->assertSame([], array_filter($this->errorLog(), static fn (string $l): bool => str_contains($l, 'not a declared permission')), 'not echoed to stderr as well');
     }
 
     #[RunInSeparateProcess]

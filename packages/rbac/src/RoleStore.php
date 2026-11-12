@@ -9,6 +9,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeDefinition;
+use Psr\Log\LoggerInterface;
 
 /**
  * The rbac_role records, loaded once per instance (one per request); whether rbac is installed
@@ -28,7 +29,10 @@ final class RoleStore
 
     private ?bool $installed = null;
 
-    public function __construct(private readonly DataManager $dm) {}
+    public function __construct(
+        private readonly DataManager $dm,
+        private readonly ?LoggerInterface $logger = null,
+    ) {}
 
     /**
      * Whether rbac is installed here: the rbac_role table is there (`php preflow rbac:install`
@@ -60,7 +64,9 @@ final class RoleStore
      *
      * With $declared (the app's PermissionRegistry), a listed name that is not declared
      * (DeclaredPermissions) is still granted, so a deploy never depends on the order in which
-     * packages declare, but reported: one line each, returned and logged.
+     * packages declare, but reported: one line each, returned for the caller to print and, with
+     * a LoggerInterface bound, logged (warning). Without one nothing is written: the callers
+     * (rbac:install, migrate, folio:extensions:apply) print the lines, so none appears twice.
      *
      * @param array<mixed> $config
      * @return list<string> the report: one line per undeclared name
@@ -82,7 +88,7 @@ final class RoleStore
             }
         }
         foreach ($report as $line) {
-            error_log('rbac: ' . $line);
+            $this->logger?->warning('rbac: ' . $line);
         }
 
         return $report;

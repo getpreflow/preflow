@@ -343,6 +343,24 @@ final class CoreStaffTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_password_minimum_is_readable_and_checked_before_a_link_is_used(): void
+    {
+        $this->site();
+        $default = $this->app()->container()->get(StaffAccounts::class);
+        $this->assertSame(StaffAccounts::PASSWORD_MIN, $default->passwordMin());
+
+        $this->write('config/rbac.php', "<?php\nreturn ['password_min' => 12];\n");
+        $accounts = $this->app()->container()->get(StaffAccounts::class);
+        $this->assertSame(12, $accounts->passwordMin());
+        $refused = self::refusal(static fn () => $accounts->checkPassword(str_repeat('a', 11)));
+        $this->assertSame(StaffRefused::PASSWORD_SHORT, $refused->reason);
+        $this->assertSame('password', $refused->field);
+        $accounts->checkPassword(str_repeat('a', 12));
+        $boss = $this->staff('boss@site.test');
+        $this->assertSame(StaffRefused::PASSWORD_SHORT, self::refusal(static fn () => $accounts->setPassword($boss, str_repeat('a', 11)))->reason);
+    }
+
+    #[RunInSeparateProcess]
     public function test_the_last_active_admin_cant_be_disabled_or_demoted(): void
     {
         $this->site();

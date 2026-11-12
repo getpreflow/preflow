@@ -42,7 +42,10 @@ final class RbacServiceProvider extends ServiceProvider
 {
     public function register(Container $container): void
     {
-        $container->singleton(RoleStore::class, static fn (Container $c): RoleStore => new RoleStore($c->get(DataManager::class)));
+        $container->singleton(RoleStore::class, static fn (Container $c): RoleStore => new RoleStore(
+            $c->get(DataManager::class),
+            $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
+        ));
         $container->singleton(RbacResolver::class, static fn (Container $c): RbacResolver => new RbacResolver(
             $c->get(RoleStore::class),
             (bool) $c->get(Application::class)->config()->get('app.debug', false),

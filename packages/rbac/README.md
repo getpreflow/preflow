@@ -75,8 +75,9 @@ population), a label, a population (`staff` or `members`) and permissions.
   `--allow-undeclared`. The seed from `config/roles.php` (`rbac:install`, `migrate`,
   `folio:extensions:apply`) grants such a name anyway, so a deploy never depends on the order
   in which packages declare, and reports each: a line in the `rbac:install` and `migrate`
-  output and a log line (`rbac: config/roles.php: "job.view" (staff role "editor") is not a
-  declared permission; granted anyway.`).
+  output (each line once; the commands print them, nothing goes to stderr as well). With a
+  PSR-3 `LoggerInterface` bound, `RoleStore::seed()` also logs each at warning level:
+  `rbac: config/roles.php: "job.view" (staff role "editor") is not a declared permission; granted anyway.`
 - Roles stored as a JSON string (as SQL returns a list) or a comma-separated string work.
 
 ## User types
@@ -346,3 +347,12 @@ Settings → Roles").
    `rbac_role` records (and `admin`, if you had no staff role).
 3. Check the roles under *Settings → Roles*, then remove `preflow/roles` and
    `config/roles.php` when you like; later edits happen in Folio only.
+
+## Password minimum
+
+`config/rbac.php` `'password_min'` sets the shortest staff password (default
+`StaffAccounts::PASSWORD_MIN`, 10). `StaffAccounts::passwordMin()` returns it and
+`StaffAccounts::checkPassword($password)` throws the same `StaffRefused`
+(`PASSWORD_SHORT`, field `password`) as `setPassword()`. A set-password page calls
+`checkPassword()` before it consumes the link (`AccountLinks::consume()` uses the token up), so
+a password that is too short doesn't cost the person their link.

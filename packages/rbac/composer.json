@@ -17,6 +17,7 @@
         "nyholm/psr7": "^1.8"
     },
     "suggest": {
+        "psr/log": "The seed's undeclared-permission warnings go to the app's bound Psr\\Log\\LoggerInterface",
         "preflow/devtools": "The rbac:* and staff:* commands (php preflow)",
         "preflow/folio": "The admin of roles and staff accounts (Folio's built-in extension \"rbac\")"
     },

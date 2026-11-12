@@ -215,6 +215,26 @@ final class StaffAccounts
         $this->send('reset', $staff, $this->link($links, $this->page(), $staff, self::RESET, self::RESET_TTL));
     }
 
+    /** The shortest password this site takes: config/rbac.php 'password_min', else PASSWORD_MIN. */
+    public function passwordMin(): int
+    {
+        return $this->passwordMin;
+    }
+
+    /**
+     * Refuses a password that is too short, as setPassword() does. A set-password page calls it
+     * before it uses the link (AccountLinks::consume() uses the token up), so a short password
+     * costs the person nothing.
+     *
+     * @throws StaffRefused
+     */
+    public function checkPassword(string $password): void
+    {
+        if (mb_strlen($password) < $this->passwordMin) {
+            throw $this->refused(StaffRefused::PASSWORD_SHORT, 'staff.password_short', ['min' => $this->passwordMin], 'password');
+        }
+    }
+
     /**
      * Sets the password (AccountLinks: the epoch goes up, so other sessions end, and remember-me
      * logins end) and voids the account's invite and reset links.
@@ -223,9 +243,7 @@ final class StaffAccounts
      */
     public function setPassword(DynamicRecord $staff, string $password): void
     {
-        if (mb_strlen($password) < $this->passwordMin) {
-            throw $this->refused(StaffRefused::PASSWORD_SHORT, 'staff.password_short', ['min' => $this->passwordMin], 'password');
-        }
+        $this->checkPassword($password);
         $links = $this->requireLinks($staff);
         if (!$links->setPassword($staff, $password)) {
             throw $this->refused(StaffRefused::INACTIVE, 'staff.inactive');
