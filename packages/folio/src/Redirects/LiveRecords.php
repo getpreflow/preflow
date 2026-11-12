@@ -8,19 +8,25 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Publishing\Publisher;
+use Preflow\Routing\Redirect\TargetIsLive;
 
 /**
  * A record as the public site shows it, by id: the published snapshot of a publishing type,
  * else the record when its "published" field has the route's value (queried as
  * FrontendResolver::match() queries it). Null for a type without a frontend route.
  */
-final class LiveRecords
+final class LiveRecords implements TargetIsLive
 {
     public function __construct(
         private readonly DataManager $dm,
         private readonly Publisher $publisher,
         private readonly FrontendResolver $resolver,
     ) {}
+
+    public function isLive(string $type, string $id): bool
+    {
+        return $this->find($type, $id) !== null;
+    }
 
     public function find(string $type, string $id): ?DynamicRecord
     {

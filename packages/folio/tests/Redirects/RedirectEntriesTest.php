@@ -9,7 +9,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Folio\Tests\Support\InternalStorage;
 use Preflow\Routing\Redirect\AreaMode;
+use Preflow\Routing\Redirect\NotFoundList;
+use Preflow\Routing\Redirect\PageExists;
 use Preflow\Routing\Redirect\Redirect;
+use Preflow\Routing\Redirect\RedirectRejected;
+use Preflow\Routing\Redirect\RedirectRules;
+use Preflow\Routing\Redirect\SiteAddresses;
+use Preflow\Routing\Redirect\TargetIsLive;
 
 /** Folio's redirect entries (folio_redirects) on JSON and on SQLite. */
 final class RedirectEntriesTest extends TestCase
@@ -162,5 +168,87 @@ final class RedirectEntriesTest extends TestCase
         $this->assertSame([], $entries->sourcedBy('page', 'p1'));
         $this->assertCount(1, $entries->targeting('Page', 'P1'));
         $this->assertCount(1, $entries->sourcedBy('Page', 'P1'));
+    }
+
+    /** @param list<string> $forgotten */
+    private function ruled(string $storage, array &$forgotten = []): RedirectEntries
+    {
+        $entries = null;
+        $entries = new RedirectEntries($this->internalStorage($storage, RedirectEntries::definition()), static function () use (&$entries, &$forgotten): RedirectRules {
+            return new RedirectRules(
+                $entries,
+                new class implements PageExists {
+                    public function exists(string $locale, string $path): bool
+                    {
+                        return $path === '/about';
+                    }
+                },
+                new class implements TargetIsLive {
+                    public function isLive(string $type, string $id): bool
+                    {
+                        return false;
+                    }
+                },
+                new class implements SiteAddresses {
+                    public function address(string $url, string $host = ''): ?array
+                    {
+                        return str_starts_with($url, '/') ? ['', $url] : null;
+                    }
+
+                    public function lookupLocale(string $locale): string
+                    {
+                        return $locale;
+                    }
+                },
+                new class ($forgotten) implements NotFoundList {
+                    public function __construct(private array &$forgotten) {}
+
+                    public function forget(string $locale, string $path): void
+                    {
+                        $this->forgotten[] = $path;
+                    }
+
+                    public function forgetUnder(string $locale, string $area): void
+                    {
+                        $this->forgotten[] = $area . '/*';
+                    }
+                },
+            );
+        });
+
+        return $entries;
+    }
+
+    #[DataProvider('storages')]
+    public function test_save_holds_every_writer_to_the_rules(string $storage): void
+    {
+        $forgotten = [];
+        $entries = $this->ruled($storage, $forgotten);
+        $entries->save(['path' => '/old', 'target_url' => '/new']);
+        $this->assertSame(['/old'], $forgotten);
+
+        try {
+            $entries->save(['path' => '/about', 'target_url' => '/new']);
+            $this->fail('a page wins over an exact entry');
+        } catch (RedirectRejected $e) {
+            $this->assertSame('page_wins', $e->errors->get('address'));
+        }
+        try {
+            $entries->save(['path' => '/other', 'target_url' => '/old']);
+            $this->fail('no chains');
+        } catch (RedirectRejected $e) {
+            $this->assertSame('target_redirects', $e->errors->get('target'));
+        }
+        $this->assertNull($entries->exact('/about', ''));
+        $this->assertNull($entries->exact('/other', ''));
+    }
+
+    #[DataProvider('storages')]
+    public function test_store_is_the_automatic_bookkeeping_without_the_rules(string $storage): void
+    {
+        $entries = $this->ruled($storage);
+        $entries->store(['path' => '/about', 'target_type' => 'page', 'target_id' => 'gone', 'kind' => 'auto']);
+
+        $this->assertNotNull($entries->exact('/about', ''));
     }
 }

@@ -9,6 +9,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
+use Preflow\Routing\Redirect\NotFoundList;
 use Preflow\Routing\Redirect\NotFoundLog;
 use Preflow\Routing\Redirect\RedirectPath;
 
@@ -22,7 +23,7 @@ use Preflow\Routing\Redirect\RedirectPath;
  *
  * Nothing here touches the storage before a method is called (see RedirectEntries).
  */
-final class NotFoundEntries implements NotFoundLog
+final class NotFoundEntries implements NotFoundLog, NotFoundList
 {
     public const string TABLE = 'folio_not_found';
 

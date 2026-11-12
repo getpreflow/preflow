@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Routing\Tests\Redirect\Fixtures;
 
 use Preflow\Routing\Redirect\Redirect;
-use Preflow\Routing\Redirect\RedirectStore;
+use Preflow\Routing\Redirect\EditableRedirectStore;
 
 /** Redirect entries held in an array; `$fail` makes every call throw like a missing table. */
-final class InMemoryRedirectStore implements RedirectStore
+final class InMemoryRedirectStore implements EditableRedirectStore
 {
     /** @var list<string> ids of the entries counted by hit() */
     public array $hits = [];
@@ -43,6 +43,26 @@ final class InMemoryRedirectStore implements RedirectStore
             $this->entries,
             static fn (Redirect $entry): bool => $entry->area && ($entry->locale === $locale || $entry->locale === ''),
         ));
+    }
+
+    public function entries(): array
+    {
+        $this->failIfAsked();
+
+        return $this->entries;
+    }
+
+    public function entry(string $id): ?Redirect
+    {
+        $this->failIfAsked();
+
+        foreach ($this->entries as $entry) {
+            if ($entry->id === $id) {
+                return $entry;
+            }
+        }
+
+        return null;
     }
 
     public function hit(Redirect $redirect, \DateTimeImmutable $at): void

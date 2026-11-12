@@ -8,7 +8,9 @@ use Preflow\Data\Locales;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\ResolvedRecord;
 use Preflow\Routing\Redirect\AreaMode;
+use Preflow\Routing\Redirect\PageExists;
 use Preflow\Routing\Redirect\RedirectPath;
+use Preflow\Routing\Redirect\SiteAddresses;
 
 /**
  * Where a redirect target really leads, so no redirect ever points at another one (no chains):
@@ -23,7 +25,7 @@ use Preflow\Routing\Redirect\RedirectPath;
  * Addresses are read as LocaleMiddleware reads them: with locale prefixes a first segment naming
  * one of the site's languages is the language, else the default; without prefixes ''.
  */
-final class SiteTarget
+final class SiteTarget implements PageExists, SiteAddresses
 {
     /** Hops followed through entries that point at other entries (left over from before this check). */
     private const int MAX_HOPS = 10;
@@ -77,6 +79,12 @@ final class SiteTarget
         $normalized = $local === null ? null : RedirectPath::normalize($local);
 
         return $normalized === null ? null : $this->split($normalized);
+    }
+
+    /** Whether a page holds the address (page()). */
+    public function exists(string $locale, string $path): bool
+    {
+        return $this->page($locale, $path) !== null;
     }
 
     /**

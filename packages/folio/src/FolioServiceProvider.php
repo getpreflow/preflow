@@ -362,6 +362,7 @@ final class FolioServiceProvider extends ServiceProvider
         if ($dataManager !== null) {
             $container->singleton(\Preflow\Folio\Redirects\RedirectEntries::class, static fn (Container $c) => new \Preflow\Folio\Redirects\RedirectEntries(
                 $c->get(DataManager::class),
+                static fn (): \Preflow\Routing\Redirect\RedirectRules => $c->get(\Preflow\Routing\Redirect\RedirectRules::class),
             ));
             $container->singleton(\Preflow\Folio\Redirects\NotFoundEntries::class, static fn (Container $c) => new \Preflow\Folio\Redirects\NotFoundEntries(
                 $c->get(DataManager::class),
@@ -385,6 +386,15 @@ final class FolioServiceProvider extends ServiceProvider
                 $locales ?? \Preflow\Data\Locales::single('en'),
                 self::prefixedUrls($app),
                 \Preflow\Folio\Redirects\SiteTarget::hostOf($app->config()->get('app.url')),
+            ));
+            // The write rules of a redirect entry (routing's), for every writer: the entries' save() and
+            // Settings → Redirects. What only the site knows is answered by Folio's own classes.
+            $container->singleton(\Preflow\Routing\Redirect\RedirectRules::class, static fn (Container $c) => new \Preflow\Routing\Redirect\RedirectRules(
+                $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
+                $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
+                $c->get(\Preflow\Folio\Redirects\LiveRecords::class),
+                $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
+                $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class),
             ));
             // The address book behind the automatic redirects. LiveRecords reads through the Publisher,
             // which writes through the address book: it is looked up when first needed.
@@ -429,6 +439,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
                 $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
+                $c->get(\Preflow\Routing\Redirect\RedirectRules::class),
             ));
         }
         $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(

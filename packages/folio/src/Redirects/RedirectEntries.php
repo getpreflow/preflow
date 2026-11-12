@@ -10,8 +10,10 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Routing\Redirect\AreaMode;
 use Preflow\Routing\Redirect\Redirect;
+use Preflow\Routing\Redirect\EditableRedirectStore;
 use Preflow\Routing\Redirect\RedirectPath;
-use Preflow\Routing\Redirect\RedirectStore;
+use Preflow\Routing\Redirect\RedirectRejected;
+use Preflow\Routing\Redirect\RedirectRules;
 
 /**
  * The redirect entries (Settings → Redirects and the automatic ones), in Folio's own table in the
@@ -22,7 +24,7 @@ use Preflow\Routing\Redirect\RedirectStore;
  * Rows are arrays with the table's columns. Nothing here touches the storage before a method
  * is called: a site that has not run `preflow migrate` fails inside the methods only.
  */
-final class RedirectEntries implements RedirectStore
+final class RedirectEntries implements EditableRedirectStore
 {
     public const string TABLE = 'folio_redirects';
 
@@ -30,7 +32,17 @@ final class RedirectEntries implements RedirectStore
 
     private static ?TypeDefinition $definition = null;
 
-    public function __construct(private readonly DataManager $dm) {}
+    /** @var (\Closure(): RedirectRules)|RedirectRules|null */
+    private readonly \Closure|RedirectRules|null $rules;
+
+    /**
+     * @param RedirectRules|\Closure(): RedirectRules|null $rules the rules save() holds entries to; a closure
+     *        when they are built later (they look through this store); none: save() checks nothing
+     */
+    public function __construct(private readonly DataManager $dm, RedirectRules|\Closure|null $rules = null)
+    {
+        $this->rules = $rules;
+    }
 
     public static function definition(): TypeDefinition
     {
@@ -83,6 +95,19 @@ final class RedirectEntries implements RedirectStore
         return $areas;
     }
 
+    /** @return list<Redirect> */
+    public function entries(): array
+    {
+        return array_map(self::redirect(...), $this->all());
+    }
+
+    public function entry(string $id): ?Redirect
+    {
+        $row = $this->find($id);
+
+        return $row === null ? null : self::redirect($row);
+    }
+
     public function hit(Redirect $redirect, \DateTimeImmutable $at): void
     {
         $row = $this->find($redirect->id);
@@ -120,10 +145,47 @@ final class RedirectEntries implements RedirectStore
      * kind "manual"; hits, created_at, created_by and last_hit_at are kept from the replaced
      * entry, else no hits, created now.
      *
+     * The entry has to meet RedirectRules (no chains, a page wins over an exact entry, …) when the
+     * store was given them: for a writer that is not the automatic bookkeeping, see store().
+     * $replaces is the stored entry being edited (when its address changes, the caller deletes
+     * the old one afterwards): the rules leave it out; by default it is the entry at the same address.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed>|null $replaces
+     * @throws \InvalidArgumentException for a path that is not a site path, or an unknown mode, status or kind
+     * @throws RedirectRejected when the rules refuse the entry
+     */
+    public function save(array $row, ?array $replaces = null, string $host = ''): void
+    {
+        $row = $this->complete($row);
+        $rules = $this->rules instanceof \Closure ? ($this->rules)() : $this->rules;
+        if ($rules !== null) {
+            $errors = $rules->check($row, $replaces ?? $this->find($row['id']), $host);
+            if (!$errors->isEmpty()) {
+                throw new RedirectRejected($errors);
+            }
+        }
+        $this->write($row);
+        $rules?->saved($row);
+    }
+
+    /**
+     * Stores an entry without the rules: the automatic bookkeeping (RecordAddresses keeps its
+     * entries from chaining itself). Same defaults and replacing as save().
+     *
      * @param array<string, mixed> $row
      * @throws \InvalidArgumentException for a path that is not a site path, or an unknown mode, status or kind
      */
-    public function save(array $row): void
+    public function store(array $row): void
+    {
+        $this->write($this->complete($row));
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed> the full row, id included
+     */
+    private function complete(array $row): array
     {
         $path = RedirectPath::normalize((string) ($row['path'] ?? ''))
             ?? throw new \InvalidArgumentException('Not a site path: ' . (string) ($row['path'] ?? ''));
@@ -151,7 +213,7 @@ final class RedirectEntries implements RedirectStore
             }
         }
 
-        $this->write([
+        return [
             'id' => $id,
             'path' => $path,
             'locale' => $locale,
@@ -168,7 +230,7 @@ final class RedirectEntries implements RedirectStore
             'created_at' => self::optional($row['created_at'] ?? null) ?? (new \DateTimeImmutable())->format(DATE_ATOM),
             'created_by' => self::optional($row['created_by'] ?? null),
             'last_hit_at' => self::optional($row['last_hit_at'] ?? null),
-        ]);
+        ];
     }
 
     public function delete(string $id): void
