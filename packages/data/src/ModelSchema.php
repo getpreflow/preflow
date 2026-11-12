@@ -16,8 +16,11 @@ use Preflow\Validation\Attributes\Validate;
  */
 final class ModelSchema
 {
-    /** Keys that define a type's data; every other type key is presentation. */
-    public const array SCHEMA_TYPE_KEYS = ['key', 'table', 'storage', 'id_field', 'fields', 'matrixable', 'views'];
+    /**
+     * Keys that define a type's data; every other type key is an admin setting (label, list,
+     * section, and the matrixable and views that Folio reads from the schema).
+     */
+    public const array SCHEMA_TYPE_KEYS = ['key', 'table', 'storage', 'id_field', 'fields'];
 
     /**
      * Keys that define a field's data; every other field key is presentation (label, help, readonly, ...).

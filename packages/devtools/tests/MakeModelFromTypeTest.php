@@ -74,7 +74,7 @@ final class MakeModelFromTypeTest extends TestCase
             'the schema array Folio reads is the same, falsy and null keys too',
         );
         $admin = json_decode(file_get_contents($this->base . "/config/models/{$key}.json"), true);
-        $this->assertSame([], array_intersect(array_keys($admin), ['table', 'storage', 'id_field', 'matrixable', 'views']));
+        $this->assertSame([], array_intersect(array_keys($admin), ['table', 'storage', 'id_field']));
         $this->assertSame($key, $admin['key']);
     }
 
@@ -289,18 +289,23 @@ final class MakeModelFromTypeTest extends TestCase
         $this->assertSame($admin, file_get_contents($this->base . '/config/models/game.json'));
     }
 
-    public function test_a_key_a_class_cannot_express_is_an_error_naming_it(): void
+    public function test_from_type_keeps_matrixable_in_the_admin_file(): void
     {
         $type = json_decode(file_get_contents($this->fixtureDir . '/game.json'), true);
         $type['matrixable'] = true;
+        $type['views'] = ['card'];
         file_put_contents($this->base . '/config/models/game.json', json_encode($type));
 
-        [$code] = $this->make('Game', '--from-type=game');
+        [$code, $out] = $this->make('MatrixGame', '--from-type=game');
 
-        $this->assertSame(1, $code);
-        $this->assertStringContainsString('"matrixable"', $this->errors());
-        $this->assertFileDoesNotExist($this->base . '/app/Models/Game.php');
-        $this->assertSame(json_encode($type), file_get_contents($this->base . '/config/models/game.json'));
+        $this->assertSame(0, $code, $out . $this->errors());
+        $admin = json_decode(file_get_contents($this->base . '/config/models/game.json'), true);
+        $this->assertTrue($admin['matrixable']);
+        $this->assertSame(['card'], $admin['views']);
+        require $this->base . '/app/Models/MatrixGame.php';
+        $schema = (new TypeRegistry($this->base . '/config/models', null, ['game' => 'App\\Models\\MatrixGame']))->schema('game');
+        $this->assertTrue($schema['matrixable']);
+        $this->assertSame(['card'], $schema['views']);
     }
 
     public function test_an_id_field_that_is_also_a_field_is_an_error(): void
@@ -354,12 +359,6 @@ final class MakeModelFromTypeTest extends TestCase
     private static function withDefaults(array $schema, string $key): array
     {
         $schema += ['key' => $key, 'storage' => 'default', 'id_field' => 'uuid'];
-        if (($schema['matrixable'] ?? null) === false) {
-            unset($schema['matrixable']);
-        }
-        if (($schema['views'] ?? null) === []) {
-            unset($schema['views']);
-        }
         foreach ($schema['fields'] as $name => $field) {
             $schema['fields'][$name] = $field + ['type' => 'string'];
         }

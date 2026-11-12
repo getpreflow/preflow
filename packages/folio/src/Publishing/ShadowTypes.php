@@ -62,8 +62,6 @@ final class ShadowTypes
             idField: $def->idField,
             searchableFields: $def->searchableFields,
             transformers: $def->transformers,
-            matrixable: $def->matrixable,
-            views: $def->views,
             locales: $def->locales,
         );
     }

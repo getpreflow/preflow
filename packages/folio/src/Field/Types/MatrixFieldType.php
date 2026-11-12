@@ -173,7 +173,7 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
     }
 
     /**
-     * Effective allowed types = (config.allowed or all type keys) ∩ matrixable.
+     * Effective allowed types = (config.allowed or all type keys) ∩ matrixable (the `matrixable` admin setting of the type's model JSON).
      *
      * @param array<string, mixed> $config
      * @return string[]
@@ -189,7 +189,7 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
 
         $out = [];
         foreach ($candidates as $key) {
-            if ($this->registry->has($key) && $this->registry->get($key)->matrixable) {
+            if ($this->registry->has($key) && ($this->registry->schema($key)['matrixable'] ?? false) === true) {
                 $out[] = $key;
             }
         }
@@ -197,7 +197,7 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
     }
 
     /**
-     * Declared views for a type (model JSON `views`), filtered to non-empty strings.
+     * Declared views for a type (the `views` admin setting of the type's model JSON), filtered to non-empty strings.
      *
      * @return string[]
      */
@@ -206,8 +206,10 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
         if (!$this->registry->has($type)) {
             return [];
         }
+        $views = $this->registry->schema($type)['views'] ?? [];
+
         return array_values(array_filter(
-            $this->registry->get($type)->views,
+            is_array($views) ? $views : [],
             static fn ($v) => is_string($v) && $v !== '',
         ));
     }

@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Field;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Attributes\Entity;
+use Preflow\Data\Attributes\Field;
+use Preflow\Data\Attributes\Id;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Model;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\RecordRenderer;
@@ -106,6 +110,23 @@ final class MatrixFieldTypeTest extends TestCase
         $this->assertSame('2 rows', $t->renderAdmin([['_type' => 'page', 'id' => 'a'], ['_type' => 'page', 'id' => 'b']], []));
         $this->assertSame('1 row', $t->renderAdmin('[{"_type":"page","id":"a"}]', []));
         $this->assertSame('', $t->renderAdmin([], []));
+    }
+
+    public function test_class_backed_type_is_offered_when_admin_file_marks_it_matrixable(): void
+    {
+        file_put_contents($this->base . '/m/teaser.json', json_encode([
+            'key' => 'teaser', 'label' => 'Teasers', 'matrixable' => true, 'views' => ['wide', '', 7],
+        ]));
+        file_put_contents($this->base . '/m/hidden_teaser.json', json_encode(['key' => 'hidden_teaser', 'label' => 'Hidden']));
+        $registry = new TypeRegistry($this->base . '/m', null, ['teaser' => MatrixTeaser::class, 'hidden_teaser' => MatrixHiddenTeaser::class]);
+        $dm = new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $registry);
+        $type = new MatrixFieldType(new TypeCatalog($this->base . '/m', null, $registry), $registry, $dm, $this->recordRenderer(), new RecordLabeler(), '/folio');
+
+        $html = $type->renderEditor(new FieldContext(name: 'blocks', config: $this->config(['teaser', 'hidden_teaser'])));
+
+        $this->assertStringContainsString('value="teaser"', $html);
+        $this->assertStringNotContainsString('value="hidden_teaser"', $html, 'no matrixable setting means not matrixable');
+        $this->assertStringContainsString('"views":{"teaser":["wide"]}', $html);
     }
 
     public function test_key_and_assets(): void
@@ -231,4 +252,24 @@ final class MatrixFieldTypeTest extends TestCase
         $out = $this->type()->renderFrontend([['_type' => 'note', 'id' => 'n1', 'view' => 'card']], $this->config(['note']));
         $this->assertStringContainsString('[note:First note]', $out);
     }
+}
+
+#[Entity(table: 'teaser', storage: 'json', type: 'teaser')]
+final class MatrixTeaser extends Model
+{
+    #[Id]
+    public ?string $uuid = null;
+
+    #[Field]
+    public string $name = '';
+}
+
+#[Entity(table: 'hidden_teaser', storage: 'json', type: 'hidden_teaser')]
+final class MatrixHiddenTeaser extends Model
+{
+    #[Id]
+    public ?string $uuid = null;
+
+    #[Field]
+    public string $name = '';
 }

@@ -241,7 +241,7 @@ final class MakeModelCommand implements CommandInterface
     /**
      * The class: the type's data, plus labels and help (they say what a field is). Per-field
      * keys that only steer the admin form (readonly, hidden, placeholder, ...) stay in the admin
-     * file, as do the type's own presentation keys.
+     * file, as do the type's own admin settings (label, list, matrixable, views, ...).
      *
      * @param array<string, mixed> $type
      */
@@ -257,12 +257,6 @@ final class MakeModelCommand implements CommandInterface
             if (!is_string($value) || $value === '') {
                 throw new \RuntimeException("{$file} needs \"{$name}\" as a text.");
             }
-        }
-        if (($type['matrixable'] ?? false) !== false) {
-            throw new \RuntimeException("{$file} sets \"matrixable\", which a model class cannot carry yet: keep {$key} a JSON type.");
-        }
-        if (($type['views'] ?? []) !== []) {
-            throw new \RuntimeException("{$file} sets \"views\", which a model class cannot carry yet: keep {$key} a JSON type.");
         }
         $fields = $type['fields'] ?? [];
         if (!is_array($fields)) {
@@ -505,9 +499,8 @@ final class MakeModelCommand implements CommandInterface
      * Loads the class under a throwaway namespace and compares what the registry serves for it
      * (with its admin file) with what it serves for the JSON type: the TypeDefinition, and the
      * schema array that Folio and others read. The schemas are compared with the defaults the
-     * registry applies filled in (key, storage, id_field, a field's type; matrixable false and
-     * no views left out), since a class always states those; every other key is kept as the
-     * JSON file has it, falsy and null values too.
+     * registry applies filled in (key, storage, id_field, a field's type), since a class always
+     * states those; every other key is kept as the JSON file has it, falsy and null values too.
      */
     private function assertSameType(string $key, string $jsonFile, string $php, string $admin): void
     {
@@ -548,12 +541,6 @@ final class MakeModelCommand implements CommandInterface
     private static function withDefaults(array $schema, string $key): array
     {
         $schema += ['key' => $key, 'storage' => 'default', 'id_field' => 'uuid'];
-        if (($schema['matrixable'] ?? null) === false) {
-            unset($schema['matrixable']);
-        }
-        if (($schema['views'] ?? null) === []) {
-            unset($schema['views']);
-        }
         foreach ((array) ($schema['fields'] ?? []) as $name => $field) {
             if (is_array($field)) {
                 $schema['fields'][$name] = $field + ['type' => 'string'];

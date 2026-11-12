@@ -267,11 +267,6 @@ final class TypeRegistry
             idField: $schema['id_field'] ?? 'uuid',
             searchableFields: $searchableFields,
             transformers: $transformers,
-            matrixable: (bool) ($schema['matrixable'] ?? false),
-            views: array_values(array_filter(
-                (array) ($schema['views'] ?? []),
-                static fn ($v) => is_string($v),
-            )),
             locales: $this->locales ?? Locales::single('en'),
         );
     }

@@ -19,8 +19,6 @@ final readonly class TypeDefinition
         public string $idField = 'uuid',
         public array $searchableFields = [],
         public array $transformers = [],
-        public bool $matrixable = false,
-        public array $views = [],
         public Locales $locales = new Locales(['en'], 'en'),
     ) {}
 
