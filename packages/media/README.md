@@ -126,7 +126,7 @@ return [
     automatic injection to keep the link.
 - The focal point becomes classes (`media-focal media-fx-30 media-fy-70`), never an inline
   style; their CSS is added with the CSP nonce. It shows only when your CSS crops the image
-  (`object-fit: cover`). The class names are kept from Folio.
+  (`object-fit: cover`).
 
 ## Variants
 

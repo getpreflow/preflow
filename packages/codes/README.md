@@ -1,6 +1,6 @@
 # preflow/codes
 
-Codes that grant something for one purpose: readable codes (a book code a visitor types)
+Codes that grant something for one purpose: readable codes (a voucher code a visitor types)
 and random codes (an invite link), with expiry, usage limits, revocation and a throttled
 redeem.
 
