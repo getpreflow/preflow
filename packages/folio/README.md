@@ -1255,14 +1255,17 @@ php preflow folio:extensions:uninstall <name> [--force]
 that must follow the code, such as the roles an extension creates, override `seed()` (since 0.53):
 
 ```php
-public function seed(Container $c): void
+public function seed(Container $c): array
 {
     $c->get(RoleStore::class)->ensure('staff', 'shop_manager', 'Shop manager', ['shop.view', 'shop.refund']);
+
+    return []; // lines to print, one each
 }
 ```
 
-- `seed()` runs on every `folio:extensions:apply`, after `install()` when that runs. It prints
-  nothing, and a run that only seeds still says "nothing to do".
+- `seed()` runs on every `folio:extensions:apply`, after `install()` when that runs. It returns
+  the lines apply prints (`[]` for none); a run that only seeds and returns none still says
+  "nothing to do".
 - It must be safe to run again and again. `RoleStore::ensure()` is: it creates a missing role and
   grants an existing role only the permissions the list names for the first time.
 - Apply resolves every enabled extension from the container on every run, so keep constructors

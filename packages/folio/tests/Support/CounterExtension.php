@@ -7,7 +7,7 @@ namespace Preflow\Folio\Tests\Support;
 /**
  * Writes a project extension "counter" (app/Folio/Counter, version 1.0.0) into a scaffolded
  * app: a "board" screen, an install() that appends a line to installs.log per run, a seed()
- * that does the same to seeds.log and an uninstall() to uninstalls.log.
+ * that does the same to seeds.log (and returns a line when a file seed-report exists) and an uninstall() to uninstalls.log.
  * Its classes are declared once per process, so tests using it run in separate processes.
  */
 trait CounterExtension
@@ -28,9 +28,12 @@ trait CounterExtension
                     file_put_contents($c->get(\Preflow\Core\Application::class)->basePath('installs.log'), "install\n", FILE_APPEND);
                 }
 
-                public function seed(\Preflow\Core\Container\Container $c): void
+                public function seed(\Preflow\Core\Container\Container $c): array
                 {
-                    file_put_contents($c->get(\Preflow\Core\Application::class)->basePath('seeds.log'), "seed\n", FILE_APPEND);
+                    $base = $c->get(\Preflow\Core\Application::class)->basePath('seeds.log');
+                    file_put_contents($base, "seed\n", FILE_APPEND);
+
+                    return is_file(dirname($base) . '/seed-report') ? ['counter: seeded a thing'] : [];
                 }
 
                 public function uninstall(\Preflow\Core\Container\Container $c): void

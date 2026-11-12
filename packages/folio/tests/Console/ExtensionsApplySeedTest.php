@@ -31,7 +31,7 @@ final class ExtensionsApplySeedTest extends TestCase
         $this->counter();
 
         $this->assertStringContainsString('installed counter 1.0.0', $this->apply());
-        // Seeding prints nothing: a run with nothing to install still says so.
+        // A seed with no lines to report prints nothing: a run with nothing to install still says so.
         $this->assertSame("nothing to do\n", $this->apply());
 
         $this->assertSame("install\n", (string) file_get_contents($this->dir . '/installs.log'));
@@ -46,6 +46,17 @@ final class ExtensionsApplySeedTest extends TestCase
 
         $this->assertSame("nothing to do\n", $this->apply());
         $this->assertFileDoesNotExist($this->dir . '/seeds.log');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_line_a_seed_returns_is_printed_and_counts_as_work(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter();
+        $this->apply(); // installs
+        file_put_contents($this->dir . '/seed-report', '1');
+
+        $this->assertSame("counter: seeded a thing\n", $this->apply());
     }
 
     private function apply(): string

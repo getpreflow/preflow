@@ -68,13 +68,13 @@ final class Extension extends \Preflow\Folio\Extension\Extension
      * Seeds the roles on every deploy, as `php preflow rbac:install` does (RoleStore::seed()):
      * the staff role "admin" (everything) when there is no staff role, then every role of
      * config/roles.php. An editor's change in Folio stays. A permission it grants that nothing
-     * declares is printed in apply's output (and logged when a logger is bound).
+     * declares is returned for apply to print (and logged when a logger is bound); an app
+     * without auth binds no PermissionRegistry and reports none.
+     *
+     * @return list<string>
      */
-    public function seed(Container $c): void
+    public function seed(Container $c): array
     {
-        $report = $c->get(RoleStore::class)->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->bound(PermissionRegistry::class) ? $c->get(PermissionRegistry::class) : null);
-        foreach ($report as $line) {
-            echo $line . "\n";
-        }
+        return $c->get(RoleStore::class)->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->bound(PermissionRegistry::class) ? $c->get(PermissionRegistry::class) : null);
     }
 }

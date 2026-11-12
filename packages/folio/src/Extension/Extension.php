@@ -20,11 +20,14 @@ abstract class Extension
     /**
      * Runs on every folio:extensions:apply (after install() when that runs), so it must be
      * idempotent: what a deploy brings, such as a permission added to a seed list, reaches
-     * sites that installed this version already. Prints nothing unless it has something to report
-     * (the rbac extension lists the undeclared permissions it granted). Since 0.53.
+     * sites that installed this version already. Since 0.53.
+     *
+     * @return list<string> lines to print, one each (the rbac extension reports the undeclared
+     *                      permissions it granted); apply prints them and counts them as work
      */
-    public function seed(Container $c): void
+    public function seed(Container $c): array
     {
+        return [];
     }
 
     public function uninstall(Container $c): void

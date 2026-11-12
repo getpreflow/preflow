@@ -6,9 +6,13 @@ namespace Preflow\Folio\Tests\Rbac;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Preflow\Auth\Access\PermissionRegistry;
+use Preflow\Core\Application;
+use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Folio\Extension\ExtensionState;
+use Preflow\Folio\Rbac\Extension;
 use Preflow\Rbac\RoleStore;
 
 /** Extension::seed() (on every folio:extensions:apply) and RoleStore::ensure(). */
@@ -73,6 +77,21 @@ final class InstallTest extends TestCase
         $this->assertSame(['staff/admin', 'staff/editor'], array_keys($this->byName()));
         $this->assertSame(['job.view'], $this->byName()['staff/editor']['permissions']);
         $this->assertSame([], array_filter($this->errorLog(), static fn (string $l): bool => str_contains($l, 'not a declared permission')), 'not echoed to stderr as well');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_seed_reports_nothing_when_no_permission_registry_is_bound(): void
+    {
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['job.view']]];\n");
+        $this->apply();
+        $app = $this->session;
+        $bare = new Container();
+        $bare->instance(Application::class, $app);
+        $bare->instance(RoleStore::class, $app->container()->get(RoleStore::class));
+
+        $this->assertFalse($bare->bound(PermissionRegistry::class));
+        $this->assertSame([], (new Extension())->seed($bare));
+        $this->assertSame(['job.view'], $this->byName()['staff/editor']['permissions']);
     }
 
     #[RunInSeparateProcess]

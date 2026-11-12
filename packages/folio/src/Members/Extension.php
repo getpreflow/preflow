@@ -79,12 +79,16 @@ final class Extension extends \Preflow\Folio\Extension\Extension
      * (RoleStore::ensure()), so an owner's change in Folio stays. A permission added to this
      * list reaches every site's member role on its next deploy (grant-once), so adding one here
      * is a deliberate framework decision.
+     *
+     * @return list<string>
      */
-    public function seed(Container $c): void
+    public function seed(Container $c): array
     {
         $roles = $c->get(RoleStore::class);
         $roles->ensure('members', 'pending', 'Waiting for approval', []);
         $roles->ensure('members', 'member', 'Member', [MembersConfig::PERMISSION]);
         $roles->ensure('members', 'rejected', 'Rejected', []);
+
+        return [];
     }
 }
