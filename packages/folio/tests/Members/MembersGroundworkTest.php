@@ -114,7 +114,7 @@ final class MembersGroundworkTest extends TestCase
         $this->assertTrue($c->get(Access::class)->registry()->isDeclared('members.access'));
         $this->assertTrue($c->get(Access::class)->registry()->isDeclared('members.decide'));
         $user = new ArrayUser('m-1', 'reader@site.test', '', (array) $member->get('roles'));
-        $resolver = new RbacResolver($c->get(RoleStore::class), $c->get(ExtensionState::class));
+        $resolver = new RbacResolver($c->get(RoleStore::class));
         $this->assertTrue($resolver->allows($user, 'members', 'members.access', null));
         $this->assertFalse($resolver->allows(new ArrayUser('m-2', 'waiting@site.test', '', ['pending']), 'members', 'members.access', null));
     }

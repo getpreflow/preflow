@@ -33,24 +33,12 @@ final class Extension extends FolioExtensionBase
     }
 
     /**
-     * Seeds the roles on every deploy: the staff role "admin" (everything) when there is no
-     * staff role, then every role of config/roles.php (preflow/roles' format, population =>
-     * name => patterns). RoleStore::ensure() creates a missing role and grants a role only
-     * what its list newly names, once, so an editor's change in Folio stays.
+     * Seeds the roles on every deploy, as `php preflow rbac:install` does (RoleStore::seed()):
+     * the staff role "admin" (everything) when there is no staff role, then every role of
+     * config/roles.php. An editor's change in Folio stays.
      */
     public function seed(Container $c): void
     {
-        $store = new RoleStore($c->get(DataManager::class));
-        if ($store->rolesFor('staff') === []) {
-            $store->ensure('staff', 'admin', 'Administrator', ['*']);
-        }
-
-        $file = $c->get(Application::class)->basePath('config/roles.php');
-        $config = is_file($file) ? require $file : [];
-        foreach (is_array($config) ? $config : [] as $population => $roles) {
-            foreach (is_array($roles) ? $roles : [] as $name => $patterns) {
-                $store->ensure((string) $population, (string) $name, ucfirst(str_replace('_', ' ', (string) $name)), RoleList::normalize($patterns));
-            }
-        }
+        $c->get(RoleStore::class)->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')));
     }
 }

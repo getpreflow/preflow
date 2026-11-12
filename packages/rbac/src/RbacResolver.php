@@ -8,14 +8,13 @@ use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Auth\Authenticatable;
-use Preflow\Folio\Extension\ExtensionState;
 
 /**
- * Roles managed in Folio (rbac_role records): a user may do X when any of their roles
- * (getRoles()) defined for their population has a pattern matching X. Unknown roles
- * grant nothing. Until folio:extensions:apply has installed the extension here (it creates
- * the staff role "admin"), staff may do everything, so turning RBAC on never locks out the
- * admin. Once installed, staff without a granting role get nothing.
+ * Stored roles (rbac_role records): a user may do X when any of their roles (getRoles())
+ * defined for their population has a pattern matching X. Unknown roles grant nothing. Until
+ * rbac is installed here (RoleStore::installed(): `php preflow rbac:install`, or Folio's rbac
+ * extension, made the table and the staff role "admin"), staff may do everything, so turning
+ * rbac on never locks out the admin. Once installed, staff without a granting role get nothing.
  */
 final class RbacResolver implements PermissionResolver, ListsRoles
 {
@@ -26,7 +25,6 @@ final class RbacResolver implements PermissionResolver, ListsRoles
 
     public function __construct(
         private readonly RoleStore $store,
-        private readonly ExtensionState $state,
         private readonly bool $debug = false,
     ) {}
 
@@ -38,14 +36,13 @@ final class RbacResolver implements PermissionResolver, ListsRoles
 
     public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
     {
-        if ($population === 'staff' && !($this->installed ??= $this->state->installedVersion('rbac') !== null)) {
-            $this->logOnce('bootstrap', 'preflow/rbac: the rbac extension is not installed here yet, so staff may do everything; run folio:extensions:apply');
+        if ($population === 'staff' && !$this->installed()) {
             return true;
         }
 
         $defined = $this->store->rolesFor($population);
         if ($population === 'staff' && $defined === []) {
-            $this->logOnce('no-staff-roles', 'preflow/rbac: no staff roles defined; run folio:extensions:apply or create one under Settings → Roles');
+            $this->logOnce('no-staff-roles', 'preflow/rbac: no staff roles defined; run php preflow rbac:install, or create one with php preflow rbac:role <name> --grant=<permissions>');
         }
         foreach (RoleList::normalize($user->getRoles()) as $role) {
             if (!isset($defined[$role])) {
@@ -66,14 +63,13 @@ final class RbacResolver implements PermissionResolver, ListsRoles
 
     /**
      * Every pattern the user's roles in their population grant, in role order, each once;
-     * ["*"] for staff until the extension is installed here (as allows() answers then).
+     * ["*"] for staff until rbac is installed here (as allows() answers then).
      *
      * @return list<string>
      */
     public function patterns(Authenticatable $user, string $population): array
     {
-        if ($population === 'staff' && !($this->installed ??= $this->state->installedVersion('rbac') !== null)) {
-            $this->logOnce('bootstrap', 'preflow/rbac: the rbac extension is not installed here yet, so staff may do everything; run folio:extensions:apply');
+        if ($population === 'staff' && !$this->installed()) {
             return ['*'];
         }
         $defined = $this->store->rolesFor($population);
@@ -83,6 +79,16 @@ final class RbacResolver implements PermissionResolver, ListsRoles
         }
 
         return array_values(array_unique($patterns));
+    }
+
+    /** Whether rbac is installed here, asked once per request; logs the bootstrap once while it is not. */
+    private function installed(): bool
+    {
+        if (!($this->installed ??= $this->store->installed())) {
+            $this->logOnce('bootstrap', 'preflow/rbac: rbac is not installed here yet, so staff may do everything; run php preflow rbac:install');
+        }
+
+        return $this->installed;
     }
 
     private function logOnce(string $key, string $message): void

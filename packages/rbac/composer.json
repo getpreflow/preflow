@@ -19,6 +19,7 @@
     "conflict": {
         "preflow/auth": "<0.65",
         "preflow/core": "<0.27",
+        "preflow/data": "<0.69",
         "preflow/folio": "<0.65",
         "preflow/i18n": "<0.37"
     },
@@ -37,7 +38,13 @@
             "extension": "Preflow\\Rbac\\Extension"
         },
         "preflow": {
-            "commands": ["Preflow\\Rbac\\Console\\ImportConfigStaffCommand"],
+            "commands": [
+                "Preflow\\Rbac\\Console\\InstallCommand",
+                "Preflow\\Rbac\\Console\\RolesCommand",
+                "Preflow\\Rbac\\Console\\RoleCommand",
+                "Preflow\\Rbac\\Console\\RoleDeleteCommand",
+                "Preflow\\Rbac\\Console\\ImportConfigStaffCommand"
+            ],
             "translations": {
                 "rbac": { "path": "lang", "scope": "admin" }
             }

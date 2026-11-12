@@ -587,6 +587,12 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return self::safeName($type) && self::safeName((string) $id) && file_exists($this->filePath($type, $id));
     }
 
+    /** Whether the type has its directory (made by its first write, kept when its last record is deleted). */
+    public function hasTable(string $type): bool
+    {
+        return self::safeName($type) && is_dir($this->typeDir($type));
+    }
+
     public function lastInsertId(): string|int
     {
         return '';

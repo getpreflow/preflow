@@ -11,7 +11,6 @@ use Preflow\Auth\Access\Access;
 use Preflow\Auth\ArrayUser;
 use Preflow\Auth\Remember\RememberMe;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Fixtures\ListedAdmission;
 use Preflow\Members\Tests\Support\Dom;
@@ -429,7 +428,7 @@ final class MemberApprovalTest extends TestCase
         // The site has one config staff user (admin); a role without members.decide is checked through the resolver.
         $c = $this->flow->container();
         $c->get(RoleStore::class)->ensure('staff', 'editor', 'Editor', ['member.edit', 'member.view']);
-        $resolver = new RbacResolver($c->get(RoleStore::class), $c->get(ExtensionState::class));
+        $resolver = new RbacResolver($c->get(RoleStore::class));
 
         $this->assertTrue($c->get(Access::class)->registry()->isDeclared('members.decide'));
         $this->assertFalse($resolver->allows(new ArrayUser('e', 'e@site.test', '', ['editor']), 'staff', 'members.decide', null));

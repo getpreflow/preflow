@@ -12,10 +12,9 @@ use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\JsonFileDriver;
+use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
-use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleStore;
 use Preflow\Roles\ConfigRoleResolver;
@@ -42,14 +41,18 @@ final class RbacResolverTest extends TestCase
         @rmdir($this->dir);
     }
 
-    /** @param list<array{string, string, mixed}> $roles population, name, permissions */
+    /**
+     * Roles on SQLite; not installed: no rbac_role table (so no roles either).
+     *
+     * @param list<array{string, string, mixed}> $roles population, name, permissions
+     */
     private function resolver(array $roles, bool $installed = true): RbacResolver
     {
-        $registry = new TypeRegistry(dirname(__DIR__) . '/src/models');
-        $dm = new DataManager(drivers: ['default' => new JsonFileDriver($this->dir . '/store')], typeRegistry: $registry);
-        $state = new ExtensionState($dm);
+        $registry = new TypeRegistry(dirname(__DIR__) . '/models');
+        $dm = new DataManager(drivers: ['default' => new SqliteDriver(new \PDO('sqlite::memory:'))], typeRegistry: $registry);
+        $store = new RoleStore($dm);
         if ($installed) {
-            $state->markInstalled('rbac', '1.0.0');
+            $store->install();
         }
         foreach ($roles as $i => [$population, $name, $permissions]) {
             $dm->saveType(DynamicRecord::fromArray($registry->get('rbac_role'), [
@@ -58,7 +61,7 @@ final class RbacResolverTest extends TestCase
             ]), validate: false);
         }
 
-        return new RbacResolver(new RoleStore($dm), $state);
+        return new RbacResolver(new RoleStore($dm));
     }
 
     public function test_staff_role_pattern_grants(): void
@@ -95,11 +98,12 @@ final class RbacResolverTest extends TestCase
 
     public function test_patterns_before_install_staff_hold_everything(): void
     {
-        $resolver = $this->resolver([['staff', 'editor', ['page.*']], ['members', 'member', ['tools.*']]], installed: false);
+        $resolver = $this->resolver([], installed: false);
 
         $this->logged(function () use ($resolver): void {
             $this->assertSame(['*'], $resolver->patterns(new TestUser(roles: ['editor']), 'staff'));
-            $this->assertSame(['tools.*'], $resolver->patterns(new TestUser(roles: ['member']), 'members'));
+            $this->assertSame([], $resolver->patterns(new TestUser(roles: ['member']), 'members'));
+            $this->assertSame([], $resolver->roles('staff'));
         }, 'not installed');
     }
 
@@ -136,10 +140,10 @@ final class RbacResolverTest extends TestCase
         $this->assertFalse($resolver->allows(new TestUser(roles: ['["member"]']), 'members', 'page.edit', null));
     }
 
-    public function test_no_staff_roles_yet_staff_may_do_everything(): void
+    public function test_not_installed_staff_may_do_everything(): void
     {
-        // Enabled, but folio:extensions:apply has not installed it here yet.
-        $resolver = $this->resolver([['members', 'member', ['tools.*']]], installed: false);
+        // The provider runs, but `php preflow rbac:install` has not made the table here yet.
+        $resolver = $this->resolver([], installed: false);
         $lines = $this->logged(function () use ($resolver): void {
             $this->assertTrue($resolver->allows(new TestUser(roles: ['admin']), 'staff', 'rbac_role.edit', null));
             $this->assertTrue($resolver->allows(new TestUser(roles: []), 'staff', 'page.edit', null));
@@ -147,16 +151,7 @@ final class RbacResolverTest extends TestCase
         }, 'not installed');
 
         $this->assertCount(1, $lines, 'logged once per request');
-        $this->assertStringContainsString('folio:extensions:apply', $lines[0]);
-    }
-
-    public function test_not_installed_staff_may_do_everything_even_with_staff_roles(): void
-    {
-        $resolver = $this->resolver([['staff', 'editor', ['page.*']]], installed: false);
-
-        $this->logged(function () use ($resolver): void {
-            $this->assertTrue($resolver->allows(new TestUser(roles: ['editor']), 'staff', 'rbac_role.edit', null));
-        }, 'not installed');
+        $this->assertStringContainsString('run php preflow rbac:install', $lines[0]);
     }
 
     public function test_after_install_empty_staff_roles_grant_nothing(): void
@@ -169,7 +164,7 @@ final class RbacResolverTest extends TestCase
         }, 'no staff roles defined');
 
         $this->assertCount(1, $lines, 'logged once per request');
-        $this->assertStringContainsString('run folio:extensions:apply or create one under Settings → Roles', $lines[0]);
+        $this->assertStringContainsString('run php preflow rbac:install, or create one with php preflow rbac:role', $lines[0]);
     }
 
     /** @return list<string> the error_log lines containing $needle written while $run ran */
@@ -186,21 +181,26 @@ final class RbacResolverTest extends TestCase
         return array_values(array_filter(explode("\n", (string) @file_get_contents($log)), fn ($l) => str_contains($l, $needle)));
     }
 
-    /** @return array<string, array{bool, class-string}> */
+    /** @return array<string, array{bool}> */
     public static function extensionStates(): array
     {
-        return [
-            'enabled' => [true, RbacResolver::class],
-            // Disabled: preflow/roles keeps answering.
-            'disabled' => [false, ConfigRoleResolver::class],
-        ];
+        return ['enabled' => [true], 'disabled' => [false]];
+    }
+
+    /** rbac answers when its provider runs; Folio's extension switch only shows or hides its admin. */
+    #[RunInSeparateProcess]
+    #[DataProvider('extensionStates')]
+    public function test_resolver_whether_or_not_the_folio_extension_is_enabled(bool $enabled): void
+    {
+        $this->assertInstanceOf(RbacResolver::class, $this->resolverOf($this->app($enabled)));
     }
 
     #[RunInSeparateProcess]
-    #[DataProvider('extensionStates')]
-    public function test_resolver_only_when_extension_enabled(bool $enabled, string $resolver): void
+    public function test_without_a_data_config_preflow_roles_keeps_answering(): void
     {
-        $this->assertInstanceOf($resolver, $this->resolverOf($this->app($enabled)));
+        $app = $this->app(true, data: false);
+
+        $this->assertInstanceOf(ConfigRoleResolver::class, $this->resolverOf($app));
     }
 
     private function resolverOf(Application $app): PermissionResolver
@@ -211,7 +211,7 @@ final class RbacResolverTest extends TestCase
         return $property->getValue($access);
     }
 
-    private function app(bool $enabled): Application
+    private function app(bool $enabled, bool $data = true): Application
     {
         $w = function (string $rel, string $content): void {
             $path = $this->dir . '/' . $rel;
@@ -228,11 +228,13 @@ final class RbacResolverTest extends TestCase
             'providers' => ['config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => []]],
             'session' => ['cookie' => 'rbac_test', 'secure' => false],
         ], true) . ";\n");
-        $w('config/data.php', "<?php\nreturn " . var_export([
-            'default' => 'json',
-            'models_path' => $this->dir . '/config/models',
-            'drivers' => ['json' => ['path' => $this->dir . '/storage/data']],
-        ], true) . ";\n");
+        if ($data) {
+            $w('config/data.php', "<?php\nreturn " . var_export([
+                'default' => 'json',
+                'models_path' => $this->dir . '/config/models',
+                'drivers' => ['json' => ['path' => $this->dir . '/storage/data']],
+            ], true) . ";\n");
+        }
         $w('config/models/.keep', '');
         $w('vendor/composer/installed.json', (string) json_encode(['packages' => [
             ['name' => 'preflow/rbac', 'extra' => ['folio' => ['extension' => 'Preflow\\Rbac\\Extension']]],

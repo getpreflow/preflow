@@ -175,7 +175,7 @@ final class MemberAdminLockTest extends TestCase
         // A staff user without it gets 403: the controller checks the action's permission.
         $c = $this->flow->container();
         $c->get(\Preflow\Rbac\RoleStore::class)->ensure('staff', 'editor', 'Editor', ['member.edit', 'member.view']);
-        $resolver = new \Preflow\Rbac\RbacResolver($c->get(\Preflow\Rbac\RoleStore::class), $c->get(\Preflow\Folio\Extension\ExtensionState::class));
+        $resolver = new \Preflow\Rbac\RbacResolver($c->get(\Preflow\Rbac\RoleStore::class));
         $this->assertFalse($resolver->allows(new \Preflow\Auth\ArrayUser('e', 'e@site.test', '', ['editor']), 'staff', 'members.decide', null));
     }
 
