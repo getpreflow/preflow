@@ -41,7 +41,7 @@ use Psr\Http\Message\ServerRequestInterface;
 #[FolioType('member')]
 final class MemberAdmin
 {
-    private const array TONES = ['waiting' => 'changed', 'member' => 'published', 'declined' => 'draft', DecisionRefused::UNCONFIRMED => '', 'locked' => 'incomplete'];
+    private const array TONES = ['waiting' => 'changed', 'member' => 'published', 'declined' => 'draft', MemberState::Unconfirmed->value => '', 'locked' => 'incomplete'];
 
     public function __construct(
         private readonly Members $members,

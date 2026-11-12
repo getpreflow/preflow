@@ -211,7 +211,7 @@ final class Members
 
     /**
      * The owner declines a member who waits (or is one): the declined mail first, then the role
-     * changes and the member's remember rows go, so no open session outlives the decision (remember-me rows are revoked when RememberMe is bound; without it there are none).
+     * changes and the member's remember rows go, so no open session outlives the decision (remember-me rows are revoked when RememberMe is bound).
      *
      * @throws DecisionRefused unconfirmed, not_allowed (the member is already declined) or empty_message
      */
