@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.69.0)
+> Last updated: 2026-11-12 (v0.69.1)
 
 ## Current State
 
-**v0.69.0** — 7102 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.69.1** — 7108 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Gaps found by the 0.69 docs (v0.69.1, released 2026-11-12):** core gains `Application::onProvidersBooted(callable)`
+  (runs once every provider has booted); Folio sets up its admin in the console through it, so staff commands find the
+  staff guard's record provider even with Folio's `model:staff` part off. Staff commands before the staff table exists
+  answer "No staff table yet: …" (exit 1) instead of a trace. Seeding from `config/roles.php` reports each permission
+  nothing declares (still granted); `rbac:role --allow-undeclared` grants one deliberately. `folio:extensions:apply`
+  works without a `config/models/` directory. **Upgrading:** `composer update "preflow/*"`; Folio requires core ^0.69.1.
 - **rbac without Folio (v0.69.0, released 2026-11-12):** third release of the package audit's fixes (spec D4; plan
   `docs/superpowers/plans/2026-11-12-release-0.69-rbac.md`).
   - **auth:** `Preflow\Auth\Record\AccountLinks` — password links for record users (issue, consume, setPassword,
