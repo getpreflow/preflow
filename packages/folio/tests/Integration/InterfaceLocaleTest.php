@@ -211,7 +211,7 @@ final class InterfaceLocaleTest extends TestCase
 
         [$german, $english] = $this->mails();
         $this->assertSame('Dein Zugang zu Staff Site', $german->subject);
-        $this->assertStringStartsWith("Hallo Ada Lovelace,\n\nfür dich wurde", (string) $german->text);
+        $this->assertStringStartsWith("Hallo Ada Lovelace,\n\ndu wurdest", (string) $german->text);
         $this->assertStringContainsString('Freundliche Grüße', (string) $german->text);
         $this->assertSame('Your account for Staff Site', $english->subject, 'no preference: the site default');
     }
