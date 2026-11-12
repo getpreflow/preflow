@@ -233,7 +233,7 @@ final class MemberAdminLockTest extends TestCase
     public function test_the_new_keys_exist_in_every_language(): void
     {
         $translator = new Translator('/no/such/lang', 'en', 'en');
-        $translator->addDefaults('members-admin', dirname(__DIR__, 3) . '/members/lang');
+        $translator->addDefaults('members-admin', dirname(__DIR__, 2) . '/lang');
         $keys = ['states.locked', 'lock.lock', 'lock.unlock', 'lock.resend', 'lock.locked_since', 'lock.last_login', 'lock.done_lock', 'lock.done_unlock', 'lock.done_resend', 'lock.resend_failed', 'lock.cant_resend', 'lock.already_locked', 'lock.not_locked'];
         foreach (['en', 'de', 'fr'] as $locale) {
             $entries = $translator->entries('members-admin', $locale);

@@ -74,11 +74,34 @@ final class DecideCommandTest extends TestCase
 
         $this->container()->get(Members::class)->confirm($m);
         $this->container()->get(Members::class)->decide($m, 'member');
-        [$code, $out] = $this->decide('ada@example.test', 'decline');
+        [$code, $out] = $this->decide('ada@example.test', 'accept');
         $this->assertSame(1, $code);
-        $this->assertStringContainsString('is not waiting', $out);
+        $this->assertStringContainsString('cannot be accepted', $out);
         $this->assertSame(MemberState::Member, MemberState::fromRecord($this->find('ada@example.test')));
         $this->assertSame([], $this->mails());
+    }
+
+    public function test_declined_member_can_be_accepted(): void
+    {
+        $this->waiting('ada@example.test', 'en');
+        $this->decide('ada@example.test', 'decline');
+        $this->assertSame(MemberState::Declined, MemberState::fromRecord($this->find('ada@example.test')));
+
+        [$code, $out] = $this->decide('ada@example.test', 'accept');
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame(MemberState::Member, MemberState::fromRecord($this->find('ada@example.test')));
+    }
+
+    public function test_message_option_is_the_mail_text(): void
+    {
+        $this->waiting('ada@example.test', 'en');
+        $this->flow = $this->app();
+
+        [$code] = $this->command(new DecideCommand(fn () => $this->flow), ['ada@example.test', 'accept', '--message=Come on in']);
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('Come on in', $this->mails()[0]->text);
     }
 
     public function test_bad_arguments_exit_1(): void

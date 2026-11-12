@@ -27,6 +27,10 @@ final class Members
     /** Fields register() fills itself; $extra must not set them. */
     private const array OWN_FIELDS = ['uuid', 'email', 'name', 'password_hash', 'language', 'roles', 'registered_at', 'email_confirmed_at', 'decided_at', 'locked_at', 'last_login_at', 'auth_epoch', 'next'];
 
+    /** The states the owner's decisions may start from. */
+    private const array ACCEPT_FROM = [MemberState::Waiting, MemberState::Declined];
+    private const array DECLINE_FROM = [MemberState::Waiting, MemberState::Member];
+
     private readonly \Closure $now;
 
     /**
@@ -37,6 +41,7 @@ final class Members
      * @param ?MemberDeleteCopies $copies copies of records (Folio's published snapshots) the plan counts for restrict
      * @param ?RememberMe $remember removes a member's remember rows when sessions end (without it only the epoch moves)
      * @param ?\Closure(): ConfirmationMail $confirmationMail resends a confirmation link (resolved when first needed)
+     * @param ?\Closure(): MemberMailer $mailer tells a member of the owner's decision (resolved when first needed: the mailer's admission may need Members)
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -48,6 +53,7 @@ final class Members
         private readonly ?MemberDeleteCopies $copies = null,
         private readonly ?RememberMe $remember = null,
         private readonly ?\Closure $confirmationMail = null,
+        private readonly ?\Closure $mailer = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -187,6 +193,66 @@ final class Members
         }
         $this->save($m);
         $this->events?->dispatch(MemberEvents::DECIDED, ['member' => $m, 'role' => $role]);
+    }
+
+    /**
+     * The owner accepts a member who waits (or was declined): the accepted mail goes out first, with
+     * $message; only when it was sent does the role change (decide()). A failed mail
+     * (TransportException) propagates and changes nothing.
+     *
+     * @throws DecisionRefused unconfirmed, not_allowed (the member is already one) or empty_message
+     */
+    public function accept(DynamicRecord $m, string $message): void
+    {
+        $this->check($m, $message, self::ACCEPT_FROM);
+        $this->mailer()->accepted($m, trim($message));
+        $this->decide($m, 'member');
+    }
+
+    /**
+     * The owner declines a member who waits (or is one): the declined mail first, then the role
+     * changes and the member's remember rows go, so no open session outlives the decision.
+     *
+     * @throws DecisionRefused unconfirmed, not_allowed (the member is already declined) or empty_message
+     */
+    public function decline(DynamicRecord $m, string $message): void
+    {
+        $this->check($m, $message, self::DECLINE_FROM);
+        $this->mailer()->declined($m, trim($message));
+        $this->decide($m, 'rejected');
+        $this->remember?->revokeAll(MembersConfig::GUARD, (string) $m->getId());
+    }
+
+    /** Whether accept() fits the member's state (a panel offers the decision only then). */
+    public function canAccept(DynamicRecord $m): bool
+    {
+        return in_array(MemberState::fromRecord($m), self::ACCEPT_FROM, true);
+    }
+
+    /** Whether decline() fits the member's state. */
+    public function canDecline(DynamicRecord $m): bool
+    {
+        return in_array(MemberState::fromRecord($m), self::DECLINE_FROM, true);
+    }
+
+    /** @param list<MemberState> $from the states the decision may start from */
+    private function check(DynamicRecord $m, string $message, array $from): void
+    {
+        if (trim($message) === '') {
+            throw new DecisionRefused('empty_message');
+        }
+        $state = MemberState::fromRecord($m);
+        if ($state === MemberState::Unconfirmed) {
+            throw new DecisionRefused('unconfirmed');
+        }
+        if (!in_array($state, $from, true)) {
+            throw new DecisionRefused('not_allowed');
+        }
+    }
+
+    private function mailer(): MemberMailer
+    {
+        return ($this->mailer ?? throw new \LogicException('Members has no mailer; build it from the container to decide.'))();
     }
 
     /**

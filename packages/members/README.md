@@ -511,4 +511,4 @@ The full list is in the framework's 0.38 release checklist; what a site with mem
   on the button (was `data-members-action`). A site that liked the old look sets `mail.accent`
   (or notify's) in its config. The placeholder `{folio_url}` is now `{decision_url}` (no alias);
   a site's own `mail.notice.body` / `mail.deletion_refused.body` must use the new one.
-- **`Links::folioMember()`** is deprecated (unused by the package) and goes in the next release.
+- **`Links::folioMember()`** is gone (0.68); the owner's notice links what a bound `MemberLinks` names.

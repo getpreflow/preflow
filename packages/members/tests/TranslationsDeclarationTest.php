@@ -32,4 +32,13 @@ final class TranslationsDeclarationTest extends TestCase
             $this->assertEqualsCanonicalizing(array_keys($translator->entries('members', 'en')), array_keys($translator->entries('members', $locale)), $locale);
         }
     }
+
+    public function test_the_admin_texts_are_not_the_core_s(): void
+    {
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
+
+        $this->assertArrayNotHasKey('members-admin', $composer['extra']['preflow']['translations']);
+        $this->assertDirectoryDoesNotExist(dirname(__DIR__) . '/lang/en/members-admin.php');
+        $this->assertFalse(method_exists(\Preflow\Members\Links::class, 'folioMember'));
+    }
 }

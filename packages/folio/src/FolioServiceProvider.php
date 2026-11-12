@@ -1200,6 +1200,7 @@ final class FolioServiceProvider extends ServiceProvider
         // Declared in composer.json (extra.preflow.translations); this covers apps whose
         // Composer metadata doesn't list Folio (test apps, a core before 0.37).
         $translator->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
+        $translator->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
         if (class_exists(\Preflow\Validation\Message::class)) { // the messages of Folio's forms (public: site forms may use them too)
             $translator->addDefaultsIfMissing('validation', \Preflow\Validation\Message::LANG_PATH, 'public');
         }
@@ -1347,6 +1348,7 @@ final class FolioServiceProvider extends ServiceProvider
         if ($container->bound(\Preflow\I18n\Translator::class)) {
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('codes', dirname(__DIR__) . '/lang', 'admin');
+            $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
             self::useOverrides($container->get(\Preflow\I18n\Translator::class), $container);
         }
 

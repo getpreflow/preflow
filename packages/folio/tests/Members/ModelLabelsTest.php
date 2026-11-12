@@ -31,7 +31,7 @@ final class ModelLabelsTest extends TestCase
 
     public function test_the_package_declares_the_admin_group_and_the_extension_uses_it(): void
     {
-        $root = dirname(__DIR__, 3) . '/members';
+        $root = dirname(__DIR__, 3) . '/folio';
         $composer = json_decode((string) file_get_contents($root . '/composer.json'), true);
         $installed = sys_get_temp_dir() . '/preflow_installed_' . bin2hex(random_bytes(4)) . '.json';
         file_put_contents($installed, (string) json_encode(['packages' => [[...$composer, 'install-path' => $root]]]));
@@ -42,7 +42,6 @@ final class ModelLabelsTest extends TestCase
         }
 
         $this->assertSame('admin', $registry->scope('members-admin'));
-        $this->assertSame('public', $registry->scope('members'));
         $meta = (new \ReflectionClass(\Preflow\Folio\Members\Extension::class))->getAttributes(FolioExtension::class)[0]->newInstance();
         $this->assertSame('members-admin', $meta->translations);
     }
@@ -50,7 +49,7 @@ final class ModelLabelsTest extends TestCase
     public function test_every_label_of_the_model_has_a_text_in_en_de_and_fr(): void
     {
         $translator = new Translator('/no/such/lang', 'en', 'en');
-        $translator->addDefaults('members-admin', dirname(__DIR__, 3) . '/members/lang');
+        $translator->addDefaults('members-admin', dirname(__DIR__, 2) . '/lang');
         $schema = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/src/Members/models/member.json'), true);
         $keys = [...array_keys(ModelLabelKeys::derive($schema, 'members-admin')), ModelLabelKeys::section('members-admin', 'members')];
 

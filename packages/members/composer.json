@@ -48,8 +48,7 @@
                 "Preflow\\Members\\Console\\DecideCommand"
             ],
             "translations": {
-                "members": { "path": "lang", "scope": "public" },
-                "members-admin": { "path": "lang", "scope": "admin" }
+                "members": { "path": "lang", "scope": "public" }
             }
         }
     }

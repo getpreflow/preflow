@@ -18,7 +18,7 @@ use Preflow\Rbac\RoleStore;
  * The members admin (preflow/members' accounts in Folio), Folio's built-in extension "members",
  * there when preflow/members is installed: the member type (the members core's, MemberType, with
  * what models/member.json adds for the admin: the list, the menu section, roles as rbac roles;
- * its admin labels in the members package's lang/{locale}/members-admin.php), its roles (rbac,
+ * its admin labels in Folio's lang/{locale}/members-admin.php), its roles (rbac,
  * which the admin needs: FolioServiceProvider checks it at boot), the owner's Decision panel (MemberAdmin) and the
  * settings under Settings → Members settings (their labels, the permissions' and the seeded
  * roles' are members-admin keys too), which FolioMembersSettings gives the members core.

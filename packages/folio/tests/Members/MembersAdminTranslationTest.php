@@ -29,9 +29,29 @@ final class MembersAdminTranslationTest extends TestCase
     private static function translator(string $locale): Translator
     {
         $translator = new Translator('/no/such/lang', $locale, 'en');
-        $translator->addDefaults('members-admin', dirname(__DIR__, 3) . '/members/lang');
+        $translator->addDefaults('members-admin', dirname(__DIR__, 2) . '/lang');
 
         return $translator;
+    }
+
+    public function test_members_admin_texts_come_from_folio(): void
+    {
+        $installed = sys_get_temp_dir() . '/preflow_installed_' . bin2hex(random_bytes(4)) . '.json';
+        $packages = [];
+        foreach (['folio', 'members'] as $name) {
+            $root = dirname(__DIR__, 3) . '/' . $name;
+            $packages[] = [...json_decode((string) file_get_contents($root . '/composer.json'), true), 'install-path' => $root];
+        }
+        file_put_contents($installed, (string) json_encode(['packages' => $packages]));
+        try {
+            $registry = \Preflow\I18n\TranslationRegistry::fromInstalled($installed);
+        } finally {
+            unlink($installed);
+        }
+
+        $this->assertSame('admin', $registry->scope('members-admin'));
+        $this->assertSame(dirname(__DIR__, 2), realpath((string) $registry->packagePath('members-admin')));
+        $this->assertSame('public', $registry->scope('members'));
     }
 
     public function test_the_admin_group_has_the_same_keys_in_en_de_and_fr_and_german_says_du(): void

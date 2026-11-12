@@ -62,7 +62,6 @@ final class MembersServiceProvider extends ServiceProvider
         // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer
         // metadata doesn't list the package (test apps, a core before 0.37).
         self::translator($container)->addDefaultsIfMissing('members', dirname(__DIR__) . '/lang', 'public');
-        self::translator($container)->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
         $container->singleton(MembersConfig::class, static fn (Container $c): MembersConfig => MembersConfig::fromFile(
             $c->get(Application::class)->basePath('config/members.php'),
             $c->bound(MembersDefaults::class) ? $c->get(MembersDefaults::class)->config : [],
@@ -83,6 +82,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->bound(MemberDeleteCopies::class) ? $c->get(MemberDeleteCopies::class) : null,
             $c->bound(RememberMe::class) ? $c->get(RememberMe::class) : null,
             static fn (): ConfirmationMail => $c->get(ConfirmationMail::class),
+            static fn (): MemberMailer => $c->get(MemberMailer::class),
         ));
         $container->singleton(ConfirmationMail::class, static fn (Container $c): ConfirmationMail => new ConfirmationMail(
             $c->get(Tokens::class),
@@ -233,14 +233,12 @@ final class MembersServiceProvider extends ServiceProvider
         $app = $c->get(Application::class);
         $url = $c->get(Config::class)->get('app.url');
         $i18n = self::config($app->basePath('config/i18n.php'));
-        $folio = self::config($app->basePath('config/folio.php'));
 
         return new Links(
             is_string($url) && $url !== '' ? $url : 'http://localhost',
             $c->get(MembersConfig::class)->path(),
             $c->get(Locales::class),
             ($i18n['url_strategy'] ?? 'prefix') === 'prefix',
-            '/' . trim((string) ($folio['path'] ?? '/folio'), '/'),
         );
     }
 

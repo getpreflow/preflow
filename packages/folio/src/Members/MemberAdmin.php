@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Folio\Members;
 
 use Nyholm\Psr7\Response;
-use Preflow\Auth\Remember\RememberMe;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
@@ -19,6 +18,7 @@ use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\I18n\Translator;
 use Preflow\Members\Admission\Admission;
+use Preflow\Members\DecisionRefused;
 use Preflow\Members\Languages;
 use Preflow\Members\MemberMailer;
 use Preflow\Members\Members;
@@ -33,8 +33,8 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * Members in the admin: how many wait for a decision, each member's state, and the Decision
  * panel — accept or decline with an editable message, beside the admission's details. The
- * mail goes out first; only when it was sent does the member's role change. Which decision
- * fits which state is checked here too, so a crafted POST changes nothing the panel doesn't offer.
+ * decision is the members core's (Members::accept() / decline(): mail first, then the role, the
+ * same rules as members:decide); this maps its refusals to the admin's texts.
  * Its words are the "members-admin" group's (the admin's language); the mails keep the
  * member's language and the public "members" group.
  */
@@ -43,16 +43,9 @@ final class MemberAdmin
 {
     private const array TONES = ['waiting' => 'changed', 'member' => 'published', 'declined' => 'draft', 'unconfirmed' => '', 'locked' => 'incomplete'];
 
-    /** The states each decision may start from. */
-    private const array ALLOWED = [
-        'member' => [MemberState::Waiting, MemberState::Declined],
-        'rejected' => [MemberState::Waiting, MemberState::Member],
-    ];
-
     public function __construct(
         private readonly Members $members,
         private readonly MemberMailer $mailer,
-        private readonly RememberMe $remember,
         private readonly Admission $admission,
         private readonly Locales $locales,
         private readonly Translator $translator,
@@ -106,8 +99,8 @@ final class MemberAdmin
             'can_resend' => $state === MemberState::Unconfirmed && !$locked,
             'registered' => $registered,
             'details' => self::lines($this->admission->details($m, Admission::PANEL)),
-            'can_accept' => in_array($state, self::ALLOWED['member'], true),
-            'can_decline' => in_array($state, self::ALLOWED['rejected'], true),
+            'can_accept' => $this->members->canAccept($m),
+            'can_decline' => $this->members->canDecline($m),
             'accept_text' => $this->mailer->defaultMessage($m, 'accepted'),
             'decline_text' => $this->mailer->defaultMessage($m, 'declined'),
             'language_label' => $this->languageLabel($lang),
@@ -170,25 +163,18 @@ final class MemberAdmin
     {
         $body = $request->getParsedBody();
         $message = trim(is_array($body) && is_string($body['message'] ?? null) ? $body['message'] : '');
-        if ($message === '') {
-            return $this->back($request, $this->translator->get('members-admin.decision.empty_message'), $m);
-        }
-        $state = MemberState::fromRecord($m);
-        if ($state === MemberState::Unconfirmed) {
-            return $this->back($request, $this->translator->get('members-admin.decision.unconfirmed'), $m);
-        }
-        if (!in_array($state, self::ALLOWED[$role], true)) {
-            return $this->back($request, $this->translator->get('members-admin.decision.cant_' . ($role === 'member' ? 'accept' : 'decline'), ['state' => $this->stateLabel($state)]), $m);
-        }
         try {
-            $role === 'member' ? $this->mailer->accepted($m, $message) : $this->mailer->declined($m, $message);
+            $role === 'member' ? $this->members->accept($m, $message) : $this->members->decline($m, $message);
+        } catch (DecisionRefused $e) {
+            $text = match ($e->reason) {
+                'unconfirmed' => $this->translator->get('members-admin.decision.unconfirmed'),
+                'empty_message' => $this->translator->get('members-admin.decision.empty_message'),
+                default => $this->translator->get('members-admin.decision.cant_' . ($role === 'member' ? 'accept' : 'decline'), ['state' => $this->stateLabel(MemberState::fromRecord($m))]),
+            };
+
+            return $this->back($request, $text, $m);
         } catch (TransportException) {
             return $this->back($request, $this->translator->get('members-admin.decision.mail_failed'), $m);
-        }
-
-        $this->members->decide($m, $role);
-        if ($role === 'rejected') {
-            $this->remember->revokeAll(MembersConfig::GUARD, (string) $m->getId());
         }
 
         return null;
