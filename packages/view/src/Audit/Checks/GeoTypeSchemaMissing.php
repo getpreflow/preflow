@@ -12,7 +12,7 @@ use Preflow\View\Seo\SeoConfig;
 
 /**
  * `geo.type-schema-missing` (notice): SEO is on, and a group of at least three
- * pages under the same first address segment (`/spiele/…`, `/de/spiele/…`; a
+ * pages under the same first address segment (`/jobs/…`, `/de/jobs/…`; a
  * language prefix counts with it) carries no JSON-LD node of its own, only the
  * generic ones (WebSite, WebPage, BreadcrumbList…). Search engines and AI
  * assistants then can't tell what the pages are about (a game, a product, an
@@ -83,7 +83,7 @@ final class GeoTypeSchemaMissing implements RunCheck
         $this->groups = $state;
     }
 
-    /** "/spiele/" or "/de/spiele/" for a page below it; null for a top-level page. */
+    /** "/jobs/" or "/de/jobs/" for a page below it; null for a top-level page. */
     private static function prefix(RenderedPage $page): ?string
     {
         $segments = array_values(array_filter(explode('/', (string) parse_url($page->url, PHP_URL_PATH)), static fn (string $s): bool => $s !== ''));

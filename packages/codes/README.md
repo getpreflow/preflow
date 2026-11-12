@@ -33,8 +33,8 @@ php preflow migrate
 ```php
 return [
     'purposes' => [
-        'members.book' => ['label' => 'Book code', 'readable' => true],
-        'forcemap.round' => ['label' => 'Force Map round', 'readable' => false],
+        'shop.voucher' => ['label' => 'Voucher', 'readable' => true],
+        'team.round' => ['label' => 'Team round', 'readable' => false],
     ],
     'throttle' => ['max' => 10, 'window' => 900],
 ];
@@ -45,10 +45,10 @@ return [
 ```php
 $codes = $container->get(Preflow\Codes\Codes::class);
 
-$codes->issue('members.book', ['edition' => 1], 'smart-stack 2026'); // "SMARTSTACK2026"
-$codes->issue('forcemap.round', ['team' => 't1'], expiresAt: $in7Days, maxUses: 5); // random
+$codes->issue('shop.voucher', ['order' => 1], 'SUMMER 2026'); // "SUMMER2026"
+$codes->issue('team.round', ['team' => 't1'], expiresAt: $in7Days, maxUses: 5); // random
 
-$result = $codes->redeem($typed, 'members.book', $member->getId(), $throttle->client($request));
+$result = $codes->redeem($typed, 'shop.voucher', $member->getId(), $throttle->client($request));
 if (!$result->ok) {
     // One generic message for visitors, whatever $result->reason is.
 }
@@ -64,7 +64,7 @@ if (!$result->ok) {
   code, one draws again, up to three times); an unknown purpose throws. Codes are bearer tokens:
   they are compared with `hash_equals`.
 - `check()` says whether a code would be accepted and counts no use. Give it a client
-  (`$codes->check($typed, 'members.book', $throttle->client($request))`) when it answers a
+  (`$codes->check($typed, 'shop.voucher', $throttle->client($request))`) when it answers a
   visitor, e.g. a live "is this code valid?" form: it is throttled like `redeem()` (same
   key, every failure counts), so it cannot be used to guess codes. `redeem()` counts a use
   and records a redemption (`redemptions($codeId)`: id, redeemer, time; no IP address or
@@ -151,7 +151,7 @@ sites.
 $container->get(CodeEvents::class)->on(CodeEvents::REDEEMED, function (array $e): void {
     // $e: code (CodeRecord), purpose, redeemer, payload
     $groups->add($e['payload']['group'], $e['redeemer']);
-}, 'bggenius.invite'); // optional: only this purpose
+}, 'club.invite'); // optional: only this purpose
 ```
 
 - `codes.redeemed` runs inside `redeem()`, after the use is counted and the redemption stored.
@@ -189,11 +189,11 @@ The route, the group and the pages are yours; the package supplies check, redeem
 
 ```php
 // Invite: bind a code to the address, mail the link.
-$code = $codes->issue('bggenius.invite', ['group' => $group], recipient: $email); // ttl from the purpose
-$mailer->send($codes->record($code, 'bggenius.invite'), $email, '/invite/' . $code, ['message' => $text, 'from_name' => $host]);
+$code = $codes->issue('club.invite', ['group' => $group], recipient: $email); // ttl from the purpose
+$mailer->send($codes->record($code, 'club.invite'), $email, '/invite/' . $code, ['message' => $text, 'from_name' => $host]);
 
 // GET /invite/{code}
-$check = $codes->check($code, 'bggenius.invite', $throttle->client($request));
+$check = $codes->check($code, 'club.invite', $throttle->client($request));
 if (!$check->ok) { return $this->invalidInvitationPage(); } // "this invitation is no longer valid"; stop here
 // $check->recipient is the invited address:
 //  - signed in with another address -> "this invitation is for another address, sign out?"
@@ -202,7 +202,7 @@ if (!$check->ok) { return $this->invalidInvitationPage(); } // "this invitation 
 //  - signed in with that address     -> redeem, but only if that address is CONFIRMED: an unconfirmed
 //                                       self-registered address must not redeem someone else's invitation
 if ((string) $member->get('email_confirmed_at') !== '') { // the confirmed address
-    $codes->redeem($code, 'bggenius.invite', $member->id, $throttle->client($request), recipient: $member->email);
+    $codes->redeem($code, 'club.invite', $member->id, $throttle->client($request), recipient: $member->email);
 }
 // your codes.redeemed listener adds the member to the group; then redirect to the welcome page.
 ```

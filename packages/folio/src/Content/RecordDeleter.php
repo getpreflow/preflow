@@ -345,7 +345,7 @@ final class RecordDeleter
     }
 
     /**
-     * The type's label as a noun for $n records: "games", "1 game", through folio.format.type_noun
+     * The type's label as a noun for $n records: "jobs", "1 job", through folio.format.type_noun
      * (the language's plural forms) with the singular label ("label_singular", a key) and the
      * plural one. FolioText::noun(): in lower case where the language writes nouns so; a label
      * starting with an acronym keeps its case ("FAQ entries"). Without a singular, English

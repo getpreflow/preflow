@@ -109,9 +109,9 @@ abstract class Component
      * requests and prop changes. For multiple instances of the same component
      * on one page, pass a 'key' prop to disambiguate:
      *
-     *     {{ component('GameCard', {game: game, key: game.slug}) }}
+     *     {{ component('JobCard', {job: job, key: job.slug}) }}
      *
-     * Produces: GameCard-f7687e-cuvee, GameCard-f7687e-brink, etc.
+     * Produces: JobCard-f7687e-senior-dev, JobCard-f7687e-designer, etc.
      */
     public function getComponentId(): string
     {

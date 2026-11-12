@@ -6,7 +6,7 @@ namespace Preflow\Folio\Extension;
 
 /**
  * A list cell shown as a link: what a #[ListColumn] method returns instead of a string. The
- * URL is relative to the admin prefix ('member/3/edit') or a site path ('/shop/order?id=3').
+ * URL is relative to the admin prefix ('job/3/edit') or a site path ('/jobs/apply?id=3').
  * Anything else (a scheme, a host, '//', a backslash, a control or whitespace character) is
  * not a link: the escaped label is shown as plain text.
  */

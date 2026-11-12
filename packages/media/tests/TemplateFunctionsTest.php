@@ -47,7 +47,7 @@ final class TemplateFunctionsTest extends TestCase
         $expected = (new ImageTag($this->media(), $container->get(\Preflow\Media\LocaleProvider::class), ['hero' => ['widths' => [480, 960], 'sizes' => '100vw']], new AssetCollector(new \Preflow\View\NonceGenerator()), '', $container->get(\Preflow\Media\Image\ImageWidths::class)))
             ->render($asset->id, 'hero', ['priority' => true]);
         $this->assertSame($expected, $html);
-        $this->assertStringContainsString('folio-fx-30', $html);
+        $this->assertStringContainsString('media-fx-30', $html);
         $this->assertSame('/media/' . $asset->path, $url);
         $this->assertSame('', $none);
         $head = $container->get(AssetCollector::class)->renderHead();

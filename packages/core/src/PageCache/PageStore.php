@@ -18,7 +18,7 @@ namespace Preflow\Core\PageCache;
  * put() removes the marker after its rename, forget() removes both.
  *
  * Keys are per release (releaseKey()): a deploy starts with an empty cache, and a storage
- * folder shared between releases (BG Genius) never serves another release's pages. The file
+ * folder shared between releases (a deployment with a shared storage path) never serves another release's pages. The file
  * {root}/active names the release that last used the cache. A store's first use in a process
  * compares it with its own key: when another release was active since (a rollback to an older
  * release folder), its own pages are older than the content, so it empties its folder and index

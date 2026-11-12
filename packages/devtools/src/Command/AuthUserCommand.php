@@ -12,11 +12,10 @@ namespace Preflow\DevTools\Command;
  */
 final class AuthUserCommand implements CommandInterface
 {
-    private const string DEFAULT_PREFIX = 'FOLIO_ADMIN';
     private const int MIN_LENGTH = 8;
 
     public function getName(): string { return 'auth:user'; }
-    public function getDescription(): string { return 'Set a login (email + password hash) in .env [<PREFIX>=FOLIO_ADMIN] [--email=<email>]'; }
+    public function getDescription(): string { return 'Set a login (email + password hash) in .env <PREFIX> [--email=<email>]'; }
 
     public function execute(array $args): int
     {
@@ -30,7 +29,7 @@ final class AuthUserCommand implements CommandInterface
      */
     public function executeInDir(string $dir, array $args, mixed $in, mixed $out): int
     {
-        $prefix = self::DEFAULT_PREFIX;
+        $prefix = null;
         $email = null;
         foreach ($args as $arg) {
             if (str_starts_with($arg, '--email=')) {
@@ -40,8 +39,13 @@ final class AuthUserCommand implements CommandInterface
             }
         }
 
+        if ($prefix === null) {
+            fwrite($out, "Usage: preflow auth:user <PREFIX> [--email=<email>]   (writes <PREFIX>_EMAIL and <PREFIX>_PASSWORD_HASH to .env)\n");
+            return 1;
+        }
+
         if (preg_match('/^[A-Z][A-Z0-9_]*$/', $prefix) !== 1) {
-            fwrite($out, "Error: \"{$prefix}\" is not an env name prefix (e.g. FOLIO_ADMIN).\n");
+            fwrite($out, "Error: \"{$prefix}\" is not an env name prefix (e.g. ADMIN).\n");
             return 1;
         }
 

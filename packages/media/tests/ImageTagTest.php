@@ -79,19 +79,21 @@ final class ImageTagTest extends TestCase
         $html = $tag->render($asset->id, null, ['class' => 'hero-img']);
         $tag->render($asset->id);
 
-        $this->assertStringContainsString('class="hero-img folio-focal folio-fx-30 folio-fy-70"', $html);
+        $this->assertStringContainsString('class="hero-img media-focal media-fx-30 media-fy-70"', $html);
         $this->assertStringNotContainsString('style=', $html);
         $css = $this->css->renderCss();
-        $this->assertSame(1, substr_count($css, '.folio-focal{'));
-        $this->assertStringContainsString('.folio-fx-30{--folio-fx:30%}', $css);
-        $this->assertStringContainsString('.folio-fy-70{--folio-fy:70%}', $css);
+        $this->assertSame(1, substr_count($css, '.media-focal{'));
+        $this->assertStringContainsString('.media-fx-30{--media-fx:30%}', $css);
+        $this->assertStringContainsString('.media-fy-70{--media-fy:70%}', $css);
+        $this->assertStringContainsString('.media-focal{object-position:var(--media-fx,50%) var(--media-fy,50%)}', $css);
+        $this->assertStringNotContainsString('folio-', $html . $css);
     }
 
     public function test_centred_focal_point_adds_nothing(): void
     {
         $asset = $this->lib->upload($this->upload($this->png(100, 50), 'a.png'), null);
 
-        $this->assertStringNotContainsString('folio-focal', $this->tag()->render($asset->id));
+        $this->assertStringNotContainsString('media-focal', $this->tag()->render($asset->id));
         $this->assertSame('', $this->css->renderCss());
     }
 

@@ -36,7 +36,7 @@ final class AuthUserCommandTest extends TestCase
     {
         file_put_contents($this->tmpDir . '/.env', "APP_KEY=abc\nFOLIO_ADMIN_EMAIL=\nFOLIO_ADMIN_PASSWORD_HASH=\nMAIL_DSN=\n");
 
-        [$code, $out] = $this->runCommand([], "me@example.com\nsecret-pass\nsecret-pass\n");
+        [$code, $out] = $this->runCommand(['FOLIO_ADMIN'], "me@example.com\nsecret-pass\nsecret-pass\n");
 
         $this->assertSame(0, $code, $out);
         $env = file_get_contents($this->tmpDir . '/.env');
@@ -54,7 +54,7 @@ final class AuthUserCommandTest extends TestCase
     {
         file_put_contents($this->tmpDir . '/.env', "FOLIO_ADMIN_EMAIL=\n");
 
-        [, $out] = $this->runCommand([], "me@example.com\nsecret-pass\nsecret-pass\n");
+        [, $out] = $this->runCommand(['FOLIO_ADMIN'], "me@example.com\nsecret-pass\nsecret-pass\n");
 
         $this->assertStringNotContainsString('secret-pass', $out);
         $this->assertStringNotContainsString('$2y$', $out);
@@ -65,7 +65,7 @@ final class AuthUserCommandTest extends TestCase
     {
         file_put_contents($this->tmpDir . '/.env', "FOLIO_ADMIN_EMAIL=old@example.com\nAPP_DEBUG=1");
 
-        [$code] = $this->runCommand(['--email=new@example.com'], "another-pass\nanother-pass\n");
+        [$code] = $this->runCommand(['FOLIO_ADMIN', '--email=new@example.com'], "another-pass\nanother-pass\n");
 
         $this->assertSame(0, $code);
         $env = file_get_contents($this->tmpDir . '/.env');
@@ -95,7 +95,7 @@ final class AuthUserCommandTest extends TestCase
         $before = "FOLIO_ADMIN_EMAIL=\n";
         file_put_contents($this->tmpDir . '/.env', $before);
 
-        [$code] = $this->runCommand(['--email=me@example.com'], "secret-pass\nother-pass\n");
+        [$code] = $this->runCommand(['FOLIO_ADMIN', '--email=me@example.com'], "secret-pass\nother-pass\n");
 
         $this->assertSame(1, $code);
         $this->assertSame($before, file_get_contents($this->tmpDir . '/.env'));
@@ -105,8 +105,8 @@ final class AuthUserCommandTest extends TestCase
     {
         file_put_contents($this->tmpDir . '/.env', "\n");
 
-        [$short] = $this->runCommand(['--email=me@example.com'], "short\nshort\n");
-        [$email] = $this->runCommand(['--email=not-an-email'], "secret-pass\nsecret-pass\n");
+        [$short] = $this->runCommand(['FOLIO_ADMIN', '--email=me@example.com'], "short\nshort\n");
+        [$email] = $this->runCommand(['FOLIO_ADMIN', '--email=not-an-email'], "secret-pass\nsecret-pass\n");
 
         $this->assertSame(1, $short);
         $this->assertSame(1, $email);
@@ -122,9 +122,42 @@ final class AuthUserCommandTest extends TestCase
         $this->assertSame(1, $code);
     }
 
+    public function test_prefix_is_required(): void
+    {
+        file_put_contents($this->tmpDir . '/.env', "APP_KEY=abc\n");
+
+        [$code, $out] = $this->runCommand(['--email=me@example.com'], "secret-pass\nsecret-pass\n");
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('Usage: preflow auth:user <PREFIX> [--email=<email>]   (writes <PREFIX>_EMAIL and <PREFIX>_PASSWORD_HASH to .env)', $out);
+        $this->assertSame("APP_KEY=abc\n", file_get_contents($this->tmpDir . '/.env'));
+    }
+
+    public function test_writes_given_prefix(): void
+    {
+        file_put_contents($this->tmpDir . '/.env', "APP_KEY=abc\n");
+
+        [$code, $out] = $this->runCommand(['ADMIN', '--email=me@example.com'], "secret-pass\nsecret-pass\n");
+
+        $this->assertSame(0, $code, $out);
+        $env = file_get_contents($this->tmpDir . '/.env');
+        $this->assertStringContainsString("ADMIN_EMAIL=me@example.com\n", $env);
+        $this->assertStringContainsString('ADMIN_PASSWORD_HASH=', $env);
+    }
+
+    public function test_rejects_bad_prefix(): void
+    {
+        file_put_contents($this->tmpDir . '/.env', "\n");
+
+        [$code] = $this->runCommand(['admin-x', '--email=me@example.com'], "secret-pass\nsecret-pass\n");
+
+        $this->assertSame(1, $code);
+        $this->assertSame("\n", file_get_contents($this->tmpDir . '/.env'));
+    }
+
     public function test_fails_when_env_missing(): void
     {
-        [$code] = $this->runCommand(['--email=me@example.com'], "secret-pass\nsecret-pass\n");
+        [$code] = $this->runCommand(['FOLIO_ADMIN', '--email=me@example.com'], "secret-pass\nsecret-pass\n");
 
         $this->assertSame(1, $code);
         $this->assertFileDoesNotExist($this->tmpDir . '/.env');

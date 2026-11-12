@@ -259,12 +259,12 @@ nothing in the HTML page:
 
 ```twig
 {% apply geo %}
-## {{ game.title }}
+## {{ job.title }}
 
-- Players: {{ game.players }}
-- Playing time: {{ game.minutes }} minutes
+- Salary: {{ job.salary }}
+- Location: {{ job.city }}
 
-{{ game.summary }}
+{{ job.summary }}
 {% endapply %}
 ```
 
@@ -272,8 +272,8 @@ In Blade:
 
 ```blade
 @geo
-## {{ $game->title }}
-- Players: {{ $game->players }}
+## {{ $job->title }}
+- Salary: {{ $job->salary }}
 @endgeo
 ```
 
@@ -281,16 +281,16 @@ Values you print inside a block come out as plain text (HTML entities decoded). 
 its children; an empty block leaves the component out. A block in a page or layout template outside any component
 comes before the page's converted HTML; to have only the block, mark the page's own HTML `data-geo="skip"`.
 
-This is the case for Folio record detail templates (a game, a gallery object): they are not components, so their
+This is the case for Folio record detail templates (a job, a gallery object): they are not components, so their
 geo block is a page-level block and comes **in addition to** the converted HTML of the template. When the block
 should stand alone, mark the template's own HTML `data-geo="skip"`:
 
 ```twig
 {% apply geo %}
 ## {{ record.title }}
-- Players: {{ record.players }}
+- Salary: {{ record.salary }}
 {% endapply %}
-<article class="game-detail" data-geo="skip">…</article>
+<article class="job-detail" data-geo="skip">…</article>
 ```
 
 ### llms.txt and llms-full.txt
@@ -298,9 +298,9 @@ should stand alone, mark the template's own HTML `data-geo="skip"`:
 `/llms.txt` lists your pages, grouped by section, each linking to its Markdown view:
 
 ```markdown
-# Game Club
+# Job Board
 
-> Board games, explained.
+> Jobs in tech, explained.
 
 ## Pages
 
@@ -331,7 +331,7 @@ what keep it out of llms.txt.
 Since 0.50 the pages llms.txt lists come from the public pages list the sitemap reads too; add and filter pages
 there (see "The public pages" under SEO below). `GeoEntries::source()` and `filter()` still work, but are deprecated.
 
-Records with their own detail pages (games, gallery objects…) and pages outside Folio are added through
+Records with their own detail pages (jobs, gallery objects…) and pages outside Folio are added through
 `GeoEntries`, from one of your service providers. A source gets the language and returns `GeoEntry` objects; a
 filter gets the whole list and returns the list you want:
 
@@ -343,16 +343,16 @@ public function register(Container $container): void
 {
     $geo = $container->get(GeoEntries::class);
 
-    // Each game's detail page in its own section: listed in llms.txt, kept out of llms-full.txt.
+    // Each job's detail page in its own section: listed in llms.txt, kept out of llms-full.txt.
     $geo->source(fn (string $locale): array => array_map(
-        fn (Game $game): GeoEntry => new GeoEntry(
-            title: $game->title($locale),
-            url: $game->url($locale),       // absolute, or a path on this site: "/de/spiele/schach"
-            description: $game->teaser($locale),
-            section: 'Games',
+        fn (Job $job): GeoEntry => new GeoEntry(
+            title: $job->title($locale),
+            url: $job->url($locale),        // absolute, or a path on this site: "/de/jobs/senior-dev"
+            description: $job->teaser($locale),
+            section: 'Jobs',
             full: false,
         ),
-        $container->get(GameRepository::class)->published(),
+        $container->get(JobRepository::class)->published(),
     ));
 
     // Drop the not-found page, and put the guide's chapters in reading order.
@@ -396,10 +396,10 @@ return [
     // Who runs the site: a schema.org Organization or Person, on the home page.
     'owner' => [
         'type' => 'Organization',
-        'name' => 'Game Club',
+        'name' => 'Job Board',
         'url' => 'https://club.example',
         'logo' => 'https://club.example/logo.png',
-        'same_as' => ['https://social.example/gameclub'],
+        'same_as' => ['https://social.example/jobboard'],
     ],
     // Per Folio type: the fields the share title, description and image come from (the first
     // that isn't empty; an image field's first asset) and the Open Graph type.
@@ -465,13 +465,13 @@ values are merged over what a Folio record set.
 
 ```twig
 {% do seo({
-    title: game.title,
-    description: game.teaser,
-    image: game.cover_url,       {# an image URL; or the array MediaLibrary::shareImage() returns #}
+    title: job.title,
+    description: job.teaser,
+    image: job.cover_url,       {# an image URL; or the array MediaLibrary::shareImage() returns #}
     og_type: 'article',
     noindex: false,
-    modified: game.updated_at,   {# ISO 8601: og:updated_time, dateModified, the Markdown's Updated line (0.55) #}
-    schema: {'@type': 'Game', name: game.title},
+    modified: job.updated_at,   {# ISO 8601: og:updated_time, dateModified, the Markdown's Updated line (0.55) #}
+    schema: {'@type': 'JobPosting', name: job.title},
 }) %}
 ```
 
@@ -486,7 +486,7 @@ stays as it is (its `Cache-Control` untouched, no `ETag`), and `noindex` still w
 per template: put `seo({public_content: true})` in the template of the public page itself, not in a layout shared
 with members' or gated pages (a gated Folio type answers `private, no-store` too, and would get cards).
 
-In Blade: `@seo(['title' => $game->title, 'description' => $game->teaser])`. In PHP, set or merge the request's
+In Blade: `@seo(['title' => $job->title, 'description' => $job->teaser])`. In PHP, set or merge the request's
 `Preflow\View\Seo\SeoContext` (`set(new PageMeta(...))`, `merge([...])`). An unknown key in a template's `seo()` is
 ignored (debug mode logs it); `PageMeta::with()` and `merge()` in PHP reject one.
 
@@ -509,18 +509,18 @@ public function register(Container $container): void
 {
     $pages = $container->get(PublicPages::class);
 
-    // Each game's page: in the sitemap and llms.txt, not in llms-full.txt.
+    // Each job's page: in the sitemap and llms.txt, not in llms-full.txt.
     $pages->source(fn (string $locale): array => array_map(
-        fn (Game $game): PublicPage => new PublicPage(
-            title: $game->title($locale),
-            url: $game->url($locale),               // absolute, or a path on this site
-            description: $game->teaser($locale),
-            section: 'Games',
-            lastmod: $game->updatedAt->format(DATE_ATOM),
-            alternates: ['en' => $game->url('en'), 'de' => $game->url('de')],
+        fn (Job $job): PublicPage => new PublicPage(
+            title: $job->title($locale),
+            url: $job->url($locale),                 // absolute, or a path on this site
+            description: $job->teaser($locale),
+            section: 'Jobs',
+            lastmod: $job->updatedAt->format(DATE_ATOM),
+            alternates: ['en' => $job->url('en'), 'de' => $job->url('de')],
             llmsFull: false,
         ),
-        $container->get(GameRepository::class)->published(),
+        $container->get(JobRepository::class)->published(),
     ));
 
     // The not-found page in no list; the tools pages in the sitemap only.
@@ -554,7 +554,7 @@ $container->get(PublicPages::class)->filter(fn (array $pages) => array_filter(
 
 ### Structured data for your types
 
-Domain schemas (a game, a product, a job offer) are your site's: register a builder for a Folio type with
+Domain schemas (a job offer, a product, an event) are your site's: register a builder for a Folio type with
 `Preflow\View\Seo\SchemaRegistry`. It gets the record's values in the page's language, the language and the page's
 `PageMeta` (absolute `url`, `title`, `description`, `image`), and returns one node or a list. Its nodes join the
 page's graph after the `WebPage`, escaped safely for the page:
@@ -573,7 +573,7 @@ $schemas->forType('job', fn (array $job, string $locale, PageMeta $meta): array 
     'url' => $meta->url,
     'datePosted' => $job['posted_at'],
     'employmentType' => $job['part_time'] ? 'PART_TIME' : 'FULL_TIME',
-    'hiringOrganization' => ['@type' => 'Organization', 'name' => 'Game Club', 'sameAs' => 'https://club.example'],
+    'hiringOrganization' => ['@type' => 'Organization', 'name' => 'Job Board', 'sameAs' => 'https://club.example'],
     'jobLocation' => ['@type' => 'Place', 'address' => ['@type' => 'PostalAddress', 'addressLocality' => $job['city']]],
 ]);
 
@@ -596,8 +596,8 @@ use Preflow\View\Seo\SeoSite;
 
 $site = $container->get(SeoSite::class);
 $site->defaults(fn (string $locale): PageMeta => new PageMeta(
-    title: 'Game Club',                         // the site's name
-    description: 'Board games every Friday',    // pages without their own
+    title: 'Job Board',                         // the site's name
+    description: 'New jobs every Friday',    // pages without their own
     image: ['url' => '/img/share.jpg', 'width' => 1200, 'height' => 630, 'alt' => 'Our club room'],
 ));
 $site->disallow('/admin/');                     // in robots.txt, and no head tags there
@@ -660,7 +660,7 @@ Pages (each public page that answers 2xx; the `status.*` rows cover the rest):
 | `hreflang.unpaired` | warning | A language version that doesn't link back, or an alternate that isn't one of the site's public pages |
 | `hreflang.x-default-missing` | notice | A page with language alternates but no `x-default` |
 | `geo.markdown-thin` | warning | GEO is on and the page's Markdown view is empty, or holds under a third of the words its `<main>` shows (pages under 50 words: only an empty one; what the converter leaves out, such as `data-geo="skip"`, isn't counted; text without spaces, such as Chinese, counts as few words). Renders each `.md` once more. Since 0.55 |
-| `geo.type-schema-missing` | notice | SEO is on and three or more pages under one address segment (`/spiele/…`) carry only generic JSON-LD (WebPage, BreadcrumbList…), nothing that says what they are about; one finding per group. Since 0.55 |
+| `geo.type-schema-missing` | notice | SEO is on and three or more pages under one address segment (`/jobs/…`) carry only generic JSON-LD (WebPage, BreadcrumbList…), nothing that says what they are about; one finding per group. Since 0.55 |
 | `link.broken` | critical | An internal link whose target answers 404, 410 or 5xx (also redirect loops) |
 | `link.broken` | notice | An internal link that goes through two or more redirects |
 
@@ -734,7 +734,7 @@ report in the same shape, so they show up in the console and in Folio. There are
 
 A `Finding` has the check id, a severity (`Severity::Critical`, `Warning`, `Notice`), a message that says what
 is wrong and what to do, and optionally a page URL, a locale and a `Target` that tells Folio where to fix it:
-`new Target('record', 'game', '42')` links to the record's editor, `'asset'` to the library.
+`new Target('record', 'job', '42')` links to the record's editor, `'asset'` to the library.
 
 ```php
 use Preflow\View\Audit\AuditRegistry;
@@ -744,25 +744,25 @@ use Preflow\View\Audit\Severity;
 use Preflow\View\Audit\SiteCheck;
 use Preflow\View\Audit\Target;
 
-final class GamesWithoutPlayerCount implements SiteCheck
+final class JobsWithoutSalary implements SiteCheck
 {
-    public function __construct(private readonly GameRepository $games) {}
+    public function __construct(private readonly JobRepository $jobs) {}
 
     public function id(): string
     {
-        return 'game.players-missing';
+        return 'job.salary-missing';
     }
 
     public function check(PageRenderer $renderer): array
     {
         $findings = [];
-        foreach ($this->games->all() as $game) {
-            if ($game->players === null) {
+        foreach ($this->jobs->all() as $job) {
+            if ($job->salary === null) {
                 $findings[] = new Finding(
                     $this->id(),
                     Severity::Warning,
-                    "{$game->title} has no player count; add one so it can show in search results.",
-                    target: new Target('record', 'game', (string) $game->id),
+                    "{$job->title} has no salary; add one so it can show in search results.",
+                    target: new Target('record', 'job', (string) $job->id),
                 );
             }
         }
@@ -772,7 +772,7 @@ final class GamesWithoutPlayerCount implements SiteCheck
 }
 
 // in a service provider's boot():
-$container->get(AuditRegistry::class)->addSite(new GamesWithoutPlayerCount($container->get(GameRepository::class)));
+$container->get(AuditRegistry::class)->addSite(new JobsWithoutSalary($container->get(JobRepository::class)));
 ```
 
 ## Pages from controllers
@@ -817,11 +817,11 @@ use Preflow\View\Pdf\{PageSettings, PdfDocument, PdfRenderer, PdfResponse};
 final class CertificateDocument extends PdfDocument
 {
     public string $name = '';          // public properties are the template variables
-    public ?Game $game = null;
+    public ?Job $job = null;
 
     public function template(): string { return __DIR__ . '/certificate.twig'; } // name or absolute path
 
-    public function resolveState(): void { $this->game = /* load what the template needs */; }
+    public function resolveState(): void { $this->job = /* load what the template needs */; }
 
     public function page(): PageSettings
     {

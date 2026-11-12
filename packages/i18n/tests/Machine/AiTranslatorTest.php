@@ -202,7 +202,7 @@ final class AiTranslatorTest extends TestCase
         $this->assertStringContainsString('Project rule.', $system);
         $this->assertStringContainsString('Use du.', $system);
         $this->assertStringContainsString('placeholders', $system);
-        $this->assertStringContainsString('proper names, brand names or game names', $system);
+        $this->assertStringContainsString('proper names or brand names', $system);
         $this->assertStringContainsString('Answer only with the JSON', $system);
         $this->assertStringEndsWith('Keep it short.', $system, 'the one-off note comes last');
         $this->assertLessThan(strpos($system, 'Meeple'), strpos($system, 'Use du.'));

@@ -12,7 +12,7 @@ use Preflow\View\AssetCollector;
 use Preflow\View\ResponsiveImage;
 
 /**
- * {{ folio_image(value, 'preset', {sizes: …}) }}: <picture> with AVIF/WebP
+ * {{ media_image(value, 'preset', {sizes: …}) }}: <picture> with AVIF/WebP
  * srcsets from the asset's variants, an <img> with explicit width/height, alt
  * text in the current language (LocaleProvider) and the focal point as classes (CSP forbids
  * inline styles). Options are ResponsiveImage's, merged with config/image.php
@@ -170,7 +170,7 @@ final class ImageTag
             // The page's key image: fetch it before the parser reaches it.
             $this->css->addHeadTag($first !== null
                 ? '<link rel="preload" as="image" type="image/' . $first[0] . '" imagesrcset="' . self::e($first[1]) . '" imagesizes="' . self::e($sizes) . '" fetchpriority="high">'
-                : '<link rel="preload" as="image" href="' . self::e($src) . '" fetchpriority="high">', 'folio-preload:' . $asset->id . ':' . ($preset ?? ''));
+                : '<link rel="preload" as="image" href="' . self::e($src) . '" fetchpriority="high">', 'media-preload:' . $asset->id . ':' . ($preset ?? ''));
         }
 
         $classes = array_filter([trim((string) $opts['class']), ...($plan?->format->fit === 'cover' ? [] : $this->focalClasses($asset))]);
@@ -273,13 +273,13 @@ final class ImageTag
             return [];
         }
 
-        $rules = '.folio-focal{object-position:var(--folio-fx,50%) var(--folio-fy,50%)}';
+        $rules = '.media-focal{object-position:var(--media-fx,50%) var(--media-fy,50%)}';
         for ($i = 0; $i <= 100; $i += 5) {
-            $rules .= ".folio-fx-{$i}{--folio-fx:{$i}%}.folio-fy-{$i}{--folio-fy:{$i}%}";
+            $rules .= ".media-fx-{$i}{--media-fx:{$i}%}.media-fy-{$i}{--media-fy:{$i}%}";
         }
-        $this->css->addCss($rules, 'folio-focal');
+        $this->css->addCss($rules, 'media-focal');
 
-        return ['folio-focal', "folio-fx-{$x}", "folio-fy-{$y}"];
+        return ['media-focal', "media-fx-{$x}", "media-fy-{$y}"];
     }
 
     private function colorRules(): ColorRules

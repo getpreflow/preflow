@@ -280,7 +280,7 @@ $translator = $container->get(Preflow\I18n\Machine\MachineTranslator::class);
 $de = $translator->translate('Welcome back, {name}!', to: 'de', from: 'en');
 
 // Many texts. One TranslationResult per unit, in the same order.
-$results = $translator->translateUnits($units, note: 'This is a game for children.');
+$results = $translator->translateUnits($units, note: 'This is a job post for engineers.');
 ```
 
 `translate()` takes an optional `Tuning` and a `TextFormat` (`Plain`, `Html` or `Markdown`).
@@ -316,7 +316,7 @@ about records. Its main fields:
 - `previousSource` and `current`: for a text that is outdated, the source the translation was
   made from and the translation itself. The model then adapts the current translation to the
   change and keeps the existing wording elsewhere.
-- `context`: short facts for the model, such as `['type' => 'Game', 'record' => 'Cascadia']`.
+- `context`: short facts for the model, such as `['type' => 'Job', 'record' => 'Senior developer']`.
 - `tuning`: instructions for this unit only, already worked out by the source.
 - `type`: the collection key, used for glossary type limits and for the type tuning level.
 
@@ -347,7 +347,7 @@ A project's own token syntax can be protected the same way. List regular express
 ```
 
 - A pattern **with a capture group 1** compares only what the group captures. Above, a result
-  must keep every key (`meeple` stays `meeple`). It may translate the shown text, or add one.
+  must keep every key (`salary` stays `salary`). It may translate the shown text, or add one.
 - A pattern **without a group** compares the whole match, so the token must come back unchanged.
 - Each match counts: dropping, adding or changing one fails the unit with `markup changed`,
   like a lost tag.
@@ -376,7 +376,7 @@ request. It is layered, from general to specific, and later levels are added aft
 'tuning' => ['Our product is called "Foo"; never translate it.'],
 'translation' => [
     'languages' => ['de' => ['Address the reader with "du".']],
-    'types'     => ['game' => ['Keep the tone playful.']],
+    'types'     => ['job' => ['Keep the tone plain and direct.']],
 ],
 ```
 
@@ -396,7 +396,7 @@ The glossary holds terms that must be translated one fixed way, or not at all.
 
 ```php
 'glossary' => [
-    ['term' => 'Meeple', 'translations' => ['de' => 'Meeple', 'fr' => null], 'types' => ['game'], 'note' => 'A game piece'],
+    ['term' => 'Preflow', 'translations' => ['de' => 'Preflow', 'fr' => null], 'types' => ['job'], 'note' => 'The framework name'],
     ['term' => 'Worker Placement', 'translations' => ['de' => 'Arbeitereinsatz']],
 ],
 ```
@@ -404,7 +404,7 @@ The glossary holds terms that must be translated one fixed way, or not at all.
 - `translations` is per target language. A value is the rendering to use. `null` means keep the
   term as it is in that language.
 - The term is found by whole word and ignoring case, with Unicode letters and digits as the word
-  edges ("Meeple" does not match "Meeples"). Spaces inside a term match any run of spaces.
+  edges ("Preflow" does not match "Preflows"). Spaces inside a term match any run of spaces.
 - `types` limits an entry to some collections; empty means all. `note` is passed to the model.
 - Only entries whose term occurs in a batch (and that have a rendering for the target language)
   are sent, so a big glossary costs nothing on texts it does not touch.

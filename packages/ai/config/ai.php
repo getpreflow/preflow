@@ -52,7 +52,7 @@ return [
         // Per content type: extra instructions, e.g. 'article' => ['Keep the tone playful.'].
         'types' => [],
 
-        // Fixed terms: ['term' => 'Meeple', 'translations' => ['de' => 'Meeple', 'fr' => null], 'types' => ['game'], 'note' => '...'].
+        // Fixed terms: ['term' => 'Preflow', 'translations' => ['de' => 'Preflow', 'fr' => null], 'types' => ['job'], 'note' => '...'].
         // A translation of null means "keep the term as is" in that language.
         'glossary' => [],
 

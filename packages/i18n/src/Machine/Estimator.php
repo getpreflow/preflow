@@ -51,7 +51,7 @@ final class Estimator
 
     /**
      * Two characters a token: plain English runs at about four, but texts with markup, German answers
-     * and JSON came to one and a half (BG Genius flows, 0.47). An estimate a little high is the safe side.
+     * and JSON came to one and a half (long multi-step flows, 0.47). An estimate a little high is the safe side.
      */
     private static function tokens(int $chars): int
     {

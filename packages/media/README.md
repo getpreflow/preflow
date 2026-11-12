@@ -124,7 +124,7 @@ return [
     one `<link rel="preload" as="image">` per image in the head. A layout that prints
     `{{ head() }}` before the body has already written its head, so leave the head to the
     automatic injection to keep the link.
-- The focal point becomes classes (`folio-focal folio-fx-30 folio-fy-70`), never an inline
+- The focal point becomes classes (`media-focal media-fx-30 media-fy-70`), never an inline
   style; their CSS is added with the CSP nonce. It shows only when your CSS crops the image
   (`object-fit: cover`). The class names are kept from Folio.
 

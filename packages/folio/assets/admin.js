@@ -738,7 +738,7 @@
     }
 
     // Delete forms with data-delete-plan="{url}" data-delete-id="{id}": fetch what the
-    // delete would also do ("Also deletes 12 games.") and confirm that; a restricted plan
+    // delete would also do ("Also deletes 12 jobs.") and confirm that; a restricted plan
     // only shows why. The server plans again when the form is submitted. If the summary
     // can't be fetched, the form's generic data-confirm text is asked instead.
     // The bulk bar's Delete button carries data-delete-plan itself: the plan is asked for

@@ -10,7 +10,7 @@ namespace Preflow\I18n\Machine;
  */
 final readonly class TranslationUnit
 {
-    /** @param array<string,string> $context e.g. ['type' => 'Game', 'record' => 'Cascadia'] */
+    /** @param array<string,string> $context e.g. ['type' => 'Job', 'record' => 'Senior developer'] */
     public function __construct(
         /** The path, unique within one item. */
         public string $id,

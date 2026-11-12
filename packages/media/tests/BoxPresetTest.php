@@ -224,7 +224,7 @@ final class BoxPresetTest extends TestCase
         $this->assertStringContainsString('<source type="image/webp" srcset="' . $base . '-200.webp 200w, ' . $base . '-400.webp 400w" sizes="200px">', $html);
         $this->assertStringContainsString('<img src="' . $base . '-200.webp" width="200" height="200"', $html);
         $this->assertStringContainsString('class="thumb"', $html);
-        $this->assertStringNotContainsString('folio-focal', $this->tag($lib)->render($lib->update($asset->id, ['focal_x' => 100])->id, 'cover-thumb'));
+        $this->assertStringNotContainsString('media-focal', $this->tag($lib)->render($lib->update($asset->id, ['focal_x' => 100])->id, 'cover-thumb'));
         if (function_exists('imageavif')) {
             $this->assertStringContainsString('<source type="image/avif" srcset="' . $base . '-200.avif 200w', $html);
         }

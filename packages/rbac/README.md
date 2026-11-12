@@ -45,7 +45,7 @@ it has never given before, and remembers the list in the role's hidden field
 - Only a site's own seed list grants. A permission that a Folio release, package or extension
   declares is never given to a role on its own; see New permissions below.
 
-A site that kept its own `extends` file adding `seeded_permissions` to `rbac_role` (holz-objekte.org
+A site that kept its own `extends` file adding `seeded_permissions` to `rbac_role` (a project of the framework's early days
 did) must delete that file when it upgrades to 0.53. Boot fails otherwise, naming the field.
 The stored records carry over.
 

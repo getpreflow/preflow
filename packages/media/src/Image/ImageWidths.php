@@ -27,9 +27,9 @@ final class ImageWidths
 
     /**
      * @param array<string, array<string, mixed>> $presets config/image.php "presets"
-     * @param list<int>|null $folioWidths folio.assets.widths (overrides the eager set)
+     * @param list<int>|null $assetWidths the configured asset widths (overrides the eager set)
      */
-    public static function fromConfig(array $presets, ?array $folioWidths): self
+    public static function fromConfig(array $presets, ?array $assetWidths): self
     {
         $byPreset = [];
         $listed = [];
@@ -50,7 +50,7 @@ final class ImageWidths
             }
             $byPreset[(string) $name] = self::sorted($widths);
         }
-        $eager = self::ints($folioWidths ?? []);
+        $eager = self::ints($assetWidths ?? []);
 
         return new self($byPreset, self::sorted($eager !== [] ? $eager : ($listed !== [] ? $listed : self::DEFAULT)));
     }

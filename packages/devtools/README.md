@@ -126,9 +126,9 @@ list columns, per field `readonly`, `hidden`, …), so nothing is defined twice.
 data, same ids: nothing in the database changes.
 
 ```
-php preflow make:model WoodObject --from-type=object
-# Model created: app/Models/WoodObject.php
-# Admin settings kept in: config/models/object.json
+php preflow make:model Job --from-type=job
+# Model created: app/Models/Job.php
+# Admin settings kept in: config/models/job.json
 # Check the class, then run your tests: nothing in the database changes.
 ```
 
@@ -282,18 +282,18 @@ php preflow auth:token --revoke=<uuid>
 
 `--name` is a label (default `cli`).
 
-### `auth:user [PREFIX]` — set a login in `.env`
+### `auth:user <PREFIX>` — set a login in `.env`
 
 Asks for an email and a password (hidden, twice, at least 8 characters) and
 writes `<PREFIX>_EMAIL` and `<PREFIX>_PASSWORD_HASH` to `.env`, replacing the
-lines when they exist. The prefix defaults to `FOLIO_ADMIN`; the password and
-its hash are never printed. `config/auth.php` reads the two values, e.g. for a
+lines when they exist. The prefix is required (capital letters, digits and
+underscores); the password and its hash are never printed. `config/auth.php` reads the two values, e.g. for a
 `ConfigUserProvider` user.
 
 ```
-php preflow auth:user
-php preflow auth:user FOLIO_EDITOR --email=editor@example.com
-# Set FOLIO_EDITOR_EMAIL=editor@example.com and FOLIO_EDITOR_PASSWORD_HASH in .env.
+php preflow auth:user ADMIN
+php preflow auth:user EDITOR --email=editor@example.com
+# Set EDITOR_EMAIL=editor@example.com and EDITOR_PASSWORD_HASH in .env.
 ```
 
 ## Commands from packages and the app

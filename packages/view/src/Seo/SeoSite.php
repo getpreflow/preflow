@@ -10,7 +10,7 @@ namespace Preflow\View\Seo;
  * extra robots.txt Disallow paths, with Allow exceptions under them. Folio sets
  * all three; a site without Folio can too.
  *
- *     $container->get(SeoSite::class)->defaults(fn (string $locale) => new PageMeta(title: 'Game Club', …));
+ *     $container->get(SeoSite::class)->defaults(fn (string $locale) => new PageMeta(title: 'Job Board', …));
  *     $container->get(SeoSite::class)->disallow('/admin/');
  *     $container->get(SeoSite::class)->allow('/admin/uploads/');
  */

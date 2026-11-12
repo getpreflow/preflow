@@ -53,7 +53,7 @@ final class TranslationPrompt
                     . 'Never drop, add or change such a token. Where a pattern has a capture group, keep what it captures exactly as it is '
                     . '(the rest of the token may be translated); otherwise keep the whole token unchanged.',
             ]),
-            'Never translate proper names, brand names or game names.',
+            'Never translate proper names or brand names.',
             '"label", "kind" and "format" describe where an item is used; a "hint" holds instructions for that item only.',
             'An item with "previous" and "current" was translated before: its source changed from "previous" to "text". '
                 . 'Adapt "current" to that change and keep its wording everywhere else.',

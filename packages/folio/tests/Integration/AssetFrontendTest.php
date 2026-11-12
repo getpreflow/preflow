@@ -39,9 +39,9 @@ final class AssetFrontendTest extends TestCase
 
         $body = (string) $this->get('/hello')->getBody();
 
-        $this->assertStringContainsString('folio-fx-30', $body);
+        $this->assertStringContainsString('media-fx-30', $body);
         $head = substr($body, 0, (int) strpos($body, '</head>'));
-        $this->assertMatchesRegularExpression('/<style nonce="[^"]+">[^<]*\.folio-fx-30\{--folio-fx:30%\}/', $head);
+        $this->assertMatchesRegularExpression('/<style nonce="[^"]+">[^<]*\.media-fx-30\{--media-fx:30%\}/', $head);
         $this->assertFileExists($this->dir . '/public/media/' . $asset->path);
     }
 
@@ -87,7 +87,7 @@ final class AssetFrontendTest extends TestCase
 
         // The page also carries the htmx runtime and the debug toolbar (both with per-request nonces),
         // so the fixture holds the image's own output: the focal CSS, the preload link and the <picture>.
-        preg_match('#<style nonce="[^"]+">\.folio-focal.*?</style>#s', $body, $css);
+        preg_match('#<style nonce="[^"]+">\.media-focal.*?</style>#s', $body, $css);
         preg_match('#<link rel="preload" as="image"[^>]*>#', $body, $preload);
         preg_match('#<picture>.*?</picture>#s', $body, $picture);
         $body = implode("\n", [$css[0] ?? '', $preload[0] ?? '', $picture[0] ?? '']) . "\n";

@@ -118,12 +118,12 @@ final class MediaInFolioTest extends TestCase
 
         preg_match('#<i>(.*)</i><b>(.*)</b><u>(.*)\|(.*)</u>#s', $body, $m);
         $this->assertCount(5, $m, $body);
-        $this->assertStringContainsString('folio-fx-30', $m[1]);
+        $this->assertStringContainsString('media-fx-30', $m[1]);
         $this->assertSame($m[1], $m[2]);
         $this->assertSame('/media/' . $asset->path, $m[3]);
         $this->assertSame($m[3], $m[4]);
         $head = substr($body, 0, (int) strpos($body, '</head>'));
         $this->assertSame(1, substr_count($head, 'rel="preload"'));
-        $this->assertSame(1, substr_count($head, '.folio-fx-30{'));
+        $this->assertSame(1, substr_count($head, '.media-fx-30{'));
     }
 }
