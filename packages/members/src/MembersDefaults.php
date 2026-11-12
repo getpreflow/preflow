@@ -7,7 +7,7 @@ namespace Preflow\Members;
 /**
  * config/members.php defaults a package gives the sites it runs on, between the site's file
  * (which wins) and the core's own: Folio sets its frontend layout, so the member pages of a Folio
- * site keep the site's page layout. Bound as an instance before the app boots its providers.
+ * site keep the site's page layout. Bound before the app boots its providers (an instance, or a factory run when the members config is first read).
  */
 final readonly class MembersDefaults
 {

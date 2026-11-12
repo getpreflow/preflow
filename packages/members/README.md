@@ -335,7 +335,7 @@ member deletion, by the member or by staff, also listens to Folio's `#[AfterDele
 
 The pages are `@members/{landing,register,confirm,login,forgot,reset,resend,check-inbox,thanks,closed,account}.twig`
 plus the shared `_card.twig`, all extending the configured `layout` (default `@members/_layout.twig`,
-a standalone page; a Folio site's default is `@folio/frontend/_site.twig`). `@members/decision.twig` is
+a standalone page; a Folio site's default is `@folio/frontend/_site.twig` when the site has that template). `@members/decision.twig` is
 the Decision panel of Folio's members admin (a fragment in the admin, not a page). A site overrides one by
 putting a file of the same name in `resources/members/` (searched before the package; a new
 directory needs a fresh request to be picked up).
@@ -518,7 +518,7 @@ The full list is in the framework's 0.38 release checklist; what a site with mem
 - **The default admission is `AcceptOnConfirm`** (was owner approval). A site that wants the
   owner to decide sets `'admission' => Preflow\Members\Admission\OwnerApproval::class`.
 - **The default layout** is the package's `@members/_layout.twig` on a site without Folio; a
-  Folio site keeps `@folio/frontend/_site.twig`. Set `layout` to keep a layout of your own.
+  Folio site that has `@folio/frontend/_site.twig` keeps it. Set `layout` to keep a layout of your own.
 - **No Folio or rbac needed.** The package no longer requires them; Folio carries the members
   admin when this package is installed (it still needs the `rbac` extension).
 - **`config/auth.php`:** the provider class is `Preflow\Auth\Record\RecordUserProvider`.
