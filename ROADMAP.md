@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.69.2)
+> Last updated: 2026-11-12 (v0.70.0)
 
 ## Current State
 
-**v0.69.2** — 7110 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.70.0** — 7184 tests, 26 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -98,7 +98,7 @@ the project; note breaking changes for the consumers. Status (checked 2026-11-11
 for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
 **Done 2026-11-12:** all 25 packages audited (`.superpowers/audit-2026-11-12/`, local); the owner decided to fix
 all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, releases 0.67 (clean-ups, done)
-→ 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio; done) → 0.70 (preflow/blocks,
+→ 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio; done) → 0.70 (done: preflow/blocks and rules out of Folio; 0.71 publishing,
 preflow/publishing, one record write path) → 0.71 (gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
@@ -524,6 +524,33 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **preflow/blocks, and the remaining rules out of Folio (v0.70.0, released 2026-11-12):** fourth release of the package
+  audit's fixes (spec D1, D7; plan `docs/superpowers/plans/2026-11-12-release-0.70-blocks.md`).
+  - **New package `preflow/blocks`** (`Preflow\Blocks\*`): Block, BlockComponent, BlockField, BlockDefinition,
+    BlockRegistry, BlockRenderer, discovery (app/Components, app/Blocks, composer `extra.preflow.blocks`,
+    `config/blocks.php` `classes`, `max_depth`, `cache_path`), the template function `blocks()` (Twig and Blade),
+    interfaces `BlockLocale`, `BlockTextCleaner` (default: values as stored), `BlockPreviewMarks`. Folio keeps the
+    blocks field, the editor and preview, and binds its own locale, rich-text cleaning and preview marks. Blocks deeper
+    than `max_depth` render as before and log a note. Cache key `blocks` (`cache:clear folio.blocks` still works with a
+    note until 0.71).
+  - **routing:** `RedirectRules` (no chains, page wins, area rules, target checks, live record targets), `RedirectUrl`,
+    `ListedRedirectStore`, `PageExists`, `TargetIsLive`, `SiteAddresses`, `NotFoundList`; every `save()` of Folio's
+    redirect store is checked (`storeUnchecked()` is Folio's internal bookkeeping).
+  - **i18n:** `OverrideRules`/`OverrideScope`/`OverrideRefused`: offered locale, editable key, length, plain text,
+    placeholders — for Folio's form, the store's `set()` and translation imports. `translate:plan <collection>
+    --locales=… [--scope] [--ids] [--note] [--start] [--confirm-live]` plans a job over any text source.
+  - **media:** asset alt texts are the text source `media_alt` (`MediaLibrary::setAltIfUnchanged()` writes them
+    compare-and-set); Folio's alt-text button uses it.
+  - **Folio:** `Extension::seed()` returns the lines to print (untyped until 0.71, then `: array`).
+  - **Removed:** the 0.69 aliases (`Preflow\Rbac\Extension`, `Fields\*`, `Types\*`, `NewPermissions*`), the
+    `folio:staff:import-config` alias, `StaffMailer::siteName()`.
+  - **Upgrading:** raise all `preflow/*` to `^0.70`, `composer update "preflow/*"`. Old names keep working until 0.71
+    without a runtime note: `Preflow\Folio\Block\*` → `Preflow\Blocks\*`, `folio_blocks()` → `blocks()`,
+    `extra.folio.blocks` → `extra.preflow.blocks`, `config/folio.php` `blocks`/`cache_path` → `config/blocks.php`,
+    cache key `folio.blocks` → `blocks`; a site extension's `seed(): void` → `seed(Container $c): array`. Code using the
+    removed rbac aliases moves to `Preflow\Folio\Rbac\*`. Removed statics: `StoredOverrides::validText/validLocale/
+    MAX_LENGTH`, `EditableTexts::placeholdersIn`, `TranslationsController::matches/PER_PAGE`. Redirect store writes and
+    translation imports now refuse what the admin form refuses.
 - **Found by the 0.69 docs review (v0.69.2, released 2026-11-12):** `StaffAccounts::passwordMin()` and
   `checkPassword()` (the configured `password_min`, checkable before a set-password link is used up; `setPassword()`
   uses the same check). Permissions in `config/roles.php` that nothing declares are printed once by `rbac:install`,
