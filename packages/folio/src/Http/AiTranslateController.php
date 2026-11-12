@@ -28,6 +28,7 @@ use Preflow\I18n\Machine\TranslationUnit;
 use Preflow\I18n\Machine\TranslationWorker;
 use Preflow\I18n\Machine\UnitStatus;
 use Preflow\Media\MediaLibrary;
+use Preflow\Media\Translation\AltTextSource;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -373,17 +374,10 @@ final class AiTranslateController
             return self::json(422, ['error' => 'Choose a language to translate into.']);
         }
 
-        $source = trim($asset->alt[$default] ?? '');
-        $units = $source === '' ? [] : [new TranslationUnit(
-            id: 'alt.' . $locale,
-            label: 'Alt text',
-            source: $source,
-            to: $locale,
-            from: $default,
-            kind: 'alt',
-            current: trim($asset->alt[$locale] ?? '') === '' ? null : $asset->alt[$locale],
-            context: ['asset' => $asset->label()],
-        )];
+        if (!$this->sources->has(AltTextSource::COLLECTION)) {
+            return new Response(404, [], 'Not found');
+        }
+        $units = $this->sources->get(AltTextSource::COLLECTION)->units($asset->id, $locale, Scope::All);
 
         return $this->suggestions($request, $units, trim((string) ($body['note'] ?? '')));
     }

@@ -16,7 +16,7 @@
         "preflow/devtools": "^0.34 || @dev"
     },
     "suggest": {
-        "preflow/i18n": "Per-language alt text for assets",
+        "preflow/i18n": "Per-language alt text for assets, and alt texts as a machine-translation source",
         "preflow/devtools": "The media:* commands"
     },
     "conflict": {

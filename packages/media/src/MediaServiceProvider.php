@@ -30,6 +30,7 @@ use Preflow\Media\Pdf\MediaPdfImages;
 use Preflow\Media\Preview\PdfPreviewRenderer;
 use Preflow\Media\Preview\PreviewRenderers;
 use Preflow\Media\Preview\VideoPreviewRenderer;
+use Preflow\Media\Translation\AltTextSource;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\LazyReferenceSource;
 use Preflow\Media\Routing\MediaRoutes;
@@ -190,6 +191,9 @@ final class MediaServiceProvider extends ServiceProvider
             ));
         }
 
+        // Alt texts as a machine-translation source: only a job that names it works on it.
+        $this->registerAltTextSource($container);
+
         // Private files are not public pages: no redirects there, nothing in the not-found list.
         if ($container->bound(\Preflow\Core\Http\NonPublicPaths::class)) {
             $container->get(\Preflow\Core\Http\NonPublicPaths::class)->add($container->get(MediaConfig::class)->privateUrl);
@@ -204,6 +208,19 @@ final class MediaServiceProvider extends ServiceProvider
                 MediaRoutes::register($router->getCollection(), $config, $router->compiled('media', static fn (): array => MediaRoutes::entries($config)));
             }
         }
+    }
+
+    /** With the i18n core's machine translation bound and more than one language: lazy, so nothing is read until a run asks. */
+    private function registerAltTextSource(Container $container): void
+    {
+        $sources = 'Preflow\\I18n\\Machine\\TextSources';
+        if (!class_exists($sources) || !$container->bound($sources) || !self::locales($container)->isMultilingual()) {
+            return;
+        }
+        $container->get($sources)->add(AltTextSource::COLLECTION, static fn (): AltTextSource => new AltTextSource(
+            $container->get(MediaLibrary::class),
+            self::locales($container),
+        ));
     }
 
     private static function locales(Container $c): Locales
