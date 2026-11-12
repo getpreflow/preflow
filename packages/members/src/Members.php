@@ -211,7 +211,7 @@ final class Members
 
     /**
      * The owner declines a member who waits (or is one): the declined mail first, then the role
-     * changes and the member's remember rows go, so no open session outlives the decision.
+     * changes and the member's remember rows go, so no open session outlives the decision (remember-me rows are revoked when RememberMe is bound; without it there are none).
      *
      * @throws DecisionRefused unconfirmed, not_allowed (the member is already declined) or empty_message
      */
@@ -239,14 +239,14 @@ final class Members
     private function check(DynamicRecord $m, string $message, array $from): void
     {
         if (trim($message) === '') {
-            throw new DecisionRefused('empty_message');
+            throw new DecisionRefused(DecisionRefused::EMPTY_MESSAGE);
         }
         $state = MemberState::fromRecord($m);
         if ($state === MemberState::Unconfirmed) {
-            throw new DecisionRefused('unconfirmed');
+            throw new DecisionRefused(DecisionRefused::UNCONFIRMED);
         }
         if (!in_array($state, $from, true)) {
-            throw new DecisionRefused('not_allowed');
+            throw new DecisionRefused(DecisionRefused::NOT_ALLOWED);
         }
     }
 

@@ -41,7 +41,7 @@ use Psr\Http\Message\ServerRequestInterface;
 #[FolioType('member')]
 final class MemberAdmin
 {
-    private const array TONES = ['waiting' => 'changed', 'member' => 'published', 'declined' => 'draft', 'unconfirmed' => '', 'locked' => 'incomplete'];
+    private const array TONES = ['waiting' => 'changed', 'member' => 'published', 'declined' => 'draft', DecisionRefused::UNCONFIRMED => '', 'locked' => 'incomplete'];
 
     public function __construct(
         private readonly Members $members,
@@ -167,8 +167,8 @@ final class MemberAdmin
             $role === 'member' ? $this->members->accept($m, $message) : $this->members->decline($m, $message);
         } catch (DecisionRefused $e) {
             $text = match ($e->reason) {
-                'unconfirmed' => $this->translator->get('members-admin.decision.unconfirmed'),
-                'empty_message' => $this->translator->get('members-admin.decision.empty_message'),
+                DecisionRefused::UNCONFIRMED => $this->translator->get('members-admin.decision.unconfirmed'),
+                DecisionRefused::EMPTY_MESSAGE => $this->translator->get('members-admin.decision.empty_message'),
                 default => $this->translator->get('members-admin.decision.cant_' . ($role === 'member' ? 'accept' : 'decline'), ['state' => $this->stateLabel(MemberState::fromRecord($m))]),
             };
 

@@ -59,8 +59,8 @@ final class DecideCommand implements CommandInterface
             $accept ? $members->accept($member, $message) : $members->decline($member, $message);
         } catch (DecisionRefused $e) {
             echo match ($e->reason) {
-                'unconfirmed' => "That member has not confirmed their email yet; there is nothing to decide.\n",
-                'empty_message' => "The message is empty.\n",
+                DecisionRefused::UNCONFIRMED => "That member has not confirmed their email yet; there is nothing to decide.\n",
+                DecisionRefused::EMPTY_MESSAGE => "The message is empty.\n",
                 default => 'That member cannot be ' . ($accept ? 'accepted' : 'declined') . ' (state: ' . MemberState::fromRecord($member)->value . ").\n",
             };
 

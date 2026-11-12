@@ -38,7 +38,9 @@ final class TranslationsDeclarationTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertArrayNotHasKey('members-admin', $composer['extra']['preflow']['translations']);
-        $this->assertDirectoryDoesNotExist(dirname(__DIR__) . '/lang/en/members-admin.php');
+        foreach (['en', 'de', 'fr'] as $locale) {
+            $this->assertFileDoesNotExist(dirname(__DIR__) . "/lang/{$locale}/members-admin.php");
+        }
         $this->assertFalse(method_exists(\Preflow\Members\Links::class, 'folioMember'));
     }
 }

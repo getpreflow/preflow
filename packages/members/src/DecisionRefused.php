@@ -11,6 +11,10 @@ namespace Preflow\Members;
  */
 final class DecisionRefused extends \RuntimeException
 {
+    public const string UNCONFIRMED = 'unconfirmed';
+    public const string NOT_ALLOWED = 'not_allowed';
+    public const string EMPTY_MESSAGE = 'empty_message';
+
     public function __construct(public readonly string $reason)
     {
         parent::__construct('Decision refused: ' . $reason);
