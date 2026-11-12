@@ -22,8 +22,8 @@ final class RichTextOutputTest extends TestCase
     protected function setUp(): void
     {
         $this->scaffoldPublishing();
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => ["
-            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\ProseBlock\\ProseBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]]];\n");
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => ["
+            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\ProseBlock\\ProseBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]];\n");
         $this->writeModel('snippet', [
             'label' => 'Snippets',
             'publishing' => true,
@@ -34,7 +34,7 @@ final class RichTextOutputTest extends TestCase
             'singleton' => true,
             'fields' => ['tagline' => ['type' => 'string', 'translatable' => true], 'footer' => ['type' => 'richtext', 'translatable' => true]],
         ]);
-        $this->write('resources/folio/frontend/post.twig', '<html><body><main>{{ folio_blocks(record.sections|default([])) }}</main>'
+        $this->write('resources/folio/frontend/post.twig', '<html><body><main>{{ blocks(record.sections|default([])) }}</main>'
             . '<div class="list">{% for s in folio_list("snippet") %}{{ s.body|raw }}{% endfor %}</div>'
             . '<div class="find">{{ folio_find("snippet", "s1").body|default("")|raw }}</div>'
             . '<div class="site">{{ folio_get("site").footer|default("")|raw }}</div>'

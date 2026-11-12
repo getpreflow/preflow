@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Fixtures\Blocks\ProseBlock;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockComponent;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockComponent;
+use Preflow\Blocks\BlockField;
 
 #[Block(key: 'prose', label: 'Prose', group: 'Content')]
 final class ProseBlock extends BlockComponent

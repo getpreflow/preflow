@@ -13,7 +13,7 @@ use Preflow\Core\Boot\ManifestBuilder;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\MigrateCommand;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\ExtensionRegistry;
@@ -355,10 +355,11 @@ final class BootManifestAppTest extends TestCase
         $this->write('.env', "APP_MANIFEST_TEST=1\n");
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Manifest club', 'debug' => 0, 'engine' => 'twig', 'key' => 'manifest-app-test-key-0123456789', 'url' => 'https://site.test', 'locale' => 'en'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class];\n");
-        $this->write('config/folio.php', "<?php\nreturn " . var_export(['path' => '/folio', 'blocks' => ['classes' => [
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
+        $this->write('config/blocks.php', "<?php\nreturn " . var_export(['classes' => [
             \Preflow\Folio\Tests\Fixtures\Blocks\ProseBlock\ProseBlock::class,
             \Preflow\Folio\Tests\Fixtures\Blocks\QuoteBlock::class,
-        ]]], true) . ";\n");
+        ]], true) . ";\n");
         $this->write('config/data.php', "<?php\nreturn " . var_export([
             'default' => 'json',
             'models_path' => $this->dir . '/config/models',
@@ -381,7 +382,7 @@ final class BootManifestAppTest extends TestCase
         ]));
         // The site adds a field to rbac's role type ("extends").
         $this->write('config/models/rbac_role.json', (string) json_encode(['key' => 'rbac_role', 'extends' => true, 'fields' => ['note' => ['type' => 'string']]]));
-        $this->write('resources/folio/frontend/page.twig', '<html><head></head><body><p class="welcome">{{ t("site.welcome") }}</p><h1>{{ record.title }}</h1>{{ folio_blocks(record.sections|default([])) }}</body></html>');
+        $this->write('resources/folio/frontend/page.twig', '<html><head></head><body><p class="welcome">{{ t("site.welcome") }}</p><h1>{{ record.title }}</h1>{{ blocks(record.sections|default([])) }}</body></html>');
 
         // A component of the site that is a block (discovered from app/Components).
         $this->write('app/Components/Greeting/Greeting.php', <<<'PHP'
@@ -391,9 +392,9 @@ final class BootManifestAppTest extends TestCase
 
             namespace App\Components\Greeting;
 
-            use Preflow\Folio\Block\Block;
-            use Preflow\Folio\Block\BlockComponent;
-            use Preflow\Folio\Block\BlockField;
+            use Preflow\Blocks\Block;
+            use Preflow\Blocks\BlockComponent;
+            use Preflow\Blocks\BlockField;
 
             #[Block(key: 'greeting', label: 'Greeting')]
             final class Greeting extends BlockComponent

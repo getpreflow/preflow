@@ -161,6 +161,23 @@ final class RedirectRules
     }
 
     /**
+     * The entries sending visitors to an address of this site (a path, or an absolute URL with the
+     * site's host or $host), with the address read as targetedBy() reads it: an entry's URL target
+     * lies at the address (exact; where a page answers the entry does not send on, so it is left
+     * out), or a "keep the rest" area's target lies above it. $area asks for an area's address: the
+     * entries whose target lies at or under it. An address of another host, or one that is not a
+     * path of this site, is led to by none.
+     *
+     * @return list<Redirect>
+     */
+    public function leadingTo(string $address, bool $area = false, string $host = ''): array
+    {
+        $at = $this->site->address($address, $host);
+
+        return $at === null ? [] : $this->leading($at[0], $at[1], $area, null, $host);
+    }
+
+    /**
      * Whether another entry's URL target lies at this address (exact) or under it (area), in its
      * language, where no page answers. A "keep the rest" area sends visitors to its target and
      * everything below it: an address there counts too, and so does an area being saved that
@@ -168,6 +185,16 @@ final class RedirectRules
      */
     private function targetedBy(string $locale, string $path, bool $area, ?string $own, string $host): bool
     {
+        return $this->leading($locale, $path, $area, $own, $host) !== [];
+    }
+
+    /**
+     * @param string $locale '' for any language
+     * @return list<Redirect>
+     */
+    private function leading(string $locale, string $path, bool $area, ?string $own, string $host): array
+    {
+        $leading = [];
         foreach ($this->store->entries() as $other) {
             if ($other->id === $own || $other->targetUrl === null) {
                 continue;
@@ -178,17 +205,17 @@ final class RedirectRules
             }
             if ($other->area && $other->mode === AreaMode::Prefix) {
                 if (RedirectPath::under($path, $at[1]) !== null || ($area && RedirectPath::under($at[1], $path) !== null)) {
-                    return true;
+                    $leading[] = $other;
                 }
                 continue;
             }
             $hit = $area ? RedirectPath::under($at[1], $path) !== null : $at[1] === $path;
             if ($hit && !$this->pages->exists($this->site->lookupLocale($at[0]), $at[1])) {
-                return true;
+                $leading[] = $other;
             }
         }
 
-        return false;
+        return $leading;
     }
 
     /**

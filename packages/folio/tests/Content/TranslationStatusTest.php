@@ -261,7 +261,7 @@ final class TranslationStatusTest extends TestCase
 
     public function test_rich_text_reported_as_html(): void
     {
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]]];\n");
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]];\n");
         $this->writeModel('post', ['fields' => [
             'title' => ['type' => 'string', 'translatable' => true],
             'content' => ['type' => 'richtext', 'translatable' => true],

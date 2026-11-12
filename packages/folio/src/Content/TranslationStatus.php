@@ -6,6 +6,7 @@ namespace Preflow\Folio\Content;
 
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
+use Preflow\Data\TypeFieldDefinition;
 use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
@@ -68,8 +69,7 @@ final class TranslationStatus
 
         $texts = [];
         foreach ($def->fields as $name => $field) {
-            // A field an editor cannot fill in on the form has no translation to wait for.
-            if ($name === $def->idField || ($field->config['readonly'] ?? false) === true || ($field->config['hidden'] ?? false) === true) {
+            if (!self::fillable($def, $name, $field)) {
                 continue;
             }
             $type = $this->fieldTypes->get($field->type);
@@ -86,6 +86,36 @@ final class TranslationStatus
         }
 
         return $texts;
+    }
+
+    /**
+     * Whether the type has anything to translate: a translatable text field, or a field of a type that
+     * reports translatable texts of its own (blocks). False for a single-locale app and for types such as
+     * roles or staff accounts.
+     */
+    public function translatable(TypeDefinition $def): bool
+    {
+        if (!$def->locales->isMultilingual()) {
+            return false;
+        }
+        $translatable = array_flip($def->translatableFields());
+        foreach ($def->fields as $name => $field) {
+            if (!self::fillable($def, $name, $field)) {
+                continue;
+            }
+            $type = $this->fieldTypes->get($field->type);
+            if ($type instanceof ReportsTranslatableTexts || (isset($translatable[$name]) && self::holdsText($type))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** A field an editor cannot fill in on the form has no translation to wait for. */
+    private static function fillable(TypeDefinition $def, string $name, TypeFieldDefinition $field): bool
+    {
+        return $name !== $def->idField && ($field->config['readonly'] ?? false) !== true && ($field->config['hidden'] ?? false) !== true;
     }
 
     /**

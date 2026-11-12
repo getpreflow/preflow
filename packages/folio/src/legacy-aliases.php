@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 /**
  * The asset library, image tag, value classes and image backends moved to preflow/media; the record users
- * (RecordUser, RecordUserProvider) to preflow/auth (Preflow\Auth\Record); the blocks (Preflow\Folio\Block\*) to
- * preflow/blocks (Preflow\Blocks, 0.70). The old names keep working for one release; use the new names. A
- * config/auth.php naming the old provider logs a deprecation (FolioServiceProvider). Loaded by Composer
- * ("autoload.files").
+ * (RecordUser, RecordUserProvider) to preflow/auth (Preflow\Auth\Record). The old names keep working for one
+ * release; use the new names. A config/auth.php naming the old provider logs a deprecation
+ * (FolioServiceProvider). Loaded by Composer ("autoload.files").
  */
 
 $aliases = [

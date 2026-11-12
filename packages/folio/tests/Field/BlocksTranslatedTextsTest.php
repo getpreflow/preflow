@@ -6,7 +6,7 @@ namespace Preflow\Folio\Tests\Field;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Locales;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Field\AcceptsTranslatedTexts;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\BlocksFieldType;

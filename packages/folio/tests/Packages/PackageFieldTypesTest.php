@@ -11,9 +11,9 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
 use Preflow\Data\Schema\ColumnKind;
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockField;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockField;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\Field\SearchableText;
@@ -22,7 +22,7 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
 
 /**
  * A package adds field types and blocks by being installed (0.66): composer.json
- * extra.folio.field_types / extra.folio.blocks, treated like config/folio.php's (field kinds:
+ * extra.folio.field_types / extra.preflow.blocks, treated like config/folio.php's (field kinds:
  * SearchableText, HasColumnKind). A type a provider registers later gets its kinds too.
  */
 final class PackageFieldTypesTest extends TestCase
@@ -36,6 +36,7 @@ final class PackageFieldTypesTest extends TestCase
             'name' => 'acme/folio-links',
             'extra' => ['folio' => [
                 'field_types' => [PackageLinkFieldType::class],
+            ], 'preflow' => [
                 'blocks' => [PackageCtaBlock::class],
             ]],
         ]]]));
@@ -111,7 +112,7 @@ final class PackageFieldTypesTest extends TestCase
     {
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [[
             'name' => 'acme/not-a-block',
-            'extra' => ['folio' => ['blocks' => [LinkPolicy::class]]],
+            'extra' => ['preflow' => ['blocks' => [LinkPolicy::class]]],
         ]]]));
 
         $this->expectException(\RuntimeException::class);

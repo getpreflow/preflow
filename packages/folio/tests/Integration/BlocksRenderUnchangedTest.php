@@ -10,7 +10,7 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
 /**
  * A page with component blocks, data-only blocks, nested blocks and rich text renders
  * byte for byte as it did before blocks became their own package (0.70): public and
- * preview, English and German, through folio_blocks() and folio_block(). The expected
+ * preview, English and German, through blocks() and folio_block(). The expected
  * pages were rendered by 0.69's Folio (tests/Fixtures/blocks-render/*.html).
  */
 final class BlocksRenderUnchangedTest extends TestCase
@@ -22,14 +22,14 @@ final class BlocksRenderUnchangedTest extends TestCase
     protected function setUp(): void
     {
         $this->scaffoldPublishing();
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => ["
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => ["
             . '\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\TradeoffNoteBlock::class, '
             . '\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\SectionBlock\\SectionBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\ProseBlock\\ProseBlock::class, '
-            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]]];\n");
+            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QuoteBlock::class]];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><body>'
-            . '<main class="public">{{ folio_blocks(record.sections|default([])) }}</main>'
-            . '<main class="preview">{{ folio_blocks(record.sections|default([]), true) }}</main>'
-            . '<main class="json">{{ folio_blocks(record.sections|default([])|json_encode) }}</main>'
+            . '<main class="public">{{ blocks(record.sections|default([])) }}</main>'
+            . '<main class="preview">{{ blocks(record.sections|default([]), true) }}</main>'
+            . '<main class="json">{{ blocks(record.sections|default([])|json_encode) }}</main>'
             . '<main class="one">{{ folio_block(record.sections[1]) }}</main>'
             . '</body></html>');
     }

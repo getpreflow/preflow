@@ -274,7 +274,8 @@ final class FolioServiceProviderTest extends TestCase
         $this->renderPages($app);
 
         $this->assertFileExists($fc . '/folio-extensions.cache');
-        $this->assertFileExists($fc . '/blocks.cache');
+        $this->assertFileDoesNotExist($fc . '/blocks.cache', "preflow/blocks' cache follows config/blocks.php");
+        $this->assertFileExists($dir . '/storage/cache/blocks.cache');
         $this->assertSame([], $this->folioCacheFiles($dir . '/storage/cache'));
 
         $paths = [];
@@ -284,7 +285,7 @@ final class FolioServiceProviderTest extends TestCase
             }
         }
         $this->assertSame($fc . '/folio-extensions.cache', $paths['folio.extensions']);
-        $this->assertSame($fc . '/blocks.cache', $paths['blocks']);
+        $this->assertSame($dir . '/storage/cache/blocks.cache', $paths['blocks']);
 
         $this->rrmdir($fc);
         $this->rrmdir($dir);
@@ -296,7 +297,7 @@ final class FolioServiceProviderTest extends TestCase
         $this->renderPages($app);
 
         $this->assertFileExists($dir . '/var/folio/folio-extensions.cache');
-        $this->assertFileExists($dir . '/var/folio/blocks.cache');
+        $this->assertFileDoesNotExist($dir . '/var/folio/blocks.cache');
         $this->assertSame([], $this->folioCacheFiles($dir . '/storage/cache'));
         $this->rrmdir($dir);
     }

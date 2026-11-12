@@ -7,8 +7,8 @@ namespace Preflow\Folio\Tests\Block;
 use PHPUnit\Framework\TestCase;
 use Preflow\Components\ComponentMap;
 use Preflow\Core\Application;
-use Preflow\Folio\Block\BlockConfigException;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockConfigException;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Tests\Fixtures\Blocks\Duplicate\DuplicateHero;
 use Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock;
@@ -67,7 +67,7 @@ final class BlockRegistryTest extends TestCase
         // Tamper with the cached copy: if it is served, the tampered label comes back.
         $data = unserialize((string) file_get_contents($cache));
         $hero = $data['blocks'][0];
-        $data['blocks'][0] = new \Preflow\Folio\Block\BlockDefinition($hero->key, 'From cache', $hero->group, $hero->icon, $hero->description, $hero->class, $hero->isComponent, $hero->fields);
+        $data['blocks'][0] = new \Preflow\Blocks\BlockDefinition($hero->key, 'From cache', $hero->group, $hero->icon, $hero->description, $hero->class, $hero->isComponent, $hero->fields);
         file_put_contents($cache, serialize($data));
 
         $again = BlockRegistry::discover(new ComponentMap([]), '/nowhere', $classes, $cache, useCache: true);

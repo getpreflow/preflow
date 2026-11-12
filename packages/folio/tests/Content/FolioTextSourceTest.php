@@ -61,6 +61,10 @@ final class FolioTextSourceTest extends TestCase
             'frontend' => ['route' => '/posts/{...slug}'],
             'fields' => ['slug' => ['type' => 'string', 'translatable' => true]],
         ]);
+        $this->writeModel('badge', [
+            'label' => 'Badges',
+            'fields' => ['name' => ['type' => 'string'], 'active' => ['type' => 'boolean', 'translatable' => true], 'logo' => ['type' => 'string', 'hidden' => true, 'translatable' => true]],
+        ]);
         $this->writeModel('memo', [
             'label' => 'Memos',
             'publishing' => false,
@@ -404,6 +408,10 @@ final class FolioTextSourceTest extends TestCase
         sort($items);
         $this->assertSame(['a1', 'a2'], $items);
         $this->assertSame('First', $articles->title('a1'));
+
+        $this->assertFalse($sources->has('badge'), 'no translatable field: not a text source');
+        $this->assertNotContains('badge', $sources->collections());
+        $this->assertContains('article', $sources->collections());
 
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en'], 'fallback' => 'en'];\n");
         $this->assertFalse($this->app()->container()->get(TextSources::class)->has('article'), 'a single-locale app has nothing to translate');

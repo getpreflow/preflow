@@ -151,6 +151,70 @@ final class RedirectRulesTest extends TestCase
         self::assertSame('targeted', $rules->check(self::entry('/guide', '/x', true), null)->get('address'));
     }
 
+    public function test_leading_to_lists_the_entries_whose_target_resolves_to_the_address(): void
+    {
+        $b = self::exact('/a', '/b');
+        $absolute = self::exact('/c', 'https://example.test/b');
+        $other = self::exact('/d', '/elsewhere');
+        $foreign = self::exact('/e', 'https://other.test/b');
+        $rules = $this->rules([$b, $absolute, $other, $foreign]);
+
+        self::assertSame([$b->id, $absolute->id], array_map(static fn (Redirect $r): string => $r->id, $rules->leadingTo('/b')));
+        self::assertSame([$b->id, $absolute->id], array_map(static fn (Redirect $r): string => $r->id, $rules->leadingTo('https://example.test/b')));
+        self::assertSame([], $rules->leadingTo('https://other.test/b'), 'another host is no address of this site');
+        self::assertSame([], $rules->leadingTo('/nothing'));
+        // Where a page answers, an entry does not send on.
+        $this->pages = ['/b'];
+        self::assertSame([], $this->rules([$b, $absolute])->leadingTo('/b'));
+    }
+
+    public function test_leading_to_reads_the_locale_of_the_address(): void
+    {
+        $de = self::exact('/alt', '/de/seite');
+        $rules = new RedirectRules(
+            new InMemoryRedirectStore([$de]),
+            new class implements PageExists {
+                public function exists(string $locale, string $path): bool
+                {
+                    return false;
+                }
+            },
+            new class implements TargetIsLive {
+                public function isLive(string $type, string $id): bool
+                {
+                    return false;
+                }
+            },
+            new class implements SiteAddresses {
+                public function address(string $url, string $host = ''): ?array
+                {
+                    return preg_match('~^/(de|en)(/.*)$~', $url, $m) === 1 ? [$m[1], $m[2]] : null;
+                }
+
+                public function lookupLocale(string $locale): string
+                {
+                    return $locale;
+                }
+            },
+        );
+
+        self::assertSame([$de], $rules->leadingTo('/de/seite'));
+        self::assertSame([], $rules->leadingTo('/en/seite'), 'the same path in another language');
+    }
+
+    public function test_leading_to_includes_a_keep_the_rest_area_above_the_address_and_areas_holding_it(): void
+    {
+        $docs = self::area('/docs', '/guide', AreaMode::Prefix);
+        $one = self::area('/old', '/guide/sub');
+        $rules = $this->rules([$docs, $one]);
+
+        self::assertSame([$docs], $rules->leadingTo('/guide/intro'));
+        self::assertSame([$docs], $rules->leadingTo('/guide'));
+        self::assertSame([], $rules->leadingTo('/other'));
+        // An area's address: what its own target lies under, too.
+        self::assertSame([$docs, $one], $rules->leadingTo('/guide', true));
+    }
+
     public function test_a_target_is_needed_and_must_be_a_url_or_a_live_record(): void
     {
         $rules = $this->rules();

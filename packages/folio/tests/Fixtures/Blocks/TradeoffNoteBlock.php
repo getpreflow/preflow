@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Fixtures\Blocks;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockField;
 
 #[Block(key: 'tradeoff_note', label: 'Tradeoff note')]
 final class TradeoffNoteBlock

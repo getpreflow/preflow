@@ -48,8 +48,7 @@ return [
 
 **Cache files:** Folio keeps `folio-extensions.cache` and
 `folio-translations-{locale}.php` in `storage/cache`. `config/folio.php` `'cache_path'` moves
-them (and, until the next release, preflow/blocks' `blocks.cache` when `config/blocks.php` names no
-`cache_path`; its old cache key `folio.blocks` still works with `cache:clear` until then): an absolute path is used as it is, a relative one is taken from the project root.
+them (preflow/blocks' `blocks.cache` follows `config/blocks.php` `'cache_path'`, default `storage/cache`): an absolute path is used as it is, a relative one is taken from the project root.
 Folio creates the directory when it writes. Core's own caches (`storage/cache/data`, compiled
 templates) are not affected. A test suite can point `cache_path` at a temp directory, so
 booting the app never writes into the project's cache:
@@ -713,8 +712,7 @@ return ['field_types' => [App\Folio\ColorFieldType::class]];
 **From a package (since 0.66).** A package adds its field types by being installed:
 list them in its `composer.json`, and they are registered like `config/folio.php`'s (built by the
 container; `SearchableText`, `HasColumnKind` and the field kinds apply). Blocks are listed in
-`extra.preflow.blocks` (preflow/blocks; `extra.folio.blocks` is still read until the next release,
-with a deprecation note):
+`extra.preflow.blocks` (preflow/blocks):
 
 ```json
 "extra": {
@@ -751,10 +749,9 @@ sanitized on the way to the template, and in the live preview each block's root 
 - **Labels in the admin's language:** `label`, `group` and `description` of `#[Block]` and
   `label` / `help` of `#[BlockField]` may be translation keys (`'site.blocks.hero.label'`,
   delivered in `lang/{en,de,fr}/site.php`); plain text is shown as written.
-- **Until the next release** the 0.69 names keep working: `Preflow\Folio\Block\*` are aliases
-  of `Preflow\Blocks\*`, `folio_blocks()` is `blocks()`, and `config/folio.php`
-  `'blocks' => ['classes' => [...], 'max_depth' => 4]` and `extra.folio.blocks` are read too
-  (each logs a deprecation note; use `config/blocks.php` and `extra.preflow.blocks`).
+- **Removed in 0.71:** the 0.69 names (before preflow/blocks) are gone: `Preflow\Folio\Block\*` (now `Preflow\Blocks\*`),
+  `folio_blocks()` (now `blocks()`), `config/folio.php` `'blocks'` (now `config/blocks.php`),
+  `extra.folio.blocks` (now `extra.preflow.blocks`) and the cache key `folio.blocks` (now `blocks`).
 
 **On a content type:** `"sections": {"type": "blocks", "allowed": ["hero", "text"], "min": 1, "max": 10}`.
 The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in all (default 4).
@@ -1247,7 +1244,7 @@ public function seed(Container $c): array
 ```
 
 - `seed()` runs on every `folio:extensions:apply`, after `install()` when that runs. It returns
-  the lines apply prints (`[]` for none); a run that only seeds and returns none still says
+  the lines apply prints (`[]` for none); its return type is `: array` (an override without it is a fatal error since 0.71); a run that only seeds and returns none still says
   "nothing to do".
 - It must be safe to run again and again. `RoleStore::ensure()` is: it creates a missing role and
   grants an existing role only the permissions the list names for the first time.
@@ -1590,7 +1587,7 @@ $settings->get('demo', 'greeting', 'de', exact: true); // only de's own value or
 *Settings → Cache* (`{prefix}/cache`, permission `folio.cache`; staff with `*` have it) lists
 every cache registered with `Preflow\Core\Cache\CacheRegistry` as a table row: label,
 entries, size and a **Clear** button, plus **Clear all**. Folio registers `folio.extensions`
-and `folio.blocks`; core registers `data.json` (when the JSON driver is in use) and `blade`
+and the blocks cache (`blocks`, preflow/blocks); core registers `data.json` (when the JSON driver is in use) and `blade`
 (when the Blade engine is in use). A site registers its own:
 
 ```php

@@ -10,19 +10,38 @@ final class TextSources
     /** @var array<string, \Closure(): TextSource> */
     private array $factories = [];
 
+    /** @var array<string, \Closure(): bool> */
+    private array $offered = [];
+
+    /** @var array<string, bool> */
+    private array $offeredAnswers = [];
+
     /** @var array<string, TextSource> */
     private array $built = [];
 
-    /** @param \Closure(): TextSource $factory */
-    public function add(string $collection, \Closure $factory): void
+    /**
+     * @param \Closure(): TextSource $factory
+     * @param (\Closure(): bool)|null $offered asked once, when the collection is first looked up: false means
+     *        it has nothing to translate and is not listed (null: always offered)
+     */
+    public function add(string $collection, \Closure $factory, ?\Closure $offered = null): void
     {
         $this->factories[$collection] = $factory;
-        unset($this->built[$collection]);
+        unset($this->built[$collection], $this->offeredAnswers[$collection]);
+        if ($offered === null) {
+            unset($this->offered[$collection]);
+        } else {
+            $this->offered[$collection] = $offered;
+        }
     }
 
     public function has(string $collection): bool
     {
-        return isset($this->factories[$collection]);
+        if (!isset($this->factories[$collection])) {
+            return false;
+        }
+
+        return !isset($this->offered[$collection]) || ($this->offeredAnswers[$collection] ??= ($this->offered[$collection])());
     }
 
     public function get(string $collection): TextSource
@@ -37,6 +56,6 @@ final class TextSources
     /** @return list<string> */
     public function collections(): array
     {
-        return array_keys($this->factories);
+        return array_values(array_filter(array_keys($this->factories), $this->has(...)));
     }
 }

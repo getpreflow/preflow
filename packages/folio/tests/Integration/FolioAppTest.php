@@ -1417,7 +1417,7 @@ final class FolioAppTest extends TestCase
     public function test_depth_limit_shows_notice(): void
     {
         $this->enableBlocks();
-        file_put_contents($this->dir . '/config/folio.php', str_replace("'blocks' => [", "'blocks' => ['max_depth' => 1, ", (string) file_get_contents($this->dir . '/config/folio.php')));
+        file_put_contents($this->dir . '/config/blocks.php', str_replace("['classes' => [", "['max_depth' => 1, 'classes' => [", (string) file_get_contents($this->dir . '/config/blocks.php')));
         $a = 'aaaaaaaaaaaaaaaa';
         $id = $this->createPage(['title' => 'Blocks', 'slug' => 'blocks', 'body' => 'b', 'status' => 'published',
             'sections' => ['_order' => [$a], $a => ['_block' => 'hero', 'headline' => 'H']]]);
@@ -1718,7 +1718,7 @@ final class FolioAppTest extends TestCase
 
         // Block discovery (reflection over all components) and the field type
         // registry must not be rebuilt on every lookup.
-        $this->assertSame($c->get(\Preflow\Folio\Block\BlockRegistry::class), $c->get(\Preflow\Folio\Block\BlockRegistry::class));
+        $this->assertSame($c->get(\Preflow\Blocks\BlockRegistry::class), $c->get(\Preflow\Blocks\BlockRegistry::class));
         $this->assertSame($c->get(\Preflow\Folio\Field\FieldTypeRegistry::class), $c->get(\Preflow\Folio\Field\FieldTypeRegistry::class));
     }
 
@@ -2126,12 +2126,12 @@ final class FolioAppTest extends TestCase
         $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
         $page['fields']['sections'] = ['type' => 'blocks', 'label' => 'Sections', 'allowed' => ['hero', 'link']];
         file_put_contents($this->dir . '/config/models/page.json', json_encode($page));
-        file_put_contents($this->dir . '/config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => [\n"
+        file_put_contents($this->dir . '/config/blocks.php', "<?php\nreturn ['classes' => [\n"
             . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class,\n"
             . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\LinkBlock::class,\n"
             . "    \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\TradeoffNoteBlock::class,\n"
             . implode('', array_map(fn (string $c) => '    \\' . $c . "::class,\n", $extraClasses))
-            . "]]];\n");
+            . "]];\n");
         if ($extraClasses !== []) {
             $page = json_decode((string) file_get_contents($this->dir . '/config/models/page.json'), true);
             $page['fields']['sections']['allowed'] = ['hero', 'link', ...$allowedExtra];
@@ -2139,7 +2139,7 @@ final class FolioAppTest extends TestCase
         }
         if ($withFrontendTemplate) {
             @mkdir($this->dir . '/resources/folio/frontend', 0777, true);
-            file_put_contents($this->dir . '/resources/folio/frontend/page.twig', '<!DOCTYPE html><html lang="{{ locale|default(\'en\') }}"><head></head><body><main>{{ folio_blocks(record.sections, preview|default(false)) }}</main></body></html>');
+            file_put_contents($this->dir . '/resources/folio/frontend/page.twig', '<!DOCTYPE html><html lang="{{ locale|default(\'en\') }}"><head></head><body><main>{{ blocks(record.sections, preview|default(false)) }}</main></body></html>');
         }
     }
 

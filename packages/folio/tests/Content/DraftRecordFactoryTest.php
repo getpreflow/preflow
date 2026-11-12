@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Field\FieldTypeRegistry;

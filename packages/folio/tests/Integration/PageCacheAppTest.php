@@ -189,9 +189,9 @@ final class PageCacheAppTest extends TestCase
     #[RunInSeparateProcess]
     public function test_a_page_missing_a_block_that_could_not_be_built_is_not_stored(): void
     {
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'blocks' => ['classes' => ["
-            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\NeedyBlock\\NeedyBlock::class]]];\n");
-        $this->write('resources/folio/frontend/post.twig', '<html><body><h1>{{ record.title }}</h1>{{ folio_blocks(record.sections) }}</body></html>');
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => ["
+            . "\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\HeroBlock\\HeroBlock::class, \\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\NeedyBlock\\NeedyBlock::class]];\n");
+        $this->write('resources/folio/frontend/post.twig', '<html><body><h1>{{ record.title }}</h1>{{ blocks(record.sections) }}</body></html>');
         $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Blocks'], 'slug' => ['en' => 'blocks'], 'sections' => [
             ['_uid' => 'bbbbbbbbbbbbbbbb', '_block' => 'needy'],
             ['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'hero', 'headline' => 'Still here'],

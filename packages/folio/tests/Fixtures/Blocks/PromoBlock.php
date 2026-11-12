@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Fixtures\Blocks;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockField;
 
 /** Data-only block whose texts are translation keys (lang/{locale}/site.php). */
 #[Block(key: 'promo', label: 'site.blocks.promo.label', group: 'site.blocks.groups.marketing', description: 'site.blocks.promo.description')]

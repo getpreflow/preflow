@@ -101,8 +101,7 @@ A package brings its block types by being installed: list them in its `composer.
 }
 ```
 
-A listed class without `#[Block]` fails when the registry is first built (the first page with blocks, the editor, or `preflow optimize`), naming the package. (`extra.folio.blocks`, the
-name before 0.70, is still read by Folio until the next release.)
+A listed class without `#[Block]` fails when the registry is first built (the first page with blocks, the editor, or `preflow optimize`), naming the package.
 
 ## Render
 

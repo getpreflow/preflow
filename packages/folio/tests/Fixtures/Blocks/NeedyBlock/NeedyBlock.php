@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Fixtures\Blocks\NeedyBlock;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockComponent;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockComponent;
 
 /** Its constructor dependency cannot be resolved by the container. */
 #[Block(key: 'needy', label: 'Needy')]

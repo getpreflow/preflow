@@ -10,7 +10,7 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Field\FieldRules;
 use Preflow\Folio\Field\FieldTypeRegistry;

@@ -26,8 +26,8 @@ final class PullCommandTest extends TestCase
         $this->scaffoldPublishing();
         $cfg = (string) file_get_contents($this->dir . '/config/folio.php');
         file_put_contents($this->dir . '/config/folio.php', str_replace(
-            "return ['path' => '/folio',",
-            "return ['path' => '/folio', 'remotes' => ['production' => ['ssh' => 'user@host', 'port' => 2222, 'path' => '/srv/my site', 'php' => '/usr/bin/php84']],",
+            "return ['path' => '/folio']",
+            "return ['path' => '/folio', 'remotes' => ['production' => ['ssh' => 'user@host', 'port' => 2222, 'path' => '/srv/my site', 'php' => '/usr/bin/php84']]]",
             $cfg,
         ));
         $this->working('post', 'p1', ['title' => ['en' => 'Live'], 'slug' => ['en' => 'live']]);

@@ -26,19 +26,15 @@ final readonly class BlocksConfig
         public string $cacheFile = '',
     ) {}
 
-    /**
-     * @param array{classes?: list<class-string>, max_depth?: int|null, cache_path?: string|null} $fallback
-     *        values for what config/blocks.php doesn't set (its classes are added to the file's)
-     */
-    public static function fromApp(Application $app, array $fallback = []): self
+    public static function fromApp(Application $app): self
     {
         $config = $app->configFile('blocks');
         $config = is_array($config) ? $config : [];
-        $cachePath = $config['cache_path'] ?? $fallback['cache_path'] ?? null;
+        $cachePath = $config['cache_path'] ?? null;
 
         return new self(
-            array_values(array_unique([...array_values((array) ($config['classes'] ?? [])), ...array_values((array) ($fallback['classes'] ?? []))])),
-            (int) ($config['max_depth'] ?? $fallback['max_depth'] ?? self::DEFAULT_MAX_DEPTH),
+            array_values(array_unique((array) ($config['classes'] ?? []))),
+            (int) ($config['max_depth'] ?? self::DEFAULT_MAX_DEPTH),
             self::cacheDir($app, is_string($cachePath) ? $cachePath : null) . '/blocks.cache',
         );
     }

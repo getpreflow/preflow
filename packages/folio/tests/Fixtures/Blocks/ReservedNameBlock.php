@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Fixtures\Blocks;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockField;
 
 /** Declares a field named like a system key: must be rejected. */
 #[Block(key: 'reserved_name', label: 'Reserved')]

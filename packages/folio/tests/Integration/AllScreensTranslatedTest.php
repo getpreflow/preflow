@@ -258,10 +258,11 @@ final class AllScreensTranslatedTest extends TestCase
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
         $this->write('config/app.php', "<?php\nreturn ['name' => 'All screens', 'debug' => 0, 'engine' => 'twig', 'key' => 'all-screens-test-key', 'url' => 'https://site.test'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
-        $this->write('config/folio.php', "<?php\nreturn " . var_export(['path' => '/folio', 'blocks' => ['classes' => [
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
+        $this->write('config/blocks.php', "<?php\nreturn " . var_export(['classes' => [
             \Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock::class,
             \Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock::class,
-        ]]], true) . ";\n");
+        ]], true) . ";\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'session',
             'guards' => [

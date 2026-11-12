@@ -187,13 +187,7 @@ final class FolioServiceProvider extends ServiceProvider
             static fn (): \Preflow\I18n\Translator => $container->get(\Preflow\I18n\Translator::class),
         ));
         $this->registerLabelKeys($container, $modelsPath, $labelSources, $types, $catalog);
-        // Blocks (preflow/blocks): config/blocks.php, with what config/folio.php 'blocks' and the
-        // packages' extra.folio.blocks still declare (read for one release, with a deprecation note).
-        // The blocks cache stays in Folio's cache_path until config/blocks.php names one.
         $folioCfg = $this->folioConfig($app);
-        $container->singleton(\Preflow\Blocks\BlocksConfig::class, function (Container $c) use ($app, $folioCfg): \Preflow\Blocks\BlocksConfig {
-            return \Preflow\Blocks\BlocksConfig::fromApp($app, $this->legacyBlocksConfig($c, $app, $folioCfg));
-        });
         // Folio's answers to the blocks' questions, unless the app bound its own (preflow/blocks fills the rest at boot).
         if (!$container->bound(\Preflow\Blocks\BlockPreviewMarks::class)) {
             $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks());
@@ -202,8 +196,6 @@ final class FolioServiceProvider extends ServiceProvider
         // Rebuilt on the next request; Settings → Cache and cache:clear list it (and the blocks cache, preflow/blocks').
         $caches = $container->get(\Preflow\Core\Cache\CacheRegistry::class);
         $caches->register(new \Preflow\Core\Cache\FileCache('folio.extensions', 'Folio extensions', $this->cacheDir($app) . '/folio-extensions.cache'));
-        // The blocks cache was Folio's "folio.blocks" before 0.70: deploy scripts that clear it keep working until the next release.
-        $caches->rename('folio.blocks', 'blocks');
         // Admin text overrides (Settings → Translations), compiled per locale.
         $overridesCache = new \Preflow\Folio\Translations\OverridesCache($this->cacheDir($app));
         $container->instance(\Preflow\Folio\Translations\OverridesCache::class, $overridesCache);
@@ -1573,19 +1565,7 @@ final class FolioServiceProvider extends ServiceProvider
             ));
 
             // Blocks: preflow/blocks' renderer (one per app, so nested calls see the preview state).
-            // folio_blocks() is the deprecated name of blocks() (removed in the next release).
             $blockRenderer = static fn (): \Preflow\Blocks\BlockRenderer => $container->get(\Preflow\Blocks\BlockRenderer::class);
-            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
-                name: 'folio_blocks',
-                callable: static function (mixed $blocks, bool $preview = false) use ($blockRenderer, $container): string {
-                    if ($container->bound(\Preflow\Core\Debug\DebugCollector::class)) {
-                        $container->get(\Preflow\Core\Debug\DebugCollector::class)->logDeprecation('folio_blocks() is now blocks() (preflow/blocks); the old name is removed in the next release.');
-                    }
-
-                    return $blockRenderer()->render($blocks, $preview);
-                },
-                isSafe: true,
-            ));
             // Field target for click-to-edit: emitted only while a preview renders.
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_editable',
@@ -1834,7 +1814,8 @@ final class FolioServiceProvider extends ServiceProvider
     /**
      * One machine-translation text source per type of a multilingual app (types share the app's
      * locales), so the core job runner can translate Folio records. Lazy: no type definition is
-     * read and no source is built until a run asks for it.
+     * read and no source is built until a run asks for it; a type with nothing translatable (roles,
+     * staff accounts) is not offered.
      */
     private function registerTextSources(Container $container): void
     {
@@ -1856,6 +1837,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
                 self::addresses($container),
                 $container->get(FrontendResolver::class),
+            ), static fn (): bool => $container->get(\Preflow\Folio\Content\TranslationStatus::class)->translatable(
+                $container->get(DataManager::class)->getTypeRegistry()?->get($key) ?? throw new \LogicException('Text sources need a TypeRegistry.'),
             ));
         }
     }
@@ -2163,42 +2146,6 @@ final class FolioServiceProvider extends ServiceProvider
         }
 
         return $classes;
-    }
-
-    /**
-     * What preflow/blocks reads from Folio for one release: the classes and max_depth of config/folio.php
-     * 'blocks' and the packages' extra.folio.blocks (now config/blocks.php and extra.preflow.blocks), each
-     * with a deprecation note, and Folio's cache_path for the blocks cache while config/blocks.php names none.
-     *
-     * @param array<string, mixed> $folioCfg
-     * @return array{classes: list<class-string>, max_depth: int|null, cache_path: string}
-     */
-    private function legacyBlocksConfig(Container $c, Application $app, array $folioCfg): array
-    {
-        $legacy = is_array($folioCfg['blocks'] ?? null) ? $folioCfg['blocks'] : [];
-        $packages = \Preflow\Blocks\BlocksServiceProvider::packageClasses($app, 'folio.blocks');
-        $blocksFile = $app->configFile('blocks');
-        $notes = [];
-        if ($legacy !== []) {
-            $notes[] = "config/folio.php 'blocks' moved to config/blocks.php (preflow/blocks: 'classes', 'max_depth'); the old key is read until the next release.";
-        }
-        if ($packages !== []) {
-            $notes[] = 'composer.json extra.folio.blocks (' . implode(', ', $packages) . ') is now extra.preflow.blocks; the old key is read until the next release.';
-        }
-        if (is_string($folioCfg['cache_path'] ?? null) && trim($folioCfg['cache_path']) !== '' && !is_string(is_array($blocksFile) ? ($blocksFile['cache_path'] ?? null) : null)) {
-            $notes[] = "config/folio.php 'cache_path' moves blocks.cache until config/blocks.php sets its own 'cache_path' (from the next release only that does).";
-        }
-        if ($notes !== [] && $c->bound(\Preflow\Core\Debug\DebugCollector::class)) {
-            foreach ($notes as $note) {
-                $c->get(\Preflow\Core\Debug\DebugCollector::class)->logDeprecation($note);
-            }
-        }
-
-        return [
-            'classes' => [...$packages, ...array_values((array) ($legacy['classes'] ?? []))],
-            'max_depth' => isset($legacy['max_depth']) ? (int) $legacy['max_depth'] : null,
-            'cache_path' => $this->cacheDir($app),
-        ];
     }
 
     /** The app's DataManager (core builds it from config/data.php), or null without one. */

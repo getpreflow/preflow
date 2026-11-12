@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Fixtures\Blocks\SectionBlock;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockComponent;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockComponent;
+use Preflow\Blocks\BlockField;
 
 /** A container block whose template renders its children without passing the preview flag. */
 #[Block(key: 'section', label: 'Section', group: 'Sections')]

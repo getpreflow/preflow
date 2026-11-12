@@ -15,7 +15,7 @@ use Preflow\Folio\Media\FolioRecordReferences;
 use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\AssetUsageEntry;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;

@@ -14,7 +14,7 @@ use Preflow\Data\Locales;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Assets\AssetReferences;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Media\FolioRecordReferences;
 use Preflow\Folio\Publishing\ShadowTypes;

@@ -44,7 +44,7 @@ final class ExtensionsApplyCommand implements CommandInterface
                 $did = true;
             }
             $lines = $extension->seed($c);
-            foreach (is_array($lines) ? $lines : [] as $line) {
+            foreach ($lines as $line) {
                 echo $line . "\n";
                 $did = true;
             }
