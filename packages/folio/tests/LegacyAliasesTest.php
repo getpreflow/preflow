@@ -30,4 +30,18 @@ final class LegacyAliasesTest extends TestCase
     {
         $this->assertSame($new, (new \ReflectionClass($old))->getName());
     }
+
+    /** @return iterable<string, array{string, string}> preflow/rbac's admin classes, carried by Folio since 0.69 */
+    public static function rbacAliases(): iterable
+    {
+        foreach (['Extension', 'NewPermissions', 'NewPermissionsScreen', 'Fields\\PermissionsFieldType', 'Fields\\RolesFieldType', 'Types\\RoleRules', 'Types\\StaffAdmin', 'Types\\StaffRules'] as $name) {
+            yield $name => ["Preflow\\Rbac\\$name", "Preflow\\Folio\\Rbac\\$name"];
+        }
+    }
+
+    #[DataProvider('rbacAliases')]
+    public function test_the_old_rbac_name_is_the_folio_class(string $old, string $new): void
+    {
+        $this->assertSame($new, (new \ReflectionClass($old))->getName());
+    }
 }

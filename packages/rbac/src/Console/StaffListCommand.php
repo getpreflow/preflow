@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac\Console;
 
-use Preflow\Data\DataManager;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\StaffManagers;
@@ -29,10 +28,10 @@ final class StaffListCommand implements CommandInterface
             return 1;
         }
         $rows = [];
-        foreach ($c->get(DataManager::class)->queryType(StaffManagers::TYPE)->get()->items() as $staff) {
+        foreach ($accounts->all() as $staff) {
             $roles = RoleList::normalize($staff->get('roles'));
             $state = !StaffManagers::active($staff->get('active')) ? 'disabled' : ((string) $staff->get('password_hash') === '' ? 'no password yet' : 'active');
-            $rows[(string) $staff->get('email')] = (string) $staff->get('email') . "\t" . (string) $staff->get('name') . "\t"
+            $rows[] = (string) $staff->get('email') . "\t" . (string) $staff->get('name') . "\t"
                 . ($roles === [] ? '(no roles)' : implode(', ', $roles)) . "\t" . $state;
         }
         if ($rows === []) {
@@ -40,7 +39,6 @@ final class StaffListCommand implements CommandInterface
 
             return 0;
         }
-        ksort($rows);
         echo implode("\n", $rows) . "\n";
 
         return 0;

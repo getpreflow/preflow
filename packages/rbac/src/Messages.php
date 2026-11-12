@@ -42,11 +42,17 @@ final class Messages
         return $this->translator;
     }
 
-    /** rbac's English strings alone, for a field type built without the container (tests). */
-    public static function english(): self
+    /**
+     * rbac's English strings alone, with an admin's own laid over them ($layers: folders holding
+     * {locale}/rbac.php), for something built without the container (an admin's field type in a test).
+     */
+    public static function english(string ...$layers): self
     {
         $translator = new Translator(dirname(__DIR__) . '/lang/.none', 'en', 'en');
         $translator->addDefaults('rbac', dirname(__DIR__) . '/lang');
+        foreach ($layers as $layer) {
+            $translator->addDefaults('rbac', $layer);
+        }
 
         return new self($translator);
     }

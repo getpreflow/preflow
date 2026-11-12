@@ -37,6 +37,7 @@ use Preflow\Rbac\Staff\StaffAccounts;
 use Preflow\Rbac\Staff\StaffRefused;
 use Preflow\Rbac\Tests\Fixtures\PasswordPageProvider;
 use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
+use Preflow\Rbac\Tests\Fixtures\UnavailablePasswordPageProvider;
 use Preflow\Testing\ArraySession;
 
 /**
@@ -87,9 +88,15 @@ final class CoreStaffTest extends TestCase
         @rmdir($this->dir);
     }
 
-    private function providers(bool $passwordPage = false): void
+    /** @param bool|'unavailable' $passwordPage a set-password page (StaffLinks), or one that can't build links now */
+    private function providers(bool|string $passwordPage = false): void
     {
-        $providers = [ReportsProvider::class, ...($passwordPage ? [PasswordPageProvider::class] : []), \Preflow\Rbac\RbacServiceProvider::class];
+        $page = match ($passwordPage) {
+            true => [PasswordPageProvider::class],
+            'unavailable' => [UnavailablePasswordPageProvider::class],
+            default => [],
+        };
+        $providers = [ReportsProvider::class, ...$page, \Preflow\Rbac\RbacServiceProvider::class];
         $this->write('config/providers.php', "<?php\nreturn [" . implode(', ', array_map(static fn (string $p): string => '\\' . $p . '::class', $providers)) . "];\n");
     }
 
@@ -414,6 +421,80 @@ final class CoreStaffTest extends TestCase
         $this->assertSame([1, self::NO_LINK_PAGE . "\n"], $this->command('staff:reset', ['boss@site.test']));
         $this->assertSame(0, $this->tokens(), 'no link was issued');
         $this->assertSame([1, "This account already has a password. Send a reset link instead.\n"], $this->command('staff:invite', ['boss@site.test']));
+    }
+
+    /** A page that can't build links (Folio without app.url): refused before any link is issued or revoked. */
+    #[RunInSeparateProcess]
+    public function test_a_page_that_cant_build_links_refuses_before_anything_is_issued_or_revoked(): void
+    {
+        $this->providers(passwordPage: 'unavailable');
+        $this->site();
+        $this->command('staff:create', ['new@site.test']);
+        $earlier = $this->app()->container()->get(AccountLinks::class)->issue($this->staff('new@site.test'), StaffAccounts::INVITE, 3600);
+        $this->assertSame(1, $this->tokens());
+
+        $this->assertSame([1, "Set app.url to send sign-in links.\n"], $this->command('staff:invite', ['new@site.test']));
+        $this->assertSame([1, "Set app.url to send sign-in links.\n"], $this->command('staff:reset', ['boss@site.test']));
+
+        $this->assertSame(1, $this->tokens(), 'nothing issued');
+        $this->assertSame((string) $this->staff('new@site.test')->getId(), (string) $this->app()->container()->get(AccountLinks::class)->consume($earlier, StaffAccounts::INVITE)?->getId(), 'nothing revoked');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_all_lists_the_accounts_by_email_as_staff_list_does(): void
+    {
+        $this->site();
+        $this->command('staff:create', ['zed@site.test', '--name=Zed']);
+        $this->command('staff:create', ['ada@site.test', '--name=Ada', '--role=reporter']);
+        $this->assertSame(0, $this->command('staff:disable', ['zed@site.test'])[0]);
+
+        $all = $this->app()->container()->get(StaffAccounts::class)->all();
+
+        $this->assertSame(['ada@site.test', 'boss@site.test', 'zed@site.test'], array_map(static fn (DynamicRecord $s): string => (string) $s->get('email'), $all));
+        $this->assertSame(
+            [0, "ada@site.test\tAda\treporter\tno password yet\nboss@site.test\tBoss\tadmin\tactive\nzed@site.test\tZed\t(no roles)\tdisabled\n"],
+            $this->command('staff:list'),
+        );
+    }
+
+    /** On a terminal staff:password reads without echo (stty), and refuses rather than show the password when stty is missing. */
+    #[RunInSeparateProcess]
+    public function test_staff_password_on_a_terminal_hides_the_input_or_refuses(): void
+    {
+        $this->site();
+        $this->command('staff:create', ['ada@site.test']);
+        $typed = static function (string $text) {
+            $input = fopen('php://memory', 'r+');
+            fwrite($input, $text);
+            rewind($input);
+
+            return $input;
+        };
+        $run = function (StaffPasswordCommand $command): array {
+            ob_start();
+            try {
+                $code = $command->execute(['ada@site.test']);
+            } finally {
+                $out = (string) ob_get_clean();
+            }
+
+            return [$code, $out];
+        };
+
+        $asked = [];
+        [$code, $out] = $run(new StaffPasswordCommand(fn (): Application => $this->app(), $typed(self::PASSWORD . "\n" . self::PASSWORD . "\n"), true, static function (string $args) use (&$asked): string {
+            $asked[] = $args;
+
+            return $args === '-g' ? 'saved:settings' : '';
+        }));
+        $this->assertSame(0, $code, $out);
+        $this->assertSame(['-g', '-echo', "'saved:settings'", '-echo', "'saved:settings'"], $asked, 'echo off for each line, the settings restored');
+        $this->assertTrue($this->signIn(new ArraySession(), 'ada@site.test'));
+
+        [$code, $out] = $run(new StaffPasswordCommand(fn (): Application => $this->app(), $typed("another password!\nanother password!\n"), true, static fn (string $args): string => ''));
+        $this->assertSame(1, $code);
+        $this->assertStringStartsWith("This terminal can't hide what you type (stty is not available), so no password is asked for.", $out);
+        $this->assertTrue($this->signIn(new ArraySession(), 'ada@site.test'), 'the password is unchanged');
     }
 
     #[RunInSeparateProcess]

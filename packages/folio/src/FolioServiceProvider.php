@@ -907,7 +907,6 @@ final class FolioServiceProvider extends ServiceProvider
             $container->singleton(\Preflow\Folio\Rbac\FolioStaffLinks::class, static fn (Container $c): \Preflow\Folio\Rbac\FolioStaffLinks => new \Preflow\Folio\Rbac\FolioStaffLinks(
                 self::passwordUrl($c->get(Application::class), $prefix),
                 $c->get(\Preflow\Folio\Users\UserPreferences::class),
-                $c->get(\Preflow\Rbac\Messages::class)->get('staff.no_app_url'),
             ));
             $container->singleton(\Preflow\Rbac\Staff\StaffLinks::class, static fn (Container $c): object => $c->get(\Preflow\Folio\Rbac\FolioStaffLinks::class));
             $container->singleton(\Preflow\Rbac\Staff\StaffLocales::class, static fn (Container $c): object => $c->get(\Preflow\Folio\Rbac\FolioStaffLinks::class));
@@ -1094,7 +1093,9 @@ final class FolioServiceProvider extends ServiceProvider
                     $c->get(\Preflow\Notify\Mail\Mailer::class),
                     self::translator($c, $app),
                     $c->get(\Preflow\Data\Locales::class)->default, // for recipients without an interface language
-                    \Preflow\Folio\Users\StaffMailer::siteName($app->config()->get('app.name'), $app->config()->get('app.url')),
+                    \Preflow\Notify\Mail\MailText::siteName($app->config()->get('app.name'), $app->config()->get('app.url')),
+                    // One source for staff mails: rbac's, where it is installed (bound by its provider).
+                    $c->bound(\Preflow\Rbac\Staff\StaffMail::class) ? $c->get(\Preflow\Rbac\Staff\StaffMail::class) : null,
                 );
             },
             self::passwordUrl($app, $prefix),
@@ -1225,6 +1226,7 @@ final class FolioServiceProvider extends ServiceProvider
             $locale = (string) $app->config()->get('app.locale', 'en');
             $translator = new \Preflow\I18n\Translator($app->basePath('lang'), $locale, $locale);
             $c->instance(\Preflow\I18n\Translator::class, $translator);
+            self::rbacTexts($translator, $c); // boot() did it for a translator bound then
         }
         // Declared in composer.json (extra.preflow.translations); this covers apps whose
         // Composer metadata doesn't list Folio (test apps, a core before 0.37).
@@ -1378,6 +1380,7 @@ final class FolioServiceProvider extends ServiceProvider
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('codes', dirname(__DIR__) . '/lang', 'admin');
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
+            self::rbacTexts($container->get(\Preflow\I18n\Translator::class), $container);
             self::useOverrides($container->get(\Preflow\I18n\Translator::class), $container);
         }
 
@@ -1397,6 +1400,12 @@ final class FolioServiceProvider extends ServiceProvider
         // The codes admin's purpose select lists the purposes of config/codes.php (preflow/codes' Codes).
         if (self::codesAdmin($container->get(ExtensionRegistry::class)) && $container->bound(\Preflow\Codes\Codes::class)) {
             $container->get(FieldTypeRegistry::class)->register(new \Preflow\Folio\Codes\Fields\PurposeFieldType($container->get(\Preflow\Codes\Codes::class)->purposes()));
+        }
+        // The rbac admin's field types (rbac_permissions with its editor's assets, rbac_roles), wherever rbac
+        // runs: the roles and staff types, the members admin and a site's model files use them. rbac's
+        // services are container singletons from its register() on, whatever the provider order.
+        if ($container->bound(\Preflow\Rbac\PermissionCoverage::class) && $container->bound(DataManager::class)) {
+            self::registerRbacFields($container);
         }
         // ... and carries it into the published snapshots afterwards (best effort, see PublishedMemberDeletion).
         if (class_exists(\Preflow\Members\MemberEvents::class) && $container->bound(\Preflow\Members\MemberEvents::class)) {
@@ -1887,6 +1896,40 @@ final class FolioServiceProvider extends ServiceProvider
     private static function codesAdmin(ExtensionRegistry $extensions): bool
     {
         return $extensions->isEnabled('codes') && $extensions->get('codes')->class === \Preflow\Folio\Codes\Extension::class;
+    }
+
+    /** The field types of the rbac admin (Rbac\Fields), and the permissions editor's assets (assets/rbac/). */
+    private static function registerRbacFields(Container $container): void
+    {
+        $coverage = $container->get(\Preflow\Rbac\PermissionCoverage::class);
+        $messages = $container->get(\Preflow\Rbac\Messages::class);
+        $fieldTypes = $container->get(FieldTypeRegistry::class);
+        $fieldTypes->register(new \Preflow\Folio\Rbac\Fields\PermissionsFieldType(
+            $container->get(\Preflow\Auth\Access\PermissionRegistry::class),
+            $container->get(TypeCatalog::class),
+            $coverage,
+            $messages,
+            $container->bound(\Preflow\Folio\Content\DisplayLabels::class) ? $container->get(\Preflow\Folio\Content\DisplayLabels::class) : null,
+        ));
+        $assets = $container->get(\Preflow\Folio\Http\AdminAssets::class);
+        $assets->add('rbac.css', dirname(__DIR__) . '/assets/rbac/rbac.css');
+        $assets->add('rbac.js', dirname(__DIR__) . '/assets/rbac/rbac.js');
+        $fieldTypes->register(new \Preflow\Folio\Rbac\Fields\RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class), $coverage, $messages));
+    }
+
+    /**
+     * The rbac admin's texts (lang/{locale}/rbac.php: its screens, actions, field types and the
+     * labels of its models) laid over rbac's own in their shared group "rbac", where rbac runs.
+     * rbac's own come first: declared by its package, or registered here for an app whose
+     * Composer metadata doesn't list it (Messages).
+     */
+    private static function rbacTexts(\Preflow\I18n\Translator $translator, Container $c): void
+    {
+        if (!$c->bound(\Preflow\Rbac\Messages::class)) {
+            return;
+        }
+        $c->get(\Preflow\Rbac\Messages::class);
+        $translator->addDefaults('rbac', dirname(__DIR__) . '/lang');
     }
 
     /** The members admin seeds and shows the member roles, which are rbac's. */

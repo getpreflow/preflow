@@ -26,8 +26,8 @@ use PHPUnit\Framework\TestCase;
  * the chain from config/auth.php, which RecordProviders and StaffPasswords look into), data
  * 0.68 (the TypeLabels interface, which DisplayTypeLabels implements and binds; since 0.61 findAs(), queryAs() and isReadOnly() for PublishedModels, TypeRegistry's class-backed types, ModelSchema; since 0.60 captureReads(), replayReads(), reportRead(), reportWrite(), QueryBuilder::unreported() and byIds(),
  * with which Folio's memos and frontend report to the page cache; since 0.42 ColumnKind, unique fields, RecordTables and typed record tables; since 0.41 DataManager::saveTypeIfVersion() for Publisher::saveDraft(); since 0.38 DeletedBy for deletePlan(); since 0.37 ModelLabelKeys and label maps; since 0.34 RecordTableSync, since 0.28 searchLoose, whereAny, deletePlan,
- * relations), i18n 0.47 (MachineServiceProvider for machine translation; since 0.39 Translator::alwaysOverride() for editable site texts; since 0.37 translation scopes, overrides, Labels, DerivedKeys, the fallback chain), notify 0.68
- * (Mailer, MailContent, MailAction and MailText for the staff mails; since 0.25 Notifier::sendLater), routing 0.59 (RouteCollection::insertBefore(), which puts the admin routes in front of the frontend catch-all; since 0.52 the redirect store, targets and not-found log
+ * relations), i18n 0.47 (MachineServiceProvider for machine translation; since 0.39 Translator::alwaysOverride() for editable site texts; since 0.37 translation scopes, overrides, Labels, DerivedKeys, the fallback chain), notify 0.69
+ * (MailText::siteName() for the staff mails; since 0.68 Mailer, MailContent, MailAction and MailText; since 0.25 Notifier::sendLater), routing 0.59 (RouteCollection::insertBefore(), which puts the admin routes in front of the frontend catch-all; since 0.52 the redirect store, targets and not-found log
  * interfaces Folio implements), media 0.50 (MediaLibrary::shareImage() for share cards; since 0.43 the bin: findBinned(), binned(), restoreFromBin(),
  * AssetUsageEntry::$blocksDelete; AssetCleanup for the "Unused only" filter; since 0.36 box presets, edits and
  * writeEdited, the asset classes Folio's library and field build on),
@@ -40,6 +40,9 @@ use PHPUnit\Framework\TestCase;
  * (before 0.39 also Members::lock(), unlock(), isLocked(), endSessions(), resendConfirmation()), so it conflicts.
  * preflow/codes is suggested too (Folio carries its admin since 0.40); a codes release before 0.68 lacks
  * Codes::checkUpdate(), update() with the checks in the write and CodeRefused, which the code admin calls, so it conflicts.
+ * preflow/rbac is suggested too (Folio carries its admin since 0.69); an rbac release before 0.69 still ships that admin
+ * itself (its own extension "rbac", field types and texts) and lacks StaffAccounts, StaffLinks::available() and
+ * StaffMail::sendTo(), which Folio's rbac admin and staff mails call, so it conflicts.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -48,15 +51,15 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.68', 'preflow/data' => '<0.68', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.68', 'preflow/media' => '<0.50', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.68', 'preflow/routing' => '<0.59', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
+            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.68', 'preflow/data' => '<0.68', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.68', 'preflow/media' => '<0.50', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.69', 'preflow/rbac' => '<0.69', 'preflow/routing' => '<0.59', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
             $composer['conflict'] ?? null,
         );
-        // Each conflict matches its require's lower bound; members and codes are suggested, not required.
-        foreach (['preflow/members', 'preflow/codes'] as $suggested) {
+        // Each conflict matches its require's lower bound; members, codes and rbac are suggested, not required.
+        foreach (['preflow/members', 'preflow/codes', 'preflow/rbac'] as $suggested) {
             $this->assertArrayNotHasKey($suggested, $composer['require']);
             $this->assertArrayHasKey($suggested, $composer['suggest'] ?? []);
         }
-        foreach (array_diff_key($composer['conflict'], ['preflow/members' => true, 'preflow/codes' => true]) as $package => $below) {
+        foreach (array_diff_key($composer['conflict'], ['preflow/members' => true, 'preflow/codes' => true, 'preflow/rbac' => true]) as $package => $below) {
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
     }

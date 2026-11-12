@@ -16,8 +16,10 @@ use Preflow\Notify\Mail\MailText;
  * in the recipient's interface language, else the site's default language. Composed by notify's
  * Mailer (a plain text part and an HTML part with the link as the button, folio.mail.*.action)
  * and queued with sendLater, so an answer takes as long whether or not a mail follows. Sender and
- * look are the mail settings' (config/notify.php). {site} is the site's name (siteName()); without one the
- * mail uses the texts folio.mail.*.subject_without_site and body_without_site, which name no site.
+ * look are the mail settings' (config/notify.php). {site} is the site's name (notify's MailText::siteName());
+ * without one the mail uses the texts folio.mail.*.subject_without_site and body_without_site, which name no site.
+ * Where preflow/rbac is installed, its StaffMail sends them instead (rbac-mail.*, the same words): staff
+ * mails have one source, whichever page asks for one.
  */
 final class StaffMailer
 {
@@ -26,19 +28,8 @@ final class StaffMailer
         private readonly Translator $translator,
         private readonly string $locale,
         private readonly ?string $site,
+        private readonly ?\Preflow\Rbac\Staff\StaffMail $rbac = null,
     ) {}
-
-    /** What the mails call the site: app.name, else the host of app.url, else null (the mails use their *_without_site texts). */
-    public static function siteName(mixed $appName, mixed $appUrl): ?string
-    {
-        $name = is_string($appName) ? MailText::oneLine($appName) : '';
-        if ($name !== '') {
-            return $name;
-        }
-        $host = is_string($appUrl) ? parse_url(trim($appUrl), PHP_URL_HOST) : null;
-
-        return is_string($host) && $host !== '' ? $host : null;
-    }
 
     /**
      * @param 'invite'|'reset' $mail
@@ -46,6 +37,11 @@ final class StaffMailer
      */
     public function sendLater(string $mail, string $to, string $name, string $link, string $subject, ?string $locale = null): void
     {
+        if ($this->rbac !== null) {
+            $this->rbac->sendTo($mail, $to, $name, $link, $subject, $locale);
+
+            return;
+        }
         $locale ??= $this->locale;
         $vars = ['{name}' => MailText::oneLine($name), '{site}' => MailText::oneLine($this->site ?? ''), '{link}' => $link];
         $suffix = $this->site === null ? '_without_site' : '';

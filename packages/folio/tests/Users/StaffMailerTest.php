@@ -69,13 +69,34 @@ final class StaffMailerTest extends TestCase
         }
     }
 
-    public function test_the_site_is_named_by_app_name_else_the_host_of_app_url(): void
+    /** Where rbac is installed its StaffMail sends Folio's staff mails too (forgot password): one source of the words. */
+    public function test_with_rbac_its_staff_mail_sends_them(): void
     {
-        $this->assertSame('Site', StaffMailer::siteName('Site', 'https://site.test'));
-        $this->assertSame('site.test', StaffMailer::siteName(null, 'https://site.test/'));
-        $this->assertSame('site.test', StaffMailer::siteName('  ', ' https://site.test '));
-        $this->assertNull(StaffMailer::siteName(null, null));
-        $this->assertNull(StaffMailer::siteName('', 'not a url'));
+        $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
+        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']], defer: false);
+        $mailer = new Mailer($notifier, new BasicMailLayout(), new MailConfig());
+        $site = sys_get_temp_dir() . '/staffmailer_' . bin2hex(random_bytes(4));
+        mkdir($site . '/de', 0777, true);
+        // A site's word for rbac's reset mail shows: the mail comes from rbac-mail.*, not folio.mail.*.
+        file_put_contents($site . '/de/rbac-mail.php', "<?php\nreturn ['reset' => ['subject' => 'Neues Passwort für {site}']];\n");
+        $translator = new Translator($site, 'en', 'en');
+        $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
+        $translator->addDefaults('rbac-mail', dirname(__DIR__, 3) . '/rbac/lang');
+
+        try {
+            $rbac = new \Preflow\Rbac\Staff\StaffMail($mailer, $translator, 'en', 'Site');
+            (new StaffMailer($mailer, $translator, 'en', 'Site', $rbac))->sendLater('reset', 'ada@site.test', 'Ada', self::LINK, 'staff:7', 'de');
+        } finally {
+            unlink($site . '/de/rbac-mail.php');
+            rmdir($site . '/de');
+            rmdir($site);
+        }
+
+        $mail = $factory->get('mail')->sent()[0]->message;
+        $this->assertSame('Neues Passwort für Site', $mail->subject);
+        $this->assertSame(['ada@site.test'], $mail->to);
+        $this->assertStringContainsString('Hallo Ada', $mail->text);
+        $this->assertStringContainsString('data-mail-action href="' . self::LINK . '"', (string) $mail->html);
     }
 
     public function test_without_a_site_name_the_mail_uses_the_texts_without_a_site_in_its_language(): void

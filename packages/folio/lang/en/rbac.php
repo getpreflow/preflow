@@ -1,0 +1,99 @@
+<?php
+
+// The rbac admin's texts in Folio (staff accounts, the roles screen, the permissions editor, the
+// labels of its models), laid over preflow/rbac's own in their group "rbac". A site changes single
+// keys in its own lang/en/rbac.php. :email is a staff account's address.
+return [
+    'delegation' => [
+        'own' => 'You would lose the right to edit roles.',
+        'last_role' => 'No staff role would be left that may edit roles.',
+        'duplicate' => 'A :population role named :name already exists.',
+    ],
+    'staff' => [
+        'invited' => 'Invitation sent to :email.',
+        'invite_failed' => 'The account is saved, but no invitation was sent. Check the mail setup (config/notify.php), then use "Send invitation".',
+        'mail_failed' => 'The mail could not be sent. Check the mail setup (config/notify.php).',
+        'reset_sent' => 'Reset link sent to :email.',
+        'disabled' => 'Account disabled. Its sessions and links have ended.',
+        'enabled' => 'Account enabled.',
+    ],
+    // The Account panel of a staff account and its actions.
+    'account' => [
+        'title' => 'Account',
+        'active' => 'Active',
+        'disabled' => 'Disabled',
+        'no_password' => 'No password yet',
+        'disabled_help' => "Can't sign in. Its sessions and links ended when it was disabled.",
+        'invited_help' => "Can't sign in until the invitation link is used to set a password.",
+        'active_help' => 'Signs in with a password of its own.',
+        'disable_confirm' => 'Disable :email? Its sessions and links end at once.',
+    ],
+    'actions' => [
+        'invite' => 'Send invitation',
+        'reset' => 'Send reset link',
+        'disable' => 'Disable',
+        'enable' => 'Enable',
+    ],
+    // The permissions of a role (the rbac_permissions field). :pattern is "*"; :verb a column's
+    // verb, :type a content type's label; :names the unknown permissions.
+    'matrix' => [
+        'everything' => 'Everything',
+        'everything_hint' => 'Grants every permission, now and in future extensions (:pattern)',
+        'unknown' => 'Unknown, removed on save: :names',
+        'type' => 'Type',
+        'all' => 'All',
+        'none' => 'No :verb permission for :type',
+        'other' => 'Other permissions',
+        'other_group' => 'Other',
+        'denied' => "You can't grant this",
+    ],
+    // A user's roles (the rbac_roles field). :role is a role's name.
+    'roles_field' => [
+        'not_defined' => ':role (not defined)',
+        'no_population' => 'No population: give the type "users" or the field "population".',
+    ],
+    // The new permissions an update brought: the notice above the Roles list, its actions, the
+    // dashboard line (:count, "one|many"). :role is a role's label.
+    'new' => [
+        'title' => 'New permissions',
+        'intro' => 'These permissions came with an update. They are not given to any role automatically.',
+        'covered' => 'Already in:',
+        'pick' => 'Add to role…',
+        'add' => 'Add',
+        'dismiss' => 'Dismiss',
+        'dashboard' => ':count new permission to review in Roles|:count new permissions to review in Roles',
+        'added' => 'Added to :role.',
+        'dismissed' => 'Dismissed.',
+        'no_role' => 'Choose a role to add it to.',
+        'unavailable' => "New permissions can't be checked yet: run preflow migrate.",
+        'failed' => 'The role could not be saved. The error is in the server log.',
+    ],
+    // The heading of rbac's permissions on the roles screen.
+    'extension' => ['label' => 'Roles'],
+    // types/fields/options: the labels of models/staff.json and models/rbac_role.json (Preflow\Data\ModelLabelKeys).
+    'types' => [
+        'staff' => ['label' => 'Staff', 'singular' => 'Staff', 'empty' => 'No staff yet.'],
+        'rbac_role' => ['label' => 'Roles', 'singular' => 'Role', 'empty' => 'No roles yet.'],
+    ],
+    'fields' => [
+        'staff' => [
+            'email' => ['label' => 'Email'],
+            'name' => ['label' => 'Name'],
+            'roles' => ['label' => 'Roles'],
+            'active' => ['label' => 'Active', 'help' => 'An inactive account can\'t sign in.'],
+            'last_login_at' => ['label' => 'Last sign-in'],
+            'created_at' => ['label' => 'Created'],
+        ],
+        'rbac_role' => [
+            'name' => ['label' => 'Name'],
+            'label' => ['label' => 'Label'],
+            'population' => ['label' => 'Population'],
+            'permissions' => ['label' => 'Permissions'],
+        ],
+    ],
+    'options' => [
+        'rbac_role' => [
+            'population' => ['staff' => 'Staff', 'members' => 'Members'],
+        ],
+    ],
+];

@@ -13,9 +13,11 @@ namespace Preflow\Rbac\Staff;
 interface StaffLinks
 {
     /**
-     * The absolute URL of the page that sets the password with $token.
-     *
-     * @throws StaffRefused when no link can be built (StaffRefused::NO_APP_URL)
+     * Whether a link can be built now (Folio: app.url is set). When not, invite() and
+     * resetLink() refuse (StaffRefused::NO_APP_URL) before any link is issued or revoked.
      */
+    public function available(): bool;
+
+    /** The absolute URL of the page that sets the password with $token; asked only when available(). */
     public function setPasswordUrl(string $token): string;
 }

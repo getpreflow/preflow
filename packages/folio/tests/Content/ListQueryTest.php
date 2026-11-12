@@ -50,8 +50,8 @@ final class ListQueryTest extends TestCase
             'slide' => ['key' => 'slide', 'table' => 'slide', 'storage' => 'json', 'id_field' => 'uuid',
                 'fields' => ['title' => ['type' => 'string']]],
         ];
-        // The real staff model (password hash and auth epoch are hidden), kept in JSON here.
-        $models['staff'] = ['storage' => 'json'] + (array) json_decode((string) file_get_contents(__DIR__ . '/../../../rbac/src/models/staff.json'), true);
+        // The real staff model as the rbac admin takes it (password hash and auth epoch are hidden), kept in JSON here.
+        $models['staff'] = ['storage' => 'json'] + (new \Preflow\Folio\Rbac\Extension())->model((array) json_decode((string) file_get_contents(__DIR__ . '/../../src/Rbac/models/staff.json'), true));
         $models['staff']['storage'] = 'json';
         foreach ($models as $k => $m) {
             file_put_contents($this->base . "/m/$k.json", json_encode($m));

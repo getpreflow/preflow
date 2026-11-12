@@ -14,6 +14,11 @@ final class PasswordPageProvider extends ServiceProvider
     public function register(Container $container): void
     {
         $container->instance(StaffLinks::class, new class implements StaffLinks {
+            public function available(): bool
+            {
+                return true;
+            }
+
             public function setPasswordUrl(string $token): string
             {
                 return 'https://site.test/set-password/' . $token;

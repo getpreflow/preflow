@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\I18n\Translator;
 use Preflow\Rbac\Messages;
 
-/** The delegation messages in en, de and fr; a site's lang file changes single keys. */
+/** rbac's own messages (delegation, staff accounts) in en, de and fr; a site's lang file changes single keys. */
 final class LangTest extends TestCase
 {
     private function messages(string $locale, string $siteLang = '/no/such/lang'): Messages
@@ -37,9 +37,7 @@ final class LangTest extends TestCase
             $this->assertStringContainsString(':patterns', $strings['grant'], $locale);
             $staff = (require dirname(__DIR__) . "/lang/{$locale}/rbac.php")['staff'];
             $this->assertSame(array_keys((require dirname(__DIR__) . '/lang/en/rbac.php')['staff']), array_keys($staff), $locale);
-            foreach (['invited', 'reset_sent'] as $key) {
-                $this->assertStringContainsString(':email', $staff[$key], "{$locale} {$key}");
-            }
+            $this->assertStringContainsString(':min', $staff['password_short'], $locale);
         }
         $this->assertSame('Du kannst keine Berechtigungen vergeben, die du selbst nicht hast: *', $this->messages('de')->get('delegation.grant', ['patterns' => '*']));
         // Without a locale, the translator's (on an admin request, the user's interface language); a locale picks another.

@@ -4,13 +4,28 @@ declare(strict_types=1);
 
 namespace Preflow\Notify\Mail;
 
-/** Text helpers for composed mails: header-safe values, the HTML paragraphs, absolute links. */
+/** Text helpers for composed mails: header-safe values, the site's name, the HTML paragraphs, absolute links. */
 final class MailText
 {
     /** Control characters (CR/LF included) collapse to one space: a value must not break a header line. */
     public static function oneLine(string $value): string
     {
         return trim((string) preg_replace('/[\p{Cc}\p{Cf}\x{2028}\x{2029}]+/u', ' ', $value));
+    }
+
+    /**
+     * What a mail calls the site: app.name ($appName), else the host of app.url ($appUrl), else
+     * null (a mail then words itself without the site's name). One line.
+     */
+    public static function siteName(mixed $appName, mixed $appUrl): ?string
+    {
+        $name = is_string($appName) ? self::oneLine($appName) : '';
+        if ($name !== '') {
+            return $name;
+        }
+        $host = is_string($appUrl) ? parse_url(trim($appUrl), PHP_URL_HOST) : null;
+
+        return is_string($host) && $host !== '' ? $host : null;
     }
 
     /**

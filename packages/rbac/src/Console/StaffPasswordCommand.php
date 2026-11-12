@@ -10,8 +10,9 @@ use Preflow\Rbac\Staff\StaffRefused;
 
 /**
  * staff:password <email>: sets the account's password on the server. In a terminal it asks twice
- * without echoing what is typed; otherwise it reads one line from STDIN (a pipe: printf '%s\n'
- * "$PASSWORD" | php preflow staff:password <email>). The password is never printed or taken as
+ * without echoing what is typed (stty; without it, it refuses rather than show the password);
+ * otherwise it reads one line from STDIN (a pipe: printf '%s\n' "$PASSWORD" | php preflow
+ * staff:password <email>). The password is never printed or taken as
  * an argument (it would stay in the shell history). Its other sessions and remember-me logins
  * end, and its invite and reset links stop working. The package lists it in composer.json
  * (extra.preflow.commands).
@@ -25,9 +26,15 @@ final class StaffPasswordCommand implements CommandInterface
     /**
      * @param (\Closure(): Application)|null $appFactory returns a booted application
      * @param resource|null $input where the password is read (default STDIN)
+     * @param bool|null $terminal whether $input is a terminal (default: stream_isatty())
+     * @param (\Closure(string): string)|null $runStty runs `stty <args>` on the terminal and returns its output (default: shell_exec)
      */
-    public function __construct(?\Closure $appFactory = null, private readonly mixed $input = null)
-    {
+    public function __construct(
+        ?\Closure $appFactory = null,
+        private readonly mixed $input = null,
+        private readonly ?bool $terminal = null,
+        private readonly ?\Closure $runStty = null,
+    ) {
         $this->command($appFactory);
     }
 
@@ -42,9 +49,16 @@ final class StaffPasswordCommand implements CommandInterface
             return 1;
         }
         $input = $this->input ?? STDIN;
-        if (stream_isatty($input)) {
-            $password = self::ask($input, 'New password: ');
-            if ($password !== self::ask($input, 'Repeat it: ')) {
+        if ($this->terminal ?? stream_isatty($input)) {
+            // The terminal's settings, to restore after reading without echo; none: stty can't hide what is typed.
+            $settings = trim($this->stty('-g'));
+            if ($settings === '') {
+                echo "This terminal can't hide what you type (stty is not available), so no password is asked for. Pipe it in instead: printf '%s\\n' \"\$PASSWORD\" | php preflow staff:password <email>\n";
+
+                return 1;
+            }
+            $password = $this->ask($input, 'New password: ', $settings);
+            if ($password !== $this->ask($input, 'Repeat it: ', $settings)) {
                 echo "The two passwords differ; nothing changed.\n";
 
                 return 1;
@@ -62,19 +76,29 @@ final class StaffPasswordCommand implements CommandInterface
         return 0;
     }
 
-    /** @param resource $input a terminal */
-    private static function ask(mixed $input, string $prompt): string
+    /**
+     * A line typed without echo.
+     *
+     * @param resource $input a terminal
+     * @param string $settings the terminal's settings (stty -g), restored afterwards
+     */
+    private function ask(mixed $input, string $prompt, string $settings): string
     {
         echo $prompt;
-        $echo = trim((string) shell_exec('stty -g 2>/dev/null'));
-        shell_exec('stty -echo 2>/dev/null');
+        $this->stty('-echo');
         try {
             $line = rtrim((string) fgets($input), "\r\n");
         } finally {
-            shell_exec($echo !== '' ? 'stty ' . escapeshellarg($echo) . ' 2>/dev/null' : 'stty echo 2>/dev/null');
+            $this->stty(escapeshellarg($settings));
             echo "\n";
         }
 
         return $line;
+    }
+
+    /** `stty $args` on the terminal; its output ('' when stty isn't there). */
+    private function stty(string $args): string
+    {
+        return $this->runStty !== null ? ($this->runStty)($args) : (string) shell_exec('stty ' . $args . ' 2>/dev/null');
     }
 }

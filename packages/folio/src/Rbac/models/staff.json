@@ -1,0 +1,45 @@
+{
+    "key": "staff",
+    "label": "Staff",
+    "users": "staff",
+    "opt_in": true,
+    "section": "settings",
+    "order": 10,
+    "icon": "ui-users",
+    "list": {
+        "columns": [
+            "email",
+            "name",
+            "roles",
+            "active",
+            "last_login_at"
+        ]
+    },
+    "fields": {
+        "email": {
+            "label": "Email"
+        },
+        "name": {
+            "label": "Name"
+        },
+        "roles": {
+            "type": "rbac_roles",
+            "label": "Roles"
+        },
+        "active": {
+            "label": "Active",
+            "help": "An inactive account can't sign in."
+        },
+        "auth_epoch": {
+            "readonly": true
+        },
+        "last_login_at": {
+            "label": "Last sign-in",
+            "readonly": true
+        },
+        "created_at": {
+            "label": "Created",
+            "readonly": true
+        }
+    }
+}

@@ -8,12 +8,12 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\Rbac\Staff\StaffLinks;
 use Preflow\Rbac\Staff\StaffLocales;
-use Preflow\Rbac\Staff\StaffRefused;
 
 /**
  * preflow/rbac's staff links and languages in Folio: an invite or reset link opens Folio's
- * set-password page ({app.url}{prefix}/password/{token}); a staff member's mails are in their
- * interface language (UserPreferences).
+ * set-password page ({app.url}{prefix}/password/{token}), so links can be built only with
+ * app.url set (available()); a staff member's mails are in their interface language
+ * (UserPreferences).
  */
 final class FolioStaffLinks implements StaffLinks, StaffLocales
 {
@@ -21,13 +21,17 @@ final class FolioStaffLinks implements StaffLinks, StaffLocales
     public function __construct(
         private readonly string $passwordUrl,
         private readonly UserPreferences $preferences,
-        private readonly string $message,
     ) {}
+
+    public function available(): bool
+    {
+        return $this->passwordUrl !== '';
+    }
 
     public function setPasswordUrl(string $token): string
     {
-        if ($this->passwordUrl === '') {
-            throw new StaffRefused(StaffRefused::NO_APP_URL, $this->message);
+        if (!$this->available()) {
+            throw new \LogicException('No set-password link without app.url: ask available() first.');
         }
 
         return $this->passwordUrl . '/' . $token;

@@ -32,7 +32,7 @@ final class StaffRefused extends \RuntimeException
     public const string NO_SIGN_IN = 'no_sign_in';
     /** No StaffLinks binding: no page to set a password at. */
     public const string NO_LINK_PAGE = 'no_link_page';
-    /** The link page can't build an absolute link: app.url is not set. */
+    /** The link page can't build a link now (StaffLinks::available() is false; Folio: app.url is not set). */
     public const string NO_APP_URL = 'no_app_url';
     public const string PASSWORD_SHORT = 'password_short';
     /** The account was deleted meanwhile. */

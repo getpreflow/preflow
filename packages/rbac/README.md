@@ -1,20 +1,24 @@
 # preflow/rbac
 
-Roles managed in Folio, answering `can()`.
+Stored roles answering `can()`, and staff accounts with their commands. rbac needs no admin:
+`php preflow rbac:install`, the `rbac:*` and `staff:*` commands and `StaffAccounts` work on
+their own. With Folio, Folio carries their admin (its built-in extension `rbac`: the Roles and
+Staff screens, the field types `rbac_permissions` and `rbac_roles`, the new-permissions notice).
 
 ## Install
 
 ```
 composer require preflow/rbac
-php preflow folio:extensions:enable rbac
+php preflow rbac:install            # without Folio
+php preflow folio:extensions:enable rbac   # with Folio: the admin
 php preflow folio:extensions:apply
 ```
 
-- Add `Preflow\Rbac\RbacServiceProvider` to `config/providers.php` (after
-  `FolioServiceProvider`). It does nothing while the Folio extension `rbac` is not enabled
-  (`config/folio/extensions.json`).
-- Enabled, it answers `can()` from the roles and registers the field types
-  `rbac_permissions` and `rbac_roles`.
+- Add `Preflow\Rbac\RbacServiceProvider` to `config/providers.php`. Where it runs (and the site
+  has `config/data.php`) it answers `can()` from the roles; Folio's extension switch only shows
+  or hides the admin (`config/folio/extensions.json`).
+- The admin's classes moved into Folio in 0.69 (`Preflow\Folio\Rbac\…`); their old names
+  (`Preflow\Rbac\Extension`, `Fields\*`, `Types\*`, `NewPermissions*`) work until 0.70.
 - `folio:extensions:apply` (run it on every deploy) seeds the roles on every run (since 0.53):
   - It creates the staff role `admin` ("Administrator", `*`) when no staff role exists.
   - If `config/roles.php` exists, it creates every role it defines that doesn't exist yet,
@@ -102,8 +106,8 @@ When a user is signed in:
   can't grant this"). The server check is the authority; a crafted POST gets the same
   refusal.
 
-The messages are in English, like the rest of Folio's admin. A site's `lang/en/rbac.php`
-changes single keys; de and fr are in `lang/`. Without a signed-in user (the CLI:
+The messages are in English; de and fr are in `lang/` (Folio adds its admin's texts to the same
+group "rbac"). A site's `lang/en/rbac.php` changes single keys. Without a signed-in user (the CLI:
 `folio:extensions:apply`, the staff import) delegation does not apply.
 `Preflow\Rbac\PermissionCoverage` has the check: `covers()`, `coversAll()`, `uncovered()`,
 and `held()` for the signed-in user (null when nobody is signed in).

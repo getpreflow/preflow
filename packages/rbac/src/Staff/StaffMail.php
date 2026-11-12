@@ -17,8 +17,8 @@ use Preflow\Notify\Mail\MailText;
  * language (StaffLocales), else the site's default language. Composed by notify's Mailer (a plain
  * text part and an HTML part with the link as the button, rbac-mail.*.action) and queued with
  * sendLater, so an answer takes as long whether or not a mail follows. Sender and look are the
- * mail settings' (config/notify.php). {site} is the site's name (siteName()); without one the mail
- * uses the texts *.subject_without_site and *.body_without_site, which name no site.
+ * mail settings' (config/notify.php). {site} is the site's name (notify's MailText::siteName());
+ * without one the mail uses the texts *.subject_without_site and *.body_without_site, which name no site.
  */
 final class StaffMail
 {
@@ -30,18 +30,6 @@ final class StaffMail
         private readonly ?StaffLocales $locales = null,
     ) {}
 
-    /** What the mails call the site: app.name, else the host of app.url, else null (the mails use their *_without_site texts). */
-    public static function siteName(mixed $appName, mixed $appUrl): ?string
-    {
-        $name = is_string($appName) ? MailText::oneLine($appName) : '';
-        if ($name !== '') {
-            return $name;
-        }
-        $host = is_string($appUrl) ? parse_url(trim($appUrl), PHP_URL_HOST) : null;
-
-        return is_string($host) && $host !== '' ? $host : null;
-    }
-
     /**
      * Queues the mail to the account's address; a failure is logged (with the account, no address).
      *
@@ -49,12 +37,24 @@ final class StaffMail
      */
     public function sendLater(string $mail, DynamicRecord $staff, string $link): void
     {
-        $locale = $this->locales?->locale($staff) ?? $this->locale;
         $to = (string) $staff->get('email');
         $name = trim((string) $staff->get('name'));
-        $vars = ['{name}' => MailText::oneLine($name !== '' ? $name : $to), '{site}' => MailText::oneLine($this->site ?? ''), '{link}' => $link];
+        $this->sendTo($mail, $to, $name !== '' ? $name : $to, $link, $staff->getType()->key . ':' . $staff->getId(), $this->locales?->locale($staff));
+    }
+
+    /**
+     * Queues the mail to $to, for any account with a password link (Folio's forgot-password page
+     * sends its reset mail through here when rbac is installed); a failure is logged with $account.
+     *
+     * @param 'invite'|'reset' $mail
+     * @param string $account names the account in the log line (never the address)
+     * @param string|null $locale the recipient's language (null: the site's default)
+     */
+    public function sendTo(string $mail, string $to, string $name, string $link, string $account, ?string $locale = null): void
+    {
+        $locale ??= $this->locale;
+        $vars = ['{name}' => MailText::oneLine($name), '{site}' => MailText::oneLine($this->site ?? ''), '{link}' => $link];
         $suffix = $this->site === null ? '_without_site' : '';
-        $account = $staff->getType()->key . ':' . $staff->getId();
         $this->mailer->sendLater(
             new MailContent(
                 subject: strtr($this->text($mail, 'subject' . $suffix, $locale), $vars),

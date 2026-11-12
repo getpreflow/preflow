@@ -16,6 +16,16 @@ final class MailTextTest extends TestCase
         $this->assertSame('x', MailText::oneLine("  x\t"));
     }
 
+    public function test_the_site_is_named_by_app_name_else_the_host_of_app_url(): void
+    {
+        $this->assertSame('Site', MailText::siteName('Site', 'https://site.test'));
+        $this->assertSame('Site A', MailText::siteName("Site\r\nA", null));
+        $this->assertSame('site.test', MailText::siteName(null, 'https://site.test/'));
+        $this->assertSame('site.test', MailText::siteName('  ', ' https://site.test '));
+        $this->assertNull(MailText::siteName(null, null));
+        $this->assertNull(MailText::siteName('', 'not a url'));
+    }
+
     public function test_paragraphs_are_escaped_and_urls_linked(): void
     {
         $this->assertSame(

@@ -96,6 +96,22 @@ final class StaffAccounts
         }
     }
 
+    /**
+     * Every staff account, active or not, by e-mail.
+     *
+     * @return list<DynamicRecord>
+     */
+    public function all(): array
+    {
+        if (!$this->enabled()) {
+            return [];
+        }
+        $accounts = array_values(array_filter($this->dm->queryType(StaffManagers::TYPE)->get()->items(), static fn (mixed $r): bool => $r instanceof DynamicRecord));
+        usort($accounts, static fn (DynamicRecord $a, DynamicRecord $b): int => strcmp((string) $a->get('email'), (string) $b->get('email')));
+
+        return $accounts;
+    }
+
     /** The staff account with this e-mail (compared trimmed and lowercased), active or not. */
     public function find(string $email): ?DynamicRecord
     {
@@ -158,13 +174,9 @@ final class StaffAccounts
                 'active' => StaffManagers::active($value),
             });
         }
-        $this->checkSave($record, $actor);
-        $disabling = $was && !StaffManagers::active($record->get('active'));
-        if ($disabling) {
-            self::bumpEpoch($record);
-        }
+        $this->checkSave($record, $actor); // a save that disables gets a new epoch there
         $this->dm->saveType($record, false);
-        if ($disabling) {
+        if ($was && !StaffManagers::active($record->get('active'))) {
             $this->endAccess($record);
         }
     }
@@ -232,8 +244,7 @@ final class StaffAccounts
     {
         $record = $this->fresh($staff);
         $record->set('active', false);
-        $this->checkSave($record, $actor);
-        self::bumpEpoch($record);
+        $this->checkSave($record, $actor); // and a new epoch
         $this->dm->saveType($record, false);
         $this->endAccess($record);
     }
@@ -264,7 +275,9 @@ final class StaffAccounts
 
     /**
      * The rules of a save, on the record as it would be saved: fills in what a new account starts
-     * with and lowercases the e-mail, then refuses what the rules don't allow.
+     * with, lowercases the e-mail and, when the save disables a stored active account, gives it
+     * the next epoch (its live sessions end once saved; endAccess() ends the rest), then refuses
+     * what the rules don't allow. Every write path runs it: this class's, an admin's form save.
      *
      * @throws StaffRefused
      */
@@ -296,6 +309,9 @@ final class StaffAccounts
             if (in_array($record->get('created_at'), [null, ''], true)) {
                 $record->set('created_at', (new \DateTimeImmutable())->format(DATE_ATOM));
             }
+        } elseif (StaffManagers::active($stored->get('active')) && !StaffManagers::active($record->get('active'))) {
+            // The stored epoch's next, so a second check of the same save doesn't count twice.
+            $record->set('auth_epoch', (string) ((int) $stored->get('auth_epoch') + 1));
         }
 
         $roles = (new RoleStore($this->dm))->rolesFor(StaffManagers::TYPE);
@@ -384,9 +400,15 @@ final class StaffAccounts
         ($this->builtMail ??= ($this->mail)())->sendLater($mail, $staff, $link);
     }
 
+    /** The page links point at; refused when there is none, or it can't build links now (before anything is issued or revoked). */
     private function page(): StaffLinks
     {
-        return ($this->pages)() ?? throw $this->refused(StaffRefused::NO_LINK_PAGE, 'staff.no_link_page');
+        $page = ($this->pages)() ?? throw $this->refused(StaffRefused::NO_LINK_PAGE, 'staff.no_link_page');
+        if (!$page->available()) {
+            throw $this->refused(StaffRefused::NO_APP_URL, 'staff.no_app_url');
+        }
+
+        return $page;
     }
 
     /** The staff guard's links when it signs this account in (its type is a record provider's of the guard). */
@@ -450,11 +472,6 @@ final class StaffAccounts
         }
 
         return false;
-    }
-
-    private static function bumpEpoch(DynamicRecord $staff): void
-    {
-        $staff->set('auth_epoch', (string) ((int) $staff->get('auth_epoch') + 1));
     }
 
     /** @param array<string, string|int> $params */

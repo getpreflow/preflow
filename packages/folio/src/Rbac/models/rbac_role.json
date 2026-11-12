@@ -1,0 +1,14 @@
+{
+    "key": "rbac_role",
+    "label": "Roles",
+    "section": "settings",
+    "order": 20,
+    "icon": "ui-users",
+    "fields": {
+        "name": { "label": "Name" },
+        "label": { "label": "Label" },
+        "population": { "label": "Population" },
+        "permissions": { "type": "rbac_permissions", "label": "Permissions" },
+        "seeded_permissions": { "label": "Seeded permissions" }
+    }
+}
