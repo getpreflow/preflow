@@ -52,11 +52,11 @@ final class TranslationRegistry
         $groups = [];
         $roots = [];
         foreach ($packages as $package) {
-            if (!array_key_exists('translations', $package)) {
+            $declared = InstalledPackages::extra($package, 'preflow.translations');
+            if ($declared === null) {
                 continue;
             }
             $name = $package['name'] !== '' ? $package['name'] : '?';
-            $declared = $package['translations'];
             if (!is_array($declared)) {
                 self::warn("package {$name} declares extra.preflow.translations as something other than a map; skipped.");
                 continue;

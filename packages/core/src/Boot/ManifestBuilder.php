@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Boot;
 
 use Preflow\Core\Application;
+use Preflow\Core\Composer\InstalledPackages;
 
 /**
  * Builds the boot manifest (`preflow optimize`): boots a fresh application for the base path as
@@ -81,18 +82,19 @@ final class ManifestBuilder
             $app->configFile(basename($file, '.php'));
         }
         $manifest->warm($app);
+        $packageRuntime = self::packageRuntime($app->installedPackages());
 
         $recorded = $manifest->recorded();
 
-        // Core sources: the config files, the .env, Composer's package list, the extensions file.
+        // Core sources: the config files, the .env, Composer's package list, the files packages check per request.
         $sources = [];
-        foreach ([$base . '/config', $base . '/.env', $base . '/vendor/composer/installed.json', ...$recorded['sources']] as $path) {
+        foreach ([$base . '/config', $base . '/.env', $base . '/vendor/composer/installed.json', ...array_map(static fn (string $path): string => $base . '/' . $path, $packageRuntime), ...$recorded['sources']] as $path) {
             $sources[self::relative($base, $path)] = ManifestFile::signature($path);
         }
         ksort($sources);
 
         $runtime = [];
-        foreach (ManifestFile::RUNTIME as $source) {
+        foreach ([...ManifestFile::CORE_RUNTIME, ...$packageRuntime] as $source) {
             $runtime[$source] = ManifestFile::stamp($base . '/' . $source);
         }
         $keys = ManifestFile::envKeys($base . '/.env');
@@ -145,8 +147,8 @@ final class ManifestBuilder
                 };
             }
         }
-        foreach (ManifestFile::RUNTIME as $source) {
-            if (($data['runtime'][$source] ?? null) !== ManifestFile::stamp($base . '/' . $source)) {
+        foreach ((array) ($data['runtime'] ?? []) as $source => $stamp) {
+            if ($source !== 'env' && $stamp !== ManifestFile::stamp($base . '/' . $source)) {
                 $drift[$source] = ($drift[$source] ?? 'changed') . ' (checked per request: web requests boot live until preflow optimize)';
             }
         }
@@ -159,6 +161,41 @@ final class ManifestBuilder
         }
 
         return array_values(array_unique($drift));
+    }
+
+    /**
+     * The project-relative files installed packages want checked on every request
+     * (composer `extra.preflow.runtime`: a list of relative paths), without the core's,
+     * deduplicated and sorted.
+     *
+     * @param list<array<string, mixed>> $packages
+     * @return list<string>
+     */
+    private static function packageRuntime(array $packages): array
+    {
+        $paths = [];
+        foreach ($packages as $package) {
+            $declared = InstalledPackages::extra($package, 'preflow.runtime');
+            if ($declared === null) {
+                continue;
+            }
+            $name = (string) ($package['name'] ?? '') !== '' ? (string) $package['name'] : '?';
+            if (!is_array($declared) || !array_is_list($declared)) {
+                throw new \RuntimeException("Package {$name}: extra.preflow.runtime must be a list of relative paths.");
+            }
+            foreach ($declared as $path) {
+                if (!is_string($path) || $path === '' || str_starts_with($path, '/') || in_array('..', explode('/', $path), true)) {
+                    throw new \RuntimeException("Package {$name}: extra.preflow.runtime lists " . (is_string($path) && $path !== '' ? "\"{$path}\", which is not a relative path without \"..\"" : 'a value that is not a non-empty path') . '.');
+                }
+                if (!in_array($path, ManifestFile::CORE_RUNTIME, true)) {
+                    $paths[$path] = true;
+                }
+            }
+        }
+        $paths = array_keys($paths);
+        sort($paths);
+
+        return $paths;
     }
 
     private function absoluteBase(): string

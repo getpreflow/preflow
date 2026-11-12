@@ -429,10 +429,10 @@ final class ExtensionRegistry
     {
         $classes = [];
         foreach (InstalledPackages::read($installed, $composerCache) as $package) {
-            if (!array_key_exists('extension', $package)) {
+            $class = InstalledPackages::extra($package, 'folio.extension');
+            if ($class === null) {
                 continue;
             }
-            $class = $package['extension'];
             if (!is_string($class) || $class === '') {
                 throw new ExtensionException(sprintf('Package %s: extra.folio.extension must be a class name.', $package['name'] !== '' ? $package['name'] : '?'));
             }

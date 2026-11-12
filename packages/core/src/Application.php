@@ -144,10 +144,10 @@ final class Application
 
     /**
      * The boot manifest this boot uses (`preflow optimize`, {basePath}/bootstrap/cache/boot.php).
-     * It is used only outside the console, with app.debug off, and while .env and
-     * config/folio/extensions.json are unchanged (checked on every request); otherwise it is
-     * off and every value is computed live. Packages take their catalogs from it through
-     * BootManifest::remember().
+     * It is used only outside the console, with app.debug off, and while the sources checked on
+     * every request are unchanged: the core's (.env, Composer's package list) and those packages
+     * declare (composer `extra.preflow.runtime`); otherwise it is off and every value is computed
+     * live. Packages take their catalogs from it through BootManifest::remember().
      */
     public function bootManifest(): \Preflow\Core\Boot\BootManifest
     {

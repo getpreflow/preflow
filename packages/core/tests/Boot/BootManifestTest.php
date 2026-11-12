@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Tests\Boot;
 
 use Nyholm\Psr7\Factory\Psr17Factory;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Boot\BootManifest;
@@ -35,7 +36,8 @@ final class BootManifestTest extends TestCase
         $this->write('app/pages/index.twig', 'HOME {{ t("site.hello") }}');
         $this->write('lang/en/site.php', "<?php\nreturn ['hello' => 'Hello'];\n");
         $this->write('lang/de/site.php', "<?php\nreturn ['hello' => 'Hallo'];\n");
-        $this->write('vendor/composer/installed.json', '{"packages": []}');
+        // A package that declares the extensions file as checked per request, as Folio's composer.json does.
+        $this->write('vendor/composer/installed.json', '{"packages": [{"name": "acme/ext", "extra": {"preflow": {"runtime": ["config/folio/extensions.json"]}}}]}');
         // The builder's boot reads the .env as a request would; the test process keeps what it loads.
         putenv($this->env);
         unset($_ENV[$this->env]);
@@ -224,6 +226,90 @@ final class BootManifestTest extends TestCase
         $this->assertFalse($this->web()->bootManifest()->active());
     }
 
+    public function test_package_runtime_files_are_checked_per_request(): void
+    {
+        $this->installedWithRuntime('["config/x/state.json"]');
+        $this->write('config/x/state.json', '{"a":1}');
+        (new ManifestBuilder($this->dir))->write();
+        $this->assertTrue($this->web()->bootManifest()->active());
+
+        $this->write('config/x/state.json', '{"a":1,"b":2}');
+
+        $this->assertFalse($this->web()->bootManifest()->active());
+    }
+
+    public function test_missing_runtime_file_then_created_makes_manifest_stale(): void
+    {
+        $this->installedWithRuntime('["config/x/state.json"]');
+        (new ManifestBuilder($this->dir))->write();
+        $this->assertTrue($this->web()->bootManifest()->active());
+
+        $this->write('config/x/state.json', '{}');
+
+        $this->assertFalse($this->web()->bootManifest()->active());
+    }
+
+    public function test_package_runtime_files_are_listed_as_sources_and_drift(): void
+    {
+        $this->installedWithRuntime('["config/x/state.json", "config/x/state.json"]');
+        $builder = new ManifestBuilder($this->dir);
+        $data = $builder->build();
+
+        $this->assertSame(['.env', 'vendor/composer/installed.json', 'config/x/state.json', 'env'], array_keys($data['runtime']));
+        $this->assertArrayHasKey('config/x/state.json', $data['sources']);
+
+        $builder->write();
+        $this->write('config/x/state.json', '{}');
+        $this->assertContains('config/x/state.json: added (checked per request: web requests boot live until preflow optimize)', $builder->drift());
+    }
+
+    public function test_manifest_of_older_version_is_ignored(): void
+    {
+        (new ManifestBuilder($this->dir))->write();
+        $file = $this->dir . '/bootstrap/cache/boot.php';
+        $data = include $file;
+        $data['version'] = 1;
+        file_put_contents($file, '<?php return ' . var_export($data, true) . ';');
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($file, true);
+        }
+
+        $this->assertNull(ManifestFile::load($this->dir));
+    }
+
+    public function test_folios_runtime_file_is_declared_in_its_composer_json(): void
+    {
+        $folio = json_decode((string) file_get_contents(__DIR__ . '/../../../folio/composer.json'), true);
+        $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [['name' => 'preflow/folio', 'extra' => ['preflow' => ['runtime' => $folio['extra']['preflow']['runtime'] ?? null]]]]]));
+
+        $data = (new ManifestBuilder($this->dir))->build();
+
+        $this->assertArrayHasKey('config/folio/extensions.json', $data['runtime']);
+    }
+
+    #[DataProvider('invalidRuntime')]
+    public function test_invalid_runtime_declarations_throw_naming_the_package(string $json): void
+    {
+        $this->installedWithRuntime($json);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Package acme/pkg: extra.preflow.runtime');
+        (new ManifestBuilder($this->dir))->build();
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidRuntime(): array
+    {
+        return [
+            'not a list' => ['{"a": "b"}'],
+            'a string' => ['"config/x"'],
+            'absolute' => ['["/etc/passwd"]'],
+            'parent segment' => ['["config/../../x"]'],
+            'empty' => ['[""]'],
+            'not a string' => ['[1]'],
+        ];
+    }
+
     public function test_cache_clear_removes_the_manifest(): void
     {
         (new ManifestBuilder($this->dir))->write();
@@ -355,6 +441,11 @@ final class BootManifestTest extends TestCase
         $console->boot();
         $this->assertSame(200, $console->handle((new Psr17Factory())->createServerRequest('GET', '/added'))->getStatusCode());
         $this->assertSame(['app'], $console->container()->get(\Preflow\Core\Routing\RouterInterface::class)->liveSets());
+    }
+
+    private function installedWithRuntime(string $runtimeJson): void
+    {
+        $this->write('vendor/composer/installed.json', '{"packages": [{"name": "acme/pkg", "extra": {"preflow": {"runtime": ' . $runtimeJson . '}}}]}');
     }
 
     private function web(): Application

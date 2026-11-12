@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio;
 
 use Preflow\Core\Application;
+use Preflow\Core\Composer\InstalledPackages;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Routing\RouterInterface;
@@ -188,7 +189,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $components,
                 $app->basePath('app/Blocks'),
                 // Installed packages' blocks (composer.json extra.folio.blocks), then config/folio.php's.
-                [...self::packageClasses($app, 'folio_blocks', attribute: \Preflow\Folio\Block\Block::class), ...array_values((array) ($folioCfg['blocks']['classes'] ?? []))],
+                [...self::packageClasses($app, 'folio.blocks', attribute: \Preflow\Folio\Block\Block::class), ...array_values((array) ($folioCfg['blocks']['classes'] ?? []))],
                 $this->cacheDir($app) . '/folio-blocks.cache',
                 useCache: !$app->config()->get('app.debug', false),
             )->toArray(), [$app->basePath('app/Blocks'), $app->basePath('app/Components')]));
@@ -622,7 +623,7 @@ final class FolioServiceProvider extends ServiceProvider
             // Field types of installed packages (composer.json extra.folio.field_types), then the app's
             // (config/folio.php 'field_types'): built by the container; a later one with a key already
             // taken replaces it, so the app's win over the packages', and both over the built-ins.
-            foreach (self::packageClasses($c->get(Application::class), 'folio_field_types', FieldType::class) as $class) {
+            foreach (self::packageClasses($c->get(Application::class), 'folio.field_types', FieldType::class) as $class) {
                 $registry->register($c->get($class));
             }
             foreach ((array) ($folioConfig['field_types'] ?? []) as $class) {
@@ -2052,7 +2053,7 @@ final class FolioServiceProvider extends ServiceProvider
      * Classes installed packages list in composer.json extra.folio.<field_types|blocks> (read from
      * vendor/composer/installed.json through the boot manifest). Installing the package is enough.
      *
-     * @param 'folio_field_types'|'folio_blocks' $key
+     * @param 'folio.field_types'|'folio.blocks' $key the dotted path into the package's composer extra
      * @param class-string|null $mustBe the interface each class implements, or null
      * @param class-string|null $attribute the attribute each class carries (#[Block]), or null
      * @return list<class-string>
@@ -2061,15 +2062,16 @@ final class FolioServiceProvider extends ServiceProvider
     {
         $classes = [];
         foreach ($app->installedPackages() as $package) {
-            if (!array_key_exists($key, $package)) {
+            $declared = InstalledPackages::extra($package, $key);
+            if ($declared === null) {
                 continue;
             }
-            $what = 'extra.folio.' . substr($key, 6);
+            $what = 'extra.' . $key;
             $name = (string) ($package['name'] ?? '?');
-            if (!is_array($package[$key])) {
+            if (!is_array($declared)) {
                 throw new \RuntimeException("Package {$name}: {$what} must be a list of class names.");
             }
-            foreach ($package[$key] as $class) {
+            foreach ($declared as $class) {
                 $class = is_string($class) ? ltrim($class, '\\') : '';
                 if ($class === '' || !class_exists($class)) {
                     throw new \RuntimeException("Package {$name}: {$what} lists " . ($class !== '' ? "{$class}, which is not a class" : 'a value that is not a class name') . '.');

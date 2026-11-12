@@ -47,7 +47,7 @@ final class InstalledPackagesTest extends TestCase
         $cache = $this->dir . '/cache';
 
         $first = InstalledPackages::read($path, $cache);
-        $this->assertSame('X', $first[0]['extension']);
+        $this->assertSame('X', InstalledPackages::extra($first[0], 'folio.extension'));
         $this->assertCount(1, glob($cache . '/installed-*.php'));
 
         // Same mtime and size, different content: a decode would show it, the cache does not.
@@ -57,7 +57,7 @@ final class InstalledPackagesTest extends TestCase
         $this->assertSame($size, filesize($path));
         $this->reload();
 
-        $this->assertSame('X', InstalledPackages::read($path, $cache)[0]['extension']);
+        $this->assertSame('X', InstalledPackages::extra(InstalledPackages::read($path, $cache)[0], 'folio.extension'));
     }
 
     /**
@@ -84,8 +84,46 @@ final class InstalledPackagesTest extends TestCase
         touch($b . '/vendor/composer/installed.json', 1_000_000);
         $this->reload();
 
-        $this->assertSame('X', InstalledPackages::read($b . '/vendor/composer/installed.json', $b . '/storage/cache/composer')[0]['extension']);
+        $this->assertSame('X', InstalledPackages::extra(InstalledPackages::read($b . '/vendor/composer/installed.json', $b . '/storage/cache/composer')[0], 'folio.extension'));
         exec('rm -rf ' . escapeshellarg($a) . ' ' . escapeshellarg($b));
+    }
+
+    public function test_keeps_extra_as_is(): void
+    {
+        $extra = [
+            'folio' => ['blocks' => ['A\\B']],
+            'preflow' => ['translations' => ['x' => ['path' => 'lang']]],
+            'branch-alias' => ['dev-main' => '1.x-dev'],
+        ];
+        $path = $this->installed([['name' => 'a/b', 'install-path' => '../a/b', 'extra' => $extra], ['name' => 'c/d', 'extra' => []]], 1_000_000);
+
+        $packages = InstalledPackages::read($path, $this->dir . '/cache');
+
+        $this->assertSame($extra, $packages[0]['extra']);
+        $this->assertSame(['A\\B'], InstalledPackages::extra($packages[0], 'folio.blocks'));
+        $this->assertNull(InstalledPackages::extra($packages[0], 'folio.nope'));
+        $this->assertNull(InstalledPackages::extra($packages[0], 'folio.blocks.deeper'));
+        $this->assertNull(InstalledPackages::extra($packages[1], 'folio.blocks'));
+        $this->assertArrayNotHasKey('extra', $packages[1], 'an empty extra is not kept');
+        foreach (['folio_blocks', 'folio_field_types', 'extension', 'translations'] as $key) {
+            $this->assertArrayNotHasKey($key, $packages[0]);
+        }
+    }
+
+    public function test_cache_of_older_format_is_reread(): void
+    {
+        $path = $this->installed([['name' => 'a/b', 'extra' => ['folio' => ['blocks' => ['A']]]]], 1_000_000);
+        $cache = $this->dir . '/cache';
+        mkdir($cache, 0777, true);
+        $relative = '../installed.json';
+        $file = $cache . '/installed-' . hash('xxh3', $relative) . '.php';
+        $old = ['key' => $relative . '|1000000|' . filesize($path) . '|v2', 'packages' => [['name' => 'a/b', 'install-path' => null, 'folio_blocks' => ['STALE']]]];
+        file_put_contents($file, '<?php return ' . var_export($old, true) . ';');
+
+        $packages = InstalledPackages::read($path, $cache);
+
+        $this->assertSame(['A'], InstalledPackages::extra($packages[0], 'folio.blocks'));
+        $this->assertArrayNotHasKey('folio_blocks', $packages[0]);
     }
 
     public function test_a_changed_installed_json_is_read_again(): void
@@ -99,7 +137,7 @@ final class InstalledPackagesTest extends TestCase
 
         $packages = InstalledPackages::read($path, $cache);
         $this->assertSame(['a/b', 'c/d'], array_column($packages, 'name'));
-        $this->assertSame(['g' => 'lang'], $packages[1]['translations']);
+        $this->assertSame(['g' => 'lang'], InstalledPackages::extra($packages[1], 'preflow.translations'));
     }
 
     public function test_a_corrupt_cache_file_falls_back_to_parsing(): void

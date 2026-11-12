@@ -14,28 +14,29 @@ namespace Preflow\Core\Boot;
  *   built     string, when it was written (ISO 8601)
  *   sources   relative path => signature of every file or directory a value was made from
  *             (`preflow optimize --check` compares them)
- *   runtime   the sources checked on every request: '.env', 'config/folio/extensions.json' and
- *             'vendor/composer/installed.json' => stamp, plus 'env' (the .env keys and a hash of their effective values)
+ *   runtime   the sources checked on every request, path => stamp: CORE_RUNTIME ('.env', 'vendor/composer/installed.json')
+ *             and the files installed packages declare (composer `extra.preflow.runtime`), plus 'env'
+ *             (the .env keys and a hash of their effective values)
  *   config    config file name => its result
  *   packages  the package discovery data (InstalledPackages)
  *   catalogs  key => value, as producers remember them
  *   routes    compiled route data, or null
  *
  * load() uses it only while the runtime-checked sources are unchanged: an edited .env, a rewritten
- * extensions.json or a different environment value means a live boot for that request.
+ * file a package declared or a different environment value means a live boot for that request.
  */
 final class ManifestFile
 {
-    public const int VERSION = 1;
+    public const int VERSION = 2;
 
     public const string PATH = 'bootstrap/cache/boot.php';
 
     /**
-     * Sources checked on every request: those that change without a deploy, and Composer's
-     * package list, so an in-place `composer install` without `optimize` never meets a manifest
-     * of the packages before.
+     * The core's sources checked on every request: the .env, which changes without a deploy, and
+     * Composer's package list, so an in-place `composer install` without `optimize` never meets
+     * a manifest of the packages before. Packages add theirs (`extra.preflow.runtime`).
      */
-    public const array RUNTIME = ['.env', 'config/folio/extensions.json', 'vendor/composer/installed.json'];
+    public const array CORE_RUNTIME = ['.env', 'vendor/composer/installed.json'];
 
     public static function path(string $basePath): string
     {
@@ -64,8 +65,8 @@ final class ManifestFile
             return null;
         }
         $base = rtrim($basePath, '/');
-        foreach (self::RUNTIME as $source) {
-            if (($data['runtime'][$source] ?? null) !== self::stamp($base . '/' . $source)) {
+        foreach ($data['runtime'] as $source => $stamp) {
+            if ($source !== 'env' && $stamp !== self::stamp($base . '/' . $source)) {
                 return null;
             }
         }

@@ -15,20 +15,18 @@ namespace Preflow\Core\Composer;
  * Each package comes back as:
  *   name          string
  *   install-path  string|null
- *   translations  mixed (extra.preflow.translations, only when declared)
- *   extension     mixed (extra.folio.extension, only when declared)
- *   folio_field_types  mixed (extra.folio.field_types, only when declared; since 0.66)
- *   folio_blocks       mixed (extra.folio.blocks, only when declared; since 0.66)
+ *   extra         array (the package's composer `extra` object as Composer has it, only when it is a
+ *                 non-empty array); consumers read their own keys through extra()
  */
 final class InstalledPackages
 {
     /** Part of the cache key: a cache written by an older reader (fewer keys kept) is a miss. */
-    private const FORMAT = 2;
+    private const FORMAT = 3;
 
     /** @var array<string, list<array<string, mixed>>> */
     private static array $memo = [];
 
-    /** @return list<array{name: string, install-path: string|null, translations?: mixed, extension?: mixed, folio_field_types?: mixed, folio_blocks?: mixed}> */
+    /** @return list<array{name: string, install-path: string|null, extra?: array<string, mixed>}> */
     public static function read(string $installedJson, ?string $cacheDir = null): array
     {
         clearstatcache(true, $installedJson);
@@ -71,6 +69,25 @@ final class InstalledPackages
     }
 
     /**
+     * A value of a package's `extra` by dotted path ('folio.blocks', 'preflow.translations'),
+     * null when the package does not declare it.
+     *
+     * @param array<string, mixed> $package one entry of read()
+     */
+    public static function extra(array $package, string $path): mixed
+    {
+        $value = $package['extra'] ?? null;
+        foreach (explode('.', $path) as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
+                return null;
+            }
+            $value = $value[$segment];
+        }
+
+        return $value;
+    }
+
+    /**
      * $path as seen from $dir ("../../../vendor/composer/installed.json" from storage/cache/composer),
      * by the paths as given (no realpath(): a linked vendor/ stays where the project has it).
      */
@@ -101,17 +118,8 @@ final class InstalledPackages
                 'name' => (string) ($package['name'] ?? ''),
                 'install-path' => is_string($package['install-path'] ?? null) ? $package['install-path'] : null,
             ];
-            if (isset($package['extra']['preflow']['translations'])) {
-                $slim['translations'] = $package['extra']['preflow']['translations'];
-            }
-            if (isset($package['extra']['folio']['extension'])) {
-                $slim['extension'] = $package['extra']['folio']['extension'];
-            }
-            if (isset($package['extra']['folio']['field_types'])) {
-                $slim['folio_field_types'] = $package['extra']['folio']['field_types'];
-            }
-            if (isset($package['extra']['folio']['blocks'])) {
-                $slim['folio_blocks'] = $package['extra']['folio']['blocks'];
+            if (is_array($package['extra'] ?? null) && $package['extra'] !== []) {
+                $slim['extra'] = $package['extra'];
             }
             $packages[] = $slim;
         }
