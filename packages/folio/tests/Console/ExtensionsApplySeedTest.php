@@ -59,6 +59,17 @@ final class ExtensionsApplySeedTest extends TestCase
         $this->assertSame("counter: seeded a thing\n", $this->apply());
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_seed_declared_void_still_loads_and_applies(): void
+    {
+        $this->scaffoldPublishing();
+        $this->counter(seedType: 'void');
+
+        $this->assertStringContainsString('installed counter 1.0.0', $this->apply());
+        $this->assertSame("nothing to do\n", $this->apply());
+        $this->assertSame("seed\nseed\n", (string) file_get_contents($this->dir . '/seeds.log'));
+    }
+
     private function apply(): string
     {
         ob_start();

@@ -43,7 +43,8 @@ final class ExtensionsApplyCommand implements CommandInterface
                 echo "installed {$definition->name} {$definition->version}" . ($installed === null ? '' : " (was {$installed})") . "\n";
                 $did = true;
             }
-            foreach ($extension->seed($c) as $line) {
+            $lines = $extension->seed($c);
+            foreach (is_array($lines) ? $lines : [] as $line) {
                 echo $line . "\n";
                 $did = true;
             }

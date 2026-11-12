@@ -15,7 +15,7 @@ trait CounterExtension
     private ?\Closure $counterAutoload = null;
 
     /** @param list<string>|null $disabled part ids; null leaves extensions.json alone */
-    private function counter(?array $disabled = []): void
+    private function counter(?array $disabled = [], string $seedType = 'array'): void
     {
         $this->write('app/Folio/Counter/Extension.php', <<<'PHP'
             <?php
@@ -28,12 +28,11 @@ trait CounterExtension
                     file_put_contents($c->get(\Preflow\Core\Application::class)->basePath('installs.log'), "install\n", FILE_APPEND);
                 }
 
-                public function seed(\Preflow\Core\Container\Container $c): array
+                public function seed(\Preflow\Core\Container\Container $c): SEED_TYPE
                 {
                     $base = $c->get(\Preflow\Core\Application::class)->basePath('seeds.log');
                     file_put_contents($base, "seed\n", FILE_APPEND);
-
-                    return is_file(dirname($base) . '/seed-report') ? ['counter: seeded a thing'] : [];
+                    SEED_RETURN
                 }
 
                 public function uninstall(\Preflow\Core\Container\Container $c): void
@@ -42,6 +41,10 @@ trait CounterExtension
                 }
             }
             PHP);
+        $this->write('app/Folio/Counter/Extension.php', strtr((string) file_get_contents($this->dir . '/app/Folio/Counter/Extension.php'), [
+            'SEED_TYPE' => $seedType,
+            'SEED_RETURN' => $seedType === 'void' ? '' : "return is_file(dirname(\$base) . '/seed-report') ? ['counter: seeded a thing'] : [];",
+        ]));
         $this->write('app/Folio/Counter/Screens/Board.php', <<<'PHP'
             <?php
             namespace App\Folio\Counter\Screens;
