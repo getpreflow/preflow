@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.69.1)
+> Last updated: 2026-11-12 (v0.69.2)
 
 ## Current State
 
-**v0.69.1** — 7108 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.69.2** — 7110 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Found by the 0.69 docs review (v0.69.2, released 2026-11-12):** `StaffAccounts::passwordMin()` and
+  `checkPassword()` (the configured `password_min`, checkable before a set-password link is used up; `setPassword()`
+  uses the same check). Permissions in `config/roles.php` that nothing declares are printed once by `rbac:install`,
+  `preflow migrate` and `folio:extensions:apply`, and logged through the bound PSR-3 logger (no `error_log` echo).
+  **Upgrading:** `composer update "preflow/*"`; nothing else.
 - **Gaps found by the 0.69 docs (v0.69.1, released 2026-11-12):** core gains `Application::onProvidersBooted(callable)`
   (runs once every provider has booted); Folio sets up its admin in the console through it, so staff commands find the
   staff guard's record provider even with Folio's `model:staff` part off. Staff commands before the staff table exists
