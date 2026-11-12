@@ -64,6 +64,11 @@ final class ManifestFile
         if (!is_array($data) || ($data['version'] ?? null) !== self::VERSION || !is_array($data['runtime'] ?? null)) {
             return null;
         }
+        foreach (self::CORE_RUNTIME as $source) {
+            if (!array_key_exists($source, $data['runtime'])) {
+                return null; // a manifest without the core's checked sources is no manifest
+            }
+        }
         $base = rtrim($basePath, '/');
         foreach ($data['runtime'] as $source => $stamp) {
             if ($source !== 'env' && $stamp !== self::stamp($base . '/' . $source)) {

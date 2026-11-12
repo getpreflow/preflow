@@ -88,7 +88,8 @@ final class ManifestBuilder
 
         // Core sources: the config files, the .env, Composer's package list, the files packages check per request.
         $sources = [];
-        foreach ([$base . '/config', $base . '/.env', $base . '/vendor/composer/installed.json', ...array_map(static fn (string $path): string => $base . '/' . $path, $packageRuntime), ...$recorded['sources']] as $path) {
+        $packageRuntimePaths = array_map(static fn (string $path): string => $base . '/' . $path, $packageRuntime);
+        foreach ([$base . '/config', $base . '/.env', $base . '/vendor/composer/installed.json', ...$packageRuntimePaths, ...$recorded['sources']] as $path) {
             $sources[self::relative($base, $path)] = ManifestFile::signature($path);
         }
         ksort($sources);
@@ -133,6 +134,12 @@ final class ManifestBuilder
         }
         if (!is_array($data) || ($data['version'] ?? null) !== ManifestFile::VERSION) {
             return ['the manifest has another version; run preflow optimize'];
+        }
+
+        foreach (ManifestFile::CORE_RUNTIME as $source) {
+            if (!array_key_exists($source, (array) ($data['runtime'] ?? []))) {
+                return ["the manifest lacks the checked source {$source}; run preflow optimize"];
+            }
         }
 
         // One line per source: a signed source that is also checked per request (.env, installed.json) once.

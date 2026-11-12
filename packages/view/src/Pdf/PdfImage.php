@@ -8,7 +8,8 @@ namespace Preflow\View\Pdf;
 final readonly class PdfImage
 {
     /**
-     * @param string  $file    the file to print; for an edited image, its rendered master
+     * @param string  $file    the file to print; for an edited image, its rendered master; '' when the asset's file is missing
+     *                         (the PDF then reports the image as missing)
      * @param ?string $url     the image's public URL
      * @param bool    $private whether the image is access-controlled (needs allow_private: true to be printed)
      * @param bool    $isImage whether the stored file is an image at all

@@ -263,6 +263,22 @@ final class BootManifestTest extends TestCase
         $this->assertContains('config/x/state.json: added (checked per request: web requests boot live until preflow optimize)', $builder->drift());
     }
 
+    public function test_manifest_without_a_core_runtime_source_is_no_manifest(): void
+    {
+        $builder = new ManifestBuilder($this->dir);
+        $builder->write();
+        $file = $this->dir . '/bootstrap/cache/boot.php';
+        $data = include $file;
+        unset($data['runtime']['.env']);
+        file_put_contents($file, '<?php return ' . var_export($data, true) . ';');
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($file, true);
+        }
+
+        $this->assertNull(ManifestFile::load($this->dir));
+        $this->assertSame(['the manifest lacks the checked source .env; run preflow optimize'], $builder->drift());
+    }
+
     public function test_manifest_of_older_version_is_ignored(): void
     {
         (new ManifestBuilder($this->dir))->write();
