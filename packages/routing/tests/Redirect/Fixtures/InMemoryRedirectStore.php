@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Routing\Tests\Redirect\Fixtures;
 
 use Preflow\Routing\Redirect\Redirect;
-use Preflow\Routing\Redirect\EditableRedirectStore;
+use Preflow\Routing\Redirect\ListedRedirectStore;
 
 /** Redirect entries held in an array; `$fail` makes every call throw like a missing table. */
-final class InMemoryRedirectStore implements EditableRedirectStore
+final class InMemoryRedirectStore implements ListedRedirectStore
 {
     /** @var list<string> ids of the entries counted by hit() */
     public array $hits = [];

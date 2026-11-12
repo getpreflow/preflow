@@ -113,10 +113,10 @@ final class RedirectsControllerTest extends TestCase
     public function test_index_lists_entries_with_targets_and_broken_flags(): void
     {
         $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
-        $this->entries()->store(['path' => '/old-about', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1', 'hits' => 7, 'created_at' => '2026-10-01T10:00:00+00:00']);
-        $this->entries()->store(['path' => '/gone', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'nope', 'created_at' => '2026-09-01T10:00:00+00:00']);
-        $this->entries()->store(['path' => '/left', 'locale' => 'de', 'kind' => 'removed', 'source_type' => 'page', 'source_id' => 'p9', 'created_at' => '2026-08-01T10:00:00+00:00']);
-        $this->entries()->store(['path' => '/shop', 'locale' => '', 'area' => true, 'mode' => 'prefix', 'target_url' => 'https://example.org/store', 'status' => 302, 'created_at' => '2026-10-02T10:00:00+00:00']);
+        $this->entries()->storeUnchecked(['path' => '/old-about', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1', 'hits' => 7, 'created_at' => '2026-10-01T10:00:00+00:00']);
+        $this->entries()->storeUnchecked(['path' => '/gone', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'nope', 'created_at' => '2026-09-01T10:00:00+00:00']);
+        $this->entries()->storeUnchecked(['path' => '/left', 'locale' => 'de', 'kind' => 'removed', 'source_type' => 'page', 'source_id' => 'p9', 'created_at' => '2026-08-01T10:00:00+00:00']);
+        $this->entries()->storeUnchecked(['path' => '/shop', 'locale' => '', 'area' => true, 'mode' => 'prefix', 'target_url' => 'https://example.org/store', 'status' => 302, 'created_at' => '2026-10-02T10:00:00+00:00']);
 
         $res = $this->fetch('/folio/redirects');
         $body = (string) $res->getBody();
@@ -150,9 +150,9 @@ final class RedirectsControllerTest extends TestCase
     public function test_index_filters_by_record(): void
     {
         $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
-        $this->entries()->store(['path' => '/to-p1', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1']);
-        $this->entries()->store(['path' => '/from-p2', 'locale' => 'en', 'kind' => 'removed', 'source_type' => 'page', 'source_id' => 'p2']);
-        $this->entries()->store(['path' => '/other', 'locale' => 'en', 'target_url' => '/x']);
+        $this->entries()->storeUnchecked(['path' => '/to-p1', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1']);
+        $this->entries()->storeUnchecked(['path' => '/from-p2', 'locale' => 'en', 'kind' => 'removed', 'source_type' => 'page', 'source_id' => 'p2']);
+        $this->entries()->storeUnchecked(['path' => '/other', 'locale' => 'en', 'target_url' => '/x']);
 
         $body = (string) $this->fetch('/folio/redirects?record=page:p2')->getBody();
         $this->assertStringContainsString('/from-p2', $body);
@@ -415,6 +415,17 @@ final class RedirectsControllerTest extends TestCase
             $this->assertStringContainsString('value="' . $address . '"', (string) $res->getBody(), 'the typed address stays');
         }
         $this->assertSame([], $this->entries()->all());
+    }
+
+    public function test_a_refused_address_hides_the_target_rules_that_need_it(): void
+    {
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+
+        $res = $this->send('/folio/redirects', ['address' => '/about', 'target' => '/about', 'status' => '301']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('A page has this address; it always wins.', (string) $res->getBody());
+        $this->assertStringNotContainsString('The target is the old address itself.', (string) $res->getBody());
     }
 
     public function test_target_that_redirects_already_is_refused(): void

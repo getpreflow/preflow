@@ -11,6 +11,10 @@ namespace Preflow\Routing\Redirect;
  * "keep the rest" needs a URL target without query or fragment. What only the site knows (is a
  * page there, is a record live, how addresses read) comes in through small interfaces.
  *
+ * The rules hold for every write that goes through them (the store's save() checks each entry
+ * with check()), so they have to be wired into the store; a store written to around them is not
+ * held to them.
+ *
  * An entry is an array: path (RedirectPath's form), locale ('' any), area, mode, and one of
  * target_type + target_id or target_url. $existing is the stored entry being edited (an array
  * with its id): the rules leave it out when they look at the other entries. Errors are message
@@ -19,7 +23,7 @@ namespace Preflow\Routing\Redirect;
 final class RedirectRules
 {
     public function __construct(
-        private readonly EditableRedirectStore $store,
+        private readonly ListedRedirectStore $store,
         private readonly PageExists $pages,
         private readonly TargetIsLive $live,
         private readonly SiteAddresses $site,
@@ -106,7 +110,7 @@ final class RedirectRules
         if ($url === null) {
             return self::refuse('target', 'target_required');
         }
-        if (preg_match('#^[/\\\\]{2}#', $url) === 1 || preg_match('#^(/|https?://)#i', $url) !== 1) {
+        if (!RedirectUrl::isValid($url)) {
             return self::refuse('target', 'target_invalid');
         }
         if ($prefix && (str_contains($url, '?') || str_contains($url, '#'))) {

@@ -94,7 +94,7 @@ final class RecordAddresses
                 if (($current[$locale] ?? null) === $path) {
                     continue;
                 }
-                $this->entries->store([
+                $this->entries->storeUnchecked([
                     'path' => $path,
                     'locale' => $locale,
                     'area' => false,
@@ -114,7 +114,7 @@ final class RecordAddresses
             // Back on the site: its addresses an earlier removal sent elsewhere, or nowhere, point here again.
             foreach ($this->entries->sourcedBy($type, $id) as $entry) {
                 if ($entry['kind'] === 'removed' || ($entry['target_type'] === null && $entry['target_url'] === null)) {
-                    $this->entries->store(['target_type' => $type, 'target_id' => $id, 'kind' => 'auto'] + $entry);
+                    $this->entries->storeUnchecked(['target_type' => $type, 'target_id' => $id, 'kind' => 'auto'] + $entry);
                 }
             }
             // The page wins at every address it holds now; written last, so nothing above lands there.
@@ -275,17 +275,17 @@ final class RecordAddresses
                 // a 404 while the record is off, working again when it comes back.
                 continue;
             }
-            $this->entries->store(['kind' => $entry['kind'] === 'auto' ? 'removed' : $entry['kind']] + $to + $entry);
+            $this->entries->storeUnchecked(['kind' => $entry['kind'] === 'auto' ? 'removed' : $entry['kind']] + $to + $entry);
         }
         if ($target !== null) {
             foreach ($this->entries->sourcedBy($type, $id) as $entry) {
                 if ($entry['target_type'] === null && $entry['target_url'] === null) {
-                    $this->entries->store($to + $entry);
+                    $this->entries->storeUnchecked($to + $entry);
                 }
             }
         }
         foreach ($stored as $locale => $path) {
-            $this->entries->store([
+            $this->entries->storeUnchecked([
                 'path' => $path,
                 'locale' => $locale,
                 'area' => false,

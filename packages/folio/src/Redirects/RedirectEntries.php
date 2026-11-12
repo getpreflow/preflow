@@ -10,7 +10,7 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Routing\Redirect\AreaMode;
 use Preflow\Routing\Redirect\Redirect;
-use Preflow\Routing\Redirect\EditableRedirectStore;
+use Preflow\Routing\Redirect\ListedRedirectStore;
 use Preflow\Routing\Redirect\RedirectPath;
 use Preflow\Routing\Redirect\RedirectRejected;
 use Preflow\Routing\Redirect\RedirectRules;
@@ -24,7 +24,7 @@ use Preflow\Routing\Redirect\RedirectRules;
  * Rows are arrays with the table's columns. Nothing here touches the storage before a method
  * is called: a site that has not run `preflow migrate` fails inside the methods only.
  */
-final class RedirectEntries implements EditableRedirectStore
+final class RedirectEntries implements ListedRedirectStore
 {
     public const string TABLE = 'folio_redirects';
 
@@ -145,8 +145,10 @@ final class RedirectEntries implements EditableRedirectStore
      * kind "manual"; hits, created_at, created_by and last_hit_at are kept from the replaced
      * entry, else no hits, created now.
      *
-     * The entry has to meet RedirectRules (no chains, a page wins over an exact entry, …) when the
-     * store was given them: for a writer that is not the automatic bookkeeping, see store().
+     * Every write through save() is held to RedirectRules (no chains, a page wins over an exact
+     * entry, …), whoever the writer is (a form, a command, an import). That holds when the rules
+     * are wired in (the constructor's second argument; Folio's provider does); without them
+     * save() checks nothing.
      * $replaces is the stored entry being edited (when its address changes, the caller deletes
      * the old one afterwards): the rules leave it out; by default it is the entry at the same address.
      *
@@ -170,13 +172,15 @@ final class RedirectEntries implements EditableRedirectStore
     }
 
     /**
-     * Stores an entry without the rules: the automatic bookkeeping (RecordAddresses keeps its
-     * entries from chaining itself). Same defaults and replacing as save().
+     * Stores an entry without the rules: Folio's automatic bookkeeping only (RecordAddresses keeps
+     * its entries from chaining itself). Same defaults and replacing as save(). Every other
+     * writer goes through save().
      *
+     * @internal
      * @param array<string, mixed> $row
      * @throws \InvalidArgumentException for a path that is not a site path, or an unknown mode, status or kind
      */
-    public function store(array $row): void
+    public function storeUnchecked(array $row): void
     {
         $this->write($this->complete($row));
     }

@@ -261,13 +261,6 @@ final class RedirectsController
         $mode = $values['area'] ? $values['mode'] : AreaMode::One->value;
         [$target, $targetError] = $this->readTarget($values['target']);
 
-        $errors = [];
-        if ($addressError !== null) {
-            $errors['address'] = $addressError;
-        }
-        if ($targetError !== null) {
-            $errors['target'] = $targetError;
-        }
         $draft = [
             'path' => $path ?? '',
             'locale' => $locale,
@@ -277,10 +270,19 @@ final class RedirectsController
             'target_id' => $target?->id,
             'target_url' => $target?->url,
         ];
-        if ($addressError === null) {
+        $errors = [];
+        if ($addressError !== null) {
+            $errors['address'] = $addressError;
+        } else {
             $this->refusals($errors, $this->rules->address($draft, $entry, $host));
         }
-        if ($targetError === null) {
+        // A refused address leaves the target rules that need it out (as before: "/about" a page, target "/about": page_wins only).
+        if ($errors !== []) {
+            $draft['path'] = '';
+        }
+        if ($targetError !== null) {
+            $errors['target'] = $targetError;
+        } else {
             $this->refusals($errors, $this->rules->target($draft, $entry, $host));
         }
         if ($errors !== [] || $path === null || $target === null) {

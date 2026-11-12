@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Routing\Redirect;
 
 /** A redirect store that can also be listed, for the rules that look across all entries. */
-interface EditableRedirectStore extends RedirectStore
+interface ListedRedirectStore extends RedirectStore
 {
     /** @return list<Redirect> every entry, exact and area */
     public function entries(): array;

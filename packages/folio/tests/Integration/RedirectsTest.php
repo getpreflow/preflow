@@ -110,7 +110,7 @@ final class RedirectsTest extends TestCase
     public function test_a_page_wins_over_an_entry_at_its_address(): void
     {
         $this->publish('page', 'p1', ['en' => 'about']);
-        $this->entries()->store(['path' => '/about', 'locale' => '', 'target_url' => '/elsewhere']);
+        $this->entries()->storeUnchecked(['path' => '/about', 'locale' => '', 'target_url' => '/elsewhere']);
 
         $res = $this->fetch('/about');
         $this->assertSame(200, $res->getStatusCode());
@@ -121,7 +121,7 @@ final class RedirectsTest extends TestCase
     public function test_gated_404_is_not_recorded(): void
     {
         $this->publish('vault', 'v1', ['en' => 'secret']);
-        $this->entries()->store(['path' => '/vault/secret', 'locale' => '', 'target_url' => '/elsewhere']);
+        $this->entries()->storeUnchecked(['path' => '/vault/secret', 'locale' => '', 'target_url' => '/elsewhere']);
         // Nobody may see the vault (a gate without access); the page answers with a 404 response.
         $this->app()->container()->instance(FrontendGate::class, new FrontendGate(null));
 

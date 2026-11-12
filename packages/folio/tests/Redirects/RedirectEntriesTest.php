@@ -244,10 +244,32 @@ final class RedirectEntriesTest extends TestCase
     }
 
     #[DataProvider('storages')]
+    public function test_save_refuses_a_self_target_and_a_reverse_chain(string $storage): void
+    {
+        $entries = $this->ruled($storage);
+        try {
+            $entries->save(['path' => '/loop', 'target_url' => '/loop']);
+            $this->fail('a target is never its own address');
+        } catch (RedirectRejected $e) {
+            $this->assertSame('target_is_address', $e->errors->get('target'));
+        }
+
+        $entries->save(['path' => '/old', 'target_url' => '/new']);
+        try {
+            $entries->save(['path' => '/new', 'target_url' => '/elsewhere']);
+            $this->fail('no chains: /old already sends visitors to /new');
+        } catch (RedirectRejected $e) {
+            $this->assertSame('targeted', $e->errors->get('address'));
+        }
+        $this->assertNull($entries->exact('/loop', ''));
+        $this->assertNull($entries->exact('/new', ''));
+    }
+
+    #[DataProvider('storages')]
     public function test_store_is_the_automatic_bookkeeping_without_the_rules(string $storage): void
     {
         $entries = $this->ruled($storage);
-        $entries->store(['path' => '/about', 'target_type' => 'page', 'target_id' => 'gone', 'kind' => 'auto']);
+        $entries->storeUnchecked(['path' => '/about', 'target_type' => 'page', 'target_id' => 'gone', 'kind' => 'auto']);
 
         $this->assertNotNull($entries->exact('/about', ''));
     }
