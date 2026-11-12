@@ -82,7 +82,7 @@ final class ContentSet
                 }
             },
             // Override texts are printed unescaped: an archive's rows pass the same checks as the screen's.
-            [StoredOverrides::TABLE => StoredOverrides::rowProblem(...)],
+            [StoredOverrides::TABLE => $overrides->importProblem(...)],
             // The bin is local to a server: a binned asset's files are not in the archive, so elsewhere it could never be restored.
             [$assets->table => static fn (array $row): bool => (string) ($row['binned_at'] ?? '') !== ''],
         );

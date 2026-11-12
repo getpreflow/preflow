@@ -39,7 +39,7 @@ final class StoredOverridesTextTest extends TestCase
         mkdir($dir);
         try {
             $dm = new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\JsonFileDriver($dir . '/store')]);
-            $overrides = new StoredOverrides($dm, new \Preflow\Folio\Translations\OverridesCache($dir . '/cache'));
+            $overrides = new StoredOverrides($dm, new \Preflow\Folio\Translations\OverridesCache($dir . '/cache'), new OverrideRules());
             $overrides->set('de', 'site.hello', 'Hallo', null);
             $this->assertSame('Hallo', $overrides->get('de', 'site.hello')); // compiles the file
             $log = new \Preflow\Folio\Tests\Support\ReadLog();

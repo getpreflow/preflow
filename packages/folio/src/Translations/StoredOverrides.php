@@ -48,6 +48,23 @@ final class StoredOverrides implements TranslationOverrides
         return null;
     }
 
+    /**
+     * Why an incoming row (an import) can't be stored: rowProblem(), then the same rules as
+     * set(): offered language, editable key, placeholders.
+     *
+     * @param array<string, mixed> $row
+     */
+    public function importProblem(string $id, array $row): ?string
+    {
+        $problem = self::rowProblem($id, $row);
+        if ($problem !== null) {
+            return $problem;
+        }
+        $refusal = $this->rules->check((string) $row['locale'], (string) $row['key'], (string) $row['text']);
+
+        return $refusal === null ? null : 'the override rules refuse it (' . $refusal->reason . ($refusal->params === [] ? '' : ': ' . implode(', ', array_map('strval', $refusal->params))) . ')';
+    }
+
     private ?TypeDefinition $definition = null;
 
     private bool $tableReady = false;
@@ -55,7 +72,7 @@ final class StoredOverrides implements TranslationOverrides
     public function __construct(
         private readonly DataManager $dm,
         private readonly OverridesCache $cache,
-        private readonly OverrideRules $rules = new OverrideRules(),
+        private readonly OverrideRules $rules,
     ) {}
 
     public function definition(): TypeDefinition

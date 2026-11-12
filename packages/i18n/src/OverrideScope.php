@@ -6,7 +6,7 @@ namespace Preflow\I18n;
 
 /**
  * Which texts may be overridden: what OverrideRules asks of the application. The adapter that
- * lists the editable texts (Folio's Settings → Translations) answers it.
+ * lists the editable texts answers it.
  */
 interface OverrideScope
 {

@@ -597,7 +597,13 @@ final class TranslationOverridesTest extends TestCase
         $this->editableSite();
         $this->expectStoreRefuses(fn () => $this->overrides()->set('es', 'review-mail.approved.subject', 'x', null));
         $this->expectStoreRefuses(fn () => $this->overrides()->set('en', 'review-mail.approved.subject', 'x', null));
-        $this->expectStoreRefuses(fn () => $this->overrides()->set('de', 'review-mail.approved.body', 'Ohne Link', null));
+        try {
+            $this->overrides()->set('de', 'review-mail.approved.body', 'Ohne Link', null);
+            $this->fail('StoredOverrides accepted a mail text without :link');
+        } catch (\Preflow\I18n\OverrideRefused $e) {
+            $this->assertSame(\Preflow\I18n\OverrideRules::PLACEHOLDER_MISSING, $e->refusal->reason);
+            $this->assertSame(':link', $e->refusal->params['placeholder']);
+        }
         $this->assertSame([], $this->overrides()->all('de'));
     }
 
@@ -643,5 +649,36 @@ final class TranslationOverridesTest extends TestCase
             $this->removeSite();
             $this->dir = $second;
         }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_import_refuses_a_mail_override_without_its_placeholder(): void
+    {
+        $this->editableSite();
+        $this->insertRow(['id' => 'de:review-mail.approved.body', 'locale' => 'de', 'key' => 'review-mail.approved.body', 'text' => 'Ohne Link']);
+        $this->insertRow(['id' => 'fr:review-mail.approved.body', 'locale' => 'fr', 'key' => 'review-mail.approved.body', 'text' => 'Voir : :link']);
+        $stream = fopen('php://temp', 'w+b');
+        (new Exporter(ContentSet::fromApp($this->flow), $this->dm()))->export($stream);
+        rewind($stream);
+        $def = $this->overrides()->definition();
+        $this->dm()->deleteIn($def, 'de:review-mail.approved.body');
+        $this->dm()->deleteIn($def, 'fr:review-mail.approved.body');
+
+        $importer = new Importer(ContentSet::fromApp($this->flow), $this->dm());
+        $plan = $importer->read($stream);
+        try {
+            $this->assertSame(['fr:review-mail.approved.body'], $plan->tables[StoredOverrides::TABLE]['added']);
+            $notices = array_values(array_filter($plan->notices, static fn (string $n): bool => str_starts_with($n, StoredOverrides::TABLE . '/')));
+            $this->assertCount(1, $notices, implode("\n", $plan->notices));
+            $this->assertStringContainsString('de:review-mail.approved.body', $notices[0]);
+            $this->assertStringContainsString('placeholder_missing', $notices[0]);
+            $importer->apply($plan);
+        } finally {
+            $plan->cleanup();
+        }
+
+        $this->overrides()->forget();
+        $this->assertSame(['review-mail.approved.body' => 'Voir : :link'], $this->overrides()->all('fr'));
+        $this->assertNull($this->dm()->findIn($def, 'de:review-mail.approved.body'), 'not stored');
     }
 }
