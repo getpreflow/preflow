@@ -35,28 +35,16 @@ final class DisplayLabels
         return $this->catalog->get($type)?->group ?? 'site';
     }
 
-    /**
-     * The type's label ("Apps"); the key, else ucfirst. In $locale (a mail to someone who reads another
-     * language than the admin) or, without one, the interface language.
-     */
-    public function type(string $type, ?string $locale = null): string
+    /** The type's label ("Apps") in the interface language; the key, else ucfirst. */
+    public function type(string $type): string
     {
-        $listing = $this->catalog->get($type);
-        $key = ModelLabelKeys::type($this->group($type), $type);
-        $translator = self::translator();
-        if ($locale === null || $locale === $translator->getLocale()) {
-            return Labels::resolve($translator, $key, $listing?->labels) ?? ucfirst($type);
-        }
-        if ($translator->has($key, $locale)) {
-            return $translator->get($key, [], $locale);
-        }
-        $picked = Labels::pick($listing?->labels, $locale, $translator->getFallbackLocale());
-        if ($picked !== null) {
-            return $picked;
-        }
-        $text = $translator->get($key, [], $locale);
+        return $this->typeIn($type, FolioText::locale(), self::translator());
+    }
 
-        return $text === $key ? ucfirst($type) : $text;
+    /** The type's label in $locale, from $translator (a mail's language, not the admin's); the key, else ucfirst. */
+    public function typeIn(string $type, string $locale, Translator $translator): string
+    {
+        return Labels::resolve($translator, ModelLabelKeys::type($this->group($type), $type), $this->catalog->get($type)?->labels, $locale) ?? ucfirst($type);
     }
 
     /** The type's label for one record ("App"); null when neither a key nor the file gives one. */

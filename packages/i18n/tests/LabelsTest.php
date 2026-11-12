@@ -65,4 +65,17 @@ final class LabelsTest extends TestCase
         $this->assertSame('Applications', Labels::resolve($t, 'site.types.app.label', ['fr' => 'Applications']));
         $this->assertSame('Apps (en file)', Labels::resolve($t, 'site.types.app.label', null), 'no text given: the key through the fallback chain');
     }
+
+    public function test_resolve_in_a_given_locale(): void
+    {
+        $this->langFile('lang', 'de', 'site', ['types' => ['app' => ['label' => 'Anwendungen']]]);
+        $this->langFile('lang', 'fr', 'site', ['types' => ['page' => ['label' => 'Pages (fr file)']]]);
+        $t = new Translator($this->tmp() . '/lang', 'fr', 'en');
+
+        $this->assertSame('Anwendungen', Labels::resolve($t, 'site.types.app.label', ['en' => 'Apps'], 'de'), 'the key in that locale, though the translator speaks French');
+        $this->assertSame('Pages (fr file)', Labels::resolve($t, 'site.types.page.label', ['en' => 'Pages'], 'fr'));
+        $this->assertSame('Seiten', Labels::resolve($t, 'site.types.post.label', ['en' => 'Posts', 'de' => 'Seiten'], 'de'), 'the map picked for that locale');
+        $this->assertSame('Posts', Labels::resolve($t, 'site.types.post.label', ['en' => 'Posts'], 'de'), 'then the fallback');
+        $this->assertNull(Labels::resolve($t, 'site.types.none.label', null, 'de'));
+    }
 }

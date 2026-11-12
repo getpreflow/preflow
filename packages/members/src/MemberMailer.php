@@ -107,7 +107,7 @@ final class MemberMailer
         foreach ($this->admission->details($m, Admission::NOTICE) as $label => $value) {
             $details .= "\n\n" . (is_int($label) ? $value : $label . ': ' . $value);
         }
-        // The decision page when a package (Folio's members admin) names one; else the text without the link line.
+        // The decision page when a package (an admin package's) names one; else the text without the link line.
         $url = $this->memberLinks?->decisionUrl($m);
         $this->mailer->sendLater(...$this->build('notice', $this->locales->default, $to, [
             'name' => (string) $m->get('name'),

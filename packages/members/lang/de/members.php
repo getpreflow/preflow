@@ -149,7 +149,7 @@ return [
         // an die Benachrichtigungsadresse, wenn ein Mitglied sein Konto nicht selbst löschen konnte
         'deletion_refused' => [
             'subject' => '{name} konnte das Konto nicht löschen',
-            'body' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.\n\nIhr Konto: {decision_url}",
+            'body' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.\n\nKonto des Mitglieds: {decision_url}",
             'body_without_link' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.",
             'restricted' => 'Es verweisen noch Datensätze darauf ({records}).',
             'listener' => 'Die Website hat die Löschung abgelehnt.',

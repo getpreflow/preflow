@@ -39,20 +39,20 @@ final class Labels
      * The translator's key in its current locale wins (an admin override, the site's
      * language file, a package file); then the given text picked for that locale with the
      * site default; with no text given, the key along the translator's fallback chain;
-     * else null.
+     * else null. $locale: resolve for that language instead of the translator's current one.
      *
      * @param string|array<string, string>|null $value
      */
-    public static function resolve(Translator $translator, string $key, string|array|null $value): ?string
+    public static function resolve(Translator $translator, string $key, string|array|null $value, ?string $locale = null): ?string
     {
-        if ($translator->has($key)) {
-            return $translator->get($key);
+        if ($translator->has($key, $locale)) {
+            return $translator->get($key, [], $locale);
         }
-        $picked = self::pick($value, $translator->getLocale(), $translator->getFallbackLocale());
+        $picked = self::pick($value, $locale ?? $translator->getLocale(), $translator->getFallbackLocale());
         if ($picked !== null) {
             return $picked;
         }
-        $text = $translator->get($key);
+        $text = $translator->get($key, [], $locale);
 
         return $text === $key ? null : $text;
     }
