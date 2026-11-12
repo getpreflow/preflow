@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.68.1)
+> Last updated: 2026-11-12 (v0.69.0)
 
 ## Current State
 
-**v0.68.1** — 7047 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.69.0** — 7102 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -98,7 +98,7 @@ the project; note breaking changes for the consumers. Status (checked 2026-11-11
 for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
 **Done 2026-11-12:** all 25 packages audited (`.superpowers/audit-2026-11-12/`, local); the owner decided to fix
 all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, releases 0.67 (clean-ups, done)
-→ 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio) → 0.70 (preflow/blocks,
+→ 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio; done) → 0.70 (preflow/blocks,
 preflow/publishing, one record write path) → 0.71 (gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
@@ -524,6 +524,28 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **rbac without Folio (v0.69.0, released 2026-11-12):** third release of the package audit's fixes (spec D4; plan
+  `docs/superpowers/plans/2026-11-12-release-0.69-rbac.md`).
+  - **auth:** `Preflow\Auth\Record\AccountLinks` — password links for record users (issue, consume, setPassword,
+    revoke, verify); Folio's `StaffPasswords` and rbac's `StaffAccounts` share one bound instance.
+  - **rbac core, no Folio:** stored roles (`RoleStore::installed()` = the `rbac_role` table exists; `install()`,
+    `seed()` from `config/roles.php`; `preflow migrate` seeds where rbac is installed), `RbacResolver` without Folio
+    state, `StaffAccounts` (create, update, invite, resetLink, setPassword, disable, enable, all; the delegation,
+    lock-out and unique-email rules; `StaffRefused`), invite/reset mails on notify (`rbac-mail.*`), `StaffLinks`
+    (Folio binds its set-password page). Commands: `rbac:install`, `rbac:roles`, `rbac:role`, `rbac:role:delete`,
+    `staff:list`, `staff:create`, `staff:password`, `staff:invite`, `staff:reset`, `staff:disable`, `staff:enable`,
+    `staff:import-config` (`folio:staff:import-config` kept as an alias until 0.70). rbac requires no Folio.
+  - **Folio:** carries rbac's admin as the built-in extension `rbac` (`Preflow\Folio\Rbac\*`, admin texts in the
+    new group `rbac-admin`); old class names (`Preflow\Rbac\Extension`, `Fields\*`, `Types\*`, `NewPermissions*`)
+    are aliases until 0.70. New hook from 0.68 unchanged.
+  - **starter-folio:** staff and roles from preflow/rbac (no own Staff model, migrations or staff:create).
+  - **Upgrading:** raise all `preflow/*` to `^0.69` and `composer update "preflow/*"`; deploys that run `migrate`
+    and `folio:extensions:apply` need nothing else. With rbac installed, staff invite/reset mails use `rbac-mail.*`,
+    and rbac's admin texts moved to `rbac-admin.*`: move overrides of `folio.mail.invite|reset.*` and of those keys
+    (and `*_without_site` texts are new). "Installed" now means the `rbac_role` table exists, not Folio's extension
+    state. `Preflow\Rbac\Types\StaffRules`'s constructor changed (resolve it from the container). Forgot-password
+    failures log `rbac:`. Constraints: folio and rbac conflict each other <0.69; both require auth and notify ^0.69;
+    rbac requires data ^0.69.
 - **Members on a fresh Folio site (v0.68.1, released 2026-11-12):** found by the 0.68 docs. Folio offered
   `@folio/frontend/_site.twig` as the members layout unconditionally, but Folio ships no such template (sites add
   `resources/folio/frontend/_site.twig`), so `/members/register` answered 500 on a fresh starter-folio with
