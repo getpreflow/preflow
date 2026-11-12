@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.66.2)
+> Last updated: 2026-11-12 (v0.67.0)
 
 ## Current State
 
-**v0.66.2** — 6914 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.67.0** — 6941 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -96,6 +96,10 @@ came from one project's needs, and turn each into a hook, a config option or an 
 the project; note breaking changes for the consumers. Status (checked 2026-11-11): members was audited in 0.38
 (findings F1–F8 in `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`, waiting for the owner); no record
 for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
+**Done 2026-11-12:** all 25 packages audited (`.superpowers/audit-2026-11-12/`, local); the owner decided to fix
+all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, releases 0.67 (clean-ups, done)
+→ 0.68 (mail in notify, members neutral, codes mailer to BG) → 0.69 (rbac without Folio) → 0.70 (preflow/blocks,
+preflow/publishing, one record write path) → 0.71 (gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
 Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
@@ -520,6 +524,29 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Boundary clean-ups (v0.67.0, released 2026-11-12):** first release of the package audit's fixes (spec
+  `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, D8; plan `docs/superpowers/plans/2026-11-12-release-0.67-cleanups.md`).
+  No package names another package's composer keys, files or classes, and no package carries a site's wording.
+  - **core:** `InstalledPackages::read()` keeps each package's composer `extra` as it is (`extra` key) and
+    `InstalledPackages::extra($package, 'folio.blocks')` reads a dotted path; the old keys `extension`,
+    `folio_field_types`, `folio_blocks` and `translations` are gone. Packages declare files checked on every request in
+    `extra.preflow.runtime` (Folio declares `config/folio/extensions.json`); core checks `.env` and
+    `vendor/composer/installed.json` itself (`ManifestFile::CORE_RUNTIME`; `RUNTIME` removed). Boot manifest VERSION 2.
+  - **view:** `pdf_image(<asset id>)` asks `Preflow\View\Pdf\PdfImageSource` (`find(id): ?PdfImage`), which preflow/media
+    binds; the variant-pending header is `Preflow\View\VariantPending::HEADER` (media's `VariantController::PENDING_HEADER`
+    stays as a deprecated alias until 0.68).
+  - **data:** `matrixable` and `views` are admin settings Folio reads from `TypeRegistry::schema()`; `TypeDefinition` lost
+    both properties and constructor arguments. A class-backed type may now set them in its admin JSON; Folio needs
+    `"matrixable": true` exactly.
+  - **media:** focal output is `media-focal media-fx-N media-fy-N` (`--media-fx`/`--media-fy`), preload keys `media-preload:`.
+  - **i18n:** the AI prompt says "Never translate proper names or brand names." (no "game names").
+  - **devtools:** `auth:user` requires its prefix: `php preflow auth:user FOLIO_ADMIN` on a site with a config login.
+  - READMEs, docblocks and config examples use the job-board example domain.
+  - **Upgrading:** `composer update "preflow/*"`, then `php preflow optimize` (deploys run it; until then requests boot
+    live). Rename your own `.folio-focal`/`--folio-fx` CSS to `.media-focal`/`--media-fx`. Code reading
+    `Application::installedPackages()` uses `InstalledPackages::extra()`. Constraints: core conflicts folio and i18n
+    <0.67; data conflicts folio <0.67; view and media conflict each other <0.67; folio and i18n require core ^0.67;
+    media requires view ^0.67; devtools requires data ^0.67.
 - **Extension points without workarounds (v0.66.0, released 2026-11-11):** the Extend guides of docs phase 3 (Tasks 6 and 7) found places
   where an app or package couldn't plug in its own piece cleanly; plan `docs/superpowers/plans/2026-11-11-docs-phase3.md`
   (task 6b), report `.superpowers/sdd/2026-11-11-docs-phase3/task-6b-report.md`.
