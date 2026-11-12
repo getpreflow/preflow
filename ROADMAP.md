@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.67.0)
+> Last updated: 2026-11-12 (v0.68.0)
 
 ## Current State
 
-**v0.67.0** — 6941 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.68.0** — 7043 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -98,7 +98,7 @@ the project; note breaking changes for the consumers. Status (checked 2026-11-11
 for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
 **Done 2026-11-12:** all 25 packages audited (`.superpowers/audit-2026-11-12/`, local); the owner decided to fix
 all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, releases 0.67 (clean-ups, done)
-→ 0.68 (mail in notify, members neutral, codes mailer to BG) → 0.69 (rbac without Folio) → 0.70 (preflow/blocks,
+→ 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio) → 0.70 (preflow/blocks,
 preflow/publishing, one record write path) → 0.71 (gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
@@ -524,6 +524,31 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Mail in notify, neutral members, codes without a mailer (v0.68.0, released 2026-11-12):** second release of the
+  package audit's fixes (spec D5, D6, D7; plan `docs/superpowers/plans/2026-11-12-release-0.68-mail-members-codes.md`).
+  - **notify:** composed mails — `Preflow\Notify\Mail\Mailer` (`compose/send/sendLater(MailContent, to, from, template, accent)`),
+    `MailContent(subject, text, lang, ?MailAction, vars, ?links)` (`links` lists the only URLs linked; null links all),
+    `MailText::oneLine/paragraphs/absoluteUrl`, one neutral layout (`BasicMailLayout`, `@notify/mail/layout.twig` for
+    Twig apps), `config/notify.php` `mail` => `accent` (default `#1a1a1a`), `layout`, `from`. Core binds them with
+    `config/notify.php`; the Mailer resolves the Notifier at each send.
+  - **members:** mails go through notify; no mail names Folio; `mail.layout`/`mail.accent` default to notify's (no site
+    red); owner mails use `{decision_url}` ("Decide here: …"; `{folio_url}` is gone), or, without a decision page,
+    `{decide_command}` (the address shell-quoted). `Members::accept()/decline()` (+ `canAccept/canDecline`,
+    `DecisionRefused`) hold the rules for Folio and `members:decide` alike (`--message=`; a declined member can be
+    accepted; decline ends remember-me sessions). Page CSS sits in `{% block members_styles %}` with neutral
+    `--members-*` styles (dark mode follows the page's `color-scheme`); `members-admin` texts ship with Folio;
+    `Links::folioMember()` removed. `Preflow\Data\TypeLabels` names types in the refusal mail (Folio binds it).
+  - **codes:** no `CodeMailer` (build the mail on notify, see the codes README); `Codes::checkReadable()`, `prepare()`,
+    `checkUpdate()`, `update()` (guarded inside the write), `CodeRefused`; Folio's code admin uses them.
+  - **Folio:** new hook `#[SaveRecord]` (a type without publishing writes its own record; AfterSave still runs);
+    staff mails through notify, without the word Folio; `Labels::resolve()` and `DisplayLabels::typeIn()` take a locale.
+  - **media:** `VariantController::PENDING_HEADER` removed (use `Preflow\View\VariantPending::HEADER`).
+  - **Upgrading:** `composer update "preflow/*"`. A site relying on the old member page look copies the v0.67.0 CSS
+    of `_card.twig`, `register.twig` and `account.twig` into its overrides' `{% block members_styles %}`; a site wanting
+    the old red sets `members.mail.accent`. Overrides of `mail.notice.body`/`mail.deletion_refused.body` use
+    `{decision_url}`. Code calling `CodeMailer` builds its mail on `Mailer`. Constraints: folio requires core, data,
+    i18n, notify ^0.68 and conflicts codes, members <0.68; members requires core, notify ^0.68 and conflicts folio <0.68;
+    notify conflicts core <0.68.
 - **Boundary clean-ups (v0.67.0, released 2026-11-12):** first release of the package audit's fixes (spec
   `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, D8; plan `docs/superpowers/plans/2026-11-12-release-0.67-cleanups.md`).
   No package names another package's composer keys, files or classes, and no package carries a site's wording.
