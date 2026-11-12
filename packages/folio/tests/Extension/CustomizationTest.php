@@ -400,6 +400,26 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_save_record_on_a_publishing_type_is_a_boot_error(): void
+    {
+        $this->crm();
+        $this->write('app/Folio/Crm/Types/NoteAdmin.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Crm\Types;
+            #[\Preflow\Folio\Extension\Attributes\FolioType('note')]
+            final class NoteAdmin
+            {
+                #[\Preflow\Folio\Extension\SaveRecord]
+                public function write(\Preflow\Data\DynamicRecord $record, ?\Preflow\Data\DynamicRecord $previous): void {}
+            }
+            PHP);
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('SaveRecord is for types without publishing; App\\Folio\\Crm\\Types\\NoteAdmin marks note, which publishes.');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
     public function test_before_save_can_change_record_before_validation(): void
     {
         $this->crm();

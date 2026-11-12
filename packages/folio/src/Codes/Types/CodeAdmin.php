@@ -33,11 +33,16 @@ final class CodeAdmin
 {
     private const array KEPT = ['purpose', 'code', 'form', 'uses', 'revoked_at', 'payload'];
 
+    /** @var \WeakMap<DynamicRecord, true> the records BeforeSave saw as new: an edit whose code is gone must not insert it again */
+    private \WeakMap $creating;
+
     public function __construct(
         private readonly Codes $codes,
         private readonly DataManager $dm,
         private readonly Translator $translator,
-    ) {}
+    ) {
+        $this->creating = new \WeakMap();
+    }
 
     /** Validates only (nothing is written here) and fills the record: a new code's columns from Codes::prepare(), a stored one's fixed fields. */
     #[BeforeSave]
@@ -72,6 +77,7 @@ final class CodeAdmin
         foreach ($columns as $field => $value) {
             $record->set($field, $value);
         }
+        $this->creating[$record] = true;
         $record->set('max_uses', $maxUses === null ? '' : (string) $maxUses);
     }
 
@@ -80,6 +86,9 @@ final class CodeAdmin
     public function save(DynamicRecord $record, ?DynamicRecord $previous): void
     {
         if ($previous === null) {
+            if (!isset($this->creating[$record])) {
+                throw $this->refused(new CodeRefused(CodeRefused::UNKNOWN_CODE, 'Unknown code.')); // an edit whose code is gone
+            }
             $this->dm->saveType($record, false);
 
             return;

@@ -1658,8 +1658,9 @@ final class AdminController
     {
         $this->validator->validate($record);
         // A type's #[SaveRecord] writes instead of saveType().
-        $previous = $this->customizations === null ? null : $this->dm->findType($typeDef->key, (string) $record->getId());
-        if ($this->customizations === null || !$this->customizations->saveRecord($record, $previous)) {
+        if ($this->customizations?->hasSaveRecord($typeDef->key) === true) {
+            $this->customizations->saveRecord($record, $this->dm->findType($typeDef->key, (string) $record->getId()));
+        } else {
             $this->dm->saveType($record, false);
         }
         $this->review?->refresh($record);

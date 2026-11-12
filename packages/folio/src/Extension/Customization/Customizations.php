@@ -163,8 +163,13 @@ final class Customizations
                         } elseif ($meta instanceof DashboardNotice) {
                             $types[$key]['dashboardNotices'][] = $call;
                         } else {
-                            if ($meta instanceof SaveRecord && ($types[$key]['hooks'][SaveRecord::class] ?? []) !== []) {
-                                throw new ExtensionException("Type \"{$key}\" has more than one #[SaveRecord]; {$where} is the second.");
+                            if ($meta instanceof SaveRecord) {
+                                if ($catalog->get($key)?->publishing === true) {
+                                    throw new ExtensionException("SaveRecord is for types without publishing; {$class} marks {$key}, which publishes.");
+                                }
+                                if (($types[$key]['hooks'][SaveRecord::class] ?? []) !== []) {
+                                    throw new ExtensionException("Type \"{$key}\" has more than one #[SaveRecord]; {$where} is the second.");
+                                }
                             }
                             $types[$key]['hooks'][$attributeClass][] = $call;
                         }
@@ -305,6 +310,11 @@ final class Customizations
         foreach ($this->types[$record->getType()->key]['hooks'][$hook] ?? [] as $call) {
             $call($record);
         }
+    }
+
+    public function hasSaveRecord(string $type): bool
+    {
+        return ($this->types[$type]['hooks'][SaveRecord::class] ?? []) !== [];
     }
 
     /** Hands the record to the type's #[SaveRecord] method; false when it has none (the caller saves). */

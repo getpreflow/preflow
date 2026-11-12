@@ -408,6 +408,27 @@ final class CodesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_admin_edit_of_a_code_deleted_meanwhile_does_not_insert_it_again(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'BOOKCODE1', 'Book');
+        $id = $this->idOf('BOOKCODE1');
+        $admin = $this->app()->container()->get(\Preflow\Folio\Codes\Types\CodeAdmin::class);
+        $record = $this->stored($id);
+        $record->set('label', 'Changed');
+        $admin->beforeSave($record);
+        $this->dm()->deleteType('code', $id);
+
+        try {
+            $admin->save($record, null);
+            $this->fail('the edit of a deleted code should be refused');
+        } catch (\Preflow\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('label', $e->errors());
+        }
+        $this->assertCount(0, $this->dm()->queryType('code')->get()->items());
+    }
+
+    #[RunInSeparateProcess]
     public function test_admin_edit_refuses_a_past_expiry_and_max_uses_below_the_uses(): void
     {
         $codes = $this->codes();
