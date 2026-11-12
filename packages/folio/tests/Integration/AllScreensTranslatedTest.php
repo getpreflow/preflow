@@ -356,8 +356,8 @@ final class AllScreensTranslatedTest extends TestCase
         if ($role instanceof DynamicRecord) {
             $ids['rbac_role'] = (string) $role->getId();
         }
-        // Settings → Redirects: an entry whose target is gone (every badge) and an address not found twice.
-        $this->flow->container()->get(\Preflow\Folio\Redirects\RedirectEntries::class)->save(['path' => '/old', 'locale' => 'de', 'target_type' => 'page', 'target_id' => 'gone']);
+        // Settings → Redirects: an entry whose target is gone (every badge; the rules refuse to save one, so it is stored unchecked) and an address not found twice.
+        $this->flow->container()->get(\Preflow\Folio\Redirects\RedirectEntries::class)->storeUnchecked(['path' => '/old', 'locale' => 'de', 'target_type' => 'page', 'target_id' => 'gone']);
         $ids['_redirect'] = \Preflow\Routing\Redirect\Redirect::id('exact', 'de', '/old');
         $missing = $this->flow->container()->get(\Preflow\Folio\Redirects\NotFoundEntries::class);
         $missing->record('/missing', 'de', new \DateTimeImmutable('-2 days'));

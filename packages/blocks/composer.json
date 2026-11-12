@@ -21,6 +21,7 @@
         "preflow/components": "<0.69",
         "preflow/core": "<0.69",
         "preflow/data": "<0.69",
+        "preflow/folio": "<0.70",
         "preflow/view": "<0.69"
     },
     "autoload": {

@@ -173,6 +173,9 @@ in a provider's `register()`:
 | `BlockTextCleaner` | `block(array $block): array`, the values on their way to the template | as stored | its rich-text sanitizer (nested blocks included) |
 | `BlockPreviewMarks` | the root attributes of a block in preview (`data-…` only) | `data-block`, `data-block-label` | `data-folio-block`, `data-folio-label` |
 
+Without Folio, rich-text values are rendered as stored: the default cleaner changes nothing, so bind a
+`BlockTextCleaner` to clean them (below).
+
 ```php
 $container->singleton(Preflow\Blocks\BlockTextCleaner::class, fn () => new App\Content\MarkdownBlocks());
 ```

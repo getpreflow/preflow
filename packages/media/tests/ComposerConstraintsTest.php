@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
  * Composer from pairing media with a release that lacks what it calls: core 0.54 (InternalRender,
  * honoured by VariantController), data 0.60 (QueryBuilder::byIds(), which reports each asset read
  * to the page cache; since 0.42 RecordTables, typed record tables) and routing 0.59
- * (Router::compiled(), the routes compiled into the boot manifest) and view 0.67 (PdfImageSource, which media binds).
+ * (Router::compiled(), the routes compiled into the boot manifest) and view 0.67 (PdfImageSource, which media binds); i18n is suggested, and a release before 0.47 lacks the text sources (TextSource, TranslationUnit, WriteOutcome with leftAlone) that AltTextSource implements.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -20,11 +20,12 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/core' => '<0.54', 'preflow/data' => '<0.60', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
+            ['preflow/core' => '<0.54', 'preflow/data' => '<0.60', 'preflow/i18n' => '<0.47', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
             $composer['conflict'] ?? null,
         );
-        // Each conflict matches its require's lower bound.
-        foreach ($composer['conflict'] as $package => $below) {
+        // Each conflict matches its require's lower bound; i18n is only suggested.
+        $this->assertArrayNotHasKey('preflow/i18n', $composer['require']);
+        foreach (array_diff_key($composer['conflict'], ['preflow/i18n' => true]) as $package => $below) {
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
         $this->assertArrayHasKey('preflow/i18n', $composer['suggest'] ?? []);

@@ -111,6 +111,23 @@ final class FolioOnOwnEngineTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_blocks_is_a_function_of_folio_s_own_twig_engine(): void
+    {
+        $w = function (string $rel, string $content): void {
+            @mkdir(dirname($this->dir . '/' . $rel), 0777, true);
+            file_put_contents($this->dir . '/' . $rel, $content);
+        };
+        $w('resources/folio/frontend/page.twig', '<html><head></head><body><h1>{{ record.title }}</h1><div class="blocks">[{{ blocks([]) }}]</div></body></html>');
+        $app = $this->app();
+        $this->save($app, 'page', ['title' => 'About us', 'slug' => 'about', 'status' => 'published']);
+
+        $about = $app->handle((new Psr17Factory())->createServerRequest('GET', '/about'));
+
+        $this->assertSame(200, $about->getStatusCode(), (string) $about->getBody());
+        $this->assertStringContainsString('<div class="blocks">[]</div>', (string) $about->getBody(), 'blocks() in Folio\'s Twig on a non-Twig app');
+    }
+
+    #[RunInSeparateProcess]
     public function test_folio_s_fallback_page_and_an_app_template_with_folio_functions(): void
     {
         $app = $this->app();

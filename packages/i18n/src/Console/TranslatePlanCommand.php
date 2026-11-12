@@ -14,7 +14,7 @@ use Preflow\I18n\Machine\TextSources;
  * preflow translate:plan <collection> --locales=de,fr [--scope=needed|all] [--ids=a,b] [--note=…] [--start] [--confirm-live]:
  * plans a machine-translation job over any registered text source and prints its id and estimate.
  * With --start the job is queued for translate:work; a source whose writes are public right away
- * also needs --confirm-live, or the worker stops the job before writing anything.
+ * also needs --confirm-live (refused without it); --confirm-live without --start is refused too.
  */
 final class TranslatePlanCommand implements CommandInterface
 {
@@ -68,12 +68,25 @@ final class TranslatePlanCommand implements CommandInterface
             }
         }
 
+        $start = array_key_exists('start', $options);
+        $confirmed = array_key_exists('confirm-live', $options);
+        if ($confirmed && !$start) {
+            fwrite(STDERR, "--confirm-live goes with --start: it confirms the writes of the job that is started.\n");
+
+            return 1;
+        }
+        if ($start && !$confirmed && $sources->get($collection)->writesLive()) {
+            fwrite(STDERR, "{$collection}: this collection writes live: add --confirm-live to start the job.\n");
+
+            return 1;
+        }
+
         $runner = $container->get(JobRunner::class);
         $ids = isset($options['ids']) && $options['ids'] !== '' ? array_values(array_filter(array_map('trim', explode(',', $options['ids'])))) : null;
         $note = isset($options['note']) && $options['note'] !== '' ? $options['note'] : null;
         $job = $runner->plan($collection, $locales, $scope, $ids, $note);
-        if (array_key_exists('start', $options)) {
-            $job = $runner->start($job->id, array_key_exists('confirm-live', $options));
+        if ($start) {
+            $job = $runner->start($job->id, $confirmed);
         }
 
         echo 'Job ' . $job->id . ' (' . $job->state . '): ' . count($job->items) . ' items, ' . implode(',', $job->locales) . ", {$job->scope->value}\n";

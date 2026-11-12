@@ -120,4 +120,36 @@ final class TranslatePlanAltTextsTest extends TestCase
         $this->assertSame(1, $code);
         $this->assertSame([], $this->store->recent(10));
     }
+
+    public function test_starting_a_job_that_writes_live_needs_confirm_live(): void
+    {
+        $this->asset(['en' => 'A red door']);
+
+        [$code, $out] = $this->plan(['media_alt', '--locales=de', '--start']);
+
+        $this->assertSame(1, $code);
+        $this->assertSame('', $out);
+        $this->assertSame([], $this->store->recent(10), 'no job was planned');
+    }
+
+    public function test_confirm_live_without_start_is_refused(): void
+    {
+        $this->asset(['en' => 'A red door']);
+
+        [$code, $out] = $this->plan(['media_alt', '--locales=de', '--confirm-live']);
+
+        $this->assertSame(1, $code);
+        $this->assertSame('', $out);
+        $this->assertSame([], $this->store->recent(10));
+    }
+
+    public function test_planning_without_start_needs_no_confirmation(): void
+    {
+        $this->asset(['en' => 'A red door']);
+
+        [$code, $out] = $this->plan(['media_alt', '--locales=de']);
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('(planned)', $out);
+    }
 }
