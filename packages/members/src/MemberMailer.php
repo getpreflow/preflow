@@ -7,16 +7,19 @@ namespace Preflow\Members;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
+use Preflow\Data\TypeLabels;
+use Preflow\Data\TypeRegistry;
 use Preflow\I18n\Translator;
 use Preflow\Members\Admission\Admission;
-use Preflow\Notify\Email;
-use Preflow\Notify\Notifier;
+use Preflow\Notify\Mail\MailAction;
+use Preflow\Notify\Mail\MailContent;
+use Preflow\Notify\Mail\MailText;
+use Preflow\Notify\Mail\Mailer;
 use Preflow\Notify\TransportException;
-use Preflow\View\TemplateEngineInterface;
 
 /**
- * Sends the member mails: plain text plus the HTML layout (config/members.php mail.layout),
- * the words from the lang files (members.mail.*) in the member's language.
+ * Sends the member mails through notify's Mailer: plain text plus the HTML part from notify's layout
+ * (or config/members.php mail.layout), the words from the lang files (members.mail.*) in the member's language.
  *
  * Mails a visitor triggers (confirm, existing, reset, notice) are queued with the *Later methods and go out after
  * the response, so the answer takes equally long whether or not a mail follows. A failure reaches the optional
@@ -27,8 +30,7 @@ final class MemberMailer
 {
     /** @param string|null $from the sender ("Name <address>"), null for the mail channel's own */
     public function __construct(
-        private readonly Notifier $notifier,
-        private readonly TemplateEngineInterface $engine,
+        private readonly Mailer $mailer,
         private readonly Translator $translator,
         private readonly Links $links,
         private readonly Locales $locales,
@@ -38,21 +40,24 @@ final class MemberMailer
         private readonly ?string $from = null,
         private readonly ?MemberLinks $memberLinks = null,
         private readonly ?MembersSettings $settings = null,
+        private readonly ?TypeLabels $typeLabels = null,
+        private readonly ?TypeRegistry $types = null,
     ) {}
 
     /** @param ?\Closure(\Throwable): void $onFailure */
     public function confirmLater(DynamicRecord $m, string $token, ?\Closure $onFailure = null): void
     {
-        $this->notifier->sendLater($this->confirmEmail($m, $token), $onFailure);
+        $this->mailer->sendLater(...$this->confirmMail($m, $token), onFailure: $onFailure);
     }
 
     /** The confirmation mail at once, so the caller (staff resending it) knows whether it went out. @throws TransportException */
     public function confirm(DynamicRecord $m, string $token): void
     {
-        $this->notifier->send($this->confirmEmail($m, $token));
+        $this->mailer->send(...$this->confirmMail($m, $token));
     }
 
-    private function confirmEmail(DynamicRecord $m, string $token): Email
+    /** @return array{content: MailContent, to: string, from: ?string, template: ?string, accent: ?string} */
+    private function confirmMail(DynamicRecord $m, string $token): array
     {
         $lang = $this->lang($m);
 
@@ -71,23 +76,23 @@ final class MemberMailer
     public function existingLater(DynamicRecord $m, string $resetToken, ?\Closure $onFailure = null): void
     {
         $lang = $this->lang($m);
-        $this->notifier->sendLater($this->build('existing', $lang, (string) $m->get('email'), [
+        $this->mailer->sendLater(...$this->build('existing', $lang, (string) $m->get('email'), [
             'name' => (string) $m->get('name'),
             'login_url' => $this->links->url($lang, '/login'),
             'reset_url' => $this->links->url($lang, '/reset/' . $resetToken),
             'validity' => $this->validity->reset($lang),
-        ], action: ['existing', $this->links->url($lang, '/login')]), $onFailure);
+        ], action: ['existing', $this->links->url($lang, '/login')]), onFailure: $onFailure);
     }
 
     /** @param ?\Closure(\Throwable): void $onFailure */
     public function resetLater(DynamicRecord $m, string $token, ?\Closure $onFailure = null): void
     {
         $lang = $this->lang($m);
-        $this->notifier->sendLater($this->build('reset', $lang, (string) $m->get('email'), [
+        $this->mailer->sendLater(...$this->build('reset', $lang, (string) $m->get('email'), [
             'name' => (string) $m->get('name'),
             'link' => $this->links->url($lang, '/reset/' . $token),
             'validity' => $this->validity->reset($lang),
-        ], action: ['reset', $this->links->url($lang, '/reset/' . $token)]), $onFailure);
+        ], action: ['reset', $this->links->url($lang, '/reset/' . $token)]), onFailure: $onFailure);
     }
 
     /**
@@ -104,11 +109,11 @@ final class MemberMailer
         }
         // The decision page when a package (Folio's members admin) names one; else the text without the link line.
         $url = $this->memberLinks?->decisionUrl($m);
-        $this->notifier->sendLater($this->build('notice', $this->locales->default, $to, [
+        $this->mailer->sendLater(...$this->build('notice', $this->locales->default, $to, [
             'name' => (string) $m->get('name'),
             'email' => (string) $m->get('email'),
             'details' => $details,
-        ] + ($url !== null && $url !== '' ? ['folio_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'), $onFailure);
+        ] + ($url !== null && $url !== '' ? ['decision_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'), onFailure: $onFailure);
     }
 
     /**
@@ -123,17 +128,17 @@ final class MemberMailer
     {
         $lang = $this->locales->default;
         $records = implode(', ', array_map(
-            static fn (string $type, int $n): string => "{$type}: {$n}",
+            fn (string $type, int $n): string => $this->typeLabel($type, $lang) . ": {$n}",
             array_keys($plan->restrictions()),
             $plan->restrictions(),
         ));
         $why = strtr($this->translator->get('members.mail.deletion_refused.' . ($reason === 'restricted' ? 'restricted' : 'listener'), [], $lang), ['{records}' => $records]);
         $url = $this->memberLinks?->decisionUrl($m);
-        $this->notifier->send($this->build('deletion_refused', $lang, $to, [
+        $this->mailer->send(...$this->build('deletion_refused', $lang, $to, [
             'name' => (string) $m->get('name'),
             'email' => (string) $m->get('email'),
             'reason' => $why,
-        ] + ($url !== null && $url !== '' ? ['folio_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'));
+        ] + ($url !== null && $url !== '' ? ['decision_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'));
     }
 
     /** @throws TransportException */
@@ -172,34 +177,46 @@ final class MemberMailer
     private function sendMessage(string $mail, DynamicRecord $m, string $message): void
     {
         $lang = $this->lang($m);
-        $this->notifier->send($this->compose($this->copy($mail, 'subject', $lang, []), $message, $lang, (string) $m->get('email')));
+        $this->mailer->send(
+            new MailContent($this->copy($mail, 'subject', $lang, []), $message, $lang),
+            (string) $m->get('email'),
+            $this->from,
+            $this->config->mailLayout(),
+            $this->config->accent(),
+        );
     }
 
     /**
      * @param array<string, string> $vars
      * @param array{0: string, 1: string}|null $action the mail whose "action" text is the button's label, and the button's URL
+     * @return array{content: MailContent, to: string, from: ?string, template: ?string, accent: ?string} the arguments of Mailer::send()
      */
-    private function build(string $mail, string $lang, string $to, array $vars, string $body = 'body', ?array $action = null): Email
+    private function build(string $mail, string $lang, string $to, array $vars, string $body = 'body', ?array $action = null): array
     {
-        return $this->compose(
-            $this->copy($mail, 'subject', $lang, array_map(self::oneLine(...), $vars)),
-            $this->copy($mail, $body, $lang, $vars),
-            $lang,
-            $to,
-            $action === null ? null : $this->action($action[0], $lang, $action[1]),
-        );
+        return [
+            'content' => new MailContent(
+                $this->copy($mail, 'subject', $lang, array_map(MailText::oneLine(...), $vars)),
+                $this->copy($mail, $body, $lang, $vars),
+                $lang,
+                $action === null ? null : $this->action($action[0], $lang, $action[1]),
+            ),
+            'to' => $to,
+            'from' => $this->from,
+            'template' => $this->config->mailLayout(),
+            'accent' => $this->config->accent(),
+        ];
     }
 
     /** The primary action of a mail for the layout: its label (members.mail.{mail}.action) and URL; none when the site's copy lacks the label. */
-    private function action(string $mail, string $lang, string $url): ?array
+    private function action(string $mail, string $lang, string $url): ?MailAction
     {
         $key = 'members.mail.' . $mail . '.action';
         $label = $this->translator->get($key, [], $lang);
 
-        return $label === '' || $label === $key ? null : ['label' => $label, 'url' => $url];
+        return $label === '' || $label === $key ? null : new MailAction($label, $url);
     }
 
-    /** @param array<string, string> $vars {name} {link} {login_url} {reset_url} {validity} {email} {details} {folio_url} */
+    /** @param array<string, string> $vars {name} {link} {login_url} {reset_url} {validity} {email} {details} {decision_url} */
     private function copy(string $mail, string $part, string $lang, array $vars): string
     {
         $map = [];
@@ -210,21 +227,19 @@ final class MemberMailer
         return strtr($this->translator->get('members.mail.' . $mail . '.' . $part, [], $lang), $map);
     }
 
-    /** @param array{label: string, url: string}|null $action */
-    private function compose(string $subject, string $text, string $lang, string $to, ?array $action = null): Email
+    /** What a record type is called for people: the bound TypeLabels, else the schema's label when a plain string, else the key. */
+    private function typeLabel(string $type, string $lang): string
     {
-        return new Email(
-            to: $to,
-            subject: $subject,
-            text: $text,
-            html: $this->engine->render($this->config->mailLayout(), [
-                'lang' => $lang,
-                'subject' => $subject,
-                'accent' => $this->config->accent(),
-                'paragraphs' => $this->paragraphs($text),
-            ] + ($action === null ? [] : ['action' => $action])),
-            from: $this->from,
-        );
+        if ($this->typeLabels !== null) {
+            return $this->typeLabels->label($type, $lang);
+        }
+        try {
+            $label = $this->types?->has($type) ? ($this->types->schema($type)['label'] ?? null) : null;
+        } catch (\Throwable) {
+            $label = null;
+        }
+
+        return is_string($label) && trim($label) !== '' ? $label : $type;
     }
 
     /** The member's language when the site has it, else the site's default. */
@@ -233,25 +248,5 @@ final class MemberMailer
         $lang = (string) $m->get('language');
 
         return $this->locales->has($lang) ? $lang : $this->locales->default;
-    }
-
-    /** Control characters (CR/LF included) collapse to one space: a value must not break a header line. */
-    private static function oneLine(string $value): string
-    {
-        return trim((string) preg_replace('/[\p{Cc}\p{Cf}\x{2028}\x{2029}]+/u', ' ', $value));
-    }
-
-    /** @return list<string> safe HTML: escaped paragraphs with URLs linked and single line breaks kept */
-    private function paragraphs(string $text): array
-    {
-        $accent = htmlspecialchars($this->config->accent(), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $out = [];
-        foreach (preg_split('/\n{2,}/', trim($text)) ?: [] as $p) {
-            $html = htmlspecialchars($p, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-            $html = (string) preg_replace('~https?://[^\s<]+~', '<a href="$0" style="color:' . $accent . '">$0</a>', $html);
-            $out[] = nl2br($html, false);
-        }
-
-        return $out;
     }
 }

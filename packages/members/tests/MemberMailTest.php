@@ -111,19 +111,19 @@ final class MemberMailTest extends TestCase
         $this->assertStringContainsString($link, $mail->text);
     }
 
-    /** @return array<string, array{list<string>, string, string, string}> */
+    /** @return array<string, array{list<string>, string, string, string, string}> */
     public static function noticeCases(): array
     {
         return [
-            'en' => [['en', 'de', 'fr'], 'Ada Lovelace is waiting for approval', 'Ada Lovelace <ada@example.com> confirmed their email and is waiting for approval.', 'Open in Folio: '],
-            'de' => [['de', 'en'], 'Ada Lovelace wartet auf Freigabe', 'Ada Lovelace <ada@example.com> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.', 'In Folio öffnen: '],
-            'fr' => [['fr', 'en'], 'Ada Lovelace attend une validation', 'Ada Lovelace <ada@example.com> a confirmé son adresse e-mail et attend une validation.', 'Ouvrir dans Folio : '],
+            'en' => [['en', 'de', 'fr'], 'Ada Lovelace is waiting for approval', 'Ada Lovelace <ada@example.com> confirmed their email and is waiting for approval.', 'Decide here: ', 'php preflow members:decide ada@example.com accept (or decline)'],
+            'de' => [['de', 'en'], 'Ada Lovelace wartet auf Freigabe', 'Ada Lovelace <ada@example.com> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.', 'Hier entscheiden: ', 'php preflow members:decide ada@example.com accept (oder decline)'],
+            'fr' => [['fr', 'en'], 'Ada Lovelace attend une validation', 'Ada Lovelace <ada@example.com> a confirmé son adresse e-mail et attend une validation.', 'Décider ici : ', 'php preflow members:decide ada@example.com accept (ou decline)'],
         ];
     }
 
     /** @param list<string> $locales */
     #[DataProvider('noticeCases')]
-    public function test_notice_goes_to_the_owner_in_the_site_default_locale(array $locales, string $subject, string $lead, string $open): void
+    public function test_notice_goes_to_the_owner_in_the_site_default_locale(array $locales, string $subject, string $lead, string $open, string $command): void
     {
         $this->site($locales);
         $m = $this->member('ada@example.com', 'en', 'Ada Lovelace'); // the member's language doesn't matter
@@ -135,7 +135,7 @@ final class MemberMailTest extends TestCase
         $this->assertSame(['owner@site.test'], $mail->to);
         $this->assertSame($subject, $mail->subject);
         $this->assertStringStartsWith($lead, $mail->text);
-        $this->assertSame($lead, $mail->text, 'without an admin there is no decision link');
+        $this->assertStringEndsWith($command, $mail->text, 'without an admin the text names the command');
         $this->assertStringNotContainsString($open, $mail->text);
         $this->assertStringNotContainsString('{details}', $mail->text);
         $this->assertStringNotContainsString('book code', $mail->text, 'no admission details from OwnerApproval');
@@ -150,7 +150,7 @@ final class MemberMailTest extends TestCase
         $this->flush();
 
         $text = $this->onlyMail()->text;
-        $this->assertStringEndsWith("waiting for approval.\n\nBook code: given, but it no longer worked.\n\n“I build things”", $text);
+        $this->assertStringEndsWith("waiting for approval.\n\nBook code: given, but it no longer worked.\n\n“I build things”\n\nDecide on the server: php preflow members:decide ada@example.com accept (or decline)", $text);
         $this->assertStringNotContainsString('book code: no', $text, 'the panel line stays in the panel');
     }
 
@@ -168,7 +168,7 @@ final class MemberMailTest extends TestCase
         $this->mailer()->noticeLater($m, 'owner@site.test');
         $this->flush();
 
-        $this->assertStringEndsWith("waiting for approval.\n\nOpen in Folio: https://admin.test/decide/" . $m->getId(), $this->onlyMail()->text);
+        $this->assertStringEndsWith("waiting for approval.\n\nDecide here: https://admin.test/decide/" . $m->getId(), $this->onlyMail()->text);
     }
 
     /** @return array<string, array{string, string, string}> */
@@ -195,7 +195,7 @@ final class MemberMailTest extends TestCase
         $this->assertSame([$accepted, $declined], [$mails[0]->subject, $mails[1]->subject]);
         $this->assertSame(['ada@example.com'], $mails[0]->to);
         $this->assertSame("Hello Ada,\n\nsee https://site.test/members/login", $mails[0]->text);
-        $this->assertStringContainsString('<a href="https://site.test/members/login" style="color:#d42a34">https://site.test/members/login</a>', (string) $mails[0]->html);
+        $this->assertStringContainsString('<a href="https://site.test/members/login" style="color:#1a1a1a">https://site.test/members/login</a>', (string) $mails[0]->html);
         $this->assertSame('Sorry.', $mails[1]->text);
     }
 

@@ -23,6 +23,8 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
+use Preflow\Data\TypeLabels;
+use Preflow\Data\TypeRegistry;
 use Preflow\I18n\Translator;
 use Preflow\I18n\TranslationExtensionProvider;
 use Preflow\View\AssetCollector;
@@ -32,7 +34,7 @@ use Preflow\Members\Http\MembersRoutes;
 use Preflow\Members\Http\SafeNext;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Routing\Router;
-use Preflow\Notify\Notifier;
+use Preflow\Notify\Mail\Mailer;
 use Preflow\View\TemplateEngineInterface;
 
 /**
@@ -102,8 +104,7 @@ final class MembersServiceProvider extends ServiceProvider
         $container->singleton(Links::class, static fn (Container $c): Links => self::links($c));
         $container->singleton(SafeNext::class, static fn (Container $c): SafeNext => new SafeNext($c->get(MembersConfig::class), $c->get(Links::class)));
         $container->singleton(MemberMailer::class, static fn (Container $c): MemberMailer => new MemberMailer(
-            $c->get(Notifier::class),
-            $c->get(TemplateEngineInterface::class),
+            $c->get(Mailer::class),
             $c->get(Translator::class),
             $c->get(Links::class),
             $c->get(Locales::class),
@@ -113,6 +114,8 @@ final class MembersServiceProvider extends ServiceProvider
             self::from($c),
             $c->bound(MemberLinks::class) ? $c->get(MemberLinks::class) : null,
             $c->get(MembersSettings::class),
+            $c->bound(TypeLabels::class) ? $c->get(TypeLabels::class) : null,
+            $c->bound(TypeRegistry::class) ? $c->get(TypeRegistry::class) : null,
         ));
         $container->singleton(MembersView::class, static fn (Container $c): MembersView => new MembersView(
             $c->get(TemplateEngineInterface::class),

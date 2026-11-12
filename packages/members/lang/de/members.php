@@ -134,9 +134,9 @@ return [
         ],
         'notice' => [
             'subject' => '{name} wartet auf Freigabe',
-            'body' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nIn Folio öffnen: {folio_url}",
-            // without a decision page to link (no admin such as Folio's)
-            'body_without_link' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}",
+            'body' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nHier entscheiden: {decision_url}",
+            // without a decision page to link (no admin package names one)
+            'body_without_link' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nAuf dem Server entscheiden: php preflow members:decide {email} accept (oder decline)",
         ],
         'accepted' => [
             'subject' => 'Ihr Konto ist bereit',
@@ -149,7 +149,7 @@ return [
         // an die Benachrichtigungsadresse, wenn ein Mitglied sein Konto nicht selbst löschen konnte
         'deletion_refused' => [
             'subject' => '{name} konnte das Konto nicht löschen',
-            'body' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.\n\nIn Folio öffnen: {folio_url}",
+            'body' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.\n\nIhr Konto: {decision_url}",
             'body_without_link' => "{name} <{email}> wollte das eigene Konto löschen, es wurde aber nicht gelöscht: {reason}\n\nBitte nehmen Sie Kontakt auf.",
             'restricted' => 'Es verweisen noch Datensätze darauf ({records}).',
             'listener' => 'Die Website hat die Löschung abgelehnt.',

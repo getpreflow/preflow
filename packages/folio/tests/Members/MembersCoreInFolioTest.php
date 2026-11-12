@@ -124,7 +124,7 @@ final class MembersCoreInFolioTest extends TestCase
 
         $sent = $c->get(\Preflow\Notify\TransportFactory::class)->get('mail')->sent();
         $this->assertCount(1, $sent);
-        $this->assertStringEndsWith("wartet auf Freigabe.\n\nIn Folio öffnen: https://site.test/folio/member/" . $m->getId() . '/edit', $sent[0]->message->text);
+        $this->assertStringEndsWith("wartet auf Freigabe.\n\nHier entscheiden: https://site.test/folio/member/" . $m->getId() . '/edit', $sent[0]->message->text);
     }
 
     public function test_without_the_members_admin_the_notice_has_no_link(): void

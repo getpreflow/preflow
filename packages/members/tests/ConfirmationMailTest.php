@@ -149,8 +149,7 @@ final class ConfirmationMailTest extends TestCase
         $c = $this->container();
 
         return new \Preflow\Members\MemberMailer(
-            $n,
-            $c->get(\Preflow\View\TemplateEngineInterface::class),
+            new \Preflow\Notify\Mail\Mailer($n, $c->get(\Preflow\Notify\Mail\MailLayout::class), $c->get(\Preflow\Notify\Mail\MailConfig::class)),
             $c->get(\Preflow\I18n\Translator::class),
             $c->get(\Preflow\Members\Links::class),
             $c->get(\Preflow\Data\Locales::class),

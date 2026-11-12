@@ -122,7 +122,7 @@ final class SelfDeletionTest extends TestCase
         $this->assertCount(1, $mails, 'one notice to the owner');
         $this->assertStringContainsString('Ada Lovelace', $mails[0]->subject);
         $this->assertStringContainsString('ada@example.com', (string) $mails[0]->text);
-        $this->assertStringContainsString('order: 1', (string) $mails[0]->text);
+        $this->assertStringContainsString('Orders: 1', (string) $mails[0]->text);
     }
 
     #[RunInSeparateProcess]

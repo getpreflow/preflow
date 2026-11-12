@@ -42,10 +42,10 @@ final class MailActionTest extends TestCase
         $this->container()->get(Notifier::class)->flushDeferred();
 
         $html = (string) $this->onlyMail()->html;
-        $button = Dom::first($html, '//a[@data-members-action][@href="https://site.test/members/confirm/tok123"]');
+        $button = Dom::first($html, '//a[@data-mail-action][@href="https://site.test/members/confirm/tok123"]');
         $this->assertNotNull($button);
         $this->assertSame('Confirm email address', trim($button->textContent));
-        $this->assertStringContainsString('https://site.test/members/confirm/tok123', Dom::text($html, '//p[@data-members-action-url]'), 'the URL as text below the button');
+        $this->assertStringContainsString('https://site.test/members/confirm/tok123', Dom::text($html, '//p[@data-mail-action-url]'), 'the URL as text below the button');
     }
 
     public function test_reset_and_existing_mails_carry_an_action_in_the_member_language(): void

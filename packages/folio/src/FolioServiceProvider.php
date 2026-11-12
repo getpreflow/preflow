@@ -173,6 +173,10 @@ final class FolioServiceProvider extends ServiceProvider
         }
         $displayLabels = new \Preflow\Folio\Content\DisplayLabels($catalog, $types, $extensions);
         $container->instance(\Preflow\Folio\Content\DisplayLabels::class, $displayLabels);
+        $container->instance(\Preflow\Data\TypeLabels::class, new \Preflow\Folio\Content\DisplayTypeLabels(
+            $displayLabels,
+            static fn (): \Preflow\I18n\Translator => $container->get(\Preflow\I18n\Translator::class),
+        ));
         $this->registerLabelKeys($container, $modelsPath, $labelSources, $types, $catalog);
         // Blocks: component blocks from app/Components, data-only blocks from
         // app/Blocks, plus classes listed in config/folio.php 'blocks'. Cached

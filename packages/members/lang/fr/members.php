@@ -134,9 +134,9 @@ return [
         ],
         'notice' => [
             'subject' => '{name} attend une validation',
-            'body' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nOuvrir dans Folio : {folio_url}",
-            // without a decision page to link (no admin such as Folio's)
-            'body_without_link' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}",
+            'body' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nDécider ici : {decision_url}",
+            // without a decision page to link (no admin package names one)
+            'body_without_link' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nDécider sur le serveur : php preflow members:decide {email} accept (ou decline)",
         ],
         'accepted' => [
             'subject' => 'Votre compte est prêt',
@@ -149,7 +149,7 @@ return [
         // à l'adresse de notification quand un membre n'a pas pu supprimer son propre compte
         'deletion_refused' => [
             'subject' => "{name} n'a pas pu supprimer son compte",
-            'body' => "{name} <{email}> a demandé la suppression de son compte, mais il n'a pas été supprimé : {reason}\n\nVeuillez prendre contact avec cette personne.\n\nOuvrir dans Folio : {folio_url}",
+            'body' => "{name} <{email}> a demandé la suppression de son compte, mais il n'a pas été supprimé : {reason}\n\nVeuillez prendre contact avec cette personne.\n\nSon compte : {decision_url}",
             'body_without_link' => "{name} <{email}> a demandé la suppression de son compte, mais il n'a pas été supprimé : {reason}\n\nVeuillez prendre contact avec cette personne.",
             'restricted' => 'des enregistrements y font encore référence ({records}).',
             'listener' => 'le site a refusé la suppression.',

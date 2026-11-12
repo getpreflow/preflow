@@ -35,12 +35,28 @@ final class DisplayLabels
         return $this->catalog->get($type)?->group ?? 'site';
     }
 
-    /** The type's label ("Apps"); the key, else ucfirst. */
-    public function type(string $type): string
+    /**
+     * The type's label ("Apps"); the key, else ucfirst. In $locale (a mail to someone who reads another
+     * language than the admin) or, without one, the interface language.
+     */
+    public function type(string $type, ?string $locale = null): string
     {
         $listing = $this->catalog->get($type);
+        $key = ModelLabelKeys::type($this->group($type), $type);
+        $translator = self::translator();
+        if ($locale === null || $locale === $translator->getLocale()) {
+            return Labels::resolve($translator, $key, $listing?->labels) ?? ucfirst($type);
+        }
+        if ($translator->has($key, $locale)) {
+            return $translator->get($key, [], $locale);
+        }
+        $picked = Labels::pick($listing?->labels, $locale, $translator->getFallbackLocale());
+        if ($picked !== null) {
+            return $picked;
+        }
+        $text = $translator->get($key, [], $locale);
 
-        return Labels::resolve(self::translator(), ModelLabelKeys::type($this->group($type), $type), $listing?->labels) ?? ucfirst($type);
+        return $text === $key ? ucfirst($type) : $text;
     }
 
     /** The type's label for one record ("App"); null when neither a key nor the file gives one. */

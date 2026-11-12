@@ -30,8 +30,8 @@ final class MembersConfigTest extends TestCase
         $this->assertSame('/members', $config->landing(), 'landing defaults to the path');
         $this->assertSame('@members/_layout.twig', $config->layout(), 'the package\'s own page layout');
         $this->assertNull($config->mailFromName());
-        $this->assertSame('@members/mail/layout.twig', $config->mailLayout());
-        $this->assertSame('#d42a34', $config->accent());
+        $this->assertNull($config->mailLayout(), 'null: notify\'s layout');
+        $this->assertNull($config->accent(), 'null: notify\'s accent');
         $this->assertSame(AcceptOnConfirm::class, $config->admission(), 'a member once the address is confirmed');
         $this->assertSame([10, 900], $config->throttle('login'));
         $this->assertSame([5, 3600], $config->throttle('register'));
@@ -79,7 +79,7 @@ final class MembersConfigTest extends TestCase
         $this->assertSame('/konto/objekte', $config->landing());
         $this->assertSame('@site/layout.twig', $config->layout());
         $this->assertSame('Holz', $config->mailFromName());
-        $this->assertSame('@members/mail/layout.twig', $config->mailLayout(), 'mail keys merge');
+        $this->assertNull($config->mailLayout(), 'mail keys merge');
         $this->assertSame('#333', $config->accent());
         $this->assertSame(AcceptOnConfirm::class, $config->admission());
         $this->assertSame([3, 60], $config->throttle('login'));

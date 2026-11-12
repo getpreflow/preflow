@@ -7,8 +7,8 @@ namespace Preflow\Members;
 use Preflow\Members\Admission\AcceptOnConfirm;
 
 /**
- * config/members.php: every key optional, the defaults are smart-stack.works' values (but the
- * admission, AcceptOnConfirm, and the layout, the package's own page). The
+ * config/members.php: every key optional, the defaults are ordinary values: the admission AcceptOnConfirm, the
+ * package's own page layout, the mail settings of config/notify.php. The
  * constants are names stored data depends on (type, guard, permissions, token purposes);
  * they are listed here so a site can see them, not to be renamed.
  */
@@ -34,7 +34,8 @@ final class MembersConfig
         'register' => null,
         // the package's own standalone page; a site names its layout (Folio's members admin names Folio's)
         'layout' => '@members/_layout.twig',
-        'mail' => ['from_name' => null, 'layout' => '@members/mail/layout.twig', 'accent' => '#d42a34'],
+        // null: the mail settings of config/notify.php (its layout, the neutral accent)
+        'mail' => ['from_name' => null, 'layout' => null, 'accent' => null],
         'admission' => AcceptOnConfirm::class,
         // [attempts, seconds] per throttle
         'throttle' => ['login' => [10, 900], 'register' => [5, 3600], 'forgot' => [5, 3600], 'resend' => [3, 3600]],
@@ -167,15 +168,20 @@ final class MembersConfig
         return is_string($name) && $name !== '' ? $name : null;
     }
 
-    public function mailLayout(): string
+    /** The HTML mail template of the site; null for notify's (config/notify.php mail.layout, else its neutral design). */
+    public function mailLayout(): ?string
     {
-        return (string) $this->config['mail']['layout'];
+        $layout = $this->config['mail']['layout'];
+
+        return is_string($layout) && $layout !== '' ? $layout : null;
     }
 
-    /** The link colour of the HTML mails. */
-    public function accent(): string
+    /** The accent colour of the HTML mails; null for notify's (config/notify.php mail.accent, else the neutral #1a1a1a). */
+    public function accent(): ?string
     {
-        return (string) $this->config['mail']['accent'];
+        $accent = $this->config['mail']['accent'];
+
+        return is_string($accent) && $accent !== '' ? $accent : null;
     }
 
     /** A key of config/members.php as given (or its default): the owner's settings, read by ConfigMembersSettings. */

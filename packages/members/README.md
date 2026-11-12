@@ -89,7 +89,7 @@ return [
     'landing' => null,                          // where sign-in lands; null = path
     'register' => null,                         // where the pages link for registering; null = path/register
     'layout' => '@members/_layout.twig',        // the layout the member pages extend (a Folio site: @folio/frontend/_site.twig)
-    'mail' => ['from_name' => null, 'layout' => '@members/mail/layout.twig', 'accent' => '#d42a34'],
+    'mail' => ['from_name' => null, 'layout' => null, 'accent' => null],   // null: notify's (config/notify.php mail.layout / mail.accent)
     'admission' => Preflow\Members\Admission\AcceptOnConfirm::class,
     'throttle' => ['login' => [10, 900], 'register' => [5, 3600], 'forgot' => [5, 3600], 'resend' => [3, 3600]],
     'password_min' => 10,
@@ -433,17 +433,23 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
   (a `TransportException` aborts the decision).
 - Each mail is in the member's language (the site default when the site lacks it); the owner's
   notice is in the site default locale. Mail bodies use `{name}`, `{link}`, `{login_url}`,
-  `{reset_url}`, `{validity}`, `{email}`, `{details}`, `{folio_url}`. `{folio_url}` is the
-  decision page a bound `MemberLinks` names (Folio's members admin: the member's edit page);
-  without one the notice uses `mail.notice.body_without_link`, text only.
+  `{reset_url}`, `{validity}`, `{email}`, `{details}`, `{decision_url}`. `{decision_url}` is the
+  decision page a bound `MemberLinks` names (an admin package's page for the member); without
+  one the notice uses `mail.notice.body_without_link`, which names the command
+  `php preflow members:decide {email} accept (or decline)`. The mail about a refused deletion
+  names each record type still pointing at the account by its label (a bound
+  `Preflow\Data\TypeLabels`, else the type's `label` when it is a plain string, else its key).
 - `{validity}` (and `:validity` in `inbox.hint`) is how long the link works, from `confirm_ttl` /
   `reset_ttl`: `LinkValidity::confirm($locale)` / `reset($locale)` give "24 hours", "eine Stunde"
   (lang keys `validity.hours` / `validity.minutes`, plural forms).
-- The HTML part renders `mail.layout` (default the neutral `@members/mail/layout.twig`) with
+- The words come from `lang/<locale>/members.php` (override single keys). The mails are composed
+  and sent through `preflow/notify`'s `Mailer`: the HTML part is notify's layout
+  (`config/notify.php` `mail.layout`, `mail.accent`, default the neutral `#1a1a1a`) unless
+  `mail.layout` / `mail.accent` here name the site's own. A site layout gets
   `lang`, `subject`, `accent` and `paragraphs` (escaped text, URLs linked in the accent colour),
   and for the confirm, reset and existing-account mails `action` (`{label, url}`, the primary
   link; label from `mail.{confirm,reset,existing}.action`). The shipped layout shows it as a
-  button with the URL below; a site's layout may ignore it. The text part is unchanged.
+  button with the URL below (`data-mail-action`); a site's layout may ignore it. The text part is unchanged.
 - The sender is `mail.from_name` with the address of `config/notify.php` `channels.email.from`;
   without a from name the channel's own sender applies.
 - When a new member's confirm mail fails, remove the account with
@@ -500,4 +506,9 @@ The full list is in the framework's 0.38 release checklist; what a site with mem
 - **Owner notice without Folio:** without a `MemberLinks` binding the notice uses
   `mail.notice.body_without_link`; a site that overrode only `mail.notice.body` gets the package's
   text without the link there.
+- **Mails through notify (0.68):** the shipped `@members/mail/layout.twig` is gone: the HTML part
+  is notify's layout, with the neutral accent `#1a1a1a` (was `#d42a34`) and `data-mail-action`
+  on the button (was `data-members-action`). A site that liked the old look sets `mail.accent`
+  (or notify's) in its config. The placeholder `{folio_url}` is now `{decision_url}` (no alias);
+  a site's own `mail.notice.body` / `mail.deletion_refused.body` must use the new one.
 - **`Links::folioMember()`** is deprecated (unused by the package) and goes in the next release.

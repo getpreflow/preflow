@@ -136,9 +136,9 @@ return [
         ],
         'notice' => [
             'subject' => '{name} is waiting for approval',
-            'body' => "{name} <{email}> confirmed their email and is waiting for approval.{details}\n\nOpen in Folio: {folio_url}",
-            // without a decision page to link (no admin such as Folio's)
-            'body_without_link' => "{name} <{email}> confirmed their email and is waiting for approval.{details}",
+            'body' => "{name} <{email}> confirmed their email and is waiting for approval.{details}\n\nDecide here: {decision_url}",
+            // without a decision page to link (no admin package names one)
+            'body_without_link' => "{name} <{email}> confirmed their email and is waiting for approval.{details}\n\nDecide on the server: php preflow members:decide {email} accept (or decline)",
         ],
         'accepted' => [
             'subject' => 'Your account is ready',
@@ -151,7 +151,7 @@ return [
         // to the notice address when a member's own deletion was refused
         'deletion_refused' => [
             'subject' => '{name} could not delete their account',
-            'body' => "{name} <{email}> asked to delete their account, but it was not deleted: {reason}\n\nPlease get in touch with them.\n\nOpen in Folio: {folio_url}",
+            'body' => "{name} <{email}> asked to delete their account, but it was not deleted: {reason}\n\nPlease get in touch with them.\n\nTheir account: {decision_url}",
             'body_without_link' => "{name} <{email}> asked to delete their account, but it was not deleted: {reason}\n\nPlease get in touch with them.",
             'restricted' => 'records still point to it ({records}).',
             'listener' => 'the site refused the deletion.',
