@@ -38,6 +38,19 @@ final class ManifestFile
      */
     public const array CORE_RUNTIME = ['.env', 'vendor/composer/installed.json'];
 
+    /** The first CORE_RUNTIME source a manifest's runtime list lacks, null when it has them all. */
+    public static function missingCoreRuntime(mixed $runtime): ?string
+    {
+        $runtime = (array) $runtime;
+        foreach (self::CORE_RUNTIME as $source) {
+            if (!array_key_exists($source, $runtime)) {
+                return $source;
+            }
+        }
+
+        return null;
+    }
+
     public static function path(string $basePath): string
     {
         return rtrim($basePath, '/') . '/' . self::PATH;
@@ -64,10 +77,8 @@ final class ManifestFile
         if (!is_array($data) || ($data['version'] ?? null) !== self::VERSION || !is_array($data['runtime'] ?? null)) {
             return null;
         }
-        foreach (self::CORE_RUNTIME as $source) {
-            if (!array_key_exists($source, $data['runtime'])) {
-                return null; // a manifest without the core's checked sources is no manifest
-            }
+        if (self::missingCoreRuntime($data['runtime']) !== null) {
+            return null; // a manifest without the core's checked sources is no manifest
         }
         $base = rtrim($basePath, '/');
         foreach ($data['runtime'] as $source => $stamp) {

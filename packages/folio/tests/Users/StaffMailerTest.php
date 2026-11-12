@@ -78,7 +78,7 @@ final class StaffMailerTest extends TestCase
         $this->assertNull(StaffMailer::siteName('', 'not a url'));
     }
 
-    public function test_without_a_site_name_the_mail_says_this_site_in_its_language(): void
+    public function test_without_a_site_name_the_mail_uses_the_texts_without_a_site_in_its_language(): void
     {
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
         $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']], defer: false);
@@ -87,9 +87,11 @@ final class StaffMailerTest extends TestCase
         $this->mailer($notifier, null)->sendLater('reset', 'ada@site.test', 'Ada', self::LINK, 'account 7', 'de');
 
         [$en, $de] = array_map(static fn ($s) => $s->message, $factory->get('mail')->sent());
-        $this->assertSame('Reset your password for this site', $en->subject);
-        $this->assertStringEndsWith("Kind regards\nthis site", $en->text);
-        $this->assertSame('Passwort für diese Website zurücksetzen', $de->subject);
+        $this->assertSame('Reset your password for the website', $en->subject);
+        $this->assertStringEndsWith('Kind regards', $en->text);
+        $this->assertSame('Passwort für die Website zurücksetzen', $de->subject);
+        $this->assertStringEndsWith('Freundliche Grüße', $de->text);
+        $this->assertStringNotContainsString('{site}', $de->text);
         foreach ([$en, $de] as $mail) {
             $this->assertStringNotContainsStringIgnoringCase('folio', $mail->subject);
             $this->assertStringNotContainsStringIgnoringCase('folio', str_replace(self::LINK, '', $mail->text));

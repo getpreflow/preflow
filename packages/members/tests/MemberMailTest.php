@@ -166,6 +166,15 @@ final class MemberMailTest extends TestCase
         $this->assertStringContainsString('<' . $address . '>', $text, 'the address itself stays in the text, outside the command');
     }
 
+    public function test_the_command_in_the_notice_keeps_a_non_ascii_address_whole(): void
+    {
+        $this->site();
+        $this->mailer()->noticeLater($this->member('jörg.müller@exämple.ch', 'en'), 'owner@site.test');
+        $this->flush();
+
+        $this->assertStringEndsWith("Decide on the server: php preflow members:decide 'jörg.müller@exämple.ch' accept (or decline)", $this->onlyMail()->text);
+    }
+
     public function test_notice_links_the_decision_page_a_package_names(): void
     {
         $this->site();

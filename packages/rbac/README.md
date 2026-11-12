@@ -231,8 +231,7 @@ For an existing site with an `.env` admin:
 4. Sign in again with the old password. Once the record exists, it decides for that e-mail:
    the config entry no longer answers it, and the config-era sessions and remember-me cookies
    end on their next request (from now on, disabling or demoting the record takes effect).
-5. Later, remove the config user (and the chain, pointing the guard at `staff`) and the
-   `FOLIO_ADMIN_*` values in `.env`.
+5. Later, remove the config user (and the chain, pointing the guard at `staff`).
 
 Revisions store the author's id from then on. Folio shows the account's name for an id and
 the stored e-mail for older revisions.

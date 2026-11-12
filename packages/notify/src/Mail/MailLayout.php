@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Notify\Mail;
 
 /**
- * Turns a mail's content into its HTML part. Core binds TemplateMailLayout when a template engine
- * (preflow/view) is bound, else BasicMailLayout; a site may bind its own.
+ * Turns a mail's content into its HTML part. Core binds TemplateMailLayout with a Twig engine, or with
+ * any engine when `mail.layout` is set, else BasicMailLayout; a site may bind its own.
  */
 interface MailLayout
 {

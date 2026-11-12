@@ -836,16 +836,19 @@ return [
         'type_noun' => ':singular|:plural',
     ],
     'mail' => [
-        'this_site' => 'this site', // {site} when the site has no app.name and no app.url
         'invite' => [
             'subject' => 'Your account for {site}',
             'action' => 'Accept the invitation',
             'body' => "Hi {name},\n\nyou were invited to edit {site}. Choose your password here: {link}\n\nThe link works for 7 days.\n\nKind regards\n{site}",
+            'subject_without_site' => 'Your account for the website', // no app.name, no app.url
+            'body_without_site' => "Hi {name},\n\nyou were invited to edit the website. Choose your password here: {link}\n\nThe link works for 7 days.\n\nKind regards",
         ],
         'reset' => [
             'subject' => 'Reset your password for {site}',
             'action' => 'Set your password',
             'body' => "Hi {name},\n\nset a new password for {site} here: {link}\n\nThe link works for one hour. If you didn't ask for this, ignore this mail.\n\nKind regards\n{site}",
+            'subject_without_site' => 'Reset your password for the website', // no app.name, no app.url
+            'body_without_site' => "Hi {name},\n\nset a new password for the website here: {link}\n\nThe link works for one hour. If you didn't ask for this, ignore this mail.\n\nKind regards",
         ],
     ],
     'redirects' => [

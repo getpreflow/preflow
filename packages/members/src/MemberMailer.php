@@ -117,7 +117,7 @@ final class MemberMailer
             'details' => $details,
         ] + ($url !== null && $url !== ''
             ? ['decision_url' => $url]
-            : ['decide_command' => 'php preflow members:decide ' . escapeshellarg($email) . ' accept']), $url !== null && $url !== '' ? 'body' : 'body_without_link'), onFailure: $onFailure);
+            : ['decide_command' => 'php preflow members:decide \'' . str_replace("'", "'\\''", $email) . '\' accept']), $url !== null && $url !== '' ? 'body' : 'body_without_link'), onFailure: $onFailure);
     }
 
     /**

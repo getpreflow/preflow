@@ -136,10 +136,9 @@ final class ManifestBuilder
             return ['the manifest has another version; run preflow optimize'];
         }
 
-        foreach (ManifestFile::CORE_RUNTIME as $source) {
-            if (!array_key_exists($source, (array) ($data['runtime'] ?? []))) {
-                return ["the manifest lacks the checked source {$source}; run preflow optimize"];
-            }
+        $missing = ManifestFile::missingCoreRuntime($data['runtime'] ?? []);
+        if ($missing !== null) {
+            return ["the manifest lacks the checked source {$missing}; run preflow optimize"];
         }
 
         // One line per source: a signed source that is also checked per request (.env, installed.json) once.

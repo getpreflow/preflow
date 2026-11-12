@@ -16,8 +16,8 @@ use Preflow\Notify\Mail\MailText;
  * in the recipient's interface language, else the site's default language. Composed by notify's
  * Mailer (a plain text part and an HTML part with the link as the button, folio.mail.*.action)
  * and queued with sendLater, so an answer takes as long whether or not a mail follows. Sender and
- * look are the mail settings' (config/notify.php). {site} is the site's name (siteName()), else
- * folio.mail.this_site in the mail's language.
+ * look are the mail settings' (config/notify.php). {site} is the site's name (siteName()); without one the
+ * mail uses the texts folio.mail.*.subject_without_site and body_without_site, which name no site.
  */
 final class StaffMailer
 {
@@ -28,7 +28,7 @@ final class StaffMailer
         private readonly ?string $site,
     ) {}
 
-    /** What the mails call the site: app.name, else the host of app.url, else null (the mails say folio.mail.this_site). */
+    /** What the mails call the site: app.name, else the host of app.url, else null (the mails use their *_without_site texts). */
     public static function siteName(mixed $appName, mixed $appUrl): ?string
     {
         $name = is_string($appName) ? MailText::oneLine($appName) : '';
@@ -47,11 +47,12 @@ final class StaffMailer
     public function sendLater(string $mail, string $to, string $name, string $link, string $subject, ?string $locale = null): void
     {
         $locale ??= $this->locale;
-        $vars = ['{name}' => MailText::oneLine($name), '{site}' => MailText::oneLine($this->site ?? $this->translator->get('folio.mail.this_site', [], $locale)), '{link}' => $link];
+        $vars = ['{name}' => MailText::oneLine($name), '{site}' => MailText::oneLine($this->site ?? ''), '{link}' => $link];
+        $suffix = $this->site === null ? '_without_site' : '';
         $this->mailer->sendLater(
             new MailContent(
-                subject: strtr($this->translator->get('folio.mail.' . $mail . '.subject', [], $locale), $vars),
-                text: strtr($this->translator->get('folio.mail.' . $mail . '.body', [], $locale), $vars),
+                subject: strtr($this->translator->get('folio.mail.' . $mail . '.subject' . $suffix, [], $locale), $vars),
+                text: strtr($this->translator->get('folio.mail.' . $mail . '.body' . $suffix, [], $locale), $vars),
                 lang: $locale,
                 action: new MailAction($this->translator->get('folio.mail.' . $mail . '.action', [], $locale), $link),
                 links: [$link],
