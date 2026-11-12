@@ -4,55 +4,50 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac\Console;
 
-use Preflow\Folio\Users\StaffUsers;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Folio\Console\BootsApplication;
 use Preflow\Rbac\ConfigUsers;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
+use Preflow\Rbac\Staff\StaffRefused;
 use Preflow\Rbac\StaffManagers;
-use Preflow\Rbac\Types\StaffRules;
-use Preflow\Validation\ValidationException;
 
 /**
- * Moves the config users of Folio's staff guard (StaffUsers: config/folio.php 'guard', else the
- * default guard; directly or inside a chain) into staff records:
- * one per e-mail that has no record yet, with the password hash as is (so the old password keeps
- * working, now decided by the record), roles mapped by name to the staff roles that exist (an
- * unknown name is skipped with a warning — StaffRules would refuse it), active from epoch "0".
- * Safe to repeat: an e-mail with a record is skipped. Prints one line per account, never a hash.
- * The package lists it in composer.json (extra.preflow.commands).
+ * staff:import-config: moves the config users of the staff guard (StaffAccounts::guard():
+ * config/rbac.php 'guard', else the admin's staff guard, else the default guard; directly or
+ * inside a chain) into staff records: one per e-mail that has no record yet, with the password
+ * hash as is (so the old password keeps working, now decided by the record), roles mapped by name
+ * to the staff roles that exist (an unknown name is skipped with a warning; the rules would
+ * refuse it), active from epoch "0". Safe to repeat: an e-mail with a record is skipped. Prints
+ * one line per account, never a hash. Until 0.70 also as folio:staff:import-config
+ * (ImportConfigStaffAliasCommand). The package lists it in composer.json (extra.preflow.commands).
  */
 final class ImportConfigStaffCommand implements CommandInterface
 {
-    use BootsApplication;
+    use StaffCommand;
 
-    public function getName(): string { return 'folio:staff:import-config'; }
-    public function getDescription(): string { return 'Create staff accounts from the config users of Folio\'s staff guard (repeatable)'; }
+    public function getName(): string { return 'staff:import-config'; }
+    public function getDescription(): string { return 'Create staff accounts from the config users of the staff guard (repeatable)'; }
 
     public function execute(array $args): int
     {
         $c = $this->app()->container();
-        $dm = $c->get(DataManager::class);
-        if (!(new StaffManagers($dm))->enabled()) {
-            echo "folio:staff:import-config — the staff type is not enabled. List \"model:staff\" under rbac's \"enabled_parts\" in config/folio/extensions.json (then run folio:extensions:apply).\n";
-
+        $accounts = self::accounts($c);
+        if ($accounts === null) {
             return 1;
         }
 
-        $staff = $c->get(StaffUsers::class);
-        $provider = $staff->provider();
+        $provider = $accounts->users();
         $users = $provider === null ? [] : ConfigUsers::of($provider);
         if ($users === []) {
-            echo "folio:staff:import-config — Folio's staff guard \"{$staff->guard()}\" has no config users to import.\n";
+            echo "staff:import-config — the staff guard \"{$accounts->guard()}\" has no config users to import.\n";
 
             return 0;
         }
 
+        $dm = $c->get(DataManager::class);
         $roles = (new RoleStore($dm))->rolesFor('staff');
-        $rules = $c->get(StaffRules::class);
         $type = $dm->getTypeRegistry()->get(StaffManagers::TYPE);
         $created = $skipped = $failed = 0;
         foreach ($users as $user) {
@@ -60,7 +55,7 @@ final class ImportConfigStaffCommand implements CommandInterface
             if ($email === '') {
                 continue;
             }
-            if ($dm->queryType(StaffManagers::TYPE)->where('email', $email)->first() !== null) {
+            if ($accounts->find($email) !== null) {
                 echo "skipped {$email} (already a staff account)\n";
                 $skipped++;
                 continue;
@@ -86,9 +81,9 @@ final class ImportConfigStaffCommand implements CommandInterface
                 'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
             ]);
             try {
-                $rules->beforeSave($record);
-            } catch (ValidationException $e) {
-                echo "failed {$email}: " . implode(' ', array_merge(...array_values($e->errors()))) . "\n";
+                $accounts->checkSave($record);
+            } catch (StaffRefused $e) {
+                echo "failed {$email}: {$e->getMessage()}\n";
                 $failed++;
                 continue;
             }
@@ -97,7 +92,7 @@ final class ImportConfigStaffCommand implements CommandInterface
             $created++;
         }
 
-        echo "folio:staff:import-config — created {$created}, skipped {$skipped}" . ($failed > 0 ? ", failed {$failed}" : '') . "\n";
+        echo "staff:import-config — created {$created}, skipped {$skipped}" . ($failed > 0 ? ", failed {$failed}" : '') . "\n";
 
         return $failed > 0 ? 1 : 0;
     }

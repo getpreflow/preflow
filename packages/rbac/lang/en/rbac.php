@@ -27,6 +27,11 @@ return [
         'disabled' => 'Account disabled. Its sessions and links have ended.',
         'enabled' => 'Account enabled.',
         'email_taken' => 'Another account already uses this email address.',
+        'email_invalid' => 'This is not an e-mail address.',
+        'password_short' => 'The password needs at least :min characters.',
+        'no_link_page' => 'No page to set a password is configured; use staff:password, or install an admin that provides one.',
+        'no_type' => 'This site has no staff accounts: config/auth.php names no user provider of class Preflow\\Auth\\Record\\RecordUserProvider with \'type\' => \'staff\'.',
+        'gone' => 'This account no longer exists.',
     ],
     // The Account panel of a staff account and its actions.
     'account' => [

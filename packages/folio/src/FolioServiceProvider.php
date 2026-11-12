@@ -887,6 +887,31 @@ final class FolioServiceProvider extends ServiceProvider
                 }
             },
         ));
+        // The password links of the staff guard's record accounts: one for the app, used by
+        // StaffPasswords here and by preflow/rbac's StaffAccounts.
+        $container->singleton(\Preflow\Auth\Record\AccountLinks::class, static fn (Container $c): \Preflow\Auth\Record\AccountLinks => new \Preflow\Auth\Record\AccountLinks(
+            $c->get(\Preflow\Auth\Tokens\Tokens::class),
+            $c->has(\Preflow\Auth\Remember\RememberMe::class) ? $c->get(\Preflow\Auth\Remember\RememberMe::class) : null,
+            $c->get(\Preflow\Auth\PasswordHasherInterface::class),
+            $c->get(DataManager::class),
+            self::staffProvider($c),
+            self::recordProviders($c),
+            $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
+        ));
+        // preflow/rbac's staff accounts sign in through Folio's staff guard; their invite and reset
+        // links open Folio's set-password page, their mails are in the user's interface language.
+        if (class_exists(\Preflow\Rbac\Staff\StaffPopulation::class)) {
+            $container->singleton(\Preflow\Rbac\Staff\StaffPopulation::class, static fn (Container $c): \Preflow\Rbac\Staff\StaffPopulation => new \Preflow\Rbac\Staff\StaffPopulation(
+                $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
+            ));
+            $container->singleton(\Preflow\Folio\Rbac\FolioStaffLinks::class, static fn (Container $c): \Preflow\Folio\Rbac\FolioStaffLinks => new \Preflow\Folio\Rbac\FolioStaffLinks(
+                self::passwordUrl($c->get(Application::class), $prefix),
+                $c->get(\Preflow\Folio\Users\UserPreferences::class),
+                $c->get(\Preflow\Rbac\Messages::class)->get('staff.no_app_url'),
+            ));
+            $container->singleton(\Preflow\Rbac\Staff\StaffLinks::class, static fn (Container $c): object => $c->get(\Preflow\Folio\Rbac\FolioStaffLinks::class));
+            $container->singleton(\Preflow\Rbac\Staff\StaffLocales::class, static fn (Container $c): object => $c->get(\Preflow\Folio\Rbac\FolioStaffLinks::class));
+        }
         $container->bind(AdminAuthMiddleware::class, fn (Container $c) => new AdminAuthMiddleware(
             $c->get(\Preflow\Auth\AuthManager::class),
             $prefix,
@@ -1060,19 +1085,9 @@ final class FolioServiceProvider extends ServiceProvider
     private static function staffPasswords(Container $c, string $prefix): \Preflow\Folio\Users\StaffPasswords
     {
         $app = $c->get(Application::class);
-        $url = $app->config()->get('app.url');
-        $base = is_string($url) ? rtrim(trim($url), '/') : ''; // unset: no links are mailed (StaffPasswords::canMail)
 
         return new \Preflow\Folio\Users\StaffPasswords(
-            new \Preflow\Auth\Record\AccountLinks(
-                $c->get(\Preflow\Auth\Tokens\Tokens::class),
-                $c->has(\Preflow\Auth\Remember\RememberMe::class) ? $c->get(\Preflow\Auth\Remember\RememberMe::class) : null,
-                $c->get(\Preflow\Auth\PasswordHasherInterface::class),
-                $c->get(DataManager::class),
-                self::staffProvider($c),
-                self::recordProviders($c),
-                $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
-            ),
+            $c->get(\Preflow\Auth\Record\AccountLinks::class),
             $c->get(DataManager::class),
             static function () use ($c, $app): \Preflow\Folio\Users\StaffMailer {
                 return new \Preflow\Folio\Users\StaffMailer(
@@ -1082,9 +1097,18 @@ final class FolioServiceProvider extends ServiceProvider
                     \Preflow\Folio\Users\StaffMailer::siteName($app->config()->get('app.name'), $app->config()->get('app.url')),
                 );
             },
-            $base === '' ? '' : $base . $prefix . '/password',
+            self::passwordUrl($app, $prefix),
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
         );
+    }
+
+    /** The absolute URL of the set-password page; '' when app.url is unset (no links are mailed: StaffPasswords::canMail). */
+    private static function passwordUrl(Application $app, string $prefix): string
+    {
+        $url = $app->config()->get('app.url');
+        $base = is_string($url) ? rtrim(trim($url), '/') : '';
+
+        return $base === '' ? '' : $base . $prefix . '/password';
     }
 
     /**

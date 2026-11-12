@@ -11,7 +11,7 @@ use Preflow\Data\Locales;
 use Preflow\I18n\Translator;
 
 /**
- * The rbac strings (lang/{locale}/rbac.php, a site's lang/{locale}/rbac.php laid over them
+ * The rbac strings (lang/{locale}/rbac.php and rbac-mail.php, a site's files of those names laid over them
  * key by key) through the app's translator; an app without one (a core before 0.37 with
  * no lang/ and no config/i18n.php) gets a translator of its own here. get() answers in the
  * translator's language: on an admin request the user's interface language (Folio sets it).
@@ -31,8 +31,15 @@ final class Messages
         // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer
         // metadata doesn't list the package (test apps, a core before 0.37).
         $translator->addDefaultsIfMissing('rbac', dirname(__DIR__) . '/lang', 'admin');
+        $translator->addDefaultsIfMissing('rbac-mail', dirname(__DIR__) . '/lang', 'admin');
 
         return new self($translator);
+    }
+
+    /** The translator with rbac's groups ("rbac", and "rbac-mail" for StaffMail). */
+    public function translator(): Translator
+    {
+        return $this->translator;
     }
 
     /** rbac's English strings alone, for a field type built without the container (tests). */

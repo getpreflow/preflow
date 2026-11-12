@@ -27,6 +27,11 @@ return [
         'disabled' => 'Konto deaktiviert. Seine Sitzungen und Links sind beendet.',
         'enabled' => 'Konto aktiviert.',
         'email_taken' => 'Ein anderes Konto verwendet diese E-Mail-Adresse bereits.',
+        'email_invalid' => 'Das ist keine E-Mail-Adresse.',
+        'password_short' => 'Das Passwort braucht mindestens :min Zeichen.',
+        'no_link_page' => 'Es ist keine Seite zum Setzen eines Passworts eingerichtet; verwende staff:password oder installiere eine Verwaltung, die eine anbietet.',
+        'no_type' => 'Diese Website hat keine Teamkonten: config/auth.php nennt keinen User-Provider der Klasse Preflow\\Auth\\Record\\RecordUserProvider mit \'type\' => \'staff\'.',
+        'gone' => 'Dieses Konto gibt es nicht mehr.',
     ],
     'account' => [
         'title' => 'Konto',

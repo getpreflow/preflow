@@ -17,25 +17,25 @@ use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\Screen\ScreenView;
-use Preflow\Folio\Users\StaffPasswords;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleStore;
+use Preflow\Rbac\Staff\StaffAccounts;
+use Preflow\Rbac\Staff\StaffRefused;
 use Preflow\Rbac\StaffManagers;
-use Preflow\Validation\ValidationException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Staff accounts in the admin. The form's save and delete run StaffRules (delegation, lock-out,
- * e-mail). A new account has no password and gets an invitation by mail once it is stored (a
- * mail that can't be queued keeps the account and says so). The Account panel offers, to those
- * with staff.edit who may change the account: Send invitation (while no password is set), Send
- * reset link, Disable / Enable. Each action runs StaffRules on the record as it would be saved,
- * so a crafted POST gets the same refusals as the form (an account above you, the last manager).
- * Disabling (the action, or unticking Active in the form) bumps the epoch (live sessions end),
- * forgets remember-me logins and voids the account's invite and reset links; enabling changes
- * nothing else.
+ * Staff accounts in the admin, on rbac's StaffAccounts. The form's save and delete run StaffRules
+ * (delegation, lock-out, e-mail). A new account has no password and gets an invitation by mail
+ * once it is stored (a mail that can't be queued keeps the account and says so). The Account
+ * panel offers, to those with staff.edit who may change the account: Send invitation (while no
+ * password is set), Send reset link, Disable / Enable. Each action runs the same rules on the
+ * record as it would be saved (StaffAccounts, with the signed-in user as actor), so a crafted
+ * POST gets the same refusals as the form (an account above you, the last manager). Disabling
+ * (the action, or unticking Active in the form) bumps the epoch (live sessions end), forgets
+ * remember-me logins and voids the account's invite and reset links; enabling changes nothing else.
  */
 #[FolioType('staff')]
 final class StaffAdmin
@@ -50,6 +50,7 @@ final class StaffAdmin
 
     public function __construct(
         private readonly StaffRules $rules,
+        private readonly StaffAccounts $accounts,
         private readonly DataManager $dm,
         private readonly PermissionCoverage $coverage,
         private readonly Messages $messages,
@@ -82,7 +83,7 @@ final class StaffAdmin
         $id = (string) $staff->getId();
         if (isset($this->disabled[$id])) {
             unset($this->disabled[$id]);
-            $this->forgetDevicesAndLinks($staff);
+            $this->accounts->endAccess($staff);
         }
         if (!isset($this->created[$id])) {
             return;
@@ -133,12 +134,6 @@ final class StaffAdmin
         if (($refused = $this->refused($staff)) !== null) {
             return $this->back($request, $staff, 'error', $refused);
         }
-        if ((string) $staff->get('password_hash') !== '') {
-            return $this->back($request, $staff, 'error', $this->messages->get('staff.has_password'));
-        }
-        if (!StaffManagers::active($staff->get('active'))) {
-            return $this->back($request, $staff, 'error', $this->messages->get('staff.inactive'));
-        }
         $error = $this->send('invite', $staff, 'staff.mail_failed');
 
         return $error !== null
@@ -151,9 +146,6 @@ final class StaffAdmin
     {
         if (($refused = $this->refused($staff)) !== null) {
             return $this->back($request, $staff, 'error', $refused);
-        }
-        if (!StaffManagers::active($staff->get('active'))) {
-            return $this->back($request, $staff, 'error', $this->messages->get('staff.inactive'));
         }
         $error = $this->send('reset', $staff, 'staff.mail_failed');
 
@@ -169,13 +161,11 @@ final class StaffAdmin
         if ($staff === null) {
             return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Not found'); // deleted meanwhile
         }
-        $staff->set('active', false);
-        if (($refused = $this->refused($staff)) !== null) {
-            return $this->back($request, $staff, 'error', $refused);
+        try {
+            $this->accounts->disable($staff, $this->coverage->actor());
+        } catch (StaffRefused $e) {
+            return $this->back($request, $staff, 'error', $e->getMessage());
         }
-        self::bumpEpoch($staff);
-        $this->dm->saveType($staff, false);
-        $this->forgetDevicesAndLinks($staff);
 
         return $this->back($request, $staff, 'success', $this->messages->get('staff.disabled'));
     }
@@ -187,52 +177,34 @@ final class StaffAdmin
         if ($staff === null) {
             return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Not found'); // deleted meanwhile
         }
-        $staff->set('active', true);
-        if (($refused = $this->refused($staff)) !== null) {
-            return $this->back($request, $staff, 'error', $refused);
+        try {
+            $this->accounts->enable($staff, $this->coverage->actor());
+        } catch (StaffRefused $e) {
+            return $this->back($request, $staff, 'error', $e->getMessage());
         }
-        $this->dm->saveType($staff, false);
 
         return $this->back($request, $staff, 'success', $this->messages->get('staff.enabled'));
     }
 
-    /**
-     * The account as stored now: Disable and Enable change only `active` (and the epoch) of it, so a
-     * copy read earlier in the request doesn't write back a role removed or a password changed
-     * meanwhile. Null when the account was deleted meanwhile.
-     */
+    /** The account as stored now; null when it was deleted meanwhile (StaffAccounts changes only `active` and the epoch of it). */
     private function fresh(DynamicRecord $staff): ?DynamicRecord
     {
         return $this->dm->findType(StaffManagers::TYPE, (string) $staff->getId());
     }
 
-    /** A new epoch ends the account's live sessions (for good: enabling it again doesn't bring them back). */
+    /** A new epoch ends the account's live sessions (for good: enabling it again doesn't bring them back), as StaffAccounts::disable(). */
     private static function bumpEpoch(DynamicRecord $staff): void
     {
         $staff->set('auth_epoch', (string) ((int) $staff->get('auth_epoch') + 1));
     }
 
-    /** Ends the account's remember-me logins and voids its invite and reset links. */
-    private function forgetDevicesAndLinks(DynamicRecord $staff): void
-    {
-        $passwords = $this->passwords();
-        $passwords?->forgetDevices($staff);
-        $passwords?->revokeLinks($staff);
-    }
-
-    /** StaffRules on the record as the action would save it: the refusal's message, or null. */
+    /** The rules on the record as the action would save it: the refusal's message, or null. */
     private function refused(DynamicRecord $staff): ?string
     {
         try {
-            $this->rules->beforeSave($staff);
-        } catch (ValidationException $e) {
-            foreach ($e->errors() as $messages) {
-                foreach ((array) $messages as $message) {
-                    return (string) $message;
-                }
-            }
-
-            return $this->messages->get('delegation.account');
+            $this->accounts->checkSave($staff, $this->coverage->actor());
+        } catch (StaffRefused $e) {
+            return $e->getMessage();
         }
 
         return null;
@@ -245,16 +217,10 @@ final class StaffAdmin
      */
     private function send(string $mail, DynamicRecord $staff, string $failed): ?string
     {
-        $passwords = $this->passwords();
-        if ($passwords === null || !$passwords->enabled()) {
-            return $this->messages->get('staff.no_sign_in');
-        }
         try {
-            $mail === 'invite' ? $passwords->invite($staff) : $passwords->sendReset($staff);
-        } catch (\InvalidArgumentException) { // staff isn't a user type of the staff guard
-            return $this->messages->get('staff.no_sign_in');
-        } catch (\Preflow\Folio\Users\MissingAppUrl) { // a link would point nowhere
-            return $this->messages->get('staff.no_app_url');
+            $mail === 'invite' ? $this->accounts->invite($staff) : $this->accounts->resetLink($staff);
+        } catch (StaffRefused $e) { // a password already, disabled, no sign-in, no app.url
+            return $e->getMessage();
         } catch (\Throwable $e) {
             error_log("rbac: {$mail} mail not queued for staff:{$staff->getId()}: {$e->getMessage()}");
 
@@ -262,16 +228,6 @@ final class StaffAdmin
         }
 
         return null;
-    }
-
-    /** Folio's passwords service; null when the site has no auth set up. */
-    private function passwords(): ?StaffPasswords
-    {
-        try {
-            return $this->container->get(StaffPasswords::class);
-        } catch (\Throwable) {
-            return null;
-        }
     }
 
     private function back(ServerRequestInterface $request, DynamicRecord $staff, string $type, string $message): ResponseInterface

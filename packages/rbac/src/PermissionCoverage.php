@@ -6,6 +6,7 @@ namespace Preflow\Rbac;
 
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Access\Pattern;
+use Preflow\Auth\Authenticatable;
 
 /**
  * Delegation: a permission or pattern may be granted only by someone who holds it. A held
@@ -15,7 +16,7 @@ use Preflow\Auth\Access\Pattern;
  *
  * held() is what the user signed in for this request holds, their roles' patterns in their
  * population (the same answer as the resolver's). With nobody signed in (the CLI: install
- * seeding admin => ['*'], folio:staff:import-config) it is null and delegation does not
+ * seeding admin => ['*'], staff:import-config) it is null and delegation does not
  * apply. The same rule holds for every population's roles: a staff editor managing member
  * roles grants only member permissions their own staff roles cover.
  */
@@ -71,5 +72,22 @@ final class PermissionCoverage
         }
 
         return $this->resolver->patterns($user, $population);
+    }
+
+    /**
+     * The patterns a user holds as staff (their staff roles'): what they may grant when they
+     * act on staff accounts (StaffAccounts' actor).
+     *
+     * @return list<string>
+     */
+    public function heldBy(Authenticatable $user): array
+    {
+        return $this->resolver->patterns($user, 'staff');
+    }
+
+    /** Whoever is signed in for this request when delegation applies to them (held() is not null); else null. */
+    public function actor(): ?Authenticatable
+    {
+        return $this->access->population() === null ? null : $this->access->user();
     }
 }

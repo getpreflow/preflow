@@ -8,14 +8,16 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * "^0.27 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing rbac with a release that lacks the APIs it calls: auth 0.65 (ListsRoles,
+ * Composer from pairing rbac with a release that lacks the APIs it calls: auth 0.69 (AccountLinks, StaffAccounts' password links;
+ * since 0.65 ListsRoles,
  * which RbacResolver implements; since 0.27 Access::population(), ConfigUserProvider::entries(), the chain provider), core 0.27 (builds
- * chains from config/auth.php), data 0.69 (DataManager::hasTable(), whether rbac is installed), folio 0.65 (FolioEngine, through which the @rbac templates render on any app
+ * chains from config/auth.php), data 0.69 (DataManager::hasTable(), whether rbac is installed), folio 0.69 (binds StaffPopulation and StaffLinks,
+ * so staff links open its set-password page and one AccountLinks serves both; since 0.65 FolioEngine, through which the @rbac templates render on any app
  * engine; since 0.53 Extension::seed(), which folio:extensions:apply runs on every
  * deploy and where rbac seeds its roles; KnownPermissions, #[ListNotice], #[DashboardNotice] and
  * FolioScreen(nav: false) for the new-permissions notice; since 0.37 #[FolioExtension(translations: …)], DisplayLabels, FolioText::label();
  * since 0.27 opt-in parts, StaffPasswords, SIGNED_IN), i18n 0.37 (translation scopes, the translator's locale
- * as the default of Messages::get()). devtools is not guarded: an older one only lacks the import command.
+ * as the default of Messages::get()), notify 0.68 (the Mailer StaffMail composes with). devtools is not guarded: an older one only lacks the import command.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -24,7 +26,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.65', 'preflow/core' => '<0.27', 'preflow/data' => '<0.69', 'preflow/folio' => '<0.65', 'preflow/i18n' => '<0.37'],
+            ['preflow/auth' => '<0.69', 'preflow/core' => '<0.27', 'preflow/data' => '<0.69', 'preflow/folio' => '<0.69', 'preflow/i18n' => '<0.37', 'preflow/notify' => '<0.68'],
             $composer['conflict'] ?? null,
         );
     }

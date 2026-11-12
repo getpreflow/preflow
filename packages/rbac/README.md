@@ -175,7 +175,7 @@ the same refusal as the form, shown as a flash.
 
 - **Invite.**
   - A new account is stored without a password, so it can't sign in.
-  - Once it is stored, it gets an invitation mail (Folio's `StaffPasswords::invite()`): a
+  - Once it is stored, it gets an invitation mail (`StaffAccounts::invite()`): a
     set-password link valid for 7 days, sent after the response.
   - If the mail can't be queued, the account is kept and the flash says so.
   - "Send invitation" stays on the panel while no password is set.
@@ -195,13 +195,33 @@ the same refusal as the form, shown as a flash.
 Mails need `config/notify.php`; the throttles need `APP_KEY`. The action messages are `rbac.staff.*` in
 `lang/{en,de,fr}/rbac.php`.
 
+### Staff commands
+
+`StaffAccounts` (a container service) holds the rules and the lifecycle above for every way in:
+Folio's screens, code and these commands (they refuse before `rbac:install`; the console has no
+delegation limit, the other rules apply; a refusal prints why and exits 1):
+
+- `staff:list`: e-mail, name, roles and state (active, disabled, no password yet).
+- `staff:create <email> [--name=…] [--role=a,b]`: an active account without a password.
+- `staff:password <email>`: asks twice without echo, or reads one line from STDIN.
+- `staff:invite <email>`, `staff:reset <email>`: mail a set-password link (7 days, one hour).
+  The link opens the page a `Preflow\Rbac\Staff\StaffLinks` binding names (Folio binds its
+  set-password page); without one they refuse. The mails are `rbac-mail.*` in
+  `lang/{en,de,fr}/rbac-mail.php`, in the account's language when a `StaffLocales` binding
+  knows it (Folio: the interface language).
+- `staff:disable <email>`, `staff:enable <email>`.
+
+Without Folio, a site signs staff in with a `RecordUserProvider` of `'type' => 'staff'` on its
+staff guard; rbac then defines the type, and `rbac:install` makes its table.
+
 ### Moving a config admin to staff
 
-`php preflow folio:staff:import-config` creates a staff record for each config user of Folio's
-staff guard (`config/folio.php` `'guard'`, else the default guard; directly, or inside a chain).
-Both this and the config-user check above read the provider from Folio's
-`Preflow\Folio\Users\StaffUsers` service (since 0.65), never the default guard's when `'guard'`
-names another, so an employers or members guard's users never become staff.
+`php preflow staff:import-config` (until 0.70 also `folio:staff:import-config`) creates a staff
+record for each config user of the staff guard (directly, or inside a chain). The staff guard is
+`config/rbac.php` `'guard'`, else the one an admin names (Folio: `config/folio.php` `'guard'`,
+else the default guard), else the default guard. Both this and the config-user check above read
+that guard's provider, never the default guard's when another is named, so an employers or
+members guard's users never become staff.
 
 - The e-mail is lowercased. The password hash moves as is, so the old password keeps
   working.
@@ -225,9 +245,11 @@ For an existing site with an `.env` admin:
    'guards' => ['session' => ['class' => Preflow\Auth\SessionGuard::class, 'provider' => 'chain', 'population' => 'staff']],
    ```
 
-   While the staff type isn't enabled yet, the chain resolves the config user as before.
+   The staff type exists once a provider names it (rbac defines it; with Folio, `model:staff` adds
+   its screens); run `php preflow migrate` for its table. While there are no records, the chain
+   resolves the config user as before.
 2. Enable `model:staff` (`enabled_parts`) and run `php preflow folio:extensions:apply`.
-3. Run `php preflow folio:staff:import-config`.
+3. Run `php preflow staff:import-config`.
 4. Sign in again with the old password. Once the record exists, it decides for that e-mail:
    the config entry no longer answers it, and the config-era sessions and remember-me cookies
    end on their next request (from now on, disabling or demoting the record takes effect).
