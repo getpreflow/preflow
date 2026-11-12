@@ -9,6 +9,7 @@ use Preflow\View\Audit\PageRenderer;
 use Preflow\View\Audit\RenderedPage;
 use Preflow\View\Audit\RunCheck;
 use Preflow\View\Audit\Severity;
+use Preflow\View\VariantPending;
 
 /**
  * `link.broken`: links, images and other files an audited page points to on this
@@ -33,10 +34,6 @@ use Preflow\View\Audit\Severity;
  */
 final class BrokenLinks implements RunCheck
 {
-    /** The header and value a marked render's not-yet-made media variant answers with (media's VariantController::PENDING_HEADER); duplicated so view needn't depend on media. */
-    private const PENDING_HEADER = 'X-Preflow-Variant';
-    private const PENDING = 'pending';
-
     /** More redirects than this count as a loop. */
     private const MAX_REDIRECTS = 5;
 
@@ -218,7 +215,7 @@ final class BrokenLinks implements RunCheck
     /** @return array{k: string, s: int, h: int, f: string} */
     private static function answered(RenderedPage $page, int $redirects, string $path): array
     {
-        $pending = $page->status === 404 && strtolower(trim($page->header(self::PENDING_HEADER))) === self::PENDING;
+        $pending = $page->status === 404 && strtolower(trim($page->header(VariantPending::HEADER))) === VariantPending::VALUE;
         $broken = !$pending && ($page->status === 404 || $page->status === 410 || $page->status >= 500);
         $kind = $broken ? 'broken' : ($redirects >= 2 ? 'chain' : 'ok');
 

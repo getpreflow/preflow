@@ -11,6 +11,7 @@ use Preflow\Media\Asset;
 use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\MediaLibrary;
+use Preflow\View\VariantPending;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -28,8 +29,10 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class VariantController
 {
-    /** Header on an internal render's 404 for a variant that would be made on a visitor's request (since 0.54). */
-    public const string PENDING_HEADER = 'X-Preflow-Variant';
+    /**
+     * @deprecated since 0.67, use \Preflow\View\VariantPending::HEADER
+     */
+    public const string PENDING_HEADER = VariantPending::HEADER;
 
     private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32})(?:-[a-z0-9-]+?)?)-([1-9]\d{0,4})\.(avif|webp|jpg)$#';
 
@@ -93,7 +96,7 @@ final class VariantController
     {
         $file = $this->library->absolute($path);
 
-        return is_file($file) ? self::file($file, $format) : new Response(404, [self::PENDING_HEADER => 'pending']);
+        return is_file($file) ? self::file($file, $format) : new Response(404, [VariantPending::HEADER => VariantPending::VALUE]);
     }
 
     private static function file(string $file, string $format): ResponseInterface

@@ -26,6 +26,7 @@ use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\Image\Formats;
 use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
+use Preflow\Media\Pdf\MediaPdfImages;
 use Preflow\Media\Preview\PdfPreviewRenderer;
 use Preflow\Media\Preview\PreviewRenderers;
 use Preflow\Media\Preview\VideoPreviewRenderer;
@@ -36,6 +37,7 @@ use Preflow\Media\Usage\CopyReferences;
 use Preflow\Media\Usage\PosterReferences;
 use Preflow\Routing\Router;
 use Preflow\View\AssetCollector;
+use Preflow\View\Pdf\PdfImageSource;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -101,6 +103,8 @@ final class MediaServiceProvider extends ServiceProvider
             formats: $c->get(Formats::class),
             makers: $c->get(DerivedMakers::class),
         ));
+        // pdf_image() looks an asset id up through view's PdfImageSource; this is media's answer.
+        $container->singleton(PdfImageSource::class, fn (Container $c) => new MediaPdfImages($c->get(MediaLibrary::class)));
         $container->singleton(AssetCleanup::class, fn (Container $c) => new AssetCleanup(
             $c->get(MediaLibrary::class),
             $c->get(AssetUsage::class),

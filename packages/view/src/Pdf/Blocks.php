@@ -24,14 +24,11 @@ final class Blocks
     // About 160 MB of GD memory; a bigger image is refused rather than risking the request.
     private const int DECODE_MAX_PIXELS = 40_000_000;
 
-    // The media library's class, named as a string: preflow/media is not a dependency of preflow/view.
-    private const string MEDIA_LIBRARY = 'Preflow\Media\MediaLibrary';
-
     /** @var list<array{config: ?PdfConfig, temp: list<string>}> the open renders, innermost last */
     private static array $renders = [];
 
     /**
-     * @param ?ContainerInterface $container where a media asset id is looked up, when preflow/media is installed
+     * @param ?ContainerInterface $container where a PdfImageSource (preflow/media binds one) is looked up for an image id
      */
     public function __construct(private readonly ?ContainerInterface $container = null)
     {
@@ -193,7 +190,7 @@ final class Blocks
     }
 
     /**
-     * The image's file, and its URL when it is a media asset.
+     * The image's file, and its URL when it comes from an image source.
      *
      * @return array{string, ?string}
      */
@@ -211,32 +208,30 @@ final class Blocks
             return [$assetIdOrPath, null];
         }
 
-        if (!class_exists(self::MEDIA_LIBRARY) || $this->container === null || !$this->container->has(self::MEDIA_LIBRARY)) {
+        $source = $this->container !== null && $this->container->has(PdfImageSource::class)
+            ? $this->container->get(PdfImageSource::class)
+            : null;
+        if (!$source instanceof PdfImageSource) {
             throw new \InvalidArgumentException(
-                "pdf_image: '{$assetIdOrPath}' is not an absolute file path, and there is no media library (preflow/media) to look it up as an asset id.",
+                "pdf_image: '{$assetIdOrPath}' is not an absolute file path, and nothing provides images by id (bind Preflow\\View\\Pdf\\PdfImageSource; preflow/media does).",
             );
         }
 
-        /** @var \Preflow\Media\MediaLibrary $library */
-        $library = $this->container->get(self::MEDIA_LIBRARY);
-        $asset = $library->find($assetIdOrPath)
+        $image = $source->find($assetIdOrPath)
             ?? throw new \InvalidArgumentException("pdf_image: there is no media asset '{$assetIdOrPath}'.");
-        if ($asset->private && !$allowPrivate) {
+        if ($image->private && !$allowPrivate) {
             throw new \InvalidArgumentException(
                 "pdf_image: the media asset '{$assetIdOrPath}' is private. Pass allow_private: true to put it into the PDF.",
             );
         }
-        if ($asset->kind() !== 'image') {
+        if (!$image->isImage) {
             throw new \InvalidArgumentException("pdf_image: the media asset '{$assetIdOrPath}' is not an image.");
         }
-        // An edited image (crop, rotation) is printed as it is shown: its rendered master.
-        $shown = $library->deliveryAsset($asset) ?? $asset;
-        $file = $library->file($shown);
-        if ($file === null || !is_file($file)) {
+        if (!is_file($image->file)) {
             throw new \InvalidArgumentException("pdf_image: the file of the media asset '{$assetIdOrPath}' is missing.");
         }
 
-        return [$file, $library->url($asset)];
+        return [$image->file, $image->url];
     }
 
     /**

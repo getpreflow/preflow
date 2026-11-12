@@ -8,8 +8,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Blade\BladeEngine;
-use Preflow\Media\MediaLibrary;
-use Preflow\Media\Tests\Support\MediaFixtures;
 use Preflow\Twig\TwigEngine;
 use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
@@ -17,6 +15,8 @@ use Preflow\View\Pdf\MpdfEngine;
 use Preflow\View\Pdf\PageSettings;
 use Preflow\View\Pdf\PdfConfig;
 use Preflow\View\Pdf\PdfEngine;
+use Preflow\View\Pdf\PdfImage;
+use Preflow\View\Pdf\PdfImageSource;
 use Preflow\View\Pdf\PdfRenderer;
 use Preflow\View\Qr\QrCode;
 use Preflow\View\TemplateEngineInterface;
@@ -34,11 +34,9 @@ require_once __DIR__ . '/Fixtures/BlocksDocument.php';
 #[RequiresPhpExtension('gd')]
 final class BlocksTest extends TestCase
 {
-    use MediaFixtures;
-
     private string $dir;
 
-    private ?MediaLibrary $library = null;
+    private ?PdfImageSource $images = null;
 
     protected function setUp(): void
     {
@@ -49,9 +47,6 @@ final class BlocksTest extends TestCase
     protected function tearDown(): void
     {
         $this->removeTree($this->dir);
-        if (isset($this->assetRoot)) {
-            $this->removeAssetRoot();
-        }
     }
 
     /** @return array<string, array{string}> */
@@ -183,38 +178,79 @@ final class BlocksTest extends TestCase
         $this->assertStringContainsString('src="data:image/svg+xml;base64,', $html);
     }
 
-    public function test_private_asset_needs_opt_in(): void
+    public function test_asset_id_is_printed_from_the_image_source(): void
     {
-        $library = $this->mediaLibrary();
-        $public = $library->upload($this->upload($this->png(2000, 1000), 'public.png'), null);
-        $private = $library->upload($this->upload($this->png(300, 200), 'private.png'), null, private: true);
-        $body = $this->template('twig', 'asset', '{{ pdf_image(vars.id, vars.options) }}', '');
-        $renderer = $this->renderer('twig');
+        $png = $this->image($this->dir . '/a.png', 2000, 1000);
+        $this->images = $this->source(['a1' => new PdfImage($png, '/m/a.png', false, true)]);
+        $body = $this->template('twig', 'asset', "{{ pdf_image('a1') }}", '');
 
-        // A public asset by id: its file, scaled.
         $engine = new CapturingEngine(new MpdfEngine($this->config()), $this->config()->tempDir);
-        $this->renderer('twig', $engine)->render(new BlocksDocument($body, ['id' => $public->id, 'options' => []]));
+        $this->renderer('twig', $engine)->render(new BlocksDocument($body, []));
+
+        // The source's file, scaled like any other image.
         $this->assertCount(1, $engine->scaledCopies);
+        $this->assertSame([1200, 600], array_slice((array) getimagesize($engine->scaledCopies[0]['file']), 0, 2));
+    }
+
+    public function test_private_asset_needs_allow_private(): void
+    {
+        $png = $this->image($this->dir . '/p.png', 300, 200);
+        $this->images = $this->source(['a1' => new PdfImage($png, '/m/p.png', true, true)]);
+        $body = $this->template('twig', 'asset', '{{ pdf_image(vars.id, vars.options) }}', '');
 
         try {
-            $renderer->render(new BlocksDocument($body, ['id' => $private->id, 'options' => []]));
+            $this->renderer('twig')->render(new BlocksDocument($body, ['id' => 'a1', 'options' => []]));
             $this->fail('A private asset should need allow_private');
         } catch (\Throwable $e) {
-            $cause = $this->cause($e, \InvalidArgumentException::class);
-            $this->assertStringContainsString('private', $cause->getMessage());
-            $this->assertStringContainsString('allow_private', $cause->getMessage());
+            $this->assertStringContainsString('allow_private: true', $this->cause($e, \InvalidArgumentException::class)->getMessage());
         }
 
         $engine = new CapturingEngine(new MpdfEngine($this->config()), $this->config()->tempDir);
-        $bytes = $this->renderer('twig', $engine)->render(new BlocksDocument($body, ['id' => $private->id, 'options' => ['allow_private' => true]]));
+        $bytes = $this->renderer('twig', $engine)->render(new BlocksDocument($body, ['id' => 'a1', 'options' => ['allow_private' => true]]));
         $this->assertStringStartsWith('%PDF', $bytes);
-        $this->assertStringContainsString('src="' . $library->file($private) . '"', $engine->html);
+        $this->assertStringContainsString('src="' . $png . '"', $engine->html);
+    }
+
+    public function test_unknown_asset_is_refused(): void
+    {
+        $this->images = $this->source([]);
+        $body = $this->template('twig', 'asset', "{{ pdf_image('no-such-asset') }}", '');
 
         try {
-            $renderer->render(new BlocksDocument($body, ['id' => 'no-such-asset', 'options' => []]));
+            $this->renderer('twig')->render(new BlocksDocument($body, []));
             $this->fail('An unknown asset id should throw');
         } catch (\Throwable $e) {
             $this->assertStringContainsString('no-such-asset', $this->cause($e, \InvalidArgumentException::class)->getMessage());
+        }
+    }
+
+    public function test_non_image_asset_is_refused(): void
+    {
+        $file = $this->dir . '/doc.pdf';
+        file_put_contents($file, '%PDF-1.4');
+        $this->images = $this->source(['a1' => new PdfImage($file, '/m/doc.pdf', false, false)]);
+        $body = $this->template('twig', 'asset', "{{ pdf_image('a1') }}", '');
+
+        try {
+            $this->renderer('twig')->render(new BlocksDocument($body, []));
+            $this->fail('A non-image asset should throw');
+        } catch (\Throwable $e) {
+            $this->assertStringContainsString('is not an image', $this->cause($e, \InvalidArgumentException::class)->getMessage());
+        }
+    }
+
+    public function test_asset_id_without_image_source_is_refused(): void
+    {
+        $body = $this->template('twig', 'asset', "{{ pdf_image('a1') }}", '');
+
+        try {
+            $this->renderer('twig')->render(new BlocksDocument($body, []));
+            $this->fail('An asset id without an image source should throw');
+        } catch (\Throwable $e) {
+            $this->assertSame(
+                "pdf_image: 'a1' is not an absolute file path, and nothing provides images by id (bind Preflow\\View\\Pdf\\PdfImageSource; preflow/media does).",
+                $this->cause($e, \InvalidArgumentException::class)->getMessage(),
+            );
         }
     }
 
@@ -321,20 +357,19 @@ final class BlocksTest extends TestCase
             ? new TwigEngine([$this->dir], $assets)
             : new BladeEngine(templateDirs: [$this->dir], assetCollector: $assets, cachePath: $this->dir . '/blade');
 
-        $library = $this->library;
-        $container = new class ($library) implements ContainerInterface {
-            public function __construct(private readonly ?MediaLibrary $library)
+        $container = new class ($this->images) implements ContainerInterface {
+            public function __construct(private readonly ?PdfImageSource $images)
             {
             }
 
             public function get(string $id): mixed
             {
-                return $id === MediaLibrary::class && $this->library !== null ? $this->library : throw new \LogicException("No {$id}");
+                return $id === PdfImageSource::class && $this->images !== null ? $this->images : throw new \LogicException("No {$id}");
             }
 
             public function has(string $id): bool
             {
-                return $id === MediaLibrary::class && $this->library !== null;
+                return $id === PdfImageSource::class && $this->images !== null;
             }
         };
         foreach ((new ViewExtensionProvider($container))->getTemplateFunctions() as $function) {
@@ -344,11 +379,20 @@ final class BlocksTest extends TestCase
         return $engine;
     }
 
-    private function mediaLibrary(): MediaLibrary
+    /** @param array<string, PdfImage> $images by id */
+    private function source(array $images): PdfImageSource
     {
-        $this->makeAssetRoot();
+        return new class ($images) implements PdfImageSource {
+            /** @param array<string, PdfImage> $images */
+            public function __construct(private readonly array $images)
+            {
+            }
 
-        return $this->library = $this->library(['private_dir' => $this->assetRoot . '/private']);
+            public function find(string $id): ?PdfImage
+            {
+                return $this->images[$id] ?? null;
+            }
+        };
     }
 
     private function template(string $ext, string $name, string $twig, string $blade): string
