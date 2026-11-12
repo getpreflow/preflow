@@ -37,7 +37,7 @@ final class MembersLayoutDefaultTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertStringNotContainsString('Site header', (string) $response->getBody());
-        $this->assertSame('@members/_layout.twig', $this->flow->container()->get(MembersConfig::class)->layout());
+        $this->assertSame('@members/_layout.twig', $this->flow->container()->get(MembersConfig::class)->layout($this->flow->container()->get(\Preflow\View\TemplateEngineInterface::class)));
     }
 
     #[RunInSeparateProcess]
@@ -49,7 +49,7 @@ final class MembersLayoutDefaultTest extends TestCase
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertStringContainsString('Site header', (string) $response->getBody());
-        $this->assertSame('@folio/frontend/_site.twig', $this->flow->container()->get(MembersConfig::class)->layout());
+        $this->assertSame('@folio/frontend/_site.twig', $this->flow->container()->get(MembersConfig::class)->layout($this->flow->container()->get(\Preflow\View\TemplateEngineInterface::class)));
     }
 
     #[RunInSeparateProcess]
@@ -57,6 +57,19 @@ final class MembersLayoutDefaultTest extends TestCase
     {
         $this->flowSite(['layout' => '@members/_layout.twig']);
 
-        $this->assertSame('@members/_layout.twig', $this->flow->container()->get(MembersConfig::class)->layout());
+        $this->assertSame('@members/_layout.twig', $this->flow->container()->get(MembersConfig::class)->layout($this->flow->container()->get(\Preflow\View\TemplateEngineInterface::class)));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_layout_is_found_whatever_order_the_providers_boot_in(): void
+    {
+        $this->flowSite();
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Members\\MembersServiceProvider::class, \\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class];\n");
+        $this->flow = $this->app();
+
+        $response = $this->send('GET', '/members/register');
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertStringContainsString('Site header', (string) $response->getBody());
     }
 }

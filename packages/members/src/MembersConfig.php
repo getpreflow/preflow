@@ -58,12 +58,17 @@ final class MembersConfig
     /** @var array<string, mixed> */
     private readonly array $config;
 
+    /** Whether config/members.php itself names the layout. */
+    private readonly bool $layoutSet;
+
     /**
      * @param array<string, mixed> $config the array config/members.php returns; nested groups merge key by key
      * @param array<string, mixed> $defaults a package's defaults ({@see MembersDefaults}), under the site's keys
+     * @param ?string $layoutCandidate a package's layout that {@see layout()} takes when the engine has it and the site names none
      */
-    public function __construct(array $config = [], array $defaults = [])
+    public function __construct(array $config = [], array $defaults = [], private readonly ?string $layoutCandidate = null)
     {
+        $this->layoutSet = array_key_exists('layout', $config);
         $config += $defaults;
         $merged = $config + self::DEFAULTS;
         foreach (['mail', 'throttle', 'retention', 'next'] as $group) {
@@ -81,11 +86,11 @@ final class MembersConfig
      *
      * @param array<string, mixed> $defaults a package's defaults, under the file's keys
      */
-    public static function fromFile(string $file, array $defaults = []): self
+    public static function fromFile(string $file, array $defaults = [], ?string $layoutCandidate = null): self
     {
         $config = is_file($file) ? require $file : [];
 
-        return new self(is_array($config) ? $config : [], $defaults);
+        return new self(is_array($config) ? $config : [], $defaults, $layoutCandidate);
     }
 
     /** Base path of the member pages, one leading slash and none trailing ("/members"). */
@@ -155,9 +160,17 @@ final class MembersConfig
         return $paths;
     }
 
-    /** The page layout the member templates extend. */
-    public function layout(): string
+    /**
+     * The page layout the member templates extend: the site's, else the package's candidate when
+     * $engine has that template (asked now, so the order the providers boot in does not matter),
+     * else the default.
+     */
+    public function layout(?\Preflow\View\TemplateEngineInterface $engine = null): string
     {
+        if (!$this->layoutSet && $this->layoutCandidate !== null && $engine?->exists($this->layoutCandidate) === true) {
+            return $this->layoutCandidate;
+        }
+
         return (string) $this->config['layout'];
     }
 

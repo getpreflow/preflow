@@ -60,7 +60,7 @@ final class MembersView
             'locale' => $locale,
             'alternates' => $this->alternates($request),
             'viewer' => $this->viewer,
-            'layout' => $this->config->layout(),
+            'layout' => $this->config->layout($this->engine),
             'base' => $this->links->local($locale),
             'landing' => $this->links->localize($locale, $this->config->landing()),
             'register' => $this->links->localize($locale, $this->config->register()),

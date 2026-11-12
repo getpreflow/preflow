@@ -142,13 +142,9 @@ final class FolioServiceProvider extends ServiceProvider
         }
         if (class_exists(\Preflow\Members\MembersDefaults::class)) {
             // The member pages keep the site's Folio page layout unless config/members.php names one;
-            // a site without that template (a fresh starter) gets the members' own standalone page.
-            // Built when the members config is first read, so the engine can tell whether the template exists.
-            $container->singleton(\Preflow\Members\MembersDefaults::class, static function (Container $c): \Preflow\Members\MembersDefaults {
-                $layout = '@folio/frontend/_site.twig';
-
-                return new \Preflow\Members\MembersDefaults($c->get(TemplateEngineInterface::class)->exists($layout) ? ['layout' => $layout] : []);
-            });
+            // a site without that template (a fresh starter) gets the members' own standalone page:
+            // the members check the template when a page renders, whatever order the providers boot in.
+            $container->instance(\Preflow\Members\MembersDefaults::class, new \Preflow\Members\MembersDefaults(layout: '@folio/frontend/_site.twig'));
         }
         if (interface_exists(\Preflow\Members\PageLocale::class)) {
             $container->singleton(\Preflow\Members\PageLocale::class, static fn (Container $c): \Preflow\Members\PageLocale => new \Preflow\Folio\Members\FolioPageLocale(

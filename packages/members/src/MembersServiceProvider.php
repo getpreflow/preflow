@@ -65,6 +65,7 @@ final class MembersServiceProvider extends ServiceProvider
         $container->singleton(MembersConfig::class, static fn (Container $c): MembersConfig => MembersConfig::fromFile(
             $c->get(Application::class)->basePath('config/members.php'),
             $c->bound(MembersDefaults::class) ? $c->get(MembersDefaults::class)->config : [],
+            $c->bound(MembersDefaults::class) ? $c->get(MembersDefaults::class)->layout : null,
         ));
         // Folio's members admin binds its own (Settings → Members), whichever provider registers first.
         if (!$container->bound(MembersSettings::class)) {
