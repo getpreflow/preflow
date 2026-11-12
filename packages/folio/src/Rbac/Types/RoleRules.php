@@ -212,8 +212,3 @@ final class RoleRules
         ];
     }
 }
-
-// The name before 0.69 (preflow/rbac), for one release (legacy-aliases.php).
-if (!class_exists('Preflow\\Rbac\\Types\\RoleRules', false)) {
-    class_alias(RoleRules::class, 'Preflow\\Rbac\\Types\\RoleRules');
-}

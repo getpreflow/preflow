@@ -65,7 +65,7 @@ final class RoleCommand implements CommandInterface
 
             return 1;
         }
-        $undeclared = DeclaredPermissions::undeclared($c->get(PermissionRegistry::class), $grant);
+        $undeclared = $c->bound(PermissionRegistry::class) ? DeclaredPermissions::undeclared($c->get(PermissionRegistry::class), $grant) : [];
         $allowUndeclared = in_array('--allow-undeclared', $args, true);
         if ($undeclared !== [] && !$allowUndeclared) {
             echo 'Not a declared permission: ' . implode(', ', $undeclared) . "; nothing changed. To grant them anyway, add --allow-undeclared.\n";

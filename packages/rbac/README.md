@@ -17,8 +17,7 @@ php preflow folio:extensions:apply
 - Add `Preflow\Rbac\RbacServiceProvider` to `config/providers.php`. Where it runs (and the site
   has `config/data.php`) it answers `can()` from the roles; Folio's extension switch only shows
   or hides the admin (`config/folio/extensions.json`).
-- The admin's classes moved into Folio in 0.69 (`Preflow\Folio\Rbac\…`); their old names
-  (`Preflow\Rbac\Extension`, `Fields\*`, `Types\*`, `NewPermissions*`) work until 0.70.
+- The admin's classes live in Folio (`Preflow\Folio\Rbac\…`).
 - `folio:extensions:apply` (run it on every deploy) seeds the roles on every run (since 0.53):
   - It creates the staff role `admin` ("Administrator", `*`) when no staff role exists.
   - If `config/roles.php` exists, it creates every role it defines that doesn't exist yet,
@@ -76,8 +75,9 @@ population), a label, a population (`staff` or `members`) and permissions.
   `folio:extensions:apply`) grants such a name anyway, so a deploy never depends on the order
   in which packages declare, and reports each: a line in the `rbac:install` and `migrate`
   output (each line once; the commands print them, nothing goes to stderr as well). With a
-  PSR-3 `LoggerInterface` bound, `RoleStore::seed()` also logs each at warning level:
-  `rbac: config/roles.php: "job.view" (staff role "editor") is not a declared permission; granted anyway.`
+  PSR-3 `LoggerInterface` bound, `RoleStore::seed()` also logs each at warning level (with the prefix `rbac: `).
+  The line as printed:
+  `config/roles.php: "job.view" (staff role "editor") is not a declared permission; granted anyway.`
 - Roles stored as a JSON string (as SQL returns a list) or a comma-separated string work.
 
 ## User types
@@ -231,7 +231,7 @@ Without Folio (or with Folio's part `model:staff` off), a site signs staff in wi
 
 ### Moving a config admin to staff
 
-`php preflow staff:import-config` (until 0.70 also `folio:staff:import-config`) creates a staff
+`php preflow staff:import-config` creates a staff
 record for each config user of the staff guard (directly, or inside a chain). The staff guard is
 `config/rbac.php` `'guard'`, else the one an admin names (Folio: `config/folio.php` `'guard'`,
 else the default guard), else the default guard. Both this and the config-user check above read

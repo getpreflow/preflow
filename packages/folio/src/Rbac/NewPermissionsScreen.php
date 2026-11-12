@@ -178,8 +178,3 @@ final class NewPermissionsScreen
         return new Response(302, ['Location' => $prefix . '/rbac_role']);
     }
 }
-
-// The name before 0.69 (preflow/rbac), for one release (legacy-aliases.php).
-if (!class_exists('Preflow\\Rbac\\NewPermissionsScreen', false)) {
-    class_alias(NewPermissionsScreen::class, 'Preflow\\Rbac\\NewPermissionsScreen');
-}

@@ -63,7 +63,7 @@ final class MembersBuiltInTest extends TestCase
     {
         // A site's installed.json written by Composer before this release still names the old class.
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [
-            ['name' => 'preflow/rbac', 'extra' => ['folio' => ['extension' => 'Preflow\\Rbac\\Extension']]],
+            ['name' => 'preflow/rbac'],
             ['name' => 'preflow/members', 'extra' => ['folio' => ['extension' => 'Preflow\\Members\\Extension']]],
         ]]));
 
@@ -152,7 +152,7 @@ final class MembersBuiltInTest extends TestCase
         $this->assertFalse(class_exists(\Preflow\Members\Members::class));
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class];\n");
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [
-            ['name' => 'preflow/rbac', 'extra' => ['folio' => ['extension' => 'Preflow\\Rbac\\Extension']]],
+            ['name' => 'preflow/rbac'],
         ]]));
         $this->write('config/folio/extensions.json', '{"enabled": {"rbac": {"disabled_parts": []}}}');
         $this->migrateAndApply();

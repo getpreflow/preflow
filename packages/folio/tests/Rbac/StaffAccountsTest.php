@@ -387,19 +387,4 @@ final class StaffAccountsTest extends TestCase
         $this->assertSame(404, $this->send('GET', '/folio/staff')->getStatusCode());
         $this->assertStringNotContainsString('/folio/staff', (string) $this->send('GET', '/folio')->getBody());
     }
-
-    /** A site's code naming the rules by their 0.68 name (holz's importer resolves them from the container) gets the same rules. */
-    #[RunInSeparateProcess]
-    public function test_the_old_name_of_the_staff_rules_resolves_from_the_container(): void
-    {
-        $this->setupAccounts();
-        $rules = $this->container()->get('Preflow\\Rbac\\Types\\StaffRules');
-        $this->assertInstanceOf(StaffRules::class, $rules);
-
-        $dm = $this->container()->get(DataManager::class);
-        $new = DynamicRecord::fromArray($dm->getTypeRegistry()->get('staff'), ['uuid' => 's-import', 'email' => 'Import@Site.test', 'roles' => []]);
-        $rules->beforeSave($new);
-        $this->assertSame('import@site.test', $new->get('email'));
-        $this->assertSame('0', $new->get('auth_epoch'));
-    }
 }

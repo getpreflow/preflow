@@ -22,7 +22,7 @@ final class ConfigUserProvider implements UserProviderInterface
 
     /**
      * The configured users as written (email, password_hash, roles) — for moving them into
-     * records (folio:staff:import-config); sign-in goes through findByCredentials.
+     * records (staff:import-config); sign-in goes through findByCredentials.
      *
      * @return list<array<string, mixed>>
      */

@@ -13,7 +13,7 @@ use Preflow\Folio\Storage\TableSync;
 /**
  * Run on every deploy: syncs Folio's tables (as `preflow migrate` does), then, for each enabled
  * extension, runs install() once when its installed version here differs from its version, and
- * seed() every run (silently: a run that installs nothing still says "nothing to do").
+ * seed() every run (silently: a run that installs nothing and seeds nothing to report still says "nothing to do").
  */
 final class ExtensionsApplyCommand implements CommandInterface
 {
@@ -42,7 +42,16 @@ final class ExtensionsApplyCommand implements CommandInterface
                 echo "installed {$definition->name} {$definition->version}" . ($installed === null ? '' : " (was {$installed})") . "\n";
                 $did = true;
             }
-            $extension->seed($c);
+            ob_start(); // a seed that prints a line (an undeclared permission) is something done too
+            try {
+                $extension->seed($c);
+            } finally {
+                $seeded = (string) ob_get_clean();
+            }
+            if ($seeded !== '') {
+                echo $seeded;
+                $did = true;
+            }
         }
         if (!$did) {
             echo "nothing to do\n";

@@ -33,7 +33,7 @@ trait MembersScaffold
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [
-            ['name' => 'preflow/rbac', 'extra' => ['folio' => ['extension' => 'Preflow\\Rbac\\Extension']]],
+            ['name' => 'preflow/rbac'],
             ['name' => 'preflow/members'], // its admin is Folio's built-in extension "members"
         ]]));
         $this->write('config/folio/extensions.json', '{"enabled": {"members": {"disabled_parts": []}, "rbac": {"disabled_parts": []}}}');

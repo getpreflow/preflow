@@ -72,14 +72,9 @@ final class Extension extends \Preflow\Folio\Extension\Extension
      */
     public function seed(Container $c): void
     {
-        $report = $c->get(RoleStore::class)->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->get(PermissionRegistry::class));
+        $report = $c->get(RoleStore::class)->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->bound(PermissionRegistry::class) ? $c->get(PermissionRegistry::class) : null);
         foreach ($report as $line) {
             echo $line . "\n";
         }
     }
-}
-
-// The name before 0.69 (preflow/rbac), for one release (legacy-aliases.php).
-if (!class_exists('Preflow\\Rbac\\Extension', false)) {
-    class_alias(Extension::class, 'Preflow\\Rbac\\Extension');
 }

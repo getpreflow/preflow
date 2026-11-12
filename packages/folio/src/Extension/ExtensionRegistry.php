@@ -36,7 +36,7 @@ final class ExtensionRegistry
     ];
 
     /** Extension classes packages declared before Folio carried them; an installed.json of then still names them. */
-    private const array MOVED = ['Preflow\\Members\\Extension', 'Preflow\\Codes\\Extension', 'Preflow\\Rbac\\Extension'];
+    private const array MOVED = ['Preflow\\Members\\Extension', 'Preflow\\Codes\\Extension'];
 
     /** @var array<string, ExtensionDefinition> by name, sorted */
     private array $extensions = [];

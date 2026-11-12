@@ -74,7 +74,7 @@ final class RoleType
         }
         $count = static fn (): int => array_sum(array_map(static fn (string $p): int => count($store->rolesFor($p)), RoleStore::POPULATIONS));
         $before = $count();
-        $report = $store->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->get(PermissionRegistry::class));
+        $report = $store->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->bound(PermissionRegistry::class) ? $c->get(PermissionRegistry::class) : null);
         $added = $count() - $before;
 
         return [...($added > 0 ? ["seeded {$added} rbac role" . ($added === 1 ? '' : 's')] : []), ...$report];

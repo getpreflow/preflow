@@ -229,8 +229,3 @@ final class NewPermissions
         return rtrim((string) (is_array($config) ? ($config['path'] ?? '/folio') : '/folio'), '/');
     }
 }
-
-// The name before 0.69 (preflow/rbac), for one release (legacy-aliases.php).
-if (!class_exists('Preflow\\Rbac\\NewPermissions', false)) {
-    class_alias(NewPermissions::class, 'Preflow\\Rbac\\NewPermissions');
-}

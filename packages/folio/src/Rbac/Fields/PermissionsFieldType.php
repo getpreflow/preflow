@@ -264,8 +264,3 @@ final class PermissionsFieldType implements FieldType
         return ['*', ...array_map('strval', array_keys($this->registry->all())), ...$this->registry->patterns()];
     }
 }
-
-// The name before 0.69 (preflow/rbac), for one release (legacy-aliases.php).
-if (!class_exists('Preflow\\Rbac\\Fields\\PermissionsFieldType', false)) {
-    class_alias(PermissionsFieldType::class, 'Preflow\\Rbac\\Fields\\PermissionsFieldType');
-}

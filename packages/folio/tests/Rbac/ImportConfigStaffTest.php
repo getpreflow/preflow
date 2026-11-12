@@ -10,11 +10,10 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Auth\UserProviderInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Rbac\Console\ImportConfigStaffAliasCommand;
 use Preflow\Rbac\Console\ImportConfigStaffCommand;
 
 /**
- * staff:import-config (until 0.70 also folio:staff:import-config): the config users of the staff guard (with Folio its
+ * staff:import-config: the config users of the staff guard (with Folio its
  * staff guard: folio.guard, else the default guard) become staff records with their password hash as is, roles mapped
  * by name to existing staff roles.
  */
@@ -110,11 +109,11 @@ final class ImportConfigStaffTest extends TestCase
     }
 
     /** @return array{0: int, 1: string} */
-    private function import(bool $oldName = false): array
+    private function import(): array
     {
         $factory = fn () => $this->session ??= $this->app();
-        $command = $oldName ? new ImportConfigStaffAliasCommand($factory) : new ImportConfigStaffCommand($factory);
-        $this->assertSame($oldName ? 'folio:staff:import-config' : 'staff:import-config', $command->getName());
+        $command = new ImportConfigStaffCommand($factory);
+        $this->assertSame('staff:import-config', $command->getName());
         ob_start();
         try {
             $code = $command->execute([]);
@@ -241,19 +240,6 @@ final class ImportConfigStaffTest extends TestCase
         $this->assertSame(1, $code);
         $this->assertStringContainsString("This site has no staff accounts: config/auth.php names no user provider of class Preflow\\Auth\\Record\\RecordUserProvider with 'type' => 'staff'.", $out);
         $this->assertStringNotContainsString('folio', strtolower($out));
-    }
-
-    #[RunInSeparateProcess]
-    public function test_the_old_name_still_imports_and_says_it_is_deprecated(): void
-    {
-        $this->site();
-
-        [$code, $out] = $this->import(oldName: true);
-
-        $this->assertSame(0, $code, $out);
-        $this->assertStringStartsWith("Note: \"folio:staff:import-config\" is deprecated; use \"staff:import-config\".\n", $out);
-        $this->assertSame(3, $this->staffCount());
-        $this->assertStringContainsString('staff:import-config — created 3, skipped 0', $out);
     }
 
     #[RunInSeparateProcess]

@@ -35,7 +35,7 @@ final class InstallCommand implements CommandInterface
         if ($c->bound(StaffType::class)) {
             $c->get(StaffType::class)->install($c->get(DataManager::class));
         }
-        $report = $store->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->get(PermissionRegistry::class));
+        $report = $store->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->bound(PermissionRegistry::class) ? $c->get(PermissionRegistry::class) : null);
         echo $was ? "rbac was installed already; roles seeded.\n" : "rbac installed.\n";
         foreach ($report as $line) {
             echo $line . "\n";

@@ -9,7 +9,8 @@
         "preflow/core": "^0.62 || @dev",
         "preflow/data": "^0.69 || @dev",
         "preflow/i18n": "^0.37 || @dev",
-        "preflow/notify": "^0.69 || @dev"
+        "preflow/notify": "^0.69 || @dev",
+        "psr/log": "^3.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
@@ -17,7 +18,6 @@
         "nyholm/psr7": "^1.8"
     },
     "suggest": {
-        "psr/log": "The seed's undeclared-permission warnings go to the app's bound Psr\\Log\\LoggerInterface",
         "preflow/devtools": "The rbac:* and staff:* commands (php preflow)",
         "preflow/folio": "The admin of roles and staff accounts (Folio's built-in extension \"rbac\")"
     },
@@ -54,8 +54,7 @@
                 "Preflow\\Rbac\\Console\\StaffResetCommand",
                 "Preflow\\Rbac\\Console\\StaffDisableCommand",
                 "Preflow\\Rbac\\Console\\StaffEnableCommand",
-                "Preflow\\Rbac\\Console\\ImportConfigStaffCommand",
-                "Preflow\\Rbac\\Console\\ImportConfigStaffAliasCommand"
+                "Preflow\\Rbac\\Console\\ImportConfigStaffCommand"
             ],
             "translations": {
                 "rbac": { "path": "lang", "scope": "admin" },

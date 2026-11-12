@@ -13,7 +13,7 @@ return [
         'unknown' => 'Rôle inconnu : :names.',
     ],
     'staff' => [
-        'no_sign_in' => 'Les comptes de l’équipe ne peuvent pas encore se connecter sur ce site : le guard staff n’a pas de fournisseur pour ces comptes.',
+        'no_sign_in' => 'Les comptes de l’équipe ne peuvent pas encore se connecter sur ce site : le guard par lequel l’équipe se connecte n’a pas de fournisseur pour ces comptes.',
         'no_app_url' => 'Définissez app.url pour envoyer des liens de connexion.',
         'config_email' => 'Cette adresse e-mail appartient à un administrateur configuré.',
         'has_password' => 'Ce compte a déjà un mot de passe. Envoyez plutôt un lien de réinitialisation.',

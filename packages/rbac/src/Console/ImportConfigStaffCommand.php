@@ -20,8 +20,7 @@ use Preflow\Rbac\StaffManagers;
  * hash as is (so the old password keeps working, now decided by the record), roles mapped by name
  * to the staff roles that exist (an unknown name is skipped with a warning; the rules would
  * refuse it), active from epoch "0". Safe to repeat: an e-mail with a record is skipped. Prints
- * one line per account, never a hash. Until 0.70 also as folio:staff:import-config
- * (ImportConfigStaffAliasCommand). The package lists it in composer.json (extra.preflow.commands).
+ * one line per account, never a hash. The package lists it in composer.json (extra.preflow.commands).
  */
 final class ImportConfigStaffCommand implements CommandInterface
 {

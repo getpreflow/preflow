@@ -227,7 +227,7 @@ you set up a staff guard as above.
 A guard that `config/auth.php` does not define stops the boot too.
 `Preflow\Folio\Users\StaffUsers` (a container service) gives packages the staff guard's name
 (`guard()`) and user provider (`provider()`, null without auth); preflow/rbac's config-user check
-and `folio:staff:import-config` read it, so they follow `'guard'` too. Folio marks its guard as
+and `staff:import-config` read it, so they follow `'guard'` too. Folio marks its guard as
 staff (`Access::markStaffGuard()`); preflow/members' `Viewer::isStaff()` counts a user of any staff
 guard, so it agrees with `guard`. A user signed in on another guard on the same request (an
 employer, a member) is sent to the admin login.

@@ -45,8 +45,3 @@ final class StaffRules
         }
     }
 }
-
-// The name before 0.69 (preflow/rbac), for one release (legacy-aliases.php).
-if (!class_exists('Preflow\\Rbac\\Types\\StaffRules', false)) {
-    class_alias(StaffRules::class, 'Preflow\\Rbac\\Types\\StaffRules');
-}

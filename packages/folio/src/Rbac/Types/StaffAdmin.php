@@ -237,8 +237,3 @@ final class StaffAdmin
         return new Response(302, ['Location' => $prefix . '/' . StaffManagers::TYPE . '/' . rawurlencode((string) $staff->getId()) . '/edit']);
     }
 }
-
-// The name before 0.69 (preflow/rbac), for one release (legacy-aliases.php).
-if (!class_exists('Preflow\\Rbac\\Types\\StaffAdmin', false)) {
-    class_alias(StaffAdmin::class, 'Preflow\\Rbac\\Types\\StaffAdmin');
-}
