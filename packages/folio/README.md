@@ -49,7 +49,7 @@ return [
 **Cache files:** Folio keeps `folio-extensions.cache` and
 `folio-translations-{locale}.php` in `storage/cache`. `config/folio.php` `'cache_path'` moves
 them (and, until the next release, preflow/blocks' `blocks.cache` when `config/blocks.php` names no
-`cache_path`): an absolute path is used as it is, a relative one is taken from the project root.
+`cache_path`; its old cache key `folio.blocks` still works with `cache:clear` until then): an absolute path is used as it is, a relative one is taken from the project root.
 Folio creates the directory when it writes. Core's own caches (`storage/cache/data`, compiled
 templates) are not affected. A test suite can point `cache_path` at a temp directory, so
 booting the app never writes into the project's cache:
@@ -757,7 +757,7 @@ sanitized on the way to the template, and in the live preview each block's root 
   (each logs a deprecation note; use `config/blocks.php` and `extra.preflow.blocks`).
 
 **On a content type:** `"sections": {"type": "blocks", "allowed": ["hero", "text"], "min": 1, "max": 10}`.
-How deep blocks nest is `config/blocks.php` `'max_depth'` (default 4).
+The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in all (default 4).
 
 **Storage:** an ordered list inside the record, so nothing extra to migrate.
 

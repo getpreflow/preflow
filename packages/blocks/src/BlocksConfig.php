@@ -10,7 +10,8 @@ use Preflow\Core\Application;
  * config/blocks.php (a missing file means the defaults):
  *
  *   'classes'    block classes to register besides app/Components and app/Blocks
- *   'max_depth'  how deep blocks nest (a blocks field inside a block is one level), default 4
+ *   'max_depth'  how many levels of blocks there are in all (a field's blocks are level 1, the blocks
+ *                in their blocks fields level 2, …), default 4; the editor enforces it, rendering notes it
  *   'cache_path' where blocks.cache is kept when debug is off: storage/cache, or a path
  *                (absolute, or relative to the project root)
  */

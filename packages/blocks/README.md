@@ -53,7 +53,7 @@ final class Banner extends BlockComponent
 ```
 
 - **`key`** is what the stored data names (`"_block": "banner"`). Keep it when you rename the
-  class, and the stored blocks stay yours. Two classes with the same key stop the boot.
+  class, and the stored blocks stay yours. Two classes with the same key fail when the registry is first built (the first page with blocks, the editor, or `preflow optimize`), naming both.
 - **`label`**, **`group`**, **`icon`** and **`description`** are for an editor (Folio's lists the
   blocks by group). A block without a group is in `Block::DEFAULT_GROUP` ("Blocks").
 - **`#[BlockField]`** takes the options of a type field: `type`, `label`, `help`, `translatable`,
@@ -101,7 +101,7 @@ A package brings its block types by being installed: list them in its `composer.
 }
 ```
 
-A listed class without `#[Block]` stops the boot naming the package. (`extra.folio.blocks`, the
+A listed class without `#[Block]` fails when the registry is first built (the first page with blocks, the editor, or `preflow optimize`), naming the package. (`extra.folio.blocks`, the
 name before 0.70, is still read by Folio until the next release.)
 
 ## Render
@@ -115,8 +115,9 @@ through its component, in order:
 
 - **Language:** translatable fields hold one value per language (`{"en": "…", "de": "…"}`); a block
   gets the value of the current locale (`BlockLocale`, below).
-- **Nesting:** a block template renders its own `blocks` fields with `blocks(children)`. Blocks
-  nested deeper than `max_depth` are not rendered.
+- **Nesting:** a block template renders its own `blocks` fields with `blocks(children)`. Every
+  level renders; stored blocks with more levels than `max_depth` (older data, an import) log one
+  warning per request (the site's PSR logger, else `error_log()`).
 - **Skipped:** unknown keys (a removed class), data-only blocks, and a block that can't be built
   (it is left out, never the page; the page cache doesn't store that page). A block that throws
   while rendering is contained by the component error boundary.
@@ -149,7 +150,7 @@ A blocks field is an ordered list inside the record; nothing extra to migrate:
 return [
     // Block classes besides app/Components, app/Blocks and the packages' (a block in vendor code, a test fixture).
     'classes' => [App\Content\Teaser::class],
-    // How deep blocks nest: a blocks field inside a block is one level.
+    // How many levels of blocks an editor saves in all: the field's own blocks are level 1, blocks in their blocks fields level 2, ….
     'max_depth' => 4,
     // Where blocks.cache is kept: storage/cache by default, or a path (absolute, or from the project root).
     'cache_path' => null,

@@ -24,8 +24,8 @@ use Preflow\View\TemplateFunctionDefinition;
  *
  * The registry is a boot-manifest catalog ("blocks"); without a manifest it is cached in
  * blocks.cache when debug is off (Settings → Cache and cache:clear list it). The renderer
- * asks BlockLocale, BlockTextCleaner and BlockPreviewMarks, bound here to plain defaults
- * unless the app (or Folio) binds its own.
+ * asks BlockLocale, BlockTextCleaner and BlockPreviewMarks: a provider (the app's, Folio)
+ * binds its own in register(), and boot() binds the plain defaults for the rest.
  *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -36,20 +36,8 @@ final class BlocksServiceProvider extends ServiceProvider
         $app = $container->get(Application::class);
 
         $container->singleton(BlocksConfig::class, static fn (): BlocksConfig => BlocksConfig::fromApp($app));
-        if (!$container->bound(BlockLocale::class)) {
-            $container->singleton(BlockLocale::class, static fn (Container $c): BlockLocale => new DefaultBlockLocale(
-                self::locales($c),
-                static fn (): ?string => self::translatorLocale($c),
-            ));
-        }
-        if (!$container->bound(BlockTextCleaner::class)) {
-            $container->singleton(BlockTextCleaner::class, static fn (): BlockTextCleaner => new DefaultBlockTextCleaner());
-        }
-        if (!$container->bound(BlockPreviewMarks::class)) {
-            $container->singleton(BlockPreviewMarks::class, static fn (): BlockPreviewMarks => new DefaultBlockPreviewMarks());
-        }
 
-        // Built once per request (discovery reflects over every component); conflicting keys fail at boot.
+        // Built once per request (discovery reflects over every component); conflicting keys fail when it is built.
         $container->singleton(BlockRegistry::class, static function (Container $c) use ($app): BlockRegistry {
             $config = $c->get(BlocksConfig::class);
             try {
@@ -80,11 +68,26 @@ final class BlocksServiceProvider extends ServiceProvider
             $c->get(BlockTextCleaner::class),
             $c->get(BlockPreviewMarks::class),
             $c->get(BlocksConfig::class)->maxDepth,
+            static fn (string $message) => self::note($c, $message),
         ));
     }
 
     public function boot(Container $container): void
     {
+        // The defaults, where no provider (the app's, Folio) bound its own in register().
+        if (!$container->bound(BlockLocale::class)) {
+            $container->singleton(BlockLocale::class, static fn (Container $c): BlockLocale => new DefaultBlockLocale(
+                $c->get(Locales::class),
+                static fn (): ?string => self::translatorLocale($c),
+            ));
+        }
+        if (!$container->bound(BlockTextCleaner::class)) {
+            $container->singleton(BlockTextCleaner::class, static fn (): BlockTextCleaner => new DefaultBlockTextCleaner());
+        }
+        if (!$container->bound(BlockPreviewMarks::class)) {
+            $container->singleton(BlockPreviewMarks::class, static fn (): BlockPreviewMarks => new DefaultBlockPreviewMarks());
+        }
+
         // In boot: the cache file follows config that a provider registered after this one may set.
         $container->get(CacheRegistry::class)->register(new FileCache('blocks', 'Blocks', $container->get(BlocksConfig::class)->cacheFile));
 
@@ -132,13 +135,16 @@ final class BlocksServiceProvider extends ServiceProvider
         return $classes;
     }
 
-    private static function locales(Container $c): Locales
+    /** A warning for the site's log (its PSR logger, error_log() without one). */
+    private static function note(Container $c, string $message): void
     {
-        try {
-            return $c->get(Locales::class);
-        } catch (\Throwable) {
-            return Locales::single('en');
+        $logger = 'Psr\Log\LoggerInterface';
+        if (interface_exists($logger) && $c->bound($logger)) {
+            $c->get($logger)->warning($message);
+
+            return;
         }
+        error_log($message);
     }
 
     private static function translatorLocale(Container $c): ?string

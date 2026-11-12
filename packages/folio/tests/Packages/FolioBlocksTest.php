@@ -111,6 +111,33 @@ final class FolioBlocksTest extends TestCase
         $this->assertContains('folio_blocks() is now blocks() (preflow/blocks); the old name is removed in the next release.', $app->container()->get(DebugCollector::class)->getDeprecations());
     }
 
+    public function test_an_app_s_own_binding_is_kept(): void
+    {
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\OwnBlockCleanerProvider::class, \\Preflow\\Folio\\FolioServiceProvider::class];\n");
+        $c = $this->app()->container();
+
+        $this->assertNotInstanceOf(SafeRichText::class, $c->get(BlockTextCleaner::class));
+        $this->assertSame($c->get(ContentLocale::class), $c->get(BlockLocale::class), 'what the app did not bind is still Folio\'s');
+    }
+
+    public function test_cache_clear_of_the_old_key_clears_the_blocks_cache_with_a_note(): void
+    {
+        $this->write('storage/cache/blocks.cache', 'blocks');
+        $app = $this->app();
+
+        ob_start();
+        $exit = (new \Preflow\DevTools\Command\CacheClearCommand(static fn () => $app))->execute(['folio.blocks']);
+        $out = (string) ob_get_clean();
+
+        $this->assertSame(0, $exit, $out);
+        $this->assertStringContainsString('Note: the cache folio.blocks is now blocks; the old key is deprecated, use the new one.', $out);
+        $this->assertStringContainsString('Cleared blocks: 1 file(s)', $out);
+        $this->assertFileDoesNotExist($this->dir . '/storage/cache/blocks.cache');
+        $keys = array_map(static fn ($s): string => $s->key(), $app->container()->get(\Preflow\Core\Cache\CacheRegistry::class)->all());
+        $this->assertContains('blocks', $keys);
+        $this->assertNotContains('folio.blocks', $keys, 'Settings → Cache lists it once');
+    }
+
     /** @param array<string, array<string, mixed>> $extras package name => composer extra */
     private function packages(array $extras): void
     {

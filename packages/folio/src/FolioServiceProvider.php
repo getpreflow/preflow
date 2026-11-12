@@ -194,11 +194,16 @@ final class FolioServiceProvider extends ServiceProvider
         $container->singleton(\Preflow\Blocks\BlocksConfig::class, function (Container $c) use ($app, $folioCfg): \Preflow\Blocks\BlocksConfig {
             return \Preflow\Blocks\BlocksConfig::fromApp($app, $this->legacyBlocksConfig($c, $app, $folioCfg));
         });
-        $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks());
+        // Folio's answers to the blocks' questions, unless the app bound its own (preflow/blocks fills the rest at boot).
+        if (!$container->bound(\Preflow\Blocks\BlockPreviewMarks::class)) {
+            $container->singleton(\Preflow\Blocks\BlockPreviewMarks::class, static fn (): \Preflow\Blocks\BlockPreviewMarks => new \Preflow\Folio\Content\FolioBlockPreviewMarks());
+        }
 
         // Rebuilt on the next request; Settings → Cache and cache:clear list it (and the blocks cache, preflow/blocks').
         $caches = $container->get(\Preflow\Core\Cache\CacheRegistry::class);
         $caches->register(new \Preflow\Core\Cache\FileCache('folio.extensions', 'Folio extensions', $this->cacheDir($app) . '/folio-extensions.cache'));
+        // The blocks cache was Folio's "folio.blocks" before 0.70: deploy scripts that clear it keep working until the next release.
+        $caches->rename('folio.blocks', 'blocks');
         // Admin text overrides (Settings → Translations), compiled per locale.
         $overridesCache = new \Preflow\Folio\Translations\OverridesCache($this->cacheDir($app));
         $container->instance(\Preflow\Folio\Translations\OverridesCache::class, $overridesCache);
@@ -211,8 +216,10 @@ final class FolioServiceProvider extends ServiceProvider
         // One request-scoped content locale shared by the frontend, preview and field types.
         $contentLocale = new ContentLocale($locales ?? \Preflow\Data\Locales::single('en'));
         $container->instance(ContentLocale::class, $contentLocale);
-        // Blocks render in it too (preflow/blocks asks BlockLocale).
-        $container->instance(\Preflow\Blocks\BlockLocale::class, $contentLocale);
+        // Blocks render in it too (preflow/blocks asks BlockLocale), unless the app bound its own.
+        if (!$container->bound(\Preflow\Blocks\BlockLocale::class)) {
+            $container->instance(\Preflow\Blocks\BlockLocale::class, $contentLocale);
+        }
         // GEO renders pages internally (Markdown views): each keeps its content locale to itself.
         if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
             $container->get(\Preflow\View\Geo\RenderScopes::class)->add(
@@ -847,7 +854,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(BlockRegistry::class),
         ));
         // Blocks get their rich text sanitized on the way to their templates.
-        $container->singleton(\Preflow\Blocks\BlockTextCleaner::class, static fn (Container $c): \Preflow\Blocks\BlockTextCleaner => $c->get(\Preflow\Folio\Content\SafeRichText::class));
+        if (!$container->bound(\Preflow\Blocks\BlockTextCleaner::class)) {
+            $container->singleton(\Preflow\Blocks\BlockTextCleaner::class, static fn (Container $c): \Preflow\Blocks\BlockTextCleaner => $c->get(\Preflow\Folio\Content\SafeRichText::class));
+        }
         $container->bind(\Preflow\Folio\Http\BlockEditorController::class, fn (Container $c) => new \Preflow\Folio\Http\BlockEditorController(
             $c->get(FieldTypeRegistry::class),
             $locales ?? \Preflow\Data\Locales::single('en'),

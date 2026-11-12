@@ -90,34 +90,56 @@ final class BlocksAppTest extends BlocksAppTestCase
         $this->assertFalse($this->app()->container()->get(BlockRenderer::class)->inPreview(), 'preview ends with the render');
     }
 
-    public function test_blocks_nested_deeper_than_max_depth_are_not_rendered(): void
+    public function test_blocks_nested_deeper_than_max_depth_render_with_one_note(): void
     {
         $this->write('config/blocks.php', "<?php\nreturn ['max_depth' => 2];\n");
+        $log = $this->logger();
         $page = [['_uid' => 'l1', '_block' => 'banner', 'title' => 'One', 'children' => [
             ['_uid' => 'l2', '_block' => 'banner', 'title' => 'Two', 'children' => [
                 ['_uid' => 'l3', '_block' => 'banner', 'title' => 'Three'],
+                ['_uid' => 'l3b', '_block' => 'banner', 'title' => 'Three too'],
             ]],
         ]]];
 
         $html = $this->render('{{ blocks(page) }}', ['page' => $page]);
 
         $this->assertSame(2, $this->app()->container()->get(BlocksConfig::class)->maxDepth);
-        $this->assertStringContainsString('<h2>One</h2>', $html);
-        $this->assertStringContainsString('<h2>Two</h2>', $html);
-        $this->assertStringNotContainsString('Three', $html);
+        foreach (['One', 'Two', 'Three', 'Three too'] as $title) {
+            $this->assertStringContainsString("<h2>{$title}</h2>", $html, 'every level renders, as before 0.70');
+        }
+        $this->assertSame(['Blocks are nested 3 levels deep, deeper than max_depth (2): block "banner" (l3). They render; the editor saves at most max_depth levels (config/blocks.php).'], $log->messages, 'once per request');
     }
 
-    public function test_max_depth_defaults_to_four(): void
+    public function test_four_levels_need_no_note_with_the_default_max_depth(): void
     {
-        $level = ['_uid' => 'l5', '_block' => 'banner', 'title' => 'Five'];
-        foreach (['Four', 'Three', 'Two', 'One'] as $i => $title) {
-            $level = ['_uid' => 'l' . (4 - $i), '_block' => 'banner', 'title' => $title, 'children' => [$level]];
+        $log = $this->logger();
+        $level = ['_uid' => 'l4', '_block' => 'banner', 'title' => 'Four'];
+        foreach (['Three', 'Two', 'One'] as $i => $title) {
+            $level = ['_uid' => 'l' . (3 - $i), '_block' => 'banner', 'title' => $title, 'children' => [$level]];
         }
 
         $html = $this->render('{{ blocks(page) }}', ['page' => [$level]]);
 
         $this->assertStringContainsString('<h2>Four</h2>', $html);
-        $this->assertStringNotContainsString('Five', $html);
+        $this->assertSame([], $log->messages);
+        $this->assertSame(4, $this->app()->container()->get(BlocksConfig::class)->maxDepth);
+    }
+
+    /** The site's logger, bound before the renderer is built. */
+    private function logger(): object
+    {
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<string> */
+            public array $messages = [];
+
+            public function log($level, string|\Stringable $message, array $context = []): void
+            {
+                $this->messages[] = (string) $message;
+            }
+        };
+        $this->app()->container()->instance(\Psr\Log\LoggerInterface::class, $logger);
+
+        return $logger;
     }
 
     public function test_the_default_locale_is_the_request_s_and_the_default_cleaner_keeps_values(): void

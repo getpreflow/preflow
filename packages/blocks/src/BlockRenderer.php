@@ -12,7 +12,8 @@ use Preflow\Data\LocaleValue;
  * Renders a blocks field through the blocks' own components, in the BlockLocale's
  * locale. Unknown and data-only blocks are skipped (data-only blocks are rendered by
  * their parent's template); a block that throws is contained by the component error
- * boundary. Blocks nested deeper than $maxDepth are not rendered.
+ * boundary. Blocks nested deeper than $maxDepth (more block levels than the editor saves)
+ * still render; $note reports it once per request.
  *
  * Preview mode reaches nested blocks: while a preview render runs, a block template
  * that renders its children with blocks(items) previews them too, and each block's
@@ -25,6 +26,8 @@ final class BlockRenderer
     /** How many blocks are rendering now (a blocks() call inside a block's template is one level deeper). */
     private int $depth = 0;
 
+    private bool $notedDepth = false;
+
     public function __construct(
         private readonly BlockRegistry $blocks,
         private readonly ComponentRenderer $renderer,
@@ -33,6 +36,7 @@ final class BlockRenderer
         private readonly BlockTextCleaner $cleaner = new DefaultBlockTextCleaner(),
         private readonly BlockPreviewMarks $previewMarks = new DefaultBlockPreviewMarks(),
         private readonly int $maxDepth = BlocksConfig::DEFAULT_MAX_DEPTH,
+        private readonly ?\Closure $note = null,
     ) {}
 
     /** True while a preview render (of any depth) is running. */
@@ -47,7 +51,7 @@ final class BlockRenderer
         if (is_string($blocks) && $blocks !== '') {
             $blocks = json_decode($blocks, true);
         }
-        if (!is_array($blocks) || $this->depth >= $this->maxDepth) {
+        if (!is_array($blocks)) {
             return '';
         }
         $blocks = LocaleValue::resolveTree($blocks, $this->locale->locales(), $this->locale->get());
@@ -67,8 +71,19 @@ final class BlockRenderer
     {
         $preview = $preview || $this->inPreview();
         $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
-        if ($definition === null || !$definition->isComponent || $this->depth >= $this->maxDepth) {
+        if ($definition === null || !$definition->isComponent) {
             return '';
+        }
+        if ($this->depth >= $this->maxDepth && !$this->notedDepth && $this->note !== null) {
+            // Rendered as before 0.70 (no limit); the editor keeps max_depth for what it saves.
+            $this->notedDepth = true;
+            ($this->note)(sprintf(
+                'Blocks are nested %d levels deep, deeper than max_depth (%d): block "%s" (%s). They render; the editor saves at most max_depth levels (config/blocks.php).',
+                $this->depth + 1,
+                $this->maxDepth,
+                $definition->key,
+                (string) ($block['_uid'] ?? ''),
+            ));
         }
 
         // Values reach the block's template cleaned (rich text sanitized), nested blocks included.

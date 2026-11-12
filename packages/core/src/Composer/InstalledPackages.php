@@ -69,7 +69,7 @@ final class InstalledPackages
     }
 
     /**
-     * A value of a package's `extra` by dotted path ('folio.blocks', 'preflow.translations'),
+     * A value of a package's `extra` by dotted path ('preflow.blocks', 'preflow.translations'),
      * null when the package does not declare it.
      *
      * @param array<string, mixed> $package one entry of read()

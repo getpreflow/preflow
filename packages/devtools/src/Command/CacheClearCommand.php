@@ -44,7 +44,11 @@ final class CacheClearCommand implements CommandInterface
                     }
                 }
                 foreach ($keys as $key) {
-                    $this->report($key, $registry->get($key)->clear());
+                    $renamed = $registry->renamedTo($key);
+                    if ($renamed !== null) {
+                        echo "Note: the cache {$key} is now {$renamed}; the old key is deprecated, use the new one.\n";
+                    }
+                    $this->report($renamed ?? $key, $registry->get($key)->clear());
                 }
                 return 0;
             }

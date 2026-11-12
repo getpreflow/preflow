@@ -33,6 +33,21 @@ final class CacheRegistryTest extends TestCase
         $this->assertSame([$b, $a], $registry->all());
     }
 
+    public function test_a_renamed_key_finds_the_source_and_is_listed_once(): void
+    {
+        $registry = new CacheRegistry();
+        $registry->rename('folio.blocks', 'blocks'); // before the source is registered
+        $blocks = $this->source('blocks');
+        $registry->register($blocks);
+
+        $this->assertSame($blocks, $registry->get('folio.blocks'));
+        $this->assertSame('blocks', $registry->renamedTo('folio.blocks'));
+        $this->assertNull($registry->renamedTo('blocks'));
+        $this->assertSame([$blocks], $registry->all());
+        $this->assertSame(['blocks'], array_keys($registry->clearAll()));
+        $this->assertNull((new CacheRegistry())->get('folio.blocks'), 'nothing under an old key without its source');
+    }
+
     public function test_a_duplicate_key_throws(): void
     {
         $registry = new CacheRegistry();
