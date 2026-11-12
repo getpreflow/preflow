@@ -543,7 +543,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     and `folio:extensions:apply` need nothing else. With rbac installed, staff invite/reset mails use `rbac-mail.*`,
     and rbac's admin texts moved to `rbac-admin.*`: move overrides of `folio.mail.invite|reset.*` and of those keys
     (and `*_without_site` texts are new). "Installed" now means the `rbac_role` table exists, not Folio's extension
-    state. `Preflow\Rbac\Types\StaffRules`'s constructor changed (resolve it from the container). Forgot-password
+    state. `Preflow\Rbac\Types\StaffRules`'s constructor changed (resolve it from the container). `new RbacResolver($store)` takes only the role store (the Folio `ExtensionState` argument is gone). Forgot-password
     failures log `rbac:`. Constraints: folio and rbac conflict each other <0.69; both require auth and notify ^0.69;
     rbac requires data ^0.69.
 - **Members on a fresh Folio site (v0.68.1, released 2026-11-12):** found by the 0.68 docs. Folio offered
