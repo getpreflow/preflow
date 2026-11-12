@@ -2,7 +2,7 @@
 
 return [
     \Preflow\Folio\FolioServiceProvider::class,
-    // After Folio: roles answer Folio's permission questions from config/roles.php.
-    \Preflow\Roles\RolesServiceProvider::class,
+    // After Folio: rbac answers Folio's permission questions from the stored roles, and keeps the staff accounts.
+    \Preflow\Rbac\RbacServiceProvider::class,
     \App\Providers\AppServiceProvider::class,
 ];

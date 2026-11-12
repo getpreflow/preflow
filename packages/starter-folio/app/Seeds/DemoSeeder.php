@@ -7,7 +7,6 @@ namespace App\Seeds;
 use App\Jobs\Slugs;
 use App\Models\Company;
 use App\Models\Job;
-use App\Models\Staff;
 use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Config\Config;
@@ -20,7 +19,7 @@ use Preflow\Media\MediaLibrary;
 
 /**
  * Seven fictional companies with logos, forty jobs (34 published through Folio, 6 drafts), three
- * news posts with images, one demo employer and two staff accounts, so a fresh install has
+ * news posts with images, one demo employer and two staff accounts (rbac's staff type: `preflow rbac:install` runs before it), so a fresh install has
  * something to show. Ids and dates are fixed: running it again updates the same rows and
  * publishes only what changed.
  */
@@ -129,14 +128,17 @@ final class DemoSeeder
         $hasher = new NativePasswordHasher();
         $n = 0;
         foreach (self::STAFF as $email => [$password, $roles]) {
-            $staff = new Staff();
-            $staff->uuid = md5('starter-staff-' . ++$n);
-            $staff->email = $email;
-            $staff->password_hash = $hasher->hash($password);
-            $staff->roles = $roles;
-            $staff->name = 'Demo ' . ucfirst($roles[0]);
-            $staff->created_at = '2026-09-01 08:00:00';
-            $data->save($staff);
+            // rbac's staff type (a record without a PHP class); loaded first, so a rerun updates the same account.
+            $uuid = md5('starter-staff-' . ++$n);
+            $staff = $data->findType('staff', $uuid) ?? DynamicRecord::fromArray($data->getTypeRegistry()->get('staff'), ['uuid' => $uuid]);
+            $staff->set('email', $email);
+            $staff->set('name', 'Demo ' . ucfirst($roles[0]));
+            $staff->set('password_hash', $hasher->hash($password));
+            $staff->set('roles', $roles);
+            $staff->set('active', true);
+            $staff->set('auth_epoch', '0');
+            $staff->set('created_at', '2026-09-01 08:00:00');
+            $data->saveType($staff, false);
         }
 
         $user = new User();

@@ -1,1 +1,1 @@
-{"enabled": {"jobs": {"disabled_parts": []}}}
+{"enabled": {"jobs": {"disabled_parts": []}, "rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}}}

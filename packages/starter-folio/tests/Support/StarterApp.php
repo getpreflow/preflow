@@ -99,6 +99,7 @@ trait StarterApp
         $installed = (string) @file_get_contents($this->starterRoot . '/vendor/composer/installed.json');
         $this->snapshots->step('seeded ' . hash('xxh3', $installed), function (): bool {
             $this->console('migrate');
+            $this->console('rbac:install');
             $this->console('db:seed');
 
             return true;

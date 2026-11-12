@@ -1,6 +1,8 @@
 <?php
 
-// Staff roles (preflow/roles). A staff account's roles come from its `roles` field.
+// Seed roles for preflow/rbac: `php preflow rbac:install` (and `preflow migrate`, `folio:extensions:apply`)
+// create each one that does not exist yet; after that the stored roles decide (edit them in Folio under
+// Settings → Roles, or with `preflow rbac:role`). A staff account's roles come from its `roles` field.
 // Permissions are "<type>.<action>" (view, create, edit, publish, delete) for each Folio type,
 // plus Folio's own (folio.dashboard, assets.*, ...). '*' grants everything, including the
 // screens only an admin should see (extensions, cache, redirects, translations).

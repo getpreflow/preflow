@@ -5,5 +5,4 @@
 return [
     ...\Preflow\Folio\Console\FolioCommands::all(),
     App\Console\EmployerCreateCommand::class,
-    App\Console\StaffCreateCommand::class,
 ];

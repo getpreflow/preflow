@@ -6,7 +6,6 @@ namespace Tests\Site;
 
 use App\Models\Company;
 use App\Models\Job;
-use App\Models\Staff;
 use App\Models\User;
 use App\Seeds\DemoSeeder;
 use PHPUnit\Framework\TestCase;
@@ -16,6 +15,7 @@ use Preflow\Folio\Publishing\PublishedModels;
 use Preflow\Folio\Publishing\Publisher;
 use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\MediaLibrary;
+use Preflow\Rbac\RoleList;
 use Tests\Support\StarterApp;
 
 final class SeedTest extends TestCase
@@ -110,7 +110,7 @@ final class SeedTest extends TestCase
         $this->assertSame(40, $this->total(Job::class));
         $this->assertSame(34, $this->published(Job::class));
         $this->assertSame(1, $this->total(User::class));
-        $this->assertSame(2, $this->total(Staff::class));
+        $this->assertSame(2, $this->data()->queryType('staff')->get()->total());
         $this->assertCount(3, $this->publishedNews());
     }
 
@@ -165,7 +165,7 @@ final class SeedTest extends TestCase
         $this->assertSame(40, $this->total(Job::class));
         $this->assertSame(34, $this->published(Job::class));
         $this->assertSame(1, $this->total(User::class));
-        $this->assertSame(2, $this->total(Staff::class));
+        $this->assertSame(2, $this->data()->queryType('staff')->get()->total());
         $this->assertCount(3, $this->publishedNews());
         $this->assertSame(3, $this->data()->queryType('news')->get()->total());
         $this->assertSame($assets, count($this->container()->get(MediaLibrary::class)->all()), 'the logos and news images are imported once');
@@ -237,7 +237,7 @@ final class SeedTest extends TestCase
         $this->assertNotNull($publisher->snapshot('page', md5('starter-page-1')), 'the home page is published');
         $this->assertSame([], $this->publishedNews(), 'news is demo content');
         $this->assertSame(0, $this->total(User::class));
-        $this->assertSame(0, $this->total(Staff::class));
+        $this->assertSame(0, $this->data()->queryType('staff')->get()->total());
         $this->assertSame(0, $this->total(Job::class));
 
         // The content seeder skips what exists: staff may have changed the text since.
@@ -259,10 +259,10 @@ final class SeedTest extends TestCase
         $this->assertSame('Northwind Labs', $this->data()->find(Company::class, $user->company)?->name);
 
         foreach (['admin@example.com' => ['demo-admin', ['admin']], 'editor@example.com' => ['demo-editor', ['editor']]] as $email => [$password, $roles]) {
-            $staff = $this->data()->query(Staff::class)->where('email', $email)->first();
+            $staff = $this->data()->queryType('staff')->where('email', $email)->first();
             $this->assertNotNull($staff, $email);
-            $this->assertTrue(password_verify($password, $staff->password_hash), $email);
-            $this->assertSame($roles, $staff->roles);
+            $this->assertTrue(password_verify($password, $staff->get('password_hash')), $email);
+            $this->assertSame($roles, RoleList::normalize($staff->get('roles')));
         }
 
         [, $output] = $this->seed();
@@ -295,6 +295,6 @@ final class SeedTest extends TestCase
         $this->assertStringContainsString('Demo data is only seeded while APP_DEBUG is on.', $output);
         $this->assertSame(0, $this->total(Job::class));
         $this->assertSame(0, $this->total(User::class));
-        $this->assertSame(0, $this->total(Staff::class));
+        $this->assertSame(0, $this->data()->queryType('staff')->get()->total());
     }
 }

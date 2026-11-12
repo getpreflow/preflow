@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Site;
 
-use App\Console\StaffCreateCommand;
-use App\Models\Staff;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
+use Preflow\DevTools\Console;
+use Preflow\Rbac\RoleList;
+use Preflow\Rbac\Staff\StaffAccounts;
 use Tests\Support\StarterApp;
 
 /**
@@ -95,45 +96,65 @@ final class FolioAccessTest extends TestCase
         $this->get('/employer', ['Cookie' => $this->cookieHeader($cookies)])->assertRedirect('/employer/login?next=%2Femployer');
     }
 
-    public function test_staff_create_command(): void
+    /** Folio carries rbac's admin: an admin lists staff and roles. */
+    public function test_admin_opens_the_staff_and_roles_screens(): void
     {
-        [$code, $output] = $this->runStaffCreate(['new@example.com', '--role=editor']);
+        $admin = ['Cookie' => $this->cookieHeader($this->signInStaff('admin@example.com', 'demo-admin'))];
 
-        $this->assertSame(0, $code, $output);
-        $this->assertSame(1, preg_match('/^Created new@example\.com \(editor\)\. Password \(shown once\): ([0-9a-f]{18})$/m', $output, $match), $output);
-        $this->assertSame(1, substr_count($output, $match[1]));
-        $staff = $this->container()->get(DataManager::class)->query(Staff::class)->where('email', 'new@example.com')->first();
-        $this->assertSame(['editor'], $staff->roles);
-        $this->assertTrue(password_verify($match[1], $staff->password_hash));
-
-        // The new account signs in to Folio with the printed password.
-        $cookies = $this->signInStaff('new@example.com', $match[1]);
-        $this->get('/folio/job', ['Cookie' => $this->cookieHeader($cookies)])->assertOk();
-
-        [$code, $output] = $this->runStaffCreate(['other@example.com', '--role=owner']);
-        $this->assertSame(1, $code);
-        $this->assertStringContainsString('Role must be one of: admin, editor.', $output);
-
-        [$code, $output] = $this->runStaffCreate(['NEW@example.com', '--role=admin']);
-        $this->assertSame(1, $code);
-        $this->assertStringContainsString('already exists', $output);
-        $this->assertStringNotContainsString('Password', $output);
+        $this->assertStringContainsString('editor@example.com', $this->get('/folio/staff', $admin)->assertOk()->body());
+        $this->assertStringContainsString('Editor', $this->get('/folio/rbac_role', $admin)->assertOk()->body());
     }
 
-    /** Any staff role the app defines: one added to config/roles.php (or made in Folio with rbac) too. */
+    /** An editor has no staff.* or rbac_role.* permissions. */
+    public function test_editor_cannot_open_the_staff_and_roles_screens(): void
+    {
+        $editor = ['Cookie' => $this->cookieHeader($this->signInStaff('editor@example.com', 'demo-editor'))];
+
+        $this->assertSame(403, $this->get('/folio/staff', $editor)->status());
+        $this->assertSame(403, $this->get('/folio/rbac_role', $editor)->status());
+    }
+
+    /** staff:create (rbac's) makes an account without a password; once one is set, it signs in with its roles. */
+    public function test_staff_create_command(): void
+    {
+        [$code, $output] = $this->runConsole('staff:create', 'new@example.com', '--name=Nina', '--role=editor');
+
+        $this->assertSame(0, $code, $output);
+        $this->assertStringContainsString('Created staff account new@example.com (editor)', $output);
+        $accounts = $this->container()->get(StaffAccounts::class);
+        $staff = $accounts->find('new@example.com');
+        $this->assertSame(['editor'], RoleList::normalize($staff->get('roles')));
+        $this->assertSame('', (string) $staff->get('password_hash'), 'no password yet');
+
+        // Without a password the account cannot sign in.
+        $cookies = $this->signInStaff('new@example.com', 'a-long-password');
+        $this->get('/folio/job', ['Cookie' => $this->cookieHeader($cookies)])->assertRedirect('/folio/login');
+
+        $accounts->setPassword($staff, 'a-long-password');
+        $cookies = $this->signInStaff('new@example.com', 'a-long-password');
+        $this->get('/folio/job', ['Cookie' => $this->cookieHeader($cookies)])->assertOk();
+
+        [$code, $output] = $this->runConsole('staff:create', 'other@example.com', '--role=owner');
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('owner', $output);
+
+        [$code, $output] = $this->runConsole('staff:create', 'NEW@example.com', '--role=admin');
+        $this->assertSame(1, $code);
+        $this->assertNull($accounts->find('other@example.com'));
+    }
+
+    /** Any staff role the app defines: one added to config/roles.php is seeded by rbac:install. */
     public function test_staff_create_accepts_every_defined_staff_role(): void
     {
         $roles = require $this->starterRoot . '/config/roles.php';
         $roles['staff']['seo'] = ['folio.dashboard', 'page.view', 'page.edit'];
         file_put_contents($this->starterRoot . '/config/roles.php', "<?php\nreturn " . var_export($roles, true) . ";\n");
-
-        [$code, $output] = $this->runStaffCreate(['seo@example.com', '--role=seo']);
+        [$code, $output] = $this->runConsole('rbac:install');
         $this->assertSame(0, $code, $output);
-        $this->assertSame(['seo'], $this->container()->get(DataManager::class)->query(Staff::class)->where('email', 'seo@example.com')->first()->roles);
 
-        [$code, $output] = $this->runStaffCreate(['nobody@example.com', '--role=owner']);
-        $this->assertSame(1, $code);
-        $this->assertStringContainsString('Role must be one of: admin, editor, seo.', $output);
+        [$code, $output] = $this->runConsole('staff:create', 'seo@example.com', '--role=seo');
+        $this->assertSame(0, $code, $output);
+        $this->assertSame(['seo'], RoleList::normalize($this->container()->get(StaffAccounts::class)->find('seo@example.com')->get('roles')));
     }
 
     /** The revisions panel names staff by their name, not their id (AuthorNames asks the staff guard's provider). */
@@ -154,13 +175,13 @@ final class FolioAccessTest extends TestCase
     }
 
     /** @return array{int, string} exit code and output */
-    private function runStaffCreate(array $args): array
+    private function runConsole(string ...$command): array
     {
         $previous = getcwd();
         chdir($this->starterRoot);
         ob_start();
         try {
-            $code = (new StaffCreateCommand())->execute($args);
+            $code = (new Console($this->starterRoot))->run(['preflow', ...$command]);
         } finally {
             $output = (string) ob_get_clean();
             chdir($previous ?: '/');
