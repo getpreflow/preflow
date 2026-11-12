@@ -7,6 +7,7 @@ namespace Preflow\Folio\Translations;
 use Preflow\Data\Locales;
 use Preflow\I18n\DerivedKeys;
 use Preflow\I18n\Labels;
+use Preflow\I18n\OverrideRules;
 use Preflow\I18n\Translator;
 
 /**
@@ -35,9 +36,6 @@ final class EditableTexts
         private readonly ?Locales $siteLocales = null,
     ) {}
 
-    /** A placeholder in a text: ":name". */
-    private const string PLACEHOLDER = '/:([A-Za-z_][A-Za-z0-9_]*)/';
-
     /** Whether the group is one of the site's editable groups (its overrides apply on every request). */
     public function isEditableGroup(string $group): bool
     {
@@ -59,7 +57,7 @@ final class EditableTexts
 
         return array_values(array_filter(
             ($this->siteLocales ?? Locales::single('en'))->available,
-            StoredOverrides::validLocale(...),
+            OverrideRules::validLocale(...),
         ));
     }
 
@@ -74,21 +72,7 @@ final class EditableTexts
         $group = (string) strstr($key, '.', true);
         $text = $this->rows($group, $locale)[$key]['delivered'] ?? null;
 
-        return self::placeholdersIn($text ?? '');
-    }
-
-    /**
-     * The placeholder names in a text, unique, sorted.
-     *
-     * @return list<string>
-     */
-    public static function placeholdersIn(string $text): array
-    {
-        preg_match_all(self::PLACEHOLDER, $text, $m);
-        $names = array_values(array_unique($m[1]));
-        sort($names);
-
-        return $names;
+        return OverrideRules::placeholdersIn($text ?? '');
     }
 
     /**

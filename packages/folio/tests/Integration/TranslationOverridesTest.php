@@ -236,10 +236,12 @@ final class TranslationOverridesTest extends TestCase
 
         $before = (string) $this->send('GET', '/hello')->getBody();
         $this->assertSame('Name|Save|site.types.page.label', $before);
-        // Rows written directly, past the screen's checks.
-        $this->overrides()->set('en', 'members.form.name', 'Changed name', null);
-        $this->overrides()->set('en', 'folio.common.save', 'Changed save', null);
-        $this->overrides()->set('en', 'site.types.page.label', 'Changed pages', null);
+        // The store refuses a key the screen does not offer; rows past it (an import, a direct insert) are the case here.
+        $this->expectStoreRefuses(fn () => $this->overrides()->set('en', 'members.form.name', 'Changed name', null));
+        foreach (['members.form.name' => 'Changed name', 'folio.common.save' => 'Changed save', 'site.types.page.label' => 'Changed pages'] as $key => $text) {
+            $this->insertRow(['id' => 'en:' . $key, 'locale' => 'en', 'key' => $key, 'text' => $text]);
+        }
+        $this->overrides()->forget('en');
         $this->html('/folio');
 
         $this->assertSame($before, (string) $this->send('GET', '/hello')->getBody(), 'byte-identical');
@@ -587,6 +589,16 @@ final class TranslationOverridesTest extends TestCase
         $this->assertSame([], $this->overrides()->all('es'));
         $this->assertSame([], $this->overrides()->all('en'));
         $this->assertSame(302, $this->post('/folio/translations', ['locale' => 'it', 'key' => 'review-mail.approved.subject', 'text' => 'Il tuo oggetto è pubblicato'])->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_store_itself_refuses_what_the_screen_would(): void
+    {
+        $this->editableSite();
+        $this->expectStoreRefuses(fn () => $this->overrides()->set('es', 'review-mail.approved.subject', 'x', null));
+        $this->expectStoreRefuses(fn () => $this->overrides()->set('en', 'review-mail.approved.subject', 'x', null));
+        $this->expectStoreRefuses(fn () => $this->overrides()->set('de', 'review-mail.approved.body', 'Ohne Link', null));
+        $this->assertSame([], $this->overrides()->all('de'));
     }
 
     private function expectStoreRefuses(\Closure $call): void

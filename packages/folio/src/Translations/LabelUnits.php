@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Folio\Translations;
 
 use Preflow\Folio\Http\InterfaceLocales;
-use Preflow\Folio\Http\TranslationsController;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextFormat;
 use Preflow\I18n\Machine\TranslationUnit;
@@ -51,15 +50,15 @@ final class LabelUnits
         $rows = [];
         foreach ($this->texts->rows($group, $locale) as $key => $row) {
             $row['override'] = $overrides[$key] ?? null;
-            if ($search === '' || TranslationsController::matches($search, $row)) {
+            if ($search === '' || LabelSearch::matches($search, $row)) {
                 $rows[] = $row;
             }
         }
-        $last = max(1, (int) ceil(count($rows) / TranslationsController::PER_PAGE));
+        $last = max(1, (int) ceil(count($rows) / LabelSearch::PER_PAGE));
         $page = min($last, max(1, $page));
 
         $units = [];
-        foreach (array_slice($rows, ($page - 1) * TranslationsController::PER_PAGE, TranslationsController::PER_PAGE) as $row) {
+        foreach (array_slice($rows, ($page - 1) * LabelSearch::PER_PAGE, LabelSearch::PER_PAGE) as $row) {
             $key = $row['key'];
             $source = $sourceOverrides[$key] ?? $this->texts->ownText($key, $from);
             if ($source === null) {

@@ -211,6 +211,11 @@ final class FolioServiceProvider extends ServiceProvider
         $container->singleton(\Preflow\Folio\Translations\StoredOverrides::class, fn (Container $c) => new \Preflow\Folio\Translations\StoredOverrides(
             $c->get(DataManager::class),
             $c->get(\Preflow\Folio\Translations\OverridesCache::class),
+            // Every writer goes through the rules: offered language, editable key, plain text, placeholders.
+            new \Preflow\I18n\OverrideRules(new \Preflow\Folio\Translations\EditableOverrideScope(
+                $c->get(\Preflow\Folio\Translations\EditableTexts::class),
+                $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
+            )),
         ));
 
         // One request-scoped content locale shared by the frontend, preview and field types.

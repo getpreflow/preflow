@@ -9,7 +9,11 @@ use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Translations\EditableTexts;
+use Preflow\Folio\Translations\LabelSearch;
 use Preflow\Folio\Translations\StoredOverrides;
+use Preflow\I18n\OverrideRefusal;
+use Preflow\I18n\OverrideRefused;
+use Preflow\I18n\OverrideRules;
 use Preflow\I18n\LocaleNames;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -24,8 +28,6 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class TranslationsController
 {
-    public const int PER_PAGE = 50;
-
     public function __construct(
         private readonly StoredOverrides $overrides,
         private readonly EditableTexts $texts,
@@ -67,12 +69,12 @@ final class TranslationsController
         $rows = [];
         foreach ($this->texts->rows($group, $locale) as $key => $row) {
             $row['override'] = $overrides[$key] ?? null;
-            if ($q === '' || self::matches($q, $row)) {
+            if ($q === '' || LabelSearch::matches($q, $row)) {
                 $rows[] = $row;
             }
         }
         $total = count($rows);
-        $lastPage = max(1, (int) ceil($total / self::PER_PAGE));
+        $lastPage = max(1, (int) ceil($total / LabelSearch::PER_PAGE));
         $page = min($lastPage, max(1, (int) ($query['page'] ?? 1)));
         $view = ['group' => $group, 'locale' => $locale, 'q' => $q];
 
@@ -89,11 +91,11 @@ final class TranslationsController
             'site_texts' => $this->texts->isEditableGroup($group),
             'view' => $view,
             'page' => $page,
-            'rows' => array_slice($rows, ($page - 1) * self::PER_PAGE, self::PER_PAGE),
+            'rows' => array_slice($rows, ($page - 1) * LabelSearch::PER_PAGE, LabelSearch::PER_PAGE),
             'pager' => [
                 'total' => $total,
-                'from' => $total === 0 ? 0 : ($page - 1) * self::PER_PAGE + 1,
-                'to' => min($total, $page * self::PER_PAGE),
+                'from' => $total === 0 ? 0 : ($page - 1) * LabelSearch::PER_PAGE + 1,
+                'to' => min($total, $page * LabelSearch::PER_PAGE),
                 'last_page' => $lastPage,
                 'pages' => $pages,
                 'prev' => $page > 1 ? $this->url($view + ['page' => $page - 1]) : null,
@@ -177,13 +179,13 @@ final class TranslationsController
                 continue;
             }
             $text = str_replace("\r\n", "\n", $texts[$i]);
-            $checked = $this->check($locale, $key, trim($text) === '' ? null : $text);
-            if (is_string($checked['error'])) {
-                $errors[$key] = $checked['error'];
+            try {
+                $this->overrides->set($locale, $key, trim($text) === '' ? null : $text, $by);
+            } catch (OverrideRefused $e) {
+                $errors[$key] = self::message($e->refusal);
                 $values[$key] = $text;
                 continue;
             }
-            $this->overrides->set($locale, $key, $checked['text'], $by);
             $saved++;
         }
 
@@ -201,14 +203,12 @@ final class TranslationsController
         $body = (array) $request->getParsedBody();
         $locale = is_string($body['locale'] ?? null) ? $body['locale'] : '';
         $key = is_string($body['key'] ?? null) ? $body['key'] : '';
-        $checked = $this->check($locale, $key, $text);
-        if (is_string($checked['error'])) {
-            return self::refuse($checked['error']);
-        }
-        $text = $checked['text'];
-
         $user = $request->getAttribute(Authenticatable::class);
-        $this->overrides->set($locale, $key, $text, $user instanceof Authenticatable ? (string) $user->getAuthId() : null);
+        try {
+            $this->overrides->set($locale, $key, $text, $user instanceof Authenticatable ? (string) $user->getAuthId() : null);
+        } catch (OverrideRefused $e) {
+            return self::refuse(self::message($e->refusal));
+        }
         self::flash($request, FolioText::get($text === null ? 'folio.translations.reset_done' : 'folio.translations.saved', ['key' => $key]));
 
         return new Response(302, ['Location' => $this->url($this->view($body, $locale, (string) strstr($key, '.', true)))]);
@@ -230,61 +230,17 @@ final class TranslationsController
         ];
     }
 
-    /**
-     * Whether $text (null: back to the delivered text) may be stored for $key in $locale, and the
-     * text to store.
-     *
-     * @return array{error: ?string, text: ?string}
-     */
-    private function check(string $locale, string $key, ?string $text): array
+    /** The words for a refusal of the override rules. */
+    private static function message(OverrideRefusal $refusal): string
     {
-        $group = (string) strstr($key, '.', true);
-        if (!in_array($locale, $this->texts->locales($group, $this->locales->all()), true)) {
-            return ['error' => FolioText::get('folio.locale.not_offered'), 'text' => null];
-        }
-        if (!$this->texts->editable($key, $locale)) {
-            return ['error' => FolioText::get('folio.translations.not_editable'), 'text' => null];
-        }
-        if ($text === null) {
-            return ['error' => null, 'text' => null];
-        }
-        if (mb_strlen($text) > StoredOverrides::MAX_LENGTH) {
-            return ['error' => FolioText::get('folio.translations.too_long', ['max' => StoredOverrides::MAX_LENGTH]), 'text' => null];
-        }
-        // Plain text only: it is printed unescaped, also inside HTML attributes.
-        $text = StoredOverrides::validText($text);
-        if ($text === null) {
-            return ['error' => FolioText::get('folio.translations.no_markup'), 'text' => null];
-        }
-        if ($this->texts->isEditableGroup($group)) {
-            // Its texts are filled in by code (a mail's :link): the same placeholders, no more, no less.
-            $needed = $this->texts->placeholders($key, $locale);
-            $used = EditableTexts::placeholdersIn($text);
-            foreach (array_diff($needed, $used) as $name) {
-                return ['error' => FolioText::get('folio.translations.placeholder_missing', ['placeholder' => ':' . $name]), 'text' => null];
-            }
-            foreach (array_diff($used, $needed) as $name) {
-                return ['error' => FolioText::get('folio.translations.placeholder_unknown', ['placeholder' => ':' . $name]), 'text' => null];
-            }
-        }
-
-        return ['error' => null, 'text' => $text];
-    }
-
-    /**
-     * The search over a row's key and texts: the screen's, and the same for the AI button's units.
-     *
-     * @param array{key: string, delivered: ?string, site: ?string, override: ?string} $row
-     */
-    public static function matches(string $q, array $row): bool
-    {
-        foreach ([$row['key'], $row['delivered'], $row['site'], $row['override']] as $text) {
-            if ($text !== null && mb_stripos($text, $q) !== false) {
-                return true;
-            }
-        }
-
-        return false;
+        return FolioText::get(match ($refusal->reason) {
+            OverrideRules::NOT_OFFERED => 'folio.locale.not_offered',
+            OverrideRules::NOT_EDITABLE => 'folio.translations.not_editable',
+            OverrideRules::TOO_LONG => 'folio.translations.too_long',
+            OverrideRules::NO_MARKUP => 'folio.translations.no_markup',
+            OverrideRules::PLACEHOLDER_MISSING => 'folio.translations.placeholder_missing',
+            OverrideRules::PLACEHOLDER_UNKNOWN => 'folio.translations.placeholder_unknown',
+        }, $refusal->params);
     }
 
     /** @param array<string, string|int> $params */
