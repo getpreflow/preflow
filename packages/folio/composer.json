@@ -13,7 +13,7 @@
         "preflow/routing": "^0.59 || @dev",
         "preflow/form": "^0.1 || @dev",
         "preflow/validation": "^0.52 || @dev",
-        "preflow/auth": "^0.65 || @dev",
+        "preflow/auth": "^0.69 || @dev",
         "preflow/components": "^0.1 || @dev",
         "preflow/htmx": "^0.65 || @dev",
         "preflow/i18n": "^0.68 || @dev",
@@ -33,7 +33,7 @@
     },
     "conflict": {
         "preflow/ai": "<0.66",
-        "preflow/auth": "<0.65",
+        "preflow/auth": "<0.69",
         "preflow/codes": "<0.68",
         "preflow/core": "<0.68",
         "preflow/data": "<0.68",

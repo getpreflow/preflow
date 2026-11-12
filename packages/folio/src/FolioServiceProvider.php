@@ -1064,12 +1064,16 @@ final class FolioServiceProvider extends ServiceProvider
         $base = is_string($url) ? rtrim(trim($url), '/') : ''; // unset: no links are mailed (StaffPasswords::canMail)
 
         return new \Preflow\Folio\Users\StaffPasswords(
-            $c->get(\Preflow\Auth\Tokens\Tokens::class),
-            $c->has(\Preflow\Auth\Remember\RememberMe::class) ? $c->get(\Preflow\Auth\Remember\RememberMe::class) : null,
-            $c->get(\Preflow\Auth\PasswordHasherInterface::class),
+            new \Preflow\Auth\Record\AccountLinks(
+                $c->get(\Preflow\Auth\Tokens\Tokens::class),
+                $c->has(\Preflow\Auth\Remember\RememberMe::class) ? $c->get(\Preflow\Auth\Remember\RememberMe::class) : null,
+                $c->get(\Preflow\Auth\PasswordHasherInterface::class),
+                $c->get(DataManager::class),
+                self::staffProvider($c),
+                self::recordProviders($c),
+                $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
+            ),
             $c->get(DataManager::class),
-            self::staffProvider($c),
-            self::recordProviders($c),
             static function () use ($c, $app): \Preflow\Folio\Users\StaffMailer {
                 return new \Preflow\Folio\Users\StaffMailer(
                     $c->get(\Preflow\Notify\Mail\Mailer::class),
@@ -1078,7 +1082,6 @@ final class FolioServiceProvider extends ServiceProvider
                     \Preflow\Folio\Users\StaffMailer::siteName($app->config()->get('app.name'), $app->config()->get('app.url')),
                 );
             },
-            $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
             $base === '' ? '' : $base . $prefix . '/password',
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
         );

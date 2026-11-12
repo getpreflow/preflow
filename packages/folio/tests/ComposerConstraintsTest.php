@@ -13,7 +13,8 @@ use PHPUnit\Framework\TestCase;
  * DisplayLabels::typeIn() naming a type in a mail's language; since 0.66 MachineTranslator::available(): Translate asks the
  * translator, not the AI connection), core 0.68 (binds notify's Mailer with its layout and @notify templates, which StaffMailer
  * sends through; since 0.67 InstalledPackages keeps composer extra whole and ManifestBuilder reads extra.preflow.runtime, where Folio declares its extensions file; since 0.66 extra.folio.field_types
- * and blocks, which packages register with), auth 0.65 (AuthManager::provider() for a
+ * and blocks, which packages register with), auth 0.69 (AccountLinks, to which StaffPasswords leaves the links, the password
+ * and the account lookups; since 0.65 AuthManager::provider() for a
  * staff guard that is not the default one, folio.guard; since 0.38 RecordUser and
  * RecordUserProvider moved to Preflow\Auth\Record, PasswordRehash; since 0.27 the chain
  * provider, ClaimsCredentials, SessionGuard::remembers()), core 0.65 (a non-Twig app engine is a SharingTemplateEngine and
@@ -47,7 +48,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.65', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.68', 'preflow/data' => '<0.68', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.68', 'preflow/media' => '<0.50', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.68', 'preflow/routing' => '<0.59', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
+            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.68', 'preflow/data' => '<0.68', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.68', 'preflow/media' => '<0.50', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.68', 'preflow/routing' => '<0.59', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.
