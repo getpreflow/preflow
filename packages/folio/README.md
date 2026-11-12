@@ -2310,8 +2310,8 @@ language; *Reset* brings the delivered one back.
 - The texts live in the table `folio_translation_overrides` (run `preflow migrate` on SQL
   storage), are compiled to `storage/cache/folio-translations-{locale}.php` (Settings → Cache
   lists it) and travel with `folio:export` / `folio:import` / `folio:pull`.
-- A site's own `lang/{locale}/folio.php` (or `rbac.php`, …) changes single keys for every
-  request, in version control; an override on the screen wins over it.
+- A site's own `lang/{locale}/folio.php` (or `rbac-admin.php` for the rbac admin screens, `rbac-mail.php` for
+  the staff mails, …) changes single keys for every request, in version control; an override on the screen wins over it.
 - Overrides apply on admin requests only, except editable site groups (below). Staff mails sent from a console command or a queue
   worker (outside an admin request) use the delivered texts and the site's `lang/` files.
 - A site or package that sets its own `TranslationOverrides` on the translator keeps it: Folio

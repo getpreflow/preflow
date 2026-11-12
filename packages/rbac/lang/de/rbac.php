@@ -13,7 +13,7 @@ return [
         'unknown' => 'Unbekannte Rolle: :names.',
     ],
     'staff' => [
-        'no_sign_in' => 'Teamkonten können sich auf dieser Website noch nicht anmelden: Der Standard-Guard in config/auth.php hat keinen Provider für Teamkonten.',
+        'no_sign_in' => 'Teamkonten können sich auf dieser Website noch nicht anmelden: Der Staff-Guard hat keinen Provider für Teamkonten.',
         'no_app_url' => 'Setze app.url, um Anmeldelinks zu senden.',
         'config_email' => 'Diese E-Mail-Adresse gehört einem konfigurierten Admin.',
         'has_password' => 'Dieses Konto hat bereits ein Passwort. Sende stattdessen einen Link zum Zurücksetzen.',

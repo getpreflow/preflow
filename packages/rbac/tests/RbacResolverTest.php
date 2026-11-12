@@ -148,6 +148,23 @@ final class RbacResolverTest extends TestCase
         $this->assertStringContainsString('run php preflow rbac:install', $lines[0]);
     }
 
+    public function test_install_in_the_same_process_is_seen(): void
+    {
+        $registry = new TypeRegistry(dirname(__DIR__) . '/models');
+        $dm = new DataManager(drivers: ['default' => new SqliteDriver(new \PDO('sqlite::memory:'))], typeRegistry: $registry);
+        $store = new RoleStore($dm);
+        $resolver = new RbacResolver($store);
+        $user = new TestUser(roles: []);
+
+        $this->logged(function () use ($resolver, $user): void {
+            $this->assertTrue($resolver->allows($user, 'staff', 'page.edit', null), 'before install');
+        }, 'not installed');
+        $store->install();
+        $this->logged(function () use ($resolver, $user): void {
+            $this->assertFalse($resolver->allows($user, 'staff', 'page.edit', null), 'after install');
+        }, 'no staff roles defined');
+    }
+
     public function test_after_install_empty_staff_roles_grant_nothing(): void
     {
         $resolver = $this->resolver([['members', 'member', ['tools.*']]]);

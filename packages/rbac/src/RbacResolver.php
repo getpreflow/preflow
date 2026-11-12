@@ -21,8 +21,6 @@ final class RbacResolver implements PermissionResolver, ListsRoles
     /** @var array<string, true> messages already logged this request */
     private array $logged = [];
 
-    private ?bool $installed = null;
-
     public function __construct(
         private readonly RoleStore $store,
         private readonly bool $debug = false,
@@ -81,14 +79,15 @@ final class RbacResolver implements PermissionResolver, ListsRoles
         return array_values(array_unique($patterns));
     }
 
-    /** Whether rbac is installed here, asked once per request; logs the bootstrap once while it is not. */
+    /** Whether rbac is installed here (the store caches it and forgets it on install()); logs the bootstrap once while it is not. */
     private function installed(): bool
     {
-        if (!($this->installed ??= $this->store->installed())) {
+        $installed = $this->store->installed();
+        if (!$installed) {
             $this->logOnce('bootstrap', 'preflow/rbac: rbac is not installed here yet, so staff may do everything; run php preflow rbac:install');
         }
 
-        return $this->installed;
+        return $installed;
     }
 
     private function logOnce(string $key, string $message): void

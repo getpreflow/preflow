@@ -139,17 +139,18 @@ php preflow staff:password you@example.com # asks twice, without echo
 php preflow staff:list
 ```
 
-`staff:create` makes an account without a password; `staff:password` sets one, `staff:invite`
-mails a link to set it (needs `config/notify.php`).
+`staff:create` makes an account without a password and prints none: set one with `staff:password`
+or send `staff:invite` (it mails a link to set it; needs `config/notify.php`). rbac's staff sign-in
+requires the account to be `active`.
 
-**A project made from starter-folio before 0.69** (made with 0.65 or later: its staff table has rbac's columns already). To switch: `composer
+**A project made from starter-folio before 0.69** (made with 0.65 or later: its staff table has rbac's columns already; made before 0.65? Take `migrations/2026_11_11_005_upgrade_staff_columns.php` from preflow/starter-folio 0.68, run `php preflow migrate`, then follow the steps above). To switch: raise all `preflow/*` to ^0.69 and `composer
 require preflow/rbac` (drop `preflow/roles`), put `\Preflow\Rbac\RbacServiceProvider::class` after
 Folio in `config/providers.php` instead of `RolesServiceProvider`, point the `staff` provider in
 `config/auth.php` at `Preflow\Auth\Record\RecordUserProvider::class` with `'type' => 'staff'` and
 `'active' => 'active'`, enable `"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}` in
 `config/folio/extensions.json`, delete `app/Models/Staff.php` and `app/Console/StaffCreateCommand.php`
 (and its line in `config/commands.php`), then run `php preflow rbac:install`. The accounts you have keep
-signing in.
+signing in. After `rbac:install`, run `php preflow folio:extensions:apply`.
 
 ### Tests
 

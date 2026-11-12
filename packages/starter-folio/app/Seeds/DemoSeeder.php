@@ -19,8 +19,8 @@ use Preflow\Media\MediaLibrary;
 
 /**
  * Seven fictional companies with logos, forty jobs (34 published through Folio, 6 drafts), three
- * news posts with images, one demo employer and two staff accounts (rbac's staff type: `preflow rbac:install` runs before it), so a fresh install has
- * something to show. Ids and dates are fixed: running it again updates the same rows and
+ * news posts with images, one demo employer and two staff accounts (rbac's staff type: `preflow rbac:install` runs
+ * before it), so a fresh install has something to show. Ids and dates are fixed: running it again updates the same rows and
  * publishes only what changed.
  */
 final class DemoSeeder

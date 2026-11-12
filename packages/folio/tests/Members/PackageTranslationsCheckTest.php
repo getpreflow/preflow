@@ -43,7 +43,7 @@ final class PackageTranslationsCheckTest extends TestCase
         $this->write('config/codes.php', "<?php\nreturn ['purposes' => ['members.book' => ['label' => 'Book code', 'readable' => true]]];\n");
         $dir = $this->dir;
 
-        foreach (['members', 'members-admin', 'codes', 'rbac', 'validation'] as $group) {
+        foreach (['members', 'members-admin', 'codes', 'rbac', 'rbac-admin', 'validation'] as $group) {
             ob_start();
             $code = (new TranslationsCheckCommand(static function () use ($dir): Application {
                 $app = Application::create($dir);

@@ -85,11 +85,38 @@ final class StaffPasswordCommand implements CommandInterface
     private function ask(mixed $input, string $prompt, string $settings): string
     {
         echo $prompt;
+        $restore = function () use ($settings): void {
+            $this->stty(escapeshellarg($settings));
+        };
+        // An interrupted prompt (Ctrl-C, a kill) must not leave the terminal without echo.
+        $previous = null;
+        $signals = function_exists('pcntl_signal') && function_exists('pcntl_async_signals');
+        $async = false;
+        if ($signals) {
+            $async = pcntl_async_signals(true);
+            $previous = pcntl_signal_get_handler(SIGINT);
+            pcntl_signal(SIGINT, static function () use ($restore): never {
+                $restore();
+                echo "\n";
+                exit(130);
+            });
+        }
+        $done = false;
+        register_shutdown_function(static function () use (&$done, $restore): void {
+            if (!$done) {
+                $restore();
+            }
+        });
         $this->stty('-echo');
         try {
             $line = rtrim((string) fgets($input), "\r\n");
         } finally {
-            $this->stty(escapeshellarg($settings));
+            $restore();
+            $done = true;
+            if ($signals) {
+                pcntl_signal(SIGINT, $previous ?? SIG_DFL);
+                pcntl_async_signals($async);
+            }
             echo "\n";
         }
 
