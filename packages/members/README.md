@@ -364,7 +364,7 @@ too. Words are changed in the lang files (see Copy and mails), not in templates.
 ## Your own look, or your own pages
 
 The pages ship neutral styles: a calm card on a light surface, readable at 375 px, with a visible
-focus ring, and a dark variant that follows `prefers-color-scheme`. They read seven custom
+focus ring, and a dark variant that follows the page's `color-scheme` (the standalone layout declares `light dark`; a site page that declares none stays light). They read seven custom
 properties, each with a fallback, so a site that sets them wins (light or dark):
 
 | Property | Fallback (light) | Used for |

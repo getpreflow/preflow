@@ -190,7 +190,7 @@ TWIG;
         preg_match_all('~<style[^>]*>(.*?)</style>~s', $html, $m);
 
         // The framework's own runtime script also mentions "<style"; the page css is what styles the members pages.
-        return implode("\n", array_filter($m[1], static fn (string $css): bool => str_contains($css, 'members') || str_starts_with(trim($css), '.x-')));
+        return implode("\n", array_filter($m[1], static fn (string $css): bool => str_contains($css, 'members') || str_contains($css, '.only-') || str_starts_with(trim($css), '.x-')));
     }
 
     /** @return array<string, array{string, array<string, mixed>}> */
@@ -274,6 +274,35 @@ TWIG;
             $this->assertStringNotContainsString('.members-status', $css, $page);
             $this->assertStringNotContainsString('.members-card', $css, $page);
         }
+    }
+
+    public function test_only_the_package_layout_declares_the_color_scheme(): void
+    {
+        $this->site();
+        foreach (['login', 'register'] as $page) {
+            $this->assertStringNotContainsString('color-scheme', $this->css($this->html($page, ['open' => true])), "{$page} in a site layout");
+        }
+
+        $this->site("['layout' => '@members/_layout.twig']");
+        $this->assertStringContainsString('color-scheme:light dark', $this->css($this->html('thanks')));
+    }
+
+    public function test_the_layout_styles_are_a_block_of_their_own(): void
+    {
+        $this->site("['layout' => '@members/_layout.twig']");
+        $this->write('resources/members/thanks.twig', "{% extends '@members-package/thanks.twig' %}{% block members_styles %}.only-card{color:red}{% endblock %}");
+        $this->write('resources/members/closed.twig', "{% extends '@members-package/closed.twig' %}{% block members_layout_styles %}.only-layout{color:red}{% endblock %}");
+        $this->flow = null;
+
+        $card = $this->css($this->html('thanks'));
+        $this->assertStringContainsString('.only-card{color:red}', $card);
+        $this->assertStringContainsString('body.members-page', $card, 'the layout styles stay');
+        $this->assertStringNotContainsString('.members-status__card', $card);
+
+        $layout = $this->css($this->html('closed'));
+        $this->assertStringContainsString('.only-layout{color:red}', $layout);
+        $this->assertStringContainsString('.members-status__card', $layout, 'the card styles stay');
+        $this->assertStringNotContainsString('body.members-page', $layout);
     }
 
     public function test_the_account_styles_extend_the_card_styles(): void

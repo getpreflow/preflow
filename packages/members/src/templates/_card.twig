@@ -17,7 +17,6 @@
 {% apply css %}
 {% block members_styles %}
 .members-status {
-  color-scheme: light dark;
   padding: 3rem 1rem 4rem;
   min-height: 60vh;
   font-family: var(--members-font, inherit);
@@ -60,7 +59,8 @@
 .members-status a:focus-visible,
 .members-status button:focus-visible,
 .members-status .btn:focus-visible,
-.members-status input:focus-visible { outline: 2px solid var(--members-accent, light-dark(#1a1a1a, #ececec)); outline-offset: 2px; }
+.members-status input:focus-visible,
+.members-status textarea:focus-visible { outline: 2px solid var(--members-accent, light-dark(#1a1a1a, #ececec)); outline-offset: 2px; }
 .members-status .field input:focus-visible { border-color: var(--members-accent, light-dark(#1a1a1a, #ececec)); }
 .members-status .field-hint { font-size: 0.8rem; color: var(--members-muted, light-dark(#5c5c5c, #a8adb5)); margin-top: 0.3rem; }
 .members-status .members-errors,

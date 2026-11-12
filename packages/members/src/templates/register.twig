@@ -68,7 +68,7 @@
 </section>
 {% apply css %}
 {% block members_styles %}
-.members-form { color-scheme: light dark; padding: 1.5rem 1rem 4rem; font-family: var(--members-font, inherit); color: var(--members-ink, light-dark(#1a1a1a, #ececec)); }
+.members-form { padding: 1.5rem 1rem 4rem; font-family: var(--members-font, inherit); color: var(--members-ink, light-dark(#1a1a1a, #ececec)); }
 .members-form > * { max-width: 44rem; margin-left: auto; margin-right: auto; }
 .members-card {
   background: var(--members-bg, light-dark(#ffffff, #16181c));
@@ -113,7 +113,7 @@
 .members-submit { justify-content: center; width: 100%; min-height: 2.75rem; padding: 0.7rem 1rem; }
 .members-switch { font-size: 0.875rem; color: var(--members-muted, light-dark(#5c5c5c, #a8adb5)); text-align: center; }
 .members-switch a,
-.members-form a { color: var(--members-accent, light-dark(#1a1a1a, #ececec)); font-weight: 600; text-decoration: underline; }
+.members-form a:not(.btn) { color: var(--members-accent, light-dark(#1a1a1a, #ececec)); font-weight: 600; text-decoration: underline; }
 .members-errors,
 .members-note { border: 1px solid var(--members-accent, light-dark(#1a1a1a, #ececec)); border-left-width: 4px; border-radius: var(--members-radius, 6px); background: var(--members-bg, light-dark(#ffffff, #16181c)); color: var(--members-ink, light-dark(#1a1a1a, #ececec)); font-size: 0.9rem; padding: 0.7rem 0.9rem; }
 .members-note { margin-bottom: 1rem; }
