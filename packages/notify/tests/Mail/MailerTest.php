@@ -57,6 +57,14 @@ final class MailerTest extends TestCase
         $this->assertStringContainsString('background:#abcdef', (string) $mailer->compose(new MailContent('S', 'T'), 'a@b.test', accent: '#abcdef')->html);
     }
 
+    public function test_an_accent_that_is_not_a_hex_colour_falls_back_to_the_config(): void
+    {
+        $html = (string) $this->mailer(new MailConfig(accent: '#0f766e'))->compose(new MailContent('S', 'T'), 'a@b.test', accent: 'red;background:url(x)')->html;
+
+        $this->assertStringContainsString('background:#0f766e', $html);
+        $this->assertStringNotContainsString('url(x)', $html);
+    }
+
     public function test_from_precedence(): void
     {
         $content = new MailContent('S', 'T');

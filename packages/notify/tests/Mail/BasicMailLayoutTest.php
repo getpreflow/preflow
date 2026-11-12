@@ -29,6 +29,15 @@ final class BasicMailLayoutTest extends TestCase
         $this->assertStringNotContainsString('<script', $html);
     }
 
+    public function test_only_the_content_links_are_linked(): void
+    {
+        $html = (new BasicMailLayout())->html(new MailContent('S', "Open https://site.test/x\n\nfrom them: https://other.test/y", links: ['https://site.test/x']), '#1a1a1a');
+
+        $this->assertStringContainsString('<a href="https://site.test/x"', $html);
+        $this->assertStringNotContainsString('<a href="https://other.test/y"', $html);
+        $this->assertStringContainsString('from them: https://other.test/y', $html);
+    }
+
     public function test_no_action_no_button(): void
     {
         $html = (new BasicMailLayout())->html(new MailContent('S', 'T'), '#1a1a1a');

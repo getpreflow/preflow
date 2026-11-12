@@ -24,6 +24,19 @@ final class MailTextTest extends TestCase
         );
     }
 
+    public function test_paragraphs_link_only_the_listed_urls(): void
+    {
+        $this->assertSame(
+            ['Open <a href="https://site.test/invite/x?a=1&amp;b=2" style="color:#000">https://site.test/invite/x?a=1&amp;b=2</a>', 'see https://evil.test/&lt;x'],
+            MailText::paragraphs("Open https://site.test/invite/x?a=1&b=2\n\nsee https://evil.test/<x", '#000', ['https://site.test/invite/x?a=1&b=2']),
+        );
+    }
+
+    public function test_paragraphs_with_an_empty_list_link_nothing(): void
+    {
+        $this->assertSame(['see https://ex.test/a'], MailText::paragraphs('see https://ex.test/a', '#000', []));
+    }
+
     public function test_paragraphs_keep_single_line_breaks(): void
     {
         $this->assertSame(['a<br>' . "\n" . 'b'], MailText::paragraphs("a\nb", '#000'));

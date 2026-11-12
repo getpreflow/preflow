@@ -11,6 +11,9 @@ namespace Preflow\Notify\Mail;
  */
 final class MailConfig
 {
+    /** @internal what an accent must look like: a hex colour */
+    public const ACCENT = '/^#[0-9a-fA-F]{3,8}$/';
+
     public function __construct(
         public readonly string $accent = '#1a1a1a',
         public readonly ?string $layout = null,
@@ -25,7 +28,7 @@ final class MailConfig
         $from = $notifyMail['from'] ?? null;
 
         return new self(
-            accent: is_string($accent) && preg_match('/^#[0-9a-fA-F]{3,8}$/', $accent) === 1 ? $accent : '#1a1a1a',
+            accent: is_string($accent) && preg_match(self::ACCENT, $accent) === 1 ? $accent : '#1a1a1a',
             layout: is_string($layout) && trim($layout) !== '' ? trim($layout) : null,
             from: is_string($from) && MailText::oneLine($from) !== '' ? MailText::oneLine($from) : null,
         );

@@ -25,7 +25,7 @@ final class TemplateMailLayout implements MailLayout
             'lang' => $content->lang,
             'subject' => MailText::oneLine($content->subject),
             'accent' => $accent,
-            'paragraphs' => MailText::paragraphs($content->text, $accent),
+            'paragraphs' => MailText::paragraphs($content->text, $accent, $content->links),
         ] + ($content->action === null ? [] : ['action' => ['label' => $content->action->label, 'url' => $content->action->url]])
             + $content->vars);
     }

@@ -13,7 +13,7 @@ use Preflow\Notify\TransportException;
  * Composes a mail from its content (plain text part plus the HTML part from the layout) and sends
  * it through the Notifier. The subject is made one line. Unless given: from is config/notify.php
  * mail.from, else the email channel's own; the template is mail.layout, else the layout's own;
- * the accent is mail.accent.
+ * the accent is mail.accent (also for an accent that is not a hex colour).
  */
 final class Mailer
 {
@@ -29,9 +29,15 @@ final class Mailer
             to: $to,
             subject: MailText::oneLine($content->subject),
             text: $content->text,
-            html: $this->layout->html($content, $accent ?? $this->config->accent, $template ?? $this->config->layout),
+            html: $this->layout->html($content, $this->accent($accent), $template ?? $this->config->layout),
             from: $from ?? $this->config->from,
         );
+    }
+
+    /** The given accent when it is a hex colour, else mail.accent. */
+    private function accent(?string $accent): string
+    {
+        return $accent !== null && preg_match(MailConfig::ACCENT, $accent) === 1 ? $accent : $this->config->accent;
     }
 
     /** At once, so the caller knows whether it went out. @throws TransportException */

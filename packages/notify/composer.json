@@ -12,6 +12,8 @@
     "require-dev": {
         "psr/log": "^3.0",
         "phpunit/phpunit": "^11.0",
+        "preflow/twig": "^0.68 || @dev",
+        "preflow/view": "^0.68 || @dev",
         "symfony/mailer": "^7.3 || ^8.0",
         "symfony/notifier": "^7.3 || ^8.0"
     },

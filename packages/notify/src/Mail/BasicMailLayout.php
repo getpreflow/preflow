@@ -17,7 +17,7 @@ final class BasicMailLayout implements MailLayout
         $accentAttr = $e($accent);
 
         $body = '';
-        foreach (MailText::paragraphs($content->text, $accent) as $p) {
+        foreach (MailText::paragraphs($content->text, $accent, $content->links) as $p) {
             $body .= '<p style="margin:0 0 16px;color:#1a1a1a">' . $p . "</p>\n";
         }
         if ($content->action !== null) {

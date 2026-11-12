@@ -46,6 +46,16 @@ final class TemplateMailLayoutTest extends TestCase
         $this->assertStringContainsString('data-mail-action href=', $html);
     }
 
+    public function test_template_layout_links_only_the_content_links(): void
+    {
+        $content = new MailContent('S', "Open https://site.test/x\n\nfrom them: https://other.test/y", links: ['https://site.test/x']);
+
+        $html = (new TemplateMailLayout($this->engine))->html($content, '#1a1a1a');
+
+        $this->assertStringContainsString('<a href="https://site.test/x"', $html);
+        $this->assertStringNotContainsString('<a href="https://other.test/y"', $html);
+    }
+
     public function test_default_template_without_action(): void
     {
         $content = new MailContent('S', 'T');

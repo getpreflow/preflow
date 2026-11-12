@@ -2084,6 +2084,7 @@ final class Application
             $addTemplates($this->container->get(\Preflow\View\TemplateEngineInterface::class));
         }
 
+        /** Resolved on first use; resolving it before the template engine is bound caches BasicMailLayout. */
         $this->container->singleton(\Preflow\Notify\Mail\MailLayout::class, static function (Container $c) use ($addTemplates): \Preflow\Notify\Mail\MailLayout {
             if (!$c->has(\Preflow\View\TemplateEngineInterface::class)) {
                 return new \Preflow\Notify\Mail\BasicMailLayout();

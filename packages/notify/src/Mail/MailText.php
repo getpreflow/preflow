@@ -17,15 +17,22 @@ final class MailText
      * Safe HTML for a plain text: one entry per paragraph (split at blank lines), escaped, http(s)
      * URLs linked in the accent colour, single line breaks kept.
      *
+     * @param list<string>|null $links only these URLs (exact text) are linked, the others stay plain; null links every one
      * @return list<string>
      */
-    public static function paragraphs(string $text, string $accent): array
+    public static function paragraphs(string $text, string $accent, ?array $links = null): array
     {
         $style = 'color:' . self::escape($accent);
+        $allowed = $links === null ? null : array_map(self::escape(...), $links);
         $out = [];
         foreach (preg_split('/\n{2,}/', trim(str_replace("\r\n", "\n", $text))) ?: [] as $p) {
-            $html = self::escape($p);
-            $html = (string) preg_replace('~https?://[^\s<]+~', '<a href="$0" style="' . $style . '">$0</a>', $html);
+            $html = (string) preg_replace_callback(
+                '~https?://[^\s<]+~',
+                static fn (array $m): string => $allowed === null || in_array($m[0], $allowed, true)
+                    ? '<a href="' . $m[0] . '" style="' . $style . '">' . $m[0] . '</a>'
+                    : $m[0],
+                self::escape($p),
+            );
             $out[] = nl2br($html, false);
         }
 

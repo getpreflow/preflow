@@ -89,10 +89,12 @@ $mailer->send(new MailContent(
 
 - `MailContent`: `subject`, `text` (plain text, paragraphs separated by a blank line), `lang`
   (the HTML's `lang`, default `en`), an optional `action` (the primary link: label and URL)
-  and `vars` (extra variables for a template of your own).
+  and `vars` (extra variables for a template of your own). `links` (optional, the last
+  argument) names the URLs the HTML part may link; any other URL stays plain text, e.g. in a
+  message someone else wrote. `null` (default) links every `http(s)` URL, `[]` none.
 - `Mailer::compose()` returns the `Email`; `send()` sends it at once (a `TransportException`
   propagates); `sendLater()` queues it (see below). Each takes optional `from`, `template`
-  and `accent` for this mail.
+  and `accent` for this mail (an accent that is not a hex colour falls back to `mail.accent`).
 - The text part is `text` as is. The subject is made one line (control characters become a
   space). The HTML part comes from the layout: the paragraphs escaped, `http(s)` URLs linked,
   single line breaks kept, and the action as a button (`data-mail-action`) with its URL in
@@ -117,7 +119,7 @@ Settings in `config/notify.php`, all optional:
 
 ```php
 'mail' => [
-    'accent' => '#0f766e',                  // hex colour of the bar, links and button; default #1a1a1a
+    'accent' => '#336699',                  // hex colour of the bar, links and button; default #1a1a1a
     'layout' => 'templates/mail.twig',      // the site's layout template; default @notify/mail/layout.twig
     'from'   => 'Site <hello@example.com>', // default: the email channel's from
 ],
