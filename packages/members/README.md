@@ -361,6 +361,35 @@ setting chooses). The posted values are in `old` (`old.code`), the errors in `er
 the bots' trap: `{% include '@members-package/_trap.twig' %}` inside the `<form>`. The mail layout (`mail.layout`) is a template
 too. Words are changed in the lang files (see Copy and mails), not in templates.
 
+## Your own look, or your own pages
+
+The pages ship neutral styles: a calm card on a light surface, readable at 375 px, with a visible
+focus ring, and a dark variant that follows `prefers-color-scheme`. They read seven custom
+properties, each with a fallback, so a site that sets them wins (light or dark):
+
+| Property | Fallback (light) | Used for |
+| --- | --- | --- |
+| `--members-bg` | `#ffffff` | card and field background |
+| `--members-ink` | `#1a1a1a` | text |
+| `--members-muted` | `#5c5c5c` | hints, secondary text |
+| `--members-line` | `#d0d0d0` | borders |
+| `--members-accent` | `#1a1a1a` | links, focus ring, primary button |
+| `--members-radius` | `6px` | corners |
+| `--members-font` | `inherit` | font family |
+
+For more, each page keeps its CSS in `{% block members_styles %}` (`_card.twig`, which every
+status page uses, `register.twig`; `account.twig` adds to the card's with `parent()`). A site
+override that extends `@members-package/<page>.twig` replaces the block, or extends it with
+`{{ parent() }}`:
+
+```twig
+{% extends '@members-package/register.twig' %}
+{% block members_styles %}{{ parent() }}.members-card { box-shadow: 0 1px 4px rgb(0 0 0 / .1); }{% endblock %}
+```
+
+The standalone layout has its own block, `members_layout_styles`. Markup and class names stay
+the same, so a site stylesheet keyed to them keeps working.
+
 ## Cron
 
 The package brings two console commands, `members:prune` and `members:decide`. It lists both in

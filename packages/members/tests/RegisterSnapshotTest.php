@@ -42,11 +42,12 @@ final class RegisterSnapshotTest extends TestCase
         }
 
         $this->assertStringContainsString('Bitte geben Sie', $both);
-        $this->assertSame((string) file_get_contents(self::SNAPSHOT), $both);
+        // The page's look is not pinned (0.68: neutral styles); its markup and texts are.
+        $this->assertSame(self::stable((string) file_get_contents(self::SNAPSHOT)), $both);
     }
 
     private static function stable(string $html): string
     {
-        return (string) preg_replace(['/(name="_csrf_token" value=")[^"]+/', '/(nonce=")[^"]+/', '/(Nonce":")[^"]+/'], '$1…', $html);
+        return (string) preg_replace(['~<style\b[^>]*>.*?</style>~s', '/(name="_csrf_token" value=")[^"]+/', '/(nonce=")[^"]+/', '/(Nonce":")[^"]+/'], ['<style></style>', '$1…', '$1…', '$1…'], $html);
     }
 }

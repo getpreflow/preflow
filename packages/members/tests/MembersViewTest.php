@@ -184,6 +184,120 @@ TWIG;
         }
     }
 
+    /** The page's inline css: what is inside its <style> elements. */
+    private function css(string $html): string
+    {
+        preg_match_all('~<style[^>]*>(.*?)</style>~s', $html, $m);
+
+        // The framework's own runtime script also mentions "<style"; the page css is what styles the members pages.
+        return implode("\n", array_filter($m[1], static fn (string $css): bool => str_contains($css, 'members') || str_starts_with(trim($css), '.x-')));
+    }
+
+    /** @return array<string, array{string, array<string, mixed>}> */
+    public static function stylePages(): array
+    {
+        return [
+            'login' => ['login', []],
+            'forgot' => ['forgot', []],
+            'confirm' => ['confirm', ['token' => 'tok']],
+            'thanks' => ['thanks', []],
+            'account' => ['account', ['name' => 'Ada', 'email' => 'a@b.test']],
+            'register' => ['register', ['open' => true]],
+            'register closed' => ['register', ['open' => false]],
+        ];
+    }
+
+    /** @param array<string, mixed> $vars */
+    #[DataProvider('stylePages')]
+    public function test_pages_use_no_site_tokens(string $template, array $vars): void
+    {
+        $this->site();
+        $css = $this->css($this->html($template, $vars));
+
+        $this->assertStringContainsString('--members-', $css);
+        foreach (['--paper', '--rule', '--ink', '--font-mono', '--font-display', '--accent', 'section-inner', 'members-code', 'members-or', '#d42a34', 'uppercase'] as $token) {
+            $this->assertStringNotContainsString($token, $css, "{$template}: {$token}");
+        }
+        $this->assertDoesNotMatchRegularExpression('~(?<![\d.])8rem~', $css, 'no display-size paddings');
+        // Every member custom property carries its neutral fallback, and only the documented ones are used.
+        preg_match_all('~var\((--[a-z-]+)(,?)~', $css, $uses, PREG_SET_ORDER);
+        $this->assertNotEmpty($uses);
+        foreach ($uses as [, $name, $comma]) {
+            $this->assertContains($name, ['--members-bg', '--members-ink', '--members-muted', '--members-line', '--members-accent', '--members-radius', '--members-font']);
+            $this->assertSame(',', $comma, "{$name} has no fallback");
+        }
+        $this->assertStringContainsString('outline:2px solid var(--members-accent,light-dark(#1a1a1a,', $css, 'a visible focus ring uses the accent');
+        $this->assertStringContainsString(':focus-visible', $css);
+    }
+
+    /** @param array<string, mixed> $vars */
+    #[DataProvider('stylePages')]
+    public function test_pages_text_colours_have_contrast_in_light_and_dark(string $template, array $vars): void
+    {
+        $this->site();
+        $css = $this->css($this->html($template, $vars));
+
+        $fallback = static function (string $token) use ($css): array {
+            preg_match('~var\(--members-' . $token . ',\s*light-dark\((#[0-9a-f]{6}),\s*(#[0-9a-f]{6})\)\)~', $css, $m);
+
+            return [$m[1], $m[2]];
+        };
+        $luminance = static function (string $hex): float {
+            $c = array_map(static fn (string $h): float => ($v = hexdec($h) / 255) <= 0.03928 ? $v / 12.92 : (($v + 0.055) / 1.055) ** 2.4, str_split(ltrim($hex, '#'), 2));
+
+            return 0.2126 * $c[0] + 0.7152 * $c[1] + 0.0722 * $c[2];
+        };
+        foreach ([0, 1] as $mode) {
+            $bg = $luminance($fallback('bg')[$mode]);
+            foreach (['ink', 'muted', 'accent'] as $fg) {
+                $l = $luminance($fallback($fg)[$mode]);
+                $ratio = (max($bg, $l) + 0.05) / (min($bg, $l) + 0.05);
+                $this->assertGreaterThanOrEqual(4.5, $ratio, ($mode ? 'dark ' : 'light ') . $fg);
+            }
+        }
+    }
+
+    public function test_styles_block_can_be_replaced(): void
+    {
+        $this->site();
+        // (A css block is emitted once per process, so each page's replacement differs.)
+        foreach (['login', 'register', 'account'] as $page) {
+            $this->write("resources/members/{$page}.twig", "{% extends '@members-package/{$page}.twig' %}{% block members_styles %}.x-{$page}{color:red}{% endblock %}");
+        }
+        $this->flow = null;
+
+        foreach ([['login', []], ['register', ['open' => true]], ['account', ['name' => 'Ada', 'email' => 'a@b.test']]] as [$page, $vars]) {
+            $css = $this->css($this->html($page, $vars));
+            // (The bots' trap, included by the register form, brings its own rule.)
+            $this->assertStringContainsString(".x-{$page}{color:red}", $css, $page);
+            $this->assertStringNotContainsString('--members-', $css, $page);
+            $this->assertStringNotContainsString('.members-status', $css, $page);
+            $this->assertStringNotContainsString('.members-card', $css, $page);
+        }
+    }
+
+    public function test_the_account_styles_extend_the_card_styles(): void
+    {
+        $this->site();
+        $css = $this->css($this->html('account', ['name' => 'Ada', 'email' => 'a@b.test']));
+
+        $this->assertStringContainsString('.members-status__card', $css);
+        $this->assertStringContainsString('.account-section', $css);
+    }
+
+    public function test_pages_are_usable_at_375px_markup(): void
+    {
+        $this->site();
+        $html = $this->html('register', ['open' => true, 'errors' => ['email' => true]]);
+
+        foreach (Dom::all($html, '//form//input[@id]') as $input) {
+            $this->assertNotNull(Dom::first($html, '//label[@for="' . $input->getAttribute('id') . '"]'), $input->getAttribute('id'));
+        }
+        $this->assertSame('Please check the highlighted fields.', Dom::text($html, '//div[@role="alert"]'));
+        // One column by default: the two-column grid only exists inside a min-width query.
+        $this->assertMatchesRegularExpression('~\.members-row\s*\{[^}]*grid-template-columns:\s*1fr;~', $this->css($html));
+    }
+
     public function test_the_configured_layout_is_extended(): void
     {
         $this->site("['layout' => '@members/_other.twig']");

@@ -1,6 +1,7 @@
 {# The member pages' own page layout, for a site that names none (config/members.php layout):
    a plain standalone page in neutral greys with the custom properties the member templates
-   style with (--accent and friends; a site's layout sets its own colours). A site
+   style with (--members-bg, --members-ink, --members-muted, --members-line, --members-accent,
+   --members-radius, --members-font; each has a neutral fallback, light and dark). A site
    with its own design names its layout instead (blocks "meta" and "content"). #}
 <!DOCTYPE html>
 <html lang="{{ locale }}">
@@ -16,26 +17,19 @@
 {% block content %}{% endblock %}
 </main>
 {% apply css %}
-:root {
-  --paper: #ffffff;
-  --ink: #1a1a1a;
-  --ink-soft: #3d3d3d;
-  --ink-muted: #6b6b6b;
-  --rule: #d6d6d6;
-  --accent: #2b2b2b;
-  --accent-deep: #000000;
-  --accent-tint: #f0f0ef;
-  --radius: 4px;
-  --font-display: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, Menlo, Consolas, monospace;
-}
+{% block members_layout_styles %}
 *, *::before, *::after { box-sizing: border-box; }
-body.members-page { margin: 0; background: #f4f4f2; color: var(--ink); font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.5; }
-.members-page .section-inner { margin: 0 auto; }
-.members-page h1, .members-page h2 { margin-top: 0; }
-.members-page .btn { display: inline-flex; align-items: center; border: 1px solid var(--ink); border-radius: var(--radius); background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; padding: 0.6rem 1rem; text-decoration: none; cursor: pointer; }
-.members-page .btn-primary { background: var(--accent); border-color: var(--accent); color: #ffffff; }
-.members-page .btn-primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+body.members-page {
+  color-scheme: light dark;
+  margin: 0;
+  background: light-dark(#f4f4f4, #0f1114);
+  color: var(--members-ink, light-dark(#1a1a1a, #ececec));
+  font-family: var(--members-font, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif);
+  line-height: 1.5;
+}
+.members-page .btn { display: inline-flex; align-items: center; border: 1px solid var(--members-accent, light-dark(#1a1a1a, #ececec)); border-radius: var(--members-radius, 6px); background: var(--members-bg, light-dark(#ffffff, #16181c)); color: var(--members-ink, light-dark(#1a1a1a, #ececec)); font: inherit; font-weight: 600; padding: 0.6rem 1rem; text-decoration: none; cursor: pointer; }
+.members-page .btn-primary { background: var(--members-accent, light-dark(#1a1a1a, #ececec)); color: var(--members-bg, light-dark(#ffffff, #16181c)); }
+{% endblock %}
 {% endapply %}
 </body>
 </html>
