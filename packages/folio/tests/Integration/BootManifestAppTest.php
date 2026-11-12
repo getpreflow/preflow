@@ -63,7 +63,7 @@ final class BootManifestAppTest extends TestCase
 
         $result = (new ManifestBuilder($this->dir))->write();
         $this->assertTrue($result['written']);
-        foreach (['core.components', 'i18n.translations', 'folio.extensions', 'folio.extension_types', 'folio.type_listings', 'folio.blocks', 'folio.interface_locales'] as $catalog) {
+        foreach (['core.components', 'i18n.translations', 'folio.extensions', 'folio.extension_types', 'folio.type_listings', 'blocks', 'folio.interface_locales'] as $catalog) {
             $this->assertContains($catalog, $result['catalogs']);
         }
 

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Examples\FolioDemo\Blocks\Hero;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockComponent;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockComponent;
+use Preflow\Blocks\BlockField;
 
 /** Opening section: headline, intro and a few links (data-only "link" blocks). */
 #[Block(key: 'hero', label: 'Hero', group: 'Sections', icon: 'block', description: 'Big opening section with links')]

@@ -50,7 +50,7 @@ final class CacheScreenTest extends TestCase
     public function test_core_and_folio_caches_have_a_label_in_every_folio_language(): void
     {
         $labels = (new \ReflectionClassConstant(\Preflow\Folio\Http\CacheController::class, 'LABELS'))->getValue();
-        foreach (['folio.extensions', 'folio.blocks', 'data.json', 'blade', 'twig', 'assets', 'composer', 'boot', 'pages'] as $key) {
+        foreach (['folio.extensions', 'blocks', 'data.json', 'blade', 'twig', 'assets', 'composer', 'boot', 'pages'] as $key) {
             $this->assertArrayHasKey($key, $labels, $key);
         }
         foreach (['en', 'de', 'fr'] as $lang) {
@@ -68,7 +68,7 @@ final class CacheScreenTest extends TestCase
     #[RunInSeparateProcess]
     public function test_screen_lists_caches_with_forms_and_opcache(): void
     {
-        $this->write('storage/cache/folio-blocks.cache', str_repeat('b', 2000));
+        $this->write('storage/cache/blocks.cache', str_repeat('b', 2000));
 
         $res = $this->request('GET', '/folio/cache', opcache: $this->opcache(true));
         $body = (string) $res->getBody();
@@ -76,9 +76,9 @@ final class CacheScreenTest extends TestCase
         $this->assertSame(200, $res->getStatusCode());
         $this->assertMatchesRegularExpression('#<h1>\s*Cache\s*</h1>#', $body);
         $this->assertStringContainsString('Folio extensions', $body);
-        $this->assertMatchesRegularExpression('#Folio blocks.*?<td>1</td>\s*<td>' . preg_quote(Bytes::human(2000), '#') . '</td>#s', $body);
+        $this->assertMatchesRegularExpression('#Blocks.*?<td>1</td>\s*<td>' . preg_quote(Bytes::human(2000), '#') . '</td>#s', $body);
         $this->assertStringContainsString('<form method="post" action="/folio/cache/clear">', $body);
-        $this->assertStringContainsString('<input type="hidden" name="key" value="folio.blocks">', $body);
+        $this->assertStringContainsString('<input type="hidden" name="key" value="blocks">', $body);
         $this->assertStringContainsString('<input type="hidden" name="key" value="folio.extensions">', $body);
         $this->assertStringContainsString('<input type="hidden" name="all" value="1">', $body);
         $this->assertStringContainsString('name="_csrf_token"', $body);
@@ -108,28 +108,28 @@ final class CacheScreenTest extends TestCase
     #[RunInSeparateProcess]
     public function test_clear_one_cache_removes_its_file(): void
     {
-        $this->write('storage/cache/folio-blocks.cache', 'blocks');
+        $this->write('storage/cache/blocks.cache', 'blocks');
         $this->write('storage/cache/folio-extensions.cache', 'extensions');
 
-        $res = $this->post('/folio/cache/clear', ['key' => 'folio.blocks']);
+        $res = $this->post('/folio/cache/clear', ['key' => 'blocks']);
 
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('/folio/cache', $res->getHeaderLine('Location'));
-        $this->assertFileDoesNotExist($this->dir . '/storage/cache/folio-blocks.cache');
+        $this->assertFileDoesNotExist($this->dir . '/storage/cache/blocks.cache');
         $this->assertFileExists($this->dir . '/storage/cache/folio-extensions.cache');
     }
 
     #[RunInSeparateProcess]
     public function test_clear_unknown_key_is_404_and_clears_nothing(): void
     {
-        $this->write('storage/cache/folio-blocks.cache', 'blocks');
+        $this->write('storage/cache/blocks.cache', 'blocks');
         $this->write('storage/cache/folio-extensions.cache', 'extensions');
 
         $res = $this->post('/folio/cache/clear', ['key' => 'nope']);
 
         $this->assertSame(404, $res->getStatusCode());
         $this->assertSame('Unknown cache', (string) $res->getBody());
-        $this->assertFileExists($this->dir . '/storage/cache/folio-blocks.cache');
+        $this->assertFileExists($this->dir . '/storage/cache/blocks.cache');
         $this->assertFileExists($this->dir . '/storage/cache/folio-extensions.cache');
         $this->assertSame(404, $this->post('/folio/cache/clear', [])->getStatusCode());
     }
@@ -137,7 +137,7 @@ final class CacheScreenTest extends TestCase
     #[RunInSeparateProcess]
     public function test_clear_all_clears_every_registered_cache(): void
     {
-        $this->write('storage/cache/folio-blocks.cache', 'blocks');
+        $this->write('storage/cache/blocks.cache', 'blocks');
         $this->write('storage/cache/folio-extensions.cache', 'extensions');
 
         $res = $this->post('/folio/cache/clear', ['all' => '1']);
@@ -153,12 +153,12 @@ final class CacheScreenTest extends TestCase
     public function test_flashes_after_clearing_and_resetting(): void
     {
         $this->signIn();
-        $this->write('storage/cache/folio-blocks.cache', str_repeat('b', 1500));
+        $this->write('storage/cache/blocks.cache', str_repeat('b', 1500));
 
-        $this->assertSame(302, $this->send('POST', '/folio/cache/clear', ['key' => 'folio.blocks'])->getStatusCode());
-        $this->assertStringContainsString('Folio blocks: 1 file(s), ' . Bytes::human(1500) . ' cleared.', (string) $this->send('GET', '/folio/cache')->getBody());
+        $this->assertSame(302, $this->send('POST', '/folio/cache/clear', ['key' => 'blocks'])->getStatusCode());
+        $this->assertStringContainsString('Blocks: 1 file(s), ' . Bytes::human(1500) . ' cleared.', (string) $this->send('GET', '/folio/cache')->getBody());
 
-        $this->write('storage/cache/folio-blocks.cache', str_repeat('b', 100));
+        $this->write('storage/cache/blocks.cache', str_repeat('b', 100));
         $this->write('storage/cache/folio-extensions.cache', str_repeat('e', 50));
         $entries = 0;
         $bytes = 0;
@@ -248,12 +248,12 @@ final class CacheScreenTest extends TestCase
     public function test_post_without_csrf_token_is_403(): void
     {
         $this->signIn();
-        $this->write('storage/cache/folio-blocks.cache', 'blocks');
+        $this->write('storage/cache/blocks.cache', 'blocks');
 
-        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/cache/clear')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withParsedBody(['key' => 'folio.blocks']));
+        $res = $this->session->handle((new Psr17Factory())->createServerRequest('POST', '/folio/cache/clear')->withHeader('Sec-Fetch-Site', 'same-origin')->withCookieParams([session_name() => session_id()])->withParsedBody(['key' => 'blocks']));
 
         $this->assertSame(403, $res->getStatusCode());
-        $this->assertFileExists($this->dir . '/storage/cache/folio-blocks.cache');
+        $this->assertFileExists($this->dir . '/storage/cache/blocks.cache');
     }
 
     #[RunInSeparateProcess]

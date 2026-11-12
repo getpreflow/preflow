@@ -40,6 +40,9 @@ use PHPUnit\Framework\TestCase;
  * (before 0.39 also Members::lock(), unlock(), isLocked(), endSessions(), resendConfirmation()), so it conflicts.
  * preflow/codes is suggested too (Folio carries its admin since 0.40); a codes release before 0.68 lacks
  * Codes::checkUpdate(), update() with the checks in the write and CodeRefused, which the code admin calls, so it conflicts.
+ * preflow/blocks (required since 0.70: the block classes, registry and renderer that were Folio's own; BlockLocale,
+ * BlockTextCleaner and BlockPreviewMarks, which ContentLocale, SafeRichText and FolioBlockPreviewMarks implement) has no
+ * release before 0.70, so it needs no conflict.
  * preflow/rbac is suggested too (Folio carries its admin since 0.69); an rbac release before 0.69 still ships that admin
  * itself (its own extension "rbac", field types and texts) and lacks StaffAccounts, StaffLinks::available() and
  * StaffMail::sendTo(), which Folio's rbac admin and staff mails call, so it conflicts.

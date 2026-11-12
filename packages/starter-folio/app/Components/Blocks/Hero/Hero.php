@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Components\Blocks\Hero;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockComponent;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockComponent;
+use Preflow\Blocks\BlockField;
 
 /** A page's opening: the headline (the page's h1), a short intro, an optional image and button. */
 #[Block(key: 'hero', label: 'Hero', group: 'Sections', description: 'Headline, intro, image and a button')]

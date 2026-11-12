@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Block;
+namespace Preflow\Blocks;
 
 use Preflow\Components\Component;
 use Preflow\Components\ComponentMap;
@@ -28,7 +28,7 @@ final class BlockRegistry
     /**
      * @param ComponentMap|array<string, class-string> $components discovered components
      * @param string                                   $blocksDir  app/Blocks (data-only blocks, PSR-4 App\Blocks\…)
-     * @param list<class-string>                       $classes    extra block classes (config/folio.php 'blocks')
+     * @param list<class-string>                       $classes    extra block classes (packages' extra.preflow.blocks, config/blocks.php 'classes')
      */
     public static function discover(
         ComponentMap|array $components,
@@ -156,7 +156,7 @@ final class BlockRegistry
             return null;
         }
         $reflection = new \ReflectionClass($class);
-        $attribute = $reflection->getAttributes(Block::class)[0] ?? null;
+        $attribute = $reflection->getAttributes(Block::class, \ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
         if ($attribute === null) {
             return null;
         }
@@ -165,7 +165,7 @@ final class BlockRegistry
 
         $fields = [];
         foreach ($reflection->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
-            $fieldAttribute = $property->getAttributes(BlockField::class)[0] ?? null;
+            $fieldAttribute = $property->getAttributes(BlockField::class, \ReflectionAttribute::IS_INSTANCEOF)[0] ?? null;
             if ($fieldAttribute === null) {
                 continue;
             }

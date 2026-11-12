@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Blocks\BlockLocale;
 use Preflow\Data\Locales;
 
 /**
  * The locale content is rendered in for the current request (the page's
  * locale on the frontend, the editing locale in previews). Field types that
- * render referenced records (relation, matrix) follow it.
+ * render referenced records (relation, matrix) follow it, and so do blocks (BlockLocale).
  */
-final class ContentLocale
+final class ContentLocale implements BlockLocale
 {
     private ?string $locale = null;
 

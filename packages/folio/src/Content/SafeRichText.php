@@ -4,16 +4,17 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
+use Preflow\Blocks\BlockTextCleaner;
 use Preflow\Folio\Field\FieldTypeRegistry;
 
 /**
  * Rich text on its way to a template: every richtext field of a record or block,
  * nested blocks included, through the richtext field type's sanitizer. Values are
  * sanitized when the admin saves them, but content can also arrive by import, app
- * code or older data, and templates print rich text with |raw.
+ * code or older data, and templates print rich text with |raw. Blocks ask it as their BlockTextCleaner.
  */
-final class SafeRichText
+final class SafeRichText implements BlockTextCleaner
 {
     public function __construct(
         private readonly FieldTypeRegistry $fieldTypes,

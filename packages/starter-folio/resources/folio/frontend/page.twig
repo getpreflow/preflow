@@ -8,5 +8,5 @@
 {% block title %}{{ record.slug == 'home' ? t('app.name') : record.title ~ ' · ' ~ t('app.name') }}{% endblock %}
 
 {% block content %}
-{{ folio_blocks(record.sections|default([]), preview|default(false)) }}
+{{ blocks(record.sections|default([]), preview|default(false)) }}
 {% endblock %}

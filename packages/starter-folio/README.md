@@ -95,7 +95,7 @@ The `page` type (`config/models/page.json`) has a `sections` field of type `bloc
 | `latest_jobs` | title, count | the newest published jobs |
 | `latest_news` | title, count | the newest published news posts |
 
-A block is a `BlockComponent` with a `#[Block(key: ...)]` attribute and `#[BlockField]` properties. To add one, copy `Hero` and add its key to `allowed` in `config/models/page.json`. In a block template, `folio_editable('headline')` marks an element so that editors can click it in the live preview.
+A block is a `BlockComponent` with a `#[Block(key: ...)]` attribute and `#[BlockField]` properties (`Preflow\Blocks`, from `preflow/blocks`). To add one, copy `Hero` and add its key to `allowed` in `config/models/page.json`. The page template renders the field with `blocks(record.sections)`. In a block template, `folio_editable('headline')` marks an element so that editors can click it in the live preview.
 
 ### The API
 

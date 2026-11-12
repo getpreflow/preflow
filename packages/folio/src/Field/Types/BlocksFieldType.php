@@ -6,7 +6,7 @@ namespace Preflow\Folio\Field\Types;
 
 use Preflow\Data\LocaleValue;
 use Preflow\Data\Locales;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Content\TranslatableText;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Field\AcceptsTranslatedTexts;
@@ -441,7 +441,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             foreach ($definitions as $definition) {
                 // Blocks without a group of their own sit under Folio's "Blocks", in the interface language.
                 // A block's label, group and description may be keys (FolioText::label()).
-                $groups[$group === \Preflow\Folio\Block\Block::DEFAULT_GROUP ? \Preflow\Folio\FolioText::get('folio.blocks.group') : \Preflow\Folio\FolioText::label($group)][] = [
+                $groups[$group === \Preflow\Blocks\Block::DEFAULT_GROUP ? \Preflow\Folio\FolioText::get('folio.blocks.group') : \Preflow\Folio\FolioText::label($group)][] = [
                     'key' => $definition->key,
                     'label' => \Preflow\Folio\FolioText::label($definition->label),
                     'icon' => $definition->icon ?? 'block',
@@ -468,7 +468,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
      * @param array<string, mixed>        $block
      * @param array<string, list<string>> $errors keys "<field>…" relative to this block
      */
-    private function renderCard(\Preflow\Folio\Block\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null): string
+    private function renderCard(\Preflow\Blocks\BlockDefinition $definition, array $block, string $namePrefix, array $errors, Locales $locales, string $locale, int $depth, bool $open = false, ?array $record = null): string
     {
         $uid = (string) $block['_uid'];
         $base = $namePrefix . '[' . $uid . ']';
@@ -612,7 +612,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return $blocks;
     }
 
-    /** "3 blocks": a summary; the frontend output is empty (folio_blocks() renders them). */
+    /** "3 blocks": a summary; the frontend output is empty (blocks() renders them). */
     public function renderAdmin(mixed $value, array $config): string
     {
         $n = count($this->fromStorage($value));
@@ -622,7 +622,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
     public function renderFrontend(mixed $value, array $config): string
     {
-        return ''; // rendered by folio_blocks() through the block components
+        return ''; // rendered by blocks() through the block components
     }
 
     public function rules(array $config): array

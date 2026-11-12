@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Block;
+namespace Preflow\Blocks;
 
 use Preflow\Data\TypeFieldDefinition;
 

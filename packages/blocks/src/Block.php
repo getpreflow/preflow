@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Block;
+namespace Preflow\Blocks;
 
-/** Marks a class as a Folio block. "key" is the stable storage identifier. */
+/** Marks a class as a block. "key" is the stable storage identifier. */
 #[\Attribute(\Attribute::TARGET_CLASS)]
 final class Block
 {

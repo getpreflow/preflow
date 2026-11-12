@@ -46,9 +46,10 @@ return [
 ];
 ```
 
-**Cache files:** Folio keeps `folio-extensions.cache`, `folio-blocks.cache` and
+**Cache files:** Folio keeps `folio-extensions.cache` and
 `folio-translations-{locale}.php` in `storage/cache`. `config/folio.php` `'cache_path'` moves
-them: an absolute path is used as it is, a relative one is taken from the project root.
+them (and, until the next release, preflow/blocks' `blocks.cache` when `config/blocks.php` names no
+`cache_path`): an absolute path is used as it is, a relative one is taken from the project root.
 Folio creates the directory when it writes. Core's own caches (`storage/cache/data`, compiled
 templates) are not affected. A test suite can point `cache_path` at a temp directory, so
 booting the app never writes into the project's cache:
@@ -127,7 +128,7 @@ their overrides in `resources/folio/`. They render through a Twig engine Folio o
 ending in `.twig` goes there. Any other name is an app template, such as a type's
 `frontend.template` written for the app's engine (`"template": "pages/job.phtml"`), and renders
 through the app's engine, where the `folio_*` functions (`folio_get`, `folio_list`, `folio_find`,
-`folio_blocks`, `folio_alternate_links`, …) are registered too. Folio's Twig engine is built like
+`folio_alternate_links`, …) are registered too. Folio's Twig engine is built like
 the app's (core's `TemplateEngineContext`; compiled templates under the app engine's cache folder,
 `…/folio-twig`) and gets every function and global of the app's engine (`SharingTemplateEngine`),
 so `csrf_field()`, `t()`, `hd` work in Folio's templates as before. On a Twig app both are the app's
@@ -709,23 +710,26 @@ or replace a type, list the classes in `config/folio.php`:
 return ['field_types' => [App\Folio\ColorFieldType::class]];
 ```
 
-**From a package (since 0.66).** A package adds its field types and blocks by being installed:
+**From a package (since 0.66).** A package adds its field types by being installed:
 list them in its `composer.json`, and they are registered like `config/folio.php`'s (built by the
-container; `SearchableText`, `HasColumnKind` and the field kinds apply):
+container; `SearchableText`, `HasColumnKind` and the field kinds apply). Blocks are listed in
+`extra.preflow.blocks` (preflow/blocks; `extra.folio.blocks` is still read until the next release,
+with a deprecation note):
 
 ```json
 "extra": {
     "folio": {
-        "field_types": ["Acme\\Links\\LinkFieldType"],
+        "field_types": ["Acme\\Links\\LinkFieldType"]
+    },
+    "preflow": {
         "blocks": ["Acme\\Links\\Cta"]
     }
 }
 ```
 
 The order is built-ins, then packages' types, then `config/folio.php`'s: a later type with a key
-already taken replaces the earlier one, so the app's config wins. Blocks are different: two blocks
-with the same key fail at boot, also when one comes from a package. A listed class that is no field
-type, or no class with `#[Block]`, stops the boot naming the package. A type a provider registers itself later
+already taken replaces the earlier one, so the app's config wins. A listed class that is no field
+type stops the boot naming the package. A type a provider registers itself later
 (`$container->get(FieldTypeRegistry::class)->register(…)` in `boot()`) gets its field kinds too.
 
 A field type's `assets()` names the `.css` and `.js` files its editor needs; Folio loads
@@ -736,42 +740,24 @@ serves its own files there by adding them in its provider's `boot()`:
 
 ## Blocks
 
-A block is a Preflow component whose fields are PHP attributes. Schema, logic, template
-and CSS live in one component folder:
+Blocks are their own package, [preflow/blocks](../blocks/README.md) (`Preflow\Blocks`, since
+0.70): writing a block type, data-only blocks, discovery (`app/Components`, `app/Blocks`,
+`extra.preflow.blocks`, `config/blocks.php`) and rendering with `blocks()` are described there.
+Folio adds the `blocks` field type and its editor, and answers the blocks' questions: they render
+in Folio's content locale (the page's, or the editing locale in a preview), their rich text is
+sanitized on the way to the template, and in the live preview each block's root element carries
+`data-folio-block="<uid>"` and `data-folio-label`.
 
-```php
-#[Block(key: 'hero', label: 'Hero', group: 'Sections', icon: 'block')]
-final class Hero extends BlockComponent
-{
-    #[BlockField(type: 'string', translatable: true, validate: ['required'])]
-    public string $headline = '';
-
-    #[BlockField(type: 'blocks', allowed: ['link'], max: 3)]
-    public array $links = [];
-}
-```
-
-- **`key`** is the stable storage id; renaming the class never orphans content.
-- **Field types:** `#[BlockField]` takes every field type and option that JSON type
-  fields take (`label`, `help`, `validate`, `translatable`, `config` for things like
-  `options`). `blocks` nests further.
 - **Labels in the admin's language:** `label`, `group` and `description` of `#[Block]` and
   `label` / `help` of `#[BlockField]` may be translation keys (`'site.blocks.hero.label'`,
   delivered in `lang/{en,de,fr}/site.php`); plain text is shown as written.
-- **Component blocks** extend `BlockComponent`. Their `#[BlockField]` properties are
-  filled from the block's data (already in the page's language) before
-  `resolveState()`.
-- **Data-only blocks** are plain classes with the attributes, in `app/Blocks/` under the
-  `App\Blocks\…` namespace (or listed in `config/folio.php`).
-  They have no template; the parent's template iterates them (`{% for link in links %}`).
-- **Discovery:** blocks are found in `app/Components`, `app/Blocks`, in installed packages'
-  `composer.json` `extra.folio.blocks` (since 0.66, see "From a package" above), and in
-  `config/folio.php` `'blocks' => ['classes' => [...], 'max_depth' => 4]`. Duplicate keys
-  fail at boot. When debug is off the registry is cached in `storage/cache`; the cache
-  is keyed by the block classes and their files' modification times, so it rebuilds by
-  itself when a block is added, removed or edited.
+- **Until the next release** the 0.69 names keep working: `Preflow\Folio\Block\*` are aliases
+  of `Preflow\Blocks\*`, `folio_blocks()` is `blocks()`, and `config/folio.php`
+  `'blocks' => ['classes' => [...], 'max_depth' => 4]` and `extra.folio.blocks` are read too
+  (each logs a deprecation note; use `config/blocks.php` and `extra.preflow.blocks`).
 
 **On a content type:** `"sections": {"type": "blocks", "allowed": ["hero", "text"], "min": 1, "max": 10}`.
+How deep blocks nest is `config/blocks.php` `'max_depth'` (default 4).
 
 **Storage:** an ordered list inside the record, so nothing extra to migrate.
 
@@ -794,17 +780,14 @@ final class Hero extends BlockComponent
 - Errors show on the card, with a summary that links to it.
 - Uploads work inside blocks.
 
-**Rendering:**
-- `{{ folio_blocks(record.sections, preview) }}` renders each block through its
-  component, in order and in the page's language.
+**Rendering in Folio's templates:**
+- `{{ blocks(record.sections, preview) }}` renders each block through its component, in
+  order and in the page's language. Templates must pass `preview` for the click-to-edit
+  markers to appear in the live preview.
 - `{{ folio_block(block) }}` renders one.
-- Templates must pass `preview` (`folio_blocks(record.sections, preview)`) for the
-  click-to-edit markers to appear in the live preview.
-- Block templates receive raw field values. Escape them as usual (`{{ headline }}`).
-  For a `richtext` block field, the editor sanitizes on save, so `{{ body|raw }}` is the
-  intended output.
-- A block that throws is contained by the component error boundary.
-- In live preview each block is wrapped in `data-folio-block="<uid>"`.
+- `{{ folio_editable('headline') }}` in a block template marks an element for click-to-edit
+  (only while a preview renders).
+- For a `richtext` block field, `{{ body|raw }}` is the intended output (sanitized).
 
 ## Blocks, matrix or relation?
 

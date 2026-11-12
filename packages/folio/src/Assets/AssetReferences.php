@@ -6,7 +6,7 @@ namespace Preflow\Folio\Assets;
 
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
-use Preflow\Folio\Block\BlockRegistry;
+use Preflow\Blocks\BlockRegistry;
 
 /**
  * Walks the asset values of a record: top-level "asset" fields and, inside

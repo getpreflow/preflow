@@ -1,0 +1,35 @@
+{
+    "name": "preflow/blocks",
+    "description": "Preflow blocks — page sections as typed classes: declare a block type, store blocks as data, render them through components",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/components": "^0.69 || @dev",
+        "preflow/core": "^0.69 || @dev",
+        "preflow/data": "^0.69 || @dev",
+        "preflow/view": "^0.69 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "suggest": {
+        "preflow/i18n": "Blocks render in the request's locale"
+    },
+    "conflict": {
+        "preflow/components": "<0.69",
+        "preflow/core": "<0.69",
+        "preflow/data": "<0.69",
+        "preflow/view": "<0.69"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Blocks\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Blocks\\Tests\\": "tests/"
+        }
+    }
+}

@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Components\Blocks\Text;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockComponent;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockComponent;
+use Preflow\Blocks\BlockField;
 
 /** Formatted text: paragraphs, headings, lists and links. */
 #[Block(key: 'text', label: 'Text', group: 'Sections')]

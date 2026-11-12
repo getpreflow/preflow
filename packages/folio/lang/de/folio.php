@@ -663,7 +663,7 @@ return [
         'opcache_reset_failed' => 'OPcache konnte nicht zurückgesetzt werden.',
         'unknown' => 'Unbekannter Cache',
         'extensions' => 'Folio-Erweiterungen',
-        'blocks' => 'Folio-Blöcke',
+        'blocks' => 'Blöcke',
         'data_json' => 'Abfrage-Cache des JSON-Speichers',
         'blade' => 'Kompilierte Blade-Templates',
         'twig' => 'Kompilierte Twig-Templates',

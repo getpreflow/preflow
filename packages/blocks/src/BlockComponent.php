@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Block;
+namespace Preflow\Blocks;
 
 use Preflow\Components\Component;
 
@@ -25,7 +25,7 @@ abstract class BlockComponent extends Component
         }
 
         foreach ((new \ReflectionClass($this))->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
-            if ($property->getAttributes(BlockField::class) === [] || !array_key_exists($property->getName(), $props)) {
+            if ($property->getAttributes(BlockField::class, \ReflectionAttribute::IS_INSTANCEOF) === [] || !array_key_exists($property->getName(), $props)) {
                 continue;
             }
             $value = $props[$property->getName()];

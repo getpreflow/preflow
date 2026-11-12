@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Block;
+namespace Preflow\Blocks;
 
 /**
  * A block field: same types and options as a JSON type field. "allowed",

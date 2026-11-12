@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Block;
+namespace Preflow\Blocks;
 
 /** Invalid block declarations (raised at boot). */
 final class BlockConfigException extends \RuntimeException

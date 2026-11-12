@@ -27,7 +27,7 @@ final class CacheController
     /** The caches Folio knows by key, shown under its own name (others keep the name they register with). */
     private const array LABELS = [
         'folio.extensions' => 'folio.cache.extensions',
-        'folio.blocks' => 'folio.cache.blocks',
+        'blocks' => 'folio.cache.blocks',
         'data.json' => 'folio.cache.data_json',
         'blade' => 'folio.cache.blade',
         'twig' => 'folio.cache.twig',

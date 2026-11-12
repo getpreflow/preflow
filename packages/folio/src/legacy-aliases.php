@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 /**
  * The asset library, image tag, value classes and image backends moved to preflow/media; the record users
- * (RecordUser, RecordUserProvider) to preflow/auth (Preflow\Auth\Record). The old names keep working for
- * one release; use the new names. A config/auth.php
- * naming the old provider logs a deprecation (FolioServiceProvider). Loaded by Composer ("autoload.files").
+ * (RecordUser, RecordUserProvider) to preflow/auth (Preflow\Auth\Record); the blocks (Preflow\Folio\Block\*) to
+ * preflow/blocks (Preflow\Blocks, 0.70). The old names keep working for one release; use the new names. A
+ * config/auth.php naming the old provider logs a deprecation (FolioServiceProvider). Loaded by Composer
+ * ("autoload.files").
  */
 
 $aliases = [
@@ -24,6 +25,13 @@ $aliases = [
     'Preflow\Folio\Assets\Image\Orientation' => 'Preflow\Media\Image\Orientation',
     'Preflow\Folio\Users\RecordUser' => 'Preflow\Auth\Record\RecordUser',
     'Preflow\Folio\Users\RecordUserProvider' => 'Preflow\Auth\Record\RecordUserProvider',
+    'Preflow\Folio\Block\Block' => 'Preflow\Blocks\Block',
+    'Preflow\Folio\Block\BlockComponent' => 'Preflow\Blocks\BlockComponent',
+    'Preflow\Folio\Block\BlockConfigException' => 'Preflow\Blocks\BlockConfigException',
+    'Preflow\Folio\Block\BlockDefinition' => 'Preflow\Blocks\BlockDefinition',
+    'Preflow\Folio\Block\BlockField' => 'Preflow\Blocks\BlockField',
+    'Preflow\Folio\Block\BlockRegistry' => 'Preflow\Blocks\BlockRegistry',
+    'Preflow\Folio\Block\BlockRenderer' => 'Preflow\Blocks\BlockRenderer',
 ];
 
 foreach ($aliases as $old => $new) {

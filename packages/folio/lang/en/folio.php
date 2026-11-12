@@ -686,7 +686,7 @@ return [
         'opcache_reset_failed' => 'OPcache reset failed.',
         'unknown' => 'Unknown cache',
         'extensions' => 'Folio extensions',
-        'blocks' => 'Folio blocks',
+        'blocks' => 'Blocks',
         'data_json' => 'JSON storage query cache',
         'blade' => 'Compiled Blade templates',
         'twig' => 'Compiled Twig templates',

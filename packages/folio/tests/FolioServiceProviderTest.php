@@ -274,7 +274,7 @@ final class FolioServiceProviderTest extends TestCase
         $this->renderPages($app);
 
         $this->assertFileExists($fc . '/folio-extensions.cache');
-        $this->assertFileExists($fc . '/folio-blocks.cache');
+        $this->assertFileExists($fc . '/blocks.cache');
         $this->assertSame([], $this->folioCacheFiles($dir . '/storage/cache'));
 
         $paths = [];
@@ -284,7 +284,7 @@ final class FolioServiceProviderTest extends TestCase
             }
         }
         $this->assertSame($fc . '/folio-extensions.cache', $paths['folio.extensions']);
-        $this->assertSame($fc . '/folio-blocks.cache', $paths['folio.blocks']);
+        $this->assertSame($fc . '/blocks.cache', $paths['blocks']);
 
         $this->rrmdir($fc);
         $this->rrmdir($dir);
@@ -296,7 +296,7 @@ final class FolioServiceProviderTest extends TestCase
         $this->renderPages($app);
 
         $this->assertFileExists($dir . '/var/folio/folio-extensions.cache');
-        $this->assertFileExists($dir . '/var/folio/folio-blocks.cache');
+        $this->assertFileExists($dir . '/var/folio/blocks.cache');
         $this->assertSame([], $this->folioCacheFiles($dir . '/storage/cache'));
         $this->rrmdir($dir);
     }
@@ -306,7 +306,7 @@ final class FolioServiceProviderTest extends TestCase
         [$app, $dir] = $this->appWith([]);
         $this->renderPages($app);
 
-        $this->assertFileExists($dir . '/storage/cache/folio-blocks.cache');
+        $this->assertFileExists($dir . '/storage/cache/blocks.cache');
         $this->assertFileExists($dir . '/storage/cache/folio-extensions.cache');
         $this->rrmdir($dir);
     }

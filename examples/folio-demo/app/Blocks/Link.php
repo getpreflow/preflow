@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Examples\FolioDemo\Blocks;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockField;
 
 /** Data-only block: the Hero template renders it. */
 #[Block(key: 'link', label: 'Link', icon: 'link')]

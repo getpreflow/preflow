@@ -2,34 +2,37 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Block;
+namespace Preflow\Blocks;
 
 use Preflow\Components\ComponentRenderer;
 use Preflow\Core\Container\Container;
 use Preflow\Data\LocaleValue;
-use Preflow\Folio\Content\ContentLocale;
-use Preflow\Folio\Content\SafeRichText;
 
 /**
- * Renders a blocks field through the blocks' own components, in the
- * request's content locale. Unknown and data-only blocks are skipped (data-
- * only blocks are rendered by their parent's template); a block that throws
- * is contained by the component error boundary.
+ * Renders a blocks field through the blocks' own components, in the BlockLocale's
+ * locale. Unknown and data-only blocks are skipped (data-only blocks are rendered by
+ * their parent's template); a block that throws is contained by the component error
+ * boundary. Blocks nested deeper than $maxDepth are not rendered.
  *
- * Preview mode reaches nested blocks: while a preview render runs, a block
- * template that renders its children with folio_blocks(items) previews them
- * too, and folio_editable() emits its field targets.
+ * Preview mode reaches nested blocks: while a preview render runs, a block template
+ * that renders its children with blocks(items) previews them too, and each block's
+ * root element carries the BlockPreviewMarks attributes.
  */
 final class BlockRenderer
 {
     private int $previewDepth = 0;
 
+    /** How many blocks are rendering now (a blocks() call inside a block's template is one level deeper). */
+    private int $depth = 0;
+
     public function __construct(
         private readonly BlockRegistry $blocks,
         private readonly ComponentRenderer $renderer,
         private readonly Container $container,
-        private readonly ContentLocale $contentLocale,
-        private readonly ?SafeRichText $richText = null,
+        private readonly BlockLocale $locale,
+        private readonly BlockTextCleaner $cleaner = new DefaultBlockTextCleaner(),
+        private readonly BlockPreviewMarks $previewMarks = new DefaultBlockPreviewMarks(),
+        private readonly int $maxDepth = BlocksConfig::DEFAULT_MAX_DEPTH,
     ) {}
 
     /** True while a preview render (of any depth) is running. */
@@ -44,10 +47,10 @@ final class BlockRenderer
         if (is_string($blocks) && $blocks !== '') {
             $blocks = json_decode($blocks, true);
         }
-        if (!is_array($blocks)) {
+        if (!is_array($blocks) || $this->depth >= $this->maxDepth) {
             return '';
         }
-        $blocks = LocaleValue::resolveTree($blocks, $this->contentLocale->locales(), $this->contentLocale->get());
+        $blocks = LocaleValue::resolveTree($blocks, $this->locale->locales(), $this->locale->get());
 
         $out = '';
         foreach ($blocks as $block) {
@@ -64,12 +67,12 @@ final class BlockRenderer
     {
         $preview = $preview || $this->inPreview();
         $definition = $this->blocks->get((string) ($block['_block'] ?? ''));
-        if ($definition === null || !$definition->isComponent) {
+        if ($definition === null || !$definition->isComponent || $this->depth >= $this->maxDepth) {
             return '';
         }
 
-        // Rich text reaches the block's template sanitized, nested blocks included.
-        $block = $this->richText?->block($block) ?? $block;
+        // Values reach the block's template cleaned (rich text sanitized), nested blocks included.
+        $block = $this->cleaner->block($block);
 
         try {
             $component = $this->container->make($definition->class);
@@ -87,19 +90,26 @@ final class BlockRenderer
 
             return '';
         }
-        if (!$preview) {
-            return $this->renderer->render($component);
-        }
 
-        // Preview: mark the component's own root element (no extra wrapper, so
-        // the page's layout and selectors behave exactly as on the public site).
-        $component->setRootAttribute('data-folio-block', (string) ($block['_uid'] ?? ''));
-        $component->setRootAttribute('data-folio-label', \Preflow\Folio\FolioText::label($definition->label)); // preview runs in the admin's language
-        $this->previewDepth++;
+        $this->depth++;
         try {
-            return $this->renderer->render($component);
+            if (!$preview) {
+                return $this->renderer->render($component);
+            }
+
+            // Preview: mark the component's own root element (no extra wrapper, so
+            // the page's layout and selectors behave exactly as on the public site).
+            foreach ($this->previewMarks->attributes($definition, $block) as $name => $value) {
+                $component->setRootAttribute($name, $value);
+            }
+            $this->previewDepth++;
+            try {
+                return $this->renderer->render($component);
+            } finally {
+                $this->previewDepth--;
+            }
         } finally {
-            $this->previewDepth--;
+            $this->depth--;
         }
     }
 }

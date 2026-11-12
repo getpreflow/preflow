@@ -663,7 +663,7 @@ return [
         'opcache_reset_failed' => 'Échec de la réinitialisation d’OPcache.',
         'unknown' => 'Cache inconnu',
         'extensions' => 'Extensions Folio',
-        'blocks' => 'Blocs Folio',
+        'blocks' => 'Blocs',
         'data_json' => 'Cache des requêtes du stockage JSON',
         'blade' => 'Templates Blade compilés',
         'twig' => 'Templates Twig compilés',

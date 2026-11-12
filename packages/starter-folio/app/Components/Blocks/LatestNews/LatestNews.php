@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Components\Blocks\LatestNews;
 
-use Preflow\Folio\Block\Block;
-use Preflow\Folio\Block\BlockComponent;
-use Preflow\Folio\Block\BlockField;
+use Preflow\Blocks\Block;
+use Preflow\Blocks\BlockComponent;
+use Preflow\Blocks\BlockField;
 
 /** The newest published news posts as teasers, with a link to /news. */
 #[Block(key: 'latest_news', label: 'Latest news', group: 'News', description: 'The newest published news posts')]

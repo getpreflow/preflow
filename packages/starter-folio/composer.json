@@ -18,6 +18,7 @@
         "preflow/validation": "^0.69",
         "preflow/form": "^0.69",
         "preflow/folio": "^0.69",
+        "preflow/blocks": "^0.69",
         "preflow/media": "^0.69",
         "preflow/rbac": "^0.69",
         "preflow/notify": "^0.69",
