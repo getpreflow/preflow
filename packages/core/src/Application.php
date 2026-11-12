@@ -2054,6 +2054,50 @@ final class Application
             ),
         );
         $this->notifyBooted = true;
+        $this->bootMail((array) ($notifyConfig['mail'] ?? []));
+    }
+
+    /**
+     * Composed mails (preflow/notify's Mailer): the settings from config/notify.php 'mail', the layout
+     * and the @notify templates. The layout is chosen on first use: the template layout when a template
+     * engine is bound by then (a provider may bind one after this), else the plain PHP one.
+     *
+     * @param array<string, mixed> $mailConfig
+     */
+    private function bootMail(array $mailConfig): void
+    {
+        if (!class_exists(\Preflow\Notify\Mail\Mailer::class)) {
+            return; // preflow/notify before 0.68
+        }
+
+        $this->container->instance(\Preflow\Notify\Mail\MailConfig::class, \Preflow\Notify\Mail\MailConfig::fromArray($mailConfig));
+
+        $templates = dirname((string) (new \ReflectionClass(\Preflow\Notify\Mail\Mailer::class))->getFileName(), 3) . '/templates';
+        $withTemplates = null; // the engine @notify was added to
+        $addTemplates = static function (\Preflow\View\TemplateEngineInterface $engine) use ($templates, &$withTemplates): void {
+            if ($engine !== $withTemplates) {
+                $engine->addNamespace('notify', $templates);
+                $withTemplates = $engine;
+            }
+        };
+        if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
+            $addTemplates($this->container->get(\Preflow\View\TemplateEngineInterface::class));
+        }
+
+        $this->container->singleton(\Preflow\Notify\Mail\MailLayout::class, static function (Container $c) use ($addTemplates): \Preflow\Notify\Mail\MailLayout {
+            if (!$c->has(\Preflow\View\TemplateEngineInterface::class)) {
+                return new \Preflow\Notify\Mail\BasicMailLayout();
+            }
+            $engine = $c->get(\Preflow\View\TemplateEngineInterface::class);
+            $addTemplates($engine);
+
+            return new \Preflow\Notify\Mail\TemplateMailLayout($engine);
+        });
+        $this->container->singleton(\Preflow\Notify\Mail\Mailer::class, static fn (Container $c): \Preflow\Notify\Mail\Mailer => new \Preflow\Notify\Mail\Mailer(
+            $c->get(\Preflow\Notify\Notifier::class),
+            $c->get(\Preflow\Notify\Mail\MailLayout::class),
+            $c->get(\Preflow\Notify\Mail\MailConfig::class),
+        ));
     }
 
     private function bootProviders(): void

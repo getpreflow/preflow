@@ -16,6 +16,7 @@
         "symfony/notifier": "^7.3 || ^8.0"
     },
     "suggest": {
+        "preflow/view": "Renders composed mails with a template (TemplateMailLayout, @notify/mail/layout.twig); without it they use the plain PHP layout",
         "psr/log": "Logs deferred (sendLater) failures that have no onFailure callback",
         "symfony/mailer": "Enables the symfony-mailer transport (SMTP and all Symfony mailer bridges)",
         "symfony/notifier": "Enables the symfony-notifier-sms transport (Twilio, Vonage and other Symfony SMS bridges)"

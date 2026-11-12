@@ -67,6 +67,67 @@ return [
 - Your own types: implement `Preflow\Notify\Message` with a channel key (`chat`, `push`, …)
   and configure a transport that supports it.
 
+## Composed mails
+
+For mails with a plain text part and a matching HTML part, describe what the mail says and let
+`Mailer` build the `Email`:
+
+```php
+use Preflow\Notify\Mail\MailAction;
+use Preflow\Notify\Mail\MailContent;
+use Preflow\Notify\Mail\Mailer;
+use Preflow\Notify\Mail\MailText;
+
+$link = MailText::absoluteUrl('/invite/abc', $appUrl);
+$mailer->send(new MailContent(
+    subject: 'Your invitation',
+    text: "Hello Anna\n\nYou are invited. Open your invitation:\n" . $link,
+    lang: 'en',
+    action: new MailAction('Open invitation', $link),
+), to: 'anna@example.com');
+```
+
+- `MailContent`: `subject`, `text` (plain text, paragraphs separated by a blank line), `lang`
+  (the HTML's `lang`, default `en`), an optional `action` (the primary link: label and URL)
+  and `vars` (extra variables for a template of your own).
+- `Mailer::compose()` returns the `Email`; `send()` sends it at once (a `TransportException`
+  propagates); `sendLater()` queues it (see below). Each takes optional `from`, `template`
+  and `accent` for this mail.
+- The text part is `text` as is. The subject is made one line (control characters become a
+  space). The HTML part comes from the layout: the paragraphs escaped, `http(s)` URLs linked,
+  single line breaks kept, and the action as a button (`data-mail-action`) with its URL in
+  small text below (`data-mail-action-url`).
+- `MailText` has the helpers: `oneLine()`, `paragraphs()` and `absoluteUrl($pathOrUrl, $appUrl)`,
+  which makes a path absolute, keeps an absolute `http(s)` URL and rejects anything else
+  (`//host`, other schemes, whitespace) with an `InvalidArgumentException`.
+
+### The layout
+
+The default design is neutral: a white page 560px wide, dark text, a 3px bar in the accent
+colour, the paragraphs and the button. Core binds `MailLayout` on first use:
+
+- `TemplateMailLayout` when a template engine is bound (`preflow/view`). It renders
+  `@notify/mail/layout.twig`, or the configured template, with `lang`, `subject`, `accent`,
+  `paragraphs` (safe HTML, print it with `|raw`), `action` (`{label, url}`, only when the mail
+  has one) and the content's `vars`.
+- `BasicMailLayout` otherwise: the same markup in plain PHP. It has no templates, so `layout`
+  and `template` are ignored.
+
+Settings in `config/notify.php`, all optional:
+
+```php
+'mail' => [
+    'accent' => '#0f766e',                  // hex colour of the bar, links and button; default #1a1a1a
+    'layout' => 'templates/mail.twig',      // the site's layout template; default @notify/mail/layout.twig
+    'from'   => 'Site <hello@example.com>', // default: the email channel's from
+],
+```
+
+To give every mail your site's look, copy `@notify/mail/layout.twig` into your templates,
+change it and name it in `layout`. A single mail can use another template with
+`$mailer->send($content, $to, template: '…')`. To replace the layout altogether, bind your own
+`Preflow\Notify\Mail\MailLayout` in a service provider.
+
 ## A provider with its own SDK
 
 Implement `Preflow\Notify\Transport` and register it as a driver from a service provider:
