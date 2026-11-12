@@ -107,7 +107,7 @@ final class FolioDemoTest extends TestCase
         if (function_exists('imagewebp')) {
             // The hero image comes from the asset library: <picture> with WebP variants under /media.
             $this->assertMatchesRegularExpression('#<picture><source type="image/(avif|webp)" srcset="/media/\d{4}/\d{2}/[a-f0-9]{32}-\d+\.(avif|webp) \d+w#', $body);
-            $this->assertStringContainsString('class="demo-hero-image folio-focal folio-fx-75 folio-fy-35"', $body);
+            $this->assertStringContainsString('class="demo-hero-image media-focal media-fx-75 media-fy-35"', $body);
             $this->assertStringContainsString('-1280.webp 1280w', $body); // the hero preset's widths
         }
         $this->assertStringContainsString('<a href="/about">About us</a>', $body);

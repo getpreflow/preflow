@@ -19,7 +19,7 @@
     "conflict": {
         "preflow/core": "<0.66",
         "preflow/routing": "<0.54",
-        "preflow/media": "<0.54",
+        "preflow/media": "<0.67",
         "preflow/devtools": "<0.54"
     },
     "autoload": {

@@ -184,8 +184,8 @@ final class ManifestBuilder
                 throw new \RuntimeException("Package {$name}: extra.preflow.runtime must be a list of relative paths.");
             }
             foreach ($declared as $path) {
-                if (!is_string($path) || $path === '' || str_starts_with($path, '/') || in_array('..', explode('/', $path), true)) {
-                    throw new \RuntimeException("Package {$name}: extra.preflow.runtime lists " . (is_string($path) && $path !== '' ? "\"{$path}\", which is not a relative path without \"..\"" : 'a value that is not a non-empty path') . '.');
+                if (!is_string($path) || $path === '' || str_starts_with($path, '/') || in_array('..', explode('/', $path), true) || $path === 'env') {
+                    throw new \RuntimeException("Package {$name}: extra.preflow.runtime lists " . (is_string($path) && $path !== '' ? "\"{$path}\", which is not a relative path without \"..\" (and \"env\" is reserved)" : 'a value that is not a non-empty path') . '.');
                 }
                 if (!in_array($path, ManifestFile::CORE_RUNTIME, true)) {
                     $paths[$path] = true;

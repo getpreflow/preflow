@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing Folio with a release that lacks the APIs it calls: ai 0.66 (AiStatus::$available and
  * $usesKey for Settings → AI, a provider of the app's own), i18n 0.66 (MachineTranslator::available(): Translate asks the
- * translator, not the AI connection), core 0.66 (InstalledPackages keeps extra.folio.field_types
+ * translator, not the AI connection), core 0.67 (InstalledPackages keeps composer extra whole and ManifestBuilder reads extra.preflow.runtime, where Folio declares its extensions file; since 0.66 extra.folio.field_types
  * and blocks, which packages register with), auth 0.65 (AuthManager::provider() for a
  * staff guard that is not the default one, folio.guard; since 0.38 RecordUser and
  * RecordUserProvider moved to Preflow\Auth\Record, PasswordRehash; since 0.27 the chain
@@ -43,7 +43,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.65', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.66', 'preflow/data' => '<0.61', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.66', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
+            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.65', 'preflow/codes' => '<0.40', 'preflow/core' => '<0.67', 'preflow/data' => '<0.61', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.66', 'preflow/media' => '<0.50', 'preflow/members' => '<0.39', 'preflow/notify' => '<0.25', 'preflow/routing' => '<0.59', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members and codes are suggested, not required.
@@ -54,5 +54,12 @@ final class ComposerConstraintsTest extends TestCase
         foreach (array_diff_key($composer['conflict'], ['preflow/members' => true, 'preflow/codes' => true]) as $package => $below) {
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
+    }
+
+    public function test_declares_its_extensions_file_as_a_runtime_file(): void
+    {
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
+
+        $this->assertContains('config/folio/extensions.json', $composer['extra']['preflow']['runtime'] ?? []);
     }
 }

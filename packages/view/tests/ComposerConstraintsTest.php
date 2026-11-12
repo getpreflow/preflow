@@ -16,7 +16,7 @@ use PHPUnit\Framework\TestCase;
  * devtools 0.54 honouring that marker (no not-found entry or redirect hit, no image variant made, no
  * debug toolbar), so those older releases conflict too. GeoMiddleware and MarkdownConverter parse
  * pages with Dom\HTMLDocument, so view requires ext-dom. Core 0.60 adds RequestContext->request, which
- * PageResponder reads. Core 0.66 adds ProdErrorRenderer::title() and message(), which ErrorPageRenderer uses.
+ * PageResponder reads. Core 0.66 adds ProdErrorRenderer::title() and message(), which ErrorPageRenderer uses. Media 0.67 binds PdfImageSource, which view 0.67 reads for pdf_image by asset id, so an older media conflicts.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -28,7 +28,7 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/core' => '<0.66',
             'preflow/routing' => '<0.54',
-            'preflow/media' => '<0.54',
+            'preflow/media' => '<0.67',
             'preflow/devtools' => '<0.54',
         ], $composer['conflict'] ?? null);
         $this->assertSame('*', $composer['require']['ext-dom'] ?? null);

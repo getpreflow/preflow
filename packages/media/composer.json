@@ -9,7 +9,7 @@
         "preflow/core": "^0.54 || @dev",
         "preflow/data": "^0.60 || @dev",
         "preflow/routing": "^0.59 || @dev",
-        "preflow/view": "^0.34 || @dev"
+        "preflow/view": "^0.67 || @dev"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
@@ -23,7 +23,7 @@
         "preflow/core": "<0.54",
         "preflow/data": "<0.60",
         "preflow/routing": "<0.59",
-        "preflow/view": "<0.34"
+        "preflow/view": "<0.67"
     },
     "autoload": {
         "psr-4": {

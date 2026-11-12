@@ -10,7 +10,8 @@ use PHPUnit\Framework\TestCase;
  * "^0.42 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing data with a validation release that lacks the texts it raises
  * (validation.unique, shipped in validation 0.42), or with a core release before 0.58, which lacks
- * Config\ParsedJsonFiles (TypeRegistry reads model files through it).
+ * Config\ParsedJsonFiles (TypeRegistry reads model files through it), or with a folio release before 0.67, which still reads the
+ * TypeDefinition's matrixable and views that 0.67 dropped.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -18,7 +19,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.58', 'preflow/validation' => '<0.42'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.58', 'preflow/validation' => '<0.42', 'preflow/folio' => '<0.67'], $composer['conflict'] ?? null);
         $this->assertSame('^0.58 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.42 || @dev', $composer['require']['preflow/validation'] ?? null);
     }

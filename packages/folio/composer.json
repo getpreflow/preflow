@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "preflow/ai": "^0.66 || @dev",
-        "preflow/core": "^0.66 || @dev",
+        "preflow/core": "^0.67 || @dev",
         "preflow/data": "^0.61 || @dev",
         "preflow/view": "^0.65 || @dev",
         "preflow/twig": "^0.65 || @dev",
@@ -35,7 +35,7 @@
         "preflow/ai": "<0.66",
         "preflow/auth": "<0.65",
         "preflow/codes": "<0.40",
-        "preflow/core": "<0.66",
+        "preflow/core": "<0.67",
         "preflow/data": "<0.61",
         "preflow/htmx": "<0.65",
         "preflow/i18n": "<0.66",

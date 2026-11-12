@@ -27,7 +27,7 @@ Requires `preflow/validation` and `preflow/view`. Optionally integrates with `pr
 ### Model-bound form (inside a component)
 
 ```twig
-{% set form = form_begin({model: game, errorBag: errors}) %}
+{% set form = form_begin({model: job, errorBag: errors}) %}
 <form {{ hd.post('save', componentClass, componentId, props)|raw }}>
     {{ form.field('name')|raw }}
     {{ form.select('status', {options: {draft: 'Draft', published: 'Published'}})|raw }}
@@ -55,7 +55,7 @@ is one call per button, each with its own `id`:
 
 ```twig
 {% for key, label in {draft: 'Draft', published: 'Published'} %}
-    {{ form.radio('status', {value: key, id: 'status-' ~ key, label: label, attrs: {checked: game.status == key}})|raw }}
+    {{ form.radio('status', {value: key, id: 'status-' ~ key, label: label, attrs: {checked: job.status == key}})|raw }}
 {% endfor %}
 ```
 

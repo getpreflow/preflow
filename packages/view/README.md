@@ -877,7 +877,8 @@ Twig functions (Blade: `@pdf_...(...)`, all return safe HTML):
 | `pdf_image($assetIdOrPath, $options)` | an image, scaled down; options `width_mm`, `max_px` (1200), `allow_private`, `alt` |
 | `pdf_qr($data, $options)` | an inline SVG QR code; `size_mm` (30) plus the `qr_svg` options |
 
-`pdf_image` takes an absolute file path or a media asset id (needs `preflow/media`) and nothing else: no URLs, no
+`pdf_image` takes an absolute file path or an asset id and nothing else (asset ids come from a bound
+`Preflow\View\Pdf\PdfImageSource`, which `preflow/media` binds): no URLs, no
 relative paths. It reads the file from the server, so it must never get user input. A path must be an image file
 (one `getimagesize()` reads, or an SVG); anything else throws an `InvalidArgumentException`. A private media asset
 needs `allow_private: true`. JPEG, PNG, GIF and WebP images longer than `max_px` are scaled to a JPEG in

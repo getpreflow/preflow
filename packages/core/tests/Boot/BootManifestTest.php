@@ -15,7 +15,7 @@ use Preflow\Core\Cache\CacheRegistry;
 
 /**
  * The boot manifest (`preflow optimize`): written atomically, used by a web boot with debug off
- * while .env, extensions.json and the .env values are unchanged; never by the console.
+ * while .env, the runtime files packages declare (extra.preflow.runtime) and the .env values are unchanged; never by the console.
  */
 final class BootManifestTest extends TestCase
 {
@@ -277,16 +277,6 @@ final class BootManifestTest extends TestCase
         $this->assertNull(ManifestFile::load($this->dir));
     }
 
-    public function test_folios_runtime_file_is_declared_in_its_composer_json(): void
-    {
-        $folio = json_decode((string) file_get_contents(__DIR__ . '/../../../folio/composer.json'), true);
-        $this->write('vendor/composer/installed.json', (string) json_encode(['packages' => [['name' => 'preflow/folio', 'extra' => ['preflow' => ['runtime' => $folio['extra']['preflow']['runtime'] ?? null]]]]]));
-
-        $data = (new ManifestBuilder($this->dir))->build();
-
-        $this->assertArrayHasKey('config/folio/extensions.json', $data['runtime']);
-    }
-
     #[DataProvider('invalidRuntime')]
     public function test_invalid_runtime_declarations_throw_naming_the_package(string $json): void
     {
@@ -307,6 +297,7 @@ final class BootManifestTest extends TestCase
             'parent segment' => ['["config/../../x"]'],
             'empty' => ['[""]'],
             'not a string' => ['[1]'],
+            'env, which is the key of the .env check' => ['["env"]'],
         ];
     }
 

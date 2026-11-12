@@ -308,7 +308,7 @@ that both read version 3 both pass the check, and the later save overwrites the 
 `saveTypeIfVersion()` closes it. The write itself carries the version it expects:
 
 ```php
-$record = $dm->findType('game', $id);
+$record = $dm->findType('job', $id);
 $loaded = (int) ($record->get('_version') ?? 0);   // what the editor loaded
 $record->set('title', $title);
 
@@ -379,8 +379,8 @@ fields (unique within them), and may carry an index and a length:
   for a save that skips the other rules (Folio uses it for draft saves and restored revisions). Empty values (`null`, `''`) and values with
   a `null` scope are never duplicates. Comparison is exact: case and accents count, on every
   database. App forms use the rule directly:
-  `new Unique($dm, 'game', 'slug', scope: ['purpose'], exceptId: $id)` (the scope is read from the
-  validated data, or given as `['purpose' => 'invite']`).
+  `new Unique($dm, 'job', 'slug', scope: ['company'], exceptId: $id)` (the scope is read from the
+  validated data, or given as `['company' => 'acme']`).
 - **Database guard.** On SQL the unique index is the last line: two requests passing the
   validation together, one gets a `ValidationException` on the field from the index, and both
   rows stay as they were. A save with `validate: false` can therefore throw `ValidationException`
@@ -507,7 +507,7 @@ sending SQL MySQL would refuse. SQLite has no such limit.
 `string()` for anything indexed or unique. SQLite does not care, so a migration that indexes
 `text()` passes there and fails on MySQL.
 
-**Composite and unique indexes.** `$t->unique('player_token', 'game')` declares one unique index over
+**Composite and unique indexes.** `$t->unique('company_id', 'slug')` declares one unique index over
 the columns, in that order; `$t->index('a', 'b')` a plain one. Without arguments both mark the
 column just defined (`$t->string('slug')->unique()`). Names are `uniq_{table}_{columns}` and
 `idx_{table}_{columns}` (columns joined by `_`), shortened with a crc32 past 64 characters; a
@@ -575,9 +575,9 @@ free-text kinds). The pointer is stored as today: an id string, or a JSON array 
 `multiple` is true.
 
 ```json
-"designer": {
+"company": {
   "type": "relation",
-  "relation": { "to": "designer", "multiple": true, "onDelete": "restrict", "labelField": "name" }
+  "relation": { "to": "company", "multiple": true, "onDelete": "restrict", "labelField": "name" }
 }
 ```
 
@@ -590,8 +590,8 @@ free-text kinds). The pointer is stored as today: an id string, or a JSON array 
 | `labelField` | The target field shown and searched as its label. |
 
 ```php
-$dm->relationsOf('game');       // list<Relation>: what 'game' declares
-$dm->relationsTo('designer');   // list<Relation>: every relation, across all types, pointing at 'designer'
+$dm->relationsOf('job');       // list<Relation>: what 'job' declares
+$dm->relationsTo('company');   // list<Relation>: every relation, across all types, pointing at 'company'
 $dm->getTypeRegistry()->keys(); // every type key, sorted
 ```
 
@@ -672,8 +672,8 @@ Several calls are AND-ed with each other and with `where()`.
 
 ```php
 $dm->queryIn($typeDef)->whereAny([
-    ['field' => 'title',    'operator' => 'CONTAINS', 'value' => 'wood'],
-    ['field' => 'designer', 'operator' => 'IN',       'value' => ['a1', 'b2']],
+    ['field' => 'title',    'operator' => 'CONTAINS', 'value' => 'engineer'],
+    ['field' => 'company', 'operator' => 'IN',       'value' => ['a1', 'b2']],
     ['field' => 'tags',     'operator' => 'HAS',      'value' => ['x']],
 ])->get();
 ```
@@ -693,8 +693,8 @@ so a case- or accent-insensitive collation matches more than the other drivers d
 ## `searchLoose`
 
 ```php
-$dm->queryIn($typeDef)->searchLoose('wood table')->get();
-$dm->queryIn($typeDef)->searchLoose('wood', fields: ['title', 'designer'])->get();
+$dm->queryIn($typeDef)->searchLoose('senior engineer')->get();
+$dm->queryIn($typeDef)->searchLoose('engineer', fields: ['title', 'company'])->get();
 ```
 
 The term is split on whitespace. Every word must match (AND); a word matches when it is a
@@ -749,7 +749,7 @@ speed. Core's `Application` passes `storage/cache/data`.
 
 ```php
 $driver = new JsonFileDriver($basePath, cacheDir: $cacheDir);
-$driver->clearCache('game');   // one type of this data path
+$driver->clearCache('job');   // one type of this data path
 $driver->clearCache();         // every type of this data path
 ```
 
@@ -765,10 +765,10 @@ Without a cache directory the driver behaves as before.
 changing anything; `executeDeletePlan()` carries it out.
 
 ```php
-$plan = $dm->deletePlan('designer', [$id]);
-$plan->deletes();      // ['designer' => [...ids], 'game' => [...ids]]  roots plus cascaded records
-$plan->detaches();     // [['type' => 'game', 'id' => '7', 'field' => 'designer', 'remove' => ['3']], ...]
-$plan->restrictions(); // ['game' => 2]  records still pointing at a deleted one
+$plan = $dm->deletePlan('company', [$id]);
+$plan->deletes();      // ['company' => [...ids], 'job' => [...ids]]  roots plus cascaded records
+$plan->detaches();     // [['type' => 'job', 'id' => '7', 'field' => 'company', 'remove' => ['3']], ...]
+$plan->restrictions(); // ['job' => 2]  records still pointing at a deleted one
 $plan->restricted();   // true when any restriction blocks the delete
 $plan->counts();       // ['deleted' => [...], 'detached' => [...], 'restricted' => [...]] for a confirmation
 $dm->executeDeletePlan($plan);

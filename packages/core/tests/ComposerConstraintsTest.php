@@ -7,6 +7,8 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.67: i18n 0.67 and folio 0.67 (core keeps composer extra whole and reads the runtime files packages declare, extra.preflow.runtime; an older i18n or Folio would lose its translations, extensions, blocks and field types).
+ *
  * Since 0.66: auth 0.66 (LazyGuard, LazyPasswordHasher: guards of the app's own classes are built on first use,
  * the hasher is a container binding) and view 0.66 (ErrorPageRenderer, the app's error pages).
  *
@@ -43,11 +45,12 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/components' => '<0.60',
             'preflow/data' => '<0.66.1',
             'preflow/htmx' => '<0.65',
-            'preflow/i18n' => '<0.46',
+            'preflow/i18n' => '<0.67',
             'preflow/routing' => '<0.62',
             'preflow/view' => '<0.66',
             'preflow/twig' => '<0.60',
             'preflow/blade' => '<0.60',
+            'preflow/folio' => '<0.67',
         ], $composer['conflict'] ?? null);
     }
 }

@@ -13,7 +13,7 @@ interface TextSource
     /** Stable key of the collection, e.g. a Folio type key. */
     public function collection(): string;
 
-    /** Name shown to people, e.g. "Games". */
+    /** Name shown to people, e.g. "Jobs". */
     public function label(): string;
 
     /** @return list<string> ids of every item */
