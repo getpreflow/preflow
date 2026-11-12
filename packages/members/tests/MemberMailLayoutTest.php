@@ -66,7 +66,7 @@ final class MemberMailLayoutTest extends TestCase
         $this->mailer()->noticeLater($this->member('ada@example.test', 'en'), 'owner@site.test');
         $this->flush();
 
-        $this->assertStringEndsWith('php preflow members:decide ada@example.test accept (or decline)', $this->onlyMail()->text);
+        $this->assertStringEndsWith("php preflow members:decide 'ada@example.test' accept (or decline)", $this->onlyMail()->text);
     }
 
     public function test_notice_links_the_decision_url(): void

@@ -12,7 +12,8 @@ use Preflow\I18n\Translator;
 
 /**
  * The display texts of model files (type labels, sidebar sections, field labels, help texts,
- * select options) in the admin's interface language. For each: the key in the type's
+ * select options) in the admin's interface language; typeIn() names a type in another language
+ * (a mail's, with an explicit translator). For each: the key in the type's
  * translation group (ModelLabelKeys: "site" for the site's own types, the package's group
  * for a type an extension ships; an admin override, the site's lang file, the package's
  * file), then the model file's map (the user's language, the site default, English), then

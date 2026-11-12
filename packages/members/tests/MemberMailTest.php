@@ -115,9 +115,9 @@ final class MemberMailTest extends TestCase
     public static function noticeCases(): array
     {
         return [
-            'en' => [['en', 'de', 'fr'], 'Ada Lovelace is waiting for approval', 'Ada Lovelace <ada@example.com> confirmed their email and is waiting for approval.', 'Decide here: ', 'php preflow members:decide ada@example.com accept (or decline)'],
-            'de' => [['de', 'en'], 'Ada Lovelace wartet auf Freigabe', 'Ada Lovelace <ada@example.com> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.', 'Hier entscheiden: ', 'php preflow members:decide ada@example.com accept (oder decline)'],
-            'fr' => [['fr', 'en'], 'Ada Lovelace attend une validation', 'Ada Lovelace <ada@example.com> a confirmé son adresse e-mail et attend une validation.', 'Décider ici : ', 'php preflow members:decide ada@example.com accept (ou decline)'],
+            'en' => [['en', 'de', 'fr'], 'Ada Lovelace is waiting for approval', 'Ada Lovelace <ada@example.com> confirmed their email and is waiting for approval.', 'Decide here: ', "php preflow members:decide 'ada@example.com' accept (or decline)"],
+            'de' => [['de', 'en'], 'Ada Lovelace wartet auf Freigabe', 'Ada Lovelace <ada@example.com> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.', 'Hier entscheiden: ', "php preflow members:decide 'ada@example.com' accept (oder decline)"],
+            'fr' => [['fr', 'en'], 'Ada Lovelace attend une validation', 'Ada Lovelace <ada@example.com> a confirmé son adresse e-mail et attend une validation.', 'Décider ici : ', "php preflow members:decide 'ada@example.com' accept (ou decline)"],
         ];
     }
 
@@ -150,8 +150,20 @@ final class MemberMailTest extends TestCase
         $this->flush();
 
         $text = $this->onlyMail()->text;
-        $this->assertStringEndsWith("waiting for approval.\n\nBook code: given, but it no longer worked.\n\n“I build things”\n\nDecide on the server: php preflow members:decide ada@example.com accept (or decline)", $text);
+        $this->assertStringEndsWith("waiting for approval.\n\nBook code: given, but it no longer worked.\n\n“I build things”\n\nDecide on the server: php preflow members:decide 'ada@example.com' accept (or decline)", $text);
         $this->assertStringNotContainsString('book code: no', $text, 'the panel line stays in the panel');
+    }
+
+    public function test_the_command_in_the_notice_quotes_the_address_for_the_shell(): void
+    {
+        $this->site();
+        $address = "a`id`\$home|x'y@example.com";
+        $this->mailer()->noticeLater($this->member($address, 'en'), 'owner@site.test');
+        $this->flush();
+
+        $text = $this->onlyMail()->text;
+        $this->assertStringEndsWith("Decide on the server: php preflow members:decide 'a`id`\$home|x'\\''y@example.com' accept (or decline)", $text);
+        $this->assertStringContainsString('<' . $address . '>', $text, 'the address itself stays in the text, outside the command');
     }
 
     public function test_notice_links_the_decision_page_a_package_names(): void

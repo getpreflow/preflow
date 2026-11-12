@@ -836,6 +836,7 @@ return [
         'type_noun' => ':singular|:plural',
     ],
     'mail' => [
+        'this_site' => 'this site', // {site} when the site has no app.name and no app.url
         'invite' => [
             'subject' => 'Your account for {site}',
             'action' => 'Accept the invitation',

@@ -7,7 +7,7 @@
         "php": ">=8.4"
     },
     "conflict": {
-        "preflow/core": "<0.24"
+        "preflow/core": "<0.68"
     },
     "require-dev": {
         "psr/log": "^3.0",

@@ -808,6 +808,7 @@ return [
         'type_noun' => ':singular|:plural',
     ],
     'mail' => [
+        'this_site' => 'diese Website', // {site} when the site has no app.name and no app.url
         'invite' => [
             'subject' => 'Dein Zugang zu {site}',
             'action' => 'Einladung annehmen',

@@ -73,7 +73,7 @@ trait StaffScaffold
                 'default' => $locale, 'available' => [$locale], 'fallback' => $locale, 'url_strategy' => 'prefix', 'cookie' => false,
             ], true) . ";\n");
         }
-        $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
+        $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']]];\n");
         $this->write('config/models/page.json', (string) json_encode([
             'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
             'fields' => ['title' => ['type' => 'string']],

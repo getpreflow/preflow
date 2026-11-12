@@ -289,7 +289,7 @@ final class AdminOnDemandTest extends TestCase
             'aliases' => ['members' => 'sqlite', 'auth' => 'sqlite', 'throttle' => 'sqlite', 'codes' => 'sqlite'],
         ], true) . ";\n");
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix', 'cookie' => false];\n");
-        $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
+        $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']]];\n");
         $this->write('config/codes.php', "<?php\nreturn ['purposes' => ['members.book' => ['label' => 'Book code', 'readable' => true]]];\n");
         $this->write('config/models/post.json', (string) json_encode([
             'key' => 'post', 'table' => 'post', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Posts', 'publishing' => true,

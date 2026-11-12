@@ -1073,7 +1073,7 @@ final class FolioServiceProvider extends ServiceProvider
                     $c->get(\Preflow\Notify\Mail\Mailer::class),
                     self::translator($c, $app),
                     $c->get(\Preflow\Data\Locales::class)->default, // for recipients without an interface language
-                    (string) $app->config()->get('app.name', 'Folio'),
+                    \Preflow\Folio\Users\StaffMailer::siteName($app->config()->get('app.name'), $app->config()->get('app.url')),
                 );
             },
             $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,

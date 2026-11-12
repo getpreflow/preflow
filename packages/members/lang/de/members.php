@@ -136,7 +136,7 @@ return [
             'subject' => '{name} wartet auf Freigabe',
             'body' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nHier entscheiden: {decision_url}",
             // without a decision page to link (no admin package names one)
-            'body_without_link' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nAuf dem Server entscheiden: php preflow members:decide {email} accept (oder decline)",
+            'body_without_link' => "{name} <{email}> hat die E-Mail-Adresse bestätigt und wartet auf Freigabe.{details}\n\nAuf dem Server entscheiden: {decide_command} (oder decline)",
         ],
         'accepted' => [
             'subject' => 'Ihr Konto ist bereit',

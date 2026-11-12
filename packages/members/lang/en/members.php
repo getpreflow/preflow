@@ -138,7 +138,7 @@ return [
             'subject' => '{name} is waiting for approval',
             'body' => "{name} <{email}> confirmed their email and is waiting for approval.{details}\n\nDecide here: {decision_url}",
             // without a decision page to link (no admin package names one)
-            'body_without_link' => "{name} <{email}> confirmed their email and is waiting for approval.{details}\n\nDecide on the server: php preflow members:decide {email} accept (or decline)",
+            'body_without_link' => "{name} <{email}> confirmed their email and is waiting for approval.{details}\n\nDecide on the server: {decide_command} (or decline)",
         ],
         'accepted' => [
             'subject' => 'Your account is ready',

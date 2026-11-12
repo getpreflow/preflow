@@ -136,7 +136,7 @@ return [
             'subject' => '{name} attend une validation',
             'body' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nDécider ici : {decision_url}",
             // without a decision page to link (no admin package names one)
-            'body_without_link' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nDécider sur le serveur : php preflow members:decide {email} accept (ou decline)",
+            'body_without_link' => "{name} <{email}> a confirmé son adresse e-mail et attend une validation.{details}\n\nDécider sur le serveur : {decide_command} (ou decline)",
         ],
         'accepted' => [
             'subject' => 'Votre compte est prêt',

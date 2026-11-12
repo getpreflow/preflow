@@ -462,10 +462,11 @@ return ['mail' => ['confirm' => ['subject' => 'Bitte bestätige deine Adresse']]
   (a `TransportException` aborts the decision).
 - Each mail is in the member's language (the site default when the site lacks it); the owner's
   notice is in the site default locale. Mail bodies use `{name}`, `{link}`, `{login_url}`,
-  `{reset_url}`, `{validity}`, `{email}`, `{details}`, `{decision_url}`. `{decision_url}` is the
+  `{reset_url}`, `{validity}`, `{email}`, `{details}`, `{decision_url}`, `{decide_command}`. `{decision_url}` is the
   decision page a bound `MemberLinks` names (an admin package's page for the member); without
   one the notice uses `mail.notice.body_without_link`, which names the command
-  `php preflow members:decide {email} accept (or decline)`. The mail about a refused deletion
+  `{decide_command} (or decline)`: `php preflow members:decide '<address>' accept`, the address
+  shell-quoted (`escapeshellarg`), so the command is safe to paste whatever the address holds. The mail about a refused deletion
   names each record type still pointing at the account by its label (a bound
   `Preflow\Data\TypeLabels`, else the type's `label` when it is a plain string, else its key).
 - `{validity}` (and `:validity` in `inbox.hint`) is how long the link works, from `confirm_ttl` /
@@ -534,7 +535,9 @@ The full list is in the framework's 0.38 release checklist; what a site with mem
   `action` is unchanged.
 - **Owner notice without Folio:** without a `MemberLinks` binding the notice uses
   `mail.notice.body_without_link`; a site that overrode only `mail.notice.body` gets the package's
-  text without the link there.
+  text without the link there. Since 0.68 that text names the command with `{decide_command}`
+  (the address shell-quoted); a site's own `mail.notice.body_without_link` with
+  `members:decide {email}` should use it.
 - **Mails through notify (0.68):** the shipped `@members/mail/layout.twig` is gone: the HTML part
   is notify's layout, with the neutral accent `#1a1a1a` (was `#d42a34`) and `data-mail-action`
   on the button (was `data-members-action`). A site that liked the old look sets `mail.accent`

@@ -20,7 +20,7 @@ final class StaffMailerTest extends TestCase
     public function test_invite_mail_has_html_with_the_link_as_button(): void
     {
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
-        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']], defer: false);
+        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']], defer: false);
 
         $this->mailer($notifier)->sendLater('invite', 'ada@site.test', 'Ada', self::LINK, 'account 7', 'de');
 
@@ -38,7 +38,7 @@ final class StaffMailerTest extends TestCase
     public function test_reset_mail_uses_its_own_action_label_and_the_default_language(): void
     {
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
-        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']], defer: false);
+        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']], defer: false);
 
         $this->mailer($notifier)->sendLater('reset', 'ada@site.test', "Ada\r\nBcc: x@evil.test", self::LINK, 'account 7');
 
@@ -51,7 +51,7 @@ final class StaffMailerTest extends TestCase
     public function test_mails_never_mention_folio(): void
     {
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
-        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']], defer: false);
+        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']], defer: false);
 
         foreach (['en', 'de', 'fr'] as $locale) {
             foreach (['invite', 'reset'] as $kind) {
@@ -69,10 +69,37 @@ final class StaffMailerTest extends TestCase
         }
     }
 
+    public function test_the_site_is_named_by_app_name_else_the_host_of_app_url(): void
+    {
+        $this->assertSame('Site', StaffMailer::siteName('Site', 'https://site.test'));
+        $this->assertSame('site.test', StaffMailer::siteName(null, 'https://site.test/'));
+        $this->assertSame('site.test', StaffMailer::siteName('  ', ' https://site.test '));
+        $this->assertNull(StaffMailer::siteName(null, null));
+        $this->assertNull(StaffMailer::siteName('', 'not a url'));
+    }
+
+    public function test_without_a_site_name_the_mail_says_this_site_in_its_language(): void
+    {
+        $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
+        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'hello@site.test']], defer: false);
+
+        $this->mailer($notifier, null)->sendLater('reset', 'ada@site.test', 'Ada', self::LINK, 'account 7');
+        $this->mailer($notifier, null)->sendLater('reset', 'ada@site.test', 'Ada', self::LINK, 'account 7', 'de');
+
+        [$en, $de] = array_map(static fn ($s) => $s->message, $factory->get('mail')->sent());
+        $this->assertSame('Reset your password for this site', $en->subject);
+        $this->assertStringEndsWith("Kind regards\nthis site", $en->text);
+        $this->assertSame('Passwort für diese Website zurücksetzen', $de->subject);
+        foreach ([$en, $de] as $mail) {
+            $this->assertStringNotContainsStringIgnoringCase('folio', $mail->subject);
+            $this->assertStringNotContainsStringIgnoringCase('folio', str_replace(self::LINK, '', $mail->text));
+        }
+    }
+
     public function test_failure_logs_no_address(): void
     {
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
-        $notifier = new Notifier($factory, ['email' => ['transport' => 'missing', 'from' => 'folio@site.test']]);
+        $notifier = new Notifier($factory, ['email' => ['transport' => 'missing', 'from' => 'hello@site.test']]);
         $log = tempnam(sys_get_temp_dir(), 'staffmailer');
         $previous = ini_set('error_log', $log);
 
@@ -89,13 +116,13 @@ final class StaffMailerTest extends TestCase
         $this->assertStringNotContainsString('ada@site.test', $logged);
     }
 
-    private function mailer(Notifier $notifier): StaffMailer
+    private function mailer(Notifier $notifier, ?string $site = 'Site'): StaffMailer
     {
         return new StaffMailer(
             new Mailer($notifier, new BasicMailLayout(), new MailConfig()),
             new Translator(dirname(__DIR__, 2) . '/lang', 'en', 'en'),
             'en',
-            'Site',
+            $site,
         );
     }
 }

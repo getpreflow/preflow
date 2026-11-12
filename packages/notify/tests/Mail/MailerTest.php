@@ -114,6 +114,23 @@ final class MailerTest extends TestCase
         $this->assertCount(1, $this->factory->get('memory')->sent());
     }
 
+    public function test_a_closure_names_the_notifier_at_each_send(): void
+    {
+        $first = $this->notifier();
+        $current = $first;
+        $mailer = new Mailer(static function () use (&$current): Notifier {
+            return $current;
+        }, new BasicMailLayout(), new MailConfig());
+
+        $later = new TransportFactory(['memory' => ['driver' => 'memory']], sys_get_temp_dir());
+        $current = new Notifier($later, ['email' => ['transport' => 'memory']]);
+        $mailer->sendLater(new MailContent('S', 'T'), 'a@b.test');
+
+        $this->assertSame(0, $first->flushDeferred(), 'nothing queued on the Notifier of before');
+        $this->assertSame(1, $current->flushDeferred());
+        $this->assertCount(1, $later->get('memory')->sent());
+    }
+
     public function test_send_later_reports_a_failure_to_the_callback(): void
     {
         $notifier = new Notifier($this->factory, [], defer: false);

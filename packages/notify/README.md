@@ -108,12 +108,13 @@ $mailer->send(new MailContent(
 The default design is neutral: a white page 560px wide, dark text, a 3px bar in the accent
 colour, the paragraphs and the button. Core binds `MailLayout` on first use:
 
-- `TemplateMailLayout` when a template engine is bound (`preflow/view`). It renders
+- `TemplateMailLayout` when the bound template engine (`preflow/view`) can render it: a Twig
+  engine, or any engine when `layout` names the site's own template (a Blade app's). It renders
   `@notify/mail/layout.twig`, or the configured template, with `lang`, `subject`, `accent`,
   `paragraphs` (safe HTML, print it with `|raw`), `action` (`{label, url}`, only when the mail
   has one) and the content's `vars`.
-- `BasicMailLayout` otherwise: the same markup in plain PHP. It has no templates, so `layout`
-  and `template` are ignored.
+- `BasicMailLayout` otherwise (no engine, or an engine other than Twig without `layout`): the
+  same markup in plain PHP. It has no templates, so `layout` and `template` are ignored.
 
 Settings in `config/notify.php`, all optional:
 
@@ -129,6 +130,10 @@ To give every mail your site's look, copy `@notify/mail/layout.twig` into your t
 change it and name it in `layout`. A single mail can use another template with
 `$mailer->send($content, $to, template: '…')`. To replace the layout altogether, bind your own
 `Preflow\Notify\Mail\MailLayout` in a service provider.
+
+The `Mailer` takes the `Notifier` itself or a `Closure` that returns it. Core passes a
+`Closure` that reads the container at each send, so a `Notifier` a provider or a test binds
+later is the one that sends, and its `flushDeferred()` sends what `sendLater()` queued.
 
 ## A provider with its own SDK
 

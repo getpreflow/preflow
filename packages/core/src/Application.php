@@ -2059,8 +2059,11 @@ final class Application
 
     /**
      * Composed mails (preflow/notify's Mailer): the settings from config/notify.php 'mail', the layout
-     * and the @notify templates. The layout is chosen on first use: the template layout when a template
-     * engine is bound by then (a provider may bind one after this), else the plain PHP one.
+     * and the @notify templates. The layout is chosen on first use: the template layout when the bound
+     * template engine can render it (a provider may bind one after this) — a Twig engine, which renders
+     * @notify/mail/layout.twig, or any engine when mail.layout names the site's own template —, else
+     * the plain PHP one (no engine, or a Blade app without mail.layout). The Mailer asks the container
+     * for the Notifier at each send, so a Notifier bound later is the one that sends and flushes.
      *
      * @param array<string, mixed> $mailConfig
      */
@@ -2070,32 +2073,41 @@ final class Application
             return; // preflow/notify before 0.68
         }
 
-        $this->container->instance(\Preflow\Notify\Mail\MailConfig::class, \Preflow\Notify\Mail\MailConfig::fromArray($mailConfig));
+        $config = \Preflow\Notify\Mail\MailConfig::fromArray($mailConfig);
+        $this->container->instance(\Preflow\Notify\Mail\MailConfig::class, $config);
 
         $templates = dirname((string) (new \ReflectionClass(\Preflow\Notify\Mail\Mailer::class))->getFileName(), 3) . '/templates';
         $withTemplates = null; // the engine @notify was added to
-        $addTemplates = static function (\Preflow\View\TemplateEngineInterface $engine) use ($templates, &$withTemplates): void {
+        // @notify holds Twig templates: only a Twig engine gets the namespace.
+        $addTemplates = static function (\Preflow\View\TemplateEngineInterface $engine) use ($templates, &$withTemplates): bool {
+            if ($engine->getTemplateExtension() !== 'twig') {
+                return false;
+            }
             if ($engine !== $withTemplates) {
                 $engine->addNamespace('notify', $templates);
                 $withTemplates = $engine;
             }
+
+            return true;
         };
         if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
             $addTemplates($this->container->get(\Preflow\View\TemplateEngineInterface::class));
         }
 
         /** Resolved on first use; resolving it before the template engine is bound caches BasicMailLayout. */
-        $this->container->singleton(\Preflow\Notify\Mail\MailLayout::class, static function (Container $c) use ($addTemplates): \Preflow\Notify\Mail\MailLayout {
+        $this->container->singleton(\Preflow\Notify\Mail\MailLayout::class, static function (Container $c) use ($addTemplates, $config): \Preflow\Notify\Mail\MailLayout {
             if (!$c->has(\Preflow\View\TemplateEngineInterface::class)) {
                 return new \Preflow\Notify\Mail\BasicMailLayout();
             }
             $engine = $c->get(\Preflow\View\TemplateEngineInterface::class);
-            $addTemplates($engine);
+            if (!$addTemplates($engine) && $config->layout === null) {
+                return new \Preflow\Notify\Mail\BasicMailLayout(); // the default layout is Twig
+            }
 
             return new \Preflow\Notify\Mail\TemplateMailLayout($engine);
         });
         $this->container->singleton(\Preflow\Notify\Mail\Mailer::class, static fn (Container $c): \Preflow\Notify\Mail\Mailer => new \Preflow\Notify\Mail\Mailer(
-            $c->get(\Preflow\Notify\Notifier::class),
+            static fn (): \Preflow\Notify\Notifier => $c->get(\Preflow\Notify\Notifier::class),
             $c->get(\Preflow\Notify\Mail\MailLayout::class),
             $c->get(\Preflow\Notify\Mail\MailConfig::class),
         ));

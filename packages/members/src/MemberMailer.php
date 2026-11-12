@@ -107,13 +107,17 @@ final class MemberMailer
         foreach ($this->admission->details($m, Admission::NOTICE) as $label => $value) {
             $details .= "\n\n" . (is_int($label) ? $value : $label . ': ' . $value);
         }
-        // The decision page when a package (an admin package's) names one; else the text without the link line.
+        // The decision page when a package (an admin package's) names one; else the text with the command
+        // to decide on the server, the address shell-quoted so the command is safe to paste.
         $url = $this->memberLinks?->decisionUrl($m);
+        $email = (string) $m->get('email');
         $this->mailer->sendLater(...$this->build('notice', $this->locales->default, $to, [
             'name' => (string) $m->get('name'),
-            'email' => (string) $m->get('email'),
+            'email' => $email,
             'details' => $details,
-        ] + ($url !== null && $url !== '' ? ['decision_url' => $url] : []), $url !== null && $url !== '' ? 'body' : 'body_without_link'), onFailure: $onFailure);
+        ] + ($url !== null && $url !== ''
+            ? ['decision_url' => $url]
+            : ['decide_command' => 'php preflow members:decide ' . escapeshellarg($email) . ' accept']), $url !== null && $url !== '' ? 'body' : 'body_without_link'), onFailure: $onFailure);
     }
 
     /**
@@ -216,7 +220,7 @@ final class MemberMailer
         return $label === '' || $label === $key ? null : new MailAction($label, $url);
     }
 
-    /** @param array<string, string> $vars {name} {link} {login_url} {reset_url} {validity} {email} {details} {decision_url} */
+    /** @param array<string, string> $vars {name} {link} {login_url} {reset_url} {validity} {email} {details} {decision_url} {decide_command} */
     private function copy(string $mail, string $part, string $lang, array $vars): string
     {
         $map = [];
