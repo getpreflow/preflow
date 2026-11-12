@@ -245,7 +245,7 @@ final class FolioStaffLoginTest extends TestCase
         $mails = $this->mails();
         $this->assertCount(1, $mails);
         $this->assertSame(['ada@site.test'], $mails[0]->to);
-        $this->assertStringContainsString('Reset your Folio password', $mails[0]->subject);
+        $this->assertStringContainsString('Reset your password', $mails[0]->subject);
         $this->assertStringContainsString('one hour', $mails[0]->text);
         $this->linkToken();
     }
@@ -437,7 +437,7 @@ final class FolioStaffLoginTest extends TestCase
 
         $this->post('/folio/forgot', ['email' => 'ada@site.test']);
 
-        $this->assertStringContainsString('Folio-Passwort', $this->mails()[0]->subject);
+        $this->assertStringContainsString('Passwort für', $this->mails()[0]->subject);
         $this->assertStringContainsString('eine Stunde', $this->mails()[0]->text);
         $this->assertStringContainsString('Sign in', $this->html('/folio/login'), 'the admin pages stay English');
     }

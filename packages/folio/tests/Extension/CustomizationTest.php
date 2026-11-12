@@ -314,6 +314,91 @@ final class CustomizationTest extends TestCase
         $this->app();
     }
 
+    private function saveRecordType(): void
+    {
+        $this->crm();
+        $this->write('app/Folio/Crm/Types/ContactAdmin.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Crm\Types;
+
+            use App\Folio\Crm\Log;
+            use Preflow\Data\DynamicRecord;
+
+            #[\Preflow\Folio\Extension\Attributes\FolioType('contact')]
+            final class ContactAdmin
+            {
+                #[\Preflow\Folio\Extension\SaveRecord]
+                public function write(DynamicRecord $record, ?DynamicRecord $previous): void
+                {
+                    Log::$entries[] = 'write:' . $record->get('name') . ':previous=' . ($previous === null ? 'none' : $previous->get('name'));
+                    if ($record->get('name') === 'refused') {
+                        throw new \Preflow\Validation\ValidationException(new \Preflow\Validation\ValidationResult(['name' => ['Not this name.']]));
+                    }
+                }
+
+                #[\Preflow\Folio\Extension\AfterSave]
+                public function saved(DynamicRecord $record): void
+                {
+                    Log::$entries[] = 'after:' . $record->get('name');
+                }
+            }
+            PHP);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_save_record_writes_instead_of_the_save_and_after_save_still_runs(): void
+    {
+        $this->saveRecordType();
+        $this->as('admin');
+
+        $this->assertSame(302, $this->send('POST', '/folio/contact', ['name' => 'First'])->getStatusCode());
+        $this->assertSame([], $this->session->container()->get(DataManager::class)->queryType('contact')->get()->items(), 'Folio wrote nothing: the method is the write');
+        $this->assertSame(['write:First:previous=none', 'after:First'], \App\Folio\Crm\Log::$entries);
+
+        \App\Folio\Crm\Log::$entries = [];
+        $this->seed('contact', 'n1', ['name' => 'Old']);
+        $this->assertSame(302, $this->send('POST', '/folio/contact/n1', ['name' => 'New'])->getStatusCode());
+        $this->assertSame('Old', $this->stored('contact', 'n1')?->get('name'));
+        $this->assertSame(['write:New:previous=Old', 'after:New'], \App\Folio\Crm\Log::$entries);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_save_record_can_refuse_the_save_with_a_validation_error(): void
+    {
+        $this->saveRecordType();
+        $this->as('admin');
+        $this->seed('contact', 'n1', ['name' => 'Old']);
+
+        $res = $this->send('POST', '/folio/contact/n1', ['name' => 'refused']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('Not this name.', (string) $res->getBody());
+        $this->assertSame(['write:refused:previous=Old'], \App\Folio\Crm\Log::$entries, 'no AfterSave on a refused save');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_second_save_record_on_a_type_is_a_boot_error(): void
+    {
+        $this->saveRecordType();
+        $this->write('app/Folio/Crm/Types/ContactAdmin.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Crm\Types;
+            #[\Preflow\Folio\Extension\Attributes\FolioType('contact')]
+            final class ContactAdmin
+            {
+                #[\Preflow\Folio\Extension\SaveRecord]
+                public function one(\Preflow\Data\DynamicRecord $record, ?\Preflow\Data\DynamicRecord $previous): void {}
+
+                #[\Preflow\Folio\Extension\SaveRecord]
+                public function two(\Preflow\Data\DynamicRecord $record, ?\Preflow\Data\DynamicRecord $previous): void {}
+            }
+            PHP);
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('more than one #[SaveRecord]');
+        $this->app();
+    }
+
     #[RunInSeparateProcess]
     public function test_before_save_can_change_record_before_validation(): void
     {

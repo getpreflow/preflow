@@ -22,6 +22,7 @@ use Preflow\Folio\Extension\ListColumn;
 use Preflow\Folio\Extension\ListNotice;
 use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Extension\RecordAction;
+use Preflow\Folio\Extension\SaveRecord;
 
 /**
  * The enabled type customizations (#[FolioType] parts of enabled extensions), by type key,
@@ -41,7 +42,7 @@ final class Customizations
 
     private const string PERMISSION_PATTERN = '/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/';
 
-    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, ListNotice::class, DashboardNotice::class, FieldPlaceholder::class, ...self::HOOKS];
+    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, ListNotice::class, DashboardNotice::class, FieldPlaceholder::class, SaveRecord::class, ...self::HOOKS];
 
     /**
      * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
@@ -162,6 +163,9 @@ final class Customizations
                         } elseif ($meta instanceof DashboardNotice) {
                             $types[$key]['dashboardNotices'][] = $call;
                         } else {
+                            if ($meta instanceof SaveRecord && ($types[$key]['hooks'][SaveRecord::class] ?? []) !== []) {
+                                throw new ExtensionException("Type \"{$key}\" has more than one #[SaveRecord]; {$where} is the second.");
+                            }
                             $types[$key]['hooks'][$attributeClass][] = $call;
                         }
                     }
@@ -301,6 +305,18 @@ final class Customizations
         foreach ($this->types[$record->getType()->key]['hooks'][$hook] ?? [] as $call) {
             $call($record);
         }
+    }
+
+    /** Hands the record to the type's #[SaveRecord] method; false when it has none (the caller saves). */
+    public function saveRecord(DynamicRecord $record, ?DynamicRecord $previous): bool
+    {
+        $call = ($this->types[$record->getType()->key]['hooks'][SaveRecord::class] ?? [])[0] ?? null;
+        if ($call === null) {
+            return false;
+        }
+        $call($record, $previous);
+
+        return true;
     }
 
     /** @return array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}|null */

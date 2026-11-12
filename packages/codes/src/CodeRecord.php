@@ -19,6 +19,7 @@ final readonly class CodeRecord
         public ?int $maxUses,
         public ?\DateTimeImmutable $revokedAt,
         public string $form,
+        public string $label = '',
     ) {}
 
     /** Not revoked, not used up and not expired at $now. */

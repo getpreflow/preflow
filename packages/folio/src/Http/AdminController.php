@@ -1648,7 +1648,7 @@ final class AdminController
     }
 
     /**
-     * Full validation (blocks, then the type's rules), then save and the #[AfterSave] hooks.
+     * Full validation (blocks, then the type's rules), then save (the type's #[SaveRecord] method, else saveType) and the #[AfterSave] hooks.
      * The record's public addresses follow (a live save of a type without publishing); with the
      * request, a record that has just left the site is flashed (syncAddresses()).
      *
@@ -1657,7 +1657,11 @@ final class AdminController
     private function saveWithBlocks(TypeDefinition $typeDef, DynamicRecord $record, ?ServerRequestInterface $request = null): void
     {
         $this->validator->validate($record);
-        $this->dm->saveType($record, false);
+        // A type's #[SaveRecord] writes instead of saveType().
+        $previous = $this->customizations === null ? null : $this->dm->findType($typeDef->key, (string) $record->getId());
+        if ($this->customizations === null || !$this->customizations->saveRecord($record, $previous)) {
+            $this->dm->saveType($record, false);
+        }
         $this->review?->refresh($record);
         if ($request !== null) {
             $this->syncAddresses($request, [$record]);

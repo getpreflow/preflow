@@ -73,6 +73,7 @@ final class CodeRulesTest extends CodesAppTestCase
         $record = $codes->get($id);
         $this->assertEquals($until->setTime((int) $until->format('H'), (int) $until->format('i')), $record->expiresAt);
         $this->assertSame(5, $record->maxUses);
+        $this->assertSame('New label', $record->label);
         $this->assertSame(1, $record->uses);
         $codes->update($id, 'New label', null, null);
         $this->assertNull($codes->get($id)->expiresAt);
@@ -110,7 +111,7 @@ final class CodeRulesTest extends CodesAppTestCase
                 $this->assertSame($reason, $e->reason);
             }
         }
-        $this->assertSame('', (string) $this->dmLabel($openId), 'a refused update writes nothing');
+        $this->assertSame('', $codes->get($openId)->label, 'a refused update writes nothing');
         $codes->update($openId, 'ok', $future, 2); // as many as used so far is allowed
 
         $this->assertSame(2, $codes->get($openId)->maxUses);
@@ -148,6 +149,37 @@ final class CodeRulesTest extends CodesAppTestCase
         $this->assertSame(1, $codes->get($id)->maxUses);
     }
 
+    public function test_check_update_writes_nothing_and_refuses_like_update(): void
+    {
+        $codes = $this->codes();
+        $code = $codes->issue('q', label: 'Keep', maxUses: 5);
+        $id = (string) $codes->record($code, 'q')->id;
+
+        $codes->checkUpdate($id, 'Other', $this->now->modify('+1 day'), 3);
+        $this->assertSame('Keep', $codes->get($id)->label);
+        $this->assertSame(5, $codes->get($id)->maxUses);
+        $this->expectException(CodeRefused::class);
+        $codes->checkUpdate($id, 'Other', $this->now->modify('-1 day'), 3);
+    }
+
+    public function test_the_write_itself_refuses_a_code_that_changed_meanwhile(): void
+    {
+        $codes = $this->codes();
+        $code = $codes->issue('q', maxUses: 5);
+        $id = (string) $codes->record($code, 'q')->id;
+        $codes->redeem($code, 'q');
+        $codes->redeem($code, 'q');
+        $write = new \ReflectionMethod($codes, 'writeColumns');
+        $guard = new \ReflectionMethod($codes, 'liveGuard');
+        $live = fn (?int $max) => $write->invoke($codes, $id, ['label' => 'x'], static fn (): bool => true, $guard->invoke(null, $max));
+
+        $this->assertFalse($live(1), 'two uses are already counted: max 1 is refused by the UPDATE itself');
+        $this->assertTrue($live(2));
+        $codes->revoke($id);
+        $this->assertFalse($live(null), 'revoked meanwhile');
+        $this->assertSame('x', $codes->get($id)->label);
+    }
+
     public function test_codes_has_no_mailer(): void
     {
         $this->assertFalse(class_exists('Preflow\\Codes\\CodeMailer'));
@@ -158,10 +190,5 @@ final class CodeRulesTest extends CodesAppTestCase
         $this->assertDirectoryDoesNotExist(dirname(__DIR__) . '/lang');
         $this->assertDirectoryDoesNotExist(dirname(__DIR__) . '/templates');
         $this->assertInstanceOf(Codes::class, $this->codes());
-    }
-
-    private function dmLabel(string $id): string
-    {
-        return $this->codes()->get($id) === null ? '' : (string) $this->app()->container()->get(\Preflow\Data\DataManager::class)->findType('code', $id)->get('label');
     }
 }

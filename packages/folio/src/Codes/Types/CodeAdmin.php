@@ -13,6 +13,7 @@ use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\ListColumn;
 use Preflow\Folio\Extension\RecordAction;
+use Preflow\Folio\Extension\SaveRecord;
 use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\I18n\Translator;
 use Preflow\Validation\ValidationException;
@@ -23,7 +24,8 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * Codes in the admin: a new code is a readable one (random codes are issued by code), made by
  * Codes::prepare() like an issued one (text normalised and unique within its purpose, the
- * purpose's ttl, created_at); once stored, only label, expiry and max uses change, by Codes::update(). Revoking and the redemptions are shown on the code. Its words are the "codes"
+ * purpose's ttl, created_at); once stored, only label, expiry and max uses change, by Codes::update()
+ * (the #[SaveRecord] method writes; #[BeforeSave] only checks). Revoking and the redemptions are shown on the code. Its words are the "codes"
  * group's, in the admin's language (attribute labels given as keys).
  */
 #[FolioType('code')]
@@ -37,6 +39,7 @@ final class CodeAdmin
         private readonly Translator $translator,
     ) {}
 
+    /** Validates only (nothing is written here) and fills the record: a new code's columns from Codes::prepare(), a stored one's fixed fields. */
     #[BeforeSave]
     public function beforeSave(DynamicRecord $record): void
     {
@@ -49,17 +52,14 @@ final class CodeAdmin
                 $maxUses = 1; // a bound code has exactly one use
             }
             try {
-                $this->codes->update((string) $record->getId(), (string) $record->get('label'), $expiresAt, $maxUses);
+                $this->codes->checkUpdate((string) $record->getId(), (string) $record->get('label'), $expiresAt, $maxUses);
             } catch (CodeRefused $e) {
                 throw $this->refused($e);
             }
-            // update() wrote label, expiry and max uses; the form's save writes back what is stored now.
-            $stored = $this->dm->findType('code', (string) $record->getId()) ?? $stored;
             foreach (self::KEPT as $field) {
                 $record->set($field, $stored->get($field));
             }
-            $record->set('max_uses', $stored->get('max_uses'));
-            $record->set('expires_at', $stored->get('expires_at'));
+            $record->set('max_uses', $maxUses === null ? '' : (string) $maxUses);
 
             return;
         }
@@ -73,7 +73,22 @@ final class CodeAdmin
             $record->set($field, $value);
         }
         $record->set('max_uses', $maxUses === null ? '' : (string) $maxUses);
-        $record->set('revoked_at', '');
+    }
+
+    /** The write: a new code is inserted as prepared; a stored one goes through Codes::update(), so a use counted meanwhile is never overwritten. */
+    #[SaveRecord]
+    public function save(DynamicRecord $record, ?DynamicRecord $previous): void
+    {
+        if ($previous === null) {
+            $this->dm->saveType($record, false);
+
+            return;
+        }
+        try {
+            $this->codes->update((string) $record->getId(), (string) $record->get('label'), $this->expiry($record->get('expires_at')), $this->maxUses($record->get('max_uses')));
+        } catch (CodeRefused $e) {
+            throw $this->refused($e);
+        }
     }
 
     #[RecordAction(name: 'revoke', label: 'codes.actions.revoke', permission: 'codes.revoke', confirm: 'codes.actions.revoke_confirm')]

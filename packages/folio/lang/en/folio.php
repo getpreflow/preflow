@@ -839,10 +839,10 @@ return [
         'invite' => [
             'subject' => 'Your account for {site}',
             'action' => 'Accept the invitation',
-            'body' => "Hi {name},\n\nan account was set up for you to edit {site} in Folio. Choose your password here: {link}\n\nThe link works for 7 days.\n\nKind regards\n{site}",
+            'body' => "Hi {name},\n\nyou were invited to edit {site}. Choose your password here: {link}\n\nThe link works for 7 days.\n\nKind regards\n{site}",
         ],
         'reset' => [
-            'subject' => 'Reset your Folio password for {site}',
+            'subject' => 'Reset your password for {site}',
             'action' => 'Set your password',
             'body' => "Hi {name},\n\nset a new password for {site} here: {link}\n\nThe link works for one hour. If you didn't ask for this, ignore this mail.\n\nKind regards\n{site}",
         ],

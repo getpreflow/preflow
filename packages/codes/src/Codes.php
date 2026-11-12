@@ -466,10 +466,14 @@ final class Codes
      * the same time is never overwritten: one UPDATE on a SQL storage, the JSON driver's
      * read-modify-write under the code's lock. $applies decides on the fresh record whether to write.
      *
+     * On SQL, $extra (given the driver and type) adds conditions to the UPDATE's WHERE, so the
+     * checks made on a read are part of the write.
+     *
      * @param array<string, string|int|null> $values column => value
      * @param \Closure(DynamicRecord): bool $applies
+     * @param (\Closure(PdoDriver, TypeDefinition): array{0: string, 1: list<mixed>})|null $extra SQL condition (starting with " AND ") and its parameters
      */
-    private function writeColumns(string $codeId, array $values, \Closure $applies): bool
+    private function writeColumns(string $codeId, array $values, \Closure $applies, ?\Closure $extra = null): bool
     {
         $type = $this->codeType();
         $driver = $this->dm->driver($type->storage);
@@ -488,7 +492,14 @@ final class Codes
                 $guard = " AND ({$col} IS NULL OR {$col} = '')";
             }
 
-            return $this->dm->execute('UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$id} = ?{$guard}", [...array_values($values), $codeId], $type->storage) === 1;
+            $params = [...array_values($values), $codeId];
+            if ($extra !== null) {
+                [$sql, $more] = $extra($driver, $type);
+                $guard .= $sql;
+                array_push($params, ...$more);
+            }
+
+            return $this->dm->execute('UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$id} = ?{$guard}", $params, $type->storage) === 1;
         }
 
         return $this->locked($codeId, function () use ($codeId, $values, $applies): bool {
@@ -604,38 +615,94 @@ final class Codes
         if ($expiresAt <= ($this->clock)()) {
             throw new \InvalidArgumentException('A code can only be renewed until a time in the future.');
         }
-        $this->writeColumns($codeId, ['expires_at' => self::storeTime($expiresAt)], static fn (): bool => true);
+        $written = $this->writeColumns(
+            $codeId,
+            ['expires_at' => self::storeTime($expiresAt)],
+            static fn (DynamicRecord $fresh): bool => (string) ($fresh->get('revoked_at') ?? '') === ''
+                && ($fresh->get('max_uses') === null || $fresh->get('max_uses') === '' || (int) $fresh->get('uses') < (int) $fresh->get('max_uses')),
+            self::liveGuard(null),
+        );
+        if (!$written) {
+            throw new CodeRefused(CodeRefused::CHANGED, 'The code changed meanwhile; reload it and try again.');
+        }
+    }
+
+    /**
+     * The conditions of a write to a code that is still live: not revoked, not used up and, with
+     * $maxUses, the uses so far within it (see writeColumns()).
+     *
+     * @return \Closure(PdoDriver, TypeDefinition): array{0: string, 1: list<mixed>}
+     */
+    private static function liveGuard(?int $maxUses): \Closure
+    {
+        return static function (PdoDriver $driver, TypeDefinition $type) use ($maxUses): array {
+            $dialect = $driver->dialect();
+            $uses = $dialect->quoteIdentifier('uses');
+            $count = 'COALESCE(' . $dialect->wholeNumber($uses) . ', 0)';
+            $limit = $dialect->wholeNumber($dialect->quoteIdentifier('max_uses'));
+            $revoked = $dialect->quoteIdentifier('revoked_at');
+            $sql = " AND ({$revoked} IS NULL OR {$revoked} = '') AND ({$limit} IS NULL OR {$count} < {$limit})";
+
+            return $maxUses === null ? [$sql, []] : [$sql . " AND {$count} <= ?", [$maxUses]];
+        };
     }
 
     /**
      * Changes what an admin may change on a stored code: its label (null: none), expiry (null: never)
-     * and max uses (null: unlimited); everything else, and the use count, stays. Refused (CodeRefused):
-     * any change to a revoked or used-up code, an expiry in the past (one the code already has is
-     * kept), max uses below the uses so far, and max uses other than 1 on a code bound to a recipient.
+     * and max uses (null: unlimited); everything else, and the use count, stays. The refusals of
+     * checkUpdate() are part of the write (under the lock on the JSON driver, as conditions of the
+     * UPDATE on SQL): a redeem or revoke landing in between refuses with CodeRefused::CHANGED.
      */
     public function update(string $codeId, ?string $label, ?\DateTimeImmutable $expiresAt, ?int $maxUses): void
     {
+        $this->checkUpdate($codeId, $label, $expiresAt, $maxUses);
+        $written = $this->writeColumns(
+            $codeId,
+            ['label' => (string) $label, 'expires_at' => $expiresAt === null ? null : self::storeTime($expiresAt), 'max_uses' => $maxUses],
+            fn (DynamicRecord $fresh): bool => $this->updateRefusal($fresh, $expiresAt, $maxUses) === null,
+            self::liveGuard($maxUses),
+        );
+        if (!$written) {
+            throw new CodeRefused(CodeRefused::CHANGED, 'The code changed meanwhile; reload it and try again.');
+        }
+    }
+
+    /**
+     * What update() would refuse, without writing: CodeRefused for an unknown code, a revoked or
+     * used-up one, an expiry in the past (one the code already has is kept), max uses below the uses
+     * so far, and max uses other than 1 on a code bound to a recipient.
+     */
+    public function checkUpdate(string $codeId, ?string $label, ?\DateTimeImmutable $expiresAt, ?int $maxUses): void
+    {
         $record = $this->dm->findType('code', $codeId)
             ?? throw new CodeRefused(CodeRefused::UNKNOWN_CODE, "Unknown code [{$codeId}].");
+        $refusal = $this->updateRefusal($record, $expiresAt, $maxUses);
+        if ($refusal !== null) {
+            throw $refusal;
+        }
+    }
+
+    private function updateRefusal(DynamicRecord $record, ?\DateTimeImmutable $expiresAt, ?int $maxUses): ?CodeRefused
+    {
         if ((string) ($record->get('revoked_at') ?? '') !== '') {
-            throw new CodeRefused(CodeRefused::REVOKED, 'A revoked code cannot be changed.');
+            return new CodeRefused(CodeRefused::REVOKED, 'A revoked code cannot be changed.');
         }
         $max = $record->get('max_uses');
         $uses = (int) $record->get('uses');
         if ($max !== null && $max !== '' && $uses >= (int) $max) {
-            throw new CodeRefused(CodeRefused::USED_UP, 'A used-up code cannot be changed.');
+            return new CodeRefused(CodeRefused::USED_UP, 'A used-up code cannot be changed.');
         }
-        $expires = $expiresAt === null ? null : self::storeTime($expiresAt);
-        if ($expiresAt !== null && $expiresAt <= ($this->clock)() && $expires !== (string) ($record->get('expires_at') ?? '')) {
-            throw new CodeRefused(CodeRefused::EXPIRY_PAST, 'A code can only expire at a time in the future.');
+        if ($expiresAt !== null && $expiresAt <= ($this->clock)() && self::storeTime($expiresAt) !== (string) ($record->get('expires_at') ?? '')) {
+            return new CodeRefused(CodeRefused::EXPIRY_PAST, 'A code can only expire at a time in the future.');
         }
         if ($maxUses !== null && $maxUses < $uses) {
-            throw new CodeRefused(CodeRefused::MAX_USES_LOW, "Max uses cannot be below the {$uses} uses so far.");
+            return new CodeRefused(CodeRefused::MAX_USES_LOW, "Max uses cannot be below the {$uses} uses so far.");
         }
         if ((string) ($record->get('recipient') ?? '') !== '' && $maxUses !== 1) {
-            throw new CodeRefused(CodeRefused::BOUND_SINGLE_USE, 'A code bound to a recipient has exactly one use.');
+            return new CodeRefused(CodeRefused::BOUND_SINGLE_USE, 'A code bound to a recipient has exactly one use.');
         }
-        $this->writeColumns($codeId, ['label' => (string) $label, 'expires_at' => $expires, 'max_uses' => $maxUses], static fn (): bool => true);
+
+        return null;
     }
 
     /** E-mail addresses match without regard to case and surrounding spaces. */
@@ -666,6 +733,7 @@ final class Codes
             $max === null || $max === '' ? null : (int) $max,
             self::parseTime($r->get('revoked_at')),
             (string) ($r->get('form') ?? ''),
+            (string) ($r->get('label') ?? ''),
         );
     }
 

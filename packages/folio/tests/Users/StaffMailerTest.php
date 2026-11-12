@@ -48,6 +48,27 @@ final class StaffMailerTest extends TestCase
         $this->assertStringContainsString('Ada Bcc: x@evil.test', $mail->text);
     }
 
+    public function test_mails_never_mention_folio(): void
+    {
+        $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());
+        $notifier = new Notifier($factory, ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']], defer: false);
+
+        foreach (['en', 'de', 'fr'] as $locale) {
+            foreach (['invite', 'reset'] as $kind) {
+                $this->mailer($notifier)->sendLater($kind, 'ada@site.test', 'Ada', self::LINK, 'account 7', $locale);
+            }
+        }
+
+        $sent = $factory->get('mail')->sent();
+        $this->assertCount(6, $sent);
+        foreach ($sent as $s) {
+            $m = $s->message;
+            $this->assertStringNotContainsStringIgnoringCase('folio', $m->subject);
+            $this->assertStringNotContainsStringIgnoringCase('folio', str_replace(self::LINK, '', $m->text));
+            $this->assertStringNotContainsStringIgnoringCase('folio', strip_tags(str_replace(self::LINK, '', (string) $m->html)));
+        }
+    }
+
     public function test_failure_logs_no_address(): void
     {
         $factory = new TransportFactory(['mail' => ['driver' => 'memory']], sys_get_temp_dir());

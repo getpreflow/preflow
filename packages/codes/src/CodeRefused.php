@@ -19,6 +19,7 @@ final class CodeRefused extends \InvalidArgumentException
     public const string USED_UP = 'used_up';
     public const string EXPIRY_PAST = 'expiry_past';
     public const string MAX_USES_LOW = 'max_uses_low';
+    public const string CHANGED = 'changed';
     public const string BOUND_SINGLE_USE = 'bound_single_use';
 
     public function __construct(public readonly string $reason, string $message, ?\Throwable $previous = null)
