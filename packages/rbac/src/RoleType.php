@@ -8,6 +8,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
 use Preflow\Data\Locales;
+use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\TypeRegistry;
 
@@ -15,8 +16,9 @@ use Preflow\Data\TypeRegistry;
  * The role type ("rbac_role"), rbac's own: models/rbac_role.json, on the default storage.
  * rbac defines it with the data layer unless something did already (Folio's rbac admin, whose
  * model adds what its admin needs). Its table is made by `php preflow rbac:install`
- * (RoleStore::install()), not by `preflow migrate`: the table being there is what tells
- * RbacResolver that rbac is installed.
+ * (RoleStore::install()) or by Folio's table sync when its rbac admin is on, not by rbac's own
+ * `preflow migrate` step: the table being there is what tells RbacResolver that rbac is
+ * installed. Once it is, `preflow migrate` seeds the roles (RoleStore::seed()) on every deploy.
  */
 final class RoleType
 {
@@ -35,7 +37,8 @@ final class RoleType
     /**
      * Defines the role type with the data layer when nothing has (and the site has a data
      * config; without a models directory it gives the data layer a registry), and lists its
-     * table with the data layer's record tables.
+     * table with the data layer's record tables. Either way `preflow migrate` seeds the roles
+     * where rbac is installed (step "rbac.seed", after Folio's table sync).
      */
     public static function define(Container $c): void
     {
@@ -50,13 +53,30 @@ final class RoleType
         if (!$c->bound(TypeRegistry::class)) {
             $c->instance(TypeRegistry::class, $registry);
         }
-        if ($registry->has(self::KEY)) {
-            return;
+        if (!$registry->has(self::KEY)) {
+            $definition = $registry->define(self::schema());
+            if ($c->bound(RecordTables::class)) {
+                $c->get(RecordTables::class)->add('rbac', static fn (): array => [RecordTables::entry($definition)]);
+            }
         }
-        $definition = $registry->define(self::schema());
-        if ($c->bound(RecordTables::class)) {
-            $c->get(RecordTables::class)->add('rbac', static fn (): array => [RecordTables::entry($definition)]);
+        if ($c->bound(MigrationRegistry::class)) {
+            $c->get(MigrationRegistry::class)->afterMigrate('rbac.seed', static fn (): array => self::seed($c));
         }
+    }
+
+    /** The migrate step: seeds the roles where rbac is installed. @return list<string> */
+    private static function seed(Container $c): array
+    {
+        $store = $c->get(RoleStore::class);
+        if (!$store->installed()) {
+            return [];
+        }
+        $count = static fn (): int => array_sum(array_map(static fn (string $p): int => count($store->rolesFor($p)), RoleStore::POPULATIONS));
+        $before = $count();
+        $store->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')));
+        $added = $count() - $before;
+
+        return $added > 0 ? ["seeded {$added} rbac role" . ($added === 1 ? '' : 's')] : [];
     }
 
     /** config/data.php models_path, as the data layer reads it (config/models without one). */

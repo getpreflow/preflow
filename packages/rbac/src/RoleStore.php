@@ -61,6 +61,7 @@ final class RoleStore
      */
     public function seed(array $config): void
     {
+        $this->forget(); // a table made earlier in this process (another instance, a migrate step)
         if ($this->rolesFor('staff') === []) {
             $this->ensure('staff', 'admin', 'Administrator', ['*']);
         }

@@ -238,6 +238,31 @@ final class CoreRbacTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_migrate_seeds_only_where_rbac_is_installed(): void
+    {
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['page.edit']]];\n");
+        $migrate = function (): string {
+            ob_start();
+            try {
+                $this->assertSame(0, (new \Preflow\DevTools\Command\MigrateCommand(fn (): Application => $this->app()))->execute([]));
+            } finally {
+                $out = (string) ob_get_clean();
+            }
+
+            return $out;
+        };
+
+        $this->assertStringNotContainsString('rbac', $migrate());
+        $this->assertFalse($this->hasSqlTable('rbac_role'), 'without rbac:install, migrate leaves rbac uninstalled');
+        $this->assertTrue($this->can($this->app(), [], 'page.edit'), 'the bootstrap still applies');
+
+        $this->command('rbac:install');
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['page.edit'], 'reader' => ['reports.view']]];\n");
+        $this->assertStringContainsString('seeded 1 rbac role', $migrate());
+        $this->assertSame(['staff/admin', 'staff/editor', 'staff/reader'], array_keys($this->byName()));
+    }
+
+    #[RunInSeparateProcess]
     public function test_install_on_json_storage(): void
     {
         $this->data('json');
@@ -311,8 +336,13 @@ final class CoreRbacTest extends TestCase
         $this->assertArrayHasKey('staff/helper', $this->byName());
         $this->assertArrayHasKey('staff/admin', $this->byName());
 
+        // Nor may it lose "*".
+        $this->assertSame([1, "The role \"admin\" is the only staff role granting everything (\"*\"); it stays. Nothing changed.\n"], $this->command('rbac:role', ['admin', '--revoke=*']));
+        $this->assertSame(['*'], $this->byName()['staff/admin']['permissions']);
+
         // Another role grants everything: admin may go; a member role goes.
         $this->command('rbac:role', ['boss', '--grant=*']);
+        $this->assertSame([0, "Changed staff role \"admin\" (Administrator): page.edit\n"], $this->command('rbac:role', ['admin', '--revoke=*', '--grant=page.edit']));
         $this->assertSame([0, "Deleted staff role \"admin\".\n"], $this->command('rbac:role:delete', ['admin']));
         $this->assertSame([0, "Deleted members role \"member\".\n"], $this->command('rbac:role:delete', ['member', '--population=members']));
         $this->assertSame(['staff/boss', 'staff/helper'], array_keys($this->byName()));

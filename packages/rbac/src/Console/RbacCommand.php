@@ -70,4 +70,20 @@ trait RbacCommand
 
         return $population;
     }
+
+    /**
+     * Whether $name is the only role of $roles granting everything ("*"): the administrator
+     * role a site keeps (its "*" may be neither revoked nor deleted).
+     *
+     * @param array<string, list<string>> $roles role name => patterns
+     */
+    private static function onlyEverything(array $roles, string $name): bool
+    {
+        return array_keys(array_filter($roles, static fn (array $patterns): bool => in_array('*', $patterns, true))) === [$name];
+    }
+
+    private static function onlyEverythingMessage(string $name, string $outcome): string
+    {
+        return "The role \"{$name}\" is the only staff role granting everything (\"*\"); it stays. {$outcome}\n";
+    }
 }

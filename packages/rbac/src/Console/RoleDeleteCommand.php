@@ -6,7 +6,6 @@ namespace Preflow\Rbac\Console;
 
 use Preflow\Data\DataManager;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\StaffManagers;
 
@@ -55,9 +54,8 @@ final class RoleDeleteCommand implements CommandInterface
 
                 return 1;
             }
-            $everything = array_keys(array_filter($roles, static fn (array $patterns): bool => in_array('*', RoleList::normalize($patterns), true)));
-            if ($everything === [$name]) {
-                echo "The role \"{$name}\" is the only staff role granting everything (\"*\"); it stays. Nothing deleted.\n";
+            if (self::onlyEverything($roles, $name)) {
+                echo self::onlyEverythingMessage($name, 'Nothing deleted.');
 
                 return 1;
             }

@@ -15,7 +15,8 @@ use Preflow\Rbac\RoleStore;
  * the role or changes it. A granted name must be "*", a declared permission (auth's
  * PermissionRegistry), a declared pattern or a pattern that covers a declared permission; any
  * other is refused by name and nothing changes. A new role without --label gets one from its
- * name ("content_lead" → "Content lead"). The package lists it in composer.json (extra.preflow.commands).
+ * name ("content_lead" → "Content lead"). "*" is not revoked from the only staff role granting
+ * it (as rbac:role:delete keeps that role). The package lists it in composer.json (extra.preflow.commands).
  */
 final class RoleCommand implements CommandInterface
 {
@@ -67,6 +68,12 @@ final class RoleCommand implements CommandInterface
         $undeclared = array_values(array_filter($grant, static fn (string $p): bool => !self::declared($registry, $p)));
         if ($undeclared !== []) {
             echo 'Not a declared permission: ' . implode(', ', $undeclared) . "; nothing changed.\n";
+
+            return 1;
+        }
+
+        if ($population === 'staff' && in_array('*', $revoke, true) && self::onlyEverything($store->rolesFor('staff'), $name)) {
+            echo self::onlyEverythingMessage($name, 'Nothing changed.');
 
             return 1;
         }
