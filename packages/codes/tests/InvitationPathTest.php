@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace Preflow\Codes\Tests;
 
 use Preflow\Codes\CodeEvents;
-use Preflow\Codes\CodeMailer;
 use Preflow\Codes\Codes;
-use Preflow\Notify\TransportFactory;
 
 /**
- * The personal invitation end to end (spec section 7) with the container's own Codes, CodeEvents and
- * CodeMailer, no Folio and a capturing mail transport. The "app" is this test: its listener adds the
+ * The personal invitation end to end (spec section 7) with the container's own Codes and CodeEvents, no
+ * Folio and no mail (a code ships no mailer; the app sends its own). The "app" is this test: its listener adds the
  * guest to a group, its route checks, then redeems.
  */
 final class InvitationPathTest extends CodesAppTestCase
@@ -23,8 +21,6 @@ final class InvitationPathTest extends CodesAppTestCase
     {
         parent::setUp();
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key', 'url' => 'https://site.test'];\n");
-        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de', 'fr'], 'fallback' => 'en', 'url_strategy' => 'prefix', 'cookie' => false];\n");
-        $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'Site <hello@site.test>']]];\n");
         $this->write('config/codes.php', "<?php\nreturn " . var_export([
             'purposes' => ['bggenius.invite' => ['label' => 'Invitation', 'readable' => false, 'ttl' => 30]],
             'throttle' => ['max' => 10, 'window' => 900],
@@ -40,18 +36,13 @@ final class InvitationPathTest extends CodesAppTestCase
             $this->groups[$e['payload']['group']][] = (string) $e['redeemer'];
         }, 'bggenius.invite');
 
-        // 1. The host invites Anna; the mail carries the personal link.
+        // 1. The host invites Anna (the app mails the personal link).
         $code = $codes->issue('bggenius.invite', ['group' => 'g1'], recipient: ' Anna@Example.org ');
         $record = $codes->record($code, 'bggenius.invite');
         $this->assertNotNull($record);
         $this->assertSame('anna@example.org', $record->recipient);
         $this->assertNotNull($record->expiresAt, 'the purpose ttl applies');
         $this->assertSame(1, $record->maxUses);
-        $this->assertTrue($c->get(CodeMailer::class)->send($record, 'anna@example.org', '/invite/' . $code, ['message' => 'Come play', 'from_name' => 'Ben']));
-        $sent = $c->get(TransportFactory::class)->get('mail')->sent();
-        $this->assertCount(1, $sent);
-        $this->assertSame(['anna@example.org'], $sent[0]->message->to);
-        $this->assertStringContainsString('https://site.test/invite/' . $code, $sent[0]->message->text);
 
         // 2. The click: check without an address tells whom the code is for.
         $check = $codes->check($code, 'bggenius.invite');

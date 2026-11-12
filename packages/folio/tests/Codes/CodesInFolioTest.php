@@ -58,6 +58,7 @@ final class CodesInFolioTest extends TestCase
             'purposes' => [
                 'members.book' => ['label' => 'Book code', 'readable' => true],
                 'forcemap.round' => ['label' => 'Force Map round', 'readable' => false],
+                'members.trial' => ['label' => 'Trial code', 'readable' => true, 'ttl' => 30],
             ],
             'throttle' => ['max' => 10, 'window' => 900],
         ], true) . ";\n");
@@ -365,6 +366,62 @@ final class CodesInFolioTest extends TestCase
 
         // The issued code works like one from Codes::issue().
         $this->assertTrue($this->codes()->check('Smart Stack 2026', 'members.book')->ok);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_code_made_in_admin_gets_purpose_ttl_and_created_at(): void
+    {
+        $this->app();
+        $this->login();
+        $before = time();
+
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['purpose' => 'members.trial', 'code' => 'trial 2026']))->getStatusCode());
+        $id = $this->idOf('TRIAL2026');
+        $record = $this->stored($id);
+        $this->assertGreaterThanOrEqual($before, (int) $record->get('created_at'));
+        $this->assertLessThanOrEqual(time(), (int) $record->get('created_at'));
+        $this->assertStringStartsWith(date('Y-m-d', strtotime('+30 days')), (string) $record->get('expires_at'));
+        $this->assertSame(0, (int) $record->get('uses'));
+        $this->assertSame('readable', $record->get('form'));
+
+        // Without a ttl, and with an expiry given in the form, the form wins.
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['purpose' => 'members.trial', 'code' => 'trial 2027', 'expires_at' => '2031-05-06T07:08']))->getStatusCode());
+        $this->assertSame('2031-05-06T07:08', (string) $this->stored($this->idOf('TRIAL2027'))->get('expires_at'));
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create())->getStatusCode());
+        $this->assertSame('', (string) ($this->stored($this->idOf('SMARTSTACK2026'))->get('expires_at') ?? ''));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_admin_edit_of_revoked_code_is_refused(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'BOOKCODE1', 'Book');
+        $id = $this->idOf('BOOKCODE1');
+        $codes->revoke($id);
+        $this->login();
+
+        $res = $this->send('POST', "/folio/code/{$id}", ['label' => 'Changed', 'max_uses' => '4']);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('revoked code cannot be changed', (string) $res->getBody());
+        $this->assertSame('Book', $this->stored($id)->get('label'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_admin_edit_refuses_a_past_expiry_and_max_uses_below_the_uses(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'BOOKCODE1', 'Book', maxUses: 5);
+        $id = $this->idOf('BOOKCODE1');
+        $codes->redeem('BOOKCODE1', 'members.book');
+        $codes->redeem('BOOKCODE1', 'members.book');
+        $this->login();
+
+        $past = $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => '5', 'expires_at' => '2020-01-01T10:00']);
+        $this->assertSame(422, $past->getStatusCode());
+        $low = $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => '1']);
+        $this->assertSame(422, $low->getStatusCode());
+        $this->assertSame(5, (int) $this->stored($id)->get('max_uses'));
     }
 
     /** A whole-number string or '' (unlimited) is what Codes compares; the number field may send '3.0'. */

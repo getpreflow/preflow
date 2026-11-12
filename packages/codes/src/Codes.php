@@ -83,7 +83,7 @@ final class Codes
     public function purpose(string $name): Purpose
     {
         return $this->purposes[$name]
-            ?? throw new \InvalidArgumentException("Unknown code purpose [{$name}]; add it to config/codes.php 'purposes'.");
+            ?? throw new CodeRefused(CodeRefused::UNKNOWN_PURPOSE, "Unknown code purpose [{$name}]; add it to config/codes.php 'purposes'.");
     }
 
     /**
@@ -107,7 +107,7 @@ final class Codes
         ?int $maxUses = null,
         ?string $recipient = null,
     ): string {
-        $definition = $this->purpose($purpose);
+        $this->purpose($purpose);
         if ($recipient !== null) {
             if ($code !== null) {
                 throw new \InvalidArgumentException('A readable code cannot be bound to a recipient.');
@@ -118,63 +118,91 @@ final class Codes
             }
             $maxUses = 1;
         }
-        $now = ($this->clock)();
-        if ($expiresAt === null && $definition->ttl !== null) {
-            $expiresAt = $now->modify("+{$definition->ttl} days");
-        }
-        if ($code !== null) {
-            if (!$definition->readable) {
-                throw new \InvalidArgumentException("Code purpose [{$purpose}] does not allow readable codes.");
-            }
-            $code = self::normalizeReadable($code);
-            if ($code === null || preg_match('/^[A-Z0-9]{4,64}$/', $code) !== 1) {
-                throw new \InvalidArgumentException('A readable code needs 4 to 64 letters A-Z and digits (spaces and dashes are ignored).');
-            }
-            $form = 'readable';
-        } else {
-            $form = 'random';
-        }
-
-        $type = $this->dm->getTypeRegistry()?->get('code')
-            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
+        $form = $code === null ? 'random' : 'readable';
+        $type = $this->codeType();
         for ($attempt = 1; ; $attempt++) {
-            if ($form === 'random') {
-                $code = ($this->randomCode)();
-            }
             $retry = $form === 'random' && $attempt < self::ISSUE_ATTEMPTS;
-            if ($this->find($code, $purpose) !== null) {
+            $columns = $this->prepare($purpose, $code, $expiresAt);
+            if ($form === 'random' && $this->find($columns['code'], $purpose) !== null) {
                 if ($retry) {
                     continue;
                 }
-                throw new \InvalidArgumentException("A code like this already exists for purpose [{$purpose}].");
+                throw new CodeRefused(CodeRefused::TAKEN, "A code like this already exists for purpose [{$purpose}].");
             }
             try {
-                $this->dm->saveType(DynamicRecord::fromArray($type, [
+                $this->dm->saveType(DynamicRecord::fromArray($type, $columns + [
                     $type->idField => bin2hex(random_bytes(16)),
-                    'purpose' => $purpose,
-                    'code' => $code,
                     'label' => $label,
-                    'expires_at' => $expiresAt === null ? null : self::storeTime($expiresAt),
                     'max_uses' => $maxUses,
-                    'uses' => 0,
-                    'revoked_at' => null,
                     'payload' => json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-                    'form' => $form,
                     'recipient' => $recipient,
-                    'created_at' => $now->getTimestamp(),
                 ]), false);
 
-                return $code;
+                return $columns['code'];
             } catch (ValidationException $e) {
                 // Issued by someone else between the check and the write.
                 if (!isset($e->errors()['code'])) {
                     throw $e;
                 }
                 if (!$retry) {
-                    throw new \InvalidArgumentException("A code like this already exists for purpose [{$purpose}].", 0, $e);
+                    throw new CodeRefused(CodeRefused::TAKEN, "A code like this already exists for purpose [{$purpose}].", $e);
                 }
             }
         }
+    }
+
+    /**
+     * The columns every new code gets, whoever makes it (issue(), an admin): purpose, code, form,
+     * expires_at (the given time, else the purpose's ttl from now, else none), uses, revoked_at and
+     * created_at. A given $readable code goes through checkReadable(); without one a random code is
+     * drawn (not checked for uniqueness: issue() draws again when it is taken).
+     *
+     * @return array{purpose: string, code: string, form: string, expires_at: ?string, uses: int, revoked_at: null, created_at: int}
+     */
+    public function prepare(string $purpose, ?string $readable, ?\DateTimeImmutable $expiresAt = null): array
+    {
+        $definition = $this->purpose($purpose);
+        $now = ($this->clock)();
+        if ($expiresAt === null && $definition->ttl !== null) {
+            $expiresAt = $now->modify("+{$definition->ttl} days");
+        }
+
+        return [
+            'purpose' => $purpose,
+            'code' => $readable === null ? ($this->randomCode)() : $this->checkReadable($purpose, $readable),
+            'form' => $readable === null ? 'random' : 'readable',
+            'expires_at' => $expiresAt === null ? null : self::storeTime($expiresAt),
+            'uses' => 0,
+            'revoked_at' => null,
+            'created_at' => $now->getTimestamp(),
+        ];
+    }
+
+    /**
+     * The readable code as it is stored (upper case, spaces and dashes removed), or a CodeRefused:
+     * unknown purpose, a purpose without readable codes, not 4 to 64 letters A-Z and digits, or a
+     * code the purpose already has.
+     */
+    public function checkReadable(string $purpose, string $code): string
+    {
+        if (!$this->purpose($purpose)->readable) {
+            throw new CodeRefused(CodeRefused::NOT_READABLE, "Code purpose [{$purpose}] does not allow readable codes.");
+        }
+        $code = self::normalizeReadable($code);
+        if ($code === null || preg_match('/^[A-Z0-9]{4,64}$/', $code) !== 1) {
+            throw new CodeRefused(CodeRefused::FORMAT, 'A readable code needs 4 to 64 letters A-Z and digits (spaces and dashes are ignored).');
+        }
+        if ($this->find($code, $purpose) !== null) {
+            throw new CodeRefused(CodeRefused::TAKEN, "A code like this already exists for purpose [{$purpose}].");
+        }
+
+        return $code;
+    }
+
+    private function codeType(): TypeDefinition
+    {
+        return $this->dm->getTypeRegistry()?->get('code')
+            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
     }
 
     /**
@@ -427,41 +455,50 @@ final class Codes
             return;
         }
         $at = ($this->clock)()->format(DATE_ATOM);
-        $changed = $this->writeColumn($codeId, 'revoked_at', $at, static fn (DynamicRecord $r): bool => (string) ($r->get('revoked_at') ?? '') === '');
+        $changed = $this->writeColumns($codeId, ['revoked_at' => $at], static fn (DynamicRecord $r): bool => (string) ($r->get('revoked_at') ?? '') === '');
         if ($changed) {
             $this->dispatch(CodeEvents::REVOKED, $codeId, null);
         }
     }
 
     /**
-     * Sets one column of a code without writing the rest of the record back, so a use counted at
+     * Sets columns of a code without writing the rest of the record back, so a use counted at
      * the same time is never overwritten: one UPDATE on a SQL storage, the JSON driver's
      * read-modify-write under the code's lock. $applies decides on the fresh record whether to write.
      *
+     * @param array<string, string|int|null> $values column => value
      * @param \Closure(DynamicRecord): bool $applies
      */
-    private function writeColumn(string $codeId, string $column, string $value, \Closure $applies): bool
+    private function writeColumns(string $codeId, array $values, \Closure $applies): bool
     {
-        $type = $this->dm->getTypeRegistry()?->get('code')
-            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
+        $type = $this->codeType();
         $driver = $this->dm->driver($type->storage);
 
         if ($driver instanceof PdoDriver) {
             $dialect = $driver->dialect();
             $table = $dialect->quoteIdentifier($type->table);
             $id = $dialect->quoteIdentifier($type->idField);
-            $col = $dialect->quoteIdentifier($column);
-            $guard = $column === 'revoked_at' ? " AND ({$col} IS NULL OR {$col} = '')" : '';
+            $set = [];
+            foreach (array_keys($values) as $column) {
+                $set[] = $dialect->quoteIdentifier($column) . ' = ?';
+            }
+            $guard = '';
+            if (array_key_exists('revoked_at', $values)) {
+                $col = $dialect->quoteIdentifier('revoked_at');
+                $guard = " AND ({$col} IS NULL OR {$col} = '')";
+            }
 
-            return $this->dm->execute("UPDATE {$table} SET {$col} = ? WHERE {$id} = ?{$guard}", [$value, $codeId], $type->storage) === 1;
+            return $this->dm->execute('UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$id} = ?{$guard}", [...array_values($values), $codeId], $type->storage) === 1;
         }
 
-        return $this->locked($codeId, function () use ($codeId, $column, $value, $applies): bool {
+        return $this->locked($codeId, function () use ($codeId, $values, $applies): bool {
             $record = $this->dm->findType('code', $codeId);
             if ($record === null || !$applies($record)) {
                 return false;
             }
-            $record->set($column, $value);
+            foreach ($values as $column => $value) {
+                $record->set($column, $value);
+            }
             $this->dm->saveType($record, false);
 
             return true;
@@ -567,7 +604,38 @@ final class Codes
         if ($expiresAt <= ($this->clock)()) {
             throw new \InvalidArgumentException('A code can only be renewed until a time in the future.');
         }
-        $this->writeColumn($codeId, 'expires_at', self::storeTime($expiresAt), static fn (): bool => true);
+        $this->writeColumns($codeId, ['expires_at' => self::storeTime($expiresAt)], static fn (): bool => true);
+    }
+
+    /**
+     * Changes what an admin may change on a stored code: its label (null: none), expiry (null: never)
+     * and max uses (null: unlimited); everything else, and the use count, stays. Refused (CodeRefused):
+     * any change to a revoked or used-up code, an expiry in the past (one the code already has is
+     * kept), max uses below the uses so far, and max uses other than 1 on a code bound to a recipient.
+     */
+    public function update(string $codeId, ?string $label, ?\DateTimeImmutable $expiresAt, ?int $maxUses): void
+    {
+        $record = $this->dm->findType('code', $codeId)
+            ?? throw new CodeRefused(CodeRefused::UNKNOWN_CODE, "Unknown code [{$codeId}].");
+        if ((string) ($record->get('revoked_at') ?? '') !== '') {
+            throw new CodeRefused(CodeRefused::REVOKED, 'A revoked code cannot be changed.');
+        }
+        $max = $record->get('max_uses');
+        $uses = (int) $record->get('uses');
+        if ($max !== null && $max !== '' && $uses >= (int) $max) {
+            throw new CodeRefused(CodeRefused::USED_UP, 'A used-up code cannot be changed.');
+        }
+        $expires = $expiresAt === null ? null : self::storeTime($expiresAt);
+        if ($expiresAt !== null && $expiresAt <= ($this->clock)() && $expires !== (string) ($record->get('expires_at') ?? '')) {
+            throw new CodeRefused(CodeRefused::EXPIRY_PAST, 'A code can only expire at a time in the future.');
+        }
+        if ($maxUses !== null && $maxUses < $uses) {
+            throw new CodeRefused(CodeRefused::MAX_USES_LOW, "Max uses cannot be below the {$uses} uses so far.");
+        }
+        if ((string) ($record->get('recipient') ?? '') !== '' && $maxUses !== 1) {
+            throw new CodeRefused(CodeRefused::BOUND_SINGLE_USE, 'A code bound to a recipient has exactly one use.');
+        }
+        $this->writeColumns($codeId, ['label' => (string) $label, 'expires_at' => $expires, 'max_uses' => $maxUses], static fn (): bool => true);
     }
 
     /** E-mail addresses match without regard to case and surrounding spaces. */

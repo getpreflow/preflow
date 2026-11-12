@@ -45,6 +45,13 @@ return [
         'format' => 'A readable code needs 4 to 64 letters A-Z and digits (spaces and dashes are ignored).',
         'taken' => 'A code like this already exists for this purpose.',
         'max_uses' => 'Max uses must be a whole number (empty: unlimited).',
+        'unknown_code' => 'This code no longer exists.',
+        'revoked' => 'A revoked code cannot be changed.',
+        'used_up' => 'A used-up code cannot be changed.',
+        'expiry' => 'Enter a valid date and time.',
+        'expiry_past' => 'A code can only expire at a time in the future.',
+        'max_uses_low' => 'Max uses cannot be below the uses so far.',
+        'bound_single_use' => 'A code bound to a recipient has exactly one use.',
     ],
     // The roles screen: the extension's permission and its heading.
     'permissions' => [

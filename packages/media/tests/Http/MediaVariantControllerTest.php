@@ -16,6 +16,7 @@ use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\Http\VariantController;
 use Preflow\Media\Tests\Support\MediaFixtures;
+use Preflow\View\VariantPending;
 
 #[RequiresFunction('imagewebp')]
 final class MediaVariantControllerTest extends TestCase
@@ -109,7 +110,7 @@ final class MediaVariantControllerTest extends TestCase
         // Allowed but not yet made (a step width): a pending 404, not made.
         $pending = $this->serve($this->base($asset) . '-640.webp', internal: true);
         $this->assertSame(404, $pending->getStatusCode());
-        $this->assertSame('pending', $pending->getHeaderLine(VariantController::PENDING_HEADER));
+        $this->assertSame('pending', $pending->getHeaderLine(VariantPending::HEADER));
 
         // Refused for a visitor too (an unknown asset, a width no preset uses): a plain 404.
         foreach ([dirname($this->base($asset)) . '/' . str_repeat('a', 32) . '-640.webp', $this->base($asset) . '-700.webp'] as $path) {

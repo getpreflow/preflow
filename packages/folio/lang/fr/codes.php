@@ -43,6 +43,13 @@ return [
         'format' => 'Un code lisible compte de 4 à 64 lettres A à Z et chiffres (les espaces et tirets sont ignorés).',
         'taken' => 'Un code identique existe déjà pour cet usage.',
         'max_uses' => 'Les utilisations max. doivent être un nombre entier (vide : illimité).',
+        'unknown_code' => 'Ce code n’existe plus.',
+        'revoked' => 'Un code révoqué ne peut plus être modifié.',
+        'used_up' => 'Un code épuisé ne peut plus être modifié.',
+        'expiry' => 'Saisissez une date et une heure valides.',
+        'expiry_past' => 'Un code ne peut expirer qu’à un moment futur.',
+        'max_uses_low' => 'Les utilisations max. ne peuvent pas être inférieures aux utilisations déjà faites.',
+        'bound_single_use' => 'Un code lié à une adresse s’utilise exactement une fois.',
     ],
     'permissions' => [
         'revoke' => 'Révoquer des codes',

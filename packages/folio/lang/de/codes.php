@@ -43,6 +43,13 @@ return [
         'format' => 'Ein lesbarer Code braucht 4 bis 64 Buchstaben A–Z und Ziffern (Leerzeichen und Bindestriche werden ignoriert).',
         'taken' => 'Einen solchen Code gibt es für diesen Zweck bereits.',
         'max_uses' => '„Höchstens einlösbar“ muss eine ganze Zahl sein (leer: unbegrenzt).',
+        'unknown_code' => 'Diesen Code gibt es nicht mehr.',
+        'revoked' => 'Ein widerrufener Code lässt sich nicht mehr ändern.',
+        'used_up' => 'Ein aufgebrauchter Code lässt sich nicht mehr ändern.',
+        'expiry' => 'Gib ein gültiges Datum mit Uhrzeit an.',
+        'expiry_past' => 'Ein Code kann nur zu einem Zeitpunkt in der Zukunft ablaufen.',
+        'max_uses_low' => '„Höchstens einlösbar“ darf nicht unter den bisherigen Einlösungen liegen.',
+        'bound_single_use' => 'Ein an eine Adresse gebundener Code lässt sich genau einmal einlösen.',
     ],
     'permissions' => [
         'revoke' => 'Codes widerrufen',

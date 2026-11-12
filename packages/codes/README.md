@@ -108,9 +108,11 @@ random).
 - **Create:** the admin creates readable codes only, for purposes with `readable: true`. It cannot
   create codes bound to a recipient (those come from `issue(..., recipient:)`).
   The code is normalised (upper case, no spaces or dashes) and must be 4–64 characters
-  `A-Z0-9` and unique within its purpose; otherwise the form shows the error. Random codes
-  come from `Codes::issue()`.
-- **Edit:** only *Label*, *Expires at* and *Max uses* change. Code, purpose, form, uses,
+  `A-Z0-9` and unique within its purpose (`Codes::checkReadable()`), and it gets the purpose's ttl and
+  `created_at` as an issued code does (`Codes::prepare()`); otherwise the form shows the error. Random
+  codes come from `Codes::issue()`.
+- **Edit:** only *Label*, *Expires at* and *Max uses* change, by `Codes::update()`: a revoked or
+  used-up code, a past expiry and max uses below the uses so far are refused. Code, purpose, form, uses,
   revocation and payload keep their stored values, whatever the form posts. Uses,
   *Revoked at* and form are shown as read-only text; the payload is not shown (nor taken
   on create: an admin-made code has an empty payload).
@@ -136,6 +138,14 @@ sites.
   otherwise the reason is `wrong_recipient` (counted by the throttle, no use spent). `check()` without an
   address passes and returns the address in `Result::$recipient`.
 - `record()`, `get()` and `forRecipient($email, $purpose, open: true)` return `CodeRecord`s (newest first).
+- `checkReadable($purpose, $typed)` returns the readable code as `issue()` would store it, or throws a
+  `CodeRefused` (an `InvalidArgumentException` with a `reason`): unknown purpose, a purpose without readable
+  codes, bad format, or taken within the purpose. `prepare($purpose, $readable, $expiresAt)` fills the
+  columns of a new code (form, expiry from the purpose's ttl, uses, `created_at`); `issue()` and an admin
+  both use it.
+- `update($codeId, $label, $expiresAt, $maxUses)` changes label, expiry and max uses (null: none, never,
+  unlimited) and refuses a revoked or used-up code, an expiry in the past, max uses below the uses so far,
+  and max uses other than 1 on a code bound to a recipient.
 - `renew($codeId, $expiresAt)` gives a live code a new expiry. A purpose with `'ttl' => 30` (days) in
   `config/codes.php` expires codes issued without `expiresAt` after that time.
 - Readable codes cannot be bound to a recipient (a typed code is meant to be shared), and a bound code
@@ -161,36 +171,41 @@ $container->get(CodeEvents::class)->on(CodeEvents::REDEEMED, function (array $e)
   idempotent, and send no mails before you are done.
 - `codes.revoked` runs after the revoke is stored; an exception propagates, the revoke stands.
 
-## Mail
+## Sending a code by mail
 
-`CodeMailer::send(CodeRecord $code, string $to, string $url, array $options = []): bool` sends one
-invitation through `preflow/notify`. `$url` is the link your app built (a path is made absolute with
-`app.url`); only that link is linked in the mail. Options: `subject`, `message` (plain text, escaped),
-`from_name`, `language` (default the site's), `template` and `vars` (your own mail template). It returns
-`false` on a transport failure (logged without the address); the code stays valid. The words are in the
-translation group `codes-mail` (en, de, fr; German public texts use "Sie").
-
-`config/codes.php`:
+The package sends no mail: what a mail says, and how it looks, is your site's. Build it on
+`preflow/notify`'s `Mailer` (README "Composed mails") in your own code. A path is made absolute with
+the site's URL, and only that link is linked, so the sender's own message stays plain text:
 
 ```php
-'mail' => [
-    'layout' => 'resources/mail/layout.twig', // default @codes/mail/layout.twig (neutral)
-    'from' => 'Club <club@example.org>',      // default: the mail channel's sender
-    'accent' => '#0a7d33',                    // link and button colour; no default
-],
+use Preflow\Notify\Mail\MailAction;
+use Preflow\Notify\Mail\MailContent;
+use Preflow\Notify\Mail\MailText;
+
+$code = $codes->issue('club.invite', ['group' => $group], recipient: $email); // ttl from the purpose
+$record = $codes->record($code, 'club.invite');                                // CodeRecord: code, recipient, expiresAt
+$link = MailText::absoluteUrl('/invite/' . $record->code, $appUrl);
+
+$mailer->send(new MailContent(
+    subject: 'Invitation to the club',
+    text: "Hello,\n\n" . $host . " invites you to the club.\n\n" . $message . "\n\nYour invitation:\n" . $link,
+    lang: 'en',
+    action: new MailAction('Open invitation', $link),
+    links: [$link], // the sender's message is free text: its URLs stay unlinked
+), to: $record->recipient);
 ```
 
-A custom layout receives `accent` as an empty string unless `mail.accent` is set, and also `lang`,
-`subject`, `paragraphs`, `action` (`label`, `url`), `message` and `from_name`.
+`send()` throws a `TransportException` when the mail does not go out; the code stays valid, so you
+can resend the same link (or `renew()` it first). Wording, language and layout are yours.
 
 ## Example: an invitation route (app code)
 
-The route, the group and the pages are yours; the package supplies check, redeem, hook and mail.
+The route, the group and the pages are yours; the package supplies check, redeem and the hook; the mail is built as above.
 
 ```php
 // Invite: bind a code to the address, mail the link.
 $code = $codes->issue('club.invite', ['group' => $group], recipient: $email); // ttl from the purpose
-$mailer->send($codes->record($code, 'club.invite'), $email, '/invite/' . $code, ['message' => $text, 'from_name' => $host]);
+// ... then mail the link (see "Sending a code by mail").
 
 // GET /invite/{code}
 $check = $codes->check($code, 'club.invite', $throttle->client($request));

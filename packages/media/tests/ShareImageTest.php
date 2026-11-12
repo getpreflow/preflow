@@ -22,6 +22,7 @@ use Preflow\Media\Image\ImageWidths;
 use Preflow\Media\Image\VariantGenerator;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Tests\Support\MediaFixtures;
+use Preflow\View\VariantPending;
 use Psr\Http\Message\ResponseInterface;
 
 /** The built-in "share" box as a JPEG for og:image cards. */
@@ -134,7 +135,7 @@ final class ShareImageTest extends TestCase
         $pending = $this->serve($lib, $url, internal: true);
 
         $this->assertSame(404, $pending->getStatusCode());
-        $this->assertSame('pending', $pending->getHeaderLine(VariantController::PENDING_HEADER));
+        $this->assertSame('pending', $pending->getHeaderLine(VariantPending::HEADER));
         $this->assertFileDoesNotExist($file);
         $this->assertSame([], glob($file . '.*') ?: []); // no lock file either
     }

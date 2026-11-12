@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Codes\Types;
 
+use Preflow\Codes\CodeRefused;
 use Preflow\Codes\Codes;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -20,9 +21,9 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * Codes in the admin: a new code is a readable one (random codes are issued by code), its
- * text normalised and unique within its purpose; once stored, only label, expiry and max
- * uses change. Revoking and the redemptions are shown on the code. Its words are the "codes"
+ * Codes in the admin: a new code is a readable one (random codes are issued by code), made by
+ * Codes::prepare() like an issued one (text normalised and unique within its purpose, the
+ * purpose's ttl, created_at); once stored, only label, expiry and max uses change, by Codes::update(). Revoking and the redemptions are shown on the code. Its words are the "codes"
  * group's, in the admin's language (attribute labels given as keys).
  */
 #[FolioType('code')]
@@ -39,40 +40,39 @@ final class CodeAdmin
     #[BeforeSave]
     public function beforeSave(DynamicRecord $record): void
     {
-        $record->set('max_uses', $this->maxUses($record->get('max_uses')));
+        $maxUses = $this->maxUses($record->get('max_uses'));
+        $expiresAt = $this->expiry($record->get('expires_at'));
 
         $stored = $this->dm->findType('code', (string) $record->getId());
         if ($stored !== null) {
+            if ((string) ($stored->get('recipient') ?? '') !== '') {
+                $maxUses = 1; // a bound code has exactly one use
+            }
+            try {
+                $this->codes->update((string) $record->getId(), (string) $record->get('label'), $expiresAt, $maxUses);
+            } catch (CodeRefused $e) {
+                throw $this->refused($e);
+            }
+            // update() wrote label, expiry and max uses; the form's save writes back what is stored now.
+            $stored = $this->dm->findType('code', (string) $record->getId()) ?? $stored;
             foreach (self::KEPT as $field) {
                 $record->set($field, $stored->get($field));
             }
-            if ((string) ($stored->get('recipient') ?? '') !== '') {
-                $record->set('max_uses', '1'); // a bound code has exactly one use
-            }
+            $record->set('max_uses', $stored->get('max_uses'));
+            $record->set('expires_at', $stored->get('expires_at'));
 
             return;
         }
 
-        $purpose = (string) $record->get('purpose');
-        if (!isset($this->codes->purposes()[$purpose])) {
-            throw $this->refuse('purpose', 'purpose');
+        try {
+            $columns = $this->codes->prepare((string) $record->get('purpose'), (string) $record->get('code'), $expiresAt);
+        } catch (CodeRefused $e) {
+            throw $this->refused($e);
         }
-        if (!$this->codes->purpose($purpose)->readable) {
-            throw $this->refuse('purpose', 'not_readable');
+        foreach ($columns as $field => $value) {
+            $record->set($field, $value);
         }
-        $code = Codes::normalizeReadable((string) $record->get('code'));
-        if ($code === null || preg_match('/^[A-Z0-9]{4,64}$/', $code) !== 1) {
-            throw $this->refuse('code', 'format');
-        }
-        foreach ($this->dm->queryType('code')->where('purpose', '=', $purpose)->get()->items() as $other) {
-            if ((string) $other->get('code') === $code) {
-                throw $this->refuse('code', 'taken');
-            }
-        }
-
-        $record->set('code', $code);
-        $record->set('form', 'readable');
-        $record->set('uses', 0);
+        $record->set('max_uses', $maxUses === null ? '' : (string) $maxUses);
         $record->set('revoked_at', '');
     }
 
@@ -112,20 +112,47 @@ final class CodeAdmin
     }
 
     /**
-     * A whole-number string, or '' for unlimited: the number field may send '3.0', which
-     * MySQL's strict mode refuses to cast to an integer in Codes' atomic use count.
+     * A whole number, or null for unlimited: the number field may send '3.0', which MySQL's
+     * strict mode refuses to cast to an integer in Codes' atomic use count.
      */
-    private function maxUses(mixed $value): string
+    private function maxUses(mixed $value): ?int
     {
         $text = trim((string) ($value ?? ''));
         if ($text === '') {
-            return '';
+            return null;
         }
         if (!is_numeric($text) || (float) $text < 0 || floor((float) $text) !== (float) $text) {
             throw $this->refuse('max_uses', 'max_uses');
         }
 
-        return (string) (int) $text;
+        return (int) $text;
+    }
+
+    private function expiry(mixed $value): ?\DateTimeImmutable
+    {
+        $text = trim((string) ($value ?? ''));
+        if ($text === '') {
+            return null;
+        }
+        try {
+            return new \DateTimeImmutable($text);
+        } catch (\Exception) {
+            throw $this->refuse('expires_at', 'expiry');
+        }
+    }
+
+    /** The field a refusal belongs to and the words for it. */
+    private function refused(CodeRefused $e): ValidationException
+    {
+        $field = match ($e->reason) {
+            CodeRefused::UNKNOWN_PURPOSE, CodeRefused::NOT_READABLE => 'purpose',
+            CodeRefused::FORMAT, CodeRefused::TAKEN => 'code',
+            CodeRefused::EXPIRY_PAST => 'expires_at',
+            CodeRefused::MAX_USES_LOW, CodeRefused::BOUND_SINGLE_USE => 'max_uses',
+            default => 'label', // revoked, used up, unknown: the whole code
+        };
+
+        return $this->refuse($field, $e->reason);
     }
 
     /** @param string $error a key of codes.errors */

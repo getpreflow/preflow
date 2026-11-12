@@ -29,11 +29,6 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class VariantController
 {
-    /**
-     * @deprecated since 0.67, use \Preflow\View\VariantPending::HEADER
-     */
-    public const string PENDING_HEADER = VariantPending::HEADER;
-
     private const string VARIANT = '#^(\d{4}/\d{2}/([a-f0-9]{32})(?:-[a-z0-9-]+?)?)-([1-9]\d{0,4})\.(avif|webp|jpg)$#';
 
     public function __construct(
