@@ -17,6 +17,7 @@ use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\Screen\ScreenView;
+use Preflow\I18n\Translator;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleStore;
@@ -54,6 +55,7 @@ final class StaffAdmin
         private readonly DataManager $dm,
         private readonly PermissionCoverage $coverage,
         private readonly Messages $messages,
+        private readonly Translator $translator,
         private readonly Container $container,
     ) {}
 
@@ -97,7 +99,7 @@ final class StaffAdmin
         $error = $this->send('invite', $staff, 'staff.invite_failed');
         if ($session instanceof SessionInterface) {
             $error === null
-                ? $session->flash('success', $this->messages->get('staff.invited', ['email' => (string) $staff->get('email')]))
+                ? $session->flash('success', $this->translator->get('rbac-admin.staff.invited', ['email' => (string) $staff->get('email')]))
                 : $session->flash('error', $error);
         }
     }
@@ -108,7 +110,7 @@ final class StaffAdmin
         $this->rules->beforeDelete($staff);
     }
 
-    #[FormPanel('rbac.account.title', position: 'side')]
+    #[FormPanel('rbac-admin.account.title', position: 'side')]
     public function panel(DynamicRecord $staff): ScreenView
     {
         $active = StaffManagers::active($staff->get('active'));
@@ -128,7 +130,7 @@ final class StaffAdmin
         ]);
     }
 
-    #[RecordAction(name: 'invite', label: 'rbac.actions.invite', permission: self::PERMISSION, toolbar: false)]
+    #[RecordAction(name: 'invite', label: 'rbac-admin.actions.invite', permission: self::PERMISSION, toolbar: false)]
     public function invite(DynamicRecord $staff, ServerRequestInterface $request): ResponseInterface
     {
         if (($refused = $this->refused($staff)) !== null) {
@@ -138,10 +140,10 @@ final class StaffAdmin
 
         return $error !== null
             ? $this->back($request, $staff, 'error', $error)
-            : $this->back($request, $staff, 'success', $this->messages->get('staff.invited', ['email' => (string) $staff->get('email')]));
+            : $this->back($request, $staff, 'success', $this->translator->get('rbac-admin.staff.invited', ['email' => (string) $staff->get('email')]));
     }
 
-    #[RecordAction(name: 'reset', label: 'rbac.actions.reset', permission: self::PERMISSION, toolbar: false)]
+    #[RecordAction(name: 'reset', label: 'rbac-admin.actions.reset', permission: self::PERMISSION, toolbar: false)]
     public function reset(DynamicRecord $staff, ServerRequestInterface $request): ResponseInterface
     {
         if (($refused = $this->refused($staff)) !== null) {
@@ -151,10 +153,10 @@ final class StaffAdmin
 
         return $error !== null
             ? $this->back($request, $staff, 'error', $error)
-            : $this->back($request, $staff, 'success', $this->messages->get('staff.reset_sent', ['email' => (string) $staff->get('email')]));
+            : $this->back($request, $staff, 'success', $this->translator->get('rbac-admin.staff.reset_sent', ['email' => (string) $staff->get('email')]));
     }
 
-    #[RecordAction(name: 'disable', label: 'rbac.actions.disable', permission: self::PERMISSION, toolbar: false)]
+    #[RecordAction(name: 'disable', label: 'rbac-admin.actions.disable', permission: self::PERMISSION, toolbar: false)]
     public function disable(DynamicRecord $staff, ServerRequestInterface $request): ResponseInterface
     {
         $staff = $this->fresh($staff);
@@ -167,10 +169,10 @@ final class StaffAdmin
             return $this->back($request, $staff, 'error', $e->getMessage());
         }
 
-        return $this->back($request, $staff, 'success', $this->messages->get('staff.disabled'));
+        return $this->back($request, $staff, 'success', $this->translator->get('rbac-admin.staff.disabled'));
     }
 
-    #[RecordAction(name: 'enable', label: 'rbac.actions.enable', permission: self::PERMISSION, toolbar: false)]
+    #[RecordAction(name: 'enable', label: 'rbac-admin.actions.enable', permission: self::PERMISSION, toolbar: false)]
     public function enable(DynamicRecord $staff, ServerRequestInterface $request): ResponseInterface
     {
         $staff = $this->fresh($staff);
@@ -183,7 +185,7 @@ final class StaffAdmin
             return $this->back($request, $staff, 'error', $e->getMessage());
         }
 
-        return $this->back($request, $staff, 'success', $this->messages->get('staff.enabled'));
+        return $this->back($request, $staff, 'success', $this->translator->get('rbac-admin.staff.enabled'));
     }
 
     /** The account as stored now; null when it was deleted meanwhile (StaffAccounts changes only `active` and the epoch of it). */
@@ -218,7 +220,7 @@ final class StaffAdmin
         } catch (\Throwable $e) {
             error_log("rbac: {$mail} mail not queued for staff:{$staff->getId()}: {$e->getMessage()}");
 
-            return $this->messages->get($failed);
+            return $this->translator->get('rbac-admin.' . $failed);
         }
 
         return null;

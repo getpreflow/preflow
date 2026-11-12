@@ -1,8 +1,9 @@
 <?php
 
-// Textes d’administration de rbac dans Folio (comptes de l’équipe, les rôles, l’éditeur des
-// autorisations, les libellés de ses modèles), posés sur ceux de preflow/rbac dans leur groupe « rbac ».
-// Un site change des clés dans son propre lang/fr/rbac.php. :email est l’adresse d’un compte de l’équipe.
+// Textes d’administration de rbac (l’extension intégrée « rbac » de Folio : comptes de l’équipe, les
+// rôles, l’éditeur des autorisations, les libellés de ses modèles). Les textes de preflow/rbac
+// lui-même (refus, rôles créés) sont son groupe « rbac ». Un site change des clés dans son propre
+// lang/fr/rbac-admin.php. :email est l’adresse d’un compte de l’équipe.
 return [
     'delegation' => [
         'own' => 'Vous perdriez le droit de modifier les rôles.',

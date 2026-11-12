@@ -20,10 +20,10 @@ use Preflow\Rbac\StaffManagers;
  * new-permissions notice (Types/RoleRules, NewPermissions, NewPermissionsScreen) and, as an
  * opt-in part, staff accounts (the core's StaffType with what models/staff.json adds: the list,
  * roles as rbac_roles; Types/StaffAdmin and StaffRules): a site lists "model:staff" under the
- * extension's "enabled_parts" to get them. Its labels are keys of the "rbac" group (rbac's
- * lang/{locale}/rbac.php, with Folio's lang/{locale}/rbac.php for the admin's own texts).
+ * extension's "enabled_parts" to get them. Its labels and texts are the admin group "rbac-admin"
+ * (Folio's lang/{locale}/rbac-admin.php); rbac's own refusals stay in its group "rbac".
  */
-#[FolioExtension(name: 'rbac', label: 'Roles', icon: 'ui-users', version: '1.1.0', translations: 'rbac')]
+#[FolioExtension(name: 'rbac', label: 'Roles', icon: 'ui-users', version: '1.1.0', translations: 'rbac-admin')]
 final class Extension extends \Preflow\Folio\Extension\Extension
 {
     /**

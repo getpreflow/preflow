@@ -1,15 +1,15 @@
 {# The Account panel of a staff account (side column): its state, then what those who may change it can do. #}
 <p>
-    <span class="folio-badge{{ active ? ' is-published' : ' is-draft' }}">{{ active ? t('rbac.account.active') : t('rbac.account.disabled') }}</span>
-    {% if invited %}<span class="folio-badge is-changed">{{ t('rbac.account.no_password') }}</span>{% endif %}
+    <span class="folio-badge{{ active ? ' is-published' : ' is-draft' }}">{{ active ? t('rbac-admin.account.active') : t('rbac-admin.account.disabled') }}</span>
+    {% if invited %}<span class="folio-badge is-changed">{{ t('rbac-admin.account.no_password') }}</span>{% endif %}
 </p>
 <p class="folio-help">
     {%- if not active -%}
-        {{ t('rbac.account.disabled_help') }}
+        {{ t('rbac-admin.account.disabled_help') }}
     {%- elseif invited -%}
-        {{ t('rbac.account.invited_help') }}
+        {{ t('rbac-admin.account.invited_help') }}
     {%- else -%}
-        {{ t('rbac.account.active_help') }}
+        {{ t('rbac-admin.account.active_help') }}
     {%- endif -%}
 </p>
 {% if may_act %}
@@ -17,23 +17,23 @@
         {% if active and invited %}
             <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/invite">
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-                <button type="submit" class="btn btn-secondary">{{ t('rbac.actions.invite') }}</button>
+                <button type="submit" class="btn btn-secondary">{{ t('rbac-admin.actions.invite') }}</button>
             </form>
         {% elseif active %}
             <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/reset">
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-                <button type="submit" class="btn btn-secondary">{{ t('rbac.actions.reset') }}</button>
+                <button type="submit" class="btn btn-secondary">{{ t('rbac-admin.actions.reset') }}</button>
             </form>
         {% endif %}
         {% if active %}
-            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/disable" data-confirm="{{ t('rbac.account.disable_confirm', {email: record.email}) }}">
+            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/disable" data-confirm="{{ t('rbac-admin.account.disable_confirm', {email: record.email}) }}">
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-                <button type="submit" class="btn btn-ghost">{{ t('rbac.actions.disable') }}</button>
+                <button type="submit" class="btn btn-ghost">{{ t('rbac-admin.actions.disable') }}</button>
             </form>
         {% else %}
             <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/enable">
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-                <button type="submit" class="btn btn-secondary">{{ t('rbac.actions.enable') }}</button>
+                <button type="submit" class="btn btn-secondary">{{ t('rbac-admin.actions.enable') }}</button>
             </form>
         {% endif %}
     </div>

@@ -9,8 +9,8 @@ use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
+use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\AdminNav;
-use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
 
@@ -24,24 +24,19 @@ use Preflow\Rbac\RoleList;
  * locks what "Everything" or an "All" already grants; without it every box stays usable.
  * Delegation: what the signed-in user doesn't cover (PermissionCoverage) is rendered disabled
  * ("You can't grant this"); RoleRules refuses a save that adds it anyway.
- * Its words are rbac's (Messages: the admin's language); type, section and permission labels
+ * Its words are the "rbac-admin" group's (FolioText: the admin's language); type, section and permission labels
  * come from Folio's DisplayLabels, so they read as everywhere else in the admin.
  */
 final class PermissionsFieldType implements FieldType
 {
     private const VERBS = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];
 
-    private readonly Messages $messages;
-
     public function __construct(
         private readonly PermissionRegistry $registry,
         private readonly TypeCatalog $catalog,
         private readonly ?PermissionCoverage $coverage = null,
-        ?Messages $messages = null,
         private readonly ?DisplayLabels $labels = null,
-    ) {
-        $this->messages = $messages ?? Messages::english(dirname(__DIR__, 3) . '/lang'); // with the admin's texts (Folio's lang/)
-    }
+    ) {}
 
     public function key(): string
     {
@@ -51,7 +46,7 @@ final class PermissionsFieldType implements FieldType
     public function renderEditor(FieldContext $ctx): string
     {
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $t = fn (string $key, array $params = []): string => $this->messages->get('matrix.' . $key, $params);
+        $t = fn (string $key, array $params = []): string => FolioText::get('rbac-admin.matrix.' . $key, $params);
         $deniedText = $t('denied');
         $verbs = [];
         foreach (self::VERBS as $action => $verb) {

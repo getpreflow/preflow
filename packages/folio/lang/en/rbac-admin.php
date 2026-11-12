@@ -1,8 +1,9 @@
 <?php
 
-// The rbac admin's texts in Folio (staff accounts, the roles screen, the permissions editor, the
-// labels of its models), laid over preflow/rbac's own in their group "rbac". A site changes single
-// keys in its own lang/en/rbac.php. :email is a staff account's address.
+// The rbac admin's texts (Folio's built-in extension "rbac": staff accounts, the roles screen, the
+// permissions editor, the labels of its models). preflow/rbac's own texts (refusals, seeded roles)
+// are its group "rbac". A site changes single keys in its own lang/en/rbac-admin.php. :email is a
+// staff account's address.
 return [
     'delegation' => [
         'own' => 'You would lose the right to edit roles.',

@@ -84,6 +84,7 @@ final class FolioText
         if (self::$english === null) {
             self::$english = new Translator(dirname(__DIR__) . '/lang/.none', 'en', 'en');
             self::$english->addDefaults('folio', dirname(__DIR__) . '/lang');
+            self::$english->addDefaults('rbac-admin', dirname(__DIR__) . '/lang'); // the rbac admin's field types
         }
 
         return self::$english;

@@ -1,8 +1,8 @@
 <?php
 
 // Texte des Kerns von preflow/rbac: Ablehnungen bei Teamkonten und Rollen (StaffAccounts, die
-// Konsolenbefehle, die Formulare eines Admins), die Rollen, die es anlegt. Ein Admin ergänzt die
-// Gruppe um eigene Texte (Folio: seine lang/de/rbac.php). Eine Site ändert einzelne Schlüssel in ihrer lang/de/rbac.php.
+// Konsolenbefehle, die Formulare eines Admins), die Rollen, die es anlegt. Die eigenen Texte eines Admins
+// sind eine eigene Gruppe (Folio: rbac-admin). Eine Site ändert einzelne Schlüssel in ihrer lang/de/rbac.php.
 // :patterns ist die kommagetrennte Liste der Berechtigungen, die der Bearbeiter nicht hat;
 // :names die Rollennamen, die keine Teamrolle hat.
 return [

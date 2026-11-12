@@ -28,20 +28,19 @@ final class ModelLabelsTest extends TestCase
     public function test_the_extension_names_its_group_and_every_label_has_a_text_in_en_de_and_fr(): void
     {
         $meta = (new \ReflectionClass(\Preflow\Folio\Rbac\Extension::class))->getAttributes(FolioExtension::class)[0]->newInstance();
-        $this->assertSame('rbac', $meta->translations);
+        $this->assertSame('rbac-admin', $meta->translations);
 
         $translator = new Translator('/no/such/lang', 'en', 'en');
-        $translator->addDefaults('rbac', dirname(__DIR__, 3) . '/rbac/lang'); // rbac's own texts
-        $translator->addDefaults('rbac', dirname(__DIR__, 2) . '/lang'); // and the admin's, laid over them
+        $translator->addDefaults('rbac-admin', dirname(__DIR__, 2) . '/lang');
         foreach (['staff', 'rbac_role'] as $model) {
-            $keys = ModelLabelKeys::derive(self::model($model), 'rbac');
+            $keys = ModelLabelKeys::derive(self::model($model), 'rbac-admin');
             foreach (['en', 'de', 'fr'] as $locale) {
                 foreach (array_keys($keys) as $key) {
                     $this->assertTrue($translator->has($key, $locale), "{$key} in {$locale}");
                 }
             }
         }
-        $this->assertArrayNotHasKey('rbac.fields.staff.password_hash.label', ModelLabelKeys::derive(self::model('staff'), 'rbac'));
+        $this->assertArrayNotHasKey('rbac-admin.fields.staff.password_hash.label', ModelLabelKeys::derive(self::model('staff'), 'rbac-admin'));
     }
 
     /** @return array<string, mixed> the model as the admin takes it: rbac's type with the admin's overlay */

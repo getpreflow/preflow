@@ -31,6 +31,12 @@ final class StaffMailer
         private readonly ?\Preflow\Rbac\Staff\StaffMail $rbac = null,
     ) {}
 
+    /** @deprecated since 0.69, removed in 0.70: use notify's MailText::siteName(). */
+    public static function siteName(mixed $appName, mixed $appUrl): ?string
+    {
+        return MailText::siteName($appName, $appUrl);
+    }
+
     /**
      * @param 'invite'|'reset' $mail
      * @param string|null $locale the recipient's interface language (null: the site default)

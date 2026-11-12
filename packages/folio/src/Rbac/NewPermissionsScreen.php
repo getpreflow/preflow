@@ -16,6 +16,7 @@ use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Folio\Rbac\Types\RoleRules;
+use Preflow\I18n\Translator;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
@@ -37,7 +38,7 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * @since 0.53
  */
-#[FolioScreen(path: self::PATH, label: 'rbac.new.title', permission: 'rbac_role.edit', nav: false)]
+#[FolioScreen(path: self::PATH, label: 'rbac-admin.new.title', permission: 'rbac_role.edit', nav: false)]
 final class NewPermissionsScreen
 {
     public const string PATH = 'rbac/new-permissions';
@@ -47,6 +48,7 @@ final class NewPermissionsScreen
         private readonly DataManager $dm,
         private readonly RoleRules $rules,
         private readonly Messages $messages,
+        private readonly Translator $translator,
         private readonly Container $container,
     ) {}
 
@@ -75,7 +77,7 @@ final class NewPermissionsScreen
             return $this->unavailable($request, $e);
         }
 
-        return self::back($request, 'success', $this->messages->get('new.dismissed'));
+        return self::back($request, 'success', $this->translator->get('rbac-admin.new.dismissed'));
     }
 
     #[Post('/grant')]
@@ -90,7 +92,7 @@ final class NewPermissionsScreen
         $id = is_string($body['role'] ?? null) ? $body['role'] : '';
         $role = $id === '' ? null : $this->dm->findType('rbac_role', $id);
         if (!$role instanceof DynamicRecord) {
-            return self::back($request, 'error', $this->messages->get('new.no_role'));
+            return self::back($request, 'error', $this->translator->get('rbac-admin.new.no_role'));
         }
         if ($names === []) {
             return self::roles($request); // dismissed or added meanwhile
@@ -118,11 +120,11 @@ final class NewPermissionsScreen
             // The storage or a site's #[AfterSave] failed: a message instead of a 500, the cause in the log.
             error_log('rbac: add to role failed: ' . $e->getMessage());
 
-            return self::back($request, 'error', $this->messages->get('new.failed'));
+            return self::back($request, 'error', $this->translator->get('rbac-admin.new.failed'));
         }
         $label = $this->messages->roleLabel((string) $role->get('population'), (string) $role->get('name'), (string) $role->get('label'));
 
-        return self::back($request, 'success', $this->messages->get('new.added', ['role' => $label]));
+        return self::back($request, 'success', $this->translator->get('rbac-admin.new.added', ['role' => $label]));
     }
 
     /**
@@ -142,7 +144,7 @@ final class NewPermissionsScreen
     {
         error_log('rbac: new permissions unavailable: ' . $e->getMessage());
 
-        return self::back($request, 'error', $this->messages->get('new.unavailable'));
+        return self::back($request, 'error', $this->translator->get('rbac-admin.new.unavailable'));
     }
 
     private static function firstMessage(ValidationException $e): ?string

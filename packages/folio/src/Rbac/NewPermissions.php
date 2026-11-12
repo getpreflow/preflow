@@ -13,6 +13,7 @@ use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Permissions\KnownPermissions;
+use Preflow\I18n\Translator;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
@@ -36,6 +37,7 @@ final class NewPermissions
         private readonly Container $container,
         private readonly DataManager $dm,
         private readonly Messages $messages,
+        private readonly Translator $translator,
     ) {}
 
     /**
@@ -168,7 +170,7 @@ final class NewPermissions
                 }
             }
             $groups[] = [
-                'heading' => $group === '' ? $this->messages->get('matrix.other_group') : ($labels?->permissionGroup($group, $names[0]) ?? $group),
+                'heading' => $group === '' ? $this->translator->get('rbac-admin.matrix.other_group') : ($labels?->permissionGroup($group, $names[0]) ?? $group),
                 'names' => $names,
                 'permissions' => $permissions,
                 'covered' => $covered,

@@ -106,8 +106,8 @@ When a user is signed in:
   can't grant this"). The server check is the authority; a crafted POST gets the same
   refusal.
 
-The messages are in English; de and fr are in `lang/` (Folio adds its admin's texts to the same
-group "rbac"). A site's `lang/en/rbac.php` changes single keys. Without a signed-in user (the CLI:
+The messages are in English; de and fr are in `lang/` (Folio's admin has its own group,
+"rbac-admin"). A site's `lang/en/rbac.php` changes single keys. Without a signed-in user (the CLI:
 `folio:extensions:apply`, the staff import) delegation does not apply.
 `Preflow\Rbac\PermissionCoverage` has the check: `covers()`, `coversAll()`, `uncovered()`,
 and `held()` for the signed-in user (null when nobody is signed in).

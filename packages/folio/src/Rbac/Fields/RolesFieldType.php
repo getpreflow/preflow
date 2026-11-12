@@ -8,6 +8,7 @@ use Preflow\Data\DataManager;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
+use Preflow\Folio\FolioText;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
@@ -32,7 +33,7 @@ final class RolesFieldType implements FieldType
         private readonly ?PermissionCoverage $coverage = null,
         ?Messages $messages = null,
     ) {
-        $this->messages = $messages ?? Messages::english(dirname(__DIR__, 3) . '/lang'); // with the admin's texts (Folio's lang/)
+        $this->messages = $messages ?? Messages::english();
     }
 
     public function key(): string
@@ -49,7 +50,7 @@ final class RolesFieldType implements FieldType
             : $this->catalog->get((string) ($ctx->record['type'] ?? ''))?->users;
         $roles = $population !== null ? $this->roles($population) : [];
         foreach ($selected as $name) {
-            $roles[$name] ??= $this->messages->get('roles_field.not_defined', ['role' => $name]);
+            $roles[$name] ??= FolioText::get('rbac-admin.roles_field.not_defined', ['role' => $name]);
         }
         $name = $e($ctx->name . '[]');
         $held = ($ctx->record['type'] ?? null) === StaffManagers::TYPE ? $this->coverage?->held() : null;
@@ -60,13 +61,13 @@ final class RolesFieldType implements FieldType
         $html .= "\n" . '<div class="folio-chips">';
         foreach ($roles as $role => $label) {
             $denied = $held !== null && !PermissionCoverage::coversAll($held, $patterns[(string) $role] ?? []);
-            $html .= "\n" . '<label class="folio-chip"' . ($denied ? ' title="' . $e($this->messages->get('matrix.denied')) . '"' : '') . '><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
+            $html .= "\n" . '<label class="folio-chip"' . ($denied ? ' title="' . $e(FolioText::get('rbac-admin.matrix.denied')) . '"' : '') . '><input type="checkbox" name="' . $name . '" value="' . $e((string) $role) . '"'
                 . ($denied ? ' disabled data-rbac-denied' : '')
                 . (in_array((string) $role, $selected, true) ? ' checked' : '') . '><span class="folio-chip-label">' . $e($label) . '</span></label>';
         }
         $html .= "\n" . '</div>';
         if ($population === null) {
-            $html .= "\n" . '<div class="form-help">' . $e($this->messages->get('roles_field.no_population')) . '</div>';
+            $html .= "\n" . '<div class="form-help">' . $e(FolioText::get('rbac-admin.roles_field.no_population')) . '</div>';
         }
         foreach ($ctx->errors as $error) {
             $html .= "\n" . '<div class="form-error">' . $e((string) $error) . '</div>';

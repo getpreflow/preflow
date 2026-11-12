@@ -30,6 +30,12 @@ final class StaffMail
         private readonly ?StaffLocales $locales = null,
     ) {}
 
+    /** @deprecated since 0.69, removed in 0.70: use notify's MailText::siteName(). */
+    public static function siteName(mixed $appName, mixed $appUrl): ?string
+    {
+        return MailText::siteName($appName, $appUrl);
+    }
+
     /**
      * Queues the mail to the account's address; a failure is logged (with the account, no address).
      *

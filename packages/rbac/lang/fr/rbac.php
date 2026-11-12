@@ -1,8 +1,8 @@
 <?php
 
 // Textes du cœur de preflow/rbac : refus pour les comptes de l’équipe et les rôles (StaffAccounts,
-// les commandes, les formulaires d’une administration), les rôles qu’il crée. Une administration ajoute
-// ses propres textes au groupe (Folio : son lang/fr/rbac.php). Un site change des clés dans son propre lang/fr/rbac.php.
+// les commandes, les formulaires d’une administration), les rôles qu’il crée. Les textes propres d’une
+// administration sont un groupe à part (Folio : rbac-admin). Un site change des clés dans son propre lang/fr/rbac.php.
 // :patterns est la liste, séparée par des virgules, des autorisations que l’éditeur n’a pas ;
 // :names les noms de rôles qu’aucun rôle de l’équipe n’a.
 return [

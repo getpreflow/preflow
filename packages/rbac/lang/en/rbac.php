@@ -1,8 +1,8 @@
 <?php
 
 // The texts of preflow/rbac's core: refusals of staff accounts and roles (StaffAccounts, the
-// staff and role commands, an admin's forms), the roles it seeds. An admin adds its own texts to
-// this group (Folio: its lang/en/rbac.php). A site changes single keys in its own lang/en/rbac.php.
+// staff and role commands, an admin's forms), the roles it seeds. An admin's own texts are a group
+// of its own (Folio: rbac-admin). A site changes single keys in its own lang/en/rbac.php.
 // :patterns is the comma-separated list of the permissions the editor doesn't hold;
 // :names the role names that no staff role has.
 return [

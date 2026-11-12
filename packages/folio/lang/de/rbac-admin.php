@@ -1,8 +1,9 @@
 <?php
 
-// Admin-Texte von rbac in Folio (in der Du-Form: Teamkonten, die Rollen, der Berechtigungseditor,
-// die Bezeichnungen der Modelle), über die von preflow/rbac gelegt, in ihrer Gruppe „rbac“. Eine Site
-// ändert einzelne Schlüssel in ihrer lang/de/rbac.php. :email ist die Adresse eines Teamkontos.
+// Admin-Texte von rbac (Folios eingebaute Erweiterung „rbac“, in der Du-Form: Teamkonten, die Rollen,
+// der Berechtigungseditor, die Bezeichnungen der Modelle). Die Texte von preflow/rbac selbst
+// (Ablehnungen, angelegte Rollen) sind seine Gruppe „rbac“. Eine Site ändert einzelne Schlüssel in
+// ihrer lang/de/rbac-admin.php. :email ist die Adresse eines Teamkontos.
 return [
     'delegation' => [
         'own' => 'Du würdest das Recht verlieren, Rollen zu bearbeiten.',

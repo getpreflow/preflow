@@ -37,6 +37,7 @@ unset($aliases, $old, $new);
 // preflow/rbac's admin classes moved into Folio (0.69, its built-in extension "rbac"); their old names keep
 // working for one release. Code naming one first gets it here; each class file names its old name too when
 // it loads, so a type-hint of the old name (a site's Types\StaffRules) accepts the object either way.
+// The 0.70 clean-up removes this closure and the eight file footers (Folio\Rbac\…) together.
 spl_autoload_register(static function (string $class): void {
     if (str_starts_with($class, 'Preflow\\Rbac\\') && in_array(substr($class, 13), ['Extension', 'NewPermissions', 'NewPermissionsScreen', 'Fields\\PermissionsFieldType', 'Fields\\RolesFieldType', 'Types\\RoleRules', 'Types\\StaffAdmin', 'Types\\StaffRules'], true)) {
         class_exists('Preflow\\Folio\\Rbac\\' . substr($class, 13)); // its file declares the old name

@@ -24,24 +24,28 @@ final class RbacTranslationTest extends TestCase
         }
     }
 
-    public function test_the_group_has_the_same_keys_in_en_de_and_fr_and_german_says_du(): void
+    public function test_the_groups_have_the_same_keys_in_en_de_and_fr_and_german_says_du(): void
     {
         $translator = new Translator('/no/such/lang', 'en', 'en');
         $translator->addDefaults('rbac', dirname(__DIR__, 3) . '/rbac/lang'); // rbac's own texts
-        $translator->addDefaults('rbac', dirname(__DIR__, 2) . '/lang'); // and the admin's, laid over them
-        $keys = array_keys($translator->entries('rbac', 'en'));
-        foreach (['de', 'fr'] as $locale) {
-            $this->assertEqualsCanonicalizing($keys, array_keys($translator->entries('rbac', $locale)), $locale);
+        $translator->addDefaults('rbac-admin', dirname(__DIR__, 2) . '/lang'); // the admin's
+        foreach (['rbac', 'rbac-admin'] as $group) {
+            $keys = array_keys($translator->entries($group, 'en'));
+            foreach (['de', 'fr'] as $locale) {
+                $this->assertEqualsCanonicalizing($keys, array_keys($translator->entries($group, $locale)), "{$group} {$locale}");
+            }
+            foreach ($translator->entries($group, 'de') as $key => $text) {
+                $this->assertDoesNotMatchRegularExpression('/\b(Sie|Ihr|Ihre|Ihren|Ihnen)\b/u', $text, $key);
+            }
         }
-        foreach ($translator->entries('rbac', 'de') as $key => $text) {
-            $this->assertDoesNotMatchRegularExpression('/\b(Sie|Ihr|Ihre|Ihren|Ihnen)\b/u', $text, $key);
+        $admin = array_keys($translator->entries('rbac-admin', 'en'));
+        foreach (['matrix.everything', 'matrix.other', 'matrix.denied', 'account.title', 'actions.invite', 'extension.label'] as $key) {
+            $this->assertContains('rbac-admin.' . $key, $admin, $key);
         }
-        foreach (['matrix.everything', 'matrix.other', 'matrix.denied', 'roles.staff.admin', 'account.title', 'actions.invite', 'extension.label'] as $key) {
-            $this->assertContains('rbac.' . $key, $keys, $key);
-        }
+        $this->assertContains('rbac.roles.staff.admin', array_keys($translator->entries('rbac', 'en')));
         foreach (['de', 'fr'] as $locale) {
             foreach (['staff.invited', 'staff.reset_sent'] as $key) {
-                $this->assertStringContainsString(':email', $translator->get('rbac.' . $key, [], $locale), "{$locale} {$key}");
+                $this->assertStringContainsString(':email', $translator->get('rbac-admin.' . $key, [], $locale), "{$locale} {$key}");
             }
         }
     }

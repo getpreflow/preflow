@@ -1226,12 +1226,12 @@ final class FolioServiceProvider extends ServiceProvider
             $locale = (string) $app->config()->get('app.locale', 'en');
             $translator = new \Preflow\I18n\Translator($app->basePath('lang'), $locale, $locale);
             $c->instance(\Preflow\I18n\Translator::class, $translator);
-            self::rbacTexts($translator, $c); // boot() did it for a translator bound then
         }
         // Declared in composer.json (extra.preflow.translations); this covers apps whose
         // Composer metadata doesn't list Folio (test apps, a core before 0.37).
         $translator->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
         $translator->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
+        $translator->addDefaultsIfMissing('rbac-admin', dirname(__DIR__) . '/lang', 'admin');
         if (class_exists(\Preflow\Validation\Message::class)) { // the messages of Folio's forms (public: site forms may use them too)
             $translator->addDefaultsIfMissing('validation', \Preflow\Validation\Message::LANG_PATH, 'public');
         }
@@ -1380,7 +1380,7 @@ final class FolioServiceProvider extends ServiceProvider
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('folio', dirname(__DIR__) . '/lang', 'admin');
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('codes', dirname(__DIR__) . '/lang', 'admin');
             $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('members-admin', dirname(__DIR__) . '/lang', 'admin');
-            self::rbacTexts($container->get(\Preflow\I18n\Translator::class), $container);
+            $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('rbac-admin', dirname(__DIR__) . '/lang', 'admin');
             self::useOverrides($container->get(\Preflow\I18n\Translator::class), $container);
         }
 
@@ -1902,34 +1902,17 @@ final class FolioServiceProvider extends ServiceProvider
     private static function registerRbacFields(Container $container): void
     {
         $coverage = $container->get(\Preflow\Rbac\PermissionCoverage::class);
-        $messages = $container->get(\Preflow\Rbac\Messages::class);
         $fieldTypes = $container->get(FieldTypeRegistry::class);
         $fieldTypes->register(new \Preflow\Folio\Rbac\Fields\PermissionsFieldType(
             $container->get(\Preflow\Auth\Access\PermissionRegistry::class),
             $container->get(TypeCatalog::class),
             $coverage,
-            $messages,
             $container->bound(\Preflow\Folio\Content\DisplayLabels::class) ? $container->get(\Preflow\Folio\Content\DisplayLabels::class) : null,
         ));
         $assets = $container->get(\Preflow\Folio\Http\AdminAssets::class);
         $assets->add('rbac.css', dirname(__DIR__) . '/assets/rbac/rbac.css');
         $assets->add('rbac.js', dirname(__DIR__) . '/assets/rbac/rbac.js');
-        $fieldTypes->register(new \Preflow\Folio\Rbac\Fields\RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class), $coverage, $messages));
-    }
-
-    /**
-     * The rbac admin's texts (lang/{locale}/rbac.php: its screens, actions, field types and the
-     * labels of its models) laid over rbac's own in their shared group "rbac", where rbac runs.
-     * rbac's own come first: declared by its package, or registered here for an app whose
-     * Composer metadata doesn't list it (Messages).
-     */
-    private static function rbacTexts(\Preflow\I18n\Translator $translator, Container $c): void
-    {
-        if (!$c->bound(\Preflow\Rbac\Messages::class)) {
-            return;
-        }
-        $c->get(\Preflow\Rbac\Messages::class);
-        $translator->addDefaults('rbac', dirname(__DIR__) . '/lang');
+        $fieldTypes->register(new \Preflow\Folio\Rbac\Fields\RolesFieldType($container->get(DataManager::class), $container->get(TypeCatalog::class), $coverage, $container->get(\Preflow\Rbac\Messages::class)));
     }
 
     /** The members admin seeds and shows the member roles, which are rbac's. */

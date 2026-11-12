@@ -15,8 +15,9 @@ use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Folio\Extension\DashboardNotice;
 use Preflow\Folio\Extension\ListNotice;
 use Preflow\Folio\Extension\NavBadge;
-use Preflow\Rbac\Messages;
 use Preflow\Folio\Rbac\NewPermissions;
+use Preflow\I18n\Translator;
+use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\StaffManagers;
@@ -49,6 +50,7 @@ final class RoleRules
         private readonly AuthManager $auth,
         private readonly PermissionCoverage $coverage,
         private readonly Messages $messages,
+        private readonly Translator $translator,
         private readonly NewPermissions $newPermissions,
     ) {}
 
@@ -78,7 +80,7 @@ final class RoleRules
         $roles = $this->roles();
         foreach ($roles as $otherId => $other) {
             if ($otherId !== $id && $other['name'] === $role['name'] && $other['population'] === $role['population']) {
-                throw new ValidationException(new ValidationResult(['name' => [$this->messages->get('delegation.duplicate', ['population' => $role['population'], 'name' => $role['name']])]]));
+                throw new ValidationException(new ValidationResult(['name' => [$this->translator->get('rbac-admin.delegation.duplicate', ['population' => $role['population'], 'name' => $role['name']])]]));
             }
         }
 
@@ -164,10 +166,10 @@ final class RoleRules
     {
         $user = $this->auth->user();
         if ($user !== null && !self::grants($roles, RoleList::normalize($user->getRoles()))) {
-            return $this->messages->get('delegation.own');
+            return $this->translator->get('rbac-admin.delegation.own');
         }
 
-        return self::grants($roles, null) ? null : $this->messages->get('delegation.last_role');
+        return self::grants($roles, null) ? null : $this->translator->get('rbac-admin.delegation.last_role');
     }
 
     /**

@@ -35,7 +35,7 @@ final class AllScreensTranslatedTest extends TestCase
     private const string STAFF_EMAIL = 'ada@site.test';
     private const array PACKAGES = ['folio', 'rbac', 'members', 'codes', 'validation', 'i18n', 'media'];
     /** The groups whose texts an admin screen shows. */
-    private const array GROUPS = ['folio', 'rbac', 'members-admin', 'codes', 'validation'];
+    private const array GROUPS = ['folio', 'rbac', 'rbac-admin', 'members-admin', 'codes', 'validation'];
 
     /**
      * Record data, not interface text: the roles list shows each role's stored label (rbac
@@ -122,7 +122,7 @@ final class AllScreensTranslatedTest extends TestCase
             $text = str_replace($data, '', $text);
         }
 
-        if (preg_match_all('~(?<![\w/-])(?:folio|rbac|members-admin|members|codes|validation)\.[a-z_]+\.[a-z0-9_.]*[a-z0-9_]~', $text, $keys) > 0) {
+        if (preg_match_all('~(?<![\w/-])(?:folio|rbac-admin|rbac|members-admin|members|codes|validation)\.[a-z_]+\.[a-z0-9_.]*[a-z0-9_]~', $text, $keys) > 0) {
             foreach (array_unique($keys[0]) as $key) {
                 $this->problems[] = "{$uri}: raw key {$key}";
             }

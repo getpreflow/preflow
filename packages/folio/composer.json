@@ -64,7 +64,8 @@
             "translations": {
                 "folio": { "path": "lang", "scope": "admin" },
                 "codes": { "path": "lang", "scope": "admin" },
-                "members-admin": { "path": "lang", "scope": "admin" }
+                "members-admin": { "path": "lang", "scope": "admin" },
+                "rbac-admin": { "path": "lang", "scope": "admin" }
             }
         }
     }
