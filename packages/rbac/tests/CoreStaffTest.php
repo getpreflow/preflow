@@ -561,4 +561,29 @@ final class CoreStaffTest extends TestCase
             'name',
         ), true), 'no staff table before install');
     }
+
+    /**
+     * rbac installed, the staff table not made yet (a site whose staff type came later, or a
+     * Folio site before migrate): the staff commands say so instead of failing on the query,
+     * and a role command that looks at the accounts finds none.
+     */
+    #[RunInSeparateProcess]
+    public function test_before_the_staff_table_exists_the_staff_commands_say_so(): void
+    {
+        $this->assertSame(0, $this->command('rbac:install')[0]);
+        $this->assertSame(0, $this->command('rbac:role', ['reporter', '--grant=reports.view'])[0]);
+        (new \PDO('sqlite:' . $this->dir . '/storage/site.sqlite'))->exec('DROP TABLE staff');
+
+        $message = "No staff table yet: run php preflow rbac:install (or php preflow migrate on a Folio site).\n";
+        foreach ([['staff:list', []], ['staff:create', ['ada@site.test']], ['staff:invite', ['ada@site.test']], ['staff:disable', ['ada@site.test']]] as [$command, $args]) {
+            $this->assertSame([1, $message], $this->command($command, $args), $command);
+        }
+        $delete = new \Preflow\Rbac\Console\RoleDeleteCommand(fn (): Application => $this->app());
+        ob_start();
+        $code = $delete->execute(['reporter']);
+        $this->assertSame([0, "Deleted staff role \"reporter\".\n"], [$code, (string) ob_get_clean()]);
+
+        $this->assertSame(0, $this->command('rbac:install')[0]);
+        $this->assertSame([0, "No staff accounts yet. Create one with php preflow staff:create <email> --role=admin.\n"], $this->command('staff:list'));
+    }
 }

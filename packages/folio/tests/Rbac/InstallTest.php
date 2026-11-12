@@ -50,6 +50,31 @@ final class InstallTest extends TestCase
         return $out;
     }
 
+    /**
+     * A starter without config/models (no model files of its own): apply installs the extension
+     * all the same, its types are defined in code. Undeclared names of config/roles.php are
+     * granted and logged.
+     */
+    #[RunInSeparateProcess]
+    public function test_apply_needs_no_models_directory(): void
+    {
+        foreach (glob($this->dir . '/config/models/*') ?: [] as $file) {
+            unlink($file);
+        }
+        rmdir($this->dir . '/config/models');
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['job.view']]];\n");
+
+        $this->assertStringContainsString('installed rbac', $this->apply());
+
+        $this->assertDirectoryDoesNotExist($this->dir . '/config/models');
+        $this->assertSame(['staff/admin', 'staff/editor'], array_keys($this->byName()));
+        $this->assertSame(['job.view'], $this->byName()['staff/editor']['permissions']);
+        $this->assertContains(
+            'rbac: config/roles.php: "job.view" (staff role "editor") is not a declared permission; granted anyway.',
+            array_map(static fn (string $l): string => (string) preg_replace('/^\[[^\]]*\] /', '', $l), $this->errorLog()),
+        );
+    }
+
     #[RunInSeparateProcess]
     public function test_install_creates_admin_and_imports_config_roles(): void
     {

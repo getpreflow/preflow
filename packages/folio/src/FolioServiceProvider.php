@@ -83,12 +83,14 @@ final class FolioServiceProvider extends ServiceProvider
         $modelsPath = $this->modelsPath($app);
         $prefix = $this->prefix($app);
 
-        // The DataManager's registry when it has one, so types defined at runtime (extension
-        // models) are the ones it queries. Otherwise Folio's own, bound unconditionally:
+        // The DataManager's registry, so types defined at runtime (extension models) are the ones
+        // it queries; given one when it has none (a site without a models directory: extension
+        // models need no files). Without a DataManager, Folio's own. Bound unconditionally:
         // Container::has() falls back to class_exists(), so a has() guard would never bind it.
         $locales = $this->locales($container);
         $dataManager = $this->dataManager($container, $app);
-        $types = $dataManager?->getTypeRegistry() ?? new TypeRegistry($modelsPath, $locales);
+        $own = new TypeRegistry($modelsPath, $locales);
+        $types = $dataManager?->ensureTypeRegistry($own) ?? $own;
         $container->instance(TypeRegistry::class, $types);
 
         // Built on the registry: a model file whose key a model class defines lists that class.
@@ -162,9 +164,6 @@ final class FolioServiceProvider extends ServiceProvider
             fn (): array => $this->extensionTypes($container, $extensions, $modelsPath),
             [$modelsPath],
         );
-        if ($extensionTypes !== [] && $dataManager !== null && $dataManager->getTypeRegistry() === null) {
-            throw new \Preflow\Folio\Extension\ExtensionException("Extension models and settings need the models directory {$modelsPath} (data.models_path); create it.");
-        }
         foreach ($extensionTypes as [$schema, $section, $what, $group]) {
             try {
                 $types->define($schema);
@@ -1669,7 +1668,9 @@ final class FolioServiceProvider extends ServiceProvider
         }
 
         if ($admin === '' || $app->runningInConsole()) {
-            $this->ensureAdmin($container); // Folio at "/" covers every request
+            // Folio at "/" covers every request. Once every provider booted: the staff guard's
+            // record provider may need a type a later provider defines (rbac's "staff").
+            $app->onProvidersBooted(fn () => $this->ensureAdmin($container));
         } else {
             $app->onRequest(function (\Psr\Http\Message\ServerRequestInterface $request) use ($container, $admin): void {
                 if (self::underAdmin($request->getUri()->getPath(), $admin)) {

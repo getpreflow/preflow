@@ -237,6 +237,37 @@ final class CoreRbacTest extends TestCase
         $this->assertCount(4, $this->byName());
     }
 
+    /**
+     * config/roles.php may name permissions nothing declares (yet): the seed grants them, so a
+     * deploy doesn't depend on the order of declarations, and says so for each, in the output
+     * of rbac:install and migrate and in the log.
+     */
+    #[RunInSeparateProcess]
+    public function test_the_seed_grants_undeclared_permissions_and_reports_each(): void
+    {
+        $this->write('config/roles.php', "<?php\nreturn ['staff' => ['editor' => ['page.edit', 'job.view']], 'members' => ['employer' => ['job.publish', 'reports.*']]];\n");
+        $line = static fn (string $permission, string $role): string => "config/roles.php: \"{$permission}\" ({$role}) is not a declared permission; granted anyway.";
+
+        [$code, $out] = $this->command('rbac:install');
+
+        $this->assertSame(0, $code);
+        $this->assertSame("rbac installed.\n" . $line('job.view', 'staff role "editor"') . "\n" . $line('job.publish', 'members role "employer"') . "\nstaff: admin, editor\nmembers: employer\n", $out);
+        $this->assertSame(['page.edit', 'job.view'], $this->byName()['staff/editor']['permissions']);
+        $this->assertSame(['job.publish', 'reports.*'], $this->byName()['members/employer']['permissions']);
+        $logged = array_values(array_filter($this->logLines(), static fn (string $l): bool => str_contains($l, 'not a declared permission')));
+        $this->assertCount(2, $logged);
+        $this->assertStringEndsWith('rbac: ' . $line('job.view', 'staff role "editor"'), $logged[0]);
+
+        ob_start();
+        try {
+            $this->assertSame(0, (new \Preflow\DevTools\Command\MigrateCommand(fn (): Application => $this->app()))->execute([]));
+        } finally {
+            $migrated = (string) ob_get_clean();
+        }
+        $this->assertStringContainsString($line('job.view', 'staff role "editor"'), $migrated);
+        $this->assertStringContainsString($line('job.publish', 'members role "employer"'), $migrated);
+    }
+
     #[RunInSeparateProcess]
     public function test_migrate_seeds_only_where_rbac_is_installed(): void
     {
@@ -300,10 +331,16 @@ final class CoreRbacTest extends TestCase
         $this->assertSame([0, "Created members role \"vip\" (Vip): *\n"], $this->command('rbac:role', ['vip', '--population=members', '--grant=*']));
 
         // Undeclared: refused by name, nothing changes.
-        $this->assertSame([1, "Not a declared permission: reports.delete, nope.*; nothing changed.\n"], $this->command('rbac:role', ['reporter', '--grant=reports.export,reports.delete,nope.*']));
+        $this->assertSame([1, "Not a declared permission: reports.delete, nope.*; nothing changed. To grant them anyway, add --allow-undeclared.\n"], $this->command('rbac:role', ['reporter', '--grant=reports.export,reports.delete,nope.*']));
         $this->assertSame(['reports.view', 'page.edit'], $this->byName()['staff/reporter']['permissions']);
         $this->assertSame(1, $this->command('rbac:role', ['ghost', '--grant=ghost.view'])[0]);
         $this->assertArrayNotHasKey('staff/ghost', $this->byName());
+
+        // --allow-undeclared grants them, as config/roles.php does, and names each.
+        $this->assertSame(
+            [0, "Not a declared permission: ghost.view; granted anyway.\nCreated staff role \"ghost\" (Ghost): ghost.view, reports.view\n"],
+            $this->command('rbac:role', ['ghost', '--grant=ghost.view,reports.view', '--allow-undeclared']),
+        );
 
         $this->assertSame(1, $this->command('rbac:role', ['Bad Name'])[0]);
         $this->assertSame(1, $this->command('rbac:role', ['x', '--population=guests'])[0]);

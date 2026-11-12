@@ -9,7 +9,10 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** Application::onRequest(): hooks see every handled request first, raw; runningInConsole() and its override. */
+/**
+ * Application::onRequest(): hooks see every handled request first, raw; onProvidersBooted():
+ * hooks run once every provider booted; runningInConsole() and its override.
+ */
 final class ApplicationRequestHookTest extends TestCase
 {
     private string $dir;
@@ -23,6 +26,7 @@ final class ApplicationRequestHookTest extends TestCase
 
     protected function tearDown(): void
     {
+        @unlink($this->dir . '/config/providers.php');
         @unlink($this->dir . '/config/app.php');
         @rmdir($this->dir . '/config');
         @rmdir($this->dir);
@@ -59,6 +63,23 @@ final class ApplicationRequestHookTest extends TestCase
         $app->handle((new Psr17Factory())->createServerRequest('GET', '/'));
     }
 
+    public function test_providers_booted_hooks_run_once_after_every_provider_booted_in_order(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', '<?php return [' . HookingProvider::class . '::class, ' . LaterProvider::class . '::class];');
+        HookingProvider::$seen = [];
+        LaterProvider::$booted = false;
+        $app = Application::create($this->dir);
+        $app->boot();
+
+        // The hooks saw what the provider booted after theirs set up.
+        $this->assertSame(['first: later booted', 'second'], HookingProvider::$seen);
+
+        $app->onProvidersBooted(static function (): void {
+            HookingProvider::$seen[] = 'after boot: at once';
+        });
+        $this->assertSame(['first: later booted', 'second', 'after boot: at once'], HookingProvider::$seen);
+    }
+
     public function test_running_in_console_follows_the_sapi_unless_set(): void
     {
         $app = Application::create($this->dir);
@@ -68,5 +89,36 @@ final class ApplicationRequestHookTest extends TestCase
         $this->assertFalse($app->runningInConsole());
         $app->setRunningInConsole(true);
         $this->assertTrue($app->runningInConsole());
+    }
+}
+
+final class HookingProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    /** @var list<string> */
+    public static array $seen = [];
+
+    public function register(\Preflow\Core\Container\Container $container): void {}
+
+    public function boot(\Preflow\Core\Container\Container $container): void
+    {
+        $app = $container->get(Application::class);
+        $app->onProvidersBooted(static function () use ($container): void {
+            self::$seen[] = 'first: ' . (LaterProvider::$booted ? 'later booted' : 'later not booted');
+        });
+        $app->onProvidersBooted(static function (): void {
+            self::$seen[] = 'second';
+        });
+    }
+}
+
+final class LaterProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public static bool $booted = false;
+
+    public function register(\Preflow\Core\Container\Container $container): void {}
+
+    public function boot(\Preflow\Core\Container\Container $container): void
+    {
+        self::$booted = true;
     }
 }

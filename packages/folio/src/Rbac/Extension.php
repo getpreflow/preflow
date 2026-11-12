@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Rbac;
 
+use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
@@ -66,11 +67,12 @@ final class Extension extends \Preflow\Folio\Extension\Extension
     /**
      * Seeds the roles on every deploy, as `php preflow rbac:install` does (RoleStore::seed()):
      * the staff role "admin" (everything) when there is no staff role, then every role of
-     * config/roles.php. An editor's change in Folio stays.
+     * config/roles.php. An editor's change in Folio stays. A permission it grants that nothing
+     * declares is logged.
      */
     public function seed(Container $c): void
     {
-        $c->get(RoleStore::class)->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')));
+        $c->get(RoleStore::class)->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->get(PermissionRegistry::class));
     }
 }
 

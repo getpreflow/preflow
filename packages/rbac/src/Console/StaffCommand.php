@@ -5,19 +5,21 @@ declare(strict_types=1);
 namespace Preflow\Rbac\Console;
 
 use Preflow\Core\Container\Container;
+use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Notify\Notifier;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\Staff\StaffAccounts;
 use Preflow\Rbac\Staff\StaffRefused;
+use Preflow\Rbac\StaffManagers;
 
 /** The staff commands: rbac's command base, the app's StaffAccounts, the account an e-mail names. */
 trait StaffCommand
 {
     use RbacCommand;
 
-    /** The app's staff accounts; null, after saying why, before `rbac:install` or without the staff type. */
+    /** The app's staff accounts; null, after saying why, before `rbac:install`, without the staff type or before its table is made. */
     private static function accounts(Container $c): ?StaffAccounts
     {
         if (!$c->get(RoleStore::class)->installed()) {
@@ -28,6 +30,11 @@ trait StaffCommand
         $accounts = $c->get(StaffAccounts::class);
         if (!$accounts->enabled()) {
             echo $c->get(Messages::class)->get('staff.no_type') . "\n";
+
+            return null;
+        }
+        if (!(new StaffManagers($c->get(DataManager::class)))->hasTable()) {
+            echo "No staff table yet: run php preflow rbac:install (or php preflow migrate on a Folio site).\n";
 
             return null;
         }

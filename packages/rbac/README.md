@@ -69,6 +69,14 @@ population), a label, a population (`staff` or `members`) and permissions.
   is no longer declared is shown as unknown and dropped on the next save.
 - A user may do X when any of their roles (`getRoles()`) defined for their population has
   a pattern matching X. Unknown roles grant nothing (logged in debug).
+- Declared permissions: a granted name should be `*`, a permission or pattern declared in
+  auth's `PermissionRegistry`, or a pattern covering a declared permission. `rbac:role
+  <name> --grant=a,b` refuses any other name (nothing changes) unless you add
+  `--allow-undeclared`. The seed from `config/roles.php` (`rbac:install`, `migrate`,
+  `folio:extensions:apply`) grants such a name anyway, so a deploy never depends on the order
+  in which packages declare, and reports each: a line in the `rbac:install` and `migrate`
+  output and a log line (`rbac: config/roles.php: "job.view" (staff role "editor") is not a
+  declared permission; granted anyway.`).
 - Roles stored as a JSON string (as SQL returns a list) or a comma-separated string work.
 
 ## User types
@@ -202,7 +210,8 @@ Mails need `config/notify.php`; the throttles need `APP_KEY`. The action message
 ### Staff commands
 
 `StaffAccounts` (a container service) holds the rules and the lifecycle above for every way in:
-Folio's screens, code and these commands (they refuse before `rbac:install`; the console has no
+Folio's screens, code and these commands (they refuse before `rbac:install` and while the staff
+table is missing, naming the command that makes it; the console has no
 delegation limit, the other rules apply; a refusal prints why and exits 1):
 
 - `staff:list`: e-mail, name, roles and state (active, disabled, no password yet).
@@ -215,8 +224,9 @@ delegation limit, the other rules apply; a refusal prints why and exits 1):
   knows it (Folio: the interface language).
 - `staff:disable <email>`, `staff:enable <email>`.
 
-Without Folio, a site signs staff in with a `RecordUserProvider` of `'type' => 'staff'` on its
-staff guard; rbac then defines the type, and `rbac:install` makes its table.
+Without Folio (or with Folio's part `model:staff` off), a site signs staff in with a
+`RecordUserProvider` of `'type' => 'staff'` on its staff guard; rbac then defines the type, and
+`rbac:install` makes its table.
 
 ### Moving a config admin to staff
 

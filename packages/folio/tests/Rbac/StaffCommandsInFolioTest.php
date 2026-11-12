@@ -15,6 +15,7 @@ use Preflow\Notify\Email;
 use Preflow\Notify\TransportFactory;
 use Preflow\Rbac\Console\StaffDisableCommand;
 use Preflow\Rbac\Console\StaffInviteCommand;
+use Preflow\Rbac\Console\StaffResetCommand;
 use Preflow\Rbac\Staff\StaffAccounts;
 use Preflow\Rbac\Staff\StaffLinks;
 use Preflow\Rbac\Staff\StaffPopulation;
@@ -38,13 +39,21 @@ final class StaffCommandsInFolioTest extends TestCase
         $this->removeScaffold();
     }
 
-    private function folioSite(): void
+    /**
+     * @param bool $staffPart  Folio's part "model:staff" on (else rbac defines the staff type)
+     * @param bool $recordUsers the staff guard signs in staff records (else config users only)
+     */
+    private function folioSite(bool $staffPart = true, bool $recordUsers = true): void
     {
-        $this->write('config/folio/extensions.json', '{"enabled": {"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}}}');
+        $this->write('config/folio/extensions.json', $staffPart
+            ? '{"enabled": {"rbac": {"disabled_parts": [], "enabled_parts": ["model:staff"]}}}'
+            : '{"enabled": {"rbac": {"disabled_parts": []}}}');
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'session',
             'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'staff', 'population' => 'staff']],
-            'providers' => ['staff' => ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active']],
+            'providers' => ['staff' => $recordUsers
+                ? ['class' => \Preflow\Auth\Record\RecordUserProvider::class, 'type' => 'staff', 'active' => 'active']
+                : ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => []]],
             'session' => ['cookie' => 'rbac_folio_commands_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
@@ -87,6 +96,43 @@ final class StaffCommandsInFolioTest extends TestCase
         $res = $this->send('POST', '/folio/password', ['token' => $token, 'password' => 'a brand new password', 'repeat' => 'a brand new password']);
         $this->assertSame('/folio', $res->getHeaderLine('Location'));
         $this->assertNotSame('', (string) $this->container()->get(StaffAccounts::class)->find('new@site.test')?->get('password_hash'));
+    }
+
+    /**
+     * Folio's part "model:staff" off: rbac defines the staff type for the staff guard's record
+     * provider, and the commands sign accounts in through it (Folio's admin setup at boot in the
+     * console doesn't settle the provider before rbac defined the type).
+     */
+    #[RunInSeparateProcess]
+    public function test_without_folio_s_staff_part_invite_and_reset_use_the_staff_guard_s_record_provider(): void
+    {
+        $this->folioSite(staffPart: false);
+        $this->assertNotNull($this->container()->get(\Preflow\Rbac\Staff\StaffType::class), 'rbac defines the staff type');
+        $factory = fn (): Application => $this->session ??= $this->app();
+
+        ob_start();
+        $invited = (new StaffInviteCommand($factory))->execute(['new@site.test']);
+        $reset = (new StaffResetCommand($factory))->execute(['boss@site.test']);
+        $out = (string) ob_get_clean();
+
+        $this->assertSame([0, 0, "Invitation sent to new@site.test.\nReset link sent to boss@site.test.\n"], [$invited, $reset, $out]);
+        $this->assertCount(2, $this->mails());
+        $this->assertMatchesRegularExpression('~https://site\.test/folio/password/[A-Za-z0-9_-]+~', $this->mails()[0]->text);
+    }
+
+    /** A staff guard without record users: the commands refuse with the reason, nothing is mailed. */
+    #[RunInSeparateProcess]
+    public function test_a_staff_guard_without_a_record_provider_is_refused_with_the_reason(): void
+    {
+        $this->folioSite(recordUsers: false);
+        $factory = fn (): Application => $this->session ??= $this->app();
+
+        ob_start();
+        $code = (new StaffInviteCommand($factory))->execute(['new@site.test']);
+        $out = (string) ob_get_clean();
+
+        $this->assertSame([1, "Staff accounts can't sign in on this site yet: the staff guard has no staff record provider.\n"], [$code, $out]);
+        $this->assertSame([], $this->mails());
     }
 
     #[RunInSeparateProcess]

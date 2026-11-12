@@ -6,6 +6,7 @@ namespace Preflow\Rbac;
 
 use Preflow\Auth\Access\Pattern;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 
 /**
@@ -29,14 +30,29 @@ final class StaffManagers
     }
 
     /**
-     * The staff accounts as stored, by id.
+     * Whether the staff accounts can be read: the site has the staff type and, on SQL storage,
+     * its table (made by `rbac:install`, or `migrate` where Folio's part defines the type);
+     * JSON storage makes it on the first write.
+     */
+    public function hasTable(): bool
+    {
+        if (!$this->enabled()) {
+            return false;
+        }
+        $definition = $this->dm->getTypeRegistry()->get(self::TYPE);
+
+        return !$this->dm->driver($definition->storage) instanceof PdoDriver || $this->dm->hasTable($definition);
+    }
+
+    /**
+     * The staff accounts as stored, by id (none before the table is made).
      *
      * @return array<string, array{active: bool, roles: list<string>}>
      */
     public function accounts(): array
     {
         $accounts = [];
-        if ($this->enabled()) {
+        if ($this->hasTable()) {
             foreach ($this->dm->queryType(self::TYPE)->get()->items() as $record) {
                 $accounts[(string) $record->getId()] = self::account($record);
             }

@@ -174,7 +174,8 @@ public function boot(Container $container): void
 {
     $app = $container->get(Application::class);
     if ($app->runningInConsole()) {
-        $this->setUpAdmin($container);      // commands handle no request: set up now
+        // Commands handle no request: set up once every provider booted.
+        $app->onProvidersBooted(fn () => $this->setUpAdmin($container));
         return;
     }
     $app->onRequest(function (ServerRequestInterface $request) use ($container): void {
@@ -190,6 +191,10 @@ public function boot(Container $container): void
   order added. A hook that throws fails that request like a boot error (no error page), so a
   setup that can fail should only mark itself done once it has succeeded. Folio sets up its
   whole admin this way.
+- `onProvidersBooted(\Closure $hook)` calls the hook once during `boot()`, after every
+  provider's `boot()` and once the user providers of `config/auth.php` are built, so a setup may
+  rely on what a provider listed after its own defines in `boot()` (rbac's `staff` type, which a
+  record provider needs). Hooks run in the order added; one added later runs at once (since 0.69.1).
 - `runningInConsole()` is true under the CLI and phpdbg (`PHP_SAPI`); `php -S` counts as web.
   Tests that stand in for web requests call `setRunningInConsole(false)` before `boot()`.
 - `Container::resolved(string $id)` tells whether a shared instance exists already (set with

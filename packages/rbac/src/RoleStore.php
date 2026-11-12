@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac;
 
+use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Schema\RecordTableSync;
@@ -57,19 +58,34 @@ final class RoleStore
      * format, population => name => patterns). ensure() creates a missing role and grants a
      * role only what its list newly names, once, so an editor's change stays.
      *
+     * With $declared (the app's PermissionRegistry), a listed name that is not declared
+     * (DeclaredPermissions) is still granted, so a deploy never depends on the order in which
+     * packages declare, but reported: one line each, returned and logged.
+     *
      * @param array<mixed> $config
+     * @return list<string> the report: one line per undeclared name
      */
-    public function seed(array $config): void
+    public function seed(array $config, ?PermissionRegistry $declared = null): array
     {
         $this->forget(); // a table made earlier in this process (another instance, a migrate step)
         if ($this->rolesFor('staff') === []) {
             $this->ensure('staff', 'admin', 'Administrator', ['*']);
         }
+        $report = [];
         foreach ($config as $population => $roles) {
             foreach (is_array($roles) ? $roles : [] as $name => $patterns) {
-                $this->ensure((string) $population, (string) $name, self::label((string) $name), RoleList::normalize($patterns));
+                $patterns = RoleList::normalize($patterns);
+                foreach ($declared === null ? [] : DeclaredPermissions::undeclared($declared, $patterns) as $permission) {
+                    $report[] = "config/roles.php: \"{$permission}\" ({$population} role \"{$name}\") is not a declared permission; granted anyway.";
+                }
+                $this->ensure((string) $population, (string) $name, self::label((string) $name), $patterns);
             }
         }
+        foreach ($report as $line) {
+            error_log('rbac: ' . $line);
+        }
+
+        return $report;
     }
 
     /** The roles a site seeds, from its config/roles.php ([] without one). @return array<mixed> */

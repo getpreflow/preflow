@@ -254,9 +254,11 @@ login exactly as before: the same page, no throttle, no forgot link, and no new 
   `config/folio.php` `password_min` (default 10). A used, expired or unknown link gets the
   same 410. Setting a password signs the account in, bumps its epoch, and revokes its
   remember-me logins and other links.
-- **Mails** (invite and reset) are plain text, queued with preflow/notify after the
-  response, in the site's default content locale (`folio.mail.*` in
-  `lang/{en,de,fr}/folio.php`). The link is built from `app.url`. Without it no link is
+- **Mails** (invite and reset) are composed by preflow/notify (a plain text part and an HTML
+  part) and queued until after the response, in the recipient's interface language, else the
+  site's default language. Where preflow/rbac is installed they are rbac's (`rbac-mail.*` in
+  rbac's `lang/{en,de,fr}/rbac-mail.php`), whichever page sends them; without rbac, Folio's own
+  (`folio.mail.*` in `lang/{en,de,fr}/folio.php`). The link is built from `app.url`. Without it no link is
   mailed: forgot logs it and answers as always, rbac's actions say "Set app.url to send
   sign-in links.". Staff mode needs `config/notify.php`, `APP_KEY` and `app.url`.
 

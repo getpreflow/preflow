@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac;
 
+use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
@@ -64,7 +65,7 @@ final class RoleType
         }
     }
 
-    /** The migrate step: seeds the roles where rbac is installed. @return list<string> */
+    /** The migrate step: seeds the roles where rbac is installed. @return list<string> what it seeded, and each undeclared permission it granted */
     private static function seed(Container $c): array
     {
         $store = $c->get(RoleStore::class);
@@ -73,10 +74,10 @@ final class RoleType
         }
         $count = static fn (): int => array_sum(array_map(static fn (string $p): int => count($store->rolesFor($p)), RoleStore::POPULATIONS));
         $before = $count();
-        $store->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')));
+        $report = $store->seed(RoleStore::config($c->get(Application::class)->basePath('config/roles.php')), $c->get(PermissionRegistry::class));
         $added = $count() - $before;
 
-        return $added > 0 ? ["seeded {$added} rbac role" . ($added === 1 ? '' : 's')] : [];
+        return [...($added > 0 ? ["seeded {$added} rbac role" . ($added === 1 ? '' : 's')] : []), ...$report];
     }
 
     /** config/data.php models_path, as the data layer reads it (config/models without one). */

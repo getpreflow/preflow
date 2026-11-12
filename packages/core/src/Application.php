@@ -45,6 +45,9 @@ final class Application
     /** @var list<\Closure(ServerRequestInterface): void> see onRequest() */
     private array $requestHooks = [];
 
+    /** @var list<\Closure(): void>|null see onProvidersBooted(); null once they ran */
+    private ?array $providersBootedHooks = [];
+
     /** see runningInConsole(); null: decided by the PHP SAPI */
     private ?bool $console = null;
 
@@ -271,6 +274,25 @@ final class Application
     }
 
     /**
+     * Calls $hook once during boot(), when every provider's boot() has run and the user providers
+     * of config/auth.php are built: what one provider sets up there may rely on what a provider
+     * after it defines in its boot() (a package's user type, e.g. rbac's "staff", which a record
+     * provider needs). Folio sets up its admin then in the console. Hooks run in the order added;
+     * one added after that point runs at once.
+     *
+     * @param \Closure(): void $hook
+     */
+    public function onProvidersBooted(\Closure $hook): void
+    {
+        if ($this->providersBootedHooks === null) {
+            $hook();
+
+            return;
+        }
+        $this->providersBootedHooks[] = $hook;
+    }
+
+    /**
      * Whether the app serves the console (CLI or phpdbg) rather than web requests. Providers
      * set up at boot what commands need (Folio: its whole admin), since a command handles no
      * request. Tests that stand in for web requests in the CLI switch it off before boot().
@@ -375,6 +397,7 @@ final class Application
         // Register user service providers
         $this->bootProviders();
         $this->bootLazyUserProviders();
+        $this->runProvidersBootedHooks();
 
         // The configured hypermedia driver, built now the providers ran: a failure stops the boot
         // with its reason ("app.hypermedia: could not build …"), not a later request.
@@ -2612,6 +2635,15 @@ final class Application
         $container = $this->container;
 
         return new \Preflow\Auth\LazyGuard($name, $class, static fn (): object => $container->make($class, ['provider' => $provider, 'config' => $config]));
+    }
+
+    private function runProvidersBootedHooks(): void
+    {
+        $hooks = $this->providersBootedHooks ?? [];
+        $this->providersBootedHooks = null;
+        foreach ($hooks as $hook) {
+            $hook();
+        }
     }
 
     /** Build the config-named user providers now that all services exist: a bad class fails during boot. */
