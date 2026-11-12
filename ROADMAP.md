@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.68.0)
+> Last updated: 2026-11-12 (v0.68.1)
 
 ## Current State
 
-**v0.68.0** — 7043 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.68.1** — 7047 tests, 25 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,12 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Members on a fresh Folio site (v0.68.1, released 2026-11-12):** found by the 0.68 docs. Folio offered
+  `@folio/frontend/_site.twig` as the members layout unconditionally, but Folio ships no such template (sites add
+  `resources/folio/frontend/_site.twig`), so `/members/register` answered 500 on a fresh starter-folio with
+  preflow/members. Now `MembersDefaults` carries the layout as a candidate and `MembersConfig::layout($engine)` uses
+  it only when the engine finds it at render time, else `@members/_layout.twig`; a `layout` in config/members.php
+  still wins; no provider order involved. **Upgrading:** `composer update "preflow/*"`; nothing else.
 - **Mail in notify, neutral members, codes without a mailer (v0.68.0, released 2026-11-12):** second release of the
   package audit's fixes (spec D5, D6, D7; plan `docs/superpowers/plans/2026-11-12-release-0.68-mail-members-codes.md`).
   - **notify:** composed mails — `Preflow\Notify\Mail\Mailer` (`compose/send/sendLater(MailContent, to, from, template, accent)`),
