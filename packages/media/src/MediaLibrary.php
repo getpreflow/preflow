@@ -844,6 +844,28 @@ final class MediaLibrary
         return $this->guarded($id, fn (): Asset => $this->applyMeta($id, $meta));
     }
 
+    /**
+     * Sets the alt text of one locale only if it is still $expected (trimmed; '' for none), checked
+     * and saved under the asset's lock. False when it changed meanwhile (nothing is written) or the
+     * asset or locale is unknown.
+     */
+    public function setAltIfUnchanged(string $id, string $locale, string $expected, string $text): bool
+    {
+        if ($this->find($id) === null || !$this->locales->has($locale)) {
+            return false;
+        }
+
+        return $this->guarded($id, function () use ($id, $locale, $expected, $text): bool {
+            $asset = $this->find($id);
+            if ($asset === null || trim($asset->alt[$locale] ?? '') !== trim($expected)) {
+                return false;
+            }
+            $this->applyMeta($id, ['alt' => [$locale => $text]]);
+
+            return true;
+        });
+    }
+
     /** @param array<string, mixed> $meta */
     private function applyMeta(string $id, array $meta): Asset
     {

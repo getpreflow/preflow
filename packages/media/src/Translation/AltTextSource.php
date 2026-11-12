@@ -20,7 +20,7 @@ use Preflow\Media\MediaLibrary;
  * Alt texts carry no machine mark and no review state, and there is no publishing step: a write is
  * public right away (writesLive). Needed means the language has no alt text yet; a text that is
  * there is never outdated, so only Scope::All offers it again. A write leaves a text alone that was
- * saved since units() read it: the memory of what was read lives in this instance, which
+ * saved since units() read it (compare-and-set under the asset's lock): the memory of what was read lives in this instance, which
  * TextSources keeps for the request a run step runs in.
  */
 final class AltTextSource implements TextSource
@@ -100,10 +100,10 @@ final class AltTextSource implements TextSource
         if ($text === '') {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, 'Nothing to write.');
         }
-        if (trim($asset->alt[$to] ?? '') !== ($this->seen[$id . '|' . $to] ?? '')) {
+        // Compared and saved under the asset's lock: a text saved since units() read it wins.
+        if (!$this->media->setAltIfUnchanged($id, $to, $this->seen[$id . '|' . $to] ?? '', $text)) {
             return new WriteOutcome(WriteOutcomeStatus::Conflict, 'Changed since it was read, left alone: alt.' . $to . '.', false, ['alt.' . $to]);
         }
-        $this->media->update($id, ['alt' => [$to => $text]]);
 
         return new WriteOutcome(WriteOutcomeStatus::Written);
     }
