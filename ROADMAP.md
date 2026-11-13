@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-13 (v0.72.1)
+> Last updated: 2026-11-13 (v0.73.0)
 
 ## Current State
 
-**v0.72.0** — 7418 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.73.0** — 7442 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,38 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Folio redesign, part 1 (v0.73.0, released 2026-11-13):** the admin gets the redesign's tokens, primitives and
+  shell (handoff phases 0–3; plan `docs/superpowers/plans/2026-11-13-release-0.73-folio-redesign-foundation.md`, every
+  difference from the boards in `docs/superpowers/notes/2026-11-13-folio-redesign-deviations.md`). Folio only; no PHP
+  API changes apart from the `Badge` tones `scheduled` and `failed`.
+  - **Tokens:** one `light-dark()` set from the handoff; names kept, values new (dark theme green-black). Type stacks
+    name Inter and JetBrains Mono with system fallbacks (no font files yet). TokensTest guards every `var()` and the
+    text contrast in both themes.
+  - **Primitives:** buttons (34 px, filled danger), segmented controls, one `.folio-tabs`, status badges, chips, counts,
+    alerts and notices with glyphs, toast with an undo countdown, `.folio-menu`, drawer, a solid keyboard focus ring
+    (`--focus-ring`), busy buttons (`data-busy-label`: spinner and "Publishing…" while the request runs; plain submits
+    stay busy until the page unloads, htmx ones are released after their request or 45 s).
+  - **Shell:** a 248 px sidebar with the site's ink tile, name and environment line ("Folio · staging"; just "Folio" in
+    production), a user menu (account, theme, language, log out), a topbar with breadcrumb, title and a subtitle that
+    replaces the help banners, and a 56 px icon rail on editor pages (record and asset edit), expandable for the session.
+    Phone width: no page scrolls sideways.
+  - **Upgrading** (sites with their own Folio CSS, templates or JS):
+    - Token names are kept, values changed. `--c-focus-ring` is only a soft halo now: a site that uses
+      `0 0 0 3px var(--c-focus-ring)` as its only focus cue switches to `var(--focus-ring)`. `--c-inverse*` flip in dark.
+      The sidebar is 248 px (was 240).
+    - `.folio-asset-tabs` → `.folio-tabs` (no alias). `.folio-user-link` is gone (the user menu in
+      `partials/_user_menu.twig` replaces the sidebar foot). `.btn-danger` is filled; `data-tone="danger"` gives an
+      outlined one.
+    - `.folio-notice` is info (blue) by default now; add `.is-warning` (or `role="alert"`) for the amber one, also for
+      `#[ListNotice]`/`#[DashboardNotice]` output. `.folio-alert` without a tone is info too.
+    - `_layout.twig`: new `{% block subtitle %}` (a site overriding the layout must print it, or the intros vanish);
+      `{% set shell = 'rail' %}` picks the rail; new Twig global `folio_site`. Nav items without a section sit in
+      `.folio-nav-items`. Templates that extend `_layout.twig` and use `title`, `page_title`, `breadcrumb`, `actions`,
+      `content` need no change.
+    - JS: the theme switch reacts to `[data-theme-choice]` inside `[data-theme-switch]`.
+    - `composer update "preflow/*"`.
+  - **Next:** 0.74 runs the SEO audit from Folio; the redesign continues with lists and editors (0.75) and settings,
+    library screens and ink (0.76). Proposals (⌘K, styled confirm, `/` block picker, …) wait for a yes.
 - **Manifest with shared middleware (v0.72.1, released 2026-11-13):** `preflow optimize` refused to write the boot
   manifest when one `MiddlewareWith` sat on a controller class (its routes share the object), so a starter made from 0.72.0
   could not be optimized for production. The manifest's load-back check compares the written form now. **Upgrading:**
