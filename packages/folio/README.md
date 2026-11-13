@@ -818,14 +818,11 @@ there. Folio registers it and binds its own rules: which types publish (below), 
 publish runs, the languages (`complete_languages`, machine marks), the review index, redirects and
 the page-cache tags of the addresses a record leaves and takes.
 
-- **Deprecated in 0.71, removed in 0.72:** `Preflow\Folio\Publishing\*` and
-  `Preflow\Folio\Content\LiveContent` (now `Preflow\Publishing\*`; the old `Publisher` still takes
-  its old arguments, `(DataManager, TypeCatalog, RecordValidator, …)`), `folio:publish` and
-  `folio:publish-scheduled` (now `publish` and `publish:scheduled`; the old names print a note), and
-  `config/folio.php` `'publishing'` (now `config/publishing.php`; read while that file does not exist,
-  with a deprecation note), and `Preflow\Folio\Content\RecordDeleter` (now
-  `Preflow\Publishing\RecordDeleter`; the editors' texts of a plan or a refusal are in
-  `DeleteSummary`, and the old class keeps `summary()` and `Refused`).
+- **Removed in 0.72:** the names of before 0.71: `Preflow\Folio\Publishing\*` and
+  `Preflow\Folio\Content\LiveContent` (now `Preflow\Publishing\*`), `Preflow\Folio\Content\RecordDeleter`
+  (now `Preflow\Publishing\RecordDeleter`; the editors' texts of a plan or a refusal are in
+  `DeleteSummary`), `folio:publish` and `folio:publish-scheduled` (now `publish` and
+  `publish:scheduled`) and `config/folio.php` `'publishing'` (now `config/publishing.php`).
 
 Types with a `frontend` block and singletons publish by default. Set
 `"publishing": true|false` in the type JSON to override that.
@@ -1540,8 +1537,11 @@ sibling `<div data-folio-tabpanel="key">` panels. admin.js adds the ARIA roles, 
 
 Things to know:
 
-- **Hooks** run on the admin store, update (plain and publishing types) and destroy. They
-  do **not** run on reorder, nor on the publishing controller's restore, discard or autosave.
+- **Hooks** run on every save through the `RecordWriter`: the form (store and update, plain and
+  publishing types), autosave, reorder, bulk "Set …", translation and destroy (the hook table above
+  lists them). A hook that should skip some of them asks for the kind of write, a second parameter typed
+  `WriteKind`. They do **not** run on the publishing controller's restore and discard, which copy
+  content the record had before.
 - **Record actions:** a click submits only the action's own form, so unsaved edits in the
   edit form are not saved. On a publishing type the action receives the working copy;
   saving it directly (as above) bypasses the Publisher's versioning, so changes appear in

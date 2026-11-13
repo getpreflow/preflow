@@ -17,7 +17,8 @@ use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
 
@@ -51,7 +52,7 @@ final class CollectionsTest extends TestCase
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
         $catalog = new TypeCatalog($this->dir . '/models');
-        $this->publisher = new Publisher($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
         $this->live = new LiveContent($this->dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($catalog));
         $this->locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
     }

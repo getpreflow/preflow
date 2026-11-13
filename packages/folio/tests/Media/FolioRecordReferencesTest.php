@@ -20,7 +20,8 @@ use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock;
@@ -300,7 +301,7 @@ final class FolioRecordReferencesTest extends TestCase
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
 
-        return new Publisher($this->dm, new TypeCatalog($this->assetRoot . '/models'), new RecordValidator($fieldTypes, $this->dm));
+        return FolioPublisher::make($this->dm, new TypeCatalog($this->assetRoot . '/models'), new RecordValidator($fieldTypes, $this->dm));
     }
 
     private function usage(): FolioRecordReferences

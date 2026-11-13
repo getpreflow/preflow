@@ -213,13 +213,14 @@ final class MembersCoreInFolioTest extends TestCase
         $m = $this->makeMember();
         $dm = $this->flow->container()->get(\Preflow\Data\DataManager::class);
         $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('order'), ['uuid' => 'o1', 'title' => 'Order', 'member' => (string) $m->getId()]), false);
-        $deleter = new \Preflow\Folio\Content\RecordDeleter($dm, $this->flow->container()->get(TypeCatalog::class));
+        $deleter = $this->flow->container()->get(\Preflow\Publishing\RecordDeleter::class);
 
         $this->assertTrue($deleter->plan('member', [(string) $m->getId()])->restricted(), 'staff: onDelete restrict');
         try {
             $deleter->delete('member', [(string) $m->getId()]);
             $this->fail('the staff delete is refused');
-        } catch (\Preflow\Folio\Extension\Customization\Refused) {
+        } catch (\Preflow\Publishing\DeleteRefused $e) {
+            $this->assertNotSame('', (new \Preflow\Folio\Content\DeleteSummary(new \Preflow\Folio\Content\DisplayLabels($this->flow->container()->get(TypeCatalog::class))))->refusal($e));
         }
         $this->assertNotNull($dm->findType('member', (string) $m->getId()));
 

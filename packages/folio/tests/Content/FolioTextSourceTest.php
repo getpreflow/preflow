@@ -12,7 +12,8 @@ use Preflow\Folio\Content\TranslatableText;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Publishing\PublishState;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Tests\Publishing\RacingDriver;
@@ -505,7 +506,7 @@ final class FolioTextSourceTest extends TestCase
             $racingDm,
             $c->get(TranslationStatus::class),
             $c->get(FieldTypeRegistry::class),
-            $publisher = new Publisher($racingDm, $c->get(TypeCatalog::class), $c->get(RecordValidator::class)),
+            $publisher = FolioPublisher::make($racingDm, $c->get(TypeCatalog::class), $c->get(RecordValidator::class)),
             new RecordLabeler(),
             $c->get(TranslationSettings::class),
             new \Preflow\Publishing\RecordWriter($racingDm, $publisher, $c->get(\Preflow\Publishing\RecordChecks::class), $c->get(\Preflow\Publishing\SaveHooks::class)),

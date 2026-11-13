@@ -15,8 +15,6 @@ final class FolioCommands
     public static function all(): array
     {
         return [
-            PublishScheduledCommand::class,
-            PublishCommand::class,
             ReviewIndexCommand::class,
             AssetsVariantsCommand::class,
             AssetsImportCommand::class,

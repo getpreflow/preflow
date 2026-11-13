@@ -308,7 +308,7 @@ final class PublishingAppTest extends TestCase
 
     public function test_form_shows_incomplete_language_and_links_to_it(): void
     {
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['complete_languages' => true]];\n");
+        $this->write('config/publishing.php', "<?php\nreturn ['complete_languages' => true];\n");
         $this->working('post', 'p1', ['title' => ['en' => 'Hi'], 'slug' => ['en' => 'hi'], '_locales' => ['en', 'de']]);
 
         $res = $this->post('/folio/post/p1', ['title' => 'Hi', 'slug' => 'hi', '_locale' => 'en', '_action' => 'publish']);
@@ -324,7 +324,7 @@ final class PublishingAppTest extends TestCase
     public function test_publish_has_no_unchecked_warning_and_ignores_the_old_setting(): void
     {
         // The 0.47 setting is gone; a config that still sets it loads without an error.
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['checked_translations' => true]];\n");
+        $this->write('config/publishing.php', "<?php\nreturn ['checked_translations' => true];\n");
         $this->working('post', 'p1', [
             'title' => ['en' => 'Hi', 'de' => 'Hallo'], 'slug' => ['en' => 'hi', 'de' => 'hallo'], '_locales' => ['en', 'de'],
             '_machine_translated' => ['de' => ['title' => \Preflow\I18n\Machine\MachineMarks::fingerprint('Hallo')]],
@@ -357,7 +357,7 @@ final class PublishingAppTest extends TestCase
 
     public function test_publishing_from_the_incomplete_language_shows_the_reason(): void
     {
-        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'publishing' => ['complete_languages' => true]];\n");
+        $this->write('config/publishing.php', "<?php\nreturn ['complete_languages' => true];\n");
         $this->working('post', 'p1', ['title' => ['en' => 'Hi'], 'slug' => ['en' => 'hi'], '_locales' => ['en', 'de']]);
 
         $res = $this->post('/folio/post/p1', ['title' => '', 'slug' => 'hallo', '_locale' => 'de', '_locales' => ['en', 'de'], '_locales_submitted' => '1', '_action' => 'publish']);

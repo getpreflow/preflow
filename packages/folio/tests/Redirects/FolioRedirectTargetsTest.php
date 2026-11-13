@@ -15,7 +15,8 @@ use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Folio\Redirects\FolioRedirectTargets;
 use Preflow\Folio\Redirects\LiveRecords;
 use Preflow\Validation\RuleFactory;
@@ -63,7 +64,7 @@ final class FolioRedirectTargetsTest extends TestCase
         $catalog = new TypeCatalog($this->dir . '/models');
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
-        $this->publisher = new Publisher($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
         $resolver = FrontendResolver::fromCatalog($catalog, $this->dm);
         $this->live = new LiveRecords($this->dm, $this->publisher, $resolver);
         $this->targets = new FolioRedirectTargets($this->live, $resolver);

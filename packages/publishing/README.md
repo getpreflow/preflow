@@ -202,7 +202,6 @@ marks, SEO) go into the tables of publishing types, and `publish` skips the reco
 frontend `published` field marks as drafts. Folio's README ("Drafts and
 publishing") has the screens.
 
-Until 0.72 the names of before 0.71 still work: `Preflow\Folio\Publishing\*`,
-`Preflow\Folio\Content\LiveContent` and `Preflow\Folio\Content\RecordDeleter`, the commands `folio:publish` and `folio:publish-scheduled`,
-and `config/folio.php` `'publishing'` while `config/publishing.php` does not exist (with a
-deprecation note).
+The names of before 0.71 were removed in 0.72: `Preflow\Folio\Publishing\*`,
+`Preflow\Folio\Content\LiveContent` and `Preflow\Folio\Content\RecordDeleter`, the commands
+`folio:publish` and `folio:publish-scheduled`, and `config/folio.php` `'publishing'`.

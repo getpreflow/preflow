@@ -23,11 +23,8 @@ use Preflow\Validation\ValidationResult;
  * follows each save (RecordIndex), the record's public addresses (RecordAddresses) and the
  * columns the app writes besides the fields (RecordColumns: a restore clears those an old
  * revision lacks).
- *
- * Not final for 0.71 only: Folio's class of the old name extends it to take the
- * constructor arguments of before 0.71. It is final again from 0.72.
  */
-class Publisher
+final class Publisher
 {
     public const array META = ['_version', '_publish_at', '_share_token', '_published_at', '_published_by', '_order'];
 

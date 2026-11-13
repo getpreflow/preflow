@@ -29,11 +29,8 @@ use Preflow\Validation\ValidationException;
  * (RecordWriter's too) → SaveHooks::after() and afterDelete().
  * SQL writes run in one transaction per connection; JSON-file writes cannot be rolled back if a
  * later write fails.
- *
- * Not final for 0.71 only: Folio's class of the old name extends it to take the constructor
- * arguments of before 0.71. It is final again from 0.72.
  */
-class RecordDeleter
+final class RecordDeleter
 {
     /** The most ids one request may name (a list page holds 50). */
     public const int MAX_IDS = 500;

@@ -26,15 +26,11 @@ final readonly class PublishingConfig
         public int $previewTtl = self::DEFAULT_PREVIEW_TTL,
     ) {}
 
-    /**
-     * @param array<string, mixed>|null $fallback the settings to use while config/publishing.php
-     *                                            does not exist (Folio's 'publishing' of before 0.71)
-     */
-    public static function fromApp(Application $app, ?array $fallback = null): self
+    public static function fromApp(Application $app): self
     {
         $config = $app->configFile('publishing');
 
-        return self::fromArray(is_array($config) ? $config : ($fallback ?? []));
+        return self::fromArray(is_array($config) ? $config : []);
     }
 
     /**

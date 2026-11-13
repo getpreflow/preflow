@@ -85,16 +85,6 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Publishing\PublishingServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Publishing\PublishingServiceProvider());
         }
-        foreach ([
-            'Preflow\\Folio\\Publishing\\Publisher' => \Preflow\Publishing\Publisher::class,
-            'Preflow\\Folio\\Publishing\\PublishedModels' => \Preflow\Publishing\PublishedModels::class,
-            'Preflow\\Folio\\Publishing\\PublishedCopies' => \Preflow\Publishing\PublishedCopies::class,
-            'Preflow\\Folio\\Publishing\\PreviewLinks' => \Preflow\Publishing\PreviewLinks::class,
-            'Preflow\\Folio\\Publishing\\Scheduler' => \Preflow\Publishing\Scheduler::class,
-            'Preflow\\Folio\\Content\\LiveContent' => \Preflow\Publishing\LiveContent::class,
-        ] as $old => $new) {
-            $container->bind($old, static fn (Container $c) => $c->get($new)); // deprecated names (0.71), the same services
-        }
         // Machine translation from the i18n core, built on the AI core above.
         if (!$container->hasProvider(\Preflow\I18n\Machine\MachineServiceProvider::class)) {
             $container->registerProvider(new \Preflow\I18n\Machine\MachineServiceProvider());
@@ -660,7 +650,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(FrontendResolver::class),
         ));
-        $this->registerPublishing($container, $app, $folioConfig);
+        $this->registerPublishing($container);
         $container->singleton(\Preflow\Folio\Content\ReviewIndexUpdater::class, fn (Container $c) => new \Preflow\Folio\Content\ReviewIndexUpdater(
             $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
@@ -1832,25 +1822,10 @@ final class FolioServiceProvider extends ServiceProvider
      * (the catalog), the rules (RecordValidator), the languages (TranslationStatus), the review
      * index, the addresses (redirects, page-cache tags), the columns Folio adds to the record
      * tables, the legacy drafts `publish` skips, and for RecordWriter and RecordDeleter the save
-     * and delete hooks of the type customizations and the orderable listings. Its settings come from config/publishing.php;
-     * while that file does not exist, from config/folio.php 'publishing' (read until 0.72, with a
-     * deprecation note).
-     *
-     * For 0.71 the Publisher handed out is Folio's class of the old name (a subclass), so code
-     * that type-hints either name accepts it.
-     *
-     * @param array<string, mixed> $folioConfig
+     * and delete hooks of the type customizations and the orderable listings. Its settings come from config/publishing.php.
      */
-    private function registerPublishing(Container $container, Application $app, array $folioConfig): void
+    private function registerPublishing(Container $container): void
     {
-        $legacy = is_array($folioConfig['publishing'] ?? null) ? $folioConfig['publishing'] : null;
-        $container->singleton(\Preflow\Publishing\PublishingConfig::class, static function (Container $c) use ($app, $legacy): \Preflow\Publishing\PublishingConfig {
-            if ($legacy !== null && !$app->hasConfigFile('publishing')) {
-                self::deprecation($c, "config/folio.php 'publishing' moved to config/publishing.php (preflow/publishing: 'revisions', 'complete_languages', 'preview_ttl'); the old key is read until the next release.");
-            }
-
-            return \Preflow\Publishing\PublishingConfig::fromApp($app, $legacy);
-        });
         if (!$container->bound(\Preflow\Publishing\PublishingTypes::class)) {
             $container->singleton(\Preflow\Publishing\PublishingTypes::class, static fn (Container $c): \Preflow\Publishing\PublishingTypes => new \Preflow\Folio\Publishing\FolioPublishingTypes(
                 $c->get(TypeCatalog::class),
@@ -1900,7 +1875,7 @@ final class FolioServiceProvider extends ServiceProvider
         $container->singleton(\Preflow\Publishing\Publisher::class, static function (Container $c): \Preflow\Publishing\Publisher {
             $config = $c->get(\Preflow\Publishing\PublishingConfig::class);
 
-            return new \Preflow\Folio\Publishing\Publisher(
+            return new \Preflow\Publishing\Publisher(
                 $c->get(DataManager::class),
                 $c->get(\Preflow\Publishing\PublishingTypes::class),
                 $c->get(\Preflow\Publishing\RecordChecks::class),
@@ -1927,18 +1902,6 @@ final class FolioServiceProvider extends ServiceProvider
         return interface_exists($logger) && $c->bound($logger)
             ? static fn (string $message) => $c->get($logger)->warning($message)
             : null;
-    }
-
-    /** A deprecation note: in the debug toolbar (DebugCollector) and the site's log (its PSR logger), where bound. */
-    private static function deprecation(Container $c, string $message): void
-    {
-        if ($c->bound(\Preflow\Core\Debug\DebugCollector::class)) {
-            $c->get(\Preflow\Core\Debug\DebugCollector::class)->logDeprecation($message);
-        }
-        $logger = 'Psr\Log\LoggerInterface';
-        if (interface_exists($logger) && $c->bound($logger)) {
-            $c->get($logger)->warning('Deprecated: ' . $message);
-        }
     }
 
     /** The address book, when Folio's internal storage is there (see register()). */

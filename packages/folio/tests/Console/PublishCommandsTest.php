@@ -6,9 +6,9 @@ namespace Preflow\Folio\Tests\Console;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Console\FolioCommands;
-use Preflow\Folio\Console\PublishCommand;
-use Preflow\Folio\Console\PublishScheduledCommand;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Publishing\Console\PublishCommand;
+use Preflow\Publishing\Console\PublishScheduledCommand;
 
 final class PublishCommandsTest extends TestCase
 {
@@ -24,10 +24,11 @@ final class PublishCommandsTest extends TestCase
         $this->removeScaffold();
     }
 
-    public function test_folio_lists_its_commands(): void
+    public function test_folio_no_longer_lists_the_publish_commands(): void
     {
-        $this->assertContains(PublishScheduledCommand::class, FolioCommands::all());
-        $this->assertContains(PublishCommand::class, FolioCommands::all());
+        $this->assertNotContains(PublishScheduledCommand::class, FolioCommands::all());
+        $this->assertNotContains(PublishCommand::class, FolioCommands::all());
+        $this->assertNotContains('Preflow\\Folio\\Console\\PublishCommand', FolioCommands::all());
     }
 
     public function test_scheduled_command_publishes_due_items(): void
@@ -41,29 +42,12 @@ final class PublishCommandsTest extends TestCase
         $this->assertNotNull($this->publisher()->snapshot('post', 'due'));
     }
 
-    public function test_the_old_names_say_so_and_still_publish(): void
-    {
-        $this->working('post', 'due', ['title' => ['en' => 'Due'], 'slug' => ['en' => 'due'], '_publish_at' => '2000-01-01T00:00']);
-        $this->working('post', 'later', ['title' => ['en' => 'Later'], 'slug' => ['en' => 'later'], '_publish_at' => '2999-01-01T00:00']);
-
-        [$code, $out] = $this->runCommand(new PublishScheduledCommand(fn () => $this->app()));
-
-        $this->assertSame(0, $code);
-        $this->assertStringContainsString('"folio:publish-scheduled" is deprecated; use "publish:scheduled"', $out);
-        $this->assertNotNull($this->publisher()->snapshot('post', 'due'));
-        $this->assertNull($this->publisher()->snapshot('post', 'later'));
-
-        [, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['nope']);
-        $this->assertStringContainsString('"folio:publish" is deprecated; use "publish"', $out);
-        $this->assertStringContainsString('not a publishing type', $out);
-    }
-
     public function test_publish_skips_the_legacy_drafts_through_folio(): void
     {
         $this->working('post', 'live', ['title' => ['en' => 'Live'], 'slug' => ['en' => 'live'], 'status' => 'published']);
         $this->working('post', 'old', ['title' => ['en' => 'Old draft'], 'slug' => ['en' => 'old'], 'status' => 'draft']);
 
-        [$code, $out] = $this->runCommand(new \Preflow\Publishing\Console\PublishCommand(fn () => $this->app()), ['post']);
+        [$code, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['post']);
 
         $this->assertSame(0, $code);
         $this->assertStringContainsString('Published post/live', $out);

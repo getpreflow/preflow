@@ -20,7 +20,8 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Http\AdminController;
 use Preflow\Folio\Override\ActionResolver;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Folio\Storage\TableSync;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
@@ -199,7 +200,7 @@ final class UniqueFieldFormTest extends TestCase
             public function addNamespace(string $n, string $p): void {}
         };
         $validator = new RecordValidator($fields, $this->dm);
-        $publisher = new Publisher($this->dm, $this->catalog, $validator);
+        $publisher = FolioPublisher::make($this->dm, $this->catalog, $validator);
 
         return new AdminController(
             $this->catalog, $this->registry, $this->dm, $engine,

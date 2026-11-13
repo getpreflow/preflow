@@ -195,7 +195,7 @@ final class FolioServiceProviderTest extends TestCase
     private function bootWithRevisions(mixed $revisions): ?\Throwable
     {
         try {
-            $this->appWith(['publishing' => ['revisions' => $revisions]]);
+            $this->appWith([], ['config/publishing.php' => '<?php return ' . var_export(['revisions' => $revisions], true) . ";\n"]);
 
             return null;
         } catch (\Throwable $e) {
@@ -224,18 +224,20 @@ final class FolioServiceProviderTest extends TestCase
             $this->assertInstanceOf(\InvalidArgumentException::class, $e, var_export($revisions, true));
             $this->assertSame('publishing.revisions must be 0 (keep all) or more.', $e->getMessage());
         }
-        $this->assertSame(15, $this->publishTimes(['publishing' => ['revisions' => '15']], 17));
+        $this->assertSame(15, $this->publishTimes(['revisions' => '15'], 17));
     }
 
-    public function test_config_publishing_wins_over_the_old_folio_key(): void
+    public function test_the_old_folio_key_is_no_longer_read(): void
     {
-        $this->assertSame(3, $this->publishTimes(['publishing' => ['revisions' => 15]], 5, ['config/publishing.php' => "<?php\nreturn ['revisions' => 3];\n"]));
+        [$app, $dir] = $this->appWith(['publishing' => ['revisions' => 3]]);
+        $this->assertSame(\Preflow\Publishing\PublishingConfig::DEFAULT_REVISIONS, $app->container()->get(\Preflow\Publishing\PublishingConfig::class)->revisions);
+        $this->rrmdir($dir);
     }
 
-    /** @param array<string, string> $files */
-    private function publishTimes(array $folio, int $times, array $files = []): int
+    /** @param array<string, mixed> $publishing config/publishing.php */
+    private function publishTimes(array $publishing, int $times): int
     {
-        [$app, $dir] = $this->appWith($folio, $files);
+        [$app, $dir] = $this->appWith([], $publishing === [] ? [] : ['config/publishing.php' => '<?php return ' . var_export($publishing, true) . ";\n"]);
         $publisher = $app->container()->get(\Preflow\Publishing\Publisher::class);
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $def = $dm->getTypeRegistry()->get('page');
@@ -253,8 +255,8 @@ final class FolioServiceProviderTest extends TestCase
 
     public function test_revisions_null_in_config_means_keep_all(): void
     {
-        $this->assertSame(25, $this->publishTimes(['publishing' => ['revisions' => null]], 25));
-        $this->assertSame(25, $this->publishTimes(['publishing' => ['revisions' => 0]], 25));
+        $this->assertSame(25, $this->publishTimes(['revisions' => null], 25));
+        $this->assertSame(25, $this->publishTimes(['revisions' => 0], 25));
         $this->assertSame(20, $this->publishTimes([], 25));
     }
 

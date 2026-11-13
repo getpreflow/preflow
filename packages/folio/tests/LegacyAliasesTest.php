@@ -31,28 +31,26 @@ final class LegacyAliasesTest extends TestCase
         $this->assertSame($new, (new \ReflectionClass($old))->getName());
     }
 
-    /** @return iterable<string, array{string, string}> the publishing classes, in preflow/publishing since 0.71 */
-    public static function publishingAliases(): iterable
+    /** @return iterable<string, array{string}> the names of 0.71, removed in 0.72 */
+    public static function removedNames(): iterable
     {
-        foreach (['PublishedModels', 'PublishState', 'PublishedCopies', 'ShadowTypes', 'Revision', 'Scheduler', 'VersionConflict', 'PreviewLinks', 'PreviewTarget'] as $name) {
-            yield $name => ["Preflow\\Folio\\Publishing\\$name", "Preflow\\Publishing\\$name"];
+        foreach (['PublishedModels', 'PublishState', 'PublishedCopies', 'ShadowTypes', 'Revision', 'Scheduler', 'VersionConflict', 'PreviewLinks', 'PreviewTarget', 'Publisher'] as $name) {
+            yield $name => ["Preflow\\Folio\\Publishing\\$name"];
         }
-        yield 'LiveContent' => ['Preflow\\Folio\\Content\\LiveContent', 'Preflow\\Publishing\\LiveContent'];
+        yield 'LiveContent' => ['Preflow\\Folio\\Content\\LiveContent'];
+        yield 'RecordDeleter' => ['Preflow\\Folio\\Content\\RecordDeleter'];
+        yield 'PublishCommand' => ['Preflow\\Folio\\Console\\PublishCommand'];
+        yield 'PublishScheduledCommand' => ['Preflow\\Folio\\Console\\PublishScheduledCommand'];
     }
 
-    #[DataProvider('publishingAliases')]
-    public function test_the_old_name_is_the_publishing_class(string $old, string $new): void
+    #[DataProvider('removedNames')]
+    public function test_the_publishing_names_of_0_71_are_gone(string $old): void
     {
-        $this->assertSame($new, (new \ReflectionClass($old))->getName());
+        $this->assertFalse(class_exists($old), $old);
     }
 
     public function test_the_block_names_of_before_preflow_blocks_are_gone(): void
     {
         $this->assertFalse(class_exists('Preflow\\Folio\\Block\\Block'));
-    }
-
-    public function test_the_old_publisher_is_a_publisher_of_the_new_name(): void
-    {
-        $this->assertTrue(is_subclass_of('Preflow\\Folio\\Publishing\\Publisher', \Preflow\Publishing\Publisher::class));
     }
 }

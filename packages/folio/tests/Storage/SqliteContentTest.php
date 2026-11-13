@@ -22,7 +22,8 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Publishing\PublishState;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Publishing\VersionConflict;
 use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Storage\TableSync;
@@ -63,7 +64,7 @@ final class SqliteContentTest extends TestCase
 
         $this->catalog = new TypeCatalog($this->dir . '/models');
         $this->dm = $this->dataManager($this->dir . '/a.sqlite');
-        $this->publisher = new Publisher($this->dm, $this->catalog, new RecordValidator($this->fieldTypes(), $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $this->catalog, new RecordValidator($this->fieldTypes(), $this->dm));
         $this->live = new LiveContent($this->dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog));
         $this->locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
     }
@@ -177,7 +178,7 @@ final class SqliteContentTest extends TestCase
             $this->assertSame($this->rows($this->dm, $table), $this->rows($target, $table), $table);
         }
         $this->assertSame([], array_filter($this->secondImportPlan($target), static fn (array $diff) => $diff !== ['added' => [], 'changed' => [], 'removed' => []]));
-        $targetPublisher = new Publisher($target, $this->catalog, new RecordValidator($this->fieldTypes(), $target));
+        $targetPublisher = FolioPublisher::make($target, $this->catalog, new RecordValidator($this->fieldTypes(), $target));
         $this->assertSame(PublishState::Changed, $targetPublisher->state($target->findType('post', 'p2') ?? throw new \RuntimeException()));
         $this->assertSame('Two', (new LiveContent($target, new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog)))->find('post', 'p2')?->localized('en')->toArray()['title']);
     }
@@ -264,7 +265,7 @@ final class SqliteContentTest extends TestCase
         $fields = json_decode((string) file_get_contents($this->dir . '/models/post.json'), true)['fields'];
         $this->model('post', ['frontend' => ['route' => '/{slug}'], 'list' => ['orderable' => true], 'fields' => $fields + ['subtitle' => ['type' => 'string']]]);
         $this->dm = $this->dataManager($this->dir . '/a.sqlite');
-        $publisher = new Publisher($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->fieldTypes(), $this->dm));
+        $publisher = FolioPublisher::make($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->fieldTypes(), $this->dm));
         $working = $this->dm->findType('post', 'p1') ?? throw new \RuntimeException('missing p1');
         $working->set('subtitle', 'Added later');
         $publisher->publish($working, 'tester');

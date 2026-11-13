@@ -10,16 +10,24 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
-use Preflow\Folio\Content\RecordDeleter;
+use Preflow\Folio\Content\DeleteSummary;
+use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Extension\AfterDelete;
 use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Publishing\FolioRecordAddresses;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\DeleteRefused;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\RecordDeleter;
+use Preflow\Publishing\SaveHooks;
+use Preflow\Publishing\WriteKind;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Redirects\LiveRecords;
 use Preflow\Folio\Redirects\RecordAddresses;
@@ -139,7 +147,7 @@ final class RecordDeleterTest extends TestCase
         $this->catalog = new TypeCatalog($this->dir . '/models');
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
-        $this->publisher = new Publisher($this->dm, $this->catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $this->catalog, new RecordValidator($fieldTypes, $this->dm));
         $this->resolver = FrontendResolver::fromCatalog($this->catalog, $this->dm);
         $this->entries = new RedirectEntries($this->dm);
         $live = new LiveRecords($this->dm, $this->publisher, $this->resolver);
@@ -154,13 +162,58 @@ final class RecordDeleterTest extends TestCase
 
     private function deleter(): RecordDeleter
     {
-        return new RecordDeleter($this->dm, $this->catalog, $this->publisher, function (string $hook, DynamicRecord $record): void {
+        return new RecordDeleter($this->dm, $this->publisher, $this->hooks(), addresses: new FolioRecordAddresses($this->addresses, null, null));
+    }
+
+    private function summary(): DeleteSummary
+    {
+        return new DeleteSummary(new DisplayLabels($this->catalog), $this->addresses);
+    }
+
+    /** The save and delete hooks, logged in $this->log and answered by $this->behaviour. */
+    private function hooks(): SaveHooks
+    {
+        $run = function (string $hook, DynamicRecord $record): void {
             $short = substr($hook, (int) strrpos($hook, '\\') + 1);
             $this->log[] = $short . ':' . $record->getType()->key . ':' . $record->getId();
             if (isset($this->behaviour[$hook])) {
                 ($this->behaviour[$hook])($record);
             }
-        }, addresses: $this->addresses);
+        };
+
+        return new class ($run) implements SaveHooks {
+            public function __construct(private readonly \Closure $run) {}
+
+            public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
+            {
+                ($this->run)(BeforeSave::class, $record);
+            }
+
+            public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
+            {
+                ($this->run)(AfterSave::class, $record);
+            }
+
+            public function beforeDelete(DynamicRecord $record): void
+            {
+                ($this->run)(BeforeDelete::class, $record);
+            }
+
+            public function afterDelete(DynamicRecord $record): void
+            {
+                ($this->run)(AfterDelete::class, $record);
+            }
+
+            public function replacesSave(string $type): bool
+            {
+                return false;
+            }
+
+            public function save(DynamicRecord $record, ?DynamicRecord $previous): void
+            {
+                throw new \LogicException('The hooks closure saves no records.');
+            }
+        };
     }
 
     /** @param array<string, mixed> $data */
@@ -284,9 +337,9 @@ final class RecordDeleterTest extends TestCase
 
         try {
             $this->deleter()->delete('designer', ['d1']);
-            $this->fail('Expected Refused');
-        } catch (Refused $e) {
-            $this->assertStringContainsString('A page needs two designers.', $e->getMessage());
+            $this->fail('Expected DeleteRefused');
+        } catch (DeleteRefused $e) {
+            $this->assertStringContainsString('A page needs two designers.', $this->summary()->refusal($e));
         }
 
         $this->assertNotNull($this->stored('designer', 'd1'));
@@ -304,9 +357,9 @@ final class RecordDeleterTest extends TestCase
 
         try {
             $this->deleter()->delete('designer', ['d1']);
-            $this->fail('Expected Refused');
-        } catch (Refused $e) {
-            $this->assertSame("Can't delete: 2 progress records still point here.", $e->getMessage());
+            $this->fail('Expected DeleteRefused');
+        } catch (DeleteRefused $e) {
+            $this->assertSame("Can't delete: 2 progress records still point here.", $this->summary()->refusal($e));
         }
         $this->assertSame([], $this->log);
         $this->assertNotNull($this->stored('designer', 'd1'));
@@ -318,8 +371,12 @@ final class RecordDeleterTest extends TestCase
         $this->seedWorld();
         $this->seed('progress', 'x1', ['designer' => 'd1']);
 
-        $this->expectExceptionMessage("Can't delete: 1 progress record still points here.");
-        $this->deleter()->delete('designer', ['d1']);
+        try {
+            $this->deleter()->delete('designer', ['d1']);
+            $this->fail('Expected DeleteRefused');
+        } catch (DeleteRefused $e) {
+            $this->assertSame("Can't delete: 1 progress record still points here.", $this->summary()->refusal($e));
+        }
     }
 
     public function test_restrict_counts_a_link_that_exists_only_in_the_published_snapshot(): void
@@ -336,8 +393,12 @@ final class RecordDeleterTest extends TestCase
         $plan = $this->deleter()->plan('designer', ['d1']);
         $this->assertSame(['review' => 1], $plan->restrictions());
 
-        $this->expectExceptionMessage("Can't delete: 1 review still points here.");
-        $this->deleter()->delete('designer', ['d1']);
+        try {
+            $this->deleter()->delete('designer', ['d1']);
+            $this->fail('Expected DeleteRefused');
+        } catch (DeleteRefused $e) {
+            $this->assertSame("Can't delete: 1 review still points here.", $this->summary()->refusal($e));
+        }
     }
 
     public function test_detach_on_a_publishing_type_changes_the_working_copy_only(): void
@@ -373,16 +434,16 @@ final class RecordDeleterTest extends TestCase
         $this->boot();
         $this->seedWorld();
 
-        $summary = $this->deleter()->summary($this->deleter()->plan('designer', ['d1']));
+        $summary = $this->summary()->summary($this->deleter()->plan('designer', ['d1']));
 
         $this->assertFalse($summary['restricted']);
         $this->assertSame(['Also deletes 2 games.', '2 pages lose a link.'], $summary['lines']);
         $this->assertSame("This can't be undone.\nAlso deletes 2 games.\n2 pages lose a link.", $summary['confirm']);
 
-        $one = $this->deleter()->summary($this->deleter()->plan('game', ['g1']));
+        $one = $this->summary()->summary($this->deleter()->plan('game', ['g1']));
         $this->assertSame(['1 page loses a link.'], $one['lines']);
 
-        $plain = $this->deleter()->summary($this->deleter()->plan('page', ['p2']));
+        $plain = $this->summary()->summary($this->deleter()->plan('page', ['p2']));
         $this->assertSame([], $plain['lines']);
         $this->assertSame("This can't be undone.", $plain['confirm']);
     }
@@ -403,13 +464,13 @@ final class RecordDeleterTest extends TestCase
         $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
         $previous = \Preflow\Folio\FolioText::use($translator);
         try {
-            $this->assertSame(['Löscht auch 2 Spiele.', '2 Seiten verlieren eine Verknüpfung.'], $this->deleter()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
-            $this->assertSame(['1 Seite verliert eine Verknüpfung.'], $this->deleter()->summary($this->deleter()->plan('game', ['g1']))['lines']);
+            $this->assertSame(['Löscht auch 2 Spiele.', '2 Seiten verlieren eine Verknüpfung.'], $this->summary()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
+            $this->assertSame(['1 Seite verliert eine Verknüpfung.'], $this->summary()->summary($this->deleter()->plan('game', ['g1']))['lines']);
             $this->seed('game', 'g4', ['title' => 'Keltis', 'designer' => 'd1']);
             $translator->setLocale('fr');
             // No French file: the map's default entry and the plain label, for which French has no singular guess.
-            $this->assertSame(['Supprime aussi 3 games.', '2 pages perdent un lien.'], $this->deleter()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
-            $this->assertSame(['1 page perd un lien.'], $this->deleter()->summary($this->deleter()->plan('game', ['g1']))['lines']);
+            $this->assertSame(['Supprime aussi 3 games.', '2 pages perdent un lien.'], $this->summary()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
+            $this->assertSame(['1 page perd un lien.'], $this->summary()->summary($this->deleter()->plan('game', ['g1']))['lines']);
         } finally {
             \Preflow\Folio\FolioText::use($previous);
         }
@@ -422,7 +483,7 @@ final class RecordDeleterTest extends TestCase
         $this->seed('progress', 'x1', ['designer' => 'd1']);
         $this->seed('progress', 'x2', ['designer' => 'd1']);
 
-        $summary = $this->deleter()->summary($this->deleter()->plan('designer', ['d1']));
+        $summary = $this->summary()->summary($this->deleter()->plan('designer', ['d1']));
 
         $this->assertTrue($summary['restricted']);
         $this->assertSame(["Can't delete: 2 progress records still point here."], $summary['lines']);
@@ -515,7 +576,7 @@ final class RecordDeleterTest extends TestCase
         $plan = $this->deleter()->plan('designer', ['ghost', 'g1']); // g1 is a game, not a designer
         $this->assertSame([], array_filter($plan->deletes()));
         $this->assertSame([], $plan->detaches());
-        $this->assertSame([], $this->deleter()->summary($plan)['lines']);
+        $this->assertSame([], $this->summary()->summary($plan)['lines']);
 
         $this->deleter()->delete('designer', ['ghost', 'g1']);
         $this->assertSame([], $this->log);
@@ -555,17 +616,17 @@ final class RecordDeleterTest extends TestCase
         $this->seedLiveWorld();
 
         // Uwe and his two games, each with one address (English only).
-        $summary = $this->deleter()->summary($this->deleter()->plan('designer', ['d1']));
+        $summary = $this->summary()->summary($this->deleter()->plan('designer', ['d1']));
         $this->assertSame(3, $summary['addresses']);
         $this->assertSame(['Also deletes 2 games.'], $summary['lines'], 'the lines stay as they were');
-        $this->assertSame(1, $this->deleter()->summary($this->deleter()->plan('game', ['g3']))['addresses']);
+        $this->assertSame(1, $this->summary()->summary($this->deleter()->plan('game', ['g3']))['addresses']);
 
         // Records without an address (no route), and a deleter without the address book.
         $this->boot();
         $this->seedWorld();
-        $this->assertSame(0, $this->deleter()->summary($this->deleter()->plan('page', ['p2']))['addresses']);
-        $bare = new RecordDeleter($this->dm, $this->catalog, $this->publisher);
-        $this->assertSame(0, $bare->summary($bare->plan('designer', ['d1']))['addresses']);
+        $this->assertSame(0, $this->summary()->summary($this->deleter()->plan('page', ['p2']))['addresses']);
+        $bare = new RecordDeleter($this->dm, $this->publisher);
+        $this->assertSame(0, (new DeleteSummary(new DisplayLabels($this->catalog)))->summary($bare->plan('designer', ['d1']))['addresses']);
     }
 
     public function test_delete_with_target_redirects_the_record_and_its_cascades(): void

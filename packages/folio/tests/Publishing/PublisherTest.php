@@ -21,7 +21,8 @@ use Preflow\Folio\Field\Types\TextFieldType;
 use Preflow\Publishing\PublishState;
 use Preflow\I18n\Machine\FileReviewIndex;
 use Preflow\I18n\Machine\MachineMarks;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Publishing\VersionConflict;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Redirects\LiveRecords;
@@ -844,7 +845,7 @@ final class PublisherTest extends TestCase
             return $live;
         });
         $fieldTypes = $this->fieldTypes();
-        $p = new Publisher($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm), 20, fn (): \DateTimeImmutable => $this->now, addresses: $addresses);
+        $p = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm), 20, fn (): \DateTimeImmutable => $this->now, addresses: $addresses);
         $live = new LiveRecords($this->dm, $p, $resolver);
 
         return [$p, $entries, $addresses];
@@ -930,12 +931,10 @@ final class PublisherTest extends TestCase
         $this->assertNull($p->snapshot('article', 'r1'));
     }
 
-    /** Review focus 4: a site that builds the old name with three arguments keeps working in 0.71. */
-    public function test_the_old_name_with_three_arguments_still_publishes(): void
+    public function test_a_publisher_wired_with_folios_adapters_publishes(): void
     {
-        $p = new Publisher($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->fieldTypes(), $this->dm));
+        $p = FolioPublisher::make($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->fieldTypes(), $this->dm));
 
-        $this->assertInstanceOf(\Preflow\Publishing\Publisher::class, $p);
         $this->assertTrue($p->enabled('post'), 'a routed type publishes, as Folio says');
         $this->assertFalse($p->enabled('memo'));
         $p->publish(DynamicRecord::fromArray($this->registry->get('post'), ['uuid' => 'p1', 'title' => 'Hello']), null);
@@ -948,7 +947,7 @@ final class PublisherTest extends TestCase
     {
         $fieldTypes = $this->fieldTypes();
 
-        return new Publisher(
+        return FolioPublisher::make(
             $this->dm,
             new TypeCatalog($this->dir . '/models'),
             new RecordValidator($fieldTypes, $this->dm),

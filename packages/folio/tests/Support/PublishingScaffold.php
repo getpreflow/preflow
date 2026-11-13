@@ -155,7 +155,7 @@ trait PublishingScaffold
         }, $skip);
         $racingDm = new \Preflow\Data\DataManager([$this->storage => $racing] + ['json' => $dm->driver('json'), 'default' => $dm->driver('default')], 'default', $dm->getTypeRegistry());
         $c->instance(\Preflow\Data\DataManager::class, $racingDm);
-        $c->instance(\Preflow\Publishing\Publisher::class, new \Preflow\Folio\Publishing\Publisher(
+        $c->instance(\Preflow\Publishing\Publisher::class, \Preflow\Folio\Tests\Support\FolioPublisher::make(
             $racingDm,
             $c->get(\Preflow\Folio\Content\TypeCatalog::class),
             $c->get(\Preflow\Folio\Content\RecordValidator::class),

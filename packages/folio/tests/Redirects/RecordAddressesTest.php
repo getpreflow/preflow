@@ -15,7 +15,8 @@ use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Folio\Tests\Support\FolioPublisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Folio\Redirects\AddressTable;
 use Preflow\Folio\Redirects\FolioRedirectTargets;
 use Preflow\Folio\Redirects\LiveRecords;
@@ -75,7 +76,7 @@ final class RecordAddressesTest extends TestCase
         $catalog = new TypeCatalog($this->dir . '/models');
         $fieldTypes = new FieldTypeRegistry();
         $fieldTypes->register(new StringFieldType());
-        $this->publisher = new Publisher($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
+        $this->publisher = FolioPublisher::make($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
         $this->resolver = FrontendResolver::fromCatalog($catalog, $this->dm);
         $this->live = new LiveRecords($this->dm, $this->publisher, $this->resolver);
         $this->entries = new RedirectEntries($this->dm);
@@ -444,7 +445,7 @@ final class RecordAddressesTest extends TestCase
         );
         $catalog = new TypeCatalog($this->dir . '/models');
         $resolver = FrontendResolver::fromCatalog($catalog, $dm);
-        $publisher = new Publisher($dm, $catalog, new RecordValidator(new FieldTypeRegistry(), $dm));
+        $publisher = FolioPublisher::make($dm, $catalog, new RecordValidator(new FieldTypeRegistry(), $dm));
         $warnings = [];
         $addresses = new RecordAddresses($dm, new RedirectEntries($dm), $resolver, new LiveRecords($dm, $publisher, $resolver), warn: static function (string $m) use (&$warnings): void {
             $warnings[] = $m;

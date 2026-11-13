@@ -690,7 +690,7 @@ final class AdminControllerTest extends TestCase
         $this->assertSame([], $data['lines']);
         $this->assertSame("This can't be undone.", $data['confirm']);
 
-        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Folio\Content\RecordDeleter::MAX_IDS + 1));
+        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Publishing\RecordDeleter::MAX_IDS + 1));
         $this->assertSame(422, $this->controller()->deletePlan($this->planRequest('page', $many))->getStatusCode());
     }
 
@@ -731,7 +731,7 @@ final class AdminControllerTest extends TestCase
         $this->assertSame(404, $c->bulkAction($this->bulkRequest('page', 'set-title', ['ids' => ['p1'], 'value' => 'x']))->getStatusCode()); // not in list.bulk
         $this->assertSame(422, $c->bulkDelete($this->bulkRequest('page', 'delete', ['ids' => ['ghost']]))->getStatusCode());
         $this->assertSame(422, $c->bulkDelete($this->bulkRequest('page', 'delete', []))->getStatusCode());
-        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Folio\Content\RecordDeleter::MAX_IDS + 1));
+        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Publishing\RecordDeleter::MAX_IDS + 1));
         $this->assertSame(422, $c->bulkDelete($this->bulkRequest('page', 'delete', ['ids' => $many]))->getStatusCode());
         $this->assertNotNull($this->dm->findType('page', 'p1'));
     }
@@ -833,7 +833,7 @@ final class AdminControllerTest extends TestCase
         $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => ['ghost']]))->getStatusCode());
         $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => []]))->getStatusCode());
         $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => 'p1']))->getStatusCode());
-        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Folio\Content\RecordDeleter::MAX_IDS + 1));
+        $many = array_map(static fn (int $i): string => 'p' . $i, range(1, \Preflow\Publishing\RecordDeleter::MAX_IDS + 1));
         $this->assertSame(422, $c->export($this->exportRequest('page', ['ids' => $many]))->getStatusCode());
     }
 
