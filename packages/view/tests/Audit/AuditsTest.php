@@ -55,8 +55,12 @@ final class AuditsTest extends TestCase
         @rmdir($this->dir);
     }
 
-    /** Three public pages; each render takes one second on the fake clock. */
-    private function audits(): Audits
+    /**
+     * Three public pages; each render takes one second on the fake clock.
+     *
+     * @param ?\Closure(int): void $sleep the wait between two tries of the lock
+     */
+    private function audits(?\Closure $sleep = null): Audits
     {
         $renderer = new PageRenderer(
             function (ServerRequestInterface $request): ResponseInterface {
@@ -74,7 +78,7 @@ final class AuditsTest extends TestCase
             new PublicPage('Three', '/three', order: 2),
         ]);
 
-        return new Audits(new AuditRegistry(), $renderer, $public, $this->file, fn (): \DateTimeImmutable => $this->clock);
+        return new Audits(new AuditRegistry(), $renderer, $public, $this->file, fn (): \DateTimeImmutable => $this->clock, $sleep);
     }
 
     public function test_steps_continue_the_saved_run_until_it_is_complete(): void
@@ -148,28 +152,49 @@ final class AuditsTest extends TestCase
         $this->assertSame(2, $audits->step(1)->done());
     }
 
-    public function test_a_step_waits_a_moment_for_a_lock_held_only_briefly(): void
+    public function test_a_step_tries_the_lock_again_after_a_short_wait(): void
     {
-        $audits = $this->audits();
-        $audits->step(1); // makes the lock file
+        $this->audits()->step(1); // makes the lock file
+        $held = fopen(AuditRun::lockFile($this->file), 'r+');
+        $this->assertNotFalse($held);
+        $this->assertTrue(flock($held, LOCK_EX | LOCK_NB));
+        $sleeps = [];
 
-        // Another process (a running() probe, say) holds the lock for 10 ms.
-        $holder = proc_open(
-            [PHP_BINARY, '-r', '$f = fopen($argv[1], "r+"); flock($f, LOCK_EX); echo "locked\n"; fflush(STDOUT); usleep(10000); flock($f, LOCK_UN);', AuditRun::lockFile($this->file)],
-            [1 => ['pipe', 'w']],
-            $pipes,
-        );
-        $this->assertIsResource($holder);
-        $this->assertSame("locked\n", fgets($pipes[1]));
+        // The other holder (a running() probe, say) lets go while the step waits.
+        $report = $this->audits(static function (int $microseconds) use (&$sleeps, $held): void {
+            $sleeps[] = $microseconds;
+            flock($held, LOCK_UN);
+        })->step(1);
+        fclose($held);
+
+        $this->assertSame([20000], $sleeps);
+        $this->assertSame(2, $report->done());
+    }
+
+    public function test_a_step_gives_up_after_three_tries_and_closes_its_handle(): void
+    {
+        $this->audits()->step(1);
+        $held = fopen(AuditRun::lockFile($this->file), 'r+');
+        $this->assertNotFalse($held);
+        $this->assertTrue(flock($held, LOCK_EX | LOCK_NB));
+        $sleeps = [];
+        $audits = $this->audits(static function (int $microseconds) use (&$sleeps): void {
+            $sleeps[] = $microseconds;
+        });
+        $streams = count(get_resources('stream'));
 
         try {
-            $report = $audits->step(1);
-        } finally {
-            fclose($pipes[1]);
-            proc_close($holder);
+            $audits->step(1);
+            $this->fail('A step gives up while the lock stays held.');
+        } catch (AuditRunning) {
         }
+        $this->assertSame([20000, 20000], $sleeps);
+        $this->assertSame($streams, count(get_resources('stream'))); // the step's lock handle is closed
 
-        $this->assertSame(2, $report->done());
+        flock($held, LOCK_UN);
+        fclose($held);
+        $this->assertFalse($this->audits()->running());
+        $this->assertSame(['/one'], $this->rendered);
     }
 
     public function test_running_creates_no_files(): void

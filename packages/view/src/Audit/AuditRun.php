@@ -47,9 +47,13 @@ final class AuditRun
     /** @var array<string, array{0: int, 1: int}>|null check id => [index of its failure finding, pages]; null until read */
     private ?array $failures = null;
 
+    /** @var \Closure(int): void */
+    private readonly \Closure $sleep;
+
     /**
      * @param string   $file the report file (AuditReport::file($basePath))
      * @param \Closure(): \DateTimeImmutable $now the clock
+     * @param ?\Closure(int $microseconds): void $sleep waits between two tries of the lock (default usleep(); since 0.74)
      */
     public function __construct(
         private readonly AuditRegistry $registry,
@@ -57,7 +61,10 @@ final class AuditRun
         private readonly PublicPages $pages,
         private readonly string $file,
         private readonly \Closure $now,
-    ) {}
+        ?\Closure $sleep = null,
+    ) {
+        $this->sleep = $sleep ?? usleep(...);
+    }
 
     /**
      * The lock file a full run holds for the report $file, so only one runs at a time.
@@ -169,7 +176,7 @@ final class AuditRun
                 fclose($lock);
                 throw AuditRunning::at($this->file);
             }
-            usleep(self::LOCK_RETRY_MICROSECONDS);
+            ($this->sleep)(self::LOCK_RETRY_MICROSECONDS);
         }
 
         return $lock;

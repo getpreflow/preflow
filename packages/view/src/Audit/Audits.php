@@ -33,6 +33,7 @@ final class Audits
     /**
      * @param string $file the report file (AuditReport::file($basePath))
      * @param ?\Closure(): \DateTimeImmutable $now the clock (default: the system's)
+     * @param ?\Closure(int $microseconds): void $sleep waits between two tries of the lock (default usleep())
      */
     public function __construct(
         private readonly AuditRegistry $registry,
@@ -40,6 +41,7 @@ final class Audits
         private readonly PublicPages $pages,
         private readonly string $file,
         ?\Closure $now = null,
+        private readonly ?\Closure $sleep = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -114,6 +116,6 @@ final class Audits
 
     private function run(): AuditRun
     {
-        return new AuditRun($this->registry, $this->renderer, $this->pages, $this->file, $this->now);
+        return new AuditRun($this->registry, $this->renderer, $this->pages, $this->file, $this->now, $this->sleep);
     }
 }
