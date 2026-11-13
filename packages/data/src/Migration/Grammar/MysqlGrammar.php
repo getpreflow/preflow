@@ -154,6 +154,14 @@ final class MysqlGrammar implements SchemaGrammar
         return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
     }
 
+    public function uniqueIndexes(\PDO $pdo, string $table): array
+    {
+        $stmt = $pdo->prepare('SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND NON_UNIQUE = 0');
+        $stmt->execute([$table]);
+
+        return array_map('strval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
     public function indexColumns(\PDO $pdo, string $table): array
     {
         $stmt = $pdo->prepare('SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX');

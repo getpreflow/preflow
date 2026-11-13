@@ -38,8 +38,8 @@ final class ShadowTypes
 
     /**
      * The snapshots: the record's fields and composite indexes, its unique fields and their scopes
-     * plain indexed ones (stored alike, never checked: a snapshot may hold a value another record
-     * has taken since).
+     * plain indexed ones but for translatable ones (stored alike, never checked: a snapshot may hold
+     * a value another record has taken since).
      */
     public static function published(TypeDefinition $def): TypeDefinition
     {
@@ -49,9 +49,10 @@ final class ShadowTypes
         }
         $fields = [];
         foreach ($def->fields as $name => $f) {
+            // A translatable unique field has no index on the working table either (checked on save).
             $fields[$name] = $f->unique === false && !in_array($name, $indexed, true) ? $f : new TypeFieldDefinition(
                 $f->name, $f->type, $f->searchable, $f->transform, $f->validate, $f->label, $f->help, $f->config,
-                $f->translatable, $f->labels, $f->helps, unique: false, index: true, length: $f->length,
+                $f->translatable, $f->labels, $f->helps, unique: false, index: $f->index || !$f->translatable, length: $f->length,
             );
         }
 

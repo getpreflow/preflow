@@ -60,6 +60,9 @@ interface SchemaGrammar
     /** @return array<string, list<string>> each index's columns, by index name */
     public function indexColumns(\PDO $pdo, string $table): array;
 
+    /** @return list<string> the names of the table's unique indexes (the primary key's too). Since 0.72. */
+    public function uniqueIndexes(\PDO $pdo, string $table): array;
+
     /** The SQL that drops the index $index of $table. */
     public function dropIndex(string $table, string $index): string;
 

@@ -412,23 +412,42 @@ final class Job extends Model { … }
   its declared indexes (field and composite), plain ones only (never unique).
 - **Composite indexes.** `"indexes"` (or `#[Index]`) lists the fields of each index in order; the
   index is `idx_{table}_{field1}_{field2}…` (shortened past 64 characters like every index name).
-  An index without fields, or over a name that is not one of the type's fields (the id is not
-  one), is refused when the type is defined, naming the type and the field. A class's admin
-  file may not set `"indexes"` (it is schema).
+  Refused when the type is defined, with a message naming the type and the index or field: an
+  index without fields, over a name that is not one of the type's fields (the id is not one),
+  over a translatable field (free text gets no index), with a field twice, with a key that may
+  pass MySQL's 3072 bytes (counted as `length` or 191 × 4 per text field, 8 per number, date or
+  yes/no), and two indexes with one name (`["company"]` beside `index: true` on `company`, or
+  `["a", "b"]` beside a field `a_b`). A class's admin file may not set `"indexes"` (it is schema).
 - **What sync does.** `preflow migrate` makes every declared index that is missing, on new and
   existing columns alike: `idx_{table}_{field}` for `index`, the composite ones, and
-  `uniq_{table}_{field}` (over the field and its scope) for `unique`. A unique index is made on
-  an existing column only when every column it covers has its expected type and no value is
-  there twice (empty values never count); otherwise migrate prints
-  `warning: post.slug has no unique index (2 values are there more than once); convert the table`
-  and makes it on a later run, once the duplicates are gone. On MySQL a plain index over an
-  existing TEXT column (made before it was indexed) covers its first 191 characters. An index is
-  found by its name, so a second migrate changes nothing. MySQL caps a composite key at 3072
-  bytes, so keep scopes and composite indexes short.
-- **Upgrading to 0.72.** Before 0.72 an index came only with a new column. The first
-  `preflow migrate` after the upgrade adds every declared index an existing table lacks (the
-  working and `__published` tables); on big tables that can take a while, so run it when the
-  site is quiet.
+  `uniq_{table}_{field}` (over the field and its scope) for `unique`. An index is found by its
+  name or by its columns: any index over the same columns in the same order (one a migration
+  made under its own name) does for a plain one, a unique one over them for a unique one, so a
+  second migrate changes nothing. A unique index is made on an existing column only when every
+  column it covers has its expected type and no value is there twice (empty values never count);
+  otherwise migrate prints
+  `warning: post.slug has no unique index (2 values are there more than once); remove the duplicates (tools/convert-typed-columns.php --check lists them), the next migrate adds it`
+  (or the drift warning when a column has another type). If a save writes a duplicate while the
+  index is being made, the database refuses it and migrate warns the same way. On MySQL a plain
+  index over an existing TEXT column (made before it was indexed) covers its first 191
+  characters. A declared plain or composite index over a free-text column (a `text` or `blocks`
+  field, a multiple relation, a custom kind stored as text) can't be made: migrate prints
+  `warning: post: no index over state, body (body is free text); see the data README` on every
+  run; take the field out of the index or make it a string. MySQL caps a key at 3072 bytes, so
+  keep unique scopes short too.
+- **Upgrading to 0.72.** Before 0.72 an index came only with a new column.
+  - The first `preflow migrate` after the upgrade adds every declared index an existing table
+    lacks (the working and `__published` tables); on big tables that can take a while, so run it
+    when the site is quiet. On existing `__published` tables that includes the plain indexes of
+    unique fields and their scope fields.
+  - Declaring `index` on an existing string, select or relation field that was stored as free
+    text, or naming it in a composite index, changes its expected kind to short: migrate prints
+    the drift warning until the table is converted (Converting record tables below), the index
+    over a TEXT column covers its first 191 characters on MySQL, and validation limits the value
+    to 191 characters (its `length`).
+  - `SchemaGrammar::createRecordIndex()` takes a fifth parameter, `array $columnTypes = []`, and
+    the interface has a new `uniqueIndexes(\PDO $pdo, string $table): array` (the names of the
+    unique indexes). A grammar of your own (`Grammars::register()`) must add both.
 - Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
   (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
 
@@ -519,7 +538,8 @@ warning names is converted on purpose:
   the SQLite backup back, or load the dump with the site's own database credentials
   (`mysql --defaults-extra-file=<option file> <database> < <backup>.sql`). Until a site is
   converted, `preflow migrate` prints the drift warnings on every run.
-- `RecordTableSync::specs()` is public (the script builds its columns with it).
+- `RecordTableSync::specs()` and `RecordTableSync::indexes()` are public (the script builds its columns
+  and indexes with them, so it makes the indexes migrate would).
 - A column whose kind changed later (a field turned translatable, a relation became `multiple`,
   a field's type was edited or it became unique) is converted with a migration in the project.
 

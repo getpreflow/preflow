@@ -166,34 +166,18 @@ final class Tables
     }
 
     /**
-     * The indexes RecordTableSync gives the table: unique over each indexable unique field and its
-     * scope (unless $unique is false), plain over each indexable indexed field.
+     * The indexes RecordTableSync gives the table (RecordTableSync::indexes(), so the two never
+     * differ), but those over a free-text column, which sync only warns about.
      *
      * @param array<string, ColumnSpec> $specs
      * @return list<Index>
      */
     private static function indexes(SchemaGrammar $grammar, TypeDefinition $def, array $specs, bool $unique): array
     {
-        $indexable = static function (array $columns) use ($specs): bool {
-            foreach ($columns as $column) {
-                if (!isset($specs[$column]) || $specs[$column]->kind === ColumnKind::Text) {
-                    return false;
-                }
-            }
-
-            return true;
-        };
         $indexes = [];
-        if ($unique) {
-            foreach ($def->uniqueFields() as $field => $scope) {
-                if ($indexable([$field, ...$scope])) {
-                    $indexes[] = new Index($grammar->indexName('uniq', $def->table, $field), [$field, ...$scope], true);
-                }
-            }
-        }
-        foreach ($def->indexedFields() as $field) {
-            if ($indexable([$field])) {
-                $indexes[] = new Index($grammar->indexName('idx', $def->table, $field), [$field], false);
+        foreach (RecordTableSync::indexes($grammar, $def, $specs, $unique) as $index) {
+            if ($index->freeText === null) {
+                $indexes[] = new Index($index->name, $index->columns, $index->unique);
             }
         }
 

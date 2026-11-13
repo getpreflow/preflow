@@ -84,37 +84,47 @@ final class RecordTableSync
             return $lines;
         }
 
-        $existing = $schema->indexes($def->table);
-        if ($unique) {
-            foreach ($def->uniqueFields() as $field => $scope) {
-                $columns = [$field, ...$scope];
-                if (!self::indexable($specs, $columns)) {
-                    continue; // translatable or free text: checked on save, not by the database
-                }
-                $name = $grammar->indexName('uniq', $def->table, $field);
-                if (in_array($name, $existing, true)) {
-                    continue;
-                }
-                // Only over columns of the expected type, and only when no value is there twice.
-                $duplicates = array_intersect($columns, $drifted) === [] ? self::duplicates($pdo, $grammar, $def->table, $columns) : null;
-                if ($duplicates === 0) {
-                    $pdo->exec($grammar->createRecordIndex($name, $def->table, $columns, true));
-                    $lines[] = "added unique index {$name}";
-                    $existing[] = $name;
-                } else {
-                    $held = $duplicates === null ? '' : " ({$duplicates} " . ($duplicates === 1 ? 'value is' : 'values are') . ' there more than once)';
-                    $lines[] = "warning: {$def->table}.{$field} has no unique index{$held}; " . self::CONVERT;
-                }
+        $existing = $grammar->indexColumns($pdo, $def->table);
+        $uniques = $grammar->uniqueIndexes($pdo, $def->table);
+        foreach (self::indexes($grammar, $def, $specs, $unique) as $index) {
+            $over = implode(', ', $index->columns);
+            if ($index->freeText !== null) {
+                $lines[] = "warning: {$def->table}: no index over {$over} ({$index->freeText} is free text); see the data README";
+                continue;
             }
-        }
-        foreach ([...array_map(static fn (string $field): array => [$field], $def->indexedFields()), ...$def->indexes] as $columns) {
-            $name = $grammar->indexName('idx', $def->table, implode('_', $columns));
-            if (self::indexable($specs, $columns) && !in_array($name, $existing, true)) {
+            // Found by its name, or by an index over the same columns (one made by hand, under another name).
+            if (isset($existing[$index->name]) || self::covered($index, $existing, $uniques)) {
+                continue;
+            }
+            if (!$index->unique) {
                 // An existing column may be TEXT (made before it was indexed): the grammar indexes a prefix where it must.
-                $pdo->exec($grammar->createRecordIndex($name, $def->table, $columns, false, $types));
-                $lines[] = "added index {$name}";
-                $existing[] = $name;
+                $pdo->exec($grammar->createRecordIndex($index->name, $def->table, $index->columns, false, $types));
+                $lines[] = "added index {$index->name}";
+                $existing[$index->name] = $index->columns;
+                continue;
             }
+            $field = $index->columns[0];
+            // Only over columns of the expected type, and only when no value is there twice.
+            if (array_intersect($index->columns, $drifted) !== []) {
+                $lines[] = "warning: {$def->table}.{$field} has no unique index; " . self::CONVERT;
+                continue;
+            }
+            $duplicates = self::duplicates($pdo, $grammar, $def->table, $index->columns);
+            if ($duplicates > 0) {
+                $lines[] = "warning: {$def->table}.{$field} has no unique index ({$duplicates} " . ($duplicates === 1 ? 'value is' : 'values are')
+                    . ' there more than once); remove the duplicates (tools/convert-typed-columns.php --check lists them), the next migrate adds it';
+                continue;
+            }
+            try {
+                $pdo->exec($grammar->createRecordIndex($index->name, $def->table, $index->columns, true));
+            } catch (\PDOException) {
+                // A save wrote a duplicate since the count: the next migrate counts again.
+                $lines[] = "warning: {$def->table}.{$field} has no unique index; " . self::CONVERT;
+                continue;
+            }
+            $lines[] = "added unique index {$index->name}";
+            $existing[$index->name] = $index->columns;
+            $uniques[] = $index->name;
         }
 
         return $lines;
@@ -151,6 +161,52 @@ final class RecordTableSync
     }
 
     /**
+     * The indexes a typed sync gives a table: unique over each unique field and its scope (unless
+     * $unique is false; one over a translatable or free-text column is checked on save instead and
+     * not listed), then plain over each indexed field and each composite index (one over a
+     * free-text column is listed with that column as freeText: sync warns about it). Public: the
+     * conversion of existing tables makes the same ones.
+     *
+     * @param array<string, ColumnSpec> $specs specs()
+     * @return list<RecordIndex>
+     */
+    public static function indexes(SchemaGrammar $grammar, TypeDefinition $def, array $specs, bool $unique): array
+    {
+        $indexes = [];
+        if ($unique) {
+            foreach ($def->uniqueFields() as $field => $scope) {
+                $columns = [$field, ...$scope];
+                if (self::freeText($specs, $columns) === null) {
+                    $indexes[] = new RecordIndex($grammar->indexName('uniq', $def->table, $field), $columns, true);
+                }
+            }
+        }
+        foreach ([...array_map(static fn (string $field): array => [$field], $def->indexedFields()), ...$def->indexes] as $columns) {
+            $indexes[] = new RecordIndex($grammar->indexName('idx', $def->table, implode('_', $columns)), $columns, false, self::freeText($specs, $columns));
+        }
+
+        return $indexes;
+    }
+
+    /**
+     * Whether an existing index already does the work: any index over the same columns in the same
+     * order for a plain one, a unique one over them for a unique one.
+     *
+     * @param array<string, list<string>> $existing index name => its columns
+     * @param list<string> $uniques the names of the unique ones
+     */
+    private static function covered(RecordIndex $index, array $existing, array $uniques): bool
+    {
+        foreach ($existing as $name => $columns) {
+            if ($columns === $index->columns && (!$index->unique || in_array($name, $uniques, true))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * How many values (over all the columns, none of them empty) more than one row holds.
      *
      * @param list<string> $columns
@@ -166,18 +222,20 @@ final class RecordTableSync
     }
 
     /**
+     * The first of the columns that can't carry an index (free text, or not a column), or null.
+     *
      * @param array<string, ColumnSpec> $specs
      * @param list<string> $columns
      */
-    private static function indexable(array $specs, array $columns): bool
+    private static function freeText(array $specs, array $columns): ?string
     {
         foreach ($columns as $column) {
             if (!isset($specs[$column]) || $specs[$column]->kind === ColumnKind::Text) {
-                return false;
+                return $column;
             }
         }
 
-        return true;
+        return null;
     }
 
     /** A type as the server reports it: lower case, without its collation (MySQL's COLUMN_TYPE has none). */

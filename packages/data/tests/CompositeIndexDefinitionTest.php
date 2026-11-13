@@ -76,6 +76,53 @@ final class CompositeIndexDefinitionTest extends TestCase
         new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['state', 'uuid']]);
     }
 
+    public function test_an_index_over_a_translatable_field_is_refused(): void
+    {
+        $this->expectExceptionMessage('Type "job" has an index over "title", which is translatable: free text gets no index.');
+        new TypeDefinition('job', 'jobs', 'sqlite', [
+            'state' => new TypeFieldDefinition('state'),
+            'title' => new TypeFieldDefinition('title', translatable: true),
+        ], indexes: [['state', 'title']]);
+    }
+
+    public function test_an_index_past_mysqls_key_size_is_refused(): void
+    {
+        $fields = [
+            'a' => new TypeFieldDefinition('a', length: 500),
+            'b' => new TypeFieldDefinition('b', length: 300),
+            'n' => new TypeFieldDefinition('n', 'number'),
+        ];
+        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'n'], ['b', 'n']]);
+
+        $this->expectExceptionMessage('Type "job" has the index (a, b, n) of up to 3208 bytes; MySQL allows 3072: give its text fields a shorter "length".');
+        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'b', 'n']]);
+    }
+
+    public function test_a_field_twice_in_one_index_is_refused(): void
+    {
+        $this->expectExceptionMessage('Type "job" has the index (state, state) with a field twice.');
+        new TypeDefinition('job', 'jobs', 'sqlite', ['state' => new TypeFieldDefinition('state')], indexes: [['state', 'state']]);
+    }
+
+    public function test_two_indexes_with_one_name_are_refused(): void
+    {
+        $fields = [
+            'state' => new TypeFieldDefinition('state', index: true),
+            'a' => new TypeFieldDefinition('a'),
+            'b' => new TypeFieldDefinition('b'),
+            'a_b' => new TypeFieldDefinition('a_b'),
+        ];
+        try {
+            new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['state']]);
+            $this->fail('an index the field declares already was accepted');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('Type "job" has two indexes named idx_jobs_state ((state) and another): drop one, or rename a field.', $e->getMessage());
+        }
+
+        $this->expectExceptionMessage('Type "job" has two indexes named idx_jobs_a_b ((a_b) and another): drop one, or rename a field.');
+        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'b'], ['a_b']]);
+    }
+
     public function test_a_class_declares_them_with_the_index_attribute(): void
     {
         $this->assertSame([['state', 'updated_at'], ['company', 'state']], ModelSchema::of(IndexedJob::class)['indexes']);

@@ -121,6 +121,13 @@ final class SqliteGrammar implements SchemaGrammar
         return array_map(static fn (array $row): string => (string) $row['name'], $rows);
     }
 
+    public function uniqueIndexes(\PDO $pdo, string $table): array
+    {
+        $rows = $pdo->query('PRAGMA index_list(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC);
+
+        return array_values(array_map(static fn (array $row): string => (string) $row['name'], array_filter($rows, static fn (array $row): bool => (int) $row['unique'] === 1)));
+    }
+
     public function indexColumns(\PDO $pdo, string $table): array
     {
         $result = [];

@@ -6,12 +6,16 @@ namespace Preflow\Data;
 
 final readonly class TypeDefinition
 {
+    /** MySQL caps an index key at 3072 bytes (utf8mb4: four per character). */
+    private const int MAX_KEY_BYTES = 3072;
+
     /**
      * @param array<string, TypeFieldDefinition> $fields
      * @param string[] $searchableFields
      * @param array<string, FieldTransformer> $transformers
      * @param list<list<string>> $indexes composite indexes, each the fields it covers in order
-     * @throws \InvalidArgumentException an index without fields, or over a field the type does not have
+     * @throws \InvalidArgumentException an index without fields, over a field the type does not have (or twice
+     *         over one), over a translatable field, with a key past MySQL's 3072 bytes, or the same as another
      */
     public function __construct(
         public string $key,
@@ -24,15 +28,36 @@ final readonly class TypeDefinition
         public Locales $locales = new Locales(['en'], 'en'),
         public array $indexes = [],
     ) {
-        foreach ($indexes as $columns) {
+        $this->assertIndexes();
+    }
+
+    private function assertIndexes(): void
+    {
+        $declared = $this->indexedFields();
+        foreach ($this->indexes as $columns) {
+            $over = '(' . implode(', ', $columns) . ')';
             if ($columns === []) {
-                throw new \InvalidArgumentException("Type \"{$key}\" has an index without fields.");
+                throw new \InvalidArgumentException("Type \"{$this->key}\" has an index without fields.");
             }
+            $bytes = 0;
             foreach ($columns as $column) {
-                if (!isset($fields[$column])) {
-                    throw new \InvalidArgumentException("Type \"{$key}\" has an index over \"{$column}\", which is not one of its fields.");
+                $field = $this->fields[$column] ?? throw new \InvalidArgumentException("Type \"{$this->key}\" has an index over \"{$column}\", which is not one of its fields.");
+                if ($field->translatable) {
+                    throw new \InvalidArgumentException("Type \"{$this->key}\" has an index over \"{$column}\", which is translatable: free text gets no index.");
                 }
+                $bytes += in_array($field->type, ['number', 'date', 'boolean'], true) ? 8 : ($field->length ?? FieldKinds::DEFAULT_LENGTH) * 4;
             }
+            if (count(array_unique($columns)) !== count($columns)) {
+                throw new \InvalidArgumentException("Type \"{$this->key}\" has the index {$over} with a field twice.");
+            }
+            if ($bytes > self::MAX_KEY_BYTES) {
+                throw new \InvalidArgumentException("Type \"{$this->key}\" has the index {$over} of up to {$bytes} bytes; MySQL allows " . self::MAX_KEY_BYTES . ': give its text fields a shorter "length".');
+            }
+            $name = implode('_', $columns);
+            if (in_array($name, $declared, true)) {
+                throw new \InvalidArgumentException("Type \"{$this->key}\" has two indexes named idx_{$this->table}_{$name} ({$over} and another): drop one, or rename a field.");
+            }
+            $declared[] = $name;
         }
     }
 

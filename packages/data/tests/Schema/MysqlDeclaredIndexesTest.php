@@ -77,11 +77,28 @@ final class MysqlDeclaredIndexesTest extends TestCase
         $sync->sync($plain);
         $this->pdo->exec("INSERT INTO page (uuid, slug) VALUES ('a', 'one'), ('b', 'one'), ('c', 'One'), ('d', NULL), ('e', NULL)");
 
-        $this->assertSame(['warning: page.slug has no unique index (1 value is there more than once); convert the table (see the data README)'], $sync->sync($unique));
+        $this->assertSame(['warning: page.slug has no unique index (1 value is there more than once); remove the duplicates (tools/convert-typed-columns.php --check lists them), the next migrate adds it'], $sync->sync($unique));
 
         $this->pdo->exec("DELETE FROM page WHERE uuid = 'b'");
         $this->assertSame(['added unique index uniq_page_slug'], $sync->sync($unique), "'one' and 'One' differ (binary), NULLs never collide");
         $this->assertSame([], $sync->sync($unique));
+    }
+
+    /** An index over the same columns under another name is found by its columns; a unique one only by a unique one. */
+    public function testAnIndexOverTheSameColumnsIsFoundByItsColumns(): void
+    {
+        $plain = new TypeDefinition('item', 'item', 'mysql', ['number' => new TypeFieldDefinition('number', 'number'), 'code' => new TypeFieldDefinition('code', index: true)]);
+        $declared = new TypeDefinition('item', 'item', 'mysql', ['number' => new TypeFieldDefinition('number', 'number', index: true), 'code' => new TypeFieldDefinition('code', unique: true)]);
+        $sync = $this->sync();
+        $sync->sync($plain);
+        $this->pdo->exec('CREATE INDEX idx_published_number ON item (number)');
+
+        $this->assertSame(['added unique index uniq_item_code'], $sync->sync($declared));
+        $this->assertEqualsCanonicalizing(['PRIMARY', 'uniq_item_code'], (new MysqlGrammar())->uniqueIndexes($this->pdo, 'item'));
+
+        $this->pdo->exec('DROP INDEX uniq_item_code ON item');
+        $this->pdo->exec('CREATE UNIQUE INDEX item_code_unique ON item (code)');
+        $this->assertSame([], $sync->sync($declared));
     }
 
     /** @return array<string, ?int> each column of the index with its prefix length (null: the whole value) */
