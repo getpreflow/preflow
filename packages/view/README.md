@@ -652,12 +652,50 @@ it under the roughly twelve minutes some servers allow a shell process) and says
 command again and it continues where it stopped. `--fresh` starts over. Running it again after a complete
 run starts a new audit. While one audit runs, a second says "another audit is running" and does nothing.
 
+Folio runs the same audit from *Settings → SEO audit*, one 20-second step per web request (see
+[Settings → SEO audit](../folio/README.md#settings--seo-audit) in Folio's README). The command and the
+screen continue the same saved report.
+
 `--limit=N` (the first N pages) and `--url=/path` (one page, without the site checks) are quick checks:
 they print their findings and never touch the saved report, so they can't wipe the progress of a long run.
 
 The exit code is 0 whenever the audit ran, with or without findings and finished or not (and when another
 audit is running); 1 for a bad flag, an app that doesn't boot or a run that fails. Use the saved report,
 not the exit code, to decide whether the site is clean.
+
+### The Audits service
+
+`Preflow\View\Audit\Audits` (since 0.74) is the audit as a service; the command and Folio both run it.
+Core binds it as a lazy singleton where the audit is set up (next to the `PageRenderer`), so a request that
+never audits builds nothing.
+
+| Method | What |
+|---|---|
+| `step(int $timeBudgetSeconds, bool $fresh = false, ?\Closure $progress = null): AuditReport` | One step of the full audit: continues the saved run (or starts over with `$fresh`, after a complete run or without one), audits pages until all are done or the budget would be passed (at least one page), saves and returns the report. Throws `AuditRunning` while another full run holds the lock. `$progress` gets `(done, total, url)` after each page. |
+| `quick(?int $limit, ?string $url, int $timeBudgetSeconds, ?\Closure $progress = null): AuditReport` | The quick checks (`--limit`, `--url`): no lock, the saved report left alone. Both null is refused (`InvalidArgumentException`). |
+| `report(): ?AuditReport` | The saved report, or null (none, or unreadable). |
+| `running(): bool` | Whether another full run holds the lock right now: a non-blocking probe that creates no file. |
+| `file(): string` | The report file (`storage/data/seo-audit.json`). |
+
+```php
+use Preflow\View\Audit\Audits;
+use Preflow\View\Audit\AuditRunning;
+
+try {
+    $report = $container->get(Audits::class)->step(20);
+} catch (AuditRunning) {
+    // the command or another browser is running it: try again later
+}
+```
+
+**Lock and concurrency.** One full run per site at a time, whoever starts it: the command and every web
+step take the same lock, `storage/data/seo-audit.json.lock` (an exclusive `flock`, tried three times 20 ms
+apart). A second run, from the CLI or the web, gets `AuditRunning` and does nothing (the command says so and
+exits 0; Folio shows "Another audit is running" with Try again). Steps one after another, from either side,
+continue the same report. The report and the lock file must be writable by every account that runs the
+audit: the web server's user and, if it is a different account, the one that runs `preflow seo:audit`. The
+`running()` probe opens the lock file read-write (`r+`), so it also needs write permission to answer for a
+lock the other account holds; without it, it answers "not running" and the step itself finds out.
 
 ### What it checks
 
@@ -719,8 +757,14 @@ An audit render is marked as internal (`Preflow\Core\Http\InternalRender`, the r
 `preflow.internal_render`) and leaves nothing behind. Honouring the marker, the app writes no not-found
 entry and counts no redirect hit; media generates no image variant (a variant that is allowed but not yet
 made answers 404 with the header `X-Preflow-Variant: pending`, which the audit counts as fine; anything
-else missing is a plain 404 and a finding); no debug toolbar is added; no session file is written; mail
-queued for later during the render is held back (mail sent synchronously during a GET render still goes out). Site code that has side effects on a visit (counters, logs) can skip
+else missing is a plain 404 and a finding); no debug toolbar is added; no session file is written. Mail the page queues
+with `Notifier::sendLater()` is dropped, not held back (since 0.74, in every internal render: the audit's,
+GEO's and page cache rebuilds; `Notifier::discardingQueued()`), also when a step runs inside a web request
+whose end flushes the queue: that request sends only its own mail. `Notifier::send()` and `Mailer::send()`
+send at once and are the exception: a page that sends mail synchronously on a GET still sends it. The page
+renders as a visitor: nobody signed in, no session, PHP's superglobals as an anonymous visitor's (no
+cookies, no form data, `REMOTE_ADDR` 127.0.0.1), and with Folio the published site (no working copies, even
+for a step run from the admin). Site code that has side effects on a visit (counters, logs) can skip
 them:
 
 ```php

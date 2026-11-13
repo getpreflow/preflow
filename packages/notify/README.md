@@ -212,6 +212,20 @@ and cannot be flushed deterministically in the CLI and in tests.
 - `'defer' => false` in `config/notify.php` (default `true`) makes `sendLater()` send at
   once, a failure going to `$onFailure`/the log. Handy to debug; tests rarely need it.
 
+### Dropping queued mail: `discardingQueued()`
+
+`Notifier::discardingQueued(\Closure $work): mixed` (since 0.74) runs `$work` and returns its result. While
+it runs, `sendLater()` drops its message: it is not queued, not sent even with `'defer' => false`, and its
+`onFailure` is not called.
+
+- Calls nest (a counter); the state is put back when `$work` throws.
+- What was queued before stays queued and is sent as usual: only the messages queued inside are dropped.
+- `send()` (and `Mailer::send()`) send at once and are not affected.
+
+Core uses it for every internal render (GEO's Markdown views and `llms-full.txt`, page cache rebuilds, the
+SEO audit's pages, also a step run from Folio inside an admin request): a page that queues mail on a visit
+sends none when the framework renders it for itself, and the request around it sends only its own.
+
 ## Errors
 
 Every failure is a `Preflow\Notify\TransportException`. Provider errors are wrapped, and

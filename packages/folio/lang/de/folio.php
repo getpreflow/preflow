@@ -624,6 +624,7 @@ return [
         'retry' => 'Erneut versuchen',
         'failed' => 'Der letzte Schritt ist fehlgeschlagen. Die Einzelheiten stehen im Server-Log.',
         'failed_help' => 'Die bereits geprüften Seiten bleiben erhalten; Weiter versucht den nächsten Schritt.',
+        'failed_again' => 'Er ist an derselben Stelle fehlgeschlagen wie der letzte Schritt. Wenn das so bleibt, führe die Prüfung auf dem Server aus:',
         'stalled' => 'Ein Schritt kam nicht zurück, deshalb hat die Prüfung angehalten. Weiter macht dort weiter, wo sie aufgehört hat.',
         'checks' => [
             'status_error' => 'Seite antwortet nicht',

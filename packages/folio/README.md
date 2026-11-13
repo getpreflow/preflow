@@ -1819,10 +1819,30 @@ Since 0.74 a user who also has `seo.audit.run` runs the audit on this screen, th
   where it stopped. A step whose request fails shows Continue.
 - Another run of the same site (the command, another browser) holds the audit's lock: the screen says so
   and offers Try again; it does not retry by itself. A step that throws is logged with its message; the
-  screen says only that it failed (the details are in the server log) and offers Continue.
+  screen says only that it failed (the details are in the server log) and offers Continue. When the next
+  step fails at the same place again, it also suggests running `preflow seo:audit` on the server.
 - A step closes the session first, keeps running when the tab closes, and raises a PHP time limit below
   60 seconds to 60 where it may. The audited pages render as a visitor, and the mail they queue is dropped
   (core's internal render scope).
+
+The audited pages are the published site as a visitor gets it, also when the step runs inside the admin
+(which otherwise shows working copies): every internal render reads published snapshots with empty memos,
+the same isolation the page cache uses.
+
+Operations:
+
+- Each step closes the PHP session first (the browser's other requests don't wait), keeps running when
+  the client goes away (`ignore_user_abort`) and raises a PHP time limit below 60 seconds to 60 where
+  `set_time_limit()` is allowed.
+- On LiteSpeed, a request whose client has gone may still be stopped; consider `SetEnv noabort 1` (or the
+  `noabort` rewrite flag) for the admin, so a closed tab never cuts a step off before it saves.
+- A page too slow to render inside a web request, or a web PHP memory limit too low for the audit, needs
+  the command: run `preflow seo:audit` on the server. The screen shows its report the same way.
+- The report and its lock (`storage/data/seo-audit.json` and `seo-audit.json.lock`) must be writable by
+  the web server's user, and by the account that runs the command if that is a different one (see "Lock
+  and concurrency" in `packages/view/README.md`).
+- Without auth on Folio (no `config/auth.php`), every permission check passes: anyone who can open the
+  admin can run the audit.
 
 Both routes need `seo.audit`; the controller adds `seo.audit.run` (403 without it; then the screen shows no
 buttons). With rbac, the new permissions are announced in *Settings → Roles* like any new permission: the

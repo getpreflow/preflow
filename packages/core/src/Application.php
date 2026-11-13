@@ -2425,7 +2425,14 @@ final class Application
                     // In debug mode each request logs into the one collector; renders don't pile up.
                     $collector?->reset();
 
-                    return $this->handle($request);
+                    // PHP's superglobals as a visitor's, as for a page cache rebuild: a step run inside
+                    // an admin's web request (Folio) must not hand its cookies, form or address to the
+                    // page. The audit's request has no query, so $_GET, $_POST and $_FILES are empty.
+                    return \Preflow\Core\PageCache\AnonymousGlobals::run(
+                        '127.0.0.1',
+                        fn (): ResponseInterface => $this->handle($request),
+                        $request->getQueryParams(),
+                    );
                 },
                 is_string($appUrl) ? $appUrl : '',
                 $this->internalRenderScopes(),

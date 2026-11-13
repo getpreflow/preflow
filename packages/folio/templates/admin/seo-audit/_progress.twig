@@ -9,7 +9,7 @@
 {% macro run_form(audit, label, fresh, primary) %}
     <form method="post" action="{{ audit.run_url }}">
         <input type="hidden" name="_csrf_token" value="{{ audit.csrf }}">
-        {% if fresh %}<input type="hidden" name="fresh" value="1">{% endif %}
+        {% if fresh %}<input type="hidden" name="fresh" value="1">{% elseif audit.failed_at is not null %}<input type="hidden" name="failed_at" value="{{ audit.failed_at }}">{% endif %}
         <button type="submit" class="btn {{ primary ? 'btn-primary' : 'btn-secondary' }}" data-busy-label="{{ t('folio.audit.running') }}">{{ label }}</button>
     </form>
 {% endmacro %}
@@ -19,7 +19,7 @@
     {% if audit.state == 'elsewhere' %}
         <div class="folio-notice is-warning" role="status"><p>{{ t('folio.audit.elsewhere') }}</p></div>
     {% elseif audit.state == 'failed' %}
-        <div class="folio-alert folio-alert-error" role="alert"><p>{{ t('folio.audit.failed') }}</p><p>{{ t('folio.audit.failed_help') }}</p></div>
+        <div class="folio-alert folio-alert-error" role="alert"><p>{{ t('folio.audit.failed') }}</p><p>{{ t('folio.audit.failed_help') }}</p>{% if audit.failed_again %}<p>{{ t('folio.audit.failed_again') }} <code>preflow seo:audit</code></p>{% endif %}</div>
     {% elseif not audit.started %}
         <div class="folio-notice" role="status"><p>{{ t('folio.audit.not_yet') }}</p></div>
     {% endif %}

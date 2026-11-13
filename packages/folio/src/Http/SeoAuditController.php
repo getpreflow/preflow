@@ -29,7 +29,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * incomplete the progress partial posts itself to step until the report is complete, then
  * redirects to the finished report (HX-Redirect). Without JavaScript each Continue is a plain
  * POST that runs one step. A run held elsewhere (the command, another browser) shows a notice
- * with Try again; a step that throws is logged and shows a generic line with Continue. Without Audits (an app
+ * with Try again; a step that throws is logged and shows a generic line with Continue (one that fails again
+ * where the last one did suggests the command). Without Audits (an app
  * that does not set up the audit) the screen stays read only.
  *
  * @since 0.54
@@ -116,6 +117,7 @@ final class SeoAuditController
     {
         LongRequest::allow($request, self::TIME_LIMIT);
         $state = 'stepping';
+        $again = false;
         try {
             $report = $audits->step(self::STEP_SECONDS, $fresh);
         } catch (AuditRunning) {
@@ -127,6 +129,11 @@ final class SeoAuditController
             $message = 'SEO audit: a step run from Folio failed: ' . $e::class . ': ' . $e->getMessage();
             $this->log !== null ? ($this->log)($message) : error_log($message);
             $report = $audits->report();
+            // The Continue after a failure posts where it stood (failed_at): failing again there
+            // means the run doesn't get past that page here.
+            $body = $request->getParsedBody();
+            $before = is_array($body) && is_string($body['failed_at'] ?? null) && ctype_digit($body['failed_at']) ? (int) $body['failed_at'] : null;
+            $again = $before !== null && $before === ($report?->done() ?? 0);
         }
         $htmx = $request->getHeaderLine('HX-Request') === 'true';
         if ($state === 'stepping' && $report->complete()) {
@@ -139,22 +146,22 @@ final class SeoAuditController
         if ($htmx) {
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render(
                 '@folio/admin/seo-audit/_progress.twig',
-                ['audit' => $this->runView($request, $report, $state), 'prefix' => $this->prefix],
+                ['audit' => $this->runView($request, $report, $state, $again), 'prefix' => $this->prefix],
             ));
         }
 
-        return $this->page($request, $report, $state);
+        return $this->page($request, $report, $state, $again);
     }
 
     /**
      * The screen. $state is null where the user can't run the audit here (read only), else idle,
      * stepping (the partial polls step), elsewhere (another run holds the lock) or failed.
      */
-    private function page(ServerRequestInterface $request, ?AuditReport $report, ?string $state): ResponseInterface
+    private function page(ServerRequestInterface $request, ?AuditReport $report, ?string $state, bool $failedAgain = false): ResponseInterface
     {
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/seo-audit/index.twig', [
             'prefix' => $this->prefix,
-            'audit' => $state === null ? null : $this->runView($request, $report, $state),
+            'audit' => $state === null ? null : $this->runView($request, $report, $state, $failedAgain),
             'editor_assets' => $state === 'stepping' ? ['htmx.js'] : [],
             'report' => $report === null ? null : [
                 'started_at' => $report->startedAt,
@@ -169,11 +176,17 @@ final class SeoAuditController
         ]));
     }
 
-    /** @return array<string, mixed> what _progress.twig shows */
-    private function runView(ServerRequestInterface $request, ?AuditReport $report, string $state): array
+    /**
+     * @param bool $failedAgain the step failed where the last one did (the run doesn't get past it)
+     * @return array<string, mixed> what _progress.twig shows
+     */
+    private function runView(ServerRequestInterface $request, ?AuditReport $report, string $state, bool $failedAgain = false): array
     {
         return [
             'state' => $state,
+            // Where a failed step left the run: Continue posts it back (failed_at).
+            'failed_at' => $state === 'failed' ? ($report?->done() ?? 0) : null,
+            'failed_again' => $failedAgain,
             'started' => $report !== null,
             'complete' => $report?->complete() ?? false,
             'done' => $report?->done() ?? 0,

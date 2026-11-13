@@ -646,6 +646,7 @@ return [
         'retry' => 'Try again',
         'failed' => 'The last step failed. The details are in the server log.',
         'failed_help' => 'The pages audited so far are kept; Continue tries the next step.',
+        'failed_again' => 'It failed at the same place as the last step. If it keeps failing, run the audit on the server:',
         'stalled' => 'A step did not come back, so the audit stopped. Continue picks it up where it stopped.',
         // The checks by id ("." written "_"); a site's own checks show their id.
         'checks' => [

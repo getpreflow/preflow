@@ -152,6 +152,14 @@ A request the app makes of itself (the SEO audit rendering a page) carries the a
 `preflow.internal_render`; `Preflow\Core\Http\InternalRender::is($request)` reads it. Middleware that records
 visits, counts hits or queues side effects should skip them for such a request. Since 0.54.
 
+Every internal render (GEO's Markdown views and `llms-full.txt`, the SEO audit's pages, page cache rebuilds)
+runs in core's anonymous render scope: the request context names the rendered page, nobody is signed in,
+the session is hidden, and the translator locale and users are put back afterwards. Since 0.74 mail the page
+queues with `Notifier::sendLater()` during it is dropped (`Notifier::discardingQueued()`), so the request
+that flushes the queue afterwards sends only its own mail; `send()` still sends at once. The audit's pages
+(also a step run from Folio inside an admin's request) and rebuilds also see PHP's superglobals as an
+anonymous visitor's (`AnonymousGlobals`).
+
 ### Application bootstrap
 
 ```php
@@ -932,7 +940,9 @@ return [
     they are still those of the request that wrote, so during the rebuild `$_COOKIE`, `$_POST`
     and `$_FILES` are empty, `$_GET`/`$_REQUEST` are the page's query, `$_SERVER` has no
     `HTTP_COOKIE` or forwarded address and `REMOTE_ADDR` 127.0.0.1, and `$_SESSION` is unset;
-    all are put back afterwards. With a PHP session open, nothing is rebuilt.
+    all are put back afterwards. With a PHP session open, nothing is rebuilt. Mail a page queues
+    with `sendLater()` during a rebuild is dropped (since 0.74), not sent with the response that
+    queued the rebuild.
   - It carries the key parts the page was stored under: the locale (as `Accept-Language`),
     `X-Forwarded-Proto`/`X-Forwarded-Host` and the vary header values, so it is stored under the
     key visitors read; one that gives another key is not rendered (logged). The stock locale

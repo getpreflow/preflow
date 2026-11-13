@@ -989,18 +989,46 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /**
-     * Every render the page cache may store (a visitor's miss, verify's second render, a rebuild
-     * behind an admin request) reads published snapshots with empty memos, whatever the request
-     * around it switched on (WorkingCopyMiddleware, a share preview). A page rendered while
-     * working copies show anyway is refused (`refused:working-copy`).
+     * The published site for every render that isn't the admin's own: what the page cache may
+     * store (a visitor's miss, verify's second render, a rebuild behind an admin request) and
+     * every internal render (RenderScopes: the SEO audit's pages, also a step run from Folio, and
+     * GEO's Markdown views) read published snapshots with empty memos, whatever the request around
+     * it switched on (WorkingCopyMiddleware on every admin route, a share preview). A page the
+     * page cache would store while working copies show anyway is refused (`refused:working-copy`).
      */
     private static function isolatePageCacheRenders(Container $container): void
     {
+        $published = self::publishedReads($container);
+        if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            $container->get(\Preflow\View\Geo\RenderScopes::class)->add(
+                static function (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next) use ($published): \Psr\Http\Message\ResponseInterface {
+                    $restore = $published();
+                    try {
+                        return $next();
+                    } finally {
+                        $restore();
+                    }
+                },
+            );
+        }
         if (!$container->bound(\Preflow\Core\PageCache\PageCache::class)) {
             return;
         }
         $pageCache = $container->get(\Preflow\Core\PageCache\PageCache::class);
-        $pageCache->isolate(static function () use ($container): \Closure {
+        $pageCache->isolate($published);
+        $pageCache->refuseWhen('working-copy', static fn (): bool => $container->resolved(\Preflow\Publishing\LiveContent::class)
+            && $container->get(\Preflow\Publishing\LiveContent::class)->showsWorkingCopies());
+    }
+
+    /**
+     * Switches to the published site for one render: LiveContent reads published snapshots, the
+     * Collections and Singletons memos start empty. Answers the function that puts it all back.
+     *
+     * @return \Closure(): (\Closure(): void)
+     */
+    private static function publishedReads(Container $container): \Closure
+    {
+        return static function () use ($container): \Closure {
             $restores = [$container->get(\Preflow\Publishing\LiveContent::class)->isolate()];
             foreach ([\Preflow\Folio\Content\Collections::class, \Preflow\Folio\Content\Singletons::class] as $memo) {
                 // One not built yet starts empty; one built during the render is emptied after it.
@@ -1018,9 +1046,7 @@ final class FolioServiceProvider extends ServiceProvider
                     $restore();
                 }
             };
-        });
-        $pageCache->refuseWhen('working-copy', static fn (): bool => $container->resolved(\Preflow\Publishing\LiveContent::class)
-            && $container->get(\Preflow\Publishing\LiveContent::class)->showsWorkingCopies());
+        };
     }
 
     /**

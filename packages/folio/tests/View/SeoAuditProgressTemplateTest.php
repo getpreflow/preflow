@@ -32,7 +32,7 @@ final class SeoAuditProgressTemplateTest extends TestCase
     private function render(array $audit): string
     {
         return $this->app()->container()->get(FolioEngine::class)->render('@folio/admin/seo-audit/_progress.twig', ['prefix' => '/folio', 'audit' => $audit + [
-            'state' => 'idle', 'started' => false, 'complete' => false, 'done' => 0, 'total' => 0,
+            'state' => 'idle', 'failed_at' => null, 'failed_again' => false, 'started' => false, 'complete' => false, 'done' => 0, 'total' => 0,
             'run_url' => '/folio/seo-audit/run', 'step_url' => '/folio/seo-audit/step', 'csrf' => 'tok',
         ]]);
     }
@@ -135,5 +135,17 @@ final class SeoAuditProgressTemplateTest extends TestCase
             $this->assertStringContainsString($line, $this->render($audit), json_encode($audit) ?: '');
         }
         $this->assertStringNotContainsString('preflow seo:audit', $this->render(['state' => 'stepping', 'started' => true, 'done' => 1, 'total' => 4]));
+    }
+
+    public function test_after_a_failure_continue_posts_where_it_stood_and_a_repeat_suggests_the_command(): void
+    {
+        $html = $this->render(['state' => 'failed', 'failed_at' => 2, 'started' => true, 'done' => 2, 'total' => 4]);
+
+        $this->assertMatchesRegularExpression('#<input type="hidden" name="failed_at" value="2">\s*<button[^>]*>Continue</button>#', $html);
+        $this->assertDoesNotMatchRegularExpression('#name="fresh" value="1">\s*<input type="hidden" name="failed_at"#', $html, 'Start over posts no failed_at');
+        $this->assertStringNotContainsString('It failed at the same place', $html);
+
+        $html = $this->render(['state' => 'failed', 'failed_at' => 2, 'failed_again' => true, 'started' => true, 'done' => 2, 'total' => 4]);
+        $this->assertStringContainsString('<p>It failed at the same place as the last step. If it keeps failing, run the audit on the server: <code>preflow seo:audit</code></p>', $html);
     }
 }

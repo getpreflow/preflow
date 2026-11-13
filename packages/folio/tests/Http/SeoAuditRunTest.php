@@ -47,7 +47,23 @@ final class SeoAuditRunTest extends TestCase
         $this->write('config/seo.php', "<?php\nreturn ['enabled' => true];\n");
         // Who the audited page sees as signed in: the audit must render it as a visitor.
         $this->write('resources/folio/frontend/post.twig', '<html><head><title>{{ record.title }}</title></head><body><h1>{{ record.title }}</h1>'
-            . '<p class="who">{{ auth_user() ? "user:" ~ auth_user().getAuthId() : "nobody" }}</p></body></html>');
+            . '<p class="who">{{ auth_user() ? "user:" ~ auth_user().getAuthId() : "nobody" }}</p><p class="globals">{{ globals_probe() }}</p></body></html>');
+        // A type with publishing at /a/{slug}, and a published singleton it shows: the audit must see
+        // the published snapshots, not the working copies the admin's request switches on.
+        $this->writeModel('banner', [
+            'label' => 'Banner',
+            'singleton' => true,
+            'publishing' => true,
+            'fields' => ['text' => ['type' => 'string']],
+        ]);
+        $this->writeModel('article', [
+            'label' => 'Articles',
+            'publishing' => true,
+            'frontend' => ['route' => '/a/{slug}'],
+            'fields' => ['title' => ['type' => 'string', 'validate' => ['required']], 'slug' => ['type' => 'string', 'validate' => ['required']]],
+        ]);
+        $this->write('resources/folio/frontend/article.twig', '<html><head><title>{{ record.title }}</title></head><body><h1 class="article">{{ record.title }}</h1><p class="banner">{{ folio_get("banner").text|default("") }}</p></body></html>');
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Folio\\Tests\\Fixtures\\Audit\\GlobalsProbeProvider::class];\n");
         $publisher = $this->publisher();
         $publisher->publish($this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]), null);
         $publisher->publish($this->working('post', 'p2', ['title' => ['en' => 'World', 'de' => 'Welt'], 'slug' => ['en' => 'world', 'de' => 'welt'], '_locales' => ['en', 'de']]), null);
@@ -196,6 +212,63 @@ final class SeoAuditRunTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_step_from_folio_audits_the_published_site_not_the_drafts(): void
+    {
+        $publisher = $this->publisher();
+        $publisher->publish($this->working('article', 'a1', ['title' => 'Published title', 'slug' => 'first']), null);
+        $publisher->publish($this->working('banner', 'banner', ['text' => 'Published banner']), null);
+        // Unpublished changes on top: the admin sees them in Folio, a visitor doesn't.
+        $this->working('article', 'a1', ['title' => 'Draft title', 'slug' => 'first', '_version' => 2]);
+        $this->working('banner', 'banner', ['text' => 'Draft banner', '_version' => 2]);
+        $this->signIn();
+        $titles = $this->probe('h1 class="article"');
+        $banners = $this->probe('p class="banner"');
+
+        $this->assertSame(303, $this->send('POST', '/folio/seo-audit/run')->getStatusCode());
+
+        $this->assertSame(['Published title'], array_values(array_unique($titles->texts)), 'the published snapshot, as visitors see it');
+        $this->assertSame(['Published banner'], array_values(array_unique($banners->texts)), 'a record the page shows: published too');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_step_hides_the_admins_superglobals_from_the_pages(): void
+    {
+        $this->signIn();
+        $seen = $this->probe('p class="globals"');
+        // As PHP sets them for the admin's POST.
+        $_COOKIE['admin_session'] = 'secret';
+        $_POST['_csrf_token'] = $this->token;
+        $_REQUEST = $_COOKIE + $_POST;
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.9';
+        $_SERVER['HTTP_COOKIE'] = 'admin_session=secret';
+
+        $this->assertSame(303, $this->send('POST', '/folio/seo-audit/run')->getStatusCode());
+
+        $this->assertNotEmpty($seen->texts);
+        $this->assertSame(['||127.0.0.1'], array_values(array_unique($seen->texts)), 'no cookies, no form, a local address');
+        // Put back for the admin's request.
+        $this->assertSame('secret', $_COOKIE['admin_session']);
+        $this->assertSame('203.0.113.9', $_SERVER['REMOTE_ADDR']);
+        $this->assertSame('admin_session=secret', $_SERVER['HTTP_COOKIE']);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_step_has_a_20_second_budget(): void
+    {
+        $this->signIn();
+        // Each page takes 10 s on the clock: a budget from 20 up to 29 s audits two pages, then stops
+        // (the next one would take as long as the slowest so far); 19 s would audit one.
+        $this->clockedAudits(10);
+
+        $this->assertSame(200, $this->send('POST', '/folio/seo-audit/run')->getStatusCode());
+
+        $report = AuditReport::load($this->file());
+        $this->assertNotNull($report);
+        $this->assertGreaterThan(2, $report->total);
+        $this->assertSame(2, $report->done());
+    }
+
+    #[RunInSeparateProcess]
     public function test_fresh_starts_over(): void
     {
         $this->signIn();
@@ -270,6 +343,25 @@ final class SeoAuditRunTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_step_that_fails_where_the_last_one_did_suggests_the_command(): void
+    {
+        $this->signIn();
+        mkdir($this->file(), 0777, true);
+        ini_set('error_log', $this->dir . '/php-errors.log');
+
+        $body = (string) $this->send('POST', '/folio/seo-audit/run')->getBody();
+        $this->assertStringContainsString('<input type="hidden" name="failed_at" value="0">', $body, 'Continue says where it stood');
+        $this->assertStringNotContainsString('It failed at the same place', $body, 'the first failure');
+
+        $body = (string) $this->send('POST', '/folio/seo-audit/run', ['failed_at' => '0'])->getBody();
+        $this->assertStringContainsString('It failed at the same place as the last step. If it keeps failing, run the audit on the server: <code>preflow seo:audit</code>', $body);
+
+        // A failure elsewhere than the last one (the run got further) says nothing more.
+        $body = (string) $this->send('POST', '/folio/seo-audit/run', ['failed_at' => '3'])->getBody();
+        $this->assertStringNotContainsString('It failed at the same place', $body);
+    }
+
+    #[RunInSeparateProcess]
     public function test_without_seo_audit_run_no_buttons_and_403(): void
     {
         $this->signIn(['folio.dashboard', 'seo.audit']);
@@ -319,6 +411,66 @@ final class SeoAuditRunTest extends TestCase
         $this->assertFileDoesNotExist($this->file());
     }
 
+    /**
+     * What the audited pages show in their first <$tag>…< (e.g. 'h1 class="x"'), in the order audited.
+     */
+    private function probe(string $tag): \stdClass
+    {
+        $seen = new \stdClass();
+        $seen->texts = [];
+        $this->session->container()->get(AuditRegistry::class)->addPage(new class ($tag, $seen) implements PageCheck {
+            public function __construct(private string $tag, private \stdClass $seen) {}
+
+            public function id(): string
+            {
+                return 'test.probe';
+            }
+
+            public function check(RenderedPage $page): array
+            {
+                if (preg_match('#<' . preg_quote($this->tag, '#') . '>([^<]*)<#', $page->body, $m) === 1) {
+                    $this->seen->texts[] = $m[1];
+                }
+
+                return [];
+            }
+        });
+
+        return $seen;
+    }
+
+    /** The app's Audits on a clock that only moves while a page is audited: $seconds per page. */
+    private function clockedAudits(int $seconds): void
+    {
+        $c = $this->session->container();
+        $clock = new \DateTimeImmutable('2026-11-13T10:00:00+00:00');
+        $registry = $c->get(AuditRegistry::class);
+        $registry->addPage(new class ($clock, $seconds) implements PageCheck {
+            public function __construct(private \DateTimeImmutable &$clock, private int $seconds) {}
+
+            public function id(): string
+            {
+                return 'test.clock';
+            }
+
+            public function check(RenderedPage $page): array
+            {
+                $this->clock = $this->clock->modify('+' . $this->seconds . ' seconds');
+
+                return [];
+            }
+        });
+        $c->instance(Audits::class, new Audits(
+            $registry,
+            $c->get(PageRenderer::class),
+            $c->get(PublicPages::class),
+            $this->file(),
+            static function () use (&$clock): \DateTimeImmutable {
+                return $clock;
+            },
+        ));
+    }
+
     /** The app's Audits on a clock where each reading is 100 s later: one page per step. */
     private function slowAudits(): void
     {
@@ -352,7 +504,7 @@ final class SeoAuditRunTest extends TestCase
             'session' => ['cookie' => 'folio_seo_run_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
         $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => ['admin' => $permissions ?? ['*']]], true) . ";\n");
-        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class, \\Preflow\\Folio\\Tests\\Fixtures\\Audit\\GlobalsProbeProvider::class];\n");
 
         $this->session = $this->app();
         $f = new Psr17Factory();

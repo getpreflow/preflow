@@ -624,6 +624,7 @@ return [
         'retry' => 'Réessayer',
         'failed' => 'La dernière étape a échoué. Les détails figurent dans le journal du serveur.',
         'failed_help' => 'Les pages déjà auditées sont conservées ; Continuer tente l’étape suivante.',
+        'failed_again' => 'Elle a échoué au même endroit que l’étape précédente. Si l’échec persiste, lancez l’audit sur le serveur :',
         'stalled' => 'Une étape n’a pas abouti, l’audit s’est donc arrêté. Continuer le reprend là où il s’est arrêté.',
         'checks' => [
             'status_error' => 'La page ne répond pas',
