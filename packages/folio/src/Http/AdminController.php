@@ -847,7 +847,6 @@ final class AdminController
     {
         return new RecordDeleter(
             $this->dm,
-            new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog),
             $this->publisher,
             $this->customizations !== null ? new \Preflow\Folio\Publishing\FolioSaveHooks($this->customizations) : new \Preflow\Publishing\NoSaveHooks(),
             $this->review,

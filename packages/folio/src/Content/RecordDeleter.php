@@ -12,7 +12,6 @@ use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
-use Preflow\Folio\Publishing\FolioPublishingTypes;
 use Preflow\Folio\Publishing\FolioRecordAddresses;
 use Preflow\Folio\Redirects\RecordAddresses;
 use Preflow\Publishing\DeleteRefused;
@@ -28,9 +27,10 @@ use Preflow\Publishing\SaveHooks;
  * @deprecated since 0.71, use Preflow\Publishing\RecordDeleter (preflow/publishing) and
  *             DeleteSummary for the texts.
  *
- * The deleter under its name of before 0.71, for one release. It takes the old arguments
- * (TypeCatalog, the hooks as a Customizations::runHooks closure, DisplayLabels, Folio's address
- * book) and the new ones, keeps summary(), and refuses with Folio's Refused and its text as before.
+ * The deleter under its name of before 0.71, for one release. It takes the old arguments: the
+ * TypeCatalog (now only for the labels; which types publish, the Publisher decides), the hooks as
+ * a Customizations::runHooks closure or SaveHooks, DisplayLabels, the review index and Folio's
+ * address book. It keeps summary() and refuses with Folio's Refused and its text as before.
  * In 0.72 this class goes and Preflow\Publishing\RecordDeleter is final again.
  */
 class RecordDeleter extends \Preflow\Publishing\RecordDeleter
@@ -55,7 +55,6 @@ class RecordDeleter extends \Preflow\Publishing\RecordDeleter
         }
         parent::__construct(
             $dm,
-            $catalog instanceof TypeCatalog ? new FolioPublishingTypes($catalog) : $catalog,
             $publisher,
             $hooks instanceof \Closure ? self::closureHooks($hooks) : ($hooks ?? new NoSaveHooks()),
             $review,

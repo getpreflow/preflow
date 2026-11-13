@@ -32,6 +32,8 @@ final class RecordWriter
     /** @var \Closure(): \DateTimeImmutable */
     private readonly \Closure $now;
 
+    private readonly RecordStore $store;
+
     public function __construct(
         private readonly DataManager $dm,
         private readonly Publisher $publisher,
@@ -43,20 +45,25 @@ final class RecordWriter
         ?\Closure $now = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->store = new RecordStore($dm, $publisher, $hooks, $index, $addresses);
     }
 
     /**
      * Saves a new record: an empty id gets a random one (32 hex characters), a record of an
      * orderable type goes last (_order = the highest + 10). Then as save().
      *
+     * @throws \InvalidArgumentException when a record with the given id exists (nothing written)
      * @throws ValidationException
      * @throws VersionConflict
      */
     public function create(DynamicRecord $record, SaveOptions $options = new SaveOptions()): SaveOutcome
     {
         $def = $record->getType();
-        if ((string) $record->getId() === '') {
+        $id = (string) $record->getId();
+        if ($id === '') {
             $record->set($def->idField, bin2hex(random_bytes(16)));
+        } elseif ($this->dm->findType($def->key, $id) !== null) {
+            throw new \InvalidArgumentException("A {$def->key} with the id \"{$id}\" exists already.");
         }
         if ($this->types->orderable($def->key)) {
             $record->set(self::ORDER, $this->maxOrder($def->key) + 10);
@@ -72,6 +79,10 @@ final class RecordWriter
      *                             refuses (nothing stored), the checks of a type that does not
      *                             publish (nothing stored), or a failed publish (the draft is stored)
      * @throws VersionConflict
+     *
+     * When the publish fails and SaveHooks::after() then throws too, the publish's exception is
+     * thrown and the hook's is dropped: an exception already thrown cannot take another as its
+     * previous one, and the publish failure is what the caller must show.
      */
     public function save(DynamicRecord $record, SaveOptions $options = new SaveOptions()): SaveOutcome
     {
@@ -86,7 +97,11 @@ final class RecordWriter
                     // Checked against the version the draft save just wrote: a save landing in between conflicts.
                     $this->publisher->publish($record, $options->by, (int) $record->get('_version'));
                 } catch (\Throwable $e) {
-                    $this->hooks->after($record); // the working copy was saved
+                    try {
+                        $this->hooks->after($record); // the working copy was saved
+                    } catch (\Throwable) {
+                        // The publish failure wins (see above).
+                    }
                     throw $e;
                 }
             }
@@ -96,9 +111,8 @@ final class RecordWriter
         }
 
         $this->checks->validate($record);
-        $this->store($record);
-        $this->index?->refresh($record);
-        $left = $this->addresses?->sync($type, (string) $record->getId(), null) ?? false;
+        $this->store->write($record);
+        $left = $this->store->follow($record);
         $this->hooks->after($record);
 
         return new SaveOutcome($record, $left);
@@ -130,8 +144,9 @@ final class RecordWriter
      * Records without a position yet are numbered in their current order first (10, 20, ...).
      *
      * @param 'up'|'down' $direction
-     * @return bool false when nothing moved: the record is first (up) or last (down), or not in the list
-     * @throws \InvalidArgumentException when the type is not orderable or the direction is neither
+     * @return bool false when nothing moved: the record is first (up) or last (down)
+     * @throws \InvalidArgumentException when the type is not orderable, the direction is neither, or
+     *                                   the type has no record with this id
      * @throws ValidationException from SaveHooks::before() of either record (nothing stored)
      */
     public function reorder(string $type, string $id, string $direction): bool
@@ -152,8 +167,11 @@ final class RecordWriter
                 $index = $i;
             }
         }
-        $neighbour = $index === null ? null : ($direction === 'up' ? $index - 1 : $index + 1);
-        if ($neighbour === null || !isset($records[$neighbour])) {
+        if ($index === null) {
+            throw new \InvalidArgumentException("Type \"{$type}\" has no record \"{$id}\" to move.");
+        }
+        $neighbour = $direction === 'up' ? $index - 1 : $index + 1;
+        if (!isset($records[$neighbour])) {
             return false;
         }
 
@@ -183,21 +201,10 @@ final class RecordWriter
         return true;
     }
 
-    /** The type's own save, else the storage's (no rules: the checks ran before). */
-    private function store(DynamicRecord $record): void
-    {
-        $type = $record->getType()->key;
-        if ($this->hooks->replacesSave($type)) {
-            $this->hooks->save($record, $this->dm->findType($type, (string) $record->getId()));
-        } else {
-            $this->dm->saveType($record, false);
-        }
-    }
-
     /** A new position: stored without a new version, and carried into the snapshot of a publishing type. */
     private function storePosition(DynamicRecord $record): void
     {
-        $this->store($record);
+        $this->store->write($record);
         if ($this->publisher->enabled($record->getType()->key)) {
             $this->publisher->syncOrder($record);
         }

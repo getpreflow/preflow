@@ -10,6 +10,7 @@ use Preflow\Publishing\RecordWriter;
 use Preflow\Publishing\SaveOptions;
 use Preflow\Publishing\SchemaPublishingTypes;
 use Preflow\Publishing\Tests\Fixtures\Recorder;
+use Preflow\Publishing\Tests\Fixtures\ThrowingAfter;
 use Preflow\Publishing\VersionConflict;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
@@ -142,6 +143,37 @@ final class RecordWriterTest extends PublishingAppTestCase
         $this->assertNull($this->publisher()->snapshot('post', 'p1'));
     }
 
+    public function test_after_runs_when_the_publish_conflicts(): void
+    {
+        $writer = $this->writer();
+        // A save landing between the draft and the publish: the publish's version check fails.
+        $this->recorder->failChecks = function (DynamicRecord $record): void {
+            $other = $this->stored('post', (string) $record->getId());
+            $other->set('_version', (int) $other->get('_version') + 1);
+            $this->dm()->saveType($other, false);
+        };
+
+        try {
+            $writer->save($this->record('post', 'p1', ['title' => ['en' => 'Draft']]), new SaveOptions(publish: true));
+            $this->fail('Expected VersionConflict');
+        } catch (VersionConflict $e) {
+            $this->assertSame(2, $e->current);
+        }
+
+        $this->assertSame('after:post:p1', array_last($this->recorder->log));
+        $this->assertNull($this->publisher()->snapshot('post', 'p1'));
+    }
+
+    public function test_a_failing_after_hook_does_not_hide_the_failed_publish(): void
+    {
+        $recorder = new Recorder($this->dm());
+        $recorder->failChecks = static fn () => throw self::refusal();
+        $writer = new RecordWriter($this->dm(), new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $recorder), $recorder, new ThrowingAfter($recorder));
+
+        $this->expectException(ValidationException::class);
+        $writer->save($this->record('post', 'p1'), new SaveOptions(publish: true));
+    }
+
     public function test_a_stale_version_conflicts_before_after(): void
     {
         $writer = $this->writer();
@@ -171,6 +203,16 @@ final class RecordWriterTest extends PublishingAppTestCase
         $writer->setField($this->stored('post', 'p1'), 'title', ['en' => 'Two'], new SaveOptions(mayPublish: false));
         $this->assertSame('', $this->stored('post', 'p1')->get('_publish_at'), 'a field set by someone who may not publish too');
         $this->assertSame(['en' => 'Two'], $this->stored('post', 'p1')->get('title'));
+    }
+
+    public function test_a_schedule_a_before_hook_sets_is_cleared_too_when_the_save_may_not_publish(): void
+    {
+        $writer = $this->writer();
+        $this->recorder->failBefore = static fn (DynamicRecord $record) => $record->set('_publish_at', '2030-02-01T09:00');
+
+        $writer->save($this->record('post', 'p1'), new SaveOptions(mayPublish: false));
+
+        $this->assertSame('', $this->stored('post', 'p1')->get('_publish_at'));
     }
 
     public function test_the_schedule_is_kept_set_cleared_and_never_in_the_past(): void
@@ -236,7 +278,6 @@ final class RecordWriterTest extends PublishingAppTestCase
 
         $this->assertFalse($writer->reorder('note', 'a', 'up'), 'first');
         $this->assertFalse($writer->reorder('note', 'c', 'down'), 'last');
-        $this->assertFalse($writer->reorder('note', 'zz', 'up'), 'not in the list');
         $this->assertSame([], $this->recorder->log, 'nothing saved at the edges');
 
         $this->assertTrue($writer->reorder('note', 'c', 'up'));
@@ -299,6 +340,31 @@ final class RecordWriterTest extends PublishingAppTestCase
 
         $this->assertNull($this->stored('note', 'a')->get('_order'));
         $this->assertNull($this->stored('note', 'b')->get('_order'));
+    }
+
+    public function test_reorder_refuses_an_unknown_record(): void
+    {
+        $writer = $this->writer();
+        $this->recorder->orderable = ['note'];
+        $this->working('note', 'a', ['_order' => 10]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $writer->reorder('note', 'zz', 'up');
+    }
+
+    public function test_create_refuses_an_id_that_exists(): void
+    {
+        $writer = $this->writer();
+        $this->working('note', 'n1', ['title' => ['en' => 'Kept']]);
+
+        try {
+            $writer->create($this->record('note', 'n1', ['title' => ['en' => 'Other']]));
+            $this->fail('Expected InvalidArgumentException');
+        } catch (\InvalidArgumentException) {
+        }
+
+        $this->assertSame([], $this->recorder->log, 'refused before any hook');
+        $this->assertSame(['en' => 'Kept'], $this->stored('note', 'n1')->get('title'));
     }
 
     public function test_reorder_refuses_a_type_that_is_not_orderable(): void

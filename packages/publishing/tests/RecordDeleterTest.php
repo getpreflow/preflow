@@ -41,10 +41,9 @@ final class RecordDeleterTest extends PublishingAppTestCase
     private function deleter(): RecordDeleter
     {
         $this->recorder ??= new Recorder($this->dm());
-        $types = new SchemaPublishingTypes($this->dm());
-        $publisher = new Publisher($this->dm(), $types, $this->recorder, index: $this->recorder, addresses: $this->recorder);
+        $publisher = new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $this->recorder, index: $this->recorder, addresses: $this->recorder);
 
-        return new RecordDeleter($this->dm(), $types, $publisher, $this->recorder, $this->recorder, $this->recorder);
+        return new RecordDeleter($this->dm(), $publisher, $this->recorder, $this->recorder, $this->recorder);
     }
 
     private function seedWorld(): void
@@ -69,6 +68,8 @@ final class RecordDeleterTest extends PublishingAppTestCase
             'beforeDelete:author:a1',
             'beforeDelete:book:b1',
             'changed:book:b1>-',   // Publisher::forget(): the snapshot leaves its addresses
+            'refresh:shelf:s1',    // the detached record, as RecordWriter stores it
+            'sync:shelf:s1',
             'forget:author:a1',
             'removed:author:a1',
             'forget:book:b1',
@@ -83,6 +84,21 @@ final class RecordDeleterTest extends PublishingAppTestCase
         $this->assertSame([], $this->publisher()->revisions('book', 'b1'), 'and its revisions');
         $this->assertSame('["b2"]', $this->stored('shelf', 's1')->get('books'), 'detached (a relation list is stored as JSON)');
         $this->assertNotNull($this->dm()->findType('author', 'a2'));
+    }
+
+    public function test_a_detach_of_a_type_that_saves_itself_goes_through_its_save(): void
+    {
+        $this->seedWorld();
+        $deleter = $this->deleter();
+        $this->recorder->replaces = ['shelf'];
+
+        $deleter->delete('author', ['a1']);
+
+        $this->assertSame([['s1', 's1']], $this->recorder->saved, 'handed the record and the stored one');
+        $log = $this->recorder->log;
+        $this->assertLessThan(array_search('refresh:shelf:s1', $log, true), array_search('save:shelf:s1', $log, true));
+        $this->assertContains('sync:shelf:s1', $log);
+        $this->assertLessThan(array_search('after:shelf:s1', $log, true), array_search('refresh:shelf:s1', $log, true));
     }
 
     public function test_the_target_is_resolved_before_the_delete_and_reaches_every_removed_record(): void

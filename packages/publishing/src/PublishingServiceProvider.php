@@ -90,7 +90,6 @@ final class PublishingServiceProvider extends ServiceProvider
         ));
         $container->singleton(RecordDeleter::class, static fn (Container $c): RecordDeleter => new RecordDeleter(
             $c->get(DataManager::class),
-            $c->get(PublishingTypes::class),
             $c->get(Publisher::class),
             $c->get(SaveHooks::class),
             $c->get(RecordIndex::class),
