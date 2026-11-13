@@ -1,6 +1,15 @@
 /* Folio preview editor: click-to-edit outlines, drawn in an overlay layer.
    Preview renders only. Nothing here changes the layout of the site's own
    elements: blocks only get a cursor. */
+/* This file runs inside the site's page, where Folio's tokens do not exist: it carries its own
+   small set (the redesign's accent values), scoped to the overlay. */
+.folio-pe-overlay {
+  --pe-accent: #047857;
+  --pe-accent-fg: #ffffff;
+  --pe-hover: rgb(4 120 87 / .5);
+  --pe-halo: rgb(4 120 87 / .15);
+  --pe-tint: rgb(4 120 87 / .07);
+}
 [data-folio-block],
 [data-folio-field] { cursor: pointer; }
 [data-folio-edit] { cursor: text; }
@@ -21,10 +30,10 @@
   transition: transform .08s ease-out, width .08s ease-out, height .08s ease-out;
 }
 .folio-pe-box[hidden] { display: none; }
-.folio-pe-box.is-hover { border: 2px solid rgb(4 120 87 / .5); }
-.folio-pe-box.is-active { border: 2px solid #047857; box-shadow: 0 0 0 4px rgb(4 120 87 / .15); }
+.folio-pe-box.is-hover { border: 2px solid var(--pe-hover); }
+.folio-pe-box.is-active { border: 2px solid var(--pe-accent); box-shadow: 0 0 0 4px var(--pe-halo); }
 /* The field under the pointer: a soft tint with an underline, like a text cursor target. */
-.folio-pe-box.is-field { border-radius: 2px; border-bottom: 2px solid #047857; background: rgb(4 120 87 / .07); transition: none; }
+.folio-pe-box.is-field { border-radius: 2px; border-bottom: 2px solid var(--pe-accent); background: var(--pe-tint); transition: none; }
 
 .folio-pe-label {
   position: absolute;
@@ -32,8 +41,8 @@
   left: 0;
   padding: 3px 8px;
   border-radius: 2px 0 6px 0;
-  background: #047857;
-  color: #fff;
+  background: var(--pe-accent);
+  color: var(--pe-accent-fg);
   font: 600 11px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   letter-spacing: .02em;
   white-space: nowrap;

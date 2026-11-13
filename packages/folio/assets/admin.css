@@ -1,4 +1,4 @@
-/* Folio admin — calm neutral surfaces (soft graphite in dark mode), emerald accent.
+/* Folio admin — calm neutral surfaces (green-black ink in dark mode), emerald accent.
    One token set: every colour is light-dark(light, dark) and follows
    color-scheme, which is the OS default unless [data-theme] forces one.
    Components only read tokens and never branch on the theme. */
@@ -6,63 +6,93 @@
 :root {
   color-scheme: light dark;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  /* Inter and JetBrains Mono lead the stacks; no font files are shipped (no @font-face), so the
+     system fallback renders until they are self-hosted. */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
   --r-xs: 6px;
   --r-sm: 8px;
   --r: 10px;
   --r-lg: 14px;
+  --r-xl: 16px;              /* NEW: ink bands, empty states, dialogs */
 
   --h-control: 36px;
   --h-button: 34px;
   --h-button-sm: 28px;
   --h-list-head: 42px;
+  --w-sidebar: 248px;        /* NEW (was 240px in .folio-shell) */
+  --w-rail: 56px;            /* NEW: collapsed sidebar in editors */
+  --w-side-panel: 320px;     /* NEW: editor details panel */
 
-  --c-bg: light-dark(#f6f6f4, #1e1f22);
-  --c-sidebar-bg: light-dark(#fbfbfa, #232428);
-  --c-surface: light-dark(#ffffff, #2a2b2f);
-  --c-surface-2: light-dark(#f8f8f6, #2e2f33);
-  --c-surface-raised: light-dark(#ffffff, #333439);
-  --c-input: light-dark(#ffffff, #25262a);
-  --c-border: light-dark(#e6e6e2, #36373c);
-  --c-border-strong: light-dark(#d3d3cd, #47494f);
-  --c-row-hover: light-dark(#f2f2ef, #3a3b41);
-  --c-text: light-dark(#1a1a17, #e9e9ec);
-  --c-text-muted: light-dark(#64645d, #a3a5ad);
-  --c-text-subtle: light-dark(#8e8e86, #90929b);
+  --c-bg:             light-dark(#f5f5f2, #121816);
+  --c-sidebar-bg:     light-dark(#fafaf8, #161d1a);
+  --c-surface:        light-dark(#ffffff, #1b2320);
+  --c-surface-2:      light-dark(#f7f7f4, #202925);
+  --c-surface-raised: light-dark(#ffffff, #222b27);
+  --c-input:          light-dark(#ffffff, #18201d);
+  --c-border:         light-dark(#e6e5e0, #2b3531);
+  --c-border-strong:  light-dark(#d4d3cc, #3b4742);
+  --c-row-hover:      light-dark(#f0f0ec, #26302b);
+  --c-text:           light-dark(#1b1b18, #e9f0ec);
+  --c-text-muted:     light-dark(#5d5d56, #a3b1aa);
+  --c-text-subtle:    light-dark(#6b6b64, #8b9a93);   /* passes 4.5:1 on surface in both themes */
 
-  --c-accent: light-dark(#047857, #3fcf98);
-  --c-accent-hover: light-dark(#065f46, #6fe2b4);
-  --c-accent-fg: light-dark(#ffffff, #062a1d);
-  --c-accent-soft: light-dark(#e6f4ee, #203a31);
-  --c-accent-text: light-dark(#047857, #6fe2b4);
+  --c-accent:      light-dark(#047857, #34d399);       /* dark = the sign-in emerald */
+  --c-accent-hover:light-dark(#065f46, #6ee7b7);
+  --c-accent-fg:   light-dark(#ffffff, #052e1f);
+  --c-accent-soft: light-dark(#e3f2eb, #143a2c);
+  --c-accent-text: light-dark(#046c4e, #6ee7b7);
 
-  --c-danger: light-dark(#c42121, #f87171);
-  --c-danger-fg: light-dark(#ffffff, #2a0b0b);
-  --c-danger-soft: light-dark(#fcebea, #432a2b);
-  --c-warning: light-dark(#9a5a06, #fbbf24);
-  --c-warning-soft: light-dark(#fcf2e0, #3d3421);
-  --c-success: light-dark(#047857, #3fcf98);
-  --c-success-soft: light-dark(#e6f4ee, #203a31);
-  --c-neutral-soft: light-dark(#eeeeea, #37383d);
-  /* A strong inverted surface (the list's bulk bar): dark with light text in both themes. */
-  --c-inverse: light-dark(#262622, #46484e);
-  --c-inverse-fg: light-dark(#f6f6f4, #f4f4f6);
-  --c-inverse-danger: light-dark(#ffb4ab, #ffb4ab);
+  --c-danger:       light-dark(#b42318, #f87171);
+  --c-danger-fg:    light-dark(#ffffff, #2a0b0b);
+  --c-danger-soft:  light-dark(#fdecea, #3e2427);
+  --c-warning:      light-dark(#8a5100, #f5b94a);
+  --c-warning-soft: light-dark(#fbf0dc, #3a3020);
+  --c-success:      light-dark(#047857, #34d399);
+  --c-success-soft: light-dark(#e3f2eb, #143a2c);
+  --c-info:         light-dark(#1d4ed8, #8ab4ff);      /* NEW: scheduled, notices */
+  --c-info-soft:    light-dark(#e8effd, #1f2a40);      /* NEW */
+  --c-neutral-soft: light-dark(#eeeeea, #2d3833);  /* tokens.css has #26302b = --c-row-hover: badges vanished on hovered rows */
 
-  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(63 207 152 / .36));
-  --c-overlay: light-dark(rgb(24 24 20 / .42), rgb(12 12 14 / .58));
+  --c-inverse:        light-dark(#1b2320, #e9f0ec);    /* bulk bar, toasts, save-all bar */
+  --c-inverse-fg:     light-dark(#e9f0ec, #121816);
+  --c-inverse-danger: light-dark(#ffb4ab, #b42318);
 
-  --shadow-sm: 0 1px 2px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .28));
-  --shadow-md: 0 2px 4px light-dark(rgb(20 20 16 / .04), rgb(0 0 0 / .22)), 0 6px 16px light-dark(rgb(20 20 16 / .07), rgb(0 0 0 / .28));
-  --shadow-lg: 0 8px 24px light-dark(rgb(20 20 16 / .10), rgb(0 0 0 / .4)), 0 2px 6px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .22));
+  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(52 211 153 / .36));
+  --c-overlay:    light-dark(rgb(20 24 22 / .42), rgb(6 10 8 / .6));
+
+  /* NEW: type tints. The six hues of the sign-in marks; light values darkened for contrast.
+     Only for type icons, block icons and chart segments. Never buttons, never states. */
+  --c-type-page:      light-dark(#0b6a94, #7dd3fc);  --c-type-page-soft:      light-dark(#e2f2fa, #15303d);
+  --c-type-reference: light-dark(#6d4fc2, #c4b5fd);  --c-type-reference-soft: light-dark(#efebfb, #2c2942);
+  --c-type-asset:     light-dark(#8a5a00, #fbbf24);  --c-type-asset-soft:     light-dark(#fbf1d6, #3a2f14);
+  --c-type-member:    light-dark(#4d6b0a, #bef264);  --c-type-member-soft:    light-dark(#eef6dc, #27341a);
+  --c-type-shop:      light-dark(#b4234a, #fb7185);  --c-type-shop-soft:      light-dark(#fde8ed, #3d1f27);
+  /* the sixth hue is the accent (emerald) */
+
+  /* NEW: ink. Same in both themes, like the sign-in's left side. */
+  --ink:        #0c1714;
+  --ink-fg:     #ecfdf5;
+  --ink-line:   #a7f3d0;
+  --ink-accent: #34d399;
+  --ink-glow:   radial-gradient(34rem 18rem at 18% 30%, rgb(16 185 129 / .30), transparent 70%),
+                radial-gradient(26rem 16rem at 92% 100%, rgb(129 140 248 / .20), transparent 70%);
+  --mark-1: #34d399; --mark-2: #fbbf24; --mark-3: #fb7185;
+  --mark-4: #7dd3fc; --mark-5: #c4b5fd; --mark-6: #bef264;
+
+  --shadow-sm: 0 1px 2px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .3));
+  --shadow-md: 0 1px 2px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .3)), 0 4px 12px light-dark(rgb(20 20 16 / .05), rgb(0 0 0 / .25));
+  --shadow-lg: 0 12px 32px light-dark(rgb(20 20 16 / .14), rgb(0 0 0 / .5)), 0 2px 6px light-dark(rgb(20 20 16 / .06), rgb(0 0 0 / .3));
 }
 
 :root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="dark"]  { color-scheme: dark; }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Mono places: code, keys, slugs (add .folio-mono). */
+:where(code, kbd, samp, pre, .folio-mono) { font-family: var(--font-mono); }
 
 html, body { height: 100%; }
 
@@ -679,9 +709,9 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
    own background, so it hides the layer below. Below: a small CSS-only caret
    (two gradient halves) that shows only when a site's CSP img-src blocks data:
    images and the SVG layer never loads. Keep the tile fills in step with
-   --c-input and --c-surface-2 (the disabled fill). */
+   --c-input and --c-surface-2 (the disabled fill) and the stroke with --c-text-muted. */
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) {
-  --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23ffffff'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%2364645d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23ffffff'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%235d5d56' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   appearance: none;
   padding-right: 34px;
   background-image:
@@ -694,12 +724,12 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
   text-overflow: ellipsis;
   cursor: pointer;
 }
-:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23f8f8f6'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%2364645d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2325262a'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%232e2f33'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+:where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23f7f7f4'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%235d5d56' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2318201d'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3b1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+:where(:root[data-theme="dark"]) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23202925'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3b1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 @media (prefers-color-scheme: dark) {
-  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2325262a'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%232e2f33'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3a5ad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple])) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%2318201d'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3b1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  :where(:root:not([data-theme="light"])) :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select:not([multiple]):disabled) { --folio-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Crect width='12' height='8' fill='%23202925'/%3E%3Cpath d='M1.5 1.75 6 6.25l4.5-4.5' fill='none' stroke='%23a3b1aa' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple]) { padding: 4px; overflow-y: auto; }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(select[multiple] option) { padding: 3px 7px; border-radius: var(--r-xs); }
@@ -1338,7 +1368,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-swatch-rgb { padding: 2px 6px; color: var(--c-text-muted); }
 .folio-swatch.is-dominant .folio-swatch-chip { border-color: var(--c-border-strong); font-weight: 600; }
 .folio-swatch-color { display: block; width: 22px; height: 22px; border-radius: var(--r-xs); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
-.folio-swatch-hex { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.folio-swatch-hex { font-family: var(--font-mono); }
 [data-copy].is-copied { border-color: var(--c-border-strong); }
 [data-copy].is-copied::after { content: "Copied"; font-size: 11.5px; color: var(--c-text-muted); }
 .folio-asset-versions { display: grid; gap: 10px; }
@@ -1379,10 +1409,9 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   display: grid;
   place-items: center;
   background:
-    radial-gradient(42rem 30rem at 30% 40%, rgb(16 185 129 / .28), transparent 70%),
-    radial-gradient(30rem 24rem at 85% 90%, rgb(129 140 248 / .16), transparent 70%),
-    #0c1714;
-  color: #ecfdf5;
+    var(--ink-glow),
+    var(--ink);
+  color: var(--ink-fg);
 }
 .folio-auth-pattern {
   position: absolute;
@@ -1399,12 +1428,12 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   opacity: .78;
 }
 .folio-auth-pattern .fg-fill { fill: currentColor; stroke: none; }
-.folio-auth-pattern .pc-1 { color: #34d399; }
-.folio-auth-pattern .pc-2 { color: #fbbf24; }
-.folio-auth-pattern .pc-3 { color: #fb7185; }
-.folio-auth-pattern .pc-4 { color: #7dd3fc; }
-.folio-auth-pattern .pc-5 { color: #c4b5fd; }
-.folio-auth-pattern .pc-6 { color: #bef264; }
+.folio-auth-pattern .pc-1 { color: var(--mark-1); }
+.folio-auth-pattern .pc-2 { color: var(--mark-2); }
+.folio-auth-pattern .pc-3 { color: var(--mark-3); }
+.folio-auth-pattern .pc-4 { color: var(--mark-4); }
+.folio-auth-pattern .pc-5 { color: var(--mark-5); }
+.folio-auth-pattern .pc-6 { color: var(--mark-6); }
 .folio-auth-drift { animation: folio-drift 48s ease-in-out infinite alternate; }
 @keyframes folio-drift {
   from { transform: translate(0, 0); }
@@ -1418,14 +1447,14 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   gap: 10px;
   padding: 44px 52px 40px;
   border-radius: 28px;
-  background: rgb(12 23 20 / .72);
+  background: color-mix(in srgb, var(--ink) 72%, transparent);
   backdrop-filter: blur(6px);
-  box-shadow: 0 0 0 1px rgb(236 253 245 / .08), 0 30px 80px rgb(0 0 0 / .45);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink-fg) 8%, transparent), var(--shadow-lg);
   text-align: center;
 }
-.folio-auth-hello .folio-logo-page { fill: #34d399; }
-.folio-auth-hello .folio-logo-fold { fill: #a7f3d0; }
-.folio-auth-hello .folio-logo-f { stroke: #052e1f; }
+.folio-auth-hello .folio-logo-page { fill: var(--ink-accent); }
+.folio-auth-hello .folio-logo-fold { fill: var(--ink-line); }
+.folio-auth-hello .folio-logo-f { stroke: var(--c-accent-fg); }
 .folio-auth-word {
   margin: 6px 0 0;
   font-size: 44px;
@@ -1437,7 +1466,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   margin: 0;
   font-family: var(--font-mono);
   font-size: 14px;
-  color: #a7f3d0;
+  color: var(--ink-line);
 }
 .folio-auth-caret {
   display: inline-block;
@@ -1445,10 +1474,14 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   height: 1.15em;
   margin-left: 3px;
   vertical-align: -3px;
-  background: #34d399;
+  background: var(--ink-accent);
   animation: folio-blink 1.1s steps(1) infinite;
 }
 @keyframes folio-blink { 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .folio-caret, .folio-auth-caret, .folio-auth-drift { animation: none !important; }
+}
 
 .folio-auth-main {
   display: grid;
@@ -1487,8 +1520,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   .folio-auth-art { position: fixed; inset: 0; }
   .folio-auth-hello { display: none; }
   .folio-auth-main { position: relative; min-height: 100vh; }
-  .folio-auth-foot { padding: 6px 12px; border-radius: 999px; background: rgb(12 23 20 / .78); }
-  .folio-auth-foot, .folio-auth-foot a { color: #a7f3d0; }
+  .folio-auth-foot { padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 78%, transparent); }
+  .folio-auth-foot, .folio-auth-foot a { color: var(--ink-line); }
 }
 
 /* ---- drawer (create a related record) ---- */
@@ -1744,16 +1777,16 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   gap: 14px;
   padding: 8px 8px 8px 16px;
   border-radius: var(--r);
-  background: light-dark(#1f1f1c, #ecece8);
-  color: light-dark(#f4f4f1, #1a1a17);
+  background: var(--c-inverse);
+  color: var(--c-inverse-fg);
   box-shadow: var(--shadow-lg);
   font-size: 13.5px;
   font-weight: 520;
   pointer-events: auto;
   animation: folio-toast-in .18s ease-out;
 }
-.folio-toast-action { background: transparent; color: light-dark(#6ee7b7, #047857); }
-.folio-toast-action:hover { background: light-dark(rgb(255 255 255 / .1), rgb(0 0 0 / .06)); color: light-dark(#a7f3d0, #065f46); }
+.folio-toast-action { background: transparent; color: light-dark(var(--ink-accent), var(--c-accent)); }
+.folio-toast-action:hover { background: color-mix(in srgb, var(--c-inverse-fg) 10%, transparent); color: light-dark(var(--ink-line), var(--c-accent-hover)); }
 @keyframes folio-toast-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---- small screens: the sidebar becomes a top bar ---- */

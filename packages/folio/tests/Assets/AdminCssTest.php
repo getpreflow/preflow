@@ -68,22 +68,22 @@ final class AdminCssTest extends TestCase
         $this->assertStringContainsString('.folio-table thead tr { height: var(--h-list-head); }', $css);
         // The header's select-all box stays clickable above the bar.
         $this->assertMatchesRegularExpression('/\.folio-table thead \.folio-bulk-cell input \{[^}]*z-index: 3;/', $css);
-        // A dark bar with light text in both themes (one light-dark() token set).
-        $this->assertMatchesRegularExpression('/--c-inverse: light-dark\(/', $css);
+        // An inverted bar (light on dark theme, dark on light theme) from one light-dark() token set.
+        $this->assertMatchesRegularExpression('/--c-inverse:\s+light-dark\(/', $css);
         $this->assertStringContainsString('background: var(--c-inverse); color: var(--c-inverse-fg);', $css);
         $this->assertStringContainsString('color: var(--c-inverse-danger);', $css);
     }
 
-    public function test_dark_side_uses_the_soft_graphite_palette(): void
+    public function test_dark_side_uses_the_green_black_ink_palette(): void
     {
         $css = $this->css();
         foreach ([
-            '--c-bg' => '#1e1f22', '--c-sidebar-bg' => '#232428', '--c-surface' => '#2a2b2f',
-            '--c-input' => '#25262a', '--c-border' => '#36373c', '--c-border-strong' => '#47494f',
-            '--c-text' => '#e9e9ec', '--c-text-muted' => '#a3a5ad', '--c-accent' => '#3fcf98',
-            '--c-accent-fg' => '#062a1d', '--c-accent-soft' => '#203a31', '--c-accent-text' => '#6fe2b4',
+            '--c-bg' => '#121816', '--c-sidebar-bg' => '#161d1a', '--c-surface' => '#1b2320',
+            '--c-input' => '#18201d', '--c-border' => '#2b3531', '--c-border-strong' => '#3b4742',
+            '--c-text' => '#e9f0ec', '--c-text-muted' => '#a3b1aa', '--c-accent' => '#34d399',
+            '--c-accent-fg' => '#052e1f', '--c-accent-soft' => '#143a2c', '--c-accent-text' => '#6ee7b7',
         ] as $token => $dark) {
-            $this->assertMatchesRegularExpression('/' . preg_quote($token, '/') . ': light-dark\(#[0-9a-f]{6}, ' . $dark . '\);/', $css, $token);
+            $this->assertMatchesRegularExpression('/' . preg_quote($token, '/') . ':\s+light-dark\(#[0-9a-f]{6}, ' . $dark . '\);/', $css, $token);
         }
     }
 
@@ -93,14 +93,14 @@ final class AdminCssTest extends TestCase
         $css = $this->css();
         $dark = [];
         foreach (['--c-surface', '--c-surface-raised', '--c-row-hover', '--c-neutral-soft'] as $token) {
-            $this->assertMatchesRegularExpression('/' . preg_quote($token, '/') . ': light-dark\(#[0-9a-f]{6}, (#[0-9a-f]{6})\);/', $css);
-            preg_match('/' . preg_quote($token, '/') . ': light-dark\(#[0-9a-f]{6}, (#[0-9a-f]{6})\);/', $css, $m);
+            $this->assertMatchesRegularExpression('/' . preg_quote($token, '/') . ':\s+light-dark\(#[0-9a-f]{6}, (#[0-9a-f]{6})\);/', $css);
+            preg_match('/' . preg_quote($token, '/') . ':\s+light-dark\(#[0-9a-f]{6}, (#[0-9a-f]{6})\);/', $css, $m);
             $dark[$token] = $m[1];
         }
         $this->assertSame($dark, array_unique($dark));
         // Lighter is higher on dark: hover sits above the raised surface it appears on.
         $this->assertGreaterThan(hexdec(substr($dark['--c-surface-raised'], 1)), hexdec(substr($dark['--c-row-hover'], 1)));
-        $this->assertStringContainsString('--c-text-subtle: light-dark(#8e8e86, #90929b);', $css);
+        $this->assertStringContainsString('--c-text-subtle:    light-dark(#6b6b64, #8b9a93);', $css);
     }
 
     public function test_controls_share_one_base_style_inside_every_admin_root(): void
@@ -125,8 +125,8 @@ final class AdminCssTest extends TestCase
         // A stroked SVG chevron on top, the CSS-only caret below it for sites whose img-src blocks data:.
         $this->assertMatchesRegularExpression('/:where\(select:not\(\[multiple\]\)\) \{[^}]*--folio-chevron: url\("data:image\/svg\+xml,[^"]*stroke-width=\'1\.5\'[^}]*appearance: none;[^}]*padding-right: 34px;[^}]*background-image:\s+var\(--folio-chevron\),\s+linear-gradient\(/', $css);
         // light-dark() cannot reach into a data: URI: the dark chevron follows both theme switches.
-        $this->assertMatchesRegularExpression('/:where\(:root\[data-theme="dark"\]\) [^{]*select:not\(\[multiple\]\)\) \{ --folio-chevron: url\("data:image\/svg\+xml,[^"]*%23a3a5ad/', $css);
-        $this->assertMatchesRegularExpression('/@media \(prefers-color-scheme: dark\) \{\s*:where\(:root:not\(\[data-theme="light"\]\)\) [^{]*select:not\(\[multiple\]\)\) \{ --folio-chevron: url\("data:image\/svg\+xml,[^"]*%23a3a5ad/', $css);
+        $this->assertMatchesRegularExpression('/:where\(:root\[data-theme="dark"\]\) [^{]*select:not\(\[multiple\]\)\) \{ --folio-chevron: url\("data:image\/svg\+xml,[^"]*%23a3b1aa/', $css);
+        $this->assertMatchesRegularExpression('/@media \(prefers-color-scheme: dark\) \{\s*:where\(:root:not\(\[data-theme="light"\]\)\) [^{]*select:not\(\[multiple\]\)\) \{ --folio-chevron: url\("data:image\/svg\+xml,[^"]*%23a3b1aa/', $css);
         // Container rules must not reset the background (that would drop the chevron) or the right padding.
         $plain = (string) preg_replace('#/\*.*?\*/#s', '', $css);
         preg_match_all('/([^{}]+)\{([^{}]*)\}/', $plain, $rules, PREG_SET_ORDER);
