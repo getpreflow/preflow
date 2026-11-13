@@ -283,6 +283,16 @@ final class ContainerTest extends TestCase
         $container->get('a');
     }
 
+    public function test_make_with_parameters_detects_a_cycle_of_class_bindings(): void
+    {
+        $container = new Container();
+        $container->bind(SomeInterface::class, ConcreteImplementation::class);
+        $container->bind(ConcreteImplementation::class, SomeInterface::class);
+
+        $this->expectExceptionObject(new ContainerException('Circular dependency detected while resolving [' . SomeInterface::class . '].'));
+        $container->make(SomeInterface::class, ['value' => 'given']);
+    }
+
     public function test_resolves_service_with_interface_after_binding(): void
     {
         $container = new Container();

@@ -119,8 +119,19 @@ final class Container implements ContainerInterface
     {
         if ($parameters !== [] && isset($this->concretes[$abstract])) {
             $concrete = $this->concretes[$abstract];
-
-            return $concrete === $abstract ? $this->build($concrete, $parameters) : $this->make($concrete, $parameters);
+            if ($concrete === $abstract) {
+                return $this->build($concrete, $parameters);
+            }
+            // Following the bound classes, as resolve() does: bind(A, B) with bind(B, A) is a cycle.
+            if (isset($this->resolving[$abstract])) {
+                throw new ContainerException("Circular dependency detected while resolving [{$abstract}].");
+            }
+            $this->resolving[$abstract] = true;
+            try {
+                return $this->make($concrete, $parameters);
+            } finally {
+                unset($this->resolving[$abstract]);
+            }
         }
         if (isset($this->bindings[$abstract])) {
             if ($parameters !== [] && !$this->bindingTakesParameters($abstract)) {
