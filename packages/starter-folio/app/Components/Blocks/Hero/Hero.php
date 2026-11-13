@@ -7,9 +7,10 @@ namespace App\Components\Blocks\Hero;
 use Preflow\Blocks\Block;
 use Preflow\Blocks\BlockComponent;
 use Preflow\Blocks\BlockField;
+use Preflow\Data\TypeFamily;
 
 /** A page's opening: the headline (the page's h1), a short intro, an optional image and button. */
-#[Block(key: 'hero', label: 'Hero', group: 'Sections', description: 'Headline, intro, image and a button')]
+#[Block(key: 'hero', label: 'Hero', group: 'Sections', description: 'Headline, intro, image and a button', icon: 'block', family: TypeFamily::Page)]
 final class Hero extends BlockComponent
 {
     protected string $tag = 'section';

@@ -7,9 +7,10 @@ namespace App\Components\Blocks\LatestNews;
 use Preflow\Blocks\Block;
 use Preflow\Blocks\BlockComponent;
 use Preflow\Blocks\BlockField;
+use Preflow\Data\TypeFamily;
 
 /** The newest published news posts as teasers, with a link to /news. */
-#[Block(key: 'latest_news', label: 'Latest news', group: 'News', description: 'The newest published news posts')]
+#[Block(key: 'latest_news', label: 'Latest news', group: 'News', description: 'The newest published news posts', icon: 'list', family: TypeFamily::Live)]
 final class LatestNews extends BlockComponent
 {
     protected string $tag = 'section';

@@ -9,12 +9,13 @@ use App\Jobs\JobSearch;
 use Preflow\Blocks\Block;
 use Preflow\Blocks\BlockComponent;
 use Preflow\Blocks\BlockField;
+use Preflow\Data\TypeFamily;
 
 /**
  * The newest published jobs as cards, with a link to all of them. Its data comes from the app
  * (JobSearch), not from the page: staff only choose where it goes and how many it shows.
  */
-#[Block(key: 'latest_jobs', label: 'Latest jobs', group: 'Jobs', description: 'The newest published jobs')]
+#[Block(key: 'latest_jobs', label: 'Latest jobs', group: 'Jobs', description: 'The newest published jobs', icon: 'list', family: TypeFamily::Live)]
 final class LatestJobsBlock extends BlockComponent
 {
     protected string $tag = 'section';

@@ -856,10 +856,20 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
   editor as "Unknown block" (removable), and skipped on the website.
 
 **Editing:**
-- Collapsible cards with move up/down, duplicate and remove. Duplicate is server-rendered:
-  the copy gets fresh ids throughout and keeps other languages and uploaded files.
-- Grouped "Add block" buttons that load a server-rendered card (htmx, served from the
-  admin itself).
+- "Sections · 7 blocks" over the cards, with **Collapse all** / **Expand all**.
+- Collapsible cards (since 0.75: grip, the block's tile, label and a one-line summary, the "…" menu
+  and the chevron; an open card has an accent border). The tile is tinted by the block's family,
+  `#[Block(family: TypeFamily::Page)]` (preflow/blocks), with its `icon`. The "…" menu holds Move
+  up, Move down, Duplicate and Remove. Duplicate is server-rendered: the copy gets fresh ids
+  throughout and keeps other languages and uploaded files. An invalid card shows its first error in
+  the summary's place; an unknown or too deeply nested one is a dashed card with a warning.
+- **Add block** opens a popover (since 0.75) with a search ("Add a block — type to filter 14") and
+  the groups in two columns: typing filters by label and description, Enter adds the first match,
+  the arrows move, Escape closes. Without script the groups are listed in place. A field that allows
+  one block type has its one "Add …" button. Each loads a server-rendered card (htmx, served from
+  the admin itself).
+- In the live preview the card that is open or has the focus stays outlined with its label until
+  another card is selected.
 - Inputs are named by block id (`sections[<uid>][headline]`), and each card carries its
   own order input, so reordering never renumbers anything.
 - Errors show on the card, with a summary that links to it.
@@ -943,6 +953,12 @@ sharing), Revisions, System fields, the extension panels and the Details card, a
 record actions, Discard changes, Unpublish and Delete. The share texts are the **SEO & sharing**
 tab next to **Content**.
 
+The **preview bar** (Split and Preview) has the device widths, the address being previewed (host
+of `app.url` and path; "· draft" while it differs from what is live), **Copy preview link** (it makes
+the share link, which lands under the bar with Revoke, and copies it: "Link copied · 7 days" from the
+link's real lifetime), **Open** (the live address in a new tab, while the record is on the site) and
+**Focus**. A record without an address in this language yet gets the device widths and Focus only.
+
 Keys: **⌘S** / **Ctrl+S** saves the draft (also while typing; the browser's save dialog does not
 open), **⌘↵** / **Ctrl+Enter** publishes (where Publish is there), **Esc** closes the side panel on a
 phone, **?** lists them.
@@ -952,7 +968,9 @@ and name it with the HTML `form` attribute (`form="folio-record"`), so a click s
 the record, the side panel's too, with the form's CSRF token; no script copies values. Controls a
 field's script adds later inside the side panel get the attribute too (`editor-frame.js`), and every
 edit of a control of the form is announced as `folio:edit` on it, the autosave trigger. A side field's
-`<button>` without `type="button"` becomes a submit of the record form.
+`<button>` without `type="button"` becomes a submit of the record form. A control that is no record
+data (a search or filter box of a field) carries `data-folio-no-edit` (on itself or a parent): typing
+in it marks nothing unsaved, saves nothing and does not render the preview again.
 
 **Upgrading to 0.75:** a site that overrides `form.twig` (an `ActionResolver` override or a theme)
 must give its submit buttons and any control outside the form `form="folio-record"`, and render the
@@ -960,7 +978,11 @@ new blocks (`topbar_lead`, the side panel partial `partials/_side_panel.twig`). 
 `.folio-form-actions` box and its `.folio-publish-at` are gone (the create drawer's buttons are
 `.folio-drawer-actions`; `.folio-form-buttons` stays for other forms' button rows); the record actions of extensions moved from the topbar
 to the side panel's foot, the Copy preview link button to the preview bar. Read-only fields left the
-form column for the side panel's System fields.
+form column for the side panel's System fields. The blocks editor's cards and picker changed markup
+(`blocks/card.twig`, `blocks/field.twig`): the move, duplicate and remove buttons are items of the
+card's "…" menu (same `data-block-*` attributes), `.folio-block-actions` is gone, the chevron
+(`.folio-block-toggle`, `data-block-collapse`) is the card's one toggle, and the picker's script is
+`blocks.js` (loaded with any blocks field, after `admin.js`).
 
 **Editing:**
 - **Save draft** stores half-finished work and runs no validation rules.

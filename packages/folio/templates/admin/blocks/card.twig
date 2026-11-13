@@ -1,22 +1,32 @@
+{% import '@folio/admin/partials/_type_icon.twig' as types -%}
+{% set icons = folio_asset('icons.svg') -%}
+{% set menu_label = t('folio.blocks.actions', {label: label}) -%}
+{# A block card (board PageEditor): grip · the block's tile, label and one-line summary (or its first
+   error) · the "…" menu (the list rows' .folio-menu: Move up, Move down, Duplicate, Remove) · the
+   collapse chevron, the card's one toggle. A click on the title toggles it too (blocks.js). -#}
 <div class="folio-block-card{% if open %} is-open{% endif %}{% if has_errors %} has-error{% endif %}" id="block-{{ uid }}" data-block-card data-block-uid="{{ uid }}">
     <input type="hidden" name="{{ name }}[_order][]" value="{{ uid }}">
     <input type="hidden" name="{{ name }}[{{ uid }}][_block]" value="{{ key }}">
     <div class="folio-block-head">
-        <button type="button" class="folio-block-handle" data-block-handle aria-roledescription="{{ t('folio.blocks.drag_handle') }}" aria-label="{{ t('folio.blocks.reorder', {label: label}) }}" title="{{ t('folio.blocks.drag_help') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-grip"></use></svg></button>
-        <button type="button" class="folio-block-toggle" data-block-collapse aria-expanded="{{ open ? 'true' : 'false' }}">
-            <svg class="folio-icon folio-block-chevron" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg>
-            <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ icon }}"></use></svg>
+        <button type="button" class="folio-block-handle" data-block-handle aria-roledescription="{{ t('folio.blocks.drag_handle') }}" aria-label="{{ t('folio.blocks.reorder', {label: label}) }}" title="{{ t('folio.blocks.drag_help') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-grip"></use></svg></button>
+        <span class="folio-block-title" data-block-title>
+            {{ types.type_icon(family|default(null), icon) }}
             <span class="folio-block-label">{{ label }}</span>
-            {% if summary %}<span class="folio-block-summary">{{ summary }}</span>{% endif %}
-        </button>
-        <div class="folio-block-actions">
-            <button type="button" class="btn btn-ghost btn-icon" data-block-up aria-label="{{ t('folio.common.move_up') }}" title="{{ t('folio.common.move_up') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-up"></use></svg></button>
-            <button type="button" class="btn btn-ghost btn-icon" data-block-down aria-label="{{ t('folio.common.move_down') }}" title="{{ t('folio.common.move_down') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-down"></use></svg></button>
-            <button type="button" class="btn btn-ghost btn-icon" data-block-duplicate aria-label="{{ t('folio.common.duplicate') }}" title="{{ t('folio.common.duplicate') }}"
-                    hx-post="{{ duplicate_url }}" hx-include="closest [data-block-card], [name=_csrf_token]"
-                    hx-target="closest [data-block-card]" hx-swap="afterend" hx-disabled-elt="this"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-copy"></use></svg></button>
-            <button type="button" class="btn btn-ghost btn-icon" data-tone="danger" data-block-remove aria-label="{{ t('folio.common.remove') }}" title="{{ t('folio.common.remove') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
-        </div>
+            {% if error|default(null) %}<span class="folio-block-summary is-error">{{ error }}</span>{% elseif summary %}<span class="folio-block-summary">{{ summary }}</span>{% endif %}
+        </span>
+        <details class="folio-row-menu folio-block-menu" data-folio-row-menu>
+            <summary class="btn btn-ghost btn-icon btn-sm" aria-label="{{ menu_label }}" title="{{ menu_label }}" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dots"></use></svg></summary>
+            <div class="folio-menu folio-row-menu-panel" role="menu" aria-label="{{ menu_label }}">
+                <button type="button" class="folio-menu-item" role="menuitem" data-block-up><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-up"></use></svg><span>{{ t('folio.common.move_up') }}</span></button>
+                <button type="button" class="folio-menu-item" role="menuitem" data-block-down><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-down"></use></svg><span>{{ t('folio.common.move_down') }}</span></button>
+                <button type="button" class="folio-menu-item" role="menuitem" data-block-duplicate
+                        hx-post="{{ duplicate_url }}" hx-include="closest [data-block-card], [name=_csrf_token]"
+                        hx-target="closest [data-block-card]" hx-swap="afterend" hx-disabled-elt="this"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-copy"></use></svg><span>{{ t('folio.common.duplicate') }}</span></button>
+                <div class="folio-menu-sep" role="separator"></div>
+                <button type="button" class="folio-menu-item is-danger" role="menuitem" data-block-remove><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg><span>{{ t('folio.common.remove') }}</span></button>
+            </div>
+        </details>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm folio-block-toggle" data-block-collapse aria-expanded="{{ open ? 'true' : 'false' }}"><svg class="folio-icon folio-block-chevron" aria-hidden="true"><use href="{{ icons }}#ui-down"></use></svg><span class="folio-sr">{{ label }}</span></button>
     </div>
     <div class="folio-block-body">
         {% for field in fields %}{{ field|raw }}{% endfor %}

@@ -149,6 +149,9 @@ return [
         'edit' => 'Edit :label',
         'breadcrumb' => 'Breadcrumb',
         'copy_preview_link' => 'Copy preview link',
+        'link_copied_days' => 'Link copied · :days day|Link copied · :days days',
+        'preview_draft' => '· draft',
+        'open_live' => 'Open the live page in a new tab',
         'view' => 'View',
         'view_form' => 'Form',
         'view_split' => 'Split',
@@ -389,6 +392,11 @@ return [
         'count' => ':count block|:count blocks',
         'min' => 'Add at least :count block.|Add at least :count blocks.',
         'max' => 'At most :count block allowed.|At most :count blocks allowed.',
+        'actions' => 'Actions for :label',
+        'collapse_all' => 'Collapse all',
+        'expand_all' => 'Expand all',
+        'search' => 'Add a block — type to filter :count',
+        'no_match' => 'No block matches “:query”.',
     ],
     // Field editors.
     'fields' => [

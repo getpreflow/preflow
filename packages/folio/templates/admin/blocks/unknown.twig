@@ -1,12 +1,16 @@
+{% set icons = folio_asset('icons.svg') -%}
+{# A block whose class is gone: a dashed card with a warning and "Remove"; the stored data goes back as _raw. -#}
 <div class="folio-block-card is-unknown" id="block-{{ uid }}" data-block-card data-block-uid="{{ uid }}">
     <input type="hidden" name="{{ name }}[_order][]" value="{{ uid }}">
     <input type="hidden" name="{{ name }}[{{ uid }}][_block]" value="{{ key }}">
     <input type="hidden" name="{{ name }}[{{ uid }}][_raw]" value="{{ raw }}">
     <div class="folio-block-head">
-        <span class="folio-block-label">{{ t('folio.blocks.unknown', {key: key}) }}</span>
-        <span class="folio-block-summary">{{ t('folio.blocks.unknown_help') }}</span>
-        <div class="folio-block-actions">
-            <button type="button" class="btn btn-ghost btn-icon" data-tone="danger" data-block-remove aria-label="{{ t('folio.common.remove') }}" title="{{ t('folio.common.remove') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg></button>
-        </div>
+        <span class="folio-type-icon is-warning" aria-hidden="true"><svg class="folio-icon"><use href="{{ icons }}#ui-warn"></use></svg></span>
+        <span class="folio-block-title">
+            <span class="folio-block-label">{{ t('folio.blocks.unknown', {key: key}) }}</span>
+            <span class="folio-block-summary">{{ t('folio.blocks.unknown_help') }}</span>
+        </span>
+        <button type="button" class="btn btn-ghost btn-sm" data-tone="danger" data-block-remove>
+            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg><span>{{ t('folio.common.remove') }}</span></button>
     </div>
 </div>

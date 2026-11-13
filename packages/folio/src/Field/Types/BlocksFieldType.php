@@ -446,20 +446,42 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                     'label' => \Preflow\Folio\FolioText::label($definition->label),
                     'icon' => $definition->icon ?? 'block',
                     'description' => $definition->description !== null ? \Preflow\Folio\FolioText::label($definition->description) : null,
+                    // The tile's tint (#[Block(family: …)]); admin.css maps it to colours.
+                    'family' => $definition->family,
                     'url' => $this->adminPrefix . '/_blocks/' . rawurlencode($definition->key) . '/new?'
                         . http_build_query(['name' => $name, 'locale' => $locale, 'depth' => $depth], '', '&', PHP_QUERY_RFC3986),
                 ];
             }
         }
 
+        // The picker's search: each item is found by its label and description (lower case, as typed).
+        $total = 0;
+        foreach ($groups as $group => $items) {
+            foreach ($items as $i => $item) {
+                $groups[$group][$i]['search'] = mb_strtolower(trim($item['label'] . ' ' . ($item['description'] ?? '')));
+                $total++;
+            }
+        }
+        // "· 2 blocks", and both plural forms for admin.js, which keeps the count current as cards come and go.
+        $forms = explode('|', \Preflow\Folio\FolioText::get('folio.blocks.count'));
+
         return $this->render('@folio/admin/blocks/field.twig', [
             'name' => $name,
             'label' => $label,
             'help' => $help,
             'cards' => $cards,
+            'count' => count($cards),
+            'count_text' => \Preflow\Folio\FolioText::choice('folio.blocks.count', count($cards)),
+            'count_one' => $forms[0],
+            'count_other' => $forms[1] ?? $forms[0],
             'errors' => $errors,
             'summary' => $summary,
+            // Invalid cards are rendered open: then "Collapse all", else "Expand all".
+            'any_open' => $summary !== [],
             'groups' => $groups,
+            'total' => $total,
+            // One popover per field: its id follows the field's name (unique in the form, nested ones too).
+            'picker_id' => 'folio-picker-' . hash('xxh3', $name),
             'single' => count($groups) === 1 && count(reset($groups) ?: []) === 1,
         ]);
     }
@@ -520,12 +542,27 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             ));
         }
 
+        // An invalid block shows its first message where the summary was ("Headline: This field is required.").
+        $error = null;
+        foreach ($errors as $key => $messages) {
+            $message = is_array($messages) ? (string) (reset($messages) ?: '') : (string) $messages;
+            if ($message === '') {
+                continue;
+            }
+            $field = explode('.', (string) $key)[0];
+            $def = $definition->fields[$field] ?? null;
+            $error = $def !== null ? self::fieldLabel($def->label, $field) . ': ' . $message : $message;
+            break;
+        }
+
         return $this->render('@folio/admin/blocks/card.twig', [
             'uid' => $uid,
             'key' => $definition->key,
             'label' => \Preflow\Folio\FolioText::label($definition->label),
             'icon' => $definition->icon ?? 'block',
+            'family' => $definition->family,
             'summary' => $summary,
+            'error' => $error,
             'name' => $namePrefix,
             'fields' => $fields,
             'open' => $open || $errors !== [],
@@ -632,10 +669,10 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
     public function assets(): array
     {
-        // htmx: picker and duplicate fragments; admin.js: collapse, move, remove.
-        // Plus whatever the fields inside any block need (Trix for rich text…),
-        // since cards can be added after the page loaded.
-        $assets = ['htmx.js', 'admin.js'];
+        // htmx: picker and duplicate fragments; admin.js: collapse, move, remove; blocks.js (after it):
+        // the picker's popover, the cards' menus, Collapse all. Plus whatever the fields inside any
+        // block need (Trix for rich text…), since cards can be added after the page loaded.
+        $assets = ['htmx.js', 'admin.js', 'blocks.js'];
         foreach ($this->blocks->all() as $definition) {
             foreach ($definition->fields as $field) {
                 if ($field->type !== $this->key() && $this->fieldTypes->has($field->type)) {

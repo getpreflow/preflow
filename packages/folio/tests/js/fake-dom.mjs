@@ -1,5 +1,6 @@
 // A minimal DOM for node tests of admin.js: elements, attributes, classes, simple selectors
-// ("tag#id.class[attr][attr=\"v\"]", descendants with a space, groups with a comma), events,
+// ("tag#id.class[attr][attr=\"v\"]", descendants with a space, groups with a comma, a leading
+// ":scope >"), insertBefore, events,
 // form owners (form="…") and requestSubmit(), a MutationObserver for appended elements, and a
 // window that delivers postMessage events.
 // load(file) runs a browser script against it.
@@ -117,6 +118,17 @@ class Element {
         notifyAdded(this, child);
         return child;
     }
+    /** insertBefore(child, ref): child moves to just before ref (to the end without one). */
+    insertBefore(child, ref) {
+        if (!ref) { return this.appendChild(child); }
+        if (child.parentNode) { child.remove(); }
+        const at = this.children.indexOf(ref);
+        if (at < 0) { throw new Error('fake-dom: insertBefore reference is not a child'); }
+        child.parentNode = this;
+        this.children.splice(at, 0, child);
+        notifyAdded(this, child);
+        return child;
+    }
     removeChild(child) { child.remove(); return child; }
     remove() {
         if (!this.parentNode) { return; }
@@ -173,7 +185,19 @@ class Element {
         return null;
     }
     descendants() { return this.children.flatMap((c) => [c, ...c.descendants()]); }
-    querySelectorAll(selector) { return this.descendants().filter((el) => el.matches(selector)); }
+    /** Also ":scope > a b": the children matching a (or their descendants matching b), as a group of its own. */
+    querySelectorAll(selector) {
+        const scoped = selector.split(',').map((g) => g.trim()).filter((g) => g.startsWith(':scope'));
+        const plain = selector.split(',').map((g) => g.trim()).filter((g) => !g.startsWith(':scope'));
+        const found = new Set(plain.length ? this.descendants().filter((el) => el.matches(plain.join(','))) : []);
+        scoped.forEach((group) => {
+            const [first, ...rest] = group.replace(/^:scope\s*>\s*/, '').split(/\s+/);
+            this.children.filter((c) => c.matches(first)).forEach((c) => {
+                if (rest.length === 0) { found.add(c); } else { c.querySelectorAll(rest.join(' ')).forEach((d) => found.add(d)); }
+            });
+        });
+        return this.descendants().filter((el) => found.has(el));
+    }
     querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
     getBoundingClientRect() { return { left: 0, top: 0, width: 0, height: 0 }; }
 }

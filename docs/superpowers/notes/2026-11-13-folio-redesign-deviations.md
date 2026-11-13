@@ -103,7 +103,7 @@ Each row carries exactly one label.
 | Ink layer: marks in `icons.svg`, `.folio-ink-marks`, the marks macro, ink empty states, the 404 and forbidden ink cards (today forbidden is a plain card and an unknown admin path answers the plain text "Unknown type"), the sign-in switched to the shared classes (`.folio-caret` and the save status with caret came with the editor in 0.75) | Ink | 0.76 |
 | The removal dialog restyle (radio cards, "Now: …") | LibOverlays | 0.76 (with redirects) |
 | Styled confirm dialog, AI "Write a draft" in rich text, the "+" insert line and `/` block picker, ⌘K palette | LibOverlays, PageEditor, RecordEditor | Proposal |
-| The share link's "Link copied · 7 days" state | LibOverlays | 0.75 (editor preview bar) |
+| The share link's "Link copied · 7 days" state | LibOverlays | Fixed in 0.75 |
 
 ## Lists (0.75, Task 3)
 
@@ -139,4 +139,20 @@ Captured on a scratch starter-folio (a page with blocks, a news post in English 
 | The search result is the saved one; typing a share title does not update it until autosave or a reload. | Proposal | Updating it live needs the same fallbacks the server applies (share text, then the type's fields, then the site's description) in script. |
 | The tab bar sits inside the 760px column; the PageEditor board runs its underline across the whole form pane. | Adaptation | The column is the reading width; at 480px next to the preview the two are the same. |
 | The publish-at hint ("in 2 days") comes from a small `relativeWhen()` in `editor-frame.js`, not from the date field's relative hint. | 0.75 | Task 6 builds the date field's hint helper; `relativeWhen()` (marked `TODO(Task 6)`) is replaced by it then, so there is one helper. |
-| The extension record actions moved to the side panel's foot and the Copy preview link to the preview bar. The board shows neither. | Adaptation | The brief's places for them; Task 5 restyles the preview bar. |
+| The extension record actions moved to the side panel's foot. The board shows none. | Adaptation | The brief's place for them. (Copy preview link moved to the preview bar, where the board has it; Task 5.) |
+
+## Blocks and preview (0.75, Task 5)
+
+Captured on a scratch starter-folio (a draft page with seven blocks: two heroes, two texts, latest jobs, latest news and an unknown block; the starter's blocks now declare icons and families) at 1440 and 375, light and dark, beside the PageEditor board: the first card open and selected in the split preview, the picker open, filtered and empty, a card's menu open, an invalid card after Publish, and "Link copied · 7 days". No page scrolls sideways at 375.
+
+| Difference | Label | Why / what |
+|---|---|---|
+| The picker's popover opens in the page flow under the "Add block" button, which stays (pressed); the board shows the popover where the button was. | Adaptation | Escape returns the focus to the button, so it has to stay; in the flow the popover is never cut off by the form column's scroll box and works the same on a phone. |
+| Below 360px of form width the picker lists its items in one column; the board shows two. | Adaptation | Two columns of labels at phone width cut most names off. |
+| Every open card has the accent border; the board shows one open card. | Adaptation | The brief: open = selected. Several cards can be open (Expand all); the preview outlines the one last opened or focused. |
+| In a form column under 380px wide the cards show no summary line, except an error. | Adaptation | Label and summary do not both fit at phone width; an error must still show. |
+| After Copy preview link the share answer (the address, Copy, Revoke all links) shows under the preview bar; the board shows only the button's "Link copied · 7 days". | Adaptation | Revoke has no other place, and without a clipboard (an http address, a browser that refuses) the answer is how the link is copied. |
+| The preview bar keeps the Focus toggle; the board does not show it. | Adaptation | The brief keeps it (focus mode: opening a block from the preview closes the others). |
+| The URL pill's dot is accent while the page is live and unchanged; the board shows only the draft's warning dot. | Adaptation | A dot in both states keeps the pill's layout steady; the colour says which. |
+| The URL pill shows the host of `app.url` without its port (`localhost/home-2` on a dev server). | Adaptation | As the side panel's search result: the canonical address, not the host the admin runs on. |
+

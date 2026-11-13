@@ -32,6 +32,9 @@
 .folio-pe-box[hidden] { display: none; }
 .folio-pe-box.is-hover { border: 2px solid var(--pe-hover); }
 .folio-pe-box.is-active { border: 2px solid var(--pe-accent); box-shadow: 0 0 0 4px var(--pe-halo); }
+/* The block selected in the form (board PageEditor): the accent outline with its label at the top left. */
+.folio-pe-box.is-selected { border: 2px solid var(--pe-accent); border-radius: 8px; box-shadow: 0 0 0 4px var(--pe-halo); }
+.folio-pe-box.is-selected .folio-pe-label { top: -2px; left: -2px; border-radius: 6px 0 6px 0; }
 /* The field under the pointer: a soft tint with an underline, like a text cursor target. */
 .folio-pe-box.is-field { border-radius: 2px; border-bottom: 2px solid var(--pe-accent); background: var(--pe-tint); transition: none; }
 

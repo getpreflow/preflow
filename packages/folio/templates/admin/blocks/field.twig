@@ -1,8 +1,14 @@
+{% import '@folio/admin/partials/_type_icon.twig' as types -%}
+{% set icons = folio_asset('icons.svg') -%}
+{# The blocks editor (board PageEditor): "Sections · N blocks" with Collapse all, the cards, and the
+   picker. With script (blocks.js) the picker is an "Add block" button opening a popover with a
+   search; without it the groups stay listed in place. A field with one block type keeps one button. -#}
 <div class="folio-blocks" data-blocks-field>
     <div class="folio-blocks-head">
-        <span class="form-label">{{ label }}</span>
-        {% if help %}<p class="form-help">{{ help }}</p>{% endif %}
+        <span class="form-label">{{ label }} <span class="folio-blocks-count" data-blocks-count data-one="{{ count_one }}" data-other="{{ count_other }}">· {{ count_text }}</span></span>
+        <button type="button" class="folio-blocks-collapse-all" data-blocks-collapse-all data-text-collapse="{{ t('folio.blocks.collapse_all') }}" data-text-expand="{{ t('folio.blocks.expand_all') }}" hidden>{{ any_open|default(false) ? t('folio.blocks.collapse_all') : t('folio.blocks.expand_all') }}</button>
     </div>
+    {% if help %}<p class="form-help folio-blocks-help">{{ help }}</p>{% endif %}
     {% for error in errors %}<div class="form-error">{{ error }}</div>{% endfor %}
     {% if summary is not empty %}
         <ul class="folio-blocks-errors" role="alert">
@@ -12,21 +18,39 @@
     <div class="folio-sr" aria-live="assertive" data-blocks-live></div>
     <div class="folio-blocks-list" data-blocks-list>
         {% for card in cards %}{{ card|raw }}{% endfor %}
-        <div class="folio-blocks-picker" data-blocks-picker>
-            {% if not single %}<span class="folio-blocks-picker-label"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.blocks.add_block') }}</span>{% endif %}
-            {% for group, items in groups %}
-                <div class="folio-blocks-group">
-                    {% if not single %}<span class="folio-blocks-group-label">{{ group }}</span>{% endif %}
-                    {% for item in items %}
-                        <button type="button" class="btn btn-secondary folio-blocks-add"
-                                hx-get="{{ item.url }}" hx-target="closest [data-blocks-picker]" hx-swap="beforebegin" hx-disabled-elt="this"
-                                {% if item.description %}title="{{ item.description }}"{% endif %}>
-                            <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ item.icon }}"></use></svg>
-                            {% if single %}{{ t('folio.blocks.add', {label: item.label}) }}{% else %}{{ item.label }}{% endif %}
-                        </button>
+        <div class="folio-blocks-picker{% if not single %} has-popover{% endif %}" data-blocks-picker>
+            {% if single %}
+                {% for group, items in groups %}{% for item in items %}
+                    <button type="button" class="btn btn-secondary folio-blocks-add"
+                            hx-get="{{ item.url }}" hx-target="closest [data-blocks-picker]" hx-swap="beforebegin" hx-disabled-elt="this"
+                            {% if item.description %}title="{{ item.description }}"{% endif %}>
+                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-plus"></use></svg>
+                        {{ t('folio.blocks.add', {label: item.label}) }}
+                    </button>
+                {% endfor %}{% endfor %}
+            {% else %}
+                {% set search_text = t('folio.blocks.search', {count: total}) %}
+                <button type="button" class="btn btn-secondary folio-blocks-open" data-blocks-picker-open aria-haspopup="dialog" aria-expanded="false" aria-controls="{{ picker_id }}" hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-plus"></use></svg><span>{{ t('folio.blocks.add_block') }}</span></button>
+                <div class="folio-blocks-popover" id="{{ picker_id }}" aria-label="{{ t('folio.blocks.add_block') }}" data-blocks-popover>
+                    <span class="folio-blocks-picker-label"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-plus"></use></svg>{{ t('folio.blocks.add_block') }}</span>
+                    <label class="folio-blocks-search" data-blocks-search-box hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg><input type="search" class="folio-blocks-search-input" data-blocks-search data-folio-no-edit placeholder="{{ search_text }}" aria-label="{{ search_text }}" autocomplete="off"></label>
+                    {% for group, items in groups %}
+                        <div class="folio-blocks-group" data-blocks-group>
+                            <span class="folio-blocks-group-label" id="{{ picker_id }}-g{{ loop.index }}">{{ group }}</span>
+                            <div class="folio-blocks-items" role="group" aria-labelledby="{{ picker_id }}-g{{ loop.index }}">
+                                {% for item in items %}
+                                    <button type="button" class="folio-blocks-add" data-blocks-item data-search="{{ item.search }}"
+                                            hx-get="{{ item.url }}" hx-target="closest [data-blocks-picker]" hx-swap="beforebegin" hx-disabled-elt="this"
+                                            {% if item.description %}title="{{ item.description }}"{% endif %}>
+                                        {{ types.type_icon(item.family|default(null), item.icon) }}<span>{{ item.label }}</span>
+                                    </button>
+                                {% endfor %}
+                            </div>
+                        </div>
                     {% endfor %}
+                    <p class="folio-blocks-empty" data-blocks-empty data-text="{{ t('folio.blocks.no_match') }}" hidden></p>
                 </div>
-            {% endfor %}
+            {% endif %}
         </div>
     </div>
 </div>

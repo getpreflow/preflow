@@ -526,7 +526,7 @@
 
         // Edits of the form's own controls and of those outside it (the side panel's form="…" fields).
         ['input', 'change'].forEach(function (name) {
-            document.addEventListener(name, function (e) { if (formOf(e.target) === form) { schedule(); } });
+            document.addEventListener(name, function (e) { if (isEdit(e.target) && formOf(e.target) === form) { schedule(); } });
         });
 
         // Focus mode: opening a block from the preview closes the others.
@@ -540,11 +540,16 @@
             });
         }
 
-        // Whatever has focus in the form is outlined in the preview.
+        // Whatever has focus in the form is outlined in the preview: a block card stays selected (outlined
+        // with its label) until another card is; a top-level field is outlined while it has focus.
         form.addEventListener('focusin', function (e) {
             var card = e.target.closest('[data-block-card]');
             var name = typeof e.target.name === 'string' ? e.target.name : '';
-            highlight(card ? card.getAttribute('data-block-uid') : null, card ? null : (name.split('[')[0] || null), true);
+            if (card) {
+                highlight(card.getAttribute('data-block-uid'), null, true, true);
+            } else {
+                highlight(null, name.split('[')[0] || null, true, false);
+            }
         });
 
         preview.setMode = setMode;
@@ -612,23 +617,35 @@
                 cur[j].outerHTML = next[j].outerHTML;
             }
         }
-        if (lastHighlight) {
-            preview.post({ type: 'highlight', uid: lastHighlight.uid, field: lastHighlight.field, scroll: false });
-        }
+        repostHighlights();
         return true;
     }
 
     // ---- Click-to-edit: preview <-> form ----------------------------------
 
     var lastHighlight = null;
+    var selectedBlock = null; // the card selected in the form: its uid (sticky in the preview)
 
-    function highlight(uid, field, scroll) {
+    // sticky: a block card was opened or focused; the preview keeps its outline and label until another
+    // card is selected. Otherwise (a top-level field) the outline follows the focus.
+    function highlight(uid, field, scroll, sticky) {
         if (!preview) { return; }
-        var key = (uid || '') + '|' + (field || '');
+        sticky = !!sticky && !!uid;
+        var key = (uid || '') + '|' + (field || '') + '|' + (sticky ? 's' : '');
         var now = Date.now();
         if (lastHighlight && lastHighlight.key === key && now - lastHighlight.at < 150) { return; }
-        lastHighlight = { key: key, at: now, uid: uid, field: field };
-        preview.post({ type: 'highlight', uid: uid, field: field, scroll: !!scroll });
+        lastHighlight = { key: key, at: now, uid: uid, field: field, sticky: sticky };
+        if (sticky) { selectedBlock = uid; }
+        preview.post({ type: 'highlight', uid: uid, field: field, scroll: !!scroll, sticky: sticky });
+    }
+
+    // After a re-render: the selected card again, then the field that has the focus.
+    function repostHighlights() {
+        if (!preview) { return; }
+        if (selectedBlock) { preview.post({ type: 'highlight', uid: selectedBlock, field: null, scroll: false, sticky: true }); }
+        if (lastHighlight && !lastHighlight.sticky) {
+            preview.post({ type: 'highlight', uid: lastHighlight.uid, field: lastHighlight.field, scroll: false, sticky: false });
+        }
     }
 
     function setOpen(card, open) {
@@ -706,7 +723,7 @@
         var anchor = card || (target && (target.closest('.form-group') || target));
         if (anchor) { anchor.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
         if (target && target.focus) { target.focus({ preventScroll: true }); }
-        highlight(uid, uid ? null : field, false);
+        highlight(uid, uid ? null : field, false, !!uid);
     }
 
     function onPreviewMessage(data) {
@@ -714,8 +731,8 @@
         var field = typeof data.field === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(data.field) ? data.field : null;
         if (data.type === 'select') {
             selectInForm(uid, field);
-        } else if (data.type === 'ready' && lastHighlight) {
-            preview.post({ type: 'highlight', uid: lastHighlight.uid, field: lastHighlight.field, scroll: false });
+        } else if (data.type === 'ready') {
+            repostHighlights();
         }
     }
 
@@ -1012,6 +1029,19 @@
         if (form) { form.dispatchEvent(new Event('change', { bubbles: true })); }
     }
 
+    // A list's "Add block" button (the picker's first visible button).
+    function pickerButton(list) {
+        var picker = null;
+        for (var i = 0; i < list.children.length; i++) {
+            if (list.children[i].hasAttribute('data-blocks-picker')) { picker = list.children[i]; }
+        }
+        var buttons = picker ? picker.querySelectorAll('button') : [];
+        for (var j = 0; j < buttons.length; j++) {
+            if (!buttons[j].hidden) { return buttons[j]; }
+        }
+        return null;
+    }
+
     function onBlockClick(e) {
         // Duplicate is handled by htmx (server-rendered copy with fresh uids).
         var btn = e.target.closest ? e.target.closest('[data-block-collapse],[data-block-up],[data-block-down],[data-block-remove]') : null;
@@ -1030,9 +1060,13 @@
         } else if (btn.hasAttribute('data-block-remove')) {
             var list = card.parentNode;
             var next = card.nextSibling;
+            var stay = siblingCard(card, 1) || siblingCard(card, -1);
             list.removeChild(card);
             notifyChange(list);
             offerUndo(card, list, next);
+            // The focus stays in the list: on the next card (or the one before), else on "Add block".
+            var focusTo = stay ? stay.querySelector('[data-block-collapse]') : pickerButton(list);
+            if (focusTo) { focusTo.focus(); }
         }
         e.preventDefault();
     }
@@ -1238,6 +1272,12 @@
     // to let the page go; beforeunload asks the browser's own question only while no hook answered), and
     // .pending(): an autosaving form holds edits not saved yet ("Unsaved changes" or "Saving…").
 
+    // A control marked data-folio-no-edit (or inside such an element) is not record data: the block
+    // picker's search, a filter box. Typing in it is no edit: no unsaved mark, autosave or preview.
+    function isEdit(el) {
+        return !(el && el.closest && el.closest('[data-folio-no-edit]'));
+    }
+
     // The form a control belongs to: its form owner (form="…" included), else the form around it.
     function formOf(el) {
         if (!el) { return null; }
@@ -1261,6 +1301,7 @@
     }
 
     function onGuardEdit(e) {
+        if (!isEdit(e.target)) { return; }
         markDirty(formOf(e.target));
     }
 
@@ -1304,6 +1345,7 @@
     // trix-change of a control of an autosaving form (hx-post) is announced as "folio:edit" on the form,
     // which is its autosave trigger (hx-trigger="folio:edit delay:3s"). Controls added later count too.
     function onFormEdit(e) {
+        if (!isEdit(e.target)) { return; }
         var form = formOf(e.target);
         if (!form || !form.hasAttribute || !form.hasAttribute('hx-post')) { return; }
         form.dispatchEvent(new CustomEvent('folio:edit', { detail: { source: e.target, type: e.type } }));
@@ -1345,6 +1387,7 @@
     }
 
     function onNeedsChangeEdit(e) {
+        if (!isEdit(e.target)) { return; }
         var form = formOf(e.target);
         if (!form) { return; }
         document.querySelectorAll('[data-folio-needs-change-ready]').forEach(function (btn) {
@@ -1400,6 +1443,11 @@
 
     // What the editor frame (editor-frame.js) uses from here.
     window.Folio.formOf = formOf;
+    window.Folio.isEdit = isEdit;
+    // What blocks.js uses: select a block card in the preview (sticky outline with its label), and the
+    // list rows' "…" menus, which the block cards reuse (data-folio-row-menu).
+    window.Folio.preview = { select: function (uid) { highlight(uid, null, true, true); } };
+    window.Folio.menus = { init: initRowMenus, open: openRowMenu, close: closeRowMenu };
     window.Folio.submitWith = submitWith;
     window.Folio.saveState = { set: setSaveState, of: saveStateOf };
 

@@ -1546,6 +1546,7 @@ final class AdminController
             'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig'
                 && $this->can($type . ($isNew ? '.create' : '.edit')),
             'preview_url' => strtok($action, '?') . '/preview',
+            'preview_bar' => $this->previewBar($type, $typeDef, $values, $locale, $isNew, $publishing),
             'multilingual' => $multilingual,
             'languages' => $languages,
             'locale_errors' => $localeErrors,
@@ -1635,6 +1636,48 @@ final class AdminController
         }
 
         return $rows;
+    }
+
+    /**
+     * The preview bar's address (board PageEditor): the edited copy's address as "host/path" (the
+     * host of app.url; without one, the path), "· draft" while it differs from what is live, and
+     * the live address for Open (only while the record is on the site: a publishing type's live
+     * copy, at its own address; another type's stored record). Null address: the record has none in
+     * this language yet (a route parameter without a value), so the bar offers no copy or open.
+     *
+     * @param array<string, mixed>      $values
+     * @param array<string, mixed>|null $publishing publishingContext()
+     * @return array{address: ?string, url: ?string, draft: bool, live_url: ?string, copied: string}|null
+     */
+    private function previewBar(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew, ?array $publishing): ?array
+    {
+        if ($this->frontend->routeFor($type) === null) {
+            return null;
+        }
+        $base = rtrim($this->siteUrl ?? '', '/');
+        $host = $this->siteUrl !== null ? (string) parse_url($this->siteUrl, PHP_URL_HOST) : '';
+        $path = $this->frontend->urlFor(DynamicRecord::fromArray($typeDef, $values), $locale);
+
+        $livePath = null;
+        $id = $values[$typeDef->idField] ?? null;
+        if (!$isNew && is_scalar($id) && (string) $id !== '') {
+            if ($publishing === null) {
+                $livePath = $path; // saved is live
+            } elseif (($publishing['state'] ?? null) !== PublishState::Draft->value) {
+                $snapshot = $this->publisher->query($type)->byIds([(string) $id])->get()->items()[0] ?? null;
+                // The snapshot as a record of the type itself, so its address is the type's route.
+                $livePath = $snapshot !== null ? $this->frontend->urlFor(DynamicRecord::fromArray($typeDef, $snapshot->toArray()), $locale) : null;
+            }
+        }
+        $days = intdiv($this->previewLinks?->ttl() ?? 0, 86400);
+
+        return [
+            'address' => $path !== null ? ($host !== '' ? $host . $path : $path) : null,
+            'url' => $path !== null ? $base . $path : null,
+            'draft' => $publishing !== null && ($publishing['state'] ?? null) !== PublishState::Published->value,
+            'live_url' => $livePath !== null ? $base . $livePath : null,
+            'copied' => FolioText::choice('folio.form.link_copied_days', $days, ['days' => $days]),
+        ];
     }
 
     /**

@@ -56,6 +56,9 @@ final class Banner extends BlockComponent
   class, and the stored blocks stay yours. Two classes with the same key fail when the registry is first built (the first page with blocks, the editor, or `preflow optimize`), naming both.
 - **`label`**, **`group`**, **`icon`** and **`description`** are for an editor (Folio's lists the
   blocks by group). A block without a group is in `Block::DEFAULT_GROUP` ("Blocks").
+- **`family`** (since 0.75) says what kind of content the block holds, a `Preflow\Data\TypeFamily`
+  (`Page`, `Reference`, `Asset`, `Member`, `Shop`, `Live`): an editor tints the block's tile with it
+  (Folio's block cards and picker). Without one the tile is neutral.
 - **`#[BlockField]`** takes the options of a type field: `type`, `label`, `help`, `translatable`,
   `validate`, and `config` for anything else (select `options`, …). A `blocks` field nests blocks:
   `allowed` lists the keys it takes, `min` and `max` how many. Field names starting with `_` are

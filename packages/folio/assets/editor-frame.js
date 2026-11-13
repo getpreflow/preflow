@@ -1,7 +1,7 @@
 /* Folio editor frame (form.twig, 0.75): the save state, the Publish split button, the side panel (its
- * record controls and its phone sheet) and the editor's shortcuts. Vanilla, no build step; loaded after
- * admin.js on editor pages, and uses what admin.js shares on window.Folio (formOf, submitWith,
- * saveState, shortcuts, the folio:edit event).
+ * record controls and its phone sheet), the editor's shortcuts and the preview bar's Copy preview link.
+ * Vanilla, no build step; loaded after admin.js on editor pages, and uses what admin.js shares on
+ * window.Folio (formOf, submitWith, saveState, shortcuts, the folio:edit event).
  *
  * The record form (#folio-record) is posted by buttons outside it (the topbar) and holds controls
  * outside it (the side panel), all naming it with form="…". admin.js announces every edit of its
@@ -290,6 +290,31 @@
         }
     }
 
+    // ---- Preview bar: Copy preview link. The button posts the share route (htmx) and its answer lands
+    // under the bar (#folio-share: the address, Copy, Revoke). Then the link goes to the clipboard and the
+    // button reads "Link copied · 7 days" (its data-text-copied, the real lifetime) for a few seconds.
+    // Without a clipboard (or when the browser refuses) the answer under the bar is the way to copy it.
+    var COPIED_MS = 4000;
+
+    function onShareAnswer(e) {
+        var btn = e.detail && e.detail.elt;
+        if (!btn || !btn.hasAttribute || !btn.hasAttribute('data-folio-share-copy') || !e.detail.successful) { return; }
+        var box = document.getElementById('folio-share');
+        var input = box ? box.querySelector('.folio-share-url') : null;
+        var clipboard = typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard : null;
+        if (!input || !input.value || !clipboard) { return; }
+        clipboard.writeText(input.value).then(function () {
+            var status = btn.querySelector('.folio-share-status');
+            btn.classList.add('is-copied');
+            if (status) { status.textContent = btn.getAttribute('data-text-copied') || ''; }
+            clearTimeout(btn._folioCopied);
+            btn._folioCopied = setTimeout(function () {
+                btn.classList.remove('is-copied');
+                if (status) { status.textContent = ''; }
+            }, COPIED_MS);
+        }, function () {});
+    }
+
     function boot() {
         if (!Folio.saveState || !Folio.shortcuts || !Folio.submitWith) { return; } // admin.js did not run
         // The buttons' shortcut hints say Ctrl+ where there is no ⌘.
@@ -312,6 +337,7 @@
         document.addEventListener('click', onTabLink);
         document.addEventListener('invalid', onInvalidInSide, true);
         initEditorShortcuts();
+        document.addEventListener('htmx:afterRequest', onShareAnswer);
     }
 
     if (document.readyState === 'loading') {

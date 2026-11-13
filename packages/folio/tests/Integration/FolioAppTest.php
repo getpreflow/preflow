@@ -1347,6 +1347,10 @@ final class FolioAppTest extends TestCase
 
         $this->assertStringContainsString('data-blocks-field', $body);
         $this->assertStringContainsString('/folio/_assets/admin.js?v=', $body);
+        // The picker, the card menus and Collapse all (0.75): after admin.js, served with a version.
+        $this->assertMatchesRegularExpression('#<script src="/folio/_assets/blocks\.js\?v=[a-f0-9]+" defer></script>#', $body);
+        $this->assertGreaterThan(strpos($body, '/folio/_assets/admin.js?v='), strpos($body, '/folio/_assets/blocks.js?v='));
+        $this->assertSame(200, $this->get('/folio/_assets/blocks.js')->getStatusCode());
     }
 
     public function test_block_errors_render_inside_the_card(): void

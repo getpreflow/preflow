@@ -1,7 +1,9 @@
 /* Folio preview editor bridge: runs only inside the admin's preview iframe
    (injected by PreviewController, never on the public site). Clicking the page
    asks the editor to open that block or field; the editor asks back to
-   highlight what has focus in the form. Messages are same-origin only.
+   highlight what has focus in the form: the block card selected there stays outlined, with its
+   label, until another card is selected (a "sticky" highlight); a top-level field is outlined while
+   it has the focus. Messages are same-origin only.
    Outlines live in an overlay layer of their own: the site's elements get no
    classes, styles or children, so the preview lays out exactly like the page. */
 (function () {
@@ -18,10 +20,15 @@
     label.className = 'folio-pe-label';
     hoverBox.appendChild(label);
     var activeBox = box('is-active');
+    var selectedBox = box('is-selected');
+    var selectedLabel = document.createElement('span');
+    selectedLabel.className = 'folio-pe-label';
+    selectedBox.appendChild(selectedLabel);
     var fieldBox = box('is-field');
     var hovered = null;
     var hoveredField = null;
     var active = null;
+    var selected = null;
     var frame = 0;
 
     // The editor's word for an unnamed block, from the admin page's dictionary (same origin; folio.js.block).
@@ -60,6 +67,7 @@
         frame = 0;
         place(hoverBox, hovered);
         place(activeBox, active);
+        place(selectedBox, selected);
         place(fieldBox, hoveredField);
     }
 
@@ -120,12 +128,20 @@
         return field ? document.querySelector('[data-folio-field="' + CSS.escape(field) + '"]') : null;
     }
 
-    function highlight(uid, field, scroll) {
-        active = find(uid, field);
-        if (active && scroll) {
-            var r = active.getBoundingClientRect();
+    function highlight(uid, field, scroll, sticky) {
+        var target = find(uid, field);
+        if (sticky && uid) {
+            // The selected block: kept until another one is selected; the passing outline goes.
+            selected = target;
+            selectedLabel.textContent = target ? (target.getAttribute('data-folio-label') || blockWord()) : '';
+            active = null;
+        } else {
+            active = target;
+        }
+        if (target && scroll) {
+            var r = target.getBoundingClientRect();
             if (r.bottom < 0 || r.top > window.innerHeight) {
-                active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
             }
         }
         schedule();
@@ -136,7 +152,7 @@
         var data = e.data;
         if (!data || data.source !== 'folio-editor') { return; }
         if (data.type === 'highlight') {
-            highlight(data.uid || null, data.field || null, !!data.scroll);
+            highlight(data.uid || null, data.field || null, !!data.scroll, !!data.sticky);
         }
     });
 

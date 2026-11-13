@@ -36,7 +36,6 @@
     {% if previewable|default(false) %}<div class="folio-split" data-folio-split data-mode="form">
     <div class="folio-split-form">{% endif %}
     <div class="folio-form folio-editor">
-        {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
         {% if notice %}
             <div class="folio-notice" role="alert">
                 <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">{{ t('folio.form.reload') }}</a>{% endif %}</p>
@@ -165,16 +164,24 @@
     {% if previewable|default(false) %}</div>
     <div class="folio-resizer" data-folio-resizer role="separator" aria-orientation="vertical" aria-label="{{ t('folio.form.resize') }}" tabindex="0"></div>
     <section class="folio-split-stage" data-folio-stage data-preview-url="{{ preview_url }}" aria-label="{{ t('folio.form.live_preview') }}">
+        {# The preview bar (board PageEditor): device switch · the address being previewed ("· draft" while it
+           differs from what is live) · Copy preview link (the share route, then the clipboard; editor-frame.js) ·
+           Open the live page · Focus. Without an address (a route value missing in this language) only the
+           device switch and Focus. #}
+        {% set bar = preview_bar|default(null) %}
+        {% set share = publishing and publishing.share_url and bar and bar.address %}
         <div class="folio-preview-bar">
-            <span class="folio-preview-title"><span class="folio-live-dot"></span>{{ t('folio.form.live_preview') }}</span>
-            <div class="folio-segmented" role="group" aria-label="{{ t('folio.form.viewport') }}">
+            <div class="folio-segmented folio-device-switch" role="group" aria-label="{{ t('folio.form.viewport') }}">
                 {% for vp in [[t('folio.form.desktop'), '100%', 'ui-monitor'], [t('folio.form.tablet'), '768px', 'ui-tablet'], [t('folio.form.mobile'), '375px', 'ui-phone']] %}
-                    <button type="button" data-preview-viewport="{{ vp[1] }}" aria-pressed="{{ loop.first ? 'true' : 'false' }}" title="{{ vp[0] }}{{ loop.first ? '' : ' (' ~ vp[1] ~ ')' }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ vp[2] }}"></use></svg><span>{{ vp[0] }}</span></button>
+                <button type="button" data-preview-viewport="{{ vp[1] }}" aria-pressed="{{ loop.first ? 'true' : 'false' }}" aria-label="{{ vp[0] }}" title="{{ vp[0] }}{{ loop.first ? '' : ' (' ~ vp[1] ~ ')' }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ vp[2] }}"></use></svg></button>
                 {% endfor %}
             </div>
-            {% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost btn-sm folio-share-button" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg><span>{{ t('folio.form.copy_preview_link') }}</span></button>{% endif %}
+            {% if bar and bar.address %}<span class="folio-preview-url{% if bar.draft %} is-draft{% endif %}" title="{{ bar.url }}"><span class="folio-preview-dot" aria-hidden="true"></span><span class="folio-preview-address">{{ bar.address }}</span>{% if bar.draft %}<span class="folio-preview-draft">{{ t('folio.form.preview_draft') }}</span>{% endif %}</span>{% else %}<span class="folio-preview-spacer"></span>{% endif %}
+            {% if share %}<button type="button" class="btn btn-secondary btn-icon btn-sm folio-share-button" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]" data-folio-share-copy data-text-copied="{{ bar.copied }}" aria-label="{{ t('folio.form.copy_preview_link') }}" title="{{ t('folio.form.copy_preview_link') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg><span class="folio-share-status" aria-live="polite"></span></button>{% endif %}
+            {% if bar and bar.address and bar.live_url %}<a class="btn btn-secondary btn-icon btn-sm folio-preview-open" href="{{ bar.live_url }}" target="_blank" rel="noopener" aria-label="{{ t('folio.form.open_live') }}" title="{{ t('folio.form.open_live') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-external"></use></svg></a>{% endif %}
             <button type="button" class="btn btn-ghost btn-sm folio-focus-toggle" data-folio-focus aria-pressed="false" title="{{ t('folio.form.focus_help') }}">{{ t('folio.form.focus') }}</button>
         </div>
+        {% if share %}<div class="folio-share" id="folio-share"></div>{% endif %}
         <iframe class="folio-preview-frame" name="folio-preview-frame" title="{{ t('folio.form.live_preview_frame') }}"></iframe>
     </section>
     </div>{% endif %}
