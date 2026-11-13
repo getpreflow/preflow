@@ -7,14 +7,20 @@ namespace App\Jobs;
 use App\Models\Job;
 use App\Models\User;
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
+use Preflow\Publishing\PublishFailed;
 use Preflow\Publishing\Publisher;
+use Preflow\Publishing\RecordDeleter;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 
 /**
  * Every change an employer makes to a job goes through here, so the rules live in one place:
- * which keys a form may set and who owns a job. What the public sees is Folio's business:
- * a save changes the working copy, and only publish() puts it on the site, as in Folio's admin.
+ * which keys a form may set and who owns a job. Records are written through the RecordWriter, so
+ * the hooks and rules run as in the admin. What the public sees: a save changes the working copy,
+ * and only publish() puts it on the site.
  */
 final class JobWriter
 {
@@ -24,6 +30,8 @@ final class JobWriter
     public function __construct(
         private readonly DataManager $data,
         private readonly Publisher $publisher,
+        private readonly RecordWriter $writer,
+        private readonly RecordDeleter $deleter,
     ) {}
 
     /**
@@ -40,7 +48,7 @@ final class JobWriter
         // Made from the title once; editing the title later keeps the address people may have shared.
         $job->slug = Slugs::unique($this->data, Job::class, (string) $job->title);
 
-        $this->data->save($job);
+        $this->writer->create($this->record($job));
 
         return $job;
     }
@@ -53,7 +61,7 @@ final class JobWriter
     {
         $this->apply($job, $input);
         $job->updatedAt = self::now();
-        $this->data->save($job);
+        $this->writer->save($this->record($job));
 
         return $job;
     }
@@ -66,12 +74,17 @@ final class JobWriter
      */
     public function publish(Job $job, User $by): Job
     {
+        $record = $this->data->findType('job', (string) $job->uuid) ?? $this->record($job);
         if ($job->postedOn === null) {
             // The first publish dates the job. Later ones keep the date, so the job keeps its place.
             $job->postedOn = (new \DateTimeImmutable())->format('Y-m-d');
-            $this->data->save($job);
+            $record->set('postedOn', $job->postedOn);
         }
-        $this->publisher->publish($this->data->findType('job', (string) $job->uuid), 'employer:' . $by->email);
+        try {
+            $this->writer->save($record, new SaveOptions(by: 'employer:' . $by->email, publish: true));
+        } catch (PublishFailed $e) {
+            throw $e->cause(); // the draft is stored; the caller shows what to fix
+        }
 
         return $job;
     }
@@ -86,9 +99,8 @@ final class JobWriter
 
     public function delete(Job $job): void
     {
-        $this->data->delete($job);
-        // The published copy and the revisions are Folio's: without this the job would stay on the site.
-        $this->publisher->forget('job', (string) $job->uuid);
+        // Also the published copy and the revisions: without them the job would stay on the site.
+        $this->deleter->delete('job', [(string) $job->uuid]);
     }
 
     /** draft (never published), published, or changed (published, with edits not yet published). */
@@ -146,6 +158,28 @@ final class JobWriter
             throw new ValidationException(new ValidationResult($errors));
         }
         $job->fill($values);
+    }
+
+    /**
+     * The job's stored record with the model's values laid over it (a new one when it has none
+     * yet), so the columns the app does not own (version, schedule, translations) stay. The
+     * draft save skips the rules, so they run here: the employer gets the errors with the form.
+     *
+     * @throws ValidationException
+     */
+    private function record(Job $job): DynamicRecord
+    {
+        $def = $this->data->getTypeRegistry()->get('job');
+        $record = $this->data->findType('job', (string) $job->uuid) ?? new DynamicRecord($def, []);
+        $values = $job->toArray();
+        foreach ([$def->idField, ...array_keys($def->fields)] as $name) {
+            if (array_key_exists($name, $values)) {
+                $record->set($name, $values[$name]);
+            }
+        }
+        $this->data->validate($record, $job->rules());
+
+        return $record;
     }
 
     private static function now(): string
