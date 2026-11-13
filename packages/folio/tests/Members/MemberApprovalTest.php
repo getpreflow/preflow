@@ -368,7 +368,7 @@ final class MemberApprovalTest extends TestCase
         $html = $this->admin('/folio/member/' . $m->getId() . '/edit');
 
         $this->assertNull(Dom::first($html, '//button[normalize-space()="Accept" and not(@data-folio-tab)]'), 'no toolbar button');
-        $this->assertNull(Dom::first($html, '//*[@data-confirm]'));
+        $this->assertNull(Dom::first($html, '//*[@data-confirm and not(contains(@action, "/delete"))]'), 'no confirm but the side panel\'s Delete');
         $custom = $this->flow->container()->get(\Preflow\Folio\Extension\Customization\Customizations::class);
         foreach (['accept', 'decline'] as $name) {
             $this->assertSame('members.decide', $custom->action('member', $name)['permission'] ?? null);

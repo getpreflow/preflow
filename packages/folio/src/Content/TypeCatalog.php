@@ -175,6 +175,7 @@ final class TypeCatalog
                 throw new FrontendConfigException("Type \"{$key}\": list filter \"{$filter}\" names a hidden field; remove it from \"list.filters\" or unhide the field");
             }
         }
+        self::checkFieldLayout($key, $fields);
         $section = $data['section'] ?? $section;
         if (!is_string($section) || preg_match('/^[a-z][a-z0-9_-]*$/', $section) !== 1) {
             throw new FrontendConfigException("Type \"{$key}\": \"section\" must be a lowercase name (a-z, 0-9, _ and -, starting with a letter)");
@@ -207,6 +208,32 @@ final class TypeCatalog
             $group,
             $family,
         );
+    }
+
+    /** Where the editor puts a field: "main" (the form column, the default) or "side" (the side panel's Details card). */
+    public const array FIELD_PANELS = ['main', 'side'];
+
+    /** How wide a field is in the form column: "full" (the default) or "half" (two half fields share a row). */
+    public const array FIELD_WIDTHS = ['full', 'half'];
+
+    /**
+     * The editor layout keys of the type's fields ("panel", "width"; since 0.75): a value outside
+     * FIELD_PANELS / FIELD_WIDTHS is a boot error, so a typo never moves a field silently.
+     *
+     * @param array<mixed> $fields
+     */
+    private static function checkFieldLayout(string $key, array $fields): void
+    {
+        foreach ($fields as $name => $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            foreach (['panel' => self::FIELD_PANELS, 'width' => self::FIELD_WIDTHS] as $option => $allowed) {
+                if (array_key_exists($option, $field) && !in_array($field[$option], $allowed, true)) {
+                    throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": \"{$option}\" must be \"" . implode('" or "', $allowed) . '"');
+                }
+            }
+        }
     }
 
     /**

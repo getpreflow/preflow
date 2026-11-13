@@ -76,7 +76,7 @@ final class ClassTypeAdminAppTest extends TestCase
         $this->assertSame('Carpenter', $this->published()->find(Job::class, $uuid)?->title, 'the published copy keeps its title');
         $this->assertSame($version, $this->version($uuid), 'the app save leaves _version alone');
         $edit = $this->html("/folio/job/{$uuid}/edit");
-        $this->assertStringContainsString('<span class="folio-badge is-changed">Changed</span>', $edit, 'Folio shows unpublished changes');
+        $this->assertStringContainsString('<span class="folio-badge is-published">Published</span> <span class="folio-badge is-changed">Changes not live</span>', $edit, 'Folio shows unpublished changes');
         $this->assertStringContainsString('value="Joiner"', $edit);
         $this->assertMatchesRegularExpression('~<span class="folio-badge is-changed">Changed</span>~', $this->html('/folio/job'), 'in the list too');
     }

@@ -1,0 +1,45 @@
+{# The editor's save buttons in the topbar. They sit outside the record form and name it with
+   form="…" (record_form), so they post every record value, the side panel's too, with the CSRF token
+   inside the form; data-busy-label shows the running request (admin.js, by e.submitter).
+   - Publishing type, may publish: Save draft (secondary) and the Publish split button: Publish, and a
+     chevron opening "Publish at…" (a date input and "Publish at this time"). Publish sends
+     _action=publish, which publishes now (and drops a date). With a date set the main button reads
+     "Schedule" and sends _action=schedule: a save that keeps the date, published by publish:scheduled
+     when it is due (as Save draft with a date does). admin.js switches label and value as the date
+     changes. Without JS the menu is a plain <details>.
+   - Publishing type, may not publish: Save draft (primary). Other types: one Save (primary).
+   - Read-only (no right to save): nothing.
+   ⌘S / Ctrl+S clicks [data-folio-save], ⌘↵ / Ctrl+Enter [data-folio-publish] (admin.js shortcuts). #}
+{% set icons = folio_asset('icons.svg') %}
+{% set form_id = record_form|default('folio-record') %}
+{% if can_save ?? true %}
+<div class="folio-save-buttons">
+    {% if publishing %}
+        {% set may_publish = can_publish ?? true %}
+        <button type="submit" form="{{ form_id }}" class="btn {{ may_publish ? 'btn-secondary' : 'btn-primary' }}" data-folio-save data-busy-label="{{ t('folio.form.saving') }}" title="{{ t('folio.form.save_draft') }} (⌘S)" aria-keyshortcuts="Meta+S Control+S">{{ t('folio.form.save_draft') }}</button>
+        {% if may_publish %}
+        {% set scheduled = publishing.publish_at|default('') != '' %}
+        {# Live with edits not live yet: "Publish changes". #}
+        {% set publish_text = publishing.state|default('') == 'changed' ? t('folio.form.publish_changes') : t('folio.form.publish') %}
+        <div class="folio-split-button" data-folio-split-button>
+            <button type="submit" form="{{ form_id }}" class="btn btn-primary folio-split-main" name="_action" value="{{ scheduled ? 'schedule' : 'publish' }}" data-folio-publish data-busy-label="{{ scheduled ? t('folio.form.saving') : t('folio.form.publishing') }}" data-label-publish="{{ publish_text }}" data-label-schedule="{{ t('folio.form.schedule') }}" data-busy-publish="{{ t('folio.form.publishing') }}" data-busy-schedule="{{ t('folio.form.saving') }}" title="{{ scheduled ? t('folio.form.schedule') : publish_text }} (⌘↵)" aria-keyshortcuts="Meta+Enter Control+Enter">{{ scheduled ? t('folio.form.schedule') : publish_text }}</button>
+            <details class="folio-split-menu" data-folio-publish-menu>
+                <summary class="btn btn-primary btn-icon folio-split-toggle" aria-haspopup="dialog" aria-label="{{ t('folio.form.publish_options') }}" title="{{ t('folio.form.publish_options') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-chevron"></use></svg></summary>
+                <div class="folio-split-panel" role="dialog" aria-label="{{ t('folio.form.publish_options') }}">
+                    <label class="folio-split-label" for="folio-publish-at">{{ t('folio.form.publish_at') }}…</label>
+                    <div class="folio-date-input">
+                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-calendar"></use></svg>
+                        <input type="datetime-local" id="folio-publish-at" name="_publish_at" form="{{ form_id }}" value="{{ publishing.publish_at }}" data-folio-publish-at aria-describedby="folio-publish-at-hint">
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-folio-date-clear aria-label="{{ t('folio.common.clear') }}" title="{{ t('folio.common.clear') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-x"></use></svg></button>
+                    </div>
+                    <p class="folio-date-hint" id="folio-publish-at-hint" data-folio-date-hint></p>
+                    <button type="submit" form="{{ form_id }}" class="btn btn-primary" name="_action" value="schedule" data-folio-schedule data-busy-label="{{ t('folio.form.saving') }}">{{ t('folio.form.publish_at_time') }}</button>
+                </div>
+            </details>
+        </div>
+        {% endif %}
+    {% else %}
+        <button type="submit" form="{{ form_id }}" class="btn btn-primary" data-folio-save data-busy-label="{{ t('folio.form.saving') }}" title="{{ t('folio.common.save') }} (⌘S)" aria-keyshortcuts="Meta+S Control+S">{{ t('folio.common.save') }}</button>
+    {% endif %}
+</div>
+{% endif %}

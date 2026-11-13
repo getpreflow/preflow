@@ -456,7 +456,7 @@ final class PublishingAppTest extends TestCase
         $res = $this->post('/folio/post/p1/autosave', ['title' => 'Auto', 'slug' => 'hello', '_locale' => 'en', '_version' => '0']);
 
         $this->assertSame(200, $res->getStatusCode());
-        $this->assertStringContainsString('Saved · not published', (string) $res->getBody());
+        $this->assertMatchesRegularExpression('~<span class="folio-save-state-text" data-folio-save-text>Draft saved \d\d:\d\d</span>~', (string) $res->getBody());
         $this->assertSame('Auto', $this->stored('post', 'p1')->get('title')['en']);
         $this->assertStringContainsString('Live', (string) $this->get('/hello')->getBody());
     }
@@ -808,7 +808,11 @@ final class PublishingAppTest extends TestCase
     {
         $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
 
-        $this->assertStringContainsString('hx-disabled-elt="find button[type=submit]"', (string) $this->get('/folio/post/p1/edit')->getBody());
+        $body = (string) $this->get('/folio/post/p1/edit')->getBody();
+        // The topbar's buttons (outside the form, form="folio-record") are disabled too.
+        $this->assertStringContainsString('hx-disabled-elt="button[type=submit][form=folio-record], find button[type=submit]"', $body);
+        // The side panel's record controls trigger autosave like the form's own.
+        $this->assertStringContainsString('input from:[form=folio-record] delay:3s, change from:[form=folio-record] delay:3s', $body);
     }
 
     public function test_published_field_is_ignored_when_publishing(): void
@@ -932,7 +936,7 @@ final class PublishingAppTest extends TestCase
 
         $this->assertStringContainsString('2 texts outdated', $body);
         $this->assertStringContainsString('name="_confirm_path" value="sections"', $body);
-        $this->assertStringContainsString('title="de · 2 outdated"', $body);
+        $this->assertMatchesRegularExpression('~ title="German: [^"]*; de · 2 outdated"~', $body);
     }
 
     public function test_still_correct_from_the_form_uses_the_current_version_and_keeps_typed_text(): void

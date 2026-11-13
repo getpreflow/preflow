@@ -44,6 +44,8 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Field\Types\BlocksFieldType;
 use Preflow\Folio\Seo\SeoSection;
+use Preflow\Folio\View\FormOwner;
+use Preflow\I18n\Completeness;
 use Preflow\Validation\ValidationException;
 use Preflow\Folio\Override\ActionResolver;
 use Preflow\View\TemplateEngineInterface;
@@ -88,6 +90,10 @@ final class AdminController
         private readonly ?\Preflow\View\Seo\SeoConfig $seo = null,
         private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
         private readonly ?\Preflow\Folio\Redirects\OldAddresses $oldAddresses = null,
+        // The side panel's search result: the page's title and description as search engines get them (SEO on).
+        private readonly ?\Preflow\Folio\Seo\FolioPageMeta $pageMeta = null,
+        // config app.url: the host the search result shows ("example.com › about"); null shows the path alone.
+        private readonly ?string $siteUrl = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -1351,6 +1357,10 @@ final class AdminController
         }
         // The fields the public address is built from: admin.js keeps them to a-z, digits and hyphens.
         $addressFields = $this->frontend->routeFor($type)?->addressModes() ?? [];
+        // The editor frame (the full page, not the create drawer): the side panel takes the address
+        // fields, the "panel": "side" fields and the read-only ones (System fields).
+        $framed = $layout !== '@folio/admin/_drawer_layout.twig';
+        $systemFields = [];
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
@@ -1358,18 +1368,31 @@ final class AdminController
             $fieldType = $this->fieldTypes->get($fieldDef->type);
             if (($fieldDef->config['readonly'] ?? false) === true) {
                 $stored = isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
+                $display = $this->readonlyDisplay(
+                    $fieldDef,
+                    // nothing stored stays nothing (fromStorage would turn a missing boolean into false)
+                    $stored === null || $stored === '' ? $stored : $fieldType->fromStorage($stored),
+                    $this->fieldConfig($type, $name, $fieldDef),
+                );
+                if ($framed) {
+                    // The editor frame lists read-only fields under the side panel's "System fields".
+                    $systemFields[] = [
+                        'name' => $name,
+                        'label' => $this->labels->fieldText($type, $name) ?? (new \Preflow\Form\FieldRenderer())->humanize($name),
+                        'help' => $this->labels->help($type, $name),
+                        'html' => $display,
+                    ];
+                    continue;
+                }
                 $fields[] = [
                     'name' => $name,
-                    'html' => self::readonlyField($name, $this->labels->fieldText($type, $name), $this->labels->help($type, $name), $this->readonlyDisplay(
-                        $fieldDef,
-                        // nothing stored stays nothing (fromStorage would turn a missing boolean into false)
-                        $stored === null || $stored === '' ? $stored : $fieldType->fromStorage($stored),
-                        $this->fieldConfig($type, $name, $fieldDef),
-                    )),
+                    'html' => self::readonlyField($name, $this->labels->fieldText($type, $name), $this->labels->help($type, $name), $display),
                     'translatable' => isset($translatable[$name]),
                     'structured' => false,
                     'falls_back' => false,
                     'reference' => null,
+                    'placement' => 'main',
+                    'half' => false,
                 ];
                 continue;
             }
@@ -1418,15 +1441,21 @@ final class AdminController
                 locales: $locales,
                 record: ['type' => $type, 'id' => isset($values[$typeDef->idField]) ? (string) $values[$typeDef->idField] : null],
             );
+            // main: the form column; address / side: the side panel (outside the <form>, so its
+            // controls name the record form with form="folio-record").
+            $placement = !$framed ? 'main' : (isset($addressFields[$name]) ? 'address' : (($fieldDef->config['panel'] ?? 'main') === 'side' ? 'side' : 'main'));
+            $html = $fieldType->renderEditor($ctx);
             $fields[] = [
                 'name' => $name,
-                'html' => $fieldType->renderEditor($ctx),
+                'html' => $placement === 'main' ? $html : FormOwner::assign($html, self::RECORD_FORM),
                 'translatable' => $isTranslatable,
                 // Blocks hold their own (possibly translated) leaves: no "shared" label.
                 'structured' => $fieldType instanceof BlocksFieldType,
                 'falls_back' => $fallsBack,
                 'reference' => $reference,
                 'address' => $addressFields[$name] ?? null,
+                'placement' => $placement,
+                'half' => ($fieldDef->config['width'] ?? 'full') === 'half',
             ];
             foreach ($fieldType->assets() as $asset) {
                 $editorAssets[$asset] = true;
@@ -1462,18 +1491,22 @@ final class AdminController
 
         $languages = [];
         if ($multilingual) {
+            // How far the record is in each language (TranslationStatus::state()): the topbar's
+            // language dots and the side panel's bars. A new record counts from its form values.
+            $stateOf = $current ?? DynamicRecord::fromArray($typeDef, $values);
             foreach ($locales->available as $code) {
-                $missing = $current !== null ? count($this->translations->missing($typeDef, $current, $code)) : 0;
-                $late = $current !== null ? count($this->translations->outdated($typeDef, $current, $code)) : 0;
-                $unchecked = $current !== null ? count($this->translations->unchecked($typeDef, $current, $code)) : 0;
+                $state = $this->translations->state($typeDef, $stateOf, $code);
                 $languages[] = [
                     'code' => $code,
                     'name' => self::languageName($code),
                     'url' => ($editUrl ?? $action) . '?locale=' . rawurlencode($code),
                     'active' => $code === $locale,
-                    'missing' => $missing > 0 ? ['count' => $missing, 'text' => FolioText::get('folio.list.missing', ['locale' => $code, 'count' => $missing])] : null,
-                    'outdated' => $late > 0 ? ['count' => $late, 'text' => FolioText::get('folio.list.outdated', ['locale' => $code, 'count' => $late])] : null,
-                    'unchecked' => $unchecked > 0 ? ['count' => $unchecked, 'text' => FolioText::get('folio.list.unchecked', ['count' => $unchecked])] : null,
+                    'state' => $state,
+                    // The share of the default language's texts this one has (the bar's fill).
+                    'share' => $state->total > 0 ? max(0.0, min(1.0, ($state->total - $state->missing) / $state->total)) : ($state->completeness === Completeness::Missing ? 0.0 : 1.0),
+                    'missing' => $state->missing > 0 ? ['count' => $state->missing, 'text' => FolioText::get('folio.list.missing', ['locale' => $code, 'count' => $state->missing])] : null,
+                    'outdated' => $state->outdated > 0 ? ['count' => $state->outdated, 'text' => FolioText::get('folio.list.outdated', ['locale' => $code, 'count' => $state->outdated])] : null,
+                    'unchecked' => $state->unchecked > 0 ? ['count' => $state->unchecked, 'text' => FolioText::get('folio.list.unchecked', ['count' => $state->unchecked])] : null,
                 ];
             }
         }
@@ -1487,6 +1520,9 @@ final class AdminController
         // A type without translations keeps its share texts under the default language (DraftRecordFactory).
         $seoSection = $this->seoSection($type, $values, $locale, $multilingual ? $locale : $locales->default, $errors[SeoSection::KEY] ?? [], $locales);
         $multipart = $multipart || $seoSection !== null; // the share image may be uploaded
+        $recordId = isset($values[$typeDef->idField]) ? (string) $values[$typeDef->idField] : '';
+        $singleton = $this->isSingleton($type);
+        $publishing = $this->publishingContext($type, $typeDef, $values);
         $html = $this->engine->render('@folio/admin/form.twig', [
             'prefix' => $this->prefix,
             'type' => $type,
@@ -1516,7 +1552,7 @@ final class AdminController
             'default_locale' => $locales->default,
             'default_language' => self::languageName($locales->default),
             'available_in' => DynamicRecord::fromArray($typeDef, $values)->availableLocales(),
-            'publishing' => $this->publishingContext($type, $typeDef, $values),
+            'publishing' => $publishing,
             'notice' => $notice,
             'reload_url' => $reloadUrl,
             'panels' => $panels,
@@ -1526,6 +1562,23 @@ final class AdminController
             'ai_pending' => $aiPending,
             'seo_section' => $seoSection,
             'old_addresses' => $isNew ? null : $this->oldAddressesNote($type, (string) ($values[$typeDef->idField] ?? '')),
+            // The editor frame (0.75): topbar, main column rows and the side panel.
+            'framed' => $framed,
+            'record_form' => self::RECORD_FORM,
+            'singleton' => $singleton,
+            'back_url' => $framed && !$singleton ? $this->prefix . '/' . $type : null,
+            'type_count' => $framed && !$singleton ? $this->dm->queryType($type)->paginate(1, 1)->total : null,
+            'field_rows' => self::fieldRows($fields),
+            'system_fields' => $framed ? $systemFields : [],
+            'system_id' => $framed && !$isNew && $recordId !== '' && !$singleton ? $recordId : null,
+            'search_result' => $framed && !$isNew ? $this->searchResult($type, $typeDef, $values, $locale) : null,
+            'redirects_on' => $this->oldAddresses !== null,
+            'delete' => $framed && !$isNew && !$singleton && $recordId !== '' && $this->can($type . '.delete') ? [
+                'url' => $this->prefix . '/' . $type . '/' . rawurlencode($recordId) . '/delete',
+                'plan' => $this->prefix . '/' . $type . '/_delete-plan',
+                'id' => $recordId,
+                'label' => self::recordTitle($values, $locales) ?? $this->labelFor($type),
+            ] : null,
         ]);
 
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
@@ -1554,6 +1607,62 @@ final class AdminController
         ];
     }
 
+    /** The record form's id: the topbar buttons and the side panel's record controls name it (form="…"). */
+    public const string RECORD_FORM = 'folio-record';
+
+    /**
+     * The main column's rows: each field on its own, except that consecutive "width": "half"
+     * fields share a row (two side by side where there is room).
+     *
+     * @param list<array<string, mixed>> $fields
+     * @return list<array{half: bool, fields: list<array<string, mixed>>}>
+     */
+    private static function fieldRows(array $fields): array
+    {
+        $rows = [];
+        foreach ($fields as $field) {
+            if (($field['placement'] ?? 'main') !== 'main') {
+                continue;
+            }
+            $half = ($field['half'] ?? false) === true;
+            $last = array_key_last($rows);
+            if ($half && $last !== null && $rows[$last]['half'] && count($rows[$last]['fields']) < 2) {
+                $rows[$last]['fields'][] = $field;
+                continue;
+            }
+            $rows[] = ['half' => $half, 'fields' => [$field]];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The side panel's search result: the page's title and description as search engines get
+     * them (FolioPageMeta, from the stored values: the share texts, else the type's fields, else
+     * the site's description) and its address as "host › path". Null without SEO or a frontend route.
+     *
+     * @param array<string, mixed> $values
+     * @return array{title: string, address: string, description: string}|null
+     */
+    private function searchResult(string $type, TypeDefinition $typeDef, array $values, string $locale): ?array
+    {
+        if ($this->pageMeta === null || !($this->seo?->enabled() ?? false) || $this->frontend->routeFor($type) === null) {
+            return null;
+        }
+        $record = DynamicRecord::fromArray($typeDef, $values);
+        $path = $this->frontend->urlFor($record, $locale);
+        $base = rtrim($this->siteUrl ?? '', '/');
+        $meta = $this->pageMeta->for($record, $locale, $base . ($path ?? '/'), []);
+        $host = $this->siteUrl !== null ? (string) parse_url($this->siteUrl, PHP_URL_HOST) : '';
+        $parts = array_values(array_filter(explode('/', (string) $path), static fn (string $part): bool => $part !== ''));
+
+        return [
+            'title' => $meta->title !== '' ? $meta->title : (self::recordTitle($values, $typeDef->locales) ?? $this->labelFor($type)),
+            'address' => implode(' › ', $host !== '' ? [$host, ...$parts] : ($parts === [] ? ['/'] : $parts)),
+            'description' => $meta->description,
+        ];
+    }
+
     /**
      * The "SEO & sharing" section's values, or null when it is not shown: SEO is off, or the
      * type has no frontend route and is not the site singleton. Texts are in $textLocale (the
@@ -1574,6 +1683,8 @@ final class AdminController
 
         return [
             'open' => !$seo->isEmpty(),
+            // A refused share image: the editor opens on the SEO tab and marks it.
+            'error' => $errors !== [],
             'title' => $seo->title($textLocale),
             'description' => $seo->description($textLocale),
             // The asset field's own editor (picker and upload), posting _seo[image_ids][] and _seo[image].
@@ -1888,9 +1999,23 @@ final class AdminController
         $edit = $stored !== null && $this->can($type . '.edit');
         $publish = $stored !== null && $this->can($type . '.publish');
 
+        $changes = $stored !== null && $state === PublishState::Changed ? $this->publisher->changes($stored) : [];
+
         return [
             'state' => $state->value,
             'label' => FolioText::get('folio.publishing.' . $state->value),
+            // The title's badges: published and/or changes not live.
+            'badges' => match ($state) {
+                PublishState::Draft => [['tone' => 'draft', 'label' => FolioText::get('folio.publishing.draft')]],
+                PublishState::Published => [['tone' => 'published', 'label' => FolioText::get('folio.publishing.published')]],
+                PublishState::Changed => [
+                    ['tone' => 'published', 'label' => FolioText::get('folio.publishing.published')],
+                    ['tone' => 'changed', 'label' => FolioText::get('folio.list.status_changed')],
+                ],
+            },
+            // The side panel's status line and the "N changes" list (Publisher::changes(): fields, then _locales / _seo).
+            'status_text' => FolioText::get('folio.form.status_' . ($stored === null ? 'new' : $state->value)),
+            'changes' => array_map(fn (string $key): string => $this->changeLabel($type, $typeDef, $key), $changes),
             'version' => (int) ($values['_version'] ?? 0),
             'publish_at' => is_string($values['_publish_at'] ?? null) ? $values['_publish_at'] : '',
             // Shown to those who may edit but not publish: saving cancels the schedule.
@@ -1904,6 +2029,17 @@ final class AdminController
             'unpublish_addresses' => $publish && $state !== PublishState::Draft ? count($this->addresses?->of($type, (string) $id) ?? []) : 0,
             'discard_url' => $edit && $state === PublishState::Changed ? $base . '/discard' : null,
         ];
+    }
+
+    /** A changed key's label in the side panel's "N changes" list: the field's label, or what a content key holds. */
+    private function changeLabel(string $type, TypeDefinition $typeDef, string $key): string
+    {
+        return match (true) {
+            isset($typeDef->fields[$key]) => $this->labels->field($type, $key),
+            $key === '_locales' => FolioText::get('folio.form.change_locales'),
+            $key === SeoSection::KEY => FolioText::get('folio.form.change_seo'),
+            default => (new \Preflow\Form\FieldRenderer())->humanize(ltrim($key, '_')),
+        };
     }
 
     /** Types with publishing are told to publish; others are already saved. */

@@ -94,9 +94,9 @@ final class FolioAppTest extends TestCase
     {
         $body = (string) $this->get('/folio/page/new')->getBody();
         $this->assertStringContainsString('name="title"', $body);       // fields still render
-        $this->assertStringContainsString('folio-form-actions', $body);  // action bar
+        $this->assertStringContainsString('data-folio-save', $body);    // the topbar's save (0.75)
         $this->assertStringContainsString('btn btn-primary', $body);     // emerald save button
-        $this->assertStringContainsString('>Cancel<', $body);            // cancel link
+        $this->assertStringContainsString('aria-label="Back to Pages"', $body); // the back button replaces Cancel
         $this->assertStringContainsString('href="/folio/page"', $body);  // back to list
     }
 
@@ -868,7 +868,7 @@ final class FolioAppTest extends TestCase
         $body = (string) $this->get('/folio/page/' . $id . '/edit?locale=de')->getBody();
 
         $this->assertStringContainsString('href="/folio/page/' . $id . '/edit?locale=en"', $body);
-        $this->assertMatchesRegularExpression('#<a[^>]*class="[^"]*is-active[^"]*"[^>]*href="/folio/page/' . $id . '/edit\?locale=de"|href="/folio/page/' . $id . '/edit\?locale=de"[^>]*class="[^"]*is-active#', $body);
+        $this->assertMatchesRegularExpression('#href="/folio/page/' . $id . '/edit\?locale=de" aria-current="true"#', $body);
         $this->assertStringContainsString('name="_locales[]"', $body);
         $this->assertStringContainsString('name="_locales_submitted" value="1"', $body);
         $this->assertStringContainsString('name="_locale" value="de"', $body);
@@ -1001,10 +1001,11 @@ final class FolioAppTest extends TestCase
         $id = $this->createPage(['title' => 'About', 'slug' => 'about', 'body' => 'b', 'status' => 'published', '_locales_submitted' => '1', '_locales' => ['de']]);
 
         $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
-        $this->assertStringContainsString('title="de · 3 missing"', $body);
+        // The language switch (0.75): the state in words; nothing in German yet is "missing".
+        $this->assertStringContainsString('title="German: missing"', $body);
 
         $outdated = (string) $this->get('/folio/page/' . $this->outdatedPage('Other') . '/edit')->getBody();
-        $this->assertStringContainsString('title="de · 1 outdated"', $outdated);
+        $this->assertMatchesRegularExpression('~<a class="is-[a-z]+ is-stale" href="[^"]*locale=de" title="German: [^"]*; de · 1 outdated"~', $outdated);
     }
 
     public function test_form_shows_unchecked_note_and_accept_button(): void
@@ -1048,7 +1049,7 @@ final class FolioAppTest extends TestCase
 
         $body = (string) $this->get('/folio/page/' . $id . '/edit')->getBody();
 
-        $this->assertStringContainsString('folio-count is-unchecked" title="1 not checked"', $body);
+        $this->assertMatchesRegularExpression('~<a class="is-[a-z]+ is-stale" href="[^"]*locale=de" title="German: [^"]*; de · 1 not checked"~', $body);
     }
 
     /** A page whose German title is still exactly what the machine wrote. */

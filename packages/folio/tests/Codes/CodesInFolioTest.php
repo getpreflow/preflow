@@ -200,7 +200,7 @@ final class CodesInFolioTest extends TestCase
         $this->login();
 
         $form = (string) $this->send('GET', "/folio/code/{$id}/edit")->getBody();
-        $this->assertStringContainsString('<span class="form-label">Recipient</span>', $form);
+        $this->assertStringContainsString('<dt>Recipient</dt>', $form, 'read-only: the side panel\'s System fields');
         $this->assertStringContainsString('anna@site.test', $form);
         $this->assertStringNotContainsString('name="recipient"', $form);
 
@@ -550,8 +550,8 @@ final class CodesInFolioTest extends TestCase
         foreach (['uses', 'revoked_at', 'form', 'payload'] as $field) {
             $this->assertStringNotContainsString('name="' . $field . '"', $form, $field);
         }
-        $this->assertStringContainsString('<span class="form-label">Uses</span>', $form);
-        $this->assertStringContainsString('<span class="form-label">Form</span>', $form);
+        $this->assertStringContainsString('<dt>Uses</dt>', $form);
+        $this->assertStringContainsString('<dt>Form</dt>', $form);
         $this->assertStringNotContainsString('Payload', $form);
         $this->assertStringContainsString('name="code"', $form); // the code stays an input (required on create)
 

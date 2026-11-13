@@ -1,0 +1,32 @@
+{# One record field in the editor with its language hints (shared, falls back, outdated, not checked,
+   the default language's text). field: an entry of form.twig's fields. A field placed in the side panel
+   (placement address/side) is outside the <form>: its own buttons name the form (record_form). #}
+{% set owner = field.placement|default('main') != 'main' ? record_form|default('folio-record') : null %}
+<div class="folio-field-wrap"{% if field.address|default(null) %} data-folio-address="{{ field.address }}"{% endif %}>
+    {{ field.html|raw }}
+    {% if multilingual|default(false) %}
+        {% if not field.translatable and not field.structured|default(false) %}
+            <p class="folio-shared">{{ t('folio.form.shared') }}</p>
+        {% elseif field.falls_back %}
+            <p class="folio-fallback-hint">{{ t('folio.form.falls_back', {language: default_language}) }}</p>
+        {% endif %}
+        {% if field.outdated %}
+            <p class="folio-outdated">
+                <span>{{ field.outdated.plain ? t('folio.form.outdated') : t('folio.form.outdated_texts', {count: field.outdated.count}) }}</span>
+                {% if can_save ?? true %}<button type="submit"{% if owner %} form="{{ owner }}"{% endif %} formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
+            </p>
+        {% endif %}
+        {% if field.unchecked %}
+            <p class="folio-unchecked">
+                <span>{{ t('folio.form.unchecked') }}{% if not field.unchecked.plain %} ({{ field.unchecked.count }}){% endif %}</span>
+                {% if can_save ?? true %}<button type="submit"{% if owner %} form="{{ owner }}"{% endif %} formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
+            </p>
+        {% endif %}
+        {% if field.translatable and field.reference %}
+            <details class="folio-reference">
+                <summary>{{ t('folio.form.reference', {language: default_language}) }}</summary>
+                <p>{{ field.reference }}</p>
+            </details>
+        {% endif %}
+    {% endif %}
+</div>

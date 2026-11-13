@@ -68,7 +68,7 @@ final class PublishingController
             return $this->status(self::refusal('folio.publishing.not_saved_invalid', $typeDef, $e), null, true);
         }
 
-        return $this->status(self::stateText($this->publisher->state($record)), (int) $record->get('_version'));
+        return $this->status(self::stateText($this->publisher->state($record), new \DateTimeImmutable()), (int) $record->get('_version'));
     }
 
     /**
@@ -152,9 +152,18 @@ final class PublishingController
         return $this->access?->can($type . '.publish') ?? true;
     }
 
-    public static function stateText(PublishState $state): string
+    /**
+     * The editor's save state (#folio-save-state): "No changes" when the working copy is what is
+     * live, else "Draft saved 19:37" right after a save at that time, or "Saved · not published"
+     * when the page is loaded (the time of the last save is not kept).
+     */
+    public static function stateText(PublishState $state, ?\DateTimeInterface $savedAt = null): string
     {
-        return \Preflow\Folio\FolioText::get($state === PublishState::Published ? 'folio.publishing.published' : 'folio.publishing.saved_not_published');
+        return match (true) {
+            $state === PublishState::Published => \Preflow\Folio\FolioText::get('folio.publishing.no_changes'),
+            $savedAt !== null => \Preflow\Folio\FolioText::get('folio.publishing.draft_saved', ['time' => $savedAt->format('H:i')]),
+            default => \Preflow\Folio\FolioText::get('folio.publishing.saved_not_published'),
+        };
     }
 
     public function unpublish(ServerRequestInterface $request): ResponseInterface

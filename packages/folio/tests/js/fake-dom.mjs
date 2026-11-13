@@ -1,6 +1,7 @@
 // A minimal DOM for node tests of admin.js: elements, attributes, classes, simple selectors
 // ("tag#id.class[attr][attr=\"v\"]", descendants with a space, groups with a comma), events,
-// and a window that delivers postMessage events. load(file) runs a browser script against it.
+// form owners (form="…") and requestSubmit(), and a window that delivers postMessage events.
+// load(file) runs a browser script against it.
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
@@ -52,6 +53,24 @@ class Element {
         this._text = null;
         const text = value == null ? '' : String(value);
         if (text !== '') { this._text = new Text(text); this._text.parentNode = this; }
+    }
+    /** A control's form owner, as in the DOM: the form its form="…" names, else the form around it. */
+    get form() {
+        if (!['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'FIELDSET', 'OUTPUT'].includes(this.tagName)) { return undefined; }
+        const id = this.getAttribute('form');
+        if (id !== null) {
+            const owner = this.ownerDocument.getElementById(id);
+            return owner && owner.tagName === 'FORM' ? owner : null;
+        }
+        return this.closest('form');
+    }
+    /** form.requestSubmit(submitter): a cancelable submit event carrying the submitter; each one that goes ahead is kept in form.sent. */
+    requestSubmit(submitter = null) {
+        if (this.tagName !== 'FORM') { throw new Error('fake-dom: requestSubmit on a ' + this.tagName); }
+        const event = new Event('submit', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'submitter', { value: submitter });
+        if (this.dispatchEvent(event)) { (this.sent = this.sent || []).push(submitter); }
+        return event;
     }
     /** The text node (if any) first, then the element children. */
     get childNodes() { return [...(this._text ? [this._text] : []), ...this.children]; }

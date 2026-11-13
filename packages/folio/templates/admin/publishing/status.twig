@@ -1,2 +1,5 @@
-<span id="folio-save-state" class="folio-save-state{% if conflict|default(false) %} is-conflict{% endif %}" aria-live="polite">{{ text }}</span>
-{% if version is not null %}<input type="hidden" name="_version" id="folio-version" value="{{ version }}" hx-swap-oob="true">{% endif %}
+{# The editor's save state (topbar; autosave swaps it by id): mono text and a blinking caret. admin.js
+   switches it to "Unsaved changes" on the first edit after a save and to "Saving…" while autosave runs
+   (the data-text-* words). #}
+<span id="folio-save-state" class="folio-save-state{% if conflict|default(false) %} is-conflict{% endif %}" aria-live="polite" data-text-unsaved="{{ t('folio.form.unsaved') }}" data-text-saving="{{ t('folio.form.saving') }}">{% if not conflict|default(false) %}<svg class="folio-icon folio-save-state-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-check"></use></svg>{% endif %}<span class="folio-save-state-text" data-folio-save-text>{{ text }}</span><span class="folio-caret" aria-hidden="true"></span></span>
+{% if version|default(null) is not null %}<input type="hidden" name="_version" id="folio-version" value="{{ version }}" hx-swap-oob="true">{% endif %}

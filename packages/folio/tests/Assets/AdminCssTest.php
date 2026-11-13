@@ -243,7 +243,7 @@ final class AdminCssTest extends TestCase
         $this->assertStringContainsString(':where(.folio-brand-tile, .folio-rail-brand) .folio-logo-f { stroke: var(--ink-deep);', $css);
         // Unpublish and Move to bin: outlined danger (board); the filled .btn-danger is for what cannot be undone.
         $this->assertMatchesRegularExpression('/\.btn-secondary\[data-tone="danger"\] \{ color: var\(--c-danger\);/', $css);
-        $form = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/form.twig');
+        $form = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/partials/_side_panel.twig');
         $this->assertStringContainsString('<button type="submit" class="btn btn-secondary" data-tone="danger">{{ t(\'folio.publishing.unpublish\') }}</button>', $form);
         // Toast colours come from a token, not light-dark() inside the component.
         $this->assertStringContainsString('--c-inverse-accent: light-dark(', $css);

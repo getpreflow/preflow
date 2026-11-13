@@ -1,37 +1,56 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
 {# Editors use the icon rail: the form, preview and side panel get the room. #}
 {% set shell = 'rail' %}
+{% import '@folio/admin/partials/_languages.twig' as langs %}
+{% set framed = framed|default(false) %}
+{% set record_form = record_form|default('folio-record') %}
 {% block title %}Folio — {{ record_title|default(null) ?: heading }}{% endblock %}
-{% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="{{ t('folio.form.breadcrumb') }}"><a href="{{ prefix }}/{{ type }}">{{ label }}</a>{% if record_title|default(null) %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg><span>{{ t('folio.common.edit') }}</span>{% endif %}</nav>{% endblock %}
-{% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state != publishing.label ? publishing.save_state : '' }}</span>{% endif %}{% endif %}{% endblock %}
-{% block actions %}{% for record_action in record_actions|default([]) %}<form method="post" action="{{ record_action.url }}"{% if record_action.confirm %} data-confirm="{{ record_action.confirm }}"{% endif %}>
-    <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-    <button type="submit" class="btn btn-secondary">{% if record_action.icon %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ record_action.icon }}"></use></svg>{% endif %}{{ record_action.label }}</button>
-</form>{% endfor %}{% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg>{{ t('folio.form.copy_preview_link') }}</button>{% endif %}{% if previewable|default(false) %} <div class="folio-segmented folio-view-switch" role="group" aria-label="{{ t('folio.form.view') }}" data-folio-preview>{% for mode, text in {'form': t('folio.form.view_form'), 'split': t('folio.form.view_split'), 'preview': t('folio.form.view_preview')} %}<button type="button" data-folio-view="{{ mode }}" aria-pressed="false" title="{{ text }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ {'form': 'ui-file', 'split': 'ui-split', 'preview': 'ui-eye'}[mode] }}"></use></svg><span>{{ text }}</span></button>{% endfor %}</div>{% endif %}{% endblock %}
+{# The editor frame's topbar (0.75): back button · breadcrumb "Label · count" over the title and its
+   status badges · content-language switch · layout switch · save state · Save draft · Publish. The
+   buttons sit outside the record form and name it (form="folio-record"); see _publish_button.twig. #}
+{% block topbar_lead %}{% if back_url|default(null) %}<a class="btn btn-secondary btn-icon folio-back" href="{{ back_url }}" aria-label="{{ t('folio.form.back_to', {label: label}) }}" title="{{ t('folio.form.back_to', {label: label}) }}"><svg class="folio-icon is-mirrored" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg></a>{% endif %}{% endblock %}
+{% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="{{ t('folio.form.breadcrumb') }}">{% if back_url|default(null) %}<a href="{{ back_url }}">{{ label }}</a>{% else %}<span>{{ label }}</span>{% endif %}{% if type_count|default(null) is not null %}<span class="folio-breadcrumb-count" title="{{ t('folio.list.count', {count: folio_number(type_count)}, type_count) }}">· {{ folio_number(type_count) }}</span>{% endif %}</nav>{% endblock %}
+{% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if publishing %}{% for badge in publishing.badges|default([]) %} <span class="folio-badge is-{{ badge.tone }}">{{ badge.label }}</span>{% endfor %}{% endif %}{% endblock %}
+{% block actions %}
+    {%- if framed and multilingual|default(false) %}
+    {# The content language: a dot per language (filled complete, warning ring partial, subtle ring missing). #}
+    <nav class="folio-segmented folio-content-languages" aria-label="{{ t('folio.form.editing_language') }}">
+        {%- for lang in languages %}{% set words = langs.words(lang) %}<a class="is-{{ lang.state.completeness.value }}{% if lang.state.stale %} is-stale{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %} title="{{ words }}"><span class="folio-locale-dot" aria-hidden="true"></span><span aria-hidden="true">{{ lang.code|upper }}</span><span class="folio-sr">{{ words }}</span></a>{% endfor -%}
+    </nav>
+    {%- endif %}
+    {%- if previewable|default(false) %}
+    <div class="folio-segmented folio-view-switch" role="group" aria-label="{{ t('folio.form.view') }}" data-folio-preview>{% for mode, text in {'form': t('folio.form.view_form'), 'split': t('folio.form.view_split'), 'preview': t('folio.form.view_preview')} %}<button type="button" data-folio-view="{{ mode }}" aria-pressed="false" title="{{ text }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ {'form': 'ui-form', 'split': 'ui-split', 'preview': 'ui-eye'}[mode] }}"></use></svg><span>{{ text }}</span></button>{% endfor %}</div>
+    {%- endif %}
+    {%- if publishing and publishing.save_state %}{% include '@folio/admin/publishing/status.twig' with {text: publishing.save_state, version: null, conflict: false} %}{% endif %}
+    {%- if framed %}
+    {# Phone width: the side panel is a sheet behind this button (admin.js shows the button). #}
+    <button type="button" class="btn btn-secondary btn-icon folio-side-toggle" data-folio-side-toggle aria-controls="folio-side" aria-expanded="false" aria-label="{{ t('folio.form.open_side') }}" title="{{ t('folio.form.open_side') }}" hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-panel"></use></svg></button>
+    {% include '@folio/admin/partials/_publish_button.twig' %}
+    {%- endif %}
+{% endblock %}
 {% block content %}
+    {% set extras = panels|default([])|filter(p => p.position != 'side') %}
+    {% set rows = field_rows|default(fields|map(f => {half: false, fields: [f]})) %}
+    <div class="folio-editor-frame{% if framed %} has-side{% endif %}" data-folio-editor>
+    <div class="folio-editor-main">
     {% if previewable|default(false) %}<div class="folio-split" data-folio-split data-mode="form">
     <div class="folio-split-form">{% endif %}
-    {% set side_panels = panels|default([])|filter(p => p.position == 'side') %}
-    {% set old_addresses = old_addresses|default(null) %}
-    <div class="folio-form folio-editor{% if side_panels is not empty or old_addresses %} has-side{% endif %}">
+    <div class="folio-form folio-editor">
         {% if publishing and publishing.share_url %}<div class="folio-share" id="folio-share"></div>{% endif %}
-        {% if publishing and publishing.schedule_cancels|default(false) %}
-            <div class="folio-notice" role="status"><p>{{ t('folio.form.scheduled', {date: folio_date(publishing.publish_at, 'datetime')}) }}</p></div>
-        {% endif %}
         {% if notice %}
             <div class="folio-notice" role="alert">
                 <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">{{ t('folio.form.reload') }}</a>{% endif %}</p>
             </div>
         {% endif %}
-        {% if multilingual|default(false) %}
-            {%- if ai_pending|default([]) is not empty %}<div class="folio-notice folio-ai-pending" role="status">{% for line in ai_pending %}<p>{{ line }}</p>{% endfor %}</div>{% endif %}
-            {%- if ai_translate|default(null) %}<div class="folio-languages-bar">{% endif %}
+        {%- if multilingual|default(false) and ai_pending|default([]) is not empty %}<div class="folio-notice folio-ai-pending" role="status">{% for line in ai_pending %}<p>{{ line }}</p>{% endfor %}</div>{% endif %}
+        {% if not framed and multilingual|default(false) %}
+            {# The create drawer has no topbar: its language links stay above the form. #}
             <nav class="folio-languages folio-languages-editor" aria-label="{{ t('folio.form.editing_language') }}">
                 {% for lang in languages %}
-                    <a class="folio-language{% if lang.active %} is-active{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %}>{{ lang.name }}{% if lang.missing %} <span class="folio-count is-incomplete" title="{{ lang.missing.text }}">{{ lang.missing.count }}</span>{% endif %}{% if lang.outdated %} <span class="folio-count is-outdated" title="{{ lang.outdated.text }}">{{ lang.outdated.count }}</span>{% endif %}{% if lang.unchecked %} <span class="folio-count is-unchecked" title="{{ lang.unchecked.text }}">{{ lang.unchecked.count }}</span>{% endif %}</a>
+                    <a class="folio-language{% if lang.active %} is-active{% endif %}" href="{{ lang.url }}"{% if lang.active %} aria-current="true"{% endif %}>{{ lang.name }}</a>
                 {% endfor %}
             </nav>
-        {% if ai_translate|default(null) %}{% include '@folio/admin/partials/ai-translate-dialog.twig' %}</div>{% endif %}{% endif %}
+        {% endif %}
         {% if locale_errors|default([]) is not empty %}
             <div class="folio-locale-errors" role="alert">
                 <p>{{ t('folio.form.other_languages') }}</p>
@@ -42,10 +61,12 @@
                 </ul>
             </div>
         {% endif %}
-        {% set form_attrs = multipart|default(false) ? {'enctype': 'multipart/form-data'} : {} %}
+        {% set form_attrs = {'id': record_form} %}
+        {% if multipart|default(false) %}{% set form_attrs = form_attrs|merge({'enctype': 'multipart/form-data'}) %}{% endif %}
         {% if publishing and publishing.autosave_url %}
-            {# Autosave: debounced htmx POST of the whole form; the native submit stays a normal save. #}
-            {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'input delay:3s, change delay:3s, trix-change delay:3s', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML', 'hx-disabled-elt': 'find button[type=submit]'}) %}
+            {# Autosave: debounced htmx POST of the whole form, the side panel's form="…" controls too (their
+               events do not bubble to the form); the native submit stays a normal save. #}
+            {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'input delay:3s, change delay:3s, trix-change delay:3s, input from:[form=' ~ record_form ~ '] delay:3s, change from:[form=' ~ record_form ~ '] delay:3s', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML', 'hx-disabled-elt': 'button[type=submit][form=' ~ record_form ~ '], find button[type=submit]'}) %}
         {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: form_attrs}) %}
         {{ form.begin()|raw }}
@@ -54,13 +75,18 @@
         {% endif %}
         {# The form's default button (Enter in a field) saves, never one of the "Still correct" buttons that come first. #}
         {% if (can_save ?? true) %}<button type="submit" hidden tabindex="-1" aria-hidden="true"></button>{% endif %}
+        {% set fields_html %}
         {# Without the right to save, the fields are shown read-only (display: contents, no layout change). #}
         <fieldset class="folio-fields"{% if not (can_save ?? true) %} disabled{% endif %}>
         {% if multilingual|default(false) %}
             <input type="hidden" name="_locale" value="{{ locale }}">
+            <input type="hidden" name="_locales_submitted" value="1">
+            {% if framed %}
+                {# The visible-in boxes are in the side panel's Languages; the default language is always on. #}
+                <input type="hidden" name="_locales[]" value="{{ default_locale }}">
+            {% else %}
             <fieldset class="folio-visibility">
                 <legend>{{ t('folio.form.visible_in') }}</legend>
-                <input type="hidden" name="_locales_submitted" value="1">
                 {% for lang in languages %}
                     <label class="folio-visibility-option">
                         {% if lang.code == default_locale %}
@@ -72,138 +98,65 @@
                     </label>
                 {% endfor %}
             </fieldset>
+            {% endif %}
         {% endif %}
-        {% if seo_section|default(null) %}
-            {# Stored as the record's _seo meta; the boxes say "leave out", the stored flags are positive. #}
-            <details class="folio-seo"{% if seo_section.open %} open{% endif %}>
-                <summary>{{ t('folio.seo.title') }}</summary>
-                <div class="folio-seo-body">
-                    <input type="hidden" name="_seo_submitted" value="1">
-                    <p class="folio-seo-help">{{ t('folio.seo.help') }}</p>
-                    <div class="form-group">
-                        <label for="folio-seo-title">{{ t('folio.seo.share_title') }}</label>
-                        <input type="text" id="folio-seo-title" name="_seo[title]" value="{{ seo_section.title }}">
-                    </div>
-                    <div class="form-group">
-                        <label for="folio-seo-description">{{ t('folio.seo.share_description') }}</label>
-                        <textarea id="folio-seo-description" name="_seo[description]" rows="3">{{ seo_section.description }}</textarea>
-                    </div>
-                    {% if seo_section.image is not null %}{{ seo_section.image|raw }}{% endif %}
-                    <div class="folio-seo-flags">
-                        <label class="folio-seo-flag"><input type="checkbox" name="_seo[noindex]" value="1"{% if seo_section.noindex %} checked{% endif %}> {{ t('folio.seo.noindex') }}</label>
-                        <label class="folio-seo-flag"><input type="checkbox" name="_seo[exclude_sitemap]" value="1"{% if seo_section.exclude_sitemap %} checked{% endif %}> {{ t('folio.seo.exclude_sitemap') }}</label>
-                        <label class="folio-seo-flag"><input type="checkbox" name="_seo[exclude_llms]" value="1"{% if seo_section.exclude_llms %} checked{% endif %}> {{ t('folio.seo.exclude_llms') }}</label>
-                    </div>
-                </div>
-            </details>
-        {% endif %}
-        {% for field in fields %}
-            <div class="folio-field-wrap"{% if field.address|default(null) %} data-folio-address="{{ field.address }}"{% endif %}>
-                {{ field.html|raw }}
-                {% if multilingual|default(false) %}
-                    {% if not field.translatable and not field.structured|default(false) %}
-                        <p class="folio-shared">{{ t('folio.form.shared') }}</p>
-                    {% elseif field.falls_back %}
-                        <p class="folio-fallback-hint">{{ t('folio.form.falls_back', {language: default_language}) }}</p>
-                    {% endif %}
-                    {% if field.outdated %}
-                        <p class="folio-outdated">
-                            <span>{{ field.outdated.plain ? t('folio.form.outdated') : t('folio.form.outdated_texts', {count: field.outdated.count}) }}</span>
-                            {% if can_save ?? true %}<button type="submit" formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
-                        </p>
-                    {% endif %}
-                    {% if field.unchecked %}
-                        <p class="folio-unchecked">
-                            <span>{{ t('folio.form.unchecked') }}{% if not field.unchecked.plain %} ({{ field.unchecked.count }}){% endif %}</span>
-                            {% if can_save ?? true %}<button type="submit" formaction="{{ prefix }}/{{ type }}/{{ record_id }}/_translations/confirm" name="_confirm_path" value="{{ field.name }}" class="btn btn-ghost">{{ t('folio.form.still_correct') }}</button>{% endif %}
-                        </p>
-                    {% endif %}
-                    {% if field.translatable and field.reference %}
-                        <details class="folio-reference">
-                            <summary>{{ t('folio.form.reference', {language: default_language}) }}</summary>
-                            <p>{{ field.reference }}</p>
-                        </details>
-                    {% endif %}
-                {% endif %}
-            </div>
+        {% for row in rows %}
+            {% if row.half %}<div class="folio-field-row">{% endif %}
+            {% for field in row.fields %}{% include '@folio/admin/partials/_field.twig' %}{% endfor %}
+            {% if row.half %}</div>{% endif %}
         {% endfor %}
         </fieldset>
-        <div class="folio-form-actions">
-            {% if publishing and (can_save ?? true) and (can_publish ?? true) %}
-                <label class="folio-publish-at"><span>{{ t('folio.form.publish_at') }}</span><input type="datetime-local" name="_publish_at" value="{{ publishing.publish_at }}"></label>
-            {% endif %}
-            <div class="folio-form-buttons">
-                <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">{{ t('folio.common.cancel') }}</a>
-                {% if not (can_save ?? true) %}
-                {% elseif publishing %}
+        {% endset %}
+        {% if seo_section|default(null) %}
+            {# Content · SEO & sharing (admin.js initTabBox). Without JS both panels show, one after the other,
+               the second under its heading; a refused share image opens the form on the SEO tab and marks it. #}
+            <div class="folio-editor-tabs" data-folio-tabs>
+                <div class="folio-tabs" role="tablist" aria-label="{{ t('folio.form.tabs') }}">
+                    <button type="button" data-folio-tab="content"{% if not seo_section.error %} data-folio-tab-active{% endif %}>{{ t('folio.form.tab_content') }}</button>
+                    <button type="button" data-folio-tab="seo"{% if seo_section.error %} data-folio-tab-active{% endif %}>{{ t('folio.form.tab_seo') }}{% if seo_section.error %}<span class="folio-tab-error" aria-hidden="true"></span><span class="folio-sr"> ({{ t('folio.form.tab_has_errors') }})</span>{% endif %}</button>
+                </div>
+                <div class="folio-tab-panel" data-folio-tabpanel="content" id="folio-tab-content">{{ fields_html }}</div>
+                <div class="folio-tab-panel" data-folio-tabpanel="seo" id="folio-tab-seo">
+                    <h2 class="folio-tab-heading">{{ t('folio.form.tab_seo') }}</h2>
+                    {# Stored as the record's _seo meta; the boxes say "leave out", the stored flags are positive. #}
+                    <fieldset class="folio-fields folio-seo-fields"{% if not (can_save ?? true) %} disabled{% endif %}>
+                        <input type="hidden" name="_seo_submitted" value="1">
+                        <p class="folio-seo-help">{{ t('folio.seo.help') }}</p>
+                        <div class="form-group">
+                            <label for="folio-seo-title">{{ t('folio.seo.share_title') }}</label>
+                            <input type="text" id="folio-seo-title" name="_seo[title]" value="{{ seo_section.title }}">
+                        </div>
+                        <div class="form-group">
+                            <label for="folio-seo-description">{{ t('folio.seo.share_description') }}</label>
+                            <textarea id="folio-seo-description" name="_seo[description]" rows="3">{{ seo_section.description }}</textarea>
+                        </div>
+                        {% if seo_section.image is not null %}{{ seo_section.image|raw }}{% endif %}
+                        <div class="folio-seo-flags">
+                            <label class="folio-seo-flag"><input type="checkbox" name="_seo[noindex]" value="1"{% if seo_section.noindex %} checked{% endif %}> {{ t('folio.seo.noindex') }}</label>
+                            <label class="folio-seo-flag"><input type="checkbox" name="_seo[exclude_sitemap]" value="1"{% if seo_section.exclude_sitemap %} checked{% endif %}> {{ t('folio.seo.exclude_sitemap') }}</label>
+                            <label class="folio-seo-flag"><input type="checkbox" name="_seo[exclude_llms]" value="1"{% if seo_section.exclude_llms %} checked{% endif %}> {{ t('folio.seo.exclude_llms') }}</label>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        {% else %}
+            {{ fields_html }}
+        {% endif %}
+        {% if not framed and (can_save ?? true) %}
+            {# The create drawer has no topbar: its buttons are the drawer's footer. #}
+            <div class="folio-drawer-actions">
+                {% if publishing %}
                     <button type="submit" class="btn {{ (can_publish ?? true) ? 'btn-secondary' : 'btn-primary' }}" data-busy-label="{{ t('folio.form.saving') }}">{{ t('folio.form.save_draft') }}</button>
                     {% if (can_publish ?? true) %}<button type="submit" class="btn btn-primary" name="_action" value="publish" data-busy-label="{{ t('folio.form.publishing') }}">{{ t('folio.form.publish') }}</button>{% endif %}
                 {% else %}
-                    {{ form.submit(t('folio.common.save'), {attrs: {class: 'btn btn-primary', 'data-busy-label': t('folio.form.saving')}})|raw }}
+                    <button type="submit" class="btn btn-primary" data-busy-label="{{ t('folio.form.saving') }}">{{ t('folio.common.save') }}</button>
                 {% endif %}
             </div>
-        </div>
+        {% endif %}
         {{ form_end()|raw }}
-        {% if side_panels is not empty or old_addresses %}
-        <aside class="folio-side" aria-label="{{ t('folio.form.side_panels') }}">
-            {% for panel in side_panels %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
-            {% if old_addresses %}
-            {# The addresses that send visitors here (renamed, removed, hand-made redirects). #}
-            <section class="folio-panel folio-old-addresses">
-                <h2 class="folio-panel-title">{{ t('folio.redirects.old_addresses') }}</h2>
-                <div class="folio-panel-body">
-                    <p class="folio-old-addresses-help">{{ t('folio.redirects.old_addresses_help') }}</p>
-                    <ul>{% for address in old_addresses.shown %}<li>{{ address }}</li>{% endfor %}</ul>
-                    {% if old_addresses.more > 0 %}<p class="folio-old-addresses-more">{{ t('folio.redirects.old_addresses_more', {count: old_addresses.more}) }}</p>{% endif %}
-                    {% if old_addresses.url %}<a href="{{ old_addresses.url }}">{{ t('folio.redirects.old_addresses_manage') }}</a>{% endif %}
-                </div>
-            </section>
-            {% endif %}
-        </aside>
-        {% endif %}
-        {% set history = publishing and (publishing.revisions is not empty or publishing.discard_url or publishing.unpublish_url) %}
-        {% set extras = panels|default([])|filter(p => p.position != 'side') %}
-        {% if history or extras is not empty %}
-        <section class="folio-form-extras" aria-label="{{ history ? t('folio.form.history') : t('folio.form.more') }}">
+        {% if extras is not empty %}
+        <section class="folio-form-extras" aria-label="{{ t('folio.form.more') }}">
         {% for panel in extras|filter(p => p.position == 'before') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
-        {% if history %}
-        {% if publishing.revisions is not empty %}
-            <details class="folio-revisions">
-                <summary><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-history"></use></svg>{{ t('folio.revisions.title') }} <span class="folio-count">{{ publishing.revisions|length }}</span></summary>
-                <ol class="folio-revision-list">
-                    {% for rev in publishing.revisions %}
-                        <li class="folio-revision">
-                            <span class="folio-revision-date">{{ folio_date(rev.date, 'datetime') }}</span>
-                            <span class="folio-revision-by">{{ rev.by ?: '—' }}</span>
-                            <span class="folio-revision-changed">{{ t('folio.revisions.changed', {fields: rev.changed is empty ? '—' : rev.changed|join(', ')}) }}</span>
-                            {% if (can_save ?? true) %}
-                            <form method="post" action="{{ rev.restore_url }}" data-confirm="{{ t('folio.revisions.confirm_restore') }}">
-                                <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                                <button type="submit" class="btn btn-ghost">{{ t('folio.common.restore') }}</button>
-                            </form>
-                            {% endif %}
-                        </li>
-                    {% endfor %}
-                </ol>
-            </details>
-        {% endif %}
-        {% if publishing.discard_url or publishing.unpublish_url %}
-            <div class="folio-publish-actions">
-                {% if publishing.discard_url %}
-                    <form method="post" action="{{ publishing.discard_url }}" data-confirm="{{ t('folio.publishing.confirm_discard') }}">
-                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                        <button type="submit" class="btn btn-ghost">{{ t('folio.publishing.discard') }}</button>
-                    </form>
-                {% endif %}
-                {% if publishing.unpublish_url %}
-                    <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}" data-removal-addresses="{{ publishing.unpublish_addresses|default(0) }}">
-                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                        <button type="submit" class="btn btn-secondary" data-tone="danger">{{ t('folio.publishing.unpublish') }}</button>
-                    </form>
-                {% endif %}
-            </div>
-        {% endif %}
-        {% endif %}
         {% for panel in extras|filter(p => p.position == 'after') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}
         </section>
         {% endif %}
@@ -218,9 +171,13 @@
                     <button type="button" data-preview-viewport="{{ vp[1] }}" aria-pressed="{{ loop.first ? 'true' : 'false' }}" title="{{ vp[0] }}{{ loop.first ? '' : ' (' ~ vp[1] ~ ')' }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ vp[2] }}"></use></svg><span>{{ vp[0] }}</span></button>
                 {% endfor %}
             </div>
+            {% if publishing and publishing.share_url %}<button type="button" class="btn btn-ghost btn-sm folio-share-button" hx-post="{{ publishing.share_url }}" hx-target="#folio-share" hx-swap="outerHTML" hx-include="[name=_csrf_token], [name=_locale]"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#link"></use></svg><span>{{ t('folio.form.copy_preview_link') }}</span></button>{% endif %}
             <button type="button" class="btn btn-ghost btn-sm folio-focus-toggle" data-folio-focus aria-pressed="false" title="{{ t('folio.form.focus_help') }}">{{ t('folio.form.focus') }}</button>
         </div>
         <iframe class="folio-preview-frame" name="folio-preview-frame" title="{{ t('folio.form.live_preview_frame') }}"></iframe>
     </section>
     </div>{% endif %}
+    </div>
+    {% if framed %}{% include '@folio/admin/partials/_side_panel.twig' %}{% endif %}
+    </div>
 {% endblock %}

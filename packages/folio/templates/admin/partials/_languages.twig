@@ -7,15 +7,22 @@
    states: list of {code, name, state: Preflow\Folio\Content\LocaleState}.
    link_unchecked: the list narrowed to records with translations not checked (?unchecked=1); a
    language with such translations links to it. null: no link. #}
-{% macro languages(states, link_unchecked = null) -%}
-<span class="folio-languages">
-{%- for entry in states %}
+{# A language's state in words (the items' title, the editor's language switch and side panel):
+   "German: partial, 3 missing; de · 1 outdated". entry: {code, name, state}. #}
+{% macro words(entry) -%}
     {%- set state = entry.state %}
     {%- set level = state.completeness.value %}
     {%- set words = [level == 'partial' ? t('folio.language_state.partial', {language: entry.name, count: state.missing}, state.missing) : t('folio.language_state.' ~ level, {language: entry.name})] %}
     {%- if state.outdated > 0 %}{% set words = words|merge([t('folio.list.outdated', {locale: entry.code, count: state.outdated})]) %}{% endif %}
     {%- if state.unchecked > 0 %}{% set words = words|merge([entry.code ~ ' · ' ~ t('folio.list.unchecked', {count: state.unchecked})]) %}{% endif %}
-    {%- set text = words|join('; ') %}
+    {{- words|join('; ') -}}
+{%- endmacro %}
+{% macro languages(states, link_unchecked = null) -%}
+<span class="folio-languages">
+{%- for entry in states %}
+    {%- set state = entry.state %}
+    {%- set level = state.completeness.value %}
+    {%- set text = _self.words(entry) %}
     {%- set tag = state.unchecked > 0 and link_unchecked ? 'a' : 'span' -%}
     <{{ tag }} class="folio-languages-item is-{{ level }}{% if state.stale %} is-stale{% endif %}" title="{{ text }}"{% if tag == 'a' %} href="{{ link_unchecked }}"{% endif %}><span aria-hidden="true">{{ entry.code|upper }}</span><span class="folio-sr">{{ text }}</span></{{ tag }}>
 {%- endfor -%}

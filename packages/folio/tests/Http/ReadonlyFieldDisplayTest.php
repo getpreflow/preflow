@@ -125,10 +125,13 @@ final class ReadonlyFieldDisplayTest extends TestCase
         $controller = $this->controller($engine);
         $controller->editForm((new Psr17Factory())->createServerRequest('GET', '/folio/member/m1/edit')->withAttribute('type', 'member')->withAttribute('id', 'm1'));
 
+        // Since 0.75 the editor lists read-only fields under the side panel's System fields: the value's display.
+        $context = json_decode($engine->context, true);
         $out = [];
-        foreach (json_decode($engine->context, true)['fields'] as $field) {
+        foreach ($context['system_fields'] as $field) {
             $out[$field['name']] = $field['html'];
         }
+        $this->assertSame([], array_filter($context['fields'], static fn (array $f): bool => isset($out[$f['name']])), 'not in the form column');
 
         return $out;
     }
@@ -136,7 +139,7 @@ final class ReadonlyFieldDisplayTest extends TestCase
     public function test_readonly_select_shows_label(): void
     {
         $html = $this->render(['language' => 'de'])['language'];
-        $this->assertStringContainsString('>Deutsch</div>', $html);
+        $this->assertSame('Deutsch', $html);
         $this->assertStringNotContainsString('>de<', $html);
     }
 
@@ -176,7 +179,7 @@ final class ReadonlyFieldDisplayTest extends TestCase
     {
         $fields = $this->render([]);
         foreach (['language', 'roles', 'joined', 'writer', 'bio', 'note', 'cover'] as $name) {
-            $this->assertStringContainsString('>—</div>', $fields[$name], $name);
+            $this->assertSame('—', $fields[$name], $name);
         }
     }
 
@@ -184,16 +187,16 @@ final class ReadonlyFieldDisplayTest extends TestCase
     {
         $html = $this->render(['cover' => '2026/10/<b>photo</b>.png'])['cover'];
         $this->assertStringContainsString('2026/10/&lt;b&gt;photo&lt;/b&gt;.png', $html);
-        $this->assertStringNotContainsString('>—</div>', $html);
+        $this->assertNotSame('—', $html);
     }
 
     public function test_readonly_boolean_without_a_value_shows_dash_and_with_a_value_yes_no(): void
     {
         foreach ([null, ''] as $empty) {
-            $this->assertStringContainsString('>—</div>', $this->render(['active' => $empty])['active']);
+            $this->assertSame('—', $this->render(['active' => $empty])['active']);
         }
-        $this->assertStringContainsString('>Yes</div>', $this->render(['active' => true])['active']);
-        $this->assertStringContainsString('>No</div>', $this->render(['active' => false])['active']);
+        $this->assertSame('Yes', $this->render(['active' => true])['active']);
+        $this->assertSame('No', $this->render(['active' => false])['active']);
     }
 
     public function test_list_cell_formats_dates(): void

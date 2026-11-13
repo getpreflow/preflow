@@ -48,7 +48,7 @@ final class SeoSectionFormTest extends TestCase
 
         $body = (string) $this->get('/folio/post/p1/edit')->getBody();
 
-        $this->assertStringContainsString('folio-visibility', $body, 'the form itself renders');
+        $this->assertStringContainsString('name="_locales_submitted"', $body, 'the form itself renders');
         $this->assertStringNotContainsString('folio-seo', $body);
         $this->assertStringNotContainsString('_seo', $body);
         $this->assertStringNotContainsString('folio-seo', (string) $this->get('/folio/site')->getBody());
@@ -63,8 +63,9 @@ final class SeoSectionFormTest extends TestCase
         $this->working('note', 'n1', ['name' => 'A note']);
 
         $post = (string) $this->get('/folio/post/p1/edit?locale=de')->getBody();
-        $this->assertMatchesRegularExpression('~<details class="folio-seo">~', $post, 'closed while nothing is set');
-        $this->assertStringContainsString('<summary>SEO & sharing</summary>', $post);
+        // Since 0.75 the editor's second tab (EditorTabsTest), not a disclosure.
+        $this->assertStringContainsString('data-folio-tabpanel="seo"', $post);
+        $this->assertStringContainsString('<h2 class="folio-tab-heading">SEO & sharing</h2>', $post);
         $this->assertStringContainsString('name="_seo_submitted" value="1"', $post);
         $this->assertStringContainsString('name="_seo[title]"', $post);
         $this->assertStringContainsString('name="_seo[description]"', $post);
@@ -75,9 +76,9 @@ final class SeoSectionFormTest extends TestCase
         $this->assertStringContainsString('Leave out of AI index (llms.txt)', $post);
         $this->assertStringContainsString("empty fields use the page's own content", $post);
         $this->assertStringContainsString('enctype="multipart/form-data"', $post);
-        $this->assertLessThan(strpos($post, 'folio-seo'), strpos($post, 'folio-visibility'), 'after "Visible in"');
+        $this->assertLessThan(strpos($post, 'data-folio-tabpanel="seo"'), strpos($post, 'name="title"'), 'after the content');
 
-        $this->assertStringContainsString('class="folio-seo"', (string) $this->get('/folio/site')->getBody());
+        $this->assertStringContainsString('folio-seo-fields', (string) $this->get('/folio/site')->getBody());
         $this->assertStringNotContainsString('folio-seo', (string) $this->get('/folio/note/n1/edit')->getBody(), 'no frontend route');
     }
 
@@ -103,7 +104,6 @@ final class SeoSectionFormTest extends TestCase
         $this->assertFalse($seo->inLlms());
 
         $body = (string) $this->get('/folio/post/p1/edit?locale=de')->getBody();
-        $this->assertStringContainsString('<details class="folio-seo" open>', $body, 'open once something is set');
         $this->assertStringContainsString('value="Teilen DE"', $body);
     }
 

@@ -37,17 +37,17 @@ Each row carries exactly one label.
 
 | Difference | Label | Why / what |
 |---|---|---|
-| `--c-type-*` (the type tints) and `--w-side-panel` are defined, but nothing reads them yet. | 0.75 | `.folio-type-icon` reads the type tints since 0.75 (one rule per `TypeFamily` value in `admin.css`); `--w-side-panel` waits for the editor side panel. |
+| `--c-type-*` (the type tints) and `--w-side-panel` are defined, but nothing reads them yet. | 0.75 | `.folio-type-icon` reads the type tints since 0.75 (one rule per `TypeFamily` value in `admin.css`); `--w-side-panel` sets the editor side panel's width since 0.75 (Task 4). |
 | The type tile's radius is `--r-xs` (6px); the 0.75 plan named `--r-sm`, which is 8px. | Adaptation | COMPONENTS §1 asks for radius 6; the 28px list-header tile uses 7px, as on the List board. |
 | The `live` type family is tinted with the accent (emerald: `--c-accent-text` on `--c-accent-soft`), as the HolzDashboard board tints CO₂-Rechner. Emerald also marks actions (primary buttons, the active nav item). | Adaptation | Ruling for 0.75: stay close to the board; the handoff's README keeps emerald for actions, so a live tile shares the action colour. If the owner objects, it is one CSS rule (`.folio-type-icon[data-family="live"]`). |
 | `.folio-notice` is the info tone (blue) by default. Before 0.73 every notice was amber. `is-warning` or `role="alert"` gives the amber warning tone, and `folio-alert-error` the red. | Adaptation | COMPONENTS §3 makes the notice the info tone. Extension notices (`#[ListNotice]`, `#[DashboardNotice]`) that warn need `is-warning`. The README's Admin styling section and the attribute table say so. |
-| Locale dots show complete and missing only, never "partial". The interface-language switch has no dots. | 0.75 | Since 0.75 `TranslationStatus::state()` gives a language's `Completeness` (complete, partial, missing); the editor's language segmented shows it (Task 4). The interface languages still have no completeness data. |
+| Locale dots show complete and missing only, never "partial". The interface-language switch has no dots. | Fixed in 0.75 | The editor's content-language segmented shows all three states from `TranslationStatus::state()` (filled, warning ring, subtle ring; Task 4). The interface languages have no completeness data, so their switch keeps no dots. |
 | The draft badge is filled with `--c-neutral-soft`, not the board's hover colour. | Adaptation | It has to stay visible on hovered rows (see the token above). |
 | Error toasts (`folio:error`) show a warning glyph and have no countdown bar. | Adaptation | A check would misreport an error, and error toasts have no undo window. |
 | In dark mode, the toast's check and bar mix ink-accent with inverse-fg. | Adaptation | The board's `#34d399` is too faint on the light inverse toast. |
 | With reduced motion, the undo bar is hidden. The global reduced-motion rule also stops the busy spinner. | Adaptation | A bar that does not move would claim a countdown. A busy button still reads "Saving…" or "Publishing…". |
 | Revision dots are all the neutral "line" dot. | Adaptation | Revision rows carry no draft or published state. |
-| "N changes · Compare" in the revision list and the publishing panel is missing. | 0.75 | It belongs to the editor side panel and needs diff data. |
+| "N changes · Compare" in the revision list and the publishing panel is missing. | Fixed in 0.75 | The side panel's Publishing shows "N changes" (`Publisher::changes()`), opening the list of changed fields, "Languages" and "SEO & sharing". Compare is not built: the owner said no to a diff view (2026-11-13). |
 | The drawer has no accent-soft "Saved" line. | Adaptation | `drawer_saved.twig` posts a message and closes the drawer at once, so there is no saved state to show. |
 | Danger buttons are filled, as on the board. Unpublish and the asset's Move to bin are outlined danger buttons (`btn btn-secondary` with `data-tone="danger"`, red text and a red-tinted border); a delete for good keeps the filled `.btn-danger`. | Fixed in 0.73 | The board's Unpublish is outlined. The board's text-only "Move to bin" link comes with the asset detail redesign (0.76). |
 | `.folio-filter-add` ("+ Filter", dashed) exists in CSS only. The list toolbar still uses the `details` Filter button. | Fixed in 0.75 | "+ Filter" is the dashed summary of a 300px popover (fields in groups, mono date range, Reset · Apply). |
@@ -75,7 +75,7 @@ Each row carries exactly one label.
 | Nav and title icons are the icon each model configures, so several types share the sliders icon. The board has tinted type icons. | 0.75 | `.folio-type-icon` and the type tints come with the lists. |
 | Long subtitles wrap; for example, the not-found intro is four lines at 1440. The board's subtitle is one short line. | Adaptation | Cutting them would hide the explanation. |
 | Shorter subtitle copy, so every subtitle fits one line as on the boards. | Proposal | A copy change the owner decides on. The keys stay. |
-| The editor topbar has a breadcrumb over the title. The board has a back button, the content-language and layout segmented controls, the save state, Save draft and the Publish split button. | 0.75 | Editor action bar. The rail shell's topbar is already compact (17px title). |
+| The editor topbar has a breadcrumb over the title. The board has a back button, the content-language and layout segmented controls, the save state, Save draft and the Publish split button. | Fixed in 0.75 | The editor action bar (Task 4). |
 | The content column stops at 1120px while the topbar runs full width, so on wide screens the header's "New" sits to the right of the table edge. The List board fills the width; the Dashboard and settings boards are capped like Folio. | Fixed in 0.75 | Lists set `content_width = 'wide'` (`.folio-content.is-wide`); other screens keep 1120px. |
 | There are no phone variants on the boards. At 375 the sidebar stacks into a site row, an avatar and one scrolling nav row (section headings as chips), and the rail becomes a top strip. | Adaptation | Task 3's phone layout. No page scrolls sideways at 375; tables scroll in their box. |
 | There is no skip link to the main content. | 0.76 | It comes with the ink layer's shell touches. The rail and sidebar add up to 20+ tab stops before the content. |
@@ -100,7 +100,7 @@ Each row carries exactly one label.
 | Assets: the "Missing alt text · N" filter | Assets | Proposal |
 | Asset detail: the large preview on surface-2, the right panel (alt warning, file facts, swatches, Used in with type icons, Replace drop zone), the Versions tab | AssetDetail | 0.76 |
 | Asset detail: crop previews (16:9, 4:3, 1:1, 9:16) | AssetDetail | Proposal |
-| Ink layer: marks in `icons.svg`, `.folio-ink-marks`, `.folio-caret`, the marks macro, ink empty states, the 404 and forbidden ink cards (today forbidden is a plain card and an unknown admin path answers the plain text "Unknown type"), the save status with caret, the sign-in switched to the shared classes | Ink | 0.76 |
+| Ink layer: marks in `icons.svg`, `.folio-ink-marks`, the marks macro, ink empty states, the 404 and forbidden ink cards (today forbidden is a plain card and an unknown admin path answers the plain text "Unknown type"), the sign-in switched to the shared classes (`.folio-caret` and the save status with caret came with the editor in 0.75) | Ink | 0.76 |
 | The removal dialog restyle (radio cards, "Now: …") | LibOverlays | 0.76 (with redirects) |
 | Styled confirm dialog, AI "Write a draft" in rich text, the "+" insert line and `/` block picker, ⌘K palette | LibOverlays, PageEditor, RecordEditor | Proposal |
 | The share link's "Link copied · 7 days" state | LibOverlays | 0.75 (editor preview bar) |
@@ -122,3 +122,20 @@ Captured on a scratch starter-folio (pages 2 rows after a Duplicate, news 3, job
 | The bulk bar's actions follow the type: no "Set …", Translate or Export where the type has no bulk field, no AI or no OpenSpout. | Adaptation | Same rules as before; the board shows a type that has them. |
 | On a phone the row menu opens next to its button clamped into the viewport, even when the button is scrolled out of the table's box. | Adaptation | The panel floats (position: fixed) so the scroll box cannot cut it off. |
 
+## Editor frame (0.75, Task 4)
+
+Captured on a scratch starter-folio (a page with blocks, a news post in English and German with a partial German, a job with half-width fields, a side field and read-only fields, a post with changes not live, a draft, a new record, a read-only view, the site singleton; the split menu and the side panel sheet open) at 1440 and 375, light and dark, beside the PageEditor, RecordEditor and ReferenceEdit boards. No page scrolls sideways at 375.
+
+| Difference | Label | Why / what |
+|---|---|---|
+| "Publish at" sits in the Publish split button's menu; the PageEditor and ReferenceEdit boards also show it in the side panel's Publishing section. | Adaptation | COMPONENTS §1 moves it into the split button, and one date input in one place cannot disagree with itself. The side panel says "Scheduled to publish on …" when a date is set, and the button reads "Schedule". |
+| No "Scheduled" badge next to the title. | Adaptation | The state badges are the publishing states (Published, Changes not live, Draft); a schedule is a date on the working copy, shown by "Schedule" and the side panel's note. |
+| The address field has no `/` affix and copy button yet. | 0.75 | Task 6 builds the affix on the string field (`data-folio-address`); the field already sits in the side panel's Address. |
+| The save state reads "Saved · not published" when a page with a draft is loaded, "Draft saved 19:37" only after a save in the page. | Adaptation | The time of the last save is not stored; inventing one would be wrong. "No changes" when the working copy is live, as on ReferenceEdit. |
+| Below 1280px the side panel follows the main column as one card (with the preview: under the editor and preview); at phone width it is a sheet behind a topbar button ("Publishing and details"), Esc closes it. | Adaptation | The boards show 1600px only. Under the form below 1280px is the brief's rule; on a phone the panel would push the form a long way down, so it waits behind a button, and works in place without script. |
+| On a phone the topbar (with Save draft and Publish) scrolls away with the page; there is no floating publish box any more. | Proposal | The brief removes the floating box (it hid "Add block"). Autosave keeps a publishing type's work; a compact sticky phone bar (Save + Publish only) would bring the buttons back on long forms. |
+| Revisions in the side panel list who, when and the changed fields, with Restore; the board's state words ("Draft saved", "Published", "current") and coloured dots are not there. | Adaptation | Revision rows carry no state (see the revision-dot row above). |
+| The search result shows the host of `app.url`; without one, the path alone. | Adaptation | The admin should show the canonical address, not whatever host the admin was opened on. |
+| The search result is the saved one; typing a share title does not update it until autosave or a reload. | Proposal | Updating it live needs the same fallbacks the server applies (share text, then the type's fields, then the site's description) in script. |
+| The tab bar sits inside the 760px column; the PageEditor board runs its underline across the whole form pane. | Adaptation | The column is the reading width; at 480px next to the preview the two are the same. |
+| The extension record actions moved to the side panel's foot and the Copy preview link to the preview bar. The board shows neither. | Adaptation | The brief's places for them; Task 5 restyles the preview bar. |

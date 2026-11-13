@@ -524,8 +524,10 @@
         var savedWidth = parseInt(stored('folio-split-width') || '', 10);
         setFormWidth(savedWidth > 0 ? savedWidth : Math.min(520, Math.round(split.getBoundingClientRect().width * 0.42)), false);
 
-        form.addEventListener('input', schedule);
-        form.addEventListener('change', schedule);
+        // Edits of the form's own controls and of those outside it (the side panel's form="…" fields).
+        ['input', 'change'].forEach(function (name) {
+            document.addEventListener(name, function (e) { if (formOf(e.target) === form) { schedule(); } });
+        });
 
         // Focus mode: opening a block from the preview closes the others.
         var focusToggle = stage.querySelector('[data-folio-focus]');
@@ -1226,27 +1228,396 @@
     }
 
     // ---- Unsaved-changes guard ---------------------------------------------
-    // Forms that autosave (hx-post) never lose work; the others ask before leaving.
+    // One guard for the editor's forms (.folio-form, and the side panel's own forms). An input or change on
+    // a control of a form marks that form dirty: a control inside it, or outside with form="…" (the
+    // editor's side panel names the record form so). A submit that goes ahead clears it, before the
+    // navigation's beforeunload. Forms that autosave (hx-post) never lose work and are not guarded; their
+    // edits show as "Unsaved changes" in the save state instead (onRecordEdit).
+    // Hooks for in-admin navigation (a styled leave dialog, 0.75 Task 7): Folio.unsaved.isDirty(),
+    // .dirtyForms(), .clear(form), and .onLeave(fn), a check every leave runs through (fn(e) returns true
+    // to let the page go; beforeunload asks the browser's own question only while no hook answered).
+
+    // The form a control belongs to: its form owner (form="…" included), else the form around it.
+    function formOf(el) {
+        if (!el) { return null; }
+        if (el.form && el.form.tagName === 'FORM') { return el.form; }
+        if (el.tagName === 'FORM') { return el; }
+        return el.closest ? el.closest('form') : null;
+    }
+
+    var unsaved = { dirty: [], guarded: [], leaveChecks: [] };
+
+    function guards(form) {
+        return !!form && unsaved.guarded.indexOf(form) >= 0;
+    }
+
+    function markDirty(form) {
+        if (guards(form) && unsaved.dirty.indexOf(form) < 0) { unsaved.dirty.push(form); }
+    }
+
+    function clearDirty(form) {
+        unsaved.dirty = form ? unsaved.dirty.filter(function (f) { return f !== form; }) : [];
+    }
+
+    function onGuardEdit(e) {
+        markDirty(formOf(e.target));
+    }
+
+    function onGuardSubmit(e) {
+        if (!e.defaultPrevented) { clearDirty(e.target); }
+    }
+
+    function onGuardBeforeUnload(e) {
+        if (unsaved.dirty.length === 0) { return; }
+        for (var i = 0; i < unsaved.leaveChecks.length; i++) {
+            if (unsaved.leaveChecks[i](e) === true) { return; }
+        }
+        e.preventDefault();
+        e.returnValue = '';
+    }
 
     function initUnsavedGuard() {
-        var dirty = [];
-        document.querySelectorAll('.folio-form form').forEach(function (form) {
-            if (form.hasAttribute('hx-post')) { return; }
-            var mark = function () { if (dirty.indexOf(form) < 0) { dirty.push(form); } };
-            form.addEventListener('input', mark);
-            form.addEventListener('change', mark);
-        });
+        unsaved.guarded = Array.prototype.slice.call(document.querySelectorAll('.folio-form form, .folio-side form'))
+            .filter(function (form) { return !form.hasAttribute('hx-post'); });
+        if (unsaved.guarded.length === 0) { return; }
+        document.addEventListener('input', onGuardEdit);
+        document.addEventListener('change', onGuardEdit);
         // Registered after onSubmitConfirm (boot order), so a cancelled data-confirm
         // is already defaultPrevented here and keeps the guard; a real submit clears it
         // synchronously, before the navigation's beforeunload.
-        document.addEventListener('submit', function (e) {
-            if (!e.defaultPrevented) { dirty = dirty.filter(function (f) { return f !== e.target; }); }
+        document.addEventListener('submit', onGuardSubmit);
+        window.addEventListener('beforeunload', onGuardBeforeUnload);
+    }
+
+    window.Folio = window.Folio || {};
+    window.Folio.unsaved = {
+        isDirty: function (form) { return form ? unsaved.dirty.indexOf(form) >= 0 : unsaved.dirty.length > 0; },
+        dirtyForms: function () { return unsaved.dirty.slice(); },
+        clear: function (form) { clearDirty(form || null); },
+        onLeave: function (fn) { if (typeof fn === 'function') { unsaved.leaveChecks.push(fn); } }
+    };
+
+    // ---- Editor frame (form.twig, 0.75) ----------------------------------------
+    // The record form (#folio-record) is posted by buttons outside it (the topbar) and holds controls
+    // outside it (the side panel), all naming it with form="…". Their events do not bubble to the form,
+    // so what reacts to an edit listens on the document and asks formOf(): the save state, the preview,
+    // the guard, "needs change" buttons.
+
+    // The save state (#folio-save-state): its text, and the state class (unsaved, saving, conflict; none = saved).
+    function setSaveState(stateEl, state, text) {
+        if (!stateEl) { return; }
+        ['is-unsaved', 'is-saving', 'is-conflict'].forEach(function (c) { stateEl.classList.remove(c); });
+        if (state) { stateEl.classList.add('is-' + state); }
+        var label = stateEl.querySelector('[data-folio-save-text]');
+        if (label) { label.textContent = text; } else { stateEl.textContent = text; }
+    }
+
+    // An autosaving form's save state: the element its hx-target names (#folio-save-state).
+    function saveStateOf(form) {
+        if (!form || !form.hasAttribute || !form.hasAttribute('hx-post')) { return null; }
+        var target = form.getAttribute('hx-target') || '';
+        return target.charAt(0) === '#' ? document.getElementById(target.slice(1)) : null;
+    }
+
+    // The first edit after a save says so ("Unsaved changes"); autosave then shows "Saving…", and its
+    // answer replaces the element ("Draft saved 19:37").
+    function onRecordEdit(e) {
+        var form = formOf(e.target);
+        var stateEl = saveStateOf(form);
+        if (!stateEl || stateEl.classList.contains('is-unsaved') || stateEl.classList.contains('is-saving')) { return; }
+        setSaveState(stateEl, 'unsaved', stateEl.getAttribute('data-text-unsaved') || '');
+    }
+
+    function onAutosaveStart(e) {
+        var elt = e.detail && e.detail.elt;
+        if (e.defaultPrevented || !elt || elt.tagName !== 'FORM') { return; }
+        var stateEl = saveStateOf(elt);
+        if (stateEl) { setSaveState(stateEl, 'saving', stateEl.getAttribute('data-text-saving') || ''); }
+    }
+
+    // "Needs change": a submit with data-folio-needs-change stays disabled until a control of its own form
+    // changes (a panel's "Transfer" with nothing picked yet); a reset of the form disables it again.
+    function initNeedsChange(root) {
+        var buttons = Array.prototype.slice.call(root.querySelectorAll('[data-folio-needs-change]'));
+        if (root.matches && root.matches('[data-folio-needs-change]')) { buttons.unshift(root); }
+        buttons.forEach(function (btn) {
+            if (btn.hasAttribute('data-folio-needs-change-ready')) { return; }
+            btn.setAttribute('data-folio-needs-change-ready', '');
+            btn.disabled = true;
         });
-        window.addEventListener('beforeunload', function (e) {
-            if (dirty.length === 0) { return; }
-            e.preventDefault();
-            e.returnValue = '';
+    }
+
+    function onNeedsChangeEdit(e) {
+        var form = formOf(e.target);
+        if (!form) { return; }
+        document.querySelectorAll('[data-folio-needs-change-ready]').forEach(function (btn) {
+            if (formOf(btn) === form && btn !== e.target) { btn.disabled = false; }
         });
+    }
+
+    function onNeedsChangeReset(e) {
+        var form = e.target;
+        setTimeout(function () {
+            document.querySelectorAll('[data-folio-needs-change-ready]').forEach(function (btn) {
+                if (formOf(btn) === form) { btn.disabled = true; }
+            });
+        }, 0);
+    }
+
+    // Submit a form with the button that would have been clicked: requestSubmit(button) runs the checks,
+    // the submit handlers (confirm, busy state, guard) and sends the button's name and value (_action).
+    function submitWith(button) {
+        var form = formOf(button);
+        if (!button || button.disabled || !form) { return false; }
+        if (typeof form.requestSubmit === 'function') { form.requestSubmit(button); } else { button.click(); }
+        return true;
+    }
+
+    // ---- Publish split button --------------------------------------------------
+    // Publish, and a chevron opening "Publish at…" (a <details>, so it works without script). With
+    // script: aria-expanded on the chevron, Escape and a click elsewhere close it (Escape returns the
+    // focus to the chevron), opening moves the focus to the date; a date set turns Publish into
+    // "Schedule", and the hint under the date says when ("in 2 days").
+    function relativeWhen(value) {
+        var at = value ? new Date(value) : null;
+        if (!at || isNaN(at.getTime())) { return ''; }
+        var seconds = Math.round((at.getTime() - Date.now()) / 1000);
+        var units = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
+        var unit = 'second', amount = seconds;
+        for (var i = 0; i < units.length; i++) {
+            if (Math.abs(seconds) >= units[i][1]) { unit = units[i][0]; amount = Math.round(seconds / units[i][1]); break; }
+        }
+        try {
+            var lang = (document.documentElement.getAttribute && document.documentElement.getAttribute('lang')) || undefined;
+            return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(amount, unit);
+        } catch (err) {
+            return '';
+        }
+    }
+
+    // Publish publishes now (_action=publish); with a date it schedules: _action=schedule, a save that
+    // keeps the date (the server publishes it when due). "Publish at this time" waits for a date.
+    function publishLabel(group) {
+        var main = group.querySelector('[data-folio-publish]');
+        var input = group.querySelector('[data-folio-publish-at]');
+        var hint = group.querySelector('[data-folio-date-hint]');
+        var at = group.querySelector('[data-folio-schedule]');
+        if (!main || !input) { return; }
+        var scheduled = String(input.value || '') !== '';
+        var text = main.getAttribute(scheduled ? 'data-label-schedule' : 'data-label-publish') || '';
+        if (!main._folioBusy) {
+            main.setAttribute('value', scheduled ? 'schedule' : 'publish');
+            main.value = scheduled ? 'schedule' : 'publish';
+            var busy = main.getAttribute(scheduled ? 'data-busy-schedule' : 'data-busy-publish');
+            if (busy) { main.setAttribute('data-busy-label', busy); }
+            if (text) {
+                main.textContent = text;
+                main.setAttribute('title', text + ' (' + modHint('↵') + ')');
+            }
+        }
+        if (at && !at._folioBusy) { at.disabled = !scheduled; }
+        if (hint) { hint.textContent = scheduled ? relativeWhen(input.value) : ''; }
+    }
+
+    function splitMenuOf(group) { return group.querySelector('[data-folio-publish-menu]'); }
+
+    function setSplitOpen(group, open, refocus) {
+        var menu = splitMenuOf(group);
+        if (!menu) { return; }
+        var summary = menu.querySelector('summary');
+        menu.open = open;
+        if (open) { menu.setAttribute('open', ''); } else { menu.removeAttribute('open'); }
+        if (summary) { summary.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+        if (open) {
+            var input = group.querySelector('[data-folio-publish-at]');
+            if (input && typeof input.focus === 'function') { input.focus(); }
+        } else if (refocus && summary) {
+            summary.focus();
+        }
+    }
+
+    function initSplitButtons(root) {
+        root.querySelectorAll('[data-folio-split-button]').forEach(function (group) {
+            if (group.hasAttribute('data-folio-split-ready')) { return; }
+            group.setAttribute('data-folio-split-ready', '');
+            var menu = splitMenuOf(group);
+            var summary = menu ? menu.querySelector('summary') : null;
+            if (summary) { summary.setAttribute('aria-expanded', menu.open ? 'true' : 'false'); }
+            if (menu) {
+                // The browser toggled it (a click on the chevron): keep aria-expanded and the focus in step.
+                menu.addEventListener('toggle', function () {
+                    var open = !!menu.open;
+                    if (summary && summary.getAttribute('aria-expanded') !== String(open)) { setSplitOpen(group, open, false); }
+                });
+            }
+            publishLabel(group);
+        });
+    }
+
+    function onSplitButtonEvent(e) {
+        var target = e.target;
+        if (e.type === 'keydown') {
+            var group = target && target.closest ? target.closest('[data-folio-split-ready]') : null;
+            var menu = group ? splitMenuOf(group) : null;
+            if (e.key === 'Escape' && menu && menu.open) {
+                e.preventDefault();
+                setSplitOpen(group, false, true);
+            }
+            return;
+        }
+        if (e.type === 'click') {
+            var clear = target && target.closest ? target.closest('[data-folio-date-clear]') : null;
+            if (clear) {
+                var box = clear.closest('[data-folio-split-ready]') || document;
+                var input = box.querySelector('[data-folio-publish-at]');
+                if (input) {
+                    input.value = '';
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (typeof input.focus === 'function') { input.focus(); }
+                }
+                return;
+            }
+            // A click elsewhere closes an open menu.
+            document.querySelectorAll('[data-folio-split-ready]').forEach(function (g) {
+                var m = splitMenuOf(g);
+                var inside = target && target.closest ? target.closest('[data-folio-split-ready]') === g : false;
+                if (m && m.open && !inside) { setSplitOpen(g, false, false); }
+            });
+            return;
+        }
+        // input / change on the date
+        if (target && target.hasAttribute && target.hasAttribute('data-folio-publish-at')) {
+            var owner = target.closest('[data-folio-split-ready]');
+            if (owner) { publishLabel(owner); }
+        }
+    }
+
+    // ---- Tabs in the editor: an invalid field in a hidden panel opens its tab; a link to a tab opens it.
+    function tabFor(panel) {
+        var box = panel && panel.closest ? panel.closest('[data-folio-tabs]') : null;
+        var key = panel ? panel.getAttribute('data-folio-tabpanel') : null;
+        if (!box || key === null) { return null; }
+        var tabs = box.querySelectorAll('[data-folio-tab]');
+        for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i].getAttribute('data-folio-tab') === key) { return tabs[i]; }
+        }
+        return null;
+    }
+
+    // The browser shows its message at the first invalid field, so that field must be visible: its tab
+    // opens, and a field in the side panel's closed phone sheet (an empty required address) opens the sheet.
+    function onInvalidInTab(e) {
+        var target = e.target;
+        var side = target && target.closest ? target.closest('[data-folio-side-ready]') : null;
+        var form = formOf(target);
+        var earlier = form && form.querySelector ? form.querySelector(':invalid') : null; // a field in the form itself comes first
+        if (side && !earlier && !sidePanelOpen() && window.getComputedStyle && window.getComputedStyle(side).display === 'none') {
+            openSidePanel();
+            return;
+        }
+        var panel = target && target.closest ? target.closest('[data-folio-tabpanel]') : null;
+        if (!panel || !panel.hidden) { return; }
+        var tab = tabFor(panel);
+        if (tab) { tab.click(); }
+    }
+
+    function onTabLink(e) {
+        var link = e.target && e.target.closest ? e.target.closest('[data-folio-tab-link]') : null;
+        if (!link) { return; }
+        var tab = document.querySelector('[data-folio-tabs-ready] [data-folio-tab="' + link.getAttribute('data-folio-tab-link').replace(/[^\w-]/g, '') + '"]');
+        if (!tab) { return; }
+        e.preventDefault();
+        closeSidePanel(false);
+        tab.click();
+        tab.focus();
+    }
+
+    // ---- The side panel at phone width: a sheet the topbar's toggle opens; Esc and × close it.
+    var sidePanel = null;
+
+    function sidePanelOpen() {
+        return !!(sidePanel && sidePanel.classList.contains('is-open'));
+    }
+
+    function openSidePanel() {
+        if (!sidePanel) { return; }
+        sidePanel.classList.add('is-open');
+        var toggle = document.querySelector('[data-folio-side-toggle]');
+        if (toggle) { toggle.setAttribute('aria-expanded', 'true'); }
+        var close = sidePanel.querySelector('[data-folio-side-close]');
+        if (close) { close.focus(); }
+    }
+
+    function closeSidePanel(refocus) {
+        if (!sidePanelOpen()) { return false; }
+        sidePanel.classList.remove('is-open');
+        var toggle = document.querySelector('[data-folio-side-toggle]');
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', 'false');
+            if (refocus) { toggle.focus(); }
+        }
+        return true;
+    }
+
+    function initSidePanel() {
+        sidePanel = document.querySelector('[data-folio-side]');
+        var toggle = document.querySelector('[data-folio-side-toggle]');
+        if (!sidePanel || !toggle) { return; }
+        sidePanel.setAttribute('data-folio-side-ready', '');
+        toggle.hidden = false;
+        toggle.addEventListener('click', function () {
+            if (sidePanelOpen()) { closeSidePanel(true); } else { openSidePanel(); }
+        });
+        var close = sidePanel.querySelector('[data-folio-side-close]');
+        if (close) { close.addEventListener('click', function () { closeSidePanel(true); }); }
+    }
+
+    // ---- Editor shortcuts: ⌘S / Ctrl+S saves (the Save draft or Save button, also while typing; the
+    // browser's save dialog never opens in the editor), ⌘↵ / Ctrl+Enter publishes (only while Publish is
+    // there and enabled), Esc closes the side panel sheet (phone width).
+    function initEditorShortcuts() {
+        var save = document.querySelector('[data-folio-save]');
+        if (save) {
+            addShortcut({ key: 's', mod: true, typing: true, label: folioT('shortcut_save'), run: function () {
+                submitWith(document.querySelector('[data-folio-save]'));
+                return true;
+            } });
+        }
+        if (document.querySelector('[data-folio-publish]')) {
+            addShortcut({ key: 'Enter', mod: true, typing: true, label: folioT('shortcut_publish'), run: function () {
+                return submitWith(document.querySelector('[data-folio-publish]'));
+            } });
+        }
+        if (sidePanel && document.querySelector('[data-folio-side-toggle]')) {
+            addShortcut({ key: 'Escape', typing: true, label: folioT('shortcut_close_side'), hint: 'Esc', run: function () {
+                return closeSidePanel(true);
+            } });
+        }
+    }
+
+    function initEditor() {
+        // The buttons' shortcut hints say Ctrl+ where there is no ⌘.
+        if (!isMac()) {
+            document.querySelectorAll('[aria-keyshortcuts][title]').forEach(function (el) {
+                el.setAttribute('title', el.getAttribute('title').replace(/⌘/g, 'Ctrl+'));
+            });
+        }
+        document.addEventListener('input', onRecordEdit);
+        document.addEventListener('change', onRecordEdit);
+        document.addEventListener('htmx:beforeRequest', onAutosaveStart);
+        initNeedsChange(document);
+        document.addEventListener('input', onNeedsChangeEdit);
+        document.addEventListener('change', onNeedsChangeEdit);
+        document.addEventListener('reset', onNeedsChangeReset);
+        initSplitButtons(document);
+        document.addEventListener('keydown', onSplitButtonEvent);
+        document.addEventListener('click', onSplitButtonEvent);
+        document.addEventListener('input', onSplitButtonEvent);
+        document.addEventListener('change', onSplitButtonEvent);
+        document.addEventListener('invalid', onInvalidInTab, true);
+        document.addEventListener('click', onTabLink);
+        initSidePanel();
     }
 
     // ---- Settings → Translations: "Save all filled" -------------------------
@@ -1318,7 +1689,10 @@
     function onAddressSubmit(e) {
         var form = e.target;
         if (!form || !form.querySelectorAll) { return; }
-        form.querySelectorAll('[data-folio-address] input, [data-folio-address] textarea').forEach(cleanAddressInput);
+        // form.elements: the address fields in the editor's side panel (form="…") too.
+        var controls = form.elements ? Array.prototype.slice.call(form.elements)
+            : Array.prototype.slice.call(form.querySelectorAll('[data-folio-address] input, [data-folio-address] textarea'));
+        controls.forEach(cleanAddressInput);
     }
 
     function initTranslationsSaveAll() {
@@ -1383,6 +1757,8 @@
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
+        initNeedsChange(root);
+        initSplitButtons(root);
     }
 
     // Share-preview link: copy the URL (select it when the clipboard is unavailable).
@@ -1551,10 +1927,9 @@
         var state = document.getElementById('folio-save-state');
         if (!elt || !state || elt.tagName !== 'FORM' || !elt.hasAttribute('hx-post')) { return; }
         var xhr = e.detail.xhr;
-        state.textContent = xhr && xhr.status === 403
+        setSaveState(state, 'conflict', xhr && xhr.status === 403
             ? folioT('not_saved_forbidden')
-            : folioT('not_saved_offline');
-        state.classList.add('is-conflict');
+            : folioT('not_saved_offline'));
     }
 
     // A short message in the toast region; the server sends it as HX-Trigger "folio:error" (e.g. a 403).
@@ -2236,9 +2611,9 @@
     // ---- Keyboard shortcuts -----------------------------------------------------
     // One registry: a screen adds its keys with Folio.shortcuts.add({key, label, run, mod, typing, hint}).
     // key is e.key ("j", "/", "?"); mod: true for ⌘ (Ctrl elsewhere) + key; run(e) returns false when it
-    // did nothing (the key then keeps its usual effect). Plain keys never fire while the focus is in an
-    // input, textarea, select or editable text, or with Ctrl, Alt or ⌘ held, or while a dialog is open; a
-    // mod entry fires inside fields only with typing: true (the editor's ⌘S). "?" lists them all.
+    // did nothing (the key then keeps its usual effect). Keys never fire while the focus is in an input,
+    // textarea, select or editable text unless the entry says typing: true (the editor's ⌘S, ⌘↵ and Esc),
+    // never while a dialog is open, and plain keys never with Ctrl, Alt or ⌘ held. "?" lists them all.
     var shortcutList = [];
     var shortcutsReady = false;
     var shortcutsDialog = null;
@@ -2265,10 +2640,22 @@
         shortcutList.push(spec);
     }
 
+    // ⌘ on a Mac (and where the platform is unknown), Ctrl+ elsewhere.
+    function isMac() {
+        var nav = window.navigator;
+        if (!nav) { return true; }
+        var platform = (nav.userAgentData && nav.userAgentData.platform) || nav.platform || '';
+        return platform === '' || /mac|iphone|ipad|ipod/i.test(platform);
+    }
+
+    function modHint(key) {
+        return (isMac() ? '⌘' : 'Ctrl+') + key;
+    }
+
     function shortcutHint(spec) {
         if (spec.hint) { return spec.hint; }
         var key = spec.key === 'Enter' ? '↵' : spec.key.length === 1 ? spec.key.toUpperCase() : spec.key;
-        return spec.mod ? '⌘' + key : key;
+        return spec.mod ? modHint(key) : key;
     }
 
     function showShortcuts() {
@@ -2332,7 +2719,7 @@
         for (var i = 0; i < shortcutList.length; i++) {
             var spec = shortcutList[i];
             if (!!spec.mod !== mod || (spec.key.length === 1 ? spec.key.toLowerCase() : spec.key) !== key) { continue; }
-            if ((typing && !(spec.mod && spec.typing)) || open) { return; }
+            if ((typing && !spec.typing) || open) { return; }
             // A row menu open with the focus in it would hold j / k / x / . back: close it first
             // (Enter keeps its meaning there: it activates the menu item).
             if (!spec.mod && spec.key !== 'Enter') { openRowMenus().forEach(function (m) { closeRowMenu(m, false); }); }
@@ -2503,6 +2890,7 @@
         document.addEventListener('click', onRelationClick);
         initSplit();
         initUnsavedGuard();
+        initEditor();
         initTranslationsSaveAll();
         initRedirectTargets();
         initNavSections();
@@ -2511,6 +2899,7 @@
         // After the menus' own keys (Escape, arrows), which mark their events handled.
         initShortcuts();
         initListShortcuts();
+        initEditorShortcuts();
         // Last, after the unsaved-changes guards: when one of them asked "Leave the page?" and the
         // person chose to stay, nothing else would release a plain submit's busy button.
         window.addEventListener('beforeunload', onBusyBeforeUnload);

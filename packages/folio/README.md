@@ -730,9 +730,11 @@ Any field also takes:
 
 - `"hidden": true`: not shown in the edit form or the default list columns. A save keeps
   the stored value; a posted value is ignored.
-- `"readonly": true`: shown in the edit form as its label and display value, without an input:
-  a select its option label, a relation its record labels, a date formatted for the admin,
-  rich text its sanitised markup. A save keeps the stored value; a posted value is ignored.
+- `"readonly": true`: shown as its label and display value, without an input: a select its option
+  label, a relation its record labels, a date formatted for the admin, rich text its sanitised
+  markup, "—" when empty. Since 0.75 the editor lists these under **System fields** in its side
+  panel, with the record's id (the create drawer keeps them in the form). A save keeps the stored
+  value; a posted value is ignored.
   A read-only field is not validated on save (not its `validate` rules, its type's rules or
   `required`): the editor can't change it, so checking it would only block the save.
 
@@ -754,6 +756,20 @@ Any field also takes:
   `preflow/data` "Unique fields and indexes".
 
 `hidden` and `readonly` apply on create too: such a field starts empty unless a `#[BeforeSave]` hook sets it.
+
+Where the editor puts a field (since 0.75; Folio-only keys, like `"hidden"`):
+
+- `"panel": "side"`: the field moves from the form column into a **Details** card in the editor's
+  side panel (after the extension panels), for settings that are not the content: a position, a
+  flag, a date. It is still part of the record form: saved, autosaved and previewed with it.
+  `"main"` (the default) keeps it in the form column.
+- `"width": "half"`: the field takes half the form column; two half fields in a row share it
+  (Name and Url, Category and Company), and wrap under each other where the column is narrow.
+  `"full"` is the default.
+
+Any other value of either key stops the boot with a `FrontendConfigException` naming the type and
+the field. The fields the type's frontend address is built from (its route's parameters, such as
+`slug`) always sit in the side panel's **Address** section.
 
 The admin display (read-only fields and list cells) is the field type's `renderAdmin()` when
 it implements `Preflow\Folio\Field\DisplaysInAdmin`, otherwise its frontend output. A custom
@@ -911,6 +927,37 @@ header:
 - **Draft:** nothing published yet.
 - **Published:** the snapshot matches the working copy.
 - **Changed:** there are unpublished edits.
+
+**The editor (since 0.75):** the topbar holds a back button, the title with its state badges
+(Published, Changes not live, Draft), the content language (a dot per language: filled when
+complete, a warning ring when partial, a subtle ring when missing), Form / Split / Preview, the save
+state ("Draft saved 19:37", "Unsaved changes", "Saving…"), **Save draft** and the **Publish** split
+button. Its chevron opens **Publish at…**: with a date set the button reads **Schedule**. Without
+the publish permission there is Save draft alone; a type without publishing has one **Save**; a
+read-only form has no buttons. The side panel (320px beside the form from 1280px wide, under it
+below that, a sheet behind a topbar button on a phone) shows Publishing (state, the "N changes"
+since the live version, a schedule), Address (the address fields; "Renaming keeps a redirect from
+the old address." with redirects on; the old addresses), Languages (how far each is, visible-in,
+Translate with AI on), the Search result (title, address, description, or a pointer to SEO &
+sharing), Revisions, System fields, the extension panels and the Details card, and at the foot the
+record actions, Discard changes, Unpublish and Delete. The share texts are the **SEO & sharing**
+tab next to **Content**.
+
+Keys: **⌘S** / **Ctrl+S** saves the draft (also while typing; the browser's save dialog does not
+open), **⌘↵** / **Ctrl+Enter** publishes (where Publish is there), **Esc** closes the side panel on a
+phone, **?** lists them.
+
+The buttons and the side panel's record controls sit outside the record's `<form id="folio-record">`
+and name it with the HTML `form` attribute (`form="folio-record"`), so a click sends every value of
+the record, the side panel's too, with the form's CSRF token; no script copies values.
+
+**Upgrading to 0.75:** a site that overrides `form.twig` (an `ActionResolver` override or a theme)
+must give its submit buttons and any control outside the form `form="folio-record"`, and render the
+new blocks (`topbar_lead`, the side panel partial `partials/_side_panel.twig`). The floating
+`.folio-form-actions` box and its `.folio-publish-at` are gone (the create drawer's buttons are
+`.folio-drawer-actions`; `.folio-form-buttons` stays for other forms' button rows); the record actions of extensions moved from the topbar
+to the side panel's foot, the Copy preview link button to the preview bar. Read-only fields left the
+form column for the side panel's System fields.
 
 **Editing:**
 - **Save draft** stores half-finished work and runs no validation rules.
@@ -1540,8 +1587,8 @@ final class NoteTweaks
 
 | Attribute | Method signature | Effect |
 |---|---|---|
-| `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string\|null` | A panel on the edit form (not on create), `before` or `after` Folio's own extras, or `side`: a sticky column about 340 px wide to the right of the fields from 1280 px (on a previewable type in its plain form view; in split view the panels stack), stacked right under the form fields below that. A string is shown as escaped text, a `ScreenView` as a template fragment (it gets `prefix`, `csrf`, `type`, `id` and `record`). Returning `null` hides the panel (no heading, no box, and no side column or extras section on its account; an empty string still renders an empty panel). Any other position is a boot error. |
-| `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the form header; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
+| `#[FormPanel(label, position: 'after')]` | `fn(DynamicRecord): ScreenView\|string\|null` | A panel on the edit form (not on create), `before` or `after` the form's fields, or `side`: a card in the editor's side panel (since 0.75 the 320px column at the right from 1280px, also next to the preview; under the form below that), after Folio's own sections and before the Details card. A string is shown as escaped text, a `ScreenView` as a template fragment (it gets `prefix`, `csrf`, `type`, `id` and `record`). Returning `null` hides the panel (no heading, no box, and no side column or extras section on its account; an empty string still renders an empty panel). Any other position is a boot error. |
+| `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}` (since 0.75 at the foot of the editor's side panel, and in the list's row menu); null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the editor or the row menu; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge\|Link` | A column after the type's own, ordered by position, shown as escaped text, as a link for `new Link($label, $url)` (`$url` is `member/3/edit`, relative to the admin prefix, or a site path like `/shop/order?id=3`; anything with a scheme, host, `//`, backslash or whitespace is no link and shows the escaped label), or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed`, `scheduled`, `failed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
 | `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members); also on a `#[FolioScreen]` class (see Screens), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
 | `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). Since 0.73 that is the info tone (blue). Add `is-warning` (`<div class="folio-notice is-warning" role="status">`) for the amber warning tone; see [Admin styling](#admin-styling). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
@@ -1601,6 +1648,21 @@ public function state(DynamicRecord $record): Badge
 
 Use one form (and one `toolbar: false` RecordAction) per tab, so a click on a send button
 says which decision was made and only that panel's fields are posted.
+
+**A button that needs a change** (since 0.75): give a panel form's submit `data-folio-needs-change`
+and admin.js keeps it disabled until a control of that same form changes (a reset disables it again);
+edits elsewhere on the page do not count. A transfer card's "Transfer" stays off until a new owner is
+picked:
+
+```twig
+<form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/transfer">
+    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+    <select name="owner">…</select>
+    <button type="submit" class="btn btn-secondary" data-folio-needs-change>Transfer</button>
+</form>
+```
+
+Without script the button works as a plain submit, so the action checks the posted value itself.
 
 Tabs: `<div data-folio-tabs>` holds a `.folio-segmented` of `<button data-folio-tab="key">` and
 sibling `<div data-folio-tabpanel="key">` panels. admin.js adds the ARIA roles, arrow keys

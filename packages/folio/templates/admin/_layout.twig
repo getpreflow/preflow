@@ -127,6 +127,9 @@
     </aside>
     <div class="folio-main">
         <header class="folio-topbar">
+            {# Before the title column (an editor: its back button). #}
+            {% set topbar_lead = block('topbar_lead') is defined ? block('topbar_lead')|trim : '' %}
+            {% if topbar_lead != '' %}{{ topbar_lead|raw }}{% endif %}
             <div class="folio-topbar-title">
                 {% block breadcrumb %}{% endblock %}
                 {# A page may put something before and after its title in one row (a list: its type tile and count). #}

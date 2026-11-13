@@ -195,18 +195,19 @@ final class AdminPolishTest extends TestCase
         $this->seed('m1', ['name' => 'Ada', 'state' => 'waiting']);
 
         $edit = (string) $this->send('GET', '/folio/member/m1/edit')->getBody();
-        $this->assertStringContainsString('folio-editor has-side', $edit);
+        // Since 0.75 the editor frame always has its side panel (Folio's own sections); a side
+        // panel is a card in it, after the main column and its extras.
+        $this->assertStringContainsString('folio-editor-frame has-side', $edit);
         $aside = substr($edit, (int) strpos($edit, '<aside class="folio-side"'));
         $this->assertStringContainsString('<h2 class="folio-panel-title">Decision</h2>', $aside);
         $this->assertStringContainsString('data-folio-tabs', $aside);
-        // Right after the form, before the extras section; the "after" panel stays there.
         $this->assertGreaterThan(strpos($edit, '</form>'), strpos($edit, '<aside class="folio-side"'));
-        $this->assertLessThan(strpos($edit, 'class="folio-form-extras"'), strpos($edit, '<aside class="folio-side"'));
-        $extras = substr($edit, (int) strpos($edit, 'class="folio-form-extras"'));
+        $this->assertGreaterThan(strpos($edit, 'class="folio-form-extras"'), strpos($edit, '<aside class="folio-side"'));
+        $extras = substr($edit, (int) strpos($edit, 'class="folio-form-extras"'), (int) strpos($edit, '<aside class="folio-side"') - (int) strpos($edit, 'class="folio-form-extras"'));
         $this->assertStringContainsString('Plain after', $extras);
         $this->assertStringNotContainsString('Decision', $extras);
-        // No side panel, no side column.
-        $this->assertStringNotContainsString('has-side', (string) $this->send('GET', '/folio/member/new')->getBody());
+        // A new record has no extension panels.
+        $this->assertStringNotContainsString('Decision', (string) $this->send('GET', '/folio/member/new')->getBody());
     }
 
     #[RunInSeparateProcess]
@@ -234,8 +235,7 @@ final class AdminPolishTest extends TestCase
         $this->assertSame(200, $res->getStatusCode());
         $edit = (string) $res->getBody();
         $this->assertStringContainsString('<form', $edit);
-        $this->assertStringNotContainsString('has-side', $edit);
-        $this->assertStringNotContainsString('<aside class="folio-side"', $edit);
+        $this->assertStringNotContainsString('folio-panel-title', $edit, 'no panel card in the side panel');
         $this->assertStringNotContainsString('folio-form-extras', $edit);
     }
 
@@ -273,7 +273,7 @@ final class AdminPolishTest extends TestCase
         $this->assertStringNotContainsString('data-folio-tabpanel="\' +', $js); // no tab key inside a selector
         $this->assertStringContainsString('initTabBox', $js); // one bad group cannot stop the others
         $css = (string) file_get_contents(__DIR__ . '/../../assets/admin.css');
-        $this->assertStringContainsString('.folio-editor.has-side', $css);
+        $this->assertStringContainsString('.folio-editor-frame.has-side', $css);
         $this->assertStringContainsString('min-width: 1280px', $css);
 
         // The README example renders as documented markup (panels show without JS).

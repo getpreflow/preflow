@@ -1054,8 +1054,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-form { width: 100%; }
 /* Wraps the fields so a read-only form can disable them all; adds no box of its own. */
 .folio-fields { display: contents; }
-.folio-editor { max-width: 780px; }
-form:has(> .folio-form-actions) { container-type: inline-size; }
+.folio-editor { max-width: 760px; }
+.folio-editor > form { container-type: inline-size; }
 
 .form-group { margin-bottom: 22px; min-width: 0; }
 .form-group > label,
@@ -1247,43 +1247,11 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-boolean > .form-check:has(input:disabled) { color: var(--c-text-muted); cursor: default; }
 .folio-boolean > .form-check > input:disabled { cursor: default; }
 
-/* Sticky publishing bar: sticks to the bottom of whatever scrolls the form
-   (the page, or the preview's form pane) and reflows for narrow forms. */
-.folio-form-actions {
-  position: sticky;
-  bottom: 16px;
-  z-index: 5;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-  margin-top: 28px;
-  padding: 10px 10px 10px 16px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  background: color-mix(in srgb, var(--c-surface) 92%, transparent);
-  backdrop-filter: saturate(1.4) blur(10px);
-  box-shadow: var(--shadow-lg);
-}
-.folio-publish-at {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 550;
-  color: var(--c-text-muted);
-}
-.folio-publish-at input { width: auto; min-height: 32px; padding: 4px 8px; font-size: 13px; }
+/* A row of a form's buttons (settings forms, the account, AI runs). */
 .folio-form-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
 
+/* A narrow form column (the form next to the preview): block summaries give way to the labels. */
 @container (max-width: 520px) {
-  .folio-form-actions { padding: 10px; }
-  .folio-publish-at { width: 100%; justify-content: space-between; }
-  .folio-publish-at input { flex: 1; min-width: 0; }
-  .folio-form-buttons { width: 100%; margin-left: 0; }
-  .folio-form-buttons .btn { flex: 1 1 0; padding: 0 10px; }
   .folio-block-summary { display: none; }
 }
 
@@ -1381,8 +1349,23 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-badge:is(.is-critical, .is-warning, .is-notice)::before,
 :is(.folio-audit-summary, .folio-audit-counts, .folio-audit-check) .folio-badge::before { display: none; }
 
-.folio-save-state { font-size: 12.5px; font-weight: 450; color: var(--c-text-subtle); }
-.folio-save-state.is-conflict { color: var(--c-danger); font-weight: 550; }
+/* Save state (editor topbar): a check, the mono text and a blinking caret ("Draft saved 19:37▍");
+   admin.js: is-unsaved (warning "Unsaved changes", on the first edit after a save), is-saving (a
+   spinner, "Saving…", while autosave runs); is-conflict (danger, the server's words). */
+.folio-save-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; font-weight: 450; color: var(--c-text-subtle); white-space: nowrap; }
+.folio-save-state-text { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; }
+.folio-save-state-icon { flex: none; width: 14px; height: 14px; }
+.folio-caret { flex: none; display: inline-block; width: 2px; height: 1.15em; margin-left: -3px; background: var(--c-accent); animation: folio-blink 1.1s steps(1) infinite; }
+.folio-save-state.is-unsaved { color: var(--c-warning); }
+.folio-save-state:is(.is-unsaved, .is-saving, .is-conflict) .folio-save-state-icon { display: none; }
+.folio-save-state.is-saving::before {
+  content: ""; flex: none; width: 12px; height: 12px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: folio-spin .8s linear infinite;
+}
+.folio-save-state.is-conflict { color: var(--c-danger); font-weight: 550; white-space: normal; }
+.folio-save-state.is-conflict .folio-save-state-text { font-family: inherit; }
+.folio-save-state:is(.is-conflict, .is-saving) .folio-caret { display: none; }
 
 /* Counts: a plain subtle number for totals; the language states (is-incomplete, -outdated, -unchecked)
    keep their soft pill. "Needs attention" counts in the nav are .folio-nav-badge (warning-soft pill). */
@@ -1436,9 +1419,8 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-languages-item.is-missing { color: var(--c-text-subtle); text-decoration: line-through; }
 .folio-languages-item.is-stale::after { content: ""; flex: none; width: 4px; height: 4px; border-radius: 50%; background: var(--c-warning); }
 a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
-/* A language of the editor: the segmented look plus a 6px status dot from the completeness the page
-   already shows (a missing-fields count): filled accent = complete, subtle ring = fields missing.
-   The design's third state (warning ring = partial) has no data source yet. */
+/* A language link of the create drawer (it has no topbar): the segmented look plus a 6px dot. The
+   full editor's switch is .folio-content-languages (dots from LocaleState, all three states). */
 .folio-language {
   display: inline-flex;
   align-items: center;
@@ -1463,12 +1445,9 @@ a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
 .folio-unchecked .btn { min-height: 24px; padding: 0 8px; font-size: 12px; }
 .folio-reference { margin: -12px 0 20px; font-size: 13px; color: var(--c-text-muted); }
 .folio-reference summary { cursor: pointer; }
-/* "SEO & sharing": a quiet card before the fields, closed while nothing is set. */
-.folio-seo { margin: 0 0 22px; border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface); }
-.folio-seo summary { padding: 10px 14px; font-size: 13px; font-weight: 620; cursor: pointer; }
-.folio-seo-body { padding: 2px 14px 14px; }
+/* "SEO & sharing": the editor's second tab (form.twig). */
 .folio-seo-help { margin: 0 0 16px; font-size: 12px; color: var(--c-text-subtle); }
-.folio-seo-body textarea { min-height: 72px; }
+.folio-seo-fields textarea { min-height: 72px; }
 .folio-seo-flags { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .folio-seo-flag { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 450; }
 .folio-seo-flag > input { flex: none; margin: 0; }
@@ -1595,7 +1574,7 @@ a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
 .folio-blocks-errors { margin: 0 0 8px; padding: 10px 14px 10px 30px; color: var(--c-danger); background: var(--c-danger-soft); border-radius: var(--r); font-size: 13px; }
 
 /* ---- history, visibility, share ---- */
-.folio-form-extras { display: grid; gap: 12px; max-width: 780px; margin-top: 28px; }
+.folio-form-extras { display: grid; gap: 12px; max-width: 760px; margin-top: 28px; }
 .folio-revisions {
   border: 1px solid var(--c-border);
   border-radius: var(--r);
@@ -1651,8 +1630,6 @@ a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
 .folio-revision-changed::before { content: "· "; }
 .folio-revision form { grid-area: act; margin: 0 0 0 12px; }
 .folio-revision .btn-ghost { min-height: 26px; padding: 0 8px; color: var(--c-accent-text); font-size: 12px; }
-.folio-publish-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.folio-publish-actions form { margin: 0; }
 
 .folio-share:empty { display: none; }
 .folio-share {
@@ -2097,22 +2074,24 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-drawer-body { background: var(--c-surface); }
 .folio-drawer-content { padding: 16px 18px 24px; }
 .folio-drawer-heading { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
-/* The form's action bar is the drawer's footer: flat, full width, a line above. */
-.folio-drawer-content .folio-form-actions {
+/* The create drawer's buttons (it has no topbar): its footer, flat, full width, a line above. */
+.folio-drawer-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
   margin: 24px -18px -24px;
   padding: 10px 18px;
-  border: 0;
   border-top: 1px solid var(--c-border);
-  border-radius: 0;
   background: var(--c-surface);
-  backdrop-filter: none;
-  box-shadow: none;
-  bottom: 0;
 }
 
 /* ---- split-view editor (routed types) ---- */
 .folio-main:has(.folio-split) { height: 100vh; }
-.folio-content:has(> .folio-split) {
+.folio-content:has(.folio-split) {
   display: flex;
   flex: 1;
   min-height: 0;
@@ -2135,7 +2114,6 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   overscroll-behavior: contain;
   padding: 24px 24px 0;
 }
-.folio-split-form .folio-editor { margin: 0 auto; }
 .folio-split-form .folio-form-extras { margin-bottom: 32px; }
 
 .folio-resizer {
@@ -2178,7 +2156,6 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-split[data-mode="form"] .folio-resizer,
 .folio-split[data-mode="form"] .folio-split-stage { display: none; }
 .folio-split[data-mode="form"] .folio-split-form { padding: 28px 32px 0; }
-.folio-split[data-mode="form"] .folio-split-form .folio-editor { margin: 0; }
 .folio-split[data-mode="preview"] { grid-template-columns: minmax(0, 1fr); }
 .folio-split[data-mode="preview"] .folio-split-form,
 .folio-split[data-mode="preview"] .folio-resizer { display: none; }
@@ -2556,36 +2533,267 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-table.folio-translations .folio-row-actions { justify-content: flex-start; flex-wrap: wrap; min-width: 16rem; }
 .folio-translations .folio-row-actions :is(input[type="text"], textarea) { flex: 1 1 14rem; }
 
-/* ---- side panels and tabs ---- */
-/* Narrow: the side panels stack right under the form fields. From 1280px they sit in a sticky
-   right-hand column; below that the field column would drop under ~600px and wrap the rich-text toolbar. */
-.folio-side { display: grid; gap: 12px; margin-top: 28px; max-width: 780px; min-width: 0; }
-@media (min-width: 1280px) {
-  .folio-editor.has-side {
-    max-width: none; /* the page's own width caps the two columns */
-    display: grid;
-    grid-template-columns: minmax(0, 780px) 340px;
-    column-gap: 28px;
-    align-items: start;
-  }
-  .folio-editor.has-side > * { grid-column: 1; min-width: 0; }
-  /* The column spans every row of the form (rows add no gap, so the count only has to exceed the children). */
-  .folio-editor.has-side > .folio-side {
-    grid-column: 2;
-    grid-row: 1 / span 40;
-    position: sticky;
-    top: 80px; /* clear of the 64px sticky topbar */
-    max-height: calc(100vh - 96px);
-    overflow-y: auto;
-    margin-top: 0;
-    max-width: none;
-  }
-  /* In split view the form pane is narrow and scrolls by itself: the panels stack. */
-  .folio-split:not([data-mode="form"]) .folio-editor.has-side { display: block; }
-  .folio-split:not([data-mode="form"]) .folio-editor.has-side > .folio-side { position: static; max-height: none; margin-top: 28px; }
-  /* The form pane scrolls on its own, below the topbar. */
-  .folio-split-form .folio-editor.has-side > .folio-side { top: 16px; max-height: calc(100vh - 160px); }
+/* ---- editor frame (form.twig, 0.75): back · title · languages · layout · save state · Save draft · Publish
+   in the topbar; the main column (the form, or form | preview) and the side panel (_side_panel.twig). ---- */
+.folio-back { flex: none; width: 32px; min-height: 32px; color: var(--c-text-muted); }
+.folio-back:hover { color: var(--c-text); }
+.folio-breadcrumb > .folio-breadcrumb-count { color: var(--c-text-subtle); font-weight: 450; font-variant-numeric: tabular-nums; }
+.folio-shell.is-rail .folio-topbar .folio-actions { gap: 8px 10px; }
+
+/* The content language: mono codes with a 6px dot (filled = complete, warning ring = partial, subtle
+   ring = missing); a 4px warning dot after the code when it holds outdated or unchecked texts. */
+.folio-content-languages > a { gap: 5px; padding: 0 9px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+.folio-content-languages > a[aria-current="true"] { background: var(--c-surface); color: var(--c-text); box-shadow: var(--shadow-sm); }
+.folio-locale-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--c-accent); }
+.folio-content-languages > a.is-partial .folio-locale-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c-warning); }
+.folio-content-languages > a.is-missing .folio-locale-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c-text-subtle); }
+.folio-content-languages > a.is-stale::after { content: ""; flex: none; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--c-warning); }
+
+/* Save draft and Publish stay together when the topbar wraps (phone). */
+.folio-save-buttons { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+
+/* Publish split button: Publish + a chevron opening "Publish at…" (a <details>: usable without JS). */
+.folio-split-button { position: relative; display: inline-flex; }
+.folio-split-button > .folio-split-main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.folio-split-menu > summary { list-style: none; }
+.folio-split-menu > summary::-webkit-details-marker { display: none; }
+.folio-split-toggle.btn-icon { width: 30px; border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 1px solid color-mix(in srgb, var(--c-accent-fg) 30%, transparent); }
+.folio-split-toggle .folio-icon { transform: rotate(90deg); transition: transform .12s; }
+.folio-split-menu[open] .folio-split-toggle .folio-icon { transform: rotate(-90deg); }
+.folio-split-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  gap: 8px;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface-raised);
+  box-shadow: var(--shadow-lg);
+  text-align: left;
 }
+.folio-split-label { font-size: 13px; font-weight: 550; color: var(--c-text); }
+.folio-date-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--h-button);
+  padding: 0 3px 0 10px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-input);
+  color: var(--c-text-subtle);
+}
+.folio-date-input:focus-within { border-color: var(--c-accent); box-shadow: var(--focus-ring); }
+.folio-date-input > .folio-icon { flex: none; width: 15px; height: 15px; }
+.folio-date-input > input[type="datetime-local"] {
+  flex: 1;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.folio-date-input > input:focus { outline: none; box-shadow: none; }
+.folio-date-input > .btn-icon { width: 28px; min-height: 28px; color: var(--c-text-subtle); }
+.folio-date-hint { margin: 0; min-height: 1.2em; font-size: 12px; color: var(--c-text-subtle); }
+.folio-split-panel > .btn { width: 100%; }
+
+/* The main column: 760px, centred; about 480px next to the preview (.folio-split's form width). Fields
+   declared "width": "half" pair up in a row. */
+.folio-editor-frame, .folio-editor-main { min-width: 0; }
+.folio-editor { margin-inline: auto; }
+.folio-field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); column-gap: 16px; }
+.folio-field-row > .folio-field-wrap { min-width: 0; }
+
+/* Content · SEO & sharing. Without JS both panels show, the second under its own heading. */
+.folio-editor-tabs > .folio-tabs { margin: 0 0 24px; }
+.folio-editor-tabs:not([data-folio-tabs-ready]) > .folio-tabs { display: none; }
+.folio-tab-heading { margin: 32px 0 14px; padding-top: 20px; border-top: 1px solid var(--c-border); font-size: 15px; font-weight: 600; }
+[data-folio-tabs-ready] .folio-tab-heading { display: none; }
+.folio-tab-error { display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--c-danger); vertical-align: middle; }
+
+/* The side panel. Below 1280px it follows the main column as one card; from 1280px it is the right-hand
+   column (--w-side-panel), the full height of the page, scrolling on its own. */
+.folio-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  max-width: 760px;
+  margin: 28px auto 0;
+  padding: 20px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  background: var(--c-surface);
+}
+.folio-side-head { display: none; }
+.folio-side-body { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.folio-side-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0; }
+.folio-side-body > .folio-side-section + .folio-side-section { padding-top: 20px; border-top: 1px solid var(--c-border); }
+.folio-side-title { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--c-text-subtle); }
+.folio-side-subtitle { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--c-text-muted); }
+.folio-side-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.folio-side-title-row .folio-ai { display: contents; }
+.folio-side-translate.btn { min-height: 24px; padding: 0 6px; color: var(--c-accent-text); font-size: 12px; }
+.folio-side-translate .folio-icon { width: 13px; height: 13px; }
+.folio-side-facts { display: grid; gap: 6px; margin: 0; }
+.folio-side-facts > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.folio-side-facts dt { color: var(--c-text-muted); }
+.folio-side-facts dd { margin: 0; text-align: right; }
+.folio-side-state.is-changed { color: var(--c-warning); }
+.folio-side-changes > summary { width: fit-content; font-size: 13px; color: var(--c-accent-text); cursor: pointer; }
+.folio-side-changes > ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--c-text-muted); }
+.folio-side-note { display: flex; gap: 6px; margin: 0; font-size: 12px; line-height: 1.45; color: var(--c-text-muted); }
+.folio-side-note .folio-icon { flex: none; width: 14px; height: 14px; margin-top: 1px; color: var(--c-info); }
+.folio-side-help { margin: -6px 0 0; font-size: 12px; color: var(--c-text-subtle); }
+.folio-side-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.folio-side-fields .form-group { margin-bottom: 12px; }
+.folio-side-fields .folio-field-wrap:last-child .form-group { margin-bottom: 0; }
+.folio-side-fields :is(.folio-shared, .folio-fallback-hint, .folio-outdated, .folio-unchecked) { margin: -4px 0 10px; }
+.folio-side-fields .folio-reference { margin: -2px 0 10px; }
+.folio-side-fields .folio-field-wrap:last-child > :is(.folio-shared, .folio-fallback-hint, .folio-outdated, .folio-unchecked, .folio-reference) { margin-top: 6px; margin-bottom: 0; }
+.folio-side .folio-old-addresses { display: grid; gap: 6px; font-size: 12.5px; }
+.folio-side .folio-old-addresses :is(p, ul) { margin: 0; }
+.folio-side .folio-old-addresses ul { padding-left: 18px; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+
+/* Languages: code · bar (accent; partial = the warning share it has) · state · visible-in box. */
+.folio-language-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.folio-language-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; font-size: 12px; }
+.folio-language-row-code { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--c-text-muted); text-decoration: none; }
+.folio-language-row-code:hover, .folio-language-row-code[aria-current="true"] { color: var(--c-text); }
+.folio-language-bar { display: block; width: 100%; height: 4px; border-radius: 2px; overflow: hidden; }
+.folio-language-bar-track { fill: var(--c-border); }
+.folio-language-bar-fill { fill: var(--c-accent); }
+.folio-language-row.is-partial .folio-language-bar-fill { fill: var(--c-warning); }
+.folio-language-row-state { min-width: 4.5em; text-align: right; color: var(--c-text-subtle); }
+.folio-language-row.is-partial .folio-language-row-state { color: var(--c-warning); }
+.folio-language-row.is-active .folio-language-row-state { color: var(--c-text-muted); }
+.folio-language-row-visible { display: inline-flex; }
+.folio-language-row-visible input { margin: 0; }
+
+/* Search result: what a search engine shows. */
+.folio-search-result { display: grid; gap: 3px; padding: 12px; border: 1px solid var(--c-border); border-radius: var(--r); background: var(--c-surface-2); }
+.folio-search-result p { margin: 0; overflow-wrap: anywhere; }
+.folio-search-address { font-size: 11.5px; color: var(--c-text-subtle); }
+.folio-search-title { font-size: 15px; line-height: 1.3; color: var(--c-info); }
+.folio-search-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: 12.5px; line-height: 1.45; color: var(--c-text-muted); }
+.folio-search-missing { display: flex; gap: 6px; font-size: 12.5px; line-height: 1.45; color: var(--c-warning); }
+.folio-search-missing .folio-icon { flex: none; width: 14px; height: 14px; margin-top: 2px; }
+.folio-search-missing a { color: inherit; }
+
+/* Revisions in the side panel: the timeline without the card. */
+.folio-side .folio-revision-list { padding: 0; }
+.folio-side .folio-revision:first-child { border-top: 0; }
+.folio-side .folio-revision { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "by act" "date act" "changed act"; }
+.folio-side .folio-revision-changed::before { content: none; }
+.folio-side .folio-revision-by { font-size: 13px; color: var(--c-text); }
+.folio-side .folio-revision-date { font-size: 12px; font-weight: 450; color: var(--c-text-subtle); }
+
+/* System fields: read-only values and the id, closed by default. */
+.folio-side-system > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; list-style: none; cursor: pointer; }
+.folio-side-system > summary::-webkit-details-marker { display: none; }
+.folio-side-marker { width: 14px; height: 14px; color: var(--c-text-subtle); transform: rotate(90deg); transition: transform .12s; }
+.folio-side-system[open] .folio-side-marker { transform: rotate(-90deg); }
+.folio-system-list { display: grid; gap: 8px; margin: 12px 0 0; }
+.folio-system-list > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); align-items: center; gap: 12px; font-size: 13px; }
+.folio-system-list dt { color: var(--c-text-muted); }
+.folio-system-list dd { margin: 0; max-width: 11rem; text-align: right; overflow-wrap: anywhere; }
+.folio-system-help .folio-icon { width: 13px; height: 13px; vertical-align: -2px; color: var(--c-text-subtle); }
+.folio-system-id { display: inline-flex; align-items: center; gap: 2px; }
+.folio-system-id .folio-mono { font-size: 12px; }
+.folio-system-id .btn-icon { width: 26px; min-height: 26px; }
+.folio-side .folio-panel { box-shadow: none; }
+
+/* The foot: record actions, Discard changes, then Unpublish (outlined danger) and Delete (icon). */
+.folio-side-foot { display: grid; gap: 8px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--c-border); }
+.folio-side-foot form { margin: 0; }
+.folio-side-foot > form > .btn { width: 100%; }
+.folio-side-foot-row { display: flex; gap: 8px; }
+.folio-side-foot-row:empty { display: none; }
+.folio-side-unpublish { flex: 1; }
+.folio-side-unpublish .btn { width: 100%; }
+.folio-side-foot .folio-side-unpublish + .folio-side-delete { margin-left: auto; }
+.folio-side-delete-text.btn { padding: 0 8px; color: var(--c-danger); }
+.folio-side-delete-text.btn:hover { background: var(--c-danger-soft); color: var(--c-danger); }
+
+/* Phone width (admin.js marks the panel ready): the panel is a sheet the topbar's toggle opens. */
+.folio-side-toggle { display: none; }
+
+@media (min-width: 1280px) {
+  .folio-main:has(.folio-editor-frame.has-side) { height: 100vh; }
+  .folio-content:has(> .folio-editor-frame.has-side) { display: flex; flex: 1; min-height: 0; max-width: none; padding: 0; }
+  .folio-editor-frame.has-side { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) var(--w-side-panel); min-height: 0; }
+  .folio-editor-frame.has-side > .folio-editor-main { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 28px 32px 48px; }
+  .folio-editor-frame.has-side > .folio-editor-main:has(> .folio-split) { display: flex; overflow: hidden; padding: 0; }
+  .folio-editor-frame.has-side > .folio-side {
+    min-height: 0;
+    max-width: none;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-left: 1px solid var(--c-border);
+    border-radius: 0;
+  }
+}
+@media (max-width: 1279.98px) {
+  /* With the preview, the editor keeps the window's height and the side panel follows it below. */
+  .folio-content:has(.folio-split) > .folio-editor-frame { flex: 1; min-height: 0; overflow-y: auto; }
+  .folio-editor-main:has(> .folio-split) { display: flex; height: 100%; }
+  .folio-content:has(.folio-split) > .folio-editor-frame > .folio-side { margin: 24px 16px 32px; }
+}
+@media (max-width: 900px) {
+  .folio-content:has(.folio-split) > .folio-editor-frame { overflow: visible; }
+  .folio-editor-main:has(> .folio-split) { height: auto; }
+}
+@media (max-width: 760px) {
+  .folio-side { padding: 16px; }
+  .folio-side-toggle:not([hidden]) { display: inline-flex; }
+  .folio-editor-frame > .folio-side[data-folio-side-ready] { display: none; }
+  .folio-editor-frame > .folio-side[data-folio-side-ready].is-open {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    max-width: none;
+    margin: 0;
+    padding: 0 16px 24px;
+    border: 0;
+    border-radius: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    animation: folio-sheet-in .18s ease-out;
+  }
+  .folio-side[data-folio-side-ready] .folio-side-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 10px 12px 10px 16px;
+    border-bottom: 1px solid var(--c-border);
+    background: var(--c-surface);
+  }
+  .folio-side-head-title { margin: 0; font-size: 15px; font-weight: 600; }
+  /* Phone topbar: the back button and the title in one row, the controls wrap under them. */
+  .folio-back + .folio-topbar-title { flex: 1 1 0; }
+  .folio-shell.is-rail .folio-topbar .folio-actions { flex: 1 1 100%; justify-content: flex-start; }
+}
+@keyframes folio-sheet-in { from { opacity: 0; transform: translateY(12px); } }
+
+/* ---- side panels and tabs ---- */
 [data-folio-tabs]:not([data-folio-tabs-ready]) > .folio-segmented { display: none; }
 [data-folio-tabs] > .folio-segmented { display: flex; width: 100%; margin-bottom: 12px; }
 [data-folio-tabs] > .folio-segmented button { flex: 1 1 0; justify-content: center; }
