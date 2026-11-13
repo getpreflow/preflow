@@ -23,7 +23,8 @@ Requires PHP 8.4+.
 | `CsrfMiddleware` | CSRF check on every unsafe request (origin, session or stateless token), `#[CsrfExempt]`, expired-session handling |
 | HTTP exceptions | `NotFoundHttpException`, `ForbiddenHttpException`, `UnauthorizedHttpException` |
 | `NonPublicPaths` | Path prefixes that are not public pages (admin, member area, private files), for features that treat unknown addresses as pages |
-| Route contracts | `Route`, `RouteMode`, `RouterInterface` |
+| `SafeReturnPath` | Whether a "next" / "return to" value is a safe path on this site under allowed prefixes |
+| Route contracts | `Route`, `RouteMode`, `RouterInterface`, `ConfiguredMiddleware` (route middleware with arguments) |
 
 ## API
 
@@ -49,6 +50,12 @@ $service = $container->get(MyService::class);
 // Instantiate with parameter overrides
 $obj = $container->make(MyService::class, ['timeout' => 30]);
 ```
+
+`make()` builds a new object of a class (an instance registered for it is not reused): the given
+parameters, by name, win over autowiring, `#[Config]` and `#[Env]`; the rest is resolved as `get()`
+would. An id bound with `bind()`/`singleton()` is the binding's to build: a closure gets the
+parameters as its second argument.
+Route middleware with arguments (`MiddlewareWith`, see `preflow/routing`) is built this way.
 
 ### Attribute injection
 
@@ -1090,6 +1097,28 @@ A prefix matches whole segments: `/folio` covers `/folio` and `/folio/x`, not `/
 `/` are ignored (they would cover the whole site). `matches($path)` and `all()` read the list.
 Redirects and the not-found list (`preflow/routing`) never answer or record a 404 under these
 paths. Add the prefix of any area of your own that is not a page (an API, a webhook endpoint).
+
+### Safe return paths
+
+`Preflow\Core\Http\SafeReturnPath::check($next, $allowedPrefixes)` (since 0.72) judges a
+"next" or "return to" value from the request before a redirect goes there. It returns `$next`
+unchanged when it is a path on this site under one of the prefixes, else `null`:
+
+```php
+use Preflow\Core\Http\SafeReturnPath;
+
+$to = SafeReturnPath::check($request->getQueryParams()['next'] ?? null, ['/employer']) ?? '/employer';
+```
+
+- A prefix matches whole segments: `/employer` allows `/employer`, `/employer/jobs` and
+  `/employer?tab=x`, not `/employerx`; `/` allows every path.
+- Refused: a URL (`https://…`, `//evil.example`), a backslash (`\evil`), a dot segment
+  (`/a/../b`), a double slash, a control, space or non-ASCII character, and each of these
+  percent-encoded (`/%2F%2Fevil.example`, `%252e%252e`), decoded down to the fixed point.
+- A query string is kept as given. A `#` is allowed only inside the query string, so a fragment
+  right after the path (`/employer#top`) is refused.
+
+Members' `SafeNext` builds on it with the member pages and `next.allow`, in every locale.
 
 ## Pages from controllers
 

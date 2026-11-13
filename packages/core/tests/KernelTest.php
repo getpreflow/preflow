@@ -17,6 +17,7 @@ use Preflow\Core\Error\DevErrorRenderer;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Http\MiddlewarePipeline;
 use Preflow\Core\Kernel;
+use Preflow\Core\Routing\ConfiguredMiddleware;
 use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouteMode;
 use Preflow\Core\Routing\RouterInterface;
@@ -72,6 +73,35 @@ class RouteSpyMiddleware implements MiddlewareInterface
     }
 }
 
+class GreetingMiddleware implements MiddlewareInterface
+{
+    public function __construct(
+        private readonly string $greeting = 'hello',
+        private readonly int $times = 1,
+    ) {}
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        return $handler->handle($request)->withHeader('X-Greeting', str_repeat($this->greeting, $this->times));
+    }
+}
+
+final class GreetingWith implements ConfiguredMiddleware
+{
+    /** @param array<string, mixed> $args */
+    public function __construct(private readonly string $class, private readonly array $args) {}
+
+    public function middlewareClass(): string
+    {
+        return $this->class;
+    }
+
+    public function arguments(): array
+    {
+        return $this->args;
+    }
+}
+
 final class KernelTest extends TestCase
 {
     private function createRequest(string $method = 'GET', string $uri = '/'): ServerRequestInterface
@@ -82,8 +112,9 @@ final class KernelTest extends TestCase
     private function createKernel(
         ?RouterInterface $router = null,
         array $middleware = [],
+        ?Container $container = null,
     ): Kernel {
-        $container = new Container();
+        $container ??= new Container();
 
         $actionHandler = new StubActionHandler();
         $componentRenderer = new StubComponentRenderer();
@@ -181,6 +212,37 @@ final class KernelTest extends TestCase
         $this->createKernel(new StubRouter($route))->handle($this->createRequest());
 
         $this->assertSame($route, RouteSpyMiddleware::$seen);
+    }
+
+    public function test_route_middleware_with_arguments_is_a_new_instance_built_with_them(): void
+    {
+        $container = new Container();
+        $container->instance(GreetingMiddleware::class, new GreetingMiddleware('shared'));
+        $withArgs = new Route(mode: RouteMode::Action, handler: 'X@y', middleware: [new GreetingWith(GreetingMiddleware::class, ['greeting' => 'hoi', 'times' => 2])]);
+        $plain = new Route(mode: RouteMode::Action, handler: 'X@y', middleware: [GreetingMiddleware::class]);
+
+        $this->assertSame('hoihoi', $this->createKernel(new StubRouter($withArgs), container: $container)->handle($this->createRequest())->getHeaderLine('X-Greeting'));
+        $this->assertSame('shared', $this->createKernel(new StubRouter($plain), container: $container)->handle($this->createRequest())->getHeaderLine('X-Greeting'), 'a class name still gets the container instance');
+    }
+
+    public function test_route_middleware_with_a_wrongly_typed_argument_fails_clearly(): void
+    {
+        $route = new Route(mode: RouteMode::Action, handler: 'X@y', middleware: [new GreetingWith(GreetingMiddleware::class, ['times' => ['x']])]);
+
+        $response = $this->createKernel(new StubRouter($route))->handle($this->createRequest());
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Route middleware [' . htmlspecialchars(GreetingMiddleware::class) . '] cannot be built with the arguments [times]', (string) $response->getBody());
+    }
+
+    public function test_route_middleware_with_arguments_must_be_a_middleware(): void
+    {
+        $route = new Route(mode: RouteMode::Action, handler: 'X@y', middleware: [new GreetingWith(\stdClass::class, [])]);
+
+        $response = $this->createKernel(new StubRouter($route))->handle($this->createRequest());
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('Route middleware [stdClass] is not a middleware', (string) $response->getBody());
     }
 
     public function test_component_paths_go_to_the_endpoint_through_the_pipeline(): void

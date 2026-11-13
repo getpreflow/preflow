@@ -159,8 +159,9 @@ default locale without a prefix). `path` is registered as non-public (`NonPublic
 - `next` (where to go afterwards) is kept only when it is a member page (`{path}`) or under a
   path of `next.allow` (`'/games/'` allows `/games` and `/games/catan`, not `/gamesfoo`), each
   in any locale; anything else lands on `landing`. A scheme, `//`, a backslash or a dot
-  segment is never kept, percent-encoded neither. An `allow` entry that is no site path is an
-  error.
+  segment is never kept, percent-encoded neither (core's `SafeReturnPath` checks it, with the
+  member path and the `allow` paths in every locale as prefixes). An `allow` entry that is no
+  site path is an error.
 - `next` works for sign-in (`?next=` on the login page) and for registration: the register
   page carries `?next=` as a hidden field (the site's own register page posts a `next` field
   too), the member keeps it (the hidden member field `next`; run `preflow migrate` once for

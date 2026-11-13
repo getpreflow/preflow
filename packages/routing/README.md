@@ -19,6 +19,7 @@ Requires PHP 8.4+.
 | `Router` | Combines both scanners, implements `RouterInterface` |
 | `RouteMatcher` | Matches requests with priority: static > dynamic > catch-all |
 | `RouteCompiler` | Caches the route collection to a PHP file for production |
+| `MiddlewareWith` | A route middleware with constructor arguments (`guard: 'employers'`) |
 | `Redirect\RedirectMiddleware` | Answers unfound public pages from a redirect store and notes the rest in a not-found log |
 
 ## File-based routing
@@ -87,6 +88,33 @@ final class PostController
 Method paths are appended to the class prefix: `#[Get('/{id}')]` on `#[Route('/api/posts')]` becomes `/api/posts/{id}`. A method path of `'/'` resolves to the prefix alone.
 
 `#[Middleware]` is repeatable on both class and method. Method middleware merges on top of class middleware.
+
+### Middleware with arguments
+
+A class name gets the container's instance of that middleware. For one built with other
+constructor arguments, give `MiddlewareWith` (since 0.72) in `#[Middleware]` or in
+`#[Route(middleware: [...])]`, next to plain class names:
+
+```php
+use Preflow\Auth\Http\AuthMiddleware;
+use Preflow\Routing\MiddlewareWith;
+
+#[Route('/employer', middleware: [new MiddlewareWith(AuthMiddleware::class, guard: 'employers')])]
+final class EmployerController
+{
+    #[Get('/jobs')]
+    #[Middleware(new MiddlewareWith(GuestMiddleware::class, redirectTo: '/employer'), AuditMiddleware::class)]
+    public function jobs(): ResponseInterface { /* ... */ }
+}
+```
+
+The route gets a new instance from the container (`Container::make($class, $args)`): the named
+arguments win, the other parameters are autowired. Arguments are given by name and must be
+constructor parameters; an unknown class, a class that is no middleware, an unknown or a
+positional argument fails when the routes are scanned, a wrongly typed value when the route is
+dispatched. The route cache and the boot manifest keep them, so give values `var_export()`
+writes (strings, numbers, booleans, arrays, enums). Core's kernel builds anything that implements
+`Preflow\Core\Routing\ConfiguredMiddleware`; `MiddlewareWith` is routing's.
 
 ### Catch-all params in attribute routes
 

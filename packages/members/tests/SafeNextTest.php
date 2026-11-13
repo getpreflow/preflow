@@ -62,4 +62,15 @@ final class SafeNextTest extends TestCase
         $this->assertSame('/tools/x', $safe->of('/tools/x', 'de'));
         $this->assertSame('/tools', $safe->of('/de/tools/x', 'de'));
     }
+
+    public function test_urls_and_traversal_fall_back_to_the_landing_also_for_allowed_paths(): void
+    {
+        $safe = $this->safe(['next' => ['allow' => ['/a']]]);
+
+        foreach (['//evil.example', '/%2F%2Fevil.example', '/a/../b', '\\evil', '/members/../a', '/a//evil.example'] as $bad) {
+            $this->assertSame('/members', $safe->of($bad, 'en'), $bad);
+        }
+        $this->assertSame('/a/b?c=1', $safe->of('/a/b?c=1', 'en'));
+        $this->assertSame('/de/a', $safe->of('/de/a', 'de'));
+    }
 }

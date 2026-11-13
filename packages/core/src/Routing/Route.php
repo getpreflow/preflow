@@ -8,7 +8,7 @@ final readonly class Route
 {
     /**
      * @param array<string, string> $parameters  Extracted route parameters
-     * @param string[]              $middleware   Middleware class names for this route
+     * @param list<string|ConfiguredMiddleware> $middleware Middleware class names for this route, or classes with arguments
      */
     public function __construct(
         public RouteMode $mode,

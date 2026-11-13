@@ -13,7 +13,7 @@ final readonly class RouteEntry
      * @param string   $handler    Handler identifier (page path or 'ClassName@method')
      * @param string   $method     HTTP method (GET, POST, etc.)
      * @param RouteMode $mode      Component or Action
-     * @param string[] $middleware Middleware class names
+     * @param list<string|MiddlewareWith> $middleware Middleware class names, or classes with arguments
      * @param string[] $paramNames Parameter names extracted from pattern
      * @param string   $regex      Compiled regex for matching
      * @param bool     $isCatchAll Whether this route has a catch-all segment

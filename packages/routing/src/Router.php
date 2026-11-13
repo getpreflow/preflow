@@ -43,7 +43,7 @@ final class Router implements RouterInterface
      *
      * The entries must depend only on code, config files and files that change on deploy (never on
      * stored data or the request); $sources names those files for `preflow optimize --check`. A set
-     * the store can't keep (middleware given as closures or objects) is simply compiled live.
+     * the store can't keep (middleware given as closures or objects other than MiddlewareWith) is simply compiled live.
      *
      * @param \Closure(): iterable<RouteEntry> $entries
      * @param list<string>                     $sources absolute paths

@@ -208,6 +208,30 @@ final class ContainerTest extends TestCase
         $this->assertSame('hello', $result->name);
     }
 
+    public function test_make_overrides_win_over_autowiring_and_build_a_new_instance(): void
+    {
+        $container = new Container();
+        $shared = new ServiceWithDependency(new SimpleService());
+        $container->instance(ServiceWithDependency::class, $shared);
+        $given = new SimpleService();
+
+        $made = $container->make(ServiceWithDependency::class, ['simple' => $given]);
+
+        $this->assertNotSame($shared, $made);
+        $this->assertSame($given, $made->simple);
+        $this->assertSame($shared, $container->get(ServiceWithDependency::class));
+
+        $mixed = $container->make(ServiceWithNestedDeps::class, ['simple' => $given]);
+        $this->assertSame($given, $mixed->simple);
+        $this->assertSame($shared, $mixed->service, 'the parameters not given are autowired');
+    }
+
+    public function test_make_with_a_wrongly_typed_override_fails(): void
+    {
+        $this->expectException(\TypeError::class);
+        (new Container())->make(ServiceWithDependency::class, ['simple' => []]);
+    }
+
     public function test_detects_circular_dependency(): void
     {
         $container = new Container();

@@ -6,10 +6,13 @@ namespace Preflow\Core;
 
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
 use Preflow\Core\Container\Container;
+use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Debug\DebugCollector;
 use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Http\MiddlewarePipeline;
+use Preflow\Core\Routing\ConfiguredMiddleware;
 use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouteMode;
 use Preflow\Core\Routing\RouterInterface;
@@ -71,11 +74,8 @@ final class Kernel
                 // Execute route-level middleware if any
                 if ($route->middleware !== []) {
                     $routePipeline = new MiddlewarePipeline();
-                    foreach ($route->middleware as $mwClass) {
-                        $mw = $this->container->has($mwClass)
-                            ? $this->container->get($mwClass)
-                            : $this->container->make($mwClass);
-                        $routePipeline->pipe($mw);
+                    foreach ($route->middleware as $mw) {
+                        $routePipeline->pipe($this->routeMiddleware($mw));
                     }
                     return $routePipeline->process($req, $dispatch);
                 }
@@ -89,5 +89,25 @@ final class Kernel
             $response = $this->cors?->decorate($request, $response) ?? $response;
             return $this->securityHeaders?->decorate($request, $response) ?? $response;
         }
+    }
+
+    /** A class name: the container's instance, else autowired. With arguments: a new instance, the arguments winning over autowiring. */
+    private function routeMiddleware(string|ConfiguredMiddleware $mw): MiddlewareInterface
+    {
+        if (!$mw instanceof ConfiguredMiddleware) {
+            return $this->container->has($mw) ? $this->container->get($mw) : $this->container->make($mw);
+        }
+        $class = $mw->middlewareClass();
+        try {
+            $built = $this->container->make($class, $mw->arguments());
+        } catch (\TypeError $e) {
+            throw new ContainerException("Route middleware [{$class}] cannot be built with the arguments ["
+                . implode(', ', array_keys($mw->arguments())) . ']: ' . $e->getMessage(), 0, $e);
+        }
+        if (!$built instanceof MiddlewareInterface) {
+            throw new ContainerException("Route middleware [{$class}] is not a middleware (" . MiddlewareInterface::class . ').');
+        }
+
+        return $built;
     }
 }
