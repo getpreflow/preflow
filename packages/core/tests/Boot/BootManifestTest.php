@@ -379,6 +379,16 @@ final class BootManifestTest extends TestCase
         $this->assertSame('live', $app->configFile('hooks')['on']());
     }
 
+    public function test_an_object_used_in_several_places_is_written(): void
+    {
+        $shared = SharedManifestValue::__set_state(['name' => 'employers']);
+
+        ManifestFile::write($this->dir, ['first' => [$shared], 'second' => [$shared]]);
+
+        $back = include $this->dir . '/bootstrap/cache/boot.php';
+        $this->assertEquals(['first' => [$shared], 'second' => [$shared]], $back);
+    }
+
     public function test_a_corrupt_or_foreign_manifest_is_ignored(): void
     {
         $this->write('bootstrap/cache/boot.php', "<?php\nreturn ['version' => 999];\n");
@@ -495,5 +505,19 @@ final class LossyExport
     public static function __set_state(array $state): self
     {
         return new self();
+    }
+}
+
+final class SharedManifestValue
+{
+    public string $name = '';
+
+    /** @param array{name: string} $state */
+    public static function __set_state(array $state): self
+    {
+        $value = new self();
+        $value->name = $state['name'];
+
+        return $value;
     }
 }

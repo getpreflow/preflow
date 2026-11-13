@@ -121,7 +121,9 @@ final class ManifestFile
             @unlink($tmp);
             throw new \RuntimeException('The manifest does not load back: ' . $e->getMessage(), 0, $e);
         }
-        if (serialize($back) !== serialize($data)) {
+        // Compared as written, not by serialize(): one object used in several places (a class-level
+        // middleware shared by its routes) serializes as references the written copy doesn't keep.
+        if (var_export($back, true) !== var_export($data, true)) {
             @unlink($tmp);
             throw new \RuntimeException('The manifest does not load back as written (a value is not exportable).');
         }
