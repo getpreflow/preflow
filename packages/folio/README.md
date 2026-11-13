@@ -1125,7 +1125,7 @@ php -S 127.0.0.1:8000 -t public public/index.php
 
 `public/index.php` should `return false` for existing files under `cli-server`.
 
-**Deprecated in 0.34 (removed in a later release):**
+**Deprecated in 0.34 (the class names removed in 0.72):**
 
 | Old | New |
 |---|---|
@@ -1136,8 +1136,8 @@ php -S 127.0.0.1:8000 -t public public/index.php
 | `config/folio.php` `assets` (library settings) | `config/media.php` (`private_permission` and `private_login` stay in `folio.php`) |
 | `php preflow folio:assets:variants` | `php preflow media:variants` |
 
-The old class names are aliases from `packages/folio/src/legacy-aliases.php`; the old
-template functions and command still work. `config/folio.php` `assets` is read only when
+The old class names (`Preflow\Folio\Assets\*`, but `AssetReferences`, which is Folio's) are
+gone since 0.72: use the `Preflow\Media` names. The old template functions and command still work. `config/folio.php` `assets` is read only when
 `config/media.php` is missing, and never merged with it.
 
 ## Extensions
@@ -1818,8 +1818,8 @@ user type, for a `SessionGuard` in `config/auth.php`:
 ```
 
 - The class lives in preflow/auth since 0.38; Folio builds it with its type catalog. The old
-  name `Preflow\Folio\Users\RecordUserProvider` (and `Preflow\Folio\Users\RecordUser`) works for
-  one release; a config naming it logs a deprecation.
+  names `Preflow\Folio\Users\RecordUserProvider` and `Preflow\Folio\Users\RecordUser` are gone
+  since 0.72: a `config/auth.php` naming them no longer works.
 - The type must exist and have `"users"` set, or boot fails with a message naming it.
 - The Folio login upgrades an outdated password hash (an imported `$1$` hash, an older cost) at
   sign-in, without touching `auth_epoch` (`Preflow\Auth\PasswordRehash`, see auth's README).

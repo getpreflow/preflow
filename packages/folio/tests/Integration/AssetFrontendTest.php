@@ -6,7 +6,7 @@ namespace Preflow\Folio\Tests\Integration;
 
 use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 
 #[RequiresFunction('imagewebp')]
@@ -27,7 +27,7 @@ final class AssetFrontendTest extends TestCase
 
     public function test_folio_image_focal_css_reaches_the_page_head(): void
     {
-        $library = $this->app()->container()->get(AssetLibrary::class);
+        $library = $this->app()->container()->get(MediaLibrary::class);
         $image = imagecreatetruecolor(600, 300);
         ob_start();
         imagepng($image);
@@ -48,7 +48,7 @@ final class AssetFrontendTest extends TestCase
     public function test_step_widths_are_made_on_first_request_and_pages_still_resolve(): void
     {
         $this->write('config/image.php', "<?php\nreturn ['presets' => ['card' => ['widths' => [480, 960], 'step' => 160]]];\n");
-        $library = $this->app()->container()->get(AssetLibrary::class);
+        $library = $this->app()->container()->get(MediaLibrary::class);
         $image = imagecreatetruecolor(1000, 600);
         ob_start();
         imagepng($image);
@@ -73,7 +73,7 @@ final class AssetFrontendTest extends TestCase
         function_exists('imageavif') || $this->markTestSkipped('The fixture holds AVIF sources.');
         $this->write('config/image.php', "<?php\nreturn ['presets' => ['card' => ['widths' => [480, 960], 'step' => 160, 'sizes' => '(min-width: 800px) 50vw, 100vw']]];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><head><title>t</title></head><body>{{ folio_image(record.cover, "card", {priority: true}) }}</body></html>');
-        $library = $this->app()->container()->get(AssetLibrary::class);
+        $library = $this->app()->container()->get(MediaLibrary::class);
         $image = imagecreatetruecolor(1000, 600);
         ob_start();
         imagepng($image);

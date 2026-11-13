@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 
 /**
@@ -73,7 +73,7 @@ final class RichTextOutputTest extends TestCase
     {
         $file = $this->dir . '/paper.pdf';
         file_put_contents($file, "%PDF-1.4\n%%EOF\n");
-        $asset = $this->app()->container()->get(AssetLibrary::class)->importFile($file, 'paper.pdf', null);
+        $asset = $this->app()->container()->get(MediaLibrary::class)->importFile($file, 'paper.pdf', null);
         $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello'], 'cover' => $asset->id]), null);
 
         $html = (string) $this->get('/hello')->getBody();

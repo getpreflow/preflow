@@ -523,8 +523,8 @@ The full list is in the framework's 0.38 release checklist; what a site with mem
 - **No Folio or rbac needed.** The package no longer requires them; Folio carries the members
   admin when this package is installed (it still needs the `rbac` extension).
 - **`config/auth.php`:** the provider class is `Preflow\Auth\Record\RecordUserProvider`.
-  `Preflow\Folio\Users\RecordUserProvider` keeps working for one release (a deprecation is
-  logged); `new` with the old constructor (a `TypeCatalog`) no longer works.
+  `Preflow\Folio\Users\RecordUserProvider` worked until 0.71 and is gone since 0.72; `new` with
+  the old constructor (a `TypeCatalog`) no longer works.
 - **`preflow migrate`** on SQL storage: the member type gains the hidden field `next`; without
   the column a registration that carries a `next` fails.
 - **`next.allow`:** `next` keeps today's rule (member pages only) unless you add prefixes.

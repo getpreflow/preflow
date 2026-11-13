@@ -108,22 +108,12 @@ final class FolioServiceProvider extends ServiceProvider
         $container->instance(TypeCatalog::class, $catalog);
 
         // Record user providers named in config/auth.php get their user type from Folio's catalog.
-        // The pre-0.38 Folio name still works, with a deprecation note.
         $recordProvider = static fn (Container $c, array $parameters = []): \Preflow\Auth\Record\RecordUserProvider => new \Preflow\Auth\Record\RecordUserProvider(
             $c->get(DataManager::class),
             (array) ($parameters['config'] ?? []),
             \Preflow\Folio\Users\RecordProviders::types($c->get(TypeCatalog::class), $c->get(TypeRegistry::class)),
         );
         $container->bind(\Preflow\Auth\Record\RecordUserProvider::class, $recordProvider);
-        $container->bind('Preflow\Folio\Users\RecordUserProvider', static function (Container $c, array $parameters = []) use ($recordProvider): \Preflow\Auth\Record\RecordUserProvider {
-            if ($c->bound(\Preflow\Core\Debug\DebugCollector::class)) {
-                $c->get(\Preflow\Core\Debug\DebugCollector::class)->logDeprecation(
-                    'config/auth.php: Preflow\Folio\Users\RecordUserProvider moved to ' . \Preflow\Auth\Record\RecordUserProvider::class . '; the old name is removed in the next release.',
-                );
-            }
-
-            return $recordProvider($c, $parameters);
-        });
 
         // Extensions (app/Folio/*, Composer extra.folio.extension), enabled by the committed
         // config/folio/extensions.json. Built before anything reads the catalog, so the models
@@ -279,13 +269,6 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Media\Image\ImageWidths::class),
             $c->get(\Preflow\Media\Image\Formats::class),
         ));
-        foreach ([
-            'Preflow\\Folio\\Assets\\AssetLibrary' => \Preflow\Media\MediaLibrary::class,
-            'Preflow\\Folio\\Assets\\ImageTag' => \Preflow\Media\ImageTag::class,
-            'Preflow\\Folio\\Assets\\ImageWidths' => \Preflow\Media\Image\ImageWidths::class,
-        ] as $old => $new) {
-            $container->bind($old, static fn (Container $c) => $c->get($new)); // deprecated names, the same services
-        }
         $container->singleton(\Preflow\Folio\Assets\AssetReferences::class, fn (Container $c) => new \Preflow\Folio\Assets\AssetReferences(
             $c->get(BlockRegistry::class),
         ));
@@ -1822,7 +1805,8 @@ final class FolioServiceProvider extends ServiceProvider
      * (the catalog), the rules (RecordValidator), the languages (TranslationStatus), the review
      * index, the addresses (redirects, page-cache tags), the columns Folio adds to the record
      * tables, the legacy drafts `publish` skips, and for RecordWriter and RecordDeleter the save
-     * and delete hooks of the type customizations and the orderable listings. Its settings come from config/publishing.php.
+     * and delete hooks of the type customizations and the orderable listings. The Publisher is
+     * preflow/publishing's, with its settings from config/publishing.php.
      */
     private function registerPublishing(Container $container): void
     {
@@ -1872,22 +1856,6 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(DataManager::class),
             ));
         }
-        $container->singleton(\Preflow\Publishing\Publisher::class, static function (Container $c): \Preflow\Publishing\Publisher {
-            $config = $c->get(\Preflow\Publishing\PublishingConfig::class);
-
-            return new \Preflow\Publishing\Publisher(
-                $c->get(DataManager::class),
-                $c->get(\Preflow\Publishing\PublishingTypes::class),
-                $c->get(\Preflow\Publishing\RecordChecks::class),
-                $config->revisions,
-                null,
-                $c->get(\Preflow\Publishing\LanguageChecks::class),
-                $config->completeLanguages,
-                $c->get(\Preflow\Publishing\RecordIndex::class),
-                $c->get(\Preflow\Publishing\RecordAddresses::class),
-                columns: $c->get(\Preflow\Publishing\RecordColumns::class),
-            );
-        });
     }
 
     /**

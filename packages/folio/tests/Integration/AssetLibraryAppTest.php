@@ -8,7 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Media\Asset;
-use Preflow\Folio\Assets\AssetLibrary;
+use Preflow\Media\MediaLibrary;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UploadedFileInterface;
@@ -160,9 +160,9 @@ final class AssetLibraryAppTest extends TestCase
         $this->assertSame(0, $this->dm()->queryType('post')->get()->total());
     }
 
-    private function lib(): AssetLibrary
+    private function lib(): MediaLibrary
     {
-        return $this->app()->container()->get(AssetLibrary::class);
+        return $this->app()->container()->get(MediaLibrary::class);
     }
 
     /**

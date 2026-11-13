@@ -146,8 +146,8 @@ $dm->save($token);
   `roles`, `auth_epoch`). The signed-in user is a `Record\RecordUser`. Its constructor takes an
   optional type lookup (`\Closure(string): ?TypeDefinition`); without one the DataManager's type
   registry answers. Folio passes its type catalog (which also requires `"users"` in the model). Until
-  0.38 it lived in Folio as `Preflow\Folio\Users\RecordUserProvider`; that name still works for one
-  release and logs a deprecation. Core binds `RecordUserProvider::factory()` (the DataManager and
+  0.38 it lived in Folio as `Preflow\Folio\Users\RecordUserProvider`; that name is gone since 0.72.
+  Core binds `RecordUserProvider::factory()` (the DataManager and
   the provider's config entry), so `config/auth.php` builds it on a site without Folio; Folio
   binds its own. The `roles` field is read by `Record\RoleField::normalize()` (a list, a JSON
   string, a comma string or ints; trimmed, unique, non-empty), the rule rbac uses too. With

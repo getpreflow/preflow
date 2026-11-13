@@ -139,21 +139,19 @@ final class FolioServiceProviderTest extends TestCase
         $c->instance(\Preflow\Data\DataManager::class, new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver(sys_get_temp_dir() . '/folio_order_' . bin2hex(random_bytes(4)))], defaultDriver: 'json'));
         $tag = $c->get(\Preflow\Media\ImageTag::class);
         $this->assertSame($tag, $c->get(\Preflow\Media\ImageTag::class));
-        $this->assertSame($tag, $c->get('Preflow\\Folio\\Assets\\ImageTag'));
         $legacy = '2024/05/' . str_repeat('a', 32) . '.pdf';
         $this->assertSame('/folio/_uploads/' . $legacy, $tag->url($legacy));
     }
 
-    public function test_old_class_names_resolve_to_the_media_services(): void
+    public function test_the_old_asset_names_are_no_services_any_more(): void
     {
         $app = Application::create(['app' => ['debug' => true]]);
         $app->registerProvider(new FolioServiceProvider());
         $c = $app->container();
-        $c->instance(\Preflow\Data\DataManager::class, new \Preflow\Data\DataManager(drivers: ['json' => new \Preflow\Data\Driver\JsonFileDriver(sys_get_temp_dir() . '/folio_alias_' . bin2hex(random_bytes(4)))], defaultDriver: 'json'));
 
-        $this->assertSame($c->get(\Preflow\Media\MediaLibrary::class), $c->get('Preflow\\Folio\\Assets\\AssetLibrary'));
-        $this->assertSame($c->get(\Preflow\Media\ImageTag::class), $c->get('Preflow\\Folio\\Assets\\ImageTag'));
-        $this->assertSame($c->get(\Preflow\Media\Image\ImageWidths::class), $c->get('Preflow\\Folio\\Assets\\ImageWidths'));
+        foreach (['AssetLibrary', 'ImageTag', 'ImageWidths'] as $name) {
+            $this->assertFalse($c->has("Preflow\\Folio\\Assets\\{$name}"), $name);
+        }
     }
 
     /** @param array<string, mixed> $folio */

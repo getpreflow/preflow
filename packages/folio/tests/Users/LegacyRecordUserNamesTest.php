@@ -14,7 +14,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Debug\DebugCollector;
 use Preflow\Folio\Users\RecordProviders;
 
-/** RecordUser and RecordUserProvider moved to preflow/auth; the Folio names work for one release. */
+/** RecordUser and RecordUserProvider moved to preflow/auth in 0.38; the Folio names are gone since 0.72. */
 final class LegacyRecordUserNamesTest extends TestCase
 {
     private string $dir = '';
@@ -34,12 +34,10 @@ final class LegacyRecordUserNamesTest extends TestCase
         @rmdir($this->dir);
     }
 
-    public function test_the_old_names_resolve_to_the_auth_classes(): void
+    public function test_the_old_names_are_gone(): void
     {
-        $this->assertTrue(class_exists('Preflow\Folio\Users\RecordUser'));
-        $this->assertTrue(class_exists('Preflow\Folio\Users\RecordUserProvider'));
-        $this->assertSame(RecordUser::class, (new \ReflectionClass('Preflow\Folio\Users\RecordUser'))->getName());
-        $this->assertSame(RecordUserProvider::class, (new \ReflectionClass('Preflow\Folio\Users\RecordUserProvider'))->getName());
+        $this->assertFalse(class_exists('Preflow\Folio\Users\RecordUser'));
+        $this->assertFalse(class_exists('Preflow\Folio\Users\RecordUserProvider'));
     }
 
     /** @return list<string> the deprecations the booted app logged */
@@ -77,15 +75,7 @@ final class LegacyRecordUserNamesTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_a_config_naming_the_old_provider_works_with_a_deprecation_note(): void
-    {
-        $deprecations = $this->boot('Preflow\Folio\Users\RecordUserProvider');
-
-        $this->assertCount(1, array_filter($deprecations, static fn (string $m): bool => str_contains($m, 'Preflow\Folio\Users\RecordUserProvider') && str_contains($m, RecordUserProvider::class)), implode("\n", $deprecations));
-    }
-
-    #[RunInSeparateProcess]
-    public function test_the_new_name_logs_no_deprecation(): void
+    public function test_the_new_name_works_without_a_deprecation(): void
     {
         $deprecations = $this->boot(RecordUserProvider::class);
 
