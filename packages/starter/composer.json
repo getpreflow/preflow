@@ -12,7 +12,7 @@
         "preflow/twig": "^0.71",
         "preflow/components": "^0.71",
         "preflow/htmx": "^0.71",
-        "preflow/i18n": "^0.70",
+        "preflow/i18n": "^0.71",
         "preflow/data": "^0.71",
         "preflow/auth": "^0.71",
         "preflow/validation": "^0.71",

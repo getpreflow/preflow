@@ -1,6 +1,6 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-13 (v0.71.0)
+> Last updated: 2026-11-13 (v0.71.1)
 
 ## Current State
 
@@ -524,6 +524,10 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Starter pins (v0.71.1, released 2026-11-13):** both starters still required `preflow/i18n` `^0.70`, which Folio 0.71
+  refuses, so `create-project preflow/starter-folio` could not install. Both pin `^0.71`; a starter test now checks that
+  every `preflow/*` requirement names the same release. **Upgrading:** projects made from a 0.71.0 starter set
+  `preflow/i18n` to `^0.71`.
 - **preflow/publishing and one record write path (v0.71.0, released 2026-11-13):** fifth release of the package
   audit's fixes (spec D2, D3; plan `docs/superpowers/plans/2026-11-13-release-0.71-publishing.md`).
   - **New package `preflow/publishing`** (`Preflow\Publishing\*`): Publisher, LiveContent, PublishedModels,
