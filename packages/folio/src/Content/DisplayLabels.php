@@ -68,7 +68,9 @@ final class DisplayLabels
 
     /**
      * A permission's label on the roles screen. In order: a declared label that is a key
-     * (FolioText::label()); Folio's own permissions (folio.permissions.names.{name}); an
+     * (FolioText::label()); Folio's own permissions (folio.permissions.names.{name}, or with the
+     * dots after the second segment written "_" where a name extends another: seo.audit.run is
+     * folio.permissions.names.seo.audit_run, next to seo.audit's text); an
      * extension's permission ("{extension}.{rest}") as {its group}.permissions.{rest}; a
      * standard verb ("View") as folio.permissions.verbs.{verb}; else the declared label.
      */
@@ -80,6 +82,10 @@ final class DisplayLabels
             return $label;
         }
         $own = Labels::resolve($translator, 'folio.permissions.names.' . $name, null);
+        $segments = explode('.', $name);
+        if ($own === null && count($segments) > 2) {
+            $own = Labels::resolve($translator, 'folio.permissions.names.' . $segments[0] . '.' . implode('_', array_slice($segments, 1)), null);
+        }
         if ($own !== null) {
             return $own;
         }

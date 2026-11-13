@@ -279,7 +279,8 @@ final class AdminJsTest extends TestCase
     {
         $js = $this->js();
         $this->assertStringContainsString("['htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach", $js);
-        $this->assertStringContainsString("if (!elt || elt.id !== 'folio-ai-progress') { return; }", $js);
-        $this->assertStringContainsString("elt.querySelector('[data-folio-ai-stalled]')", $js);
+        // The AI run's progress and any partial marked data-folio-run-progress (the SEO audit's).
+        $this->assertStringContainsString("if (!elt || (elt.id !== 'folio-ai-progress' && !(elt.hasAttribute && elt.hasAttribute('data-folio-run-progress')))) { return; }", $js);
+        $this->assertStringContainsString("elt.querySelector('[data-folio-ai-stalled], [data-folio-run-stalled]')", $js);
     }
 }

@@ -6,9 +6,9 @@
     "require": {
         "php": ">=8.4",
         "preflow/ai": "^0.66 || @dev",
-        "preflow/core": "^0.70 || @dev",
+        "preflow/core": "^0.74 || @dev",
         "preflow/data": "^0.68 || @dev",
-        "preflow/view": "^0.65 || @dev",
+        "preflow/view": "^0.74 || @dev",
         "preflow/twig": "^0.65 || @dev",
         "preflow/routing": "^0.70 || @dev",
         "preflow/form": "^0.1 || @dev",
@@ -38,7 +38,7 @@
         "preflow/ai": "<0.66",
         "preflow/auth": "<0.69",
         "preflow/codes": "<0.68",
-        "preflow/core": "<0.70",
+        "preflow/core": "<0.74",
         "preflow/data": "<0.68",
         "preflow/htmx": "<0.65",
         "preflow/i18n": "<0.71",
@@ -50,7 +50,7 @@
         "preflow/routing": "<0.70",
         "preflow/twig": "<0.65",
         "preflow/validation": "<0.52",
-        "preflow/view": "<0.65"
+        "preflow/view": "<0.74"
     },
     "autoload": {
         "psr-4": { "Preflow\\Folio\\": "src/" },

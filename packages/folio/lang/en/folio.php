@@ -75,7 +75,7 @@ return [
         'names' => [
             'folio' => ['dashboard' => 'Dashboard', 'extensions' => 'Extensions', 'cache' => 'Cache'],
             'translations' => ['edit' => 'Translations'],
-            'seo' => ['audit' => 'SEO audit'],
+            'seo' => ['audit' => 'SEO audit', 'audit_run' => 'Run the SEO audit'],
         ],
         'verbs' => ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete', 'upload' => 'Upload'],
         'groups' => ['folio' => 'Folio', 'assets' => 'Assets'],
@@ -609,10 +609,10 @@ return [
         'add_row' => 'Add row',
     ],
     // Settings → Cache. The caches' own names follow under their keys (others show as they register).
-    // Settings → SEO audit: the last report of `preflow seo:audit` (read only). The findings' own
+    // Settings → SEO audit: the last report of the audit, and running it (seo.audit.run). The findings' own
     // messages come from the report as written (English).
     'audit' => [
-        'intro' => 'The last run of the SEO audit on this site: what search engines and visitors would trip over, most serious first. The audit runs on the server; this screen only shows its report.',
+        'intro' => 'The last run of the SEO audit on this site: what search engines and visitors would trip over, most serious first. The audit runs on the server, page by page.',
         'never_run' => 'No audit has run on this site yet. Run it on the server with',
         'site' => 'Site',
         'started' => 'Started',
@@ -631,6 +631,22 @@ return [
         'open_page' => 'Open page',
         'edit' => 'Edit',
         'open_in_library' => 'Open in library',
+        // Running the audit from the screen (seo.audit.run, since 0.74).
+        'not_yet' => 'No audit has run on this site yet.',
+        'cli' => 'On the server it runs with',
+        'run' => 'Run audit',
+        'running' => 'Auditing…',
+        'continue_run' => 'Continue',
+        'start_over' => 'Start over',
+        'run_again' => 'Run again',
+        'progress' => ':done of :total pages audited',
+        'stepping' => 'The audit runs while this page is open, in steps of about :seconds seconds. You may leave: Continue picks it up where it stopped.',
+        'step_hint' => 'Each Continue audits pages for about :seconds seconds.',
+        'elsewhere' => 'Another audit is running on this site (on the server or in another browser). Try again once it has finished.',
+        'retry' => 'Try again',
+        'failed' => 'The last step failed:',
+        'failed_help' => 'The pages audited so far are kept; Continue tries the next step.',
+        'stalled' => 'A step did not come back, so the audit stopped. Continue picks it up where it stopped.',
         // The checks by id ("." written "_"); a site's own checks show their id.
         'checks' => [
             'status_error' => 'Page does not answer',

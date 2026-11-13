@@ -1801,13 +1801,31 @@ the lists.
 
 ## Settings → SEO audit
 
-`{prefix}/seo-audit`, permission `seo.audit`, on every site (also without SQL storage). A read-only screen of
-the last report of `preflow seo:audit` (see the SEO audit section in `packages/view/README.md`): when it ran
-and on which site, whether it is complete or how many pages it has done, the number of findings per severity
-and the findings grouped by check, most serious first. It never starts a run; without a report it says how to
-run one. Each finding links to its page and, for content findings, to the record or library asset to fix,
-for users who may open them (`{type}.view` / `assets.view`). The texts come in en, de and fr. With rbac, the
-new permission `seo.audit` is announced in *Settings → Roles* like any new permission.
+`{prefix}/seo-audit`, permission `seo.audit`, on every site (also without SQL storage). The last report of
+the SEO audit (see the SEO audit section in `packages/view/README.md`): when it ran and on which site, whether
+it is complete or how many pages it has done, the number of findings per severity and the findings grouped by
+check, most serious first. Each finding links to its page and, for content findings, to the record or library
+asset to fix, for users who may open them (`{type}.view` / `assets.view`). The texts come in en, de and fr.
+
+Since 0.74 a user who also has `seo.audit.run` runs the audit on this screen, through preflow/view's `Audits`
+(the same steps and report as `preflow seo:audit`, which still works and is named on the screen):
+
+- **Run audit** (no report yet), **Continue** and **Start over** (an incomplete report), **Run again** (a
+  complete one, from the start) are plain POSTs to `{prefix}/seo-audit/run` (`fresh=1` starts over). Each
+  runs one step of 20 seconds (`SeoAuditController::STEP_SECONDS`; at least one page) and shows the page
+  with the progress. Without JavaScript every Continue is one more step.
+- With JavaScript the progress posts itself to `{prefix}/seo-audit/step` (htmx) after each step until the
+  report is complete, then goes to the finished report. Leaving the page stops it; Continue picks it up
+  where it stopped. A step whose request fails shows Continue.
+- Another run of the same site (the command, another browser) holds the audit's lock: the screen says so
+  and offers Try again. A step that throws shows its message (and logs it) with Continue.
+- A step closes the session first, keeps running when the tab closes, and raises a PHP time limit below
+  60 seconds to 60 where it may. The audited pages render as a visitor, and the mail they queue is dropped
+  (core's internal render scope).
+
+Both routes need `seo.audit`; the controller adds `seo.audit.run` (403 without it; then the screen shows no
+buttons). With rbac, the new permissions are announced in *Settings → Roles* like any new permission: the
+`admin` role (`*`) has them, other roles get `seo.audit.run` only when someone adds it.
 
 ## User types and transfer
 

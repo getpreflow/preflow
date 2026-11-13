@@ -5,32 +5,52 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Http\Csrf\CsrfToken;
+use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\FolioText;
 use Preflow\View\Audit\AuditReport;
+use Preflow\View\Audit\AuditRunning;
+use Preflow\View\Audit\Audits;
 use Preflow\View\Audit\Finding;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * {prefix}/seo-audit (Settings → SEO audit, permission seo.audit): the last report of
- * `preflow seo:audit`, read only. When it ran and on which site, whether it is complete (or
- * how many pages it has done), the findings per severity, and the findings grouped by check,
- * most serious first, each with a link to the page and, for content, to the record or asset
- * to fix (where the user may open it). It never starts a run and never writes: it only reads
- * the report file. Works on every site, also one without SQL storage.
+ * {prefix}/seo-audit (Settings → SEO audit, permission seo.audit): the last report of the SEO
+ * audit. When it ran and on which site, whether it is complete (or how many pages it has done),
+ * the findings per severity, and the findings grouped by check, most serious first, each with a
+ * link to the page and, for content, to the record or asset to fix (where the user may open it).
+ * Works on every site, also one without SQL storage. The screen itself only reads the report.
+ *
+ * Since 0.74 a user with seo.audit.run also runs the audit here, through preflow/view's Audits
+ * (the same steps as `preflow seo:audit`): run posts one step of STEP_SECONDS (fresh=1 starts
+ * over) and shows the page with its progress; step (htmx) runs the next one. While the run is
+ * incomplete the progress partial posts itself to step until the report is complete, then
+ * redirects to the finished report (HX-Redirect). Without JavaScript each Continue is a plain
+ * POST that runs one step. A run held elsewhere (the command, another browser) shows a notice
+ * with Try again; a step that throws shows its message with Continue. Without Audits (an app
+ * that does not set up the audit) the screen stays read only.
  *
  * @since 0.54
  */
 final class SeoAuditController
 {
+    /** Seconds one step may audit pages (at least one page): short enough for any web request. */
+    public const int STEP_SECONDS = 20;
+
+    /** The PHP time limit a step raises a shorter one to: the step's budget, the last page and the report's save fit. */
+    private const int TIME_LIMIT = 60;
+
     /** Severities, most serious first. */
     private const array RANK = ['critical' => 0, 'warning' => 1, 'notice' => 2];
 
     /**
      * @param string                     $file the report file (AuditReport::file())
      * @param \Closure(string): bool     $can  whether the user has a permission
+     * @param ?\Closure(): ?Audits       $audits the app's audit service, null where it isn't set up (read only then)
+     * @param ?\Closure(string): void    $log  a warning sink for a failed step (else error_log())
      */
     public function __construct(
         private readonly string $file,
@@ -38,14 +58,106 @@ final class SeoAuditController
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
         private readonly \Closure $can,
+        private readonly ?\Closure $audits = null,
+        private readonly ?\Closure $log = null,
     ) {}
 
     public function index(ServerRequestInterface $request): ResponseInterface
     {
-        $report = AuditReport::load($this->file);
+        $audits = $this->runner();
+        $state = $audits instanceof Audits ? ($audits->running() ? 'elsewhere' : 'idle') : null;
 
-        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/seo-audit/index.twig', [
+        return $this->page($request, AuditReport::load($this->file), $state);
+    }
+
+    /**
+     * POST {prefix}/seo-audit/run (fresh=1 starts over): runs one step and shows the page with its
+     * progress, or redirects to the report once it is complete. Run, Continue, Start over, Run
+     * again and Try again all post here; without JavaScript each press is one step.
+     */
+    public function run(ServerRequestInterface $request): ResponseInterface
+    {
+        $audits = $this->runner();
+        if (!$audits instanceof Audits) {
+            return $this->refused($audits);
+        }
+        $body = $request->getParsedBody();
+
+        return $this->advance($request, $audits, is_array($body) && ($body['fresh'] ?? null) === '1');
+    }
+
+    /** POST {prefix}/seo-audit/step (htmx, from the progress partial): the next step, answered with the partial. */
+    public function step(ServerRequestInterface $request): ResponseInterface
+    {
+        $audits = $this->runner();
+        if (!$audits instanceof Audits) {
+            return $this->refused($audits);
+        }
+
+        return $this->advance($request, $audits, false);
+    }
+
+    /** The audit service when the user may run it, else why not (403 without seo.audit.run, 404 without the service). */
+    private function runner(): Audits|int
+    {
+        if (!($this->can)('seo.audit.run')) {
+            return 403;
+        }
+        $audits = $this->audits !== null ? ($this->audits)() : null;
+
+        return $audits instanceof Audits ? $audits : 404;
+    }
+
+    private function refused(int $status): ResponseInterface
+    {
+        return new Response($status, ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'no-store'], $status === 403 ? 'Forbidden' : 'Not Found');
+    }
+
+    private function advance(ServerRequestInterface $request, Audits $audits, bool $fresh): ResponseInterface
+    {
+        self::allowLongRequest($request);
+        $state = 'stepping';
+        $error = null;
+        try {
+            $report = $audits->step(self::STEP_SECONDS, $fresh);
+        } catch (AuditRunning) {
+            $state = 'elsewhere';
+            $report = $audits->report();
+        } catch (\Throwable $e) {
+            $state = 'failed';
+            $error = $e->getMessage();
+            $message = 'SEO audit: a step run from Folio failed: ' . $e::class . ': ' . $error;
+            $this->log !== null ? ($this->log)($message) : error_log($message);
+            $report = $audits->report();
+        }
+        $htmx = $request->getHeaderLine('HX-Request') === 'true';
+        if ($state === 'stepping' && $report->complete()) {
+            $url = $this->prefix . '/seo-audit';
+
+            return $htmx
+                ? new Response(200, ['HX-Redirect' => $url, 'Cache-Control' => 'no-store'])
+                : new Response(303, ['Location' => $url, 'Cache-Control' => 'no-store']);
+        }
+        if ($htmx) {
+            return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render(
+                '@folio/admin/seo-audit/_progress.twig',
+                ['audit' => $this->runView($request, $report, $state, $error), 'prefix' => $this->prefix],
+            ));
+        }
+
+        return $this->page($request, $report, $state, $error);
+    }
+
+    /**
+     * The screen. $state is null where the user can't run the audit here (read only), else idle,
+     * stepping (the partial polls step), elsewhere (another run holds the lock) or failed.
+     */
+    private function page(ServerRequestInterface $request, ?AuditReport $report, ?string $state, ?string $error = null): ResponseInterface
+    {
+        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/seo-audit/index.twig', [
             'prefix' => $this->prefix,
+            'audit' => $state === null ? null : $this->runView($request, $report, $state, $error),
+            'editor_assets' => $state === 'stepping' ? ['htmx.js'] : [],
             'report' => $report === null ? null : [
                 'started_at' => $report->startedAt,
                 'finished_at' => $report->finishedAt,
@@ -57,6 +169,42 @@ final class SeoAuditController
                 'groups' => $this->groups($report->findings),
             ],
         ]));
+    }
+
+    /** @return array<string, mixed> what _progress.twig shows */
+    private function runView(ServerRequestInterface $request, ?AuditReport $report, string $state, ?string $error): array
+    {
+        return [
+            'state' => $state,
+            'error' => $error,
+            'started' => $report !== null,
+            'complete' => $report?->complete() ?? false,
+            'done' => $report?->done() ?? 0,
+            'total' => $report?->total ?? 0,
+            'run_url' => $this->prefix . '/seo-audit/run',
+            'step_url' => $this->prefix . '/seo-audit/step',
+            'csrf' => $request->getAttribute(CsrfToken::class)?->getValue() ?? '',
+        ];
+    }
+
+    /**
+     * A step renders pages for up to STEP_SECONDS. A closed tab must not cut it off before the
+     * report is saved, and a host's PHP time limit below TIME_LIMIT is raised to it where it may
+     * be (as AI translation does); a longer limit (or none, 0) is left alone. The session is
+     * closed first, so the browser's other requests don't wait for the step; nothing after this
+     * point writes to it.
+     */
+    private static function allowLongRequest(ServerRequestInterface $request): void
+    {
+        $session = $request->getAttribute(SessionInterface::class);
+        if ($session instanceof SessionInterface) {
+            $session->close();
+        }
+        ignore_user_abort(true);
+        $limit = (int) ini_get('max_execution_time');
+        if ($limit !== 0 && $limit < self::TIME_LIMIT) {
+            @set_time_limit(self::TIME_LIMIT);
+        }
     }
 
     /**

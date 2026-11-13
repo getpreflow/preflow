@@ -17,8 +17,9 @@ use Preflow\View\Audit\Target;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * Settings → SEO audit ({prefix}/seo-audit): the last report of `preflow seo:audit`, read only.
- * Without auth (a fresh app per request) for the screen; signed in for the permission.
+ * Settings → SEO audit ({prefix}/seo-audit): the last report of the audit; the screen itself only
+ * reads (running it: SeoAuditRunTest). Without auth (a fresh app per request) for the screen;
+ * signed in for the permission.
  */
 final class SeoAuditScreenTest extends TestCase
 {

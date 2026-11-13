@@ -2349,6 +2349,16 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-audit-check[open] > summary::before { transform: rotate(90deg); }
 .folio-audit-check[open] > summary { margin-bottom: 10px; }
 .folio-audit-check td code { overflow-wrap: anywhere; }
+/* Running the audit (_progress.twig): the state, the progress bar, the buttons (plain forms side by side). */
+.folio-audit-run { margin: 0 0 24px; }
+.folio-audit-run > :is(.folio-notice, .folio-alert) { margin: 0 0 14px; }
+.folio-audit-run > [data-folio-run-stalled] { margin: 14px 0 0; }
+.folio-audit-run-count { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 12px; font-variant-numeric: tabular-nums; }
+.folio-audit-run-count progress { flex: 1 1 240px; max-width: 480px; height: 8px; }
+.folio-audit-run-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+.folio-audit-run-actions form { margin: 0; }
+.folio-audit-run .folio-help { margin: 12px 0 0; }
+.folio-alert .folio-audit-run-actions { margin-top: 10px; }
 
 /* ---- tables with form controls (glossary): even cells, controls fill them ---- */
 .folio-table-form thead th, .folio-table-form tbody td { padding-inline: 12px; }

@@ -1360,14 +1360,16 @@
         });
     }
 
-    // ---- AI run: a step that did not come back --------------------------------
-    // htmx swaps nothing for an error status, a dropped connection or a timeout, so the progress
-    // would stop polling without a word. Show why, with Continue (start takes a running job up again).
+    // ---- Stepped runs: a step that did not come back ---------------------------
+    // The AI run's progress (#folio-ai-progress) and any other self-polling progress partial marked
+    // data-folio-run-progress (the SEO audit's). htmx swaps nothing for an error status, a dropped
+    // connection or a timeout, so the progress would stop polling without a word. Show why, with
+    // Continue (the AI run's start, the audit's run: both take the run up again).
 
     function onRunStepFailed(e) {
         var elt = e.detail && e.detail.elt;
-        if (!elt || elt.id !== 'folio-ai-progress') { return; }
-        var stalled = elt.querySelector('[data-folio-ai-stalled]');
+        if (!elt || (elt.id !== 'folio-ai-progress' && !(elt.hasAttribute && elt.hasAttribute('data-folio-run-progress')))) { return; }
+        var stalled = elt.querySelector('[data-folio-ai-stalled], [data-folio-run-stalled]');
         if (stalled) { stalled.hidden = false; }
     }
 

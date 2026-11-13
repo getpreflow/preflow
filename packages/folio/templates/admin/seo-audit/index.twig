@@ -1,11 +1,17 @@
 {% extends "@folio/admin/_layout.twig" %}
-{# Settings → SEO audit (SeoAuditController): the last report of `preflow seo:audit`, read only. #}
+{# Settings → SEO audit (SeoAuditController): the last report of the audit and, with seo.audit.run
+   (audit is set), running it (_progress.twig). #}
 {% block title %}Folio — {{ t('folio.nav.seo_audit') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.seo_audit') }}{% endblock %}
 {% block subtitle %}{{ t('folio.audit.intro') }}{% endblock %}
 {% block content %}
+    {% if audit %}
+        {% include '@folio/admin/seo-audit/_progress.twig' %}
+    {% endif %}
     {% if report is null %}
-        <div class="folio-notice" role="status"><p>{{ t('folio.audit.never_run') }} <code>preflow seo:audit</code></p></div>
+        {% if not audit %}
+            <div class="folio-notice" role="status"><p>{{ t('folio.audit.never_run') }} <code>preflow seo:audit</code></p></div>
+        {% endif %}
     {% else %}
         <dl class="folio-audit-summary">
             <div><dt>{{ t('folio.audit.site') }}</dt><dd>{{ report.origin }}</dd></div>

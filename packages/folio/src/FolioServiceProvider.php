@@ -474,13 +474,16 @@ final class FolioServiceProvider extends ServiceProvider
             // The page cache's refresh actions, when it is on (core's Refresher).
             $c->bound(\Preflow\Core\PageCache\Refresher::class) ? $c->get(\Preflow\Core\PageCache\Refresher::class) : null,
         ));
-        // Settings → SEO audit: it only reads the report file, so it is there on every site (SQL or not).
+        // Settings → SEO audit: the report file, on every site (SQL or not); with seo.audit.run it also
+        // runs the audit through view's Audits (core binds it where the audit is set up; built on use).
         $container->bind(\Preflow\Folio\Http\SeoAuditController::class, static fn (Container $c) => new \Preflow\Folio\Http\SeoAuditController(
             \Preflow\View\Audit\AuditReport::file($app->basePath()),
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            static fn (): ?\Preflow\View\Audit\Audits => $c->bound(\Preflow\View\Audit\Audits::class) ? $c->get(\Preflow\View\Audit\Audits::class) : null,
+            self::logger($c),
         ));
         // The SEO audit's "where to fix" (boot() hands it to the audit's registry): built on the first finding.
         $container->singleton(\Preflow\Folio\Audit\AuditTargets::class, static fn (Container $c) => new \Preflow\Folio\Audit\AuditTargets(
@@ -1922,6 +1925,7 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('translations.edit', 'Translations', 'Folio');
         $registry->declare('redirects.manage', 'Redirects', 'Folio');
         $registry->declare('seo.audit', 'SEO audit', 'Folio');
+        $registry->declare('seo.audit.run', 'Run the SEO audit', 'Folio');
         // Declared with AI off too, so roles may list them before AI is switched on.
         $registry->declare('ai.translate', 'Use AI translation', 'AI');
         $registry->declare('ai.settings', 'AI settings', 'AI');

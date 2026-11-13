@@ -87,7 +87,10 @@ final class FolioRoutes
             ['POST', $prefix . '/cache/opcache-reset', 'opcacheReset', self::CACHE],
             ['POST', $prefix . '/cache/pages/refresh', 'refreshPage', self::CACHE],
             ['POST', $prefix . '/cache/pages/refresh-all', 'refreshAll', self::CACHE],
-            ['GET',  $prefix . '/seo-audit',           'index', self::SEO_AUDIT], // read only: no POST route
+            ['GET',  $prefix . '/seo-audit',           'index', self::SEO_AUDIT],
+            // Running the audit (seo.audit.run): one step per request; the screen itself only reads.
+            ['POST', $prefix . '/seo-audit/run',       'run', self::SEO_AUDIT],
+            ['POST', $prefix . '/seo-audit/step',      'step', self::SEO_AUDIT],
             ['GET',  $prefix . '/translations',        'index', self::TRANSLATIONS],
             ['POST', $prefix . '/translations',        'save', self::TRANSLATIONS],
             ['POST', $prefix . '/translations/reset',  'reset', self::TRANSLATIONS],

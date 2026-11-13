@@ -107,7 +107,10 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/translations', '/folio/translations', ['locale' => 'en', 'key' => 'folio.common.save', 'text' => ''], [302, 403, 403]], // an empty text: nothing stored
             ['POST /folio/translations/reset', '/folio/translations/reset', ['locale' => 'en', 'key' => 'folio.common.save'], [302, 403, 403]],
             ['POST /folio/translations/save-all', '/folio/translations/save-all', ['locale' => 'en', 'keys' => ['folio.common.save'], 'texts' => ['Save']], [302, 403, 403]],
-            ['GET /folio/seo-audit', '/folio/seo-audit', [], [200, 403, 403]], // read only: no report yet, how to run one,
+            ['GET /folio/seo-audit', '/folio/seo-audit', [], [200, 403, 403]], // no report yet: Run audit, and how to run it on the server
+            // seo.audit for the route, seo.audit.run in the controller: a site without public pages, so one step completes the run (to the report).
+            ['POST /folio/seo-audit/run', '/folio/seo-audit/run', [], [303, 403, 403]],
+            ['POST /folio/seo-audit/step', '/folio/seo-audit/step', [], [303, 403, 403]],
             ['GET /folio/redirects', '/folio/redirects', [], [200, 403, 403]],
             ['GET /folio/redirects/_targets', '/folio/redirects/_targets?q=nothing', [], [200, 200, 200]], // signed in, no permission: public pages only
             ['GET /folio/redirects/new', '/folio/redirects/new', [], [200, 403, 403]],

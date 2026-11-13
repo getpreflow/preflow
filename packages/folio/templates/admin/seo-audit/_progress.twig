@@ -1,0 +1,59 @@
+{# Running the SEO audit (SeoAuditController, seo.audit.run): the state of the run and its buttons.
+   Every button is a plain POST to run (one step, then the page again), so it works without
+   JavaScript. While a run is stepping the partial posts itself to step (htmx) and swaps in the
+   answer, until the report is complete and the answer redirects to it. States: idle (no report,
+   incomplete or complete), stepping, elsewhere (another run holds the lock) and failed (the
+   step's message, escaped). #}
+{% set seconds = constant('Preflow\\Folio\\Http\\SeoAuditController::STEP_SECONDS') %}
+{% macro run_form(audit, label, fresh, primary) %}
+    <form method="post" action="{{ audit.run_url }}">
+        <input type="hidden" name="_csrf_token" value="{{ audit.csrf }}">
+        {% if fresh %}<input type="hidden" name="fresh" value="1">{% endif %}
+        <button type="submit" class="btn {{ primary ? 'btn-primary' : 'btn-secondary' }}" data-busy-label="{{ t('folio.audit.running') }}">{{ label }}</button>
+    </form>
+{% endmacro %}
+{% import _self as m %}
+<div id="folio-audit-progress" class="folio-audit-run" data-folio-run-progress aria-live="polite"{% if audit.state == 'stepping' %} hx-post="{{ audit.step_url }}" hx-trigger="load delay:300ms" hx-swap="outerHTML" hx-include="find [name=_csrf_token]"{% endif %}>
+    <input type="hidden" name="_csrf_token" value="{{ audit.csrf }}">
+    {% if audit.state == 'elsewhere' %}
+        <div class="folio-notice is-warning" role="status"><p>{{ t('folio.audit.elsewhere') }}</p></div>
+    {% elseif audit.state == 'failed' %}
+        <div class="folio-alert folio-alert-error" role="alert"><p>{{ t('folio.audit.failed') }} {{ audit.error }}</p><p>{{ t('folio.audit.failed_help') }}</p></div>
+    {% elseif not audit.started %}
+        <div class="folio-notice" role="status"><p>{{ t('folio.audit.not_yet') }}</p></div>
+    {% endif %}
+    {% if audit.started and not audit.complete and audit.total > 0 %}
+        <p class="folio-audit-run-count">
+            <progress max="{{ audit.total }}" value="{{ audit.done }}"></progress>
+            <span>{{ t('folio.audit.progress', {done: folio_number(audit.done), total: folio_number(audit.total)}) }}</span>
+        </p>
+    {% endif %}
+    {% if audit.state == 'stepping' %}
+        <p class="folio-help">{{ t('folio.audit.stepping', {seconds: seconds}) }}</p>
+        <noscript>
+            <p class="folio-help">{{ t('folio.audit.step_hint', {seconds: seconds}) }}</p>
+            <div class="folio-audit-run-actions">{{ m.run_form(audit, t('folio.audit.continue_run'), false, true) }}</div>
+        </noscript>
+        {# Shown by admin.js when a step's request fails (error status, no connection, timeout): the polling has stopped. #}
+        <div class="folio-alert folio-alert-error" role="alert" data-folio-run-stalled hidden>
+            <p>{{ t('folio.audit.stalled') }}</p>
+            <div class="folio-audit-run-actions">{{ m.run_form(audit, t('folio.audit.continue_run'), false, true) }}</div>
+        </div>
+    {% else %}
+        <div class="folio-audit-run-actions">
+            {% if audit.state == 'elsewhere' %}
+                {{ m.run_form(audit, t('folio.audit.retry'), false, true) }}
+            {% elseif not audit.started %}
+                {{ m.run_form(audit, t('folio.audit.run'), false, true) }}
+            {% elseif audit.complete %}
+                {{ m.run_form(audit, t('folio.audit.run_again'), true, false) }}
+            {% else %}
+                {{ m.run_form(audit, t('folio.audit.continue_run'), false, true) }}
+                {{ m.run_form(audit, t('folio.audit.start_over'), true, false) }}
+            {% endif %}
+        </div>
+    {% endif %}
+    {% if not audit.started %}
+        <p class="folio-help">{{ t('folio.audit.cli') }} <code>preflow seo:audit</code></p>
+    {% endif %}
+</div>
