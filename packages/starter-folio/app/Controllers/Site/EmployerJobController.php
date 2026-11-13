@@ -87,7 +87,7 @@ final class EmployerJobController
         $job = $this->owned($request);
         $input = $this->input($request);
         try {
-            $this->writer->update($job, $input);
+            $this->writer->update($job, $input, $this->access->can('job.publish'));
         } catch (ValidationException $e) {
             return $this->form($job, '/employer/jobs/' . $job->uuid, $input, $e);
         }

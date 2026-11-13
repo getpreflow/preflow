@@ -55,13 +55,15 @@ final class JobWriter
 
     /**
      * @param array<string, mixed> $input only the keys present change
+     * @param bool $mayPublish false for an account without job.publish: its save cancels a
+     *                         publish staff scheduled in Folio, as a save in the admin does
      * @throws ValidationException
      */
-    public function update(Job $job, array $input): Job
+    public function update(Job $job, array $input, bool $mayPublish = true): Job
     {
         $this->apply($job, $input);
         $job->updatedAt = self::now();
-        $this->writer->save($this->record($job));
+        $this->writer->save($this->record($job), new SaveOptions(mayPublish: $mayPublish));
 
         return $job;
     }

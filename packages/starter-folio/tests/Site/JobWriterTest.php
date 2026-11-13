@@ -178,6 +178,20 @@ final class JobWriterTest extends TestCase
         $this->assertSame('Senior Platform Wrangler', $this->data->find(Job::class, $job->uuid)->title);
     }
 
+    public function test_an_edit_without_the_right_to_publish_cancels_a_scheduled_publish(): void
+    {
+        $job = $this->writer->create($this->input(), $this->owner);
+        $record = $this->data->findType('job', $job->uuid);
+        $record->set('_publish_at', '2099-01-01T09:00');
+        $this->data->saveType($record, false);
+
+        $this->writer->update($job, ['title' => 'Kept by staff'], mayPublish: true);
+        $this->assertSame('2099-01-01T09:00', $this->data->findType('job', $job->uuid)->get('_publish_at'));
+
+        $this->writer->update($job, ['title' => 'Changed by a draft-only account'], mayPublish: false);
+        $this->assertSame('', (string) $this->data->findType('job', $job->uuid)->get('_publish_at'));
+    }
+
     public function test_delete_removes_the_job(): void
     {
         $job = $this->writer->create($this->input(), $this->owner);

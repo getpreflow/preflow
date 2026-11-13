@@ -103,7 +103,7 @@ final class JobsController
         try {
             $input = $this->resource->toInput($body);
             if ($input !== []) {
-                $job = $this->writer->update($job, $input);
+                $job = $this->writer->update($job, $input, $this->access->can('job.publish'));
             }
             // Publishing checks the rules too: staff may have saved a draft in Folio that breaks one.
             if ($status === 'published') {
