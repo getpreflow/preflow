@@ -110,8 +110,9 @@ rule, in one write; it runs no save hooks (it is not an edit) and never publishe
 the same with the published content (`Publisher::discard()`).
 
 `RecordDeleter` deletes through the delete plan of the type's relations (cascade, detach,
-restrict): `plan($type, $ids)` says what would happen, `delete($type, $ids, $target)` does it, all
-or nothing, and throws `DeleteRefused` (with the plan) when records still point here. Deleted
+restrict): `plan($type, $ids)` says what would happen, `delete($type, $ids, $target)` does it
+(every hook that may refuse runs before anything is written; on SQL storage the writes run in one transaction,
+JSON-file writes cannot be rolled back), and throws `DeleteRefused` (with the plan) when records still point here. Deleted
 records lose their snapshot, revisions, index entry and addresses (`$target`: where their old links
 lead).
 
