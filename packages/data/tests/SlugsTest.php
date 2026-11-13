@@ -11,6 +11,7 @@ use Preflow\Data\Attributes\Id;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Locales;
 use Preflow\Data\Model;
 use Preflow\Data\Slugs;
 use Preflow\Data\TypeRegistry;
@@ -76,6 +77,34 @@ final class SlugsTest extends TestCase
         $this->job('a', 'senior-developer');
         $this->assertSame('senior-developer', Slugs::unique($this->dm, 'job', 'Senior Developer', exceptId: 'a'));
         $this->assertSame('senior-developer-2', Slugs::unique($this->dm, 'job', 'Senior Developer', exceptId: 'other'));
+    }
+
+    public function testExceptedRecordAmongTwoSharingTheSlug(): void
+    {
+        $this->job('a', 'senior-developer');
+        $this->job('b', 'senior-developer');
+        $this->assertSame('senior-developer-2', Slugs::unique($this->dm, 'job', 'Senior Developer', exceptId: 'a'));
+        $this->assertSame('senior-developer-2', Slugs::unique($this->dm, 'job', 'Senior Developer', exceptId: 'b'));
+    }
+
+    public function testIntegerExceptId(): void
+    {
+        $page = new SlugPage();
+        $page->slug = 'about';
+        $this->dm->save($page);
+        $this->assertSame('about', Slugs::unique($this->dm, SlugPage::class, 'About', exceptId: $page->id));
+    }
+
+    public function testTranslatableFieldIsRefused(): void
+    {
+        file_put_contents($this->dir . '/doc.json', json_encode([
+            'key' => 'doc', 'table' => 'docs', 'storage' => 'sqlite',
+            'fields' => ['slug' => ['type' => 'string', 'translatable' => true]],
+        ]));
+        $dm = new DataManager(['sqlite' => new SqliteDriver(new \PDO('sqlite::memory:'))], typeRegistry: new TypeRegistry($this->dir, new Locales(['en', 'de'], 'en')));
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('"slug" is translatable');
+        Slugs::unique($dm, 'doc', 'x');
     }
 
     public function testModelClassAsType(): void

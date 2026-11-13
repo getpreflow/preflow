@@ -18,35 +18,48 @@ final class Slugs
      * that has no letters or digits.
      *
      * @param string $type a type key or a model class
-     * @throws \InvalidArgumentException when the type has no such field
+     * @throws \InvalidArgumentException when the type has no such field, or the field is translatable (its
+     *         value is a map per locale, which this cannot look up)
      */
-    public static function unique(DataManager $data, string $type, string $text, string $field = 'slug', ?string $exceptId = null, int $max = 80, string $fallback = 'item'): string
+    public static function unique(DataManager $data, string $type, string $text, string $field = 'slug', string|int|null $exceptId = null, int $max = 80, string $fallback = 'item'): string
     {
         $isClass = is_subclass_of($type, Model::class);
         if ($isClass) {
             $meta = ModelMetadata::for($type);
             $known = isset($meta->fields[$field]) || $field === $meta->idField;
+            $idField = $meta->idField;
+            if ($meta->type !== null && $registry = $data->getTypeRegistry()) {
+                $translatable = $registry->has($meta->type) && in_array($field, $registry->get($meta->type)->translatableFields(), true);
+            } else {
+                $translatable = ($meta->fields[$field]->translatable ?? false) === true;
+            }
         } else {
             $registry = $data->getTypeRegistry();
             if ($registry === null || !$registry->has($type)) {
                 throw new \InvalidArgumentException("Unknown type \"{$type}\": it is neither a model class nor a type the registry holds.");
             }
-            $known = isset($registry->get($type)->fields[$field]);
+            $def = $registry->get($type);
+            $known = isset($def->fields[$field]);
+            $idField = $def->idField;
+            $translatable = in_array($field, $def->translatableFields(), true);
         }
         if (!$known) {
             throw new \InvalidArgumentException("The type \"{$type}\" has no field \"{$field}\" to hold a slug.");
+        }
+
+        if ($translatable) {
+            throw new \InvalidArgumentException("The field \"{$field}\" of \"{$type}\" is translatable: Slugs::unique() works on a plain field.");
         }
 
         $base = self::base($text, $max, $fallback);
         $candidate = $base;
         for ($n = 2; ; $n++) {
             $query = $isClass ? $data->query($type) : $data->queryType($type);
-            $found = $query->where($field, $candidate)->first();
-            if ($found === null) {
-                return $candidate;
+            $query->where($field, $candidate);
+            if ($exceptId !== null) {
+                $query->where($idField, '!=', $exceptId);
             }
-            $foundId = $found instanceof DynamicRecord ? $found->getId() : (string) $found->{$meta->idField};
-            if ($exceptId !== null && $foundId === $exceptId) {
+            if ($query->first() === null) {
                 return $candidate;
             }
             $candidate = self::suffixed($base, $n, $max);

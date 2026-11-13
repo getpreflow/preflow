@@ -467,8 +467,9 @@ The signature is `unique(DataManager $data, string $type, string $text, string $
 ?string $exceptId = null, int $max = 80, string $fallback = 'item')`. The result is at most `$max`
 characters, suffix included: a long text is cut at a hyphen when one is in the last half of
 `$max`, otherwise hard-cut, and a suffix shortens the base rather than the total. A text without
-letters or digits gives `$fallback`. A field the type does not have is an
-`InvalidArgumentException`.
+letters or digits gives `$fallback`. `$exceptId` (a string or an int) is left out of the lookup, so a record renamed to its own slug
+keeps it even when other records share it. A field the type does not have, or a translatable
+one (its value is a map per locale), is an `InvalidArgumentException`.
 
 For an import that holds its slugs in memory, `Slugs::among($text, $taken)` does the same against
 `$taken` (`array<string, true>`, by reference) and adds what it returns.
