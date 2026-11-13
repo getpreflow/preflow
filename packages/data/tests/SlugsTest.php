@@ -103,7 +103,7 @@ final class SlugsTest extends TestCase
         ]));
         $dm = new DataManager(['sqlite' => new SqliteDriver(new \PDO('sqlite::memory:'))], typeRegistry: new TypeRegistry($this->dir, new Locales(['en', 'de'], 'en')));
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('"slug" is translatable');
+        $this->expectExceptionMessage('is translatable');
         Slugs::unique($dm, 'doc', 'x');
     }
 
