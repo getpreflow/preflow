@@ -132,7 +132,9 @@ final class FieldRenderer
         $base   = ['name' => $name];
         $merged = array_merge($base, $attrs);
 
-        return '<textarea' . $this->buildAttrString($merged) . '>'
+        // The HTML parser drops one newline right after <textarea>: this guard newline is the one it
+        // drops, so a value that starts with a newline keeps it.
+        return '<textarea' . $this->buildAttrString($merged) . '>' . "\n"
             . htmlspecialchars($value, ENT_QUOTES | ENT_HTML5, 'UTF-8')
             . '</textarea>';
     }

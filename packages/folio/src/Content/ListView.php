@@ -253,6 +253,7 @@ final class ListView
         $raw = (array) ($config['options'] ?? []);
         $out = [];
         foreach ($raw as $key => $label) {
+            $label = is_array($label) && array_key_exists('label', $label) && array_diff(array_keys($label), ['label', 'help']) === [] ? $label['label'] : $label;
             $text = is_array($label) ? (DisplayLabels::pick($label) ?? '') : (is_scalar($label) ? (string) $label : '');
             $out[array_is_list($raw) ? $text : (string) $key] = $text;
         }

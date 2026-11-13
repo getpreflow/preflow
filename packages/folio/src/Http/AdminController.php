@@ -679,7 +679,7 @@ final class AdminController
             $picker = new \Preflow\Folio\Field\Types\RelationFieldType($this->dm, $this->registry);
         }
         $payload = json_encode(
-            $picker->page($type, $text('label'), $text('order'), mb_substr($text('q') ?? '', 0, 200), $page),
+            $picker->page($type, $text('label'), $text('order'), mb_substr($text('q') ?? '', 0, 200), $page, $text('meta')),
             JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
 
@@ -1440,6 +1440,9 @@ final class AdminController
                 locale: $locale,
                 locales: $locales,
                 record: ['type' => $type, 'id' => isset($values[$typeDef->idField]) ? (string) $values[$typeDef->idField] : null],
+                validate: $fieldDef->validate,
+                length: $fieldDef->length,
+                address: isset($addressFields[$name]) ? $this->addressAffix($type, $name, $locale, $locales) : null,
             );
             // main: the form column; address / side: the side panel (outside the <form>, so its
             // controls name the record form with form="folio-record").
@@ -1538,7 +1541,8 @@ final class AdminController
             'csrf' => $csrf,
             'fields' => $fields,
             // editor-frame.js: the save state, the Publish split button, the side panel, the editor's keys.
-            'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : []) + ['editor-frame.js' => true]),
+            // fields.js before it: Folio.relativeTime() (the publish-at hint) and the date's clear button.
+            'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : []) + ['fields.js' => true, 'editor-frame.js' => true]),
             'multipart' => $multipart,
             'layout' => $layout,
             // No preview in the create drawer: its form posts to the save route.
@@ -2279,11 +2283,52 @@ final class AdminController
      *
      * @return array<string, mixed>
      */
+    /**
+     * The address affix of a route parameter field: the static path before it ("/jobs/", with "/de"
+     * in another language) and, when the route has no other parameter, what the copy button puts
+     * around the typed value (app.url's address, else the path alone). The route's home value copies
+     * as the root.
+     */
+    private function addressAffix(string $type, string $name, string $locale, \Preflow\Data\Locales $locales): ?\Preflow\Folio\Field\AddressAffix
+    {
+        $route = $this->frontend->routeFor($type);
+        if ($route === null) {
+            return null;
+        }
+        $mode = $route->addressModes()[$name] ?? 'segment';
+        $token = '{' . ($mode === 'path' ? '...' : '') . $name . '}';
+        $at = strpos($route->pattern, $token);
+        if ($at === false) {
+            return null;
+        }
+        $language = $locale !== $locales->default ? '/' . $locale : '';
+        $before = $language . substr($route->pattern, 0, $at);
+        $after = substr($route->pattern, $at + strlen($token));
+        $base = rtrim($this->siteUrl ?? '', '/');
+        if (str_contains($before . $after, '{')) {
+            return new \Preflow\Folio\Field\AddressAffix($mode, (string) preg_replace('~\{[^}]*\}~', '…', $before));
+        }
+        $home = $route->home !== null && ($route->paramNames[0] ?? null) === $name ? $route->home : null;
+
+        return new \Preflow\Folio\Field\AddressAffix($mode, $before, $base . $before, $after, $home, $home !== null ? $base . ($language !== '' ? $language : '/') : null);
+    }
+
     private function fieldConfig(string $type, string $name, \Preflow\Data\TypeFieldDefinition $fieldDef): array
     {
         $config = $fieldDef->config;
         if ($fieldDef->type === 'select' && is_array($config['options'] ?? null)) {
-            $config['options'] = $this->labels->options($type, $name);
+            $labels = $this->labels->options($type, $name);
+            if (($config['display'] ?? null) === 'cards') {
+                // Radio cards keep the {label, help} shape, both in the interface language.
+                $helps = $this->labels->optionHelps($type, $name);
+                $labels = array_map(null, array_keys($labels), $labels);
+                $config['options'] = array_combine(
+                    array_column($labels, 0),
+                    array_map(static fn (array $pair): array => ['label' => $pair[1]] + (isset($helps[$pair[0]]) ? ['help' => $helps[$pair[0]]] : []), $labels),
+                );
+            } else {
+                $config['options'] = $labels;
+            }
         }
 
         return $config;

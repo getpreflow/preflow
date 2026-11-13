@@ -72,7 +72,8 @@ final class ModelLabelsTest extends TestCase
         $this->assertStringContainsString('Ein inaktives Konto kann sich nicht anmelden.', $form);
 
         $roleForm = (string) $this->send('GET', '/folio/rbac_role/new')->getBody();
-        foreach (['Bezeichnung', 'Personenkreis', 'Berechtigungen', '>Team</option>', '>Mitglieder</option>'] as $text) {
+        // The population: two options of a required choice, so a segmented radiogroup (0.75).
+        foreach (['Bezeichnung', 'Personenkreis', 'Berechtigungen', '<span>Team</span></label>', '<span>Mitglieder</span></label>'] as $text) {
             $this->assertStringContainsString($text, $roleForm);
         }
     }

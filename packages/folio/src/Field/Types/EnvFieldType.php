@@ -31,9 +31,13 @@ final class EnvFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKin
         $name = is_string($ctx->config['env'] ?? null) ? $ctx->config['env'] : '';
         $set = $name !== '' && (getenv($name) ?: null) !== null;
 
-        $html = '<div class="form-group">' . "\n"
+        // Board LibFields: key icon, the variable's name in mono, "set" (accent dot) or "not set"
+        // (warning ring). Only whether it is set leaves the server, never the value.
+        $html = '<div class="form-group folio-env-field">' . "\n"
             . '  <span class="form-label">' . $e($ctx->label ?? (new FieldRenderer())->humanize($ctx->name)) . '</span>' . "\n"
-            . '  <p><code>' . $e($name) . '</code> <span class="folio-badge">' . ($set ? 'set' : 'not set') . '</span></p>' . "\n";
+            . '  <div class="folio-env">' . \Preflow\Folio\View\InlineIcon::svg('ui-key') . '<code class="folio-env-name">' . $e($name) . '</code>'
+            . '<span class="folio-env-state ' . ($set ? 'is-set' : 'is-missing') . '"><span class="folio-env-dot" aria-hidden="true"></span>'
+            . $e(\Preflow\Folio\FolioText::get($set ? 'folio.fields.env_set' : 'folio.fields.env_not_set')) . '</span></div>' . "\n";
         if (($ctx->help ?? '') !== '') {
             $html .= '  <small class="form-help">' . $e((string) $ctx->help) . '</small>' . "\n";
         }

@@ -29,20 +29,36 @@ final class DateFieldType extends AbstractScalarFieldType implements DisplaysInA
         return 'date';
     }
 
+    /**
+     * The date input in a box with a calendar icon and a clear button (board LibFields), and a hint
+     * under it: fields.js writes when the date is ("In 2 days"), in the admin language; a date with
+     * a time adds the app's timezone, which is also what the hint says without script.
+     */
     public function renderEditor(FieldContext $ctx): string
     {
+        $e = self::escaper();
+        $time = ($ctx->config['time'] ?? false) === true;
+        $value = (string) ($ctx->value ?? '');
+        $hintId = $ctx->name . '-hint';
         $options = [
-            'type' => ($ctx->config['time'] ?? false) === true ? 'datetime-local' : 'date',
-            'value' => (string) ($ctx->value ?? ''),
+            'type' => $time ? 'datetime-local' : 'date',
+            'value' => $value,
             'help' => $ctx->help ?? '',
             'required' => $ctx->required,
             'errors' => $ctx->errors,
+            'attrs' => ['aria-describedby' => $hintId],
         ];
         if ($ctx->label !== null) {
             $options['label'] = $ctx->label;
         }
+        $clear = \Preflow\Folio\FolioText::get('folio.fields.date_clear', ['label' => $ctx->label ?? $this->renderer->humanize($ctx->name)]);
+        $zone = $time ? date_default_timezone_get() : null;
+        $control = static fn (string $input): string => '<div class="folio-date-input" data-folio-date>' . \Preflow\Folio\View\InlineIcon::svg('ui-calendar') . $input
+            . '<button type="button" class="btn btn-ghost btn-icon btn-sm" data-folio-date-clear aria-label="' . $e($clear) . '" title="' . $e($clear) . '"' . ($value === '' ? ' hidden' : '') . '>'
+            . \Preflow\Folio\View\InlineIcon::svg('ui-x') . '</button></div>'
+            . '<p class="folio-date-hint" id="' . $e($hintId) . '" data-folio-date-hint' . ($zone !== null ? ' data-zone="' . $e($zone) . '">' . $e($zone) : '>') . '</p>';
 
-        return $this->renderer->renderField($ctx->name, $options);
+        return $this->renderDecorated($ctx->name, $options, $control, '', 'folio-date-field');
     }
 
     /**

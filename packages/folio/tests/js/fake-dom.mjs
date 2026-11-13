@@ -1,6 +1,6 @@
 // A minimal DOM for node tests of admin.js: elements, attributes, classes, simple selectors
 // ("tag#id.class[attr][attr=\"v\"]", descendants with a space, groups with a comma, a leading
-// ":scope >"), insertBefore, events,
+// ":scope >"), insertBefore, cloneNode, contains, events,
 // form owners (form="…") and requestSubmit(), a MutationObserver for appended elements, and a
 // window that delivers postMessage events.
 // load(file) runs a browser script against it.
@@ -200,6 +200,21 @@ class Element {
     }
     querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
     getBoundingClientRect() { return { left: 0, top: 0, width: 0, height: 0 }; }
+    /** A copy with its attributes, properties and (deep) children, without listeners or a parent. */
+    cloneNode(deep = false) {
+        const copy = new Element(this.tagName.toLowerCase(), this.ownerDocument);
+        copy.attributes = { ...this.attributes };
+        ['className', 'hidden', 'type', 'name', 'value', 'src', 'alt'].forEach((k) => { copy[k] = this[k]; });
+        if (deep) {
+            if (this._text) { copy._text = new Text(this._text.data); copy._text.parentNode = copy; }
+            this.children.forEach((c) => { const child = c.cloneNode(true); child.parentNode = copy; copy.children.push(child); });
+        }
+        return copy;
+    }
+    contains(node) {
+        for (let n = node; n; n = n.parentNode) { if (n === this) { return true; } }
+        return false;
+    }
 }
 
 /** MutationObserver childList records for an appended element (delivered in a microtask, as in the DOM). */

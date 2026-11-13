@@ -218,7 +218,8 @@ final class TypeCatalog
 
     /**
      * The editor layout keys of the type's fields ("panel", "width"; since 0.75): a value outside
-     * FIELD_PANELS / FIELD_WIDTHS is a boot error, so a typo never moves a field silently.
+     * FIELD_PANELS / FIELD_WIDTHS is a boot error, so a typo never moves a field silently. So is
+     * an invalid editor option of a built-in field type ("unit", "display").
      *
      * @param array<mixed> $fields
      */
@@ -232,6 +233,18 @@ final class TypeCatalog
                 if (array_key_exists($option, $field) && !in_array($field[$option], $allowed, true)) {
                     throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": \"{$option}\" must be \"" . implode('" or "', $allowed) . '"');
                 }
+            }
+            // The built-in field types' editor options (0.75): "unit" of a number, "display" of a
+            // boolean or a select (with the "cards" options shape). Reported here, at boot.
+            try {
+                match ($field['type'] ?? 'string') {
+                    'number', 'int', 'integer', 'float' => \Preflow\Folio\Field\Types\NumberFieldType::unit($field),
+                    'boolean' => \Preflow\Folio\Field\Types\BooleanFieldType::display($field),
+                    'select' => \Preflow\Folio\Field\Types\SelectFieldType::display($field),
+                    default => null,
+                };
+            } catch (\LogicException $e) {
+                throw new FrontendConfigException("Type \"{$key}\": field \"{$name}\": " . $e->getMessage(), 0, $e);
             }
         }
     }

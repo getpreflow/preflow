@@ -35,9 +35,9 @@ final class Job extends Model
     #[Validate('required', 'slug')]
     public ?string $slug = null;
 
-    /** The uuid of the company that posted the job; Folio shows it as a pick from the companies. */
+    /** The uuid of the company that posted the job; Folio shows it as a pick from the companies, with the place under the name. */
     #[Field(index: true)]
-    #[Relation(to: 'company', onDelete: 'restrict', labelField: 'name')]
+    #[Relation(to: 'company', onDelete: 'restrict', labelField: 'name', metaField: 'place')]
     #[Validate('required')]
     public ?string $company = null;
 
@@ -62,11 +62,12 @@ final class Job extends Model
     #[Validate('required', 'in:no,hybrid,full')]
     public ?string $remote = null;
 
-    #[Field]
+    /** Folio's stepper shows the currency after the value ("unit"). */
+    #[Field(config: ['unit' => self::CURRENCY, 'width' => 'half'])]
     #[Validate('nullable', 'integer', 'min:0')]
     public ?int $salaryFrom = null;
 
-    #[Field]
+    #[Field(config: ['unit' => self::CURRENCY, 'width' => 'half'])]
     #[Validate('nullable', 'integer', 'min:0')]
     public ?int $salaryTo = null;
 

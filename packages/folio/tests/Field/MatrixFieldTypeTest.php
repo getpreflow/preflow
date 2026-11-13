@@ -155,10 +155,19 @@ final class MatrixFieldTypeTest extends TestCase
         $this->assertStringContainsString('name="blocks[0][_type]" value="note"', $html);
         $this->assertStringContainsString('name="blocks[0][id]" value="n1"', $html);
         $this->assertStringContainsString('First note', $html); // resolved label
-        // The row's controls are Folio buttons (ghost; Remove in the danger tone), not bare browser buttons.
-        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-up>', $html);
-        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-down>', $html);
-        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>', $html);
+        // Board LibFields: a grip (drag, or the arrow keys) and a trash button per row.
+        $this->assertMatchesRegularExpression('~<div class="folio-matrix-row" data-matrix-row><button type="button" class="folio-matrix-grip" data-folio-sort-handle aria-label="Move First note" title="Move First note"><svg[^>]*>.*?</svg></button>~s', $html);
+        $this->assertMatchesRegularExpression('~<button type="button" class="folio-matrix-remove" data-matrix-remove aria-label="Remove First note" title="Remove First note"><svg[^>]*>.*?</svg></button></div>~s', $html);
+        $this->assertStringNotContainsString('data-matrix-up', $html);
+    }
+
+    public function test_the_matrix_has_a_header_row_and_an_add_row_button(): void
+    {
+        $html = $this->type()->renderEditor(new FieldContext(name: 'blocks', label: 'Blocks', value: [['_type' => 'note', 'id' => 'n1']], config: $this->config()));
+        $this->assertMatchesRegularExpression('~<div class="folio-matrix-head" aria-hidden="true"><span></span><span>[^<]+</span><span>[^<]+</span><span></span></div>~', $html);
+        $this->assertMatchesRegularExpression('~<button type="button" class="folio-matrix-add-row" data-matrix-add><svg[^>]*>.*?</svg>Add row</button>~s', $html);
+        $this->assertStringContainsString('<template data-matrix-template>', $html, 'the row admin.js copies');
+        $this->assertStringContainsString('data-folio-matrix-list', $html);
     }
 
     public function test_normalize_filters_disallowed_and_reindexes(): void

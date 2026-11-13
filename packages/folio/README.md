@@ -596,9 +596,9 @@ neither in the Excel export nor sortable. A site that overrides `_list_results.t
 At most 500 rows can be ticked for one bulk action or export (`RecordDeleter::MAX_IDS`): a
 request with more `ids[]` is refused with a 422 and changes nothing.
 
-The relation picker's search endpoint (`GET {prefix}/_relation/{type}?q=&label=&order=&page=`)
-only uses a `label` / `order` field that a relation to that type declares as its `labelField` /
-`orderBy`, and never a hidden field; it pages in the declared order, then by id.
+The relation picker's search endpoint (`GET {prefix}/_relation/{type}?q=&label=&order=&meta=&page=`)
+only uses a `label` / `order` / `meta` field that a relation to that type declares as its `labelField` /
+`orderBy` / `metaField`, and never a hidden field; it pages in the declared order, then by id.
 
 #### Deleting: `onDelete` and the summary
 
@@ -715,6 +715,39 @@ A value that is not a list of section names is ignored (every section starts ope
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
 `"display": "radio"`), `richtext`, `asset`, `relation` and `matrix`.
+
+How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
+
+- `string`: a route parameter of the record's address (`slug`) has the static path before it as a
+  mono prefix (`/jobs/`) and a copy button that copies the whole address (`app.url`'s host, the
+  language prefix, the route). A web address (`"format": "url"`, or a `url` rule in `"validate"`)
+  gets a button that opens it in a new tab (only an `http(s)://` value).
+- `text`: with a maximum (`"length"`, or a `max:N` rule; the smaller wins) a counter "58 / 160"
+  stands beside the label; it turns amber near the limit (90 %), where screen readers hear it.
+- `number`: a stepper (− value unit +) in mono, tabular figures. `"unit": "m³"` (a short text, 1
+  to 12 characters, one line) stands after the value; − and + step by `"step"` and stay within the
+  `min:N` / `max:N` / `between:a,b` rules.
+- `date`: a calendar icon, the value in mono, a clear button, and a hint under it: "In 2 days" in
+  the admin language, with the app's timezone for a date and time ("In 2 days · Europe/Zurich").
+- `boolean`: a checkbox; `"display": "switch"` shows a switch, for a setting that acts at once.
+- `select`: up to 4 options of a choice that is required (or has a `"default"`) show as a
+  segmented radiogroup (real radios). An optional choice without a default stays a select, which
+  keeps its "—" for no choice. `"display": "cards"` shows radio cards with a description each:
+  `"options"` is then `{"301": {"label": "Moved for good", "help": "Search engines move the ranking
+  over."}}` (each text a string or a map per language; the help translates under
+  `{group}.option_helps.{type}.{field}.{value}`). `"display": "select"` keeps a select at any size.
+- `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
+- `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
+  size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
+  dropped anywhere on the field is uploaded to the media library (its upload route, its
+  `assets.upload` permission and CSRF token) and chosen; a file the field's `"accept"` refuses
+  is named in a field error instead.
+- `matrix`: a table with a header row, rows with a grip (drag, or focus it and press ↑ / ↓) and
+  a trash button, and "+ Add row".
+- `env`: the variable's name and "set" or "not set"; never its value.
+
+An invalid `"unit"` or `"display"` (or `"display": "cards"` without `{label, help}` options) stops
+the boot with a `FrontendConfigException` naming the type and the field.
 
 `number` takes `"step": 0.5` (any positive number) or `"step": "any"` (since 0.46). The input gets that
 `step`, and with a number the server checks that the value is numeric and a multiple of the step
@@ -888,14 +921,17 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
 
 - **blocks:** content this record owns, edited in place (page sections).
 - **matrix:** an ordered mix of references to standalone, reusable records.
-- **relation:** references to records of one type. `"relation": {"to": "author", "multiple": true}`
-  shows checkbox chips (a filter input above 12 options; they post `name[]`, as the old multi-select
-  did); `"labelField"` picks the chip label, `"orderBy": "<field>"` sorts the options (default:
-  stored order). A single relation stays a select. Above 200 records of the target the picker
-  switches to remote mode: a search box above the chosen items, fed by
-  `GET {prefix}/_relation/{type}?q=…&page=…` (`{items: [{id, label}], more}`), instead of
-  listing every record. See [`onDelete`](#deleting-ondelete-and-the-summary) for what deleting a
-  target does.
+- **relation:** references to records of one type (`"relation": {"to": "author", "multiple": true}`).
+  Since 0.75 the editor shows the linked records as rows: a grip when several can be linked (drag,
+  or ↑ / ↓ on it), the target's initials on its family's tint, the label (`"labelField"`) and a
+  meta line under it (`"metaField": "<field>"`, e.g. an e-mail; never a hidden field), open in the
+  drawer, and remove. Under them a search row with its results and "Show more": up to 200 target
+  records travel with the field and are filtered as you type (`"orderBy": "<field>"` sorts them,
+  default: stored order); above 200 it searches
+  `GET {prefix}/_relation/{type}?q=…&page=…` (`{items: [{id, label, meta?}], more}`). A multiple
+  relation posts `name[]` in the rows' order; a single one replaces its record. Without script the
+  linked records still post unchanged, but cannot be changed. See
+  [`onDelete`](#deleting-ondelete-and-the-summary) for what deleting a target does.
 
 ## Singletons
 
@@ -986,7 +1022,14 @@ form column for the side panel's System fields. The blocks editor's cards and pi
 (`blocks/card.twig`, `blocks/field.twig`): the move, duplicate and remove buttons are items of the
 card's "…" menu (same `data-block-*` attributes), `.folio-block-actions` is gone, the chevron
 (`.folio-block-toggle`, `data-block-collapse`) is the card's one toggle, and the picker's script is
-`blocks.js` (loaded with any blocks field, after `admin.js`).
+`blocks.js` (loaded with any blocks field, after `admin.js`). The field editors changed markup too
+(`fields.js` runs them, loaded after `admin.js`): a relation is rows plus a search
+(`[data-folio-relation]`; the checkbox chips, the single select and the remote chips are gone), an
+asset field is cards in a `.folio-asset-box` (its label a `.form-label` span), a matrix row has a
+grip and a trash button instead of Up / Down / Remove, the env field is `.folio-env`. The asset
+picker's pick message carries `meta`, `warn` and `focal` too (`Folio.chooseAssets` passes them on).
+`FieldRenderer` writes a newline after `<textarea>` (the one the HTML parser drops), so a value that
+starts with a newline keeps it.
 
 **Editing:**
 - **Save draft** stores half-finished work and runs no validation rules.

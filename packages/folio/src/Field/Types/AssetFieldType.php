@@ -62,6 +62,14 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         return $this->can === null || ($this->can)($permission);
     }
 
+    /**
+     * Board LibFields: each chosen file as a card (a 16:10 thumbnail with the focal point, the name
+     * in mono, kind and size, "No alt text yet" for an image without one, Remove); without one, a
+     * dashed drop zone. Choose (the library in the drawer) and Upload (a plain file input, stored on
+     * save) work without script; with it (fields.js) a file dropped anywhere on the field goes to the
+     * library through its upload route (POST {prefix}/assets, its permission and CSRF token) and is
+     * chosen.
+     */
     public function renderEditor(FieldContext $ctx): string
     {
         $cfg = $this->assetConfig($ctx->config);
@@ -69,47 +77,58 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         $selection = self::selectionName($name) . '[]';
         $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $name));
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        $t = static fn (string $key, array $params = []): string => \Preflow\Folio\FolioText::get($key, $params);
         $hasError = $ctx->errors !== [];
+        $canUpload = $this->allows('assets.upload');
+        $droppable = $canUpload && $this->library !== null;
+        $images = trim($cfg['accept']) === 'image/*';
 
         $attrs = ' data-folio-asset-field data-selection-name="' . $e($selection) . '" data-multiple="' . ($cfg['multiple'] ? '1' : '0') . '"';
         if ($this->library !== null) {
             $attrs .= ' data-picker-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets?picker=1&multiple=' . ($cfg['multiple'] ? '1' : '0') . '&private=' . ($cfg['private'] ? '1' : '0')) . '"';
         }
-        $html = '<div class="form-group folio-asset' . ($hasError ? ' has-error' : '') . '"' . $attrs . '>' . "\n";
-        $html .= '  <label>' . $e($label);
+        if ($droppable) {
+            $attrs .= ' data-upload-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets') . '" data-accept="' . $e($cfg['accept']) . '"'
+                . ' data-private="' . ($cfg['private'] ? '1' : '0') . '"'
+                . ' data-text-refused="' . $e($t('folio.fields.drop_refused')) . '" data-text-uploading="' . $e($t('folio.fields.uploading')) . '"';
+        }
+        // A group named by its label: the cards, Choose and Upload belong to it.
+        $labelId = preg_replace('/[^A-Za-z0-9_-]/', '-', $name) . '-label';
+        $html = '<div class="form-group folio-asset-field' . ($hasError ? ' has-error' : '') . '"' . $attrs . ' role="group" aria-labelledby="' . $e($labelId) . '">' . "\n";
+        $html .= '  <span class="form-label" id="' . $e($labelId) . '">' . $e($label);
         if ($ctx->required) {
             $html .= ' <span class="form-required">*</span>';
         }
-        $html .= '</label>' . "\n";
+        $html .= '</span>' . "\n";
 
         // The empty marker makes an emptied selection distinguishable from a form that never posted one.
         $html .= '  <input type="hidden" name="' . $e($selection) . '" value="">' . "\n";
-        $html .= '  <ul class="folio-asset-selection">' . "\n";
+        $html .= '  <div class="folio-asset-box"' . ($droppable ? ' data-folio-asset-drop' : '') . '>' . "\n";
+        $html .= '  <ul class="folio-asset-selection">';
         foreach ($this->toList($this->fromStorage($ctx->value)) as $value) {
-            [$thumb, $text, $href] = $this->describe($value);
-            $html .= '    <li class="folio-asset-item" data-asset-item>';
-            $html .= match (true) {
-                $thumb !== null => '<img src="' . $e($thumb) . '" alt="" class="folio-asset-thumb">',
-                $href !== null => '<a href="' . $e($href) . '">' . $e($text) . '</a>',
-                default => '<span>' . $e($text) . '</span>',
-            };
-            $html .= '<input type="hidden" name="' . $e($selection) . '" value="' . $e($value) . '">';
-            $html .= '<button type="button" class="btn btn-ghost" data-folio-asset-remove aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.remove_named', ['label' => $text])) . '">' . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>';
-            $html .= '</li>' . "\n";
+            $html .= $this->item($value, $selection, $this->describe($value, $ctx));
         }
-        $html .= '  </ul>' . "\n";
+        $html .= '</ul>' . "\n";
+        if ($droppable) {
+            $html .= '  <p class="folio-asset-empty">' . \Preflow\Folio\View\InlineIcon::svg('ui-upload') . '<strong>' . $e($t($images ? 'folio.fields.drop_image' : 'folio.fields.drop_here')) . '</strong></p>' . "\n";
+        }
 
         $html .= '  <div class="folio-asset-actions">';
         if ($this->library !== null && $this->allows('assets.view')) {
-            $html .= '<button type="button" class="btn btn-secondary" data-folio-asset-choose>' . $e(\Preflow\Folio\FolioText::get('folio.fields.choose')) . '</button> ';
+            $html .= '<button type="button" class="btn btn-secondary btn-sm" data-folio-asset-choose>' . $e($t('folio.fields.choose')) . '</button> ';
         }
-        if ($this->allows('assets.upload')) {
+        if ($canUpload) {
             $inputName = $cfg['multiple'] ? $name . '[]' : $name;
             $acceptAttr = $cfg['accept'] !== '' ? ' accept="' . $e($cfg['accept']) . '"' : '';
             $multipleAttr = $cfg['multiple'] ? ' multiple' : '';
-            $html .= '<label class="folio-asset-upload">' . $e(\Preflow\Folio\FolioText::get('folio.fields.upload')) . ' <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
+            $html .= '<label class="folio-asset-upload">' . $e($t('folio.fields.upload')) . ' <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
         }
         $html .= '</div>' . "\n";
+        $html .= '  </div>' . "\n";
+        if ($droppable || $this->library !== null) {
+            // The card fields.js / admin.js copy for a picked or dropped file.
+            $html .= '  <template data-folio-asset-template>' . $this->item('', $selection, ['thumb' => '', 'name' => '', 'href' => null, 'meta' => '', 'warn' => false, 'focal' => null]) . '</template>' . "\n";
+        }
 
         if ($ctx->help !== null && $ctx->help !== '') {
             $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
@@ -117,31 +136,78 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         if ($hasError) {
             $html .= '  <div class="form-error">' . $e((string) ($ctx->errors[0] ?? '')) . '</div>' . "\n";
         }
+        if ($droppable) {
+            $html .= '  <div class="form-error" data-folio-asset-error hidden></div>' . "\n";
+        }
         $html .= '</div>';
 
         return $html;
     }
 
     /**
-     * Thumbnail URL (images), label and link of a stored value. A file in the bin keeps its
-     * place (restoring it brings it back) and says so, linking to the bin for those who may
-     * open it (assets.delete); for others the link is null (plain text).
+     * One chosen file's card.
      *
-     * @return array{0: ?string, 1: string, 2: ?string}
+     * @param array{thumb: ?string, name: string, href: ?string, meta: string, warn: bool, focal: ?array{int, int}} $card
      */
-    private function describe(string $value): array
+    private function item(string $value, string $selection, array $card): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        $template = $value === '';
+        $html = '<li class="folio-asset-item" data-asset-item>';
+        if ($template || ($card['thumb'] ?? null) !== null) {
+            $html .= '<span class="folio-asset-preview"><img src="' . $e((string) ($card['thumb'] ?? '')) . '" alt="" class="folio-asset-thumb">'
+                // Placed by script (fields.js) from data-focal: no style attribute under a strict CSP.
+                . '<span class="folio-asset-focal"' . ($card['focal'] !== null ? ' data-focal="' . $card['focal'][0] . ',' . $card['focal'][1] . '"' : '') . ' aria-hidden="true" hidden></span></span>';
+        } else {
+            $html .= '<span class="folio-asset-preview is-file" aria-hidden="true">' . \Preflow\Folio\View\InlineIcon::svg('ui-file') . '</span>';
+        }
+        $html .= ''
+            . '<span class="folio-asset-info"><span class="folio-asset-name">'
+            . ($card['href'] !== null && !$template ? '<a href="' . $e($card['href']) . '">' . $e($card['name']) . '</a>' : $e($card['name'])) . '</span>'
+            . '<span class="folio-asset-meta"' . ($card['meta'] === '' && !$template ? ' hidden' : '') . '>' . $e($card['meta']) . '</span>'
+            . ($card['warn'] || $template ? '<span class="folio-asset-warn"' . ($template ? ' hidden' : '') . '>' . $e(\Preflow\Folio\FolioText::get('folio.fields.no_alt')) . '</span>' : '')
+            . '</span>'
+            . '<input type="hidden" name="' . $e($selection) . '" value="' . $e($value) . '">'
+            . '<button type="button" class="btn btn-ghost btn-sm" data-tone="danger" data-folio-asset-remove aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.remove_named', ['label' => $card['name']])) . '">'
+            . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>';
+
+        return $html . '</li>';
+    }
+
+    /**
+     * What a chosen file's card shows. A library asset: thumbnail, focal point, name, kind and
+     * size, whether an image lacks alt text (in the record's language, else the default). A file in
+     * the bin keeps its place (restoring it brings it back) and says so, linking to the bin for
+     * those who may open it (assets.delete). An older stored path: its file.
+     *
+     * @return array{thumb: ?string, name: string, href: ?string, meta: string, warn: bool, focal: ?array{int, int}}
+     */
+    private function describe(string $value, ?FieldContext $ctx = null): array
     {
         $asset = $this->library?->find($value);
         if ($asset !== null) {
-            return [$this->library->thumbnailUrl($asset), $asset->label(), $this->library->url($asset)];
+            $kind = $asset->kind();
+            $meta = \Preflow\Folio\FolioText::get('folio.assets.kind_names.' . $kind)
+                . ($asset->width !== null && $asset->height !== null ? ' · ' . $asset->width . ' × ' . $asset->height : '');
+            $default = $ctx?->locales?->default ?? $ctx?->locale ?? 'en';
+            $thumb = $this->library->thumbnailUrl($asset);
+
+            return [
+                'thumb' => $thumb,
+                'name' => $asset->label(),
+                'href' => null,
+                'meta' => $meta,
+                'warn' => $kind === 'image' && $asset->altFor($ctx?->locale ?? $default, $default) === '',
+                'focal' => $thumb !== null && $kind === 'image' ? [$asset->focalX, $asset->focalY] : null,
+            ];
         }
         $binned = $this->library?->findBinned($value);
         if ($binned !== null) {
-            return [null, self::inBin($binned), $this->allows('assets.delete') ? rtrim($this->adminPrefix, '/') . '/assets/bin' : null];
+            return ['thumb' => null, 'name' => self::inBin($binned), 'href' => $this->allows('assets.delete') ? rtrim($this->adminPrefix, '/') . '/assets/bin' : null, 'meta' => '', 'warn' => false, 'focal' => null];
         }
         $url = $this->urlFor($value);
 
-        return [$this->isImage($value) ? $url : null, basename($value), $url];
+        return ['thumb' => $this->isImage($value) ? $url : null, 'name' => basename($value), 'href' => $this->isImage($value) ? null : $url, 'meta' => '', 'warn' => false, 'focal' => null];
     }
 
     private static function inBin(\Preflow\Media\Asset $asset): string
@@ -215,9 +281,10 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         return [];
     }
 
+    /** fields.js: the drop zone (admin.js runs Choose and Remove). */
     public function assets(): array
     {
-        return [];
+        return ['fields.js'];
     }
 
     /**

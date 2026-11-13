@@ -84,22 +84,9 @@
     // focus to the chevron), opening moves the focus to the date; a date set turns Publish into
     // "Schedule", and the hint under the date says when ("in 2 days").
 
-    // TODO(Task 6): replace with the date field's relative-hint helper (one helper for both).
+    // "In 2 days": the date field's helper (fields.js, loaded before this script), so both hints agree.
     function relativeWhen(value) {
-        var at = value ? new Date(value) : null;
-        if (!at || isNaN(at.getTime())) { return ''; }
-        var seconds = Math.round((at.getTime() - Date.now()) / 1000);
-        var units = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
-        var unit = 'second', amount = seconds;
-        for (var i = 0; i < units.length; i++) {
-            if (Math.abs(seconds) >= units[i][1]) { unit = units[i][0]; amount = Math.round(seconds / units[i][1]); break; }
-        }
-        try {
-            var lang = (document.documentElement.getAttribute && document.documentElement.getAttribute('lang')) || undefined;
-            return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(amount, unit);
-        } catch (err) {
-            return '';
-        }
+        return typeof Folio.relativeTime === 'function' ? Folio.relativeTime(value) : '';
     }
 
     // Publish publishes now (_action=publish); with a date it schedules: _action=schedule, a save that
@@ -173,18 +160,8 @@
 
     function onSplitClick(e) {
         var target = e.target;
-        var clear = target && target.closest ? target.closest('[data-folio-date-clear]') : null;
-        if (clear) {
-            var box = clear.closest('[data-folio-split-ready]') || document;
-            var input = box.querySelector('[data-folio-publish-at]');
-            if (input) {
-                input.value = '';
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-                if (typeof input.focus === 'function') { input.focus(); }
-            }
-            return;
-        }
+        // The date's clear button is fields.js's (every .folio-date-input); its input event updates the label.
+        if (target && target.closest && target.closest('[data-folio-date-clear]')) { return; }
         // A click elsewhere closes an open menu.
         document.querySelectorAll('[data-folio-split-ready]').forEach(function (g) {
             var m = splitMenuOf(g);

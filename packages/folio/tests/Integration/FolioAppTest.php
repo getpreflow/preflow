@@ -529,10 +529,10 @@ final class FolioAppTest extends TestCase
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $authorId = $dm->queryType('author')->first()->getId();
 
-        // the new-page form lists the author as an option
+        // the new-page form offers the author to its search (the options travel with the field, 0.75)
         $newForm = (string) $app->handle($f->createServerRequest('GET', '/folio/page/new'))->getBody();
-        $this->assertStringContainsString('<select name="author"', $newForm);
-        $this->assertStringContainsString('Ada Lovelace', $newForm);
+        $this->assertStringContainsString('data-folio-relation-name="author"', $newForm);
+        $this->assertStringContainsString('"label":"Ada Lovelace"', $newForm);
 
         // create a page selecting that author, then the edit form shows it selected
         $app->handle($f->createServerRequest('POST', '/folio/page')->withHeader('Sec-Fetch-Site', 'same-origin')
@@ -541,7 +541,8 @@ final class FolioAppTest extends TestCase
 
         $editForm = (string) $app->handle($f->createServerRequest('GET', '/folio/page/' . $pageId . '/edit')
             ->withAttribute('type', 'page')->withAttribute('id', $pageId))->getBody();
-        $this->assertStringContainsString('value="' . $authorId . '" selected', $editForm);
+        $this->assertStringContainsString('<span class="folio-relation-label">Ada Lovelace</span>', $editForm);
+        $this->assertStringContainsString('<input type="hidden" name="author" value="' . $authorId . '">', $editForm);
     }
 
     public function test_matrix_editor_renders_picker_and_loads_admin_js(): void

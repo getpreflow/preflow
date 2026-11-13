@@ -161,8 +161,8 @@ final class AssetLibraryRelease2Test extends TestCase
         $panel = (string) $this->get('/folio/assets/' . $asset->id)->getBody();
         $this->assertMatchesRegularExpression('#<select[^>]*name="usage_type"#', $panel);
         $this->assertStringContainsString('<option value="cover">Cover</option>', $panel);
-        $this->assertMatchesRegularExpression('#<div class="form-group folio-relation">\s*<label for="game">Game</label>\s*<select name="game"#', $panel);
-        $this->assertStringContainsString('<option value="p1">Hello</option>', $panel);
+        $this->assertMatchesRegularExpression('#<fieldset class="form-group folio-relation" data-folio-relation data-folio-relation-name="game"[^>]*>\s*<legend>Game</legend>#', $panel);
+        $this->assertStringContainsString('{"id":"p1","label":"Hello","meta":null}', $panel);
         $this->assertMatchesRegularExpression('#<input type="checkbox"[^>]*name="featured"#', $panel);
 
         $res = $this->post('/folio/assets/' . $asset->id, ['_extra' => '1', 'alt' => ['en' => 'Sea'], 'usage_type' => 'cover', 'game' => 'p1', 'featured' => '1']);
@@ -172,7 +172,8 @@ final class AssetLibraryRelease2Test extends TestCase
         $this->assertSame(['usage_type' => 'cover', 'game' => 'p1', 'featured' => true], $saved?->extra);
         $this->assertSame(['en' => 'Sea'], $saved?->alt);
         $panel = (string) $this->get('/folio/assets/' . $asset->id)->getBody();
-        $this->assertStringContainsString('<option value="p1" selected>Hello</option>', $panel);
+        $this->assertStringContainsString('<span class="folio-relation-label">Hello</span>', $panel);
+        $this->assertStringContainsString('<input type="hidden" name="game" value="p1">', $panel);
 
         // Unchecking the box saves false (the field type's hidden "0").
         $this->post('/folio/assets/' . $asset->id, ['_extra' => '1', 'usage_type' => 'cover', 'game' => 'p1', 'featured' => '0']);

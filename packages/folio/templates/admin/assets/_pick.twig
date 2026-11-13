@@ -1,3 +1,5 @@
+{# The picker's Select: what the asset field's card shows (asset field, 0.75: name, kind and size, the
+   alt-text warning, the focal point) travels with the pick. #}
 {% if picker %}
-    <button type="button" class="btn btn-secondary folio-asset-pick" data-folio-pick data-id="{{ item.id }}" data-thumb="{{ item.thumb }}" data-label="{{ item.label }}" data-multiple="{{ multiple ? '1' : '0' }}">{{ t('folio.assets.select') }}</button>
+    <button type="button" class="btn btn-secondary folio-asset-pick" data-folio-pick data-id="{{ item.id }}" data-thumb="{{ item.thumb }}" data-label="{{ item.label }}" data-meta="{{ t('folio.assets.kind_names.' ~ item.kind) }}{% if item.width and item.height %} · {{ item.width }} × {{ item.height }}{% endif %}" data-warn="{{ item.kind == 'image' and not item.has_alt ? '1' : '0' }}" data-focal="{{ item.kind == 'image' and item.thumb ? item.focal_x ~ ',' ~ item.focal_y : '' }}" data-multiple="{{ multiple ? '1' : '0' }}">{{ t('folio.assets.select') }}</button>
 {% endif %}

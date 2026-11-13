@@ -50,7 +50,7 @@ final class ScalarFieldTypesTest extends TestCase
         $this->assertStringContainsString('step="0.5"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 0.5])));
         $this->assertStringContainsString('step="any"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 'any'])));
         $this->assertStringContainsString('step="0.00001"', $type->renderEditor(new FieldContext(name: 'qty', config: ['step' => 0.00001])));
-        $this->assertStringNotContainsString('step=', $type->renderEditor(new FieldContext(name: 'qty')));
+        $this->assertDoesNotMatchRegularExpression('/\sstep=/', $type->renderEditor(new FieldContext(name: 'qty')), 'no step attribute (the stepper buttons carry data-folio-step)');
     }
 
     public function test_number_step_rules(): void

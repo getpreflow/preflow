@@ -172,6 +172,52 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertStringContainsString('type="file" name="cover" accept="image/*"', $html);
     }
 
+    /** Board LibFields: filled = 16:10 thumb with the focal dot, mono name, kind, the alt-text warning. */
+    public function test_a_filled_field_shows_the_asset_card(): void
+    {
+        $id = $this->lib->upload($this->upload($this->png(160, 100), 'preflow.png'), null)->id;
+        $this->lib->update($id, ['focal_x' => 30, 'focal_y' => 70]);
+
+        $html = $this->field()->renderEditor(new FieldContext(name: 'cover', label: 'Cover', value: $id, config: self::SINGLE, locale: 'en'));
+
+        $this->assertStringContainsString('<div class="form-group folio-asset-field" data-folio-asset-field', $html);
+        $this->assertStringContainsString('data-upload-url="/folio/assets" data-accept="image/*"', $html);
+        $this->assertMatchesRegularExpression(
+            '~<li class="folio-asset-item" data-asset-item><span class="folio-asset-preview"><img src="[^"]+" alt="" class="folio-asset-thumb">'
+            . '<span class="folio-asset-focal" data-focal="30,70" aria-hidden="true" hidden></span></span>'
+            . '<span class="folio-asset-info"><span class="folio-asset-name">preflow.png</span><span class="folio-asset-meta">image · 160 × 100</span>'
+            . '<span class="folio-asset-warn">No alt text yet</span></span>~',
+            $html,
+        );
+        $this->assertStringContainsString('aria-label="Remove preflow.png"', $html);
+        $this->assertStringContainsString('<template data-folio-asset-template>', $html, 'the card script copies for a picked or dropped file');
+
+        $this->lib->update($id, ['alt' => ['en' => 'The logo']]);
+        $this->assertStringNotContainsString('folio-asset-warn">No alt', $this->field()->renderEditor(new FieldContext(name: 'cover', value: $id, config: self::SINGLE, locale: 'en')));
+    }
+
+    public function test_an_empty_field_is_a_drop_zone_with_choose_and_upload(): void
+    {
+        $html = $this->field()->renderEditor(new FieldContext(name: 'cover', label: 'Cover', value: null, config: self::SINGLE));
+
+        $this->assertMatchesRegularExpression('~<div class="folio-asset-box" data-folio-asset-drop>\s*<ul class="folio-asset-selection"></ul>\s*<p class="folio-asset-empty"><svg[^>]*>.*?</svg><strong>Drop an image here</strong></p>~s', $html);
+        $this->assertStringContainsString('data-folio-asset-choose', $html);
+        $this->assertStringContainsString('type="file" name="cover" accept="image/*"', $html);
+        $this->assertStringContainsString('<div class="form-error" data-folio-asset-error hidden></div>', $html, 'where a refused drop is said');
+
+        $any = $this->field()->renderEditor(new FieldContext(name: 'files', value: null, config: self::MULTIPLE));
+        $this->assertStringContainsString('<strong>Drop a file here</strong>', $any);
+    }
+
+    public function test_without_upload_permission_nothing_can_be_dropped(): void
+    {
+        $field = new AssetFieldType($this->assetRoot . '/uploads', '/folio/_uploads', null, $this->lib, '/folio', static fn (string $permission): bool => $permission !== 'assets.upload');
+        $html = $field->renderEditor(new FieldContext(name: 'cover', value: null, config: self::SINGLE));
+        $this->assertStringNotContainsString('data-upload-url', $html);
+        $this->assertStringNotContainsString('data-folio-asset-drop', $html);
+        $this->assertStringNotContainsString('Drop an image', $html);
+    }
+
     public function test_nested_selection_name(): void
     {
         $this->assertSame('a[b][cover_ids]', AssetFieldType::selectionName('a[b][cover]'));
@@ -220,9 +266,9 @@ final class AssetFieldLibraryTest extends TestCase
 
         $html = $this->field()->renderEditor(new FieldContext(name: 'cover', label: 'Cover', value: $id, config: self::SINGLE));
 
-        $this->assertStringContainsString('<a href="/folio/assets/bin">x.png (in the bin)</a>', $html);
+        $this->assertStringContainsString('<span class="folio-asset-name"><a href="/folio/assets/bin">x.png (in the bin)</a></span>', $html);
         $this->assertStringContainsString('name="cover_ids[]" value="' . $id . '"', $html);
-        $this->assertStringNotContainsString('<img', $html);
+        $this->assertStringNotContainsString('<img', (string) preg_replace('~<template.*?</template>~s', '', $html), 'no thumbnail (the template card has its empty one)');
         $this->assertSame('x.png (in the bin)', $this->field()->renderAdmin($id, self::SINGLE));
     }
 
@@ -236,7 +282,7 @@ final class AssetFieldLibraryTest extends TestCase
         $html = $field->renderEditor(new FieldContext(name: 'cover', label: 'Cover', value: $id, config: self::SINGLE));
 
         // The bin page would answer 403: plain text instead of a link.
-        $this->assertStringContainsString('<span>x.png (in the bin)</span>', $html);
+        $this->assertStringContainsString('<span class="folio-asset-name">x.png (in the bin)</span>', $html);
         $this->assertStringNotContainsString('/folio/assets/bin', $html);
     }
 

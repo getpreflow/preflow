@@ -65,11 +65,15 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
         }
         $optionsJson = json_encode($options, JSON_HEX_TAG | JSON_UNESCAPED_SLASHES);
 
-        $html = '<div class="form-group folio-matrix-field">' . "\n";
-        $html .= '  <label>' . $e($label) . '</label>' . "\n";
+        $t = static fn (string $key, array $params = []): string => \Preflow\Folio\FolioText::get($key, $params);
+        $labelId = preg_replace('/[^A-Za-z0-9_-]/', '-', $name) . '-label';
+        $html = '<div class="form-group folio-matrix-field" role="group" aria-labelledby="' . $e($labelId) . '">' . "\n";
+        $html .= '  <span class="form-label" id="' . $e($labelId) . '">' . $e($label) . '</span>' . "\n";
         $html .= '  <div class="folio-matrix" data-folio-matrix data-field="' . $e($name) . '" data-next-index="' . count($refs) . '">' . "\n";
         $html .= '    <script type="application/json" data-matrix-options>' . $optionsJson . '</script>' . "\n";
-        $html .= '    <div class="folio-matrix-rows" data-matrix-rows>' . "\n";
+        // Board LibFields: a header row on surface-2, the rows (grip, entry, view, trash), "+ Add row".
+        $html .= '    <div class="folio-matrix-head" aria-hidden="true"><span></span><span>' . $e($t('folio.fields.entry')) . '</span><span>' . $e($t('folio.fields.view')) . '</span><span></span></div>' . "\n";
+        $html .= '    <div class="folio-matrix-rows" data-matrix-rows data-folio-matrix-list>' . "\n";
         foreach (array_values($refs) as $i => $ref) {
             $html .= $this->rowHtml(
                 $name,
@@ -82,18 +86,19 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
             );
         }
         $html .= '    </div>' . "\n";
+        $html .= '    <template data-matrix-template>' . $this->rowHtml($name, 0, '', '', '', [], '') . '</template>' . "\n";
         $html .= '    <div class="folio-matrix-add">' . "\n";
-        $html .= '      <select data-matrix-type>';
+        $html .= '      <select data-matrix-type aria-label="' . $e($t('folio.fields.type')) . '">';
         foreach (array_column($options['types'], 'key') as $key) {
             $html .= '<option value="' . $e($key) . '">' . $e($this->typeLabel($key)) . '</option>';
         }
         $html .= '</select>' . "\n";
-        $html .= '      <select data-matrix-record></select>' . "\n";
-        $html .= '      <button type="button" class="btn btn-secondary" data-matrix-add>' . $e(\Preflow\Folio\FolioText::get('folio.common.add')) . '</button>' . "\n";
+        $html .= '      <select data-matrix-record aria-label="' . $e($t('folio.fields.entry')) . '"></select>' . "\n";
+        $html .= '      <button type="button" class="folio-matrix-add-row" data-matrix-add>' . \Preflow\Folio\View\InlineIcon::svg('ui-plus') . $e($t('folio.fields.add_row')) . '</button>' . "\n";
         // "New" opens a create drawer: offered when the user may create one of the allowed types.
         $creatable = $this->can === null || array_filter($allowed, fn (string $key): bool => ($this->can)($key . '.create')) !== [];
         if ($creatable) {
-            $html .= '      <button type="button" class="btn btn-secondary" data-matrix-create>' . $e(\Preflow\Folio\FolioText::get('folio.common.new')) . '</button>' . "\n";
+            $html .= '      <button type="button" class="btn btn-ghost btn-sm" data-matrix-create>' . $e(\Preflow\Folio\FolioText::get('folio.common.new')) . '</button>' . "\n";
         }
         $html .= '    </div>' . "\n";
         $html .= '  </div>' . "\n";
@@ -246,16 +251,17 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
             $viewSelect .= '</select>';
         }
 
-        return '      <div class="folio-matrix-row" data-matrix-row>'
+        $move = \Preflow\Folio\FolioText::get('folio.fields.move_named', ['label' => $label]);
+        $remove = \Preflow\Folio\FolioText::get('folio.fields.remove_named', ['label' => $label]);
+
+        return '<div class="folio-matrix-row" data-matrix-row>'
+            . '<button type="button" class="folio-matrix-grip" data-folio-sort-handle aria-label="' . $e($move) . '" title="' . $e($move) . '">' . \Preflow\Folio\View\InlineIcon::svg('ui-grip') . '</button>'
             . '<input type="hidden" name="' . $e($field) . '[' . $i . '][_type]" value="' . $e($type) . '">'
             . '<input type="hidden" name="' . $e($field) . '[' . $i . '][id]" value="' . $e($id) . '">'
-            . '<span class="folio-matrix-label">' . $e($label) . ' <em>(' . $e($type) . ')</em></span>'
-            . $viewSelect
-            . '<span class="folio-matrix-controls">'
-            . '<button type="button" class="btn btn-ghost" data-matrix-up>' . $e(\Preflow\Folio\FolioText::get('folio.fields.up')) . '</button>'
-            . '<button type="button" class="btn btn-ghost" data-matrix-down>' . $e(\Preflow\Folio\FolioText::get('folio.fields.down')) . '</button>'
-            . '<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>' . $e(\Preflow\Folio\FolioText::get('folio.common.remove')) . '</button>'
-            . '</span></div>' . "\n";
+            . '<span class="folio-matrix-label"><span class="folio-matrix-name">' . $e($label) . '</span> <em>' . $e($type) . '</em></span>'
+            . '<span class="folio-matrix-view">' . $viewSelect . '</span>'
+            . '<button type="button" class="folio-matrix-remove" data-matrix-remove aria-label="' . $e($remove) . '" title="' . $e($remove) . '">' . \Preflow\Folio\View\InlineIcon::svg('ui-trash') . '</button>'
+            . '</div>' . "\n";
     }
 
     /**

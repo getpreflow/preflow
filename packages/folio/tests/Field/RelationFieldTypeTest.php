@@ -78,15 +78,78 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertSame('relation', $this->type()->key());
     }
 
-    public function test_render_editor_single_select_with_options(): void
+    public function test_a_single_relation_shows_its_record_as_a_row_with_search_below(): void
     {
         $html = $this->type()->renderEditor(new FieldContext(
-            name: 'writer', label: 'Writer', value: 'a1', config: $this->singleConfig(),
+            name: 'writer', label: 'Writer', value: 'a1', config: $this->singleConfig(), required: true,
         ));
-        $this->assertStringContainsString('<select name="writer"', $html);
-        $this->assertStringContainsString('— none —', $html);
-        $this->assertStringContainsString('<option value="a1" selected>Ann</option>', $html);
-        $this->assertStringContainsString('<option value="a2">Bob</option>', $html);
+        $this->assertStringNotContainsString('<select', $html);
+        $this->assertStringContainsString('<fieldset class="form-group folio-relation" data-folio-relation data-folio-relation-name="writer">', $html);
+        $this->assertStringContainsString('<legend>Writer <span class="form-required">*</span></legend>', $html);
+        $this->assertMatchesRegularExpression(
+            '~<ul class="folio-relation-rows" data-folio-relation-selected><li class="folio-relation-row" data-folio-relation-item>'
+            . '<span class="folio-relation-avatar folio-type-icon" data-family="" aria-hidden="true">A</span>'
+            . '<span class="folio-relation-text"><span class="folio-relation-label">Ann</span><span class="folio-relation-meta" hidden></span></span>'
+            . '<button type="button" class="folio-relation-action" data-folio-relation-remove aria-label="Remove Ann" title="Remove Ann"><svg[^>]*>.*?</svg></button>'
+            . '<input type="hidden" name="writer" value="a1"></li></ul>~s',
+            $html,
+        );
+        $this->assertStringNotContainsString('folio-relation-grip', $html, 'one record: nothing to reorder');
+        $this->assertMatchesRegularExpression('~<label class="folio-relation-search" data-folio-no-edit><svg[^>]*>.*?</svg><input type="search" data-folio-relation-find placeholder="[^"]*" aria-label="Search Writer" autocomplete="off"></label>~s', $html);
+        $this->assertStringNotContainsString('name=""', $html, 'the search box posts nothing');
+        // A small target: the options travel with the field, for the search to filter.
+        $this->assertStringContainsString('<script type="application/json" data-folio-relation-options>[{"id":"a1","label":"Ann","meta":null},{"id":"a2","label":"Bob","meta":null}]</script>', $html);
+        $this->assertStringContainsString('<template data-folio-relation-template><li class="folio-relation-row"', $html);
+    }
+
+    public function test_an_empty_single_relation_still_posts_its_name(): void
+    {
+        $html = $this->type()->renderEditor(new FieldContext(name: 'writer', value: '', config: $this->singleConfig()));
+        $this->assertStringContainsString('<ul class="folio-relation-rows" data-folio-relation-selected><li hidden><input type="hidden" name="writer" value=""></li></ul>', $html);
+    }
+
+    public function test_rows_show_the_meta_field_and_the_targets_tint(): void
+    {
+        $dir = $this->base . '/catalog';
+        mkdir($dir);
+        file_put_contents($dir . '/author.json', json_encode(['key' => 'author', 'family' => 'member']));
+        $type = new RelationFieldType($this->dm, $this->registry, prefix: '/folio', catalog: new \Preflow\Folio\Content\TypeCatalog($dir));
+        $html = $type->renderEditor(new FieldContext(
+            name: 'writers', label: 'Writers', value: ['a2', 'a1'],
+            config: ['relation' => ['to' => 'author', 'multiple' => true, 'metaField' => 'email']],
+        ));
+
+        $this->assertStringContainsString('data-folio-relation-name="writers[]" data-folio-relation-multiple data-folio-relation-open="/folio/author/{id}/edit"', $html);
+        $this->assertLessThan(strpos($html, '>Ann<'), strpos($html, '>Bob<'), 'in the linked order');
+        $this->assertStringContainsString('<button type="button" class="folio-relation-grip" data-folio-sort-handle aria-label="Move Bob" title="Move Bob">', $html);
+        $this->assertStringContainsString('<span class="folio-relation-avatar folio-type-icon" data-family="member" aria-hidden="true">B</span>', $html);
+        $this->assertStringContainsString('<span class="folio-relation-label">Bob</span><span class="folio-relation-meta">bob@example.org</span>', $html);
+        $this->assertStringContainsString('<a class="folio-relation-action" href="/folio/author/a2/edit" data-folio-relation-open-item aria-label="Open Bob" title="Open Bob">', $html);
+        $this->assertStringContainsString('<input type="hidden" name="writers[]" value="a2">', $html);
+        $this->assertStringContainsString('"meta":"ann@example.org"', $html);
+    }
+
+    public function test_a_hidden_meta_field_is_never_shown(): void
+    {
+        $html = $this->type()->renderEditor(new FieldContext(name: 'writer', value: 'a1', config: ['relation' => ['to' => 'author', 'metaField' => 'secret']]));
+        $this->assertStringNotContainsString('hash', $html);
+    }
+
+    public function test_initials(): void
+    {
+        $this->assertSame('DH', RelationFieldType::initials('Dubach Holzbau AG'));
+        $this->assertSame('ÜB', RelationFieldType::initials('über-bau'));
+        $this->assertSame('?', RelationFieldType::initials('  '));
+    }
+
+    public function test_without_access_to_the_target_the_linked_rows_stay_and_nothing_else_is_offered(): void
+    {
+        $type = new RelationFieldType($this->dm, $this->registry, can: static fn (string $p): bool => false, prefix: '/folio');
+        $html = $type->renderEditor(new FieldContext(name: 'writer', value: 'a1', config: $this->singleConfig()));
+        $this->assertStringContainsString('<input type="hidden" name="writer" value="a1">', $html);
+        $this->assertStringNotContainsString('data-folio-relation-find', $html);
+        $this->assertStringNotContainsString('Bob', $html);
+        $this->assertStringNotContainsString('data-folio-relation-open', $html);
     }
 
     private function multi(array $value = [], int $count = 2, array $extra = []): string
@@ -100,33 +163,14 @@ final class RelationFieldTypeTest extends TestCase
         ));
     }
 
-    public function test_multiple_renders_checkbox_chips_with_array_name_and_checked_state(): void
-    {
-        $html = $this->multi(['a2']);
-        $this->assertStringNotContainsString('<select', $html);
-        $this->assertStringContainsString('<fieldset', $html);
-        $this->assertStringContainsString('<legend>Writers', $html);
-        $this->assertMatchesRegularExpression('/<input type="checkbox" name="writers\[\]" value="a1"(?! checked)[^>]*>/', $html);
-        $this->assertMatchesRegularExpression('/<input type="checkbox" name="writers\[\]" value="a2" checked[^>]*>/', $html);
-        $this->assertStringContainsString('<span class="folio-chip-label">Bob</span>', $html);
-    }
-
     public function test_multiple_escapes_labels_and_values(): void
     {
         $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('author'), ['uuid' => 'x"1', 'name' => '<b>Eve</b> & "co"']));
-        $html = $this->multi();
+        $html = $this->multi(['x"1']);
         $this->assertStringNotContainsString('<b>Eve', $html);
         $this->assertStringContainsString('&lt;b&gt;Eve&lt;/b&gt; &amp; &quot;co&quot;', $html);
         $this->assertStringContainsString('value="x&quot;1"', $html);
-    }
-
-    public function test_filter_only_above_threshold(): void
-    {
-        $this->assertStringNotContainsString('data-folio-relation-filter', $this->multi([], 12));
-        $html = $this->multi([], 13);
-        $this->assertStringContainsString('data-folio-relation-filter', $html);
-        $this->assertStringNotContainsString('name=""', $html);
-        $this->assertDoesNotMatchRegularExpression('/data-folio-relation-filter[^>]*name=/', $html);
+        $this->assertStringContainsString('\u003Cb\u003EEve', $html, 'the options JSON cannot close its script');
     }
 
     public function test_order_by_sorts_options(): void
@@ -170,12 +214,13 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertStringNotContainsString('a1', $out); // shows the label, not the raw id
     }
 
-    public function test_unknown_target_renders_empty_select(): void
+    public function test_unknown_target_renders_no_search(): void
     {
         $html = $this->type()->renderEditor(new FieldContext(
             name: 'x', config: ['relation' => ['to' => 'ghost', 'multiple' => false]],
         ));
-        $this->assertStringContainsString('<select name="x"', $html);
+        $this->assertStringContainsString('<input type="hidden" name="x" value="">', $html);
+        $this->assertStringNotContainsString('data-folio-relation-find', $html);
         $this->assertStringNotContainsString('Ann', $html);
     }
 
@@ -202,25 +247,22 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertSame(200, RelationFieldType::INLINE_LIMIT);
     }
 
-    public function test_at_the_limit_the_markup_is_unchanged(): void
+    public function test_at_the_limit_the_options_travel_with_the_field(): void
     {
         $this->seed(200);
         $html = $this->remoteType()->renderEditor(new FieldContext(name: 'writer', value: 'a1', config: $this->singleConfig()));
-        $this->assertStringContainsString('<select name="writer"', $html);
-        $this->assertStringNotContainsString('data-folio-relation-remote', $html);
+        $this->assertStringContainsString('data-folio-relation-options', $html);
+        $this->assertStringNotContainsString('data-folio-relation-url', $html);
     }
 
-    public function test_above_the_limit_single_renders_selected_only_with_search(): void
+    public function test_above_the_limit_single_renders_the_linked_row_and_searches_the_endpoint(): void
     {
         $this->seed(201);
         $html = $this->remoteType()->renderEditor(new FieldContext(name: 'writer', label: 'Writer', value: 'a2', config: $this->singleConfig()));
-        $this->assertStringNotContainsString('<select', $html);
-        $this->assertStringContainsString('data-folio-relation-remote', $html);
+        $this->assertStringNotContainsString('data-folio-relation-options', $html);
         $this->assertStringContainsString('data-folio-relation-url="/folio/_relation/author"', $html);
         $this->assertStringContainsString('<input type="hidden" name="writer" value="a2">', $html);
-        // Label above (a borderless group's legend), the linked record as a chip, the search below it.
-        $this->assertMatchesRegularExpression('#<fieldset class="form-group folio-relation folio-relation-remote" data-folio-relation-remote data-folio-relation-name="writer">\s*<legend>Writer</legend>\s*<div class="folio-chips" data-folio-relation-selected>\s*<span class="folio-chip" data-folio-relation-item>.*</div>\s*<input type="search"#s', $html);
-        $this->assertStringContainsString('Bob', $html);
+        $this->assertStringContainsString('<span class="folio-relation-label">Bob</span>', $html);
         $this->assertStringNotContainsString('Person 100', $html);
         $this->assertStringNotContainsString('Ann', $html);
     }
@@ -232,7 +274,7 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertStringContainsString('<input type="hidden" name="writer" value="">', $html);
     }
 
-    public function test_above_the_limit_multiple_renders_selected_chips_with_array_inputs(): void
+    public function test_above_the_limit_multiple_renders_selected_rows_with_array_inputs(): void
     {
         $this->seed(201);
         $html = $this->remoteType()->renderEditor(new FieldContext(
@@ -245,23 +287,36 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertStringContainsString('Ann', $html);
         $this->assertStringContainsString('Bob', $html);
         $this->assertStringNotContainsString('Person 150', $html);
-        $this->assertStringContainsString('data-folio-relation-search', $html);
+        $this->assertStringContainsString('data-folio-relation-find', $html);
     }
 
-    public function test_remote_url_carries_label_and_order_config(): void
+    public function test_remote_url_carries_label_order_and_meta_config(): void
     {
         $this->seed(201);
         $html = $this->remoteType()->renderEditor(new FieldContext(
-            name: 'writer', config: ['relation' => ['to' => 'author', 'labelField' => 'name', 'orderBy' => 'name']],
+            name: 'writer', config: ['relation' => ['to' => 'author', 'labelField' => 'name', 'orderBy' => 'name', 'metaField' => 'email']],
         ));
-        $this->assertStringContainsString('data-folio-relation-url="/folio/_relation/author?label=name&amp;order=name"', $html);
+        $this->assertStringContainsString('data-folio-relation-url="/folio/_relation/author?label=name&amp;order=name&amp;meta=email"', $html);
     }
 
     public function test_without_a_prefix_a_large_target_stays_inline(): void
     {
         $this->seed(201);
         $html = $this->type()->renderEditor(new FieldContext(name: 'writer', config: $this->singleConfig()));
-        $this->assertStringContainsString('<select name="writer"', $html);
+        $this->assertStringContainsString('data-folio-relation-options', $html);
+    }
+
+    public function test_page_adds_a_declared_meta_field(): void
+    {
+        file_put_contents($this->base . '/m/shelf.json', json_encode([
+            'key' => 'shelf', 'table' => 'shelf', 'storage' => 'json', 'id_field' => 'uuid',
+            'fields' => ['owner' => ['type' => 'relation', 'relation' => ['to' => 'author', 'metaField' => 'email']], 'spy' => ['type' => 'relation', 'relation' => ['to' => 'author', 'metaField' => 'secret']]],
+        ]));
+        $registry = new TypeRegistry($this->base . '/m');
+        $type = new RelationFieldType(new DataManager(['json' => new JsonFileDriver($this->base . '/s')], 'json', $registry), $registry, prefix: '/folio');
+        $this->assertSame([['id' => 'a1', 'label' => 'Ann', 'meta' => 'ann@example.org'], ['id' => 'a2', 'label' => 'Bob', 'meta' => 'bob@example.org']], $type->page('author', null, null, '', 1, 'email')['items']);
+        $this->assertSame(['id', 'label'], array_keys($type->page('author', null, null, '', 1, 'secret')['items'][0]), 'a hidden field is never a meta line');
+        $this->assertSame(['id', 'label'], array_keys($type->page('author', null, null, '', 1, 'nick')['items'][0]), 'undeclared');
     }
 
     public function test_page_searches_loosely_and_pages_by_twenty(): void

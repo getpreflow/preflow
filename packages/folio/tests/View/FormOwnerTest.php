@@ -21,11 +21,22 @@ final class FormOwnerTest extends TestCase
         // HTML serialisation: & and " stay escaped in attributes, < and > in text.
         $this->assertStringContainsString('<input type="text" id="f-slug" name="slug" value="a &amp; &quot;b&quot;" form="folio-record">', $out);
         $this->assertStringContainsString('<select name="kind" form="folio-record">', $out);
-        $this->assertStringContainsString('<textarea name="note" form="folio-record">&lt;b&gt;</textarea>', $out);
+        $this->assertStringContainsString('<textarea name="note" form="folio-record">' . "\n" . '&lt;b&gt;</textarea>', $out);
         $this->assertStringContainsString('<button name="go" form="folio-record">', $out, 'a typeless button submits: now the record form');
         $this->assertStringContainsString('<input type="hidden" name="other" form="elsewhere">', $out, 'its own form stays');
         $this->assertStringContainsString('<label for="f-slug">', $out, 'labels and options are no form controls');
         $this->assertStringContainsString('<option>x</option>', $out);
+    }
+
+    /** The parse drops the guard newline after <textarea>; it is written again, so a leading newline survives. */
+    public function test_a_textarea_value_starting_with_a_newline_round_trips(): void
+    {
+        $renderer = new \Preflow\Form\FieldRenderer();
+        foreach (["\nHello", "\n\nTwo", 'Plain', ''] as $value) {
+            $out = FormOwner::assign($renderer->renderField('note', ['type' => 'textarea', 'value' => $value]), 'folio-record');
+            $doc = \Dom\HTMLDocument::createFromString('<!DOCTYPE html><html><body>' . $out . '</body></html>', LIBXML_NOERROR, 'UTF-8');
+            $this->assertSame($value, $doc->querySelector('textarea')->textContent, var_export($value, true));
+        }
     }
 
     public function test_only_real_attributes_count(): void

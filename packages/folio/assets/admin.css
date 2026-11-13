@@ -1198,6 +1198,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .form-help { display: block; margin-top: 6px; color: var(--c-text-subtle); font-size: 12px; line-height: 1.45; }
 .folio-readonly-value { margin: 0; font-size: 14px; color: var(--c-text); overflow-wrap: anywhere; }
 /* Field error: the message in danger with a warning glyph (the field gets a danger border below). */
+.form-error[hidden] { display: none; }
 .form-error { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; color: var(--c-danger); font-size: 12px; font-weight: 450; line-height: 1.45; }
 .form-error::before {
   content: "";
@@ -1246,6 +1247,311 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 /* Read-only form (fieldset[disabled]): the label is muted and no longer looks clickable. */
 .folio-boolean > .form-check:has(input:disabled) { color: var(--c-text-muted); cursor: default; }
 .folio-boolean > .form-check > input:disabled { cursor: default; }
+
+/* ---- Field controls (board LibFields, COMPONENTS §2; 0.75) ------------------------------------- */
+
+/* A label with something beside it (the text counter). */
+.folio-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.folio-label-row > label { margin: 0; font-size: 13px; font-weight: 500; color: var(--c-text); min-width: 0; }
+.folio-counter { flex: none; font-size: 12px; color: var(--c-text-subtle); font-variant-numeric: tabular-nums; }
+.folio-counter.is-near { color: var(--c-warning); }
+.folio-counter.is-over { color: var(--c-danger); font-weight: 500; }
+
+/* String: an input with a mono prefix ("/jobs/") and an action (copy the address, open a URL) in one box. */
+.folio-input-affix {
+  display: flex;
+  align-items: stretch;
+  min-height: var(--h-control);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-input);
+  overflow: hidden;
+  transition: border-color .12s, box-shadow .12s;
+}
+.folio-input-affix:hover:not(:focus-within) { border-color: var(--c-text-subtle); }
+.folio-input-affix:focus-within { border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-soft); }
+.has-error .folio-input-affix { border-color: var(--c-danger); }
+.folio-input-prefix { display: flex; align-items: center; flex: none; max-width: 45%; padding: 0 2px 0 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 13px; color: var(--c-text-subtle); }
+.form-group .folio-input-affix > input:not([type="checkbox"]) {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  min-height: 0;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+}
+.folio-affix-field:has([data-folio-copy-address]) .folio-input-affix > input,
+.folio-input-prefix + input { padding-left: 0; font-family: var(--font-mono); font-size: 13px; }
+.folio-input-action {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--c-border);
+  background: transparent;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+.folio-input-action[hidden] { display: none; }
+.folio-input-action:hover { color: var(--c-text); background: var(--c-row-hover); }
+.folio-input-action:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--c-accent); }
+.folio-input-action .folio-icon { width: 14px; height: 14px; }
+.folio-input-action.is-copied { color: var(--c-accent-text); background: var(--c-accent-soft); }
+
+/* Number: the stepper (− value unit +), mono, tabular numbers. */
+.folio-stepper {
+  display: flex;
+  align-items: stretch;
+  min-height: var(--h-control);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-input);
+  overflow: hidden;
+  transition: border-color .12s, box-shadow .12s;
+}
+.folio-stepper:hover:not(:focus-within) { border-color: var(--c-text-subtle); }
+.folio-stepper:focus-within { border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-soft); }
+.has-error .folio-stepper { border-color: var(--c-danger); }
+.form-group .folio-stepper > input.folio-stepper-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  min-height: 0;
+  border: 0 !important;
+  border-inline: 1px solid var(--c-border) !important;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none !important;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.folio-stepper-input::-webkit-inner-spin-button,
+.folio-stepper-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.folio-stepper-unit { display: flex; align-items: center; flex: none; padding: 0 10px; font-size: 13px; color: var(--c-text-subtle); }
+.folio-stepper-button {
+  flex: none;
+  width: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-text-muted);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.folio-stepper-unit + .folio-stepper-button { border-left: 1px solid var(--c-border); }
+.folio-stepper-button:hover:not(:disabled) { color: var(--c-text); background: var(--c-row-hover); }
+.folio-stepper-button:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--c-accent); }
+.folio-stepper-button:disabled { color: var(--c-text-subtle); opacity: .5; cursor: default; }
+
+/* Date: the box of .folio-date-input (also the publish-at field) with the mono value; the hint under it. */
+.folio-date-field .folio-date-input > input:is([type="date"], [type="datetime-local"]) {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0;
+  border: 0 !important;
+  background: transparent;
+  box-shadow: none !important;
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.folio-date-field .folio-date-input > input:focus { outline: none; }
+/* The calendar icon in front opens the browser's picker (fields.js); its own indicator would be a
+   second calendar next to the clear button. */
+.folio-date-input > input::-webkit-calendar-picker-indicator { display: none; }
+.folio-date-input > .folio-icon { cursor: pointer; }
+.has-error .folio-date-input { border-color: var(--c-danger); }
+.folio-date-input > [data-folio-date-clear][hidden] { display: none; }
+.folio-date-field .folio-date-hint { margin-top: 6px; min-height: 0; }
+.folio-date-field .folio-date-hint:empty { display: none; }
+
+/* Boolean: the switch variant for settings that act at once (a checkbox with role="switch"). */
+.folio-switch {
+  flex: none;
+  position: relative;
+  width: 36px !important;
+  height: 22px !important;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--c-border-strong);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: background-color .15s;
+}
+.folio-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+  transition: transform .15s;
+}
+.folio-switch:checked { background: var(--c-accent); }
+.folio-switch:checked::after { transform: translateX(14px); background: var(--c-accent-fg); }
+.folio-switch:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.folio-switch:disabled { opacity: .5; cursor: default; }
+.folio-boolean-switch > .form-check { gap: 12px; }
+.folio-boolean-switch > :is(.form-help, .form-error) { padding-left: 48px; }
+@media (prefers-reduced-motion: reduce) { .folio-switch, .folio-switch::after { transition: none; } }
+
+/* Select: a segmented radiogroup (few options of a required choice) and radio cards (with descriptions). */
+.folio-segmented.folio-segmented-choice {
+  display: flex;
+  width: 100%;
+  gap: 2px;
+  min-height: var(--h-control);
+  padding: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.folio-segment {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  font-size: 13px;
+  color: var(--c-text-muted);
+  text-align: center;
+  cursor: pointer;
+}
+.folio-segment > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folio-segment > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.folio-segment:hover { color: var(--c-text); }
+.folio-segment:has(input:checked) { background: var(--c-surface); color: var(--c-text); font-weight: 500; box-shadow: var(--shadow-sm); }
+.folio-segment:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.has-error .folio-segmented-choice { border-color: var(--c-danger); }
+.folio-radio-cards { display: flex; flex-direction: column; gap: 8px; }
+.folio-radio-card {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
+  background: var(--c-surface);
+  cursor: pointer;
+}
+.folio-radio-card > input { flex: none; margin-top: 2px; }
+.folio-radio-card:has(input:checked) { border-color: var(--c-accent); box-shadow: inset 0 0 0 .5px var(--c-accent); background: var(--c-accent-soft); }
+.folio-radio-card:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.folio-radio-card-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.folio-radio-card-label { font-size: 13px; font-weight: 600; color: var(--c-text); }
+.folio-radio-card-help { font-size: 12px; color: var(--c-text-muted); }
+.has-error .folio-radio-card { border-color: var(--c-danger); }
+
+/* Relation: the linked records as rows, the search row and its results in one box. */
+.folio-relation-box { border: 1px solid var(--c-border-strong); border-radius: 10px; background: var(--c-surface); overflow: hidden; }
+.has-error .folio-relation-box { border-color: var(--c-danger); }
+.folio-relation-rows { list-style: none; margin: 0; padding: 0; }
+.folio-relation-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; border-bottom: 1px solid var(--c-border); background: var(--c-surface); }
+.folio-relation-row.is-dragging { opacity: .5; }
+.folio-relation-grip { width: 20px; margin-right: -4px; }
+.folio-relation-avatar.folio-type-icon { width: 26px; height: 26px; border-radius: 7px; font-size: 11px; font-weight: 700; letter-spacing: 0; }
+.folio-relation-avatar.folio-type-icon:not([data-family]),
+.folio-relation-avatar.folio-type-icon[data-family=""] { background: var(--c-neutral-soft); color: var(--c-text-muted); }
+.folio-relation-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.folio-relation-label { font-size: 13px; font-weight: 500; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folio-relation-meta { font-size: 11px; color: var(--c-text-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folio-relation-meta[hidden] { display: none; }
+.folio-relation-action[data-folio-relation-remove]:hover { color: var(--c-danger); background: var(--c-danger-soft); }
+.folio-relation-search { display: flex; align-items: center; gap: 8px; min-height: 38px; margin: 0; padding: 0 10px; color: var(--c-text-subtle); cursor: text; }
+.folio-relation-search .folio-icon { flex: none; width: 16px; height: 16px; }
+.form-group .folio-relation-search > input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+}
+.folio-relation-search:focus-within { box-shadow: inset 0 0 0 2px var(--c-accent-soft); }
+.folio-relation-search > input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.folio-relation-box > .folio-relation-results {
+  max-width: none;
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--c-border);
+  border-radius: 0;
+  background: transparent;
+}
+.folio-relation-box .folio-relation-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 0;
+  font-size: 13px;
+}
+.folio-relation-result-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folio-relation-result-meta { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--c-text-subtle); }
+.folio-relation-box .folio-relation-result:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--c-accent); }
+.folio-relation-box .folio-relation-more {
+  display: block;
+  width: 100%;
+  height: 34px;
+  border: 0;
+  border-top: 1px solid var(--c-border);
+  background: transparent;
+  color: var(--c-accent-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.folio-relation-box .folio-relation-more:hover { background: var(--c-accent-soft); }
+.folio-relation-box .folio-relation-more:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--c-accent); }
+.folio-relation-box .folio-relation-empty { padding: 7px 10px; font-size: 13px; }
+
+/* Env: key icon, the variable's name in mono, "set" (accent dot) or "not set" (warning ring). */
+.folio-env {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.folio-env > .folio-icon { flex: none; width: 16px; height: 16px; color: var(--c-text-subtle); }
+.folio-env-name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; background: none; padding: 0; }
+.folio-env-state { display: inline-flex; align-items: center; gap: 5px; flex: none; font-size: 12px; font-weight: 600; }
+.folio-env-state.is-set { color: var(--c-accent-text); }
+.folio-env-state.is-missing { color: var(--c-warning); }
+.folio-env-dot { width: 6px; height: 6px; border-radius: 50%; }
+.is-set > .folio-env-dot { background: var(--c-accent); }
+.is-missing > .folio-env-dot { border: 1.5px solid currentColor; }
+
+/* Read-only values: plain text ("—" when empty). */
+.folio-readonly .folio-readonly-value { padding: 7px 0; color: var(--c-text-muted); }
 
 /* A row of a form's buttons (settings forms, the account, AI runs). */
 .folio-form-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
@@ -1740,50 +2046,135 @@ a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
 .folio-share-label { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 14rem; font-size: 13px; font-weight: 560; color: var(--c-text-muted); }
 .folio-share-url { font-family: var(--font-mono); font-size: 12.5px; }
 
-/* ---- matrix and relation fields ---- */
-.folio-matrix-rows { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+/* ---- matrix fields (board LibFields): a bordered table, the header row on surface-2, rows with a
+   grip and a trash button, "+ Add row" as an accent text button under them. ---- */
+.folio-matrix {
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
+  background: var(--c-surface);
+  overflow: hidden;
+}
+.folio-matrix-head,
 .folio-matrix-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) minmax(0, 12rem) 30px;
   align-items: center;
   gap: 8px;
-  padding: 4px 4px 4px 12px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-sm);
-  background: var(--c-surface);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--c-border);
 }
-.folio-matrix-label { flex: 1; min-width: 0; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.folio-matrix-controls, .folio-matrix-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-/* Selects and buttons of a matrix row share the control height. */
-.folio-matrix-controls button, .folio-matrix-add .btn { min-height: var(--h-control); }
-[data-matrix-create] { margin-left: 4px; }
-[data-matrix-view] { margin: 0 4px; }
+.folio-matrix-head { padding-block: 8px; background: var(--c-surface-2); font-size: 11px; font-weight: 600; color: var(--c-text-subtle); }
+.folio-matrix-rows { margin: 0; padding: 0; }
+.folio-matrix-row { background: var(--c-surface); }
+.folio-matrix-row.is-dragging { opacity: .5; }
+.folio-matrix-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.folio-matrix-name { font-weight: 500; }
+.folio-matrix-label em { margin-left: 4px; font-style: normal; font-size: 12px; color: var(--c-text-subtle); }
+.folio-matrix-view select { min-height: 30px; padding-block: 4px; font-size: 13px; }
+.folio-matrix-grip,
+.folio-matrix-remove,
+.folio-relation-grip,
+.folio-relation-action {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--c-text-subtle);
+  cursor: pointer;
+}
+.folio-matrix-remove { width: 28px; height: 28px; }
+:is(.folio-matrix-grip, .folio-relation-grip) { cursor: grab; }
+:is(.folio-matrix-grip, .folio-matrix-remove, .folio-relation-grip, .folio-relation-action):hover { background: var(--c-row-hover); color: var(--c-text); }
+.folio-matrix-remove:hover { color: var(--c-danger); background: var(--c-danger-soft); }
+:is(.folio-matrix-grip, .folio-matrix-remove, .folio-relation-grip, .folio-relation-action):focus-visible { outline: none; box-shadow: var(--focus-ring); }
+:is(.folio-matrix-grip, .folio-matrix-remove, .folio-relation-grip, .folio-relation-action) .folio-icon { width: 14px; height: 14px; }
+.folio-matrix-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; }
+.folio-matrix-add select { flex: 1 1 9rem; width: auto; min-width: 0; min-height: 30px; padding-block: 4px; font-size: 13px; }
+.folio-matrix-add-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--c-accent-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.folio-matrix-add-row:hover { background: var(--c-accent-soft); }
+.folio-matrix-add-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.folio-matrix-add-row .folio-icon { width: 15px; height: 15px; }
+@container (max-width: 480px) {
+  .folio-matrix-head { display: none; }
+  .folio-matrix-row { grid-template-columns: 24px minmax(0, 1fr) 30px; }
+  .folio-matrix-view { grid-column: 2; grid-row: 2; }
+  .folio-matrix-view:empty { display: none; }
+}
 .folio-relation-item { display: flex; align-items: center; gap: 8px; }
 
 /* ---- rich text (Trix) ---- */
+/* The toolbar is a surface-2 strip on top of the editor (one bordered box), 28px buttons, the active
+   one on row-hover (board LibFields; CSS over the vendored Trix markup). */
+html trix-toolbar {
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--c-border-strong);
+  border-bottom-color: var(--c-border);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: var(--c-surface-2);
+}
+html trix-toolbar .trix-button-row { flex-wrap: wrap; gap: 2px 8px; overflow-x: visible; }
+html trix-toolbar .trix-button-group {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+html trix-toolbar .trix-button-group-spacer { min-width: 0; }
+html trix-toolbar .trix-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  color: var(--c-text-muted);
+  background: transparent;
+  font-size: 13px;
+}
+html trix-toolbar .trix-button:not(:first-child) { border-left: 0; }
+html trix-toolbar .trix-button--icon { width: 28px; max-width: none; }
+html trix-toolbar .trix-button--icon::before { opacity: .7; background-size: 18px; }
+html trix-toolbar .trix-button:not(:disabled):hover { background: var(--c-row-hover); color: var(--c-text); }
+html trix-toolbar .trix-button.trix-active { background: var(--c-row-hover); color: var(--c-text); }
+html trix-toolbar .trix-button.trix-active::before { opacity: 1; }
+html trix-toolbar .trix-button:disabled::before { opacity: .3; }
+html trix-toolbar .trix-button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 html trix-editor {
-  min-height: 160px;
+  min-height: 120px;
   padding: 10px 12px;
   color: var(--c-text);
   background: var(--c-input);
   border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-sm);
+  border-top: 0;
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
   line-height: 1.6;
 }
-html trix-editor:focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-soft); }
-html trix-toolbar { margin-bottom: 6px; }
-html trix-toolbar .trix-button-row { flex-wrap: wrap; gap: 6px; }
-html trix-toolbar .trix-button-group {
-  margin: 0;
-  border: 1px solid var(--c-border-strong);
-  border-radius: var(--r-xs);
-  background: var(--c-surface);
-  overflow: hidden;
-}
-html trix-toolbar .trix-button { border-color: var(--c-border); color: var(--c-text); background: transparent; }
-html trix-toolbar .trix-button:not(:first-child) { border-left-color: var(--c-border); }
-html trix-toolbar .trix-button:hover { background: var(--c-row-hover); }
-html trix-toolbar .trix-button.trix-active { background: var(--c-accent-soft); }
+html trix-editor:focus { outline: none; box-shadow: 0 0 0 3px var(--c-accent-soft); border-color: var(--c-accent); }
+html trix-toolbar:has(+ trix-editor:focus) { border-color: var(--c-accent); border-bottom-color: var(--c-border); }
+.has-error :is(trix-toolbar, trix-editor) { border-color: var(--c-danger); }
 html trix-toolbar .trix-dialog {
   color: var(--c-text);
   background: var(--c-surface-raised);
@@ -1792,9 +2183,9 @@ html trix-toolbar .trix-dialog {
   box-shadow: var(--shadow-lg);
 }
 html trix-toolbar .trix-input--dialog { color: var(--c-text); background: var(--c-input); border-color: var(--c-border-strong); }
-:root[data-theme="dark"] trix-toolbar .trix-button--icon::before { filter: invert(1); opacity: .8; }
+:root[data-theme="dark"] trix-toolbar .trix-button--icon::before { filter: invert(1); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) trix-toolbar .trix-button--icon::before { filter: invert(1); opacity: .8; }
+  :root:not([data-theme="light"]) trix-toolbar .trix-button--icon::before { filter: invert(1); }
 }
 
 /* ---- asset library ---- */
@@ -1987,12 +2378,65 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-assets-filter .form-group { margin: 0; }
 
 /* Asset field inside a record form */
-.folio-asset-selection { list-style: none; margin: 4px 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+/* Asset field (board LibFields): each chosen file a card (16:10 thumbnail with the focal dot, the name in
+   mono, kind and size, "No alt text yet"), Choose and Upload under them; empty, the box is a dashed drop
+   zone. The whole field takes a dropped file (fields.js): .is-dragover while one is over it. */
+.folio-asset-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
+  background: var(--c-surface);
+}
+.folio-asset-box:not(:has(.folio-asset-item)) {
+  align-items: center;
+  padding: 14px 10px;
+  border: 1.5px dashed var(--c-border-strong);
+  background: transparent;
+  text-align: center;
+}
+.folio-asset-empty { display: none; margin: 0; font-size: 12px; color: var(--c-text-muted); }
+.folio-asset-box:not(:has(.folio-asset-item)) > .folio-asset-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.folio-asset-empty .folio-icon { width: 18px; height: 18px; }
+.folio-asset-empty strong { font-weight: 600; color: var(--c-text); }
+.folio-asset-field.is-dragover .folio-asset-box { border: 1.5px dashed var(--c-accent); background: var(--c-accent-soft); }
+.folio-asset-field.is-uploading .folio-asset-box { opacity: .6; cursor: progress; }
+.folio-asset-selection { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .folio-asset-selection:empty { display: none; }
-.folio-asset-item { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: 7rem; font-size: 12.5px; color: var(--c-text-muted); }
-.folio-asset-item .folio-asset-thumb { width: 7rem; height: 7rem; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--c-border); }
-.folio-asset-item .btn { min-height: 26px; padding: 0 8px; font-size: 12.5px; }
-.folio-asset-actions { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.folio-asset-item { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; color: var(--c-text-muted); }
+.folio-asset-preview {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--r-xs);
+  background: var(--c-surface-2);
+  overflow: hidden;
+}
+.folio-asset-preview.is-file { color: var(--c-text-subtle); }
+.folio-asset-preview.is-file .folio-icon { width: 20px; height: 20px; }
+.folio-asset-item .folio-asset-thumb { display: block; width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; }
+.folio-asset-focal {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-surface), var(--shadow-sm);
+}
+.folio-asset-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.folio-asset-name { font-family: var(--font-mono); font-size: 12px; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folio-asset-meta { font-size: 12px; color: var(--c-text-subtle); }
+.folio-asset-warn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--c-warning); }
+.folio-asset-warn::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid currentColor; }
+.folio-asset-item .btn { flex: none; }
+.folio-asset-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: center; }
+.folio-asset-box:has(.folio-asset-item) > .folio-asset-actions { justify-content: flex-start; padding-top: 10px; border-top: 1px solid var(--c-border); }
 .folio-asset-upload { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 560; color: var(--c-text-muted); }
 .folio-asset-actions > * { min-width: 0; max-width: 100%; }
 .folio-asset-upload input[type="file"] { flex: 1 1 12rem; min-width: 0; width: 100%; }
@@ -2329,7 +2773,6 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-chips .folio-chip-label { min-width: 0; overflow-wrap: anywhere; }
 
 /* Relations, radio groups and roles: fieldsets of chips under the label (see "Field groups" above). */
-.folio-relation-filter { margin-bottom: 10px; max-width: 280px; }
 .folio-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .folio-chip {
   display: inline-flex;
@@ -2395,7 +2838,6 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   cursor: pointer; padding: 0; font: inherit; line-height: 1;
 }
 .folio-chip-remove:hover { color: var(--c-danger); background: var(--c-danger-soft); }
-.folio-relation-remote .folio-chips { margin-bottom: 10px; }
 .folio-relation-results {
     list-style: none; margin: 4px 0 0; padding: 4px; max-width: 360px; max-height: 260px; overflow-y: auto;
     background: var(--c-surface-raised); border: 1px solid var(--c-border-strong); border-radius: 8px;

@@ -108,4 +108,24 @@ final class TypeRegistryLabelsTest extends TestCase
             'site.options.app.tags.blue' => 'blue',
         ], ModelLabelKeys::derive($schema, 'site'));
     }
+
+    /** A select's option given as {label, help} (Folio's radio cards, 0.75): its label and its help each have a key. */
+    public function test_derive_gives_an_option_with_a_description_two_keys(): void
+    {
+        $this->assertSame('site.option_helps.app.code.301', ModelLabelKeys::optionHelp('site', 'app', 'code', '301'));
+        $this->assertNull(ModelLabelKeys::optionHelp('site', 'app', 'code', 'odd.value'));
+
+        $schema = ['key' => 'app', 'fields' => ['code' => ['type' => 'select', 'label' => 'Answer', 'display' => 'cards', 'options' => [
+            '301' => ['label' => ['en' => 'Moved', 'de' => 'Umgezogen'], 'help' => 'For good.'],
+            '302' => ['label' => 'For now'],
+        ]]]];
+        $this->assertSame([
+            'site.types.app.label' => null,
+            'site.types.app.singular' => null,
+            'site.fields.app.code.label' => 'Answer',
+            'site.options.app.code.301' => ['en' => 'Moved', 'de' => 'Umgezogen'],
+            'site.option_helps.app.code.301' => 'For good.',
+            'site.options.app.code.302' => 'For now',
+        ], ModelLabelKeys::derive($schema, 'site'));
+    }
 }

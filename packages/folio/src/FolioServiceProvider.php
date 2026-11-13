@@ -603,6 +603,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Publishing\LiveContent::class),
                 $can,
                 $prefix,
+                $c->get(TypeCatalog::class),
             ));
             $registry->register(new MatrixFieldType(
                 $c->get(TypeCatalog::class),
@@ -1371,8 +1372,8 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * admin.js's words: every folio.js.* key (as Folio's English file and the site's lang/en name
-     * them), short keys ("confirm_delete"), and the redirect prompt's folio.redirects.prompt.*
-     * ("redirects.prompt.leave"), in the translator's language, as JSON that cannot close or
+     * them), short keys ("confirm_delete"), the redirect prompt's folio.redirects.prompt.*
+     * ("redirects.prompt.leave") and the field controls' folio.fields.* ("fields.copied", 0.75), in the translator's language, as JSON that cannot close or
      * break out of its script block.
      */
     private static function jsTexts(\Preflow\I18n\Translator $translator): string
@@ -1381,7 +1382,7 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (array_keys($translator->entries('folio', 'en')) as $key) {
             if (str_starts_with($key, 'folio.js.')) {
                 $texts[substr($key, strlen('folio.js.'))] = $translator->get($key);
-            } elseif (str_starts_with($key, 'folio.redirects.prompt.')) {
+            } elseif (str_starts_with($key, 'folio.redirects.prompt.') || str_starts_with($key, 'folio.fields.')) {
                 $texts[substr($key, strlen('folio.'))] = $translator->get($key);
             }
         }
@@ -2156,6 +2157,8 @@ final class FolioServiceProvider extends ServiceProvider
             'editor-frame.js' => 'editor-frame.js',
             // The blocks editor's picker, card menus and Collapse all (with a blocks field only).
             'blocks.js' => 'blocks.js',
+            // The field controls (0.75): copy, counter, stepper, date hint, relation rows, asset drop.
+            'fields.js' => 'fields.js',
             'icons.svg' => 'icons.svg',
             // Self-hosted fonts (SIL OFL 1.1, licences beside them), referenced by admin.css.
             'InterVariable.woff2' => 'fonts/InterVariable.woff2',

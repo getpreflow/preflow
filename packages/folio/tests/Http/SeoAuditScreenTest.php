@@ -168,7 +168,9 @@ final class SeoAuditScreenTest extends TestCase
     {
         $this->report()->save($this->file());
 
-        $this->assertStringNotContainsString(' more', (string) $this->fetch('/folio/seo-audit')->getBody());
+        // The page's script words (#folio-i18n, "Show more" among them) are not the report.
+        $body = (string) preg_replace('~<script type="application/json" id="folio-i18n".*?</script>~s', '', (string) $this->fetch('/folio/seo-audit')->getBody());
+        $this->assertStringNotContainsString(' more', $body);
     }
 
     public function test_critical_checks_are_open_and_the_others_folded(): void

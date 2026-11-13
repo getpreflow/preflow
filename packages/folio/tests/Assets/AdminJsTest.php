@@ -18,13 +18,13 @@ final class AdminJsTest extends TestCase
     public function test_defines_matrix_add_remove_reorder(): void
     {
         $js = $this->js();
-        foreach (['data-folio-matrix', 'data-matrix-add', 'data-matrix-remove', 'data-matrix-up', 'data-matrix-down'] as $hook) {
+        foreach (['data-folio-matrix', 'data-matrix-add', 'data-matrix-remove', 'template[data-matrix-template]'] as $hook) {
             $this->assertStringContainsString($hook, $js);
         }
-        // Rows added in the browser get the same Folio buttons as the server's rows (MatrixFieldType).
-        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-up>', $js);
-        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-matrix-down>', $js);
-        $this->assertStringContainsString('<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>', $js);
+        // Rows added in the browser are copies of the server's row (MatrixFieldType's template: grip and
+        // trash, since 0.75); moving them is fields.js's (the grip), so there are no Up / Down buttons.
+        $this->assertStringContainsString('var row = fromTemplate(rowTemplate);', $js);
+        $this->assertStringNotContainsString('data-matrix-up', $js);
     }
 
     public function test_drawer_close_is_a_folio_button(): void
@@ -38,7 +38,7 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('opts.views', $js);                 // reads declared views
         $this->assertStringContainsString('[view]', $js);                     // emits the [view] input name
         $this->assertStringContainsString('data-matrix-view', $js);           // matches server markup
-        $this->assertStringContainsString("'<option value=\"\">' + esc(folioT('default')) + '</option>'", $js); // in the interface language
+        $this->assertStringContainsString("o.textContent = v === '' ? folioT('default') : v;", $js); // in the interface language
     }
 
     public function test_defines_drawer_create_and_origin_checked_message_handler(): void
@@ -158,8 +158,10 @@ final class AdminJsTest extends TestCase
         foreach (['data-block-up', 'data-block-down', 'data-block-remove', 'data-block-collapse', 'htmx:load'] as $hook) {
             $this->assertStringContainsString($hook, $js);
         }
-        // Duplicate is a server fragment (fresh uids, re-rendered editors), not a DOM clone.
-        $this->assertStringNotContainsString('cloneNode', $js);
+        // Duplicate is a server fragment (fresh uids, re-rendered editors), not a DOM clone: the one
+        // cloneNode copies a server <template> (a matrix row, an asset card).
+        $this->assertSame(1, substr_count($js, 'cloneNode'));
+        $this->assertMatchesRegularExpression('/function fromTemplate\(template\) \{[^}]*\}[^}]*cloneNode\(true\)/', $js);
     }
 
     public function test_matrix_init_is_idempotent(): void
@@ -227,9 +229,11 @@ final class AdminJsTest extends TestCase
 
     public function test_relation_picker_announces_pick_and_remove_as_change(): void
     {
-        $js = $this->js();
-        $this->assertStringContainsString("input.dispatchEvent(new Event('change', { bubbles: true }))", $js);
-        $this->assertStringContainsString("chipHolder.dispatchEvent(new Event('change', { bubbles: true }))", $js);
+        // Since 0.75 the relation editor is fields.js's (its behaviour: tests/js/fields.test.mjs).
+        $js = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/fields.js');
+        $this->assertStringContainsString("el.dispatchEvent(new Event('change', { bubbles: true }))", $js);
+        $this->assertStringContainsString("changed(row.querySelector('input[type=\"hidden\"]'));", $js);
+        $this->assertStringContainsString('changed(announceOn);', $js);
     }
 
     public function test_delete_forms_confirm_the_delete_plan(): void
@@ -252,7 +256,7 @@ final class AdminJsTest extends TestCase
         $js = $this->js();
         $this->assertStringContainsString('[data-folio-bulk-item]', $js);              // a row's tick box
         $this->assertStringContainsString('[data-folio-bulk-all]', $js);               // select all on the page
-        $this->assertStringContainsString("' selected'", $js);                         // "3 selected"
+        $this->assertStringContainsString("folioT('selected_count', { count: n })", $js); // "3 selected"
         $this->assertStringContainsString('bar.hidden = n === 0', $js);                // the bar shows with a tick
         $this->assertStringContainsString("bar.classList.add('is-floating')", $js);      // with JS it floats under the table
         $this->assertStringContainsString('initBulk(results)', $js);                   // a swapped region starts unticked

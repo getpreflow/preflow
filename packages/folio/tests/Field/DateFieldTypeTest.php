@@ -24,6 +24,28 @@ final class DateFieldTypeTest extends TestCase
         date_default_timezone_set($this->tz);
     }
 
+    public function test_the_editor_has_the_calendar_icon_a_clear_button_and_the_hint(): void
+    {
+        $html = (new DateFieldType())->renderEditor(new \Preflow\Folio\Field\FieldContext(name: 'publish', label: 'Publish at', value: '2026-11-14T08:00', config: ['time' => true]));
+
+        $this->assertMatchesRegularExpression(
+            '~<div class="folio-date-input" data-folio-date><svg class="folio-icon"[^>]*>.*?</svg>'
+            . '<input type="datetime-local" name="publish" value="2026-11-14T08:00" id="publish" aria-describedby="publish-hint">'
+            . '<button type="button" class="btn btn-ghost btn-icon btn-sm" data-folio-date-clear aria-label="Clear Publish at" title="Clear Publish at"><svg class="folio-icon"[^>]*>.*?</svg></button></div>'
+            . '<p class="folio-date-hint" id="publish-hint" data-folio-date-hint data-zone="Europe/Zurich">Europe/Zurich</p>~s',
+            $html,
+        );
+        $this->assertStringContainsString('class="form-group folio-date-field"', $html);
+    }
+
+    public function test_a_date_without_time_has_no_zone_and_an_empty_one_no_clear_button(): void
+    {
+        $html = (new DateFieldType())->renderEditor(new \Preflow\Folio\Field\FieldContext(name: 'day', value: ''));
+        $this->assertStringContainsString('<input type="date" name="day" value="" id="day" aria-describedby="day-hint">', $html);
+        $this->assertStringContainsString('data-folio-date-clear aria-label="Clear Day" title="Clear Day" hidden>', $html);
+        $this->assertStringContainsString('<p class="folio-date-hint" id="day-hint" data-folio-date-hint></p>', $html);
+    }
+
     public function test_date_display_formats(): void
     {
         $type = new DateFieldType();

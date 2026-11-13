@@ -264,7 +264,7 @@ final class CodesInFolioTest extends TestCase
         );
 
         $form = (string) $this->send('GET', '/folio/code/new')->getBody();
-        $this->assertStringContainsString('<option value="members.book"', $form);
+        $this->assertMatchesRegularExpression('~<(?:option|input type="radio" name="purpose") value="members.book"~', $form, 'a select, or segmented for a few purposes (0.75)');
         $this->assertStringContainsString('Force Map round', $form);
     }
 

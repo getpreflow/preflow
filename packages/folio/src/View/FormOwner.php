@@ -16,7 +16,8 @@ namespace Preflow\Folio\View;
  * control that names a form already, and <button type="button"> (it submits nothing). A <button>
  * without a type is a submit button, so it becomes a submit of the record form. Controls inside a
  * <template> are not touched; script that clones them into the side panel gets the form from
- * admin.js (the side fieldset's observer), like any control added later.
+ * admin.js (the side fieldset's observer), like any control added later. Every <textarea> gets the
+ * guard newline after its start tag back, so a value that starts with a newline round-trips.
  */
 final class FormOwner
 {
@@ -48,6 +49,11 @@ final class FormOwner
                 continue;
             }
             $control->setAttribute('form', $formId);
+        }
+        // The parse dropped the newline right after each <textarea> (FieldRenderer's guard) and the
+        // serialiser does not write one: written again, a value that starts with a newline keeps it.
+        foreach ($root->querySelectorAll('textarea') as $textarea) {
+            $textarea->insertBefore($doc->createTextNode("\n"), $textarea->firstChild);
         }
 
         return $root->innerHTML;

@@ -11,15 +11,11 @@ use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
 
 /**
- * Minimal relation field: a server-rendered picker over a target content type,
- * storing the selected target id(s). No data-layer relation model — ids are
- * resolved to records on demand for display.
+ * Relation field: the linked target id(s), edited as rows with a search (rows()). No data-layer
+ * relation model: ids are resolved to records on demand for display.
  */
 final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColumnKind
 {
-    /** A multi relation shows a filter input above this many options. */
-    private const FILTER_THRESHOLD = 12;
-
     /** Up to this many target records the picker lists them all; above, it searches. */
     public const INLINE_LIMIT = 200;
 
@@ -38,6 +34,8 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         private readonly ?\Closure $can = null,
         /** The admin prefix: the large-target picker searches {prefix}/_relation/{type}. Null keeps every picker inline. */
         private readonly ?string $prefix = null,
+        /** The types' families: the rows' initials take the target's tint (0.75). */
+        private readonly ?\Preflow\Folio\Content\TypeCatalog $catalog = null,
     ) {}
 
     public function key(): string
@@ -54,66 +52,141 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
     public function renderEditor(FieldContext $ctx): string
     {
         $cfg = $this->relationConfig($ctx->config);
-        $name = $ctx->name;
         $selected = $this->toList($ctx->value);
-        $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $name));
-        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
-        $hasError = $ctx->errors !== [];
+        $label = $ctx->label ?? ucfirst(str_replace('_', ' ', $ctx->name));
+        $canView = $this->can === null || $cfg['to'] === '' || ($this->can)($cfg['to'] . '.view');
+        $known = $cfg['to'] !== '' && $this->registry->has($cfg['to']);
 
         if ($this->isLarge($cfg)) {
-            return $this->renderRemote($ctx, $cfg, $selected, $label, $hasError);
-        }
-
-        $options = $this->options($cfg);
-        if ($this->can !== null && $cfg['to'] !== '' && !($this->can)($cfg['to'] . '.view')) {
-            // No access to the target type: list nothing else, keep what is linked (saving keeps it).
-            $options = array_intersect_key($options, array_flip($selected));
-        }
-
-        if ($cfg['multiple']) {
-            $html = '<fieldset class="form-group folio-relation folio-relation-multi' . ($hasError ? ' has-error' : '') . '" data-folio-relation-multi>' . "\n";
-            $html .= '  <legend>' . $e($label);
-            if ($ctx->required) {
-                $html .= ' <span class="form-required">*</span>';
-            }
-            $html .= '</legend>' . "\n";
-            if (count($options) > self::FILTER_THRESHOLD) {
-                // No name: the filter is never posted.
-                $html .= '  <input type="search" class="folio-relation-filter" data-folio-relation-filter'
-                    . ' placeholder="' . $e(\Preflow\Folio\FolioText::get('folio.common.filter_placeholder')) . '" aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.filter_label', ['label' => $label])) . '" autocomplete="off">' . "\n";
-            }
-            $html .= '  <div class="folio-chips">' . "\n";
-            foreach ($options as $id => $optLabel) {
-                $chk = in_array((string) $id, $selected, true) ? ' checked' : '';
-                $html .= '    <label class="folio-chip"><input type="checkbox" name="' . $e($name . '[]') . '" value="' . $e((string) $id) . '"' . $chk . '>'
-                    . '<span class="folio-chip-label">' . $e($optLabel) . '</span></label>' . "\n";
-            }
-            $html .= '  </div>' . "\n";
+            // Too many to list: the linked ones (one query), and the search endpoint for the rest.
+            $entries = $this->entriesFor($cfg, $selected);
+            $search = $canView ? ['url' => $this->searchUrl($cfg)] : null;
         } else {
-            $html = '<div class="form-group folio-relation' . ($hasError ? ' has-error' : '') . '">' . "\n";
-            $html .= '  <label for="' . $e($name) . '">' . $e($label);
-            if ($ctx->required) {
-                $html .= ' <span class="form-required">*</span>';
-            }
-            $html .= '</label>' . "\n";
-            $html .= '  <select name="' . $e($name) . '" id="' . $e($name) . '">' . "\n";
-            $html .= '    <option value="">' . $e(\Preflow\Folio\FolioText::get('folio.common.none')) . '</option>' . "\n";
-            foreach ($options as $id => $optLabel) {
-                $sel = in_array((string) $id, $selected, true) ? ' selected' : '';
-                $html .= '    <option value="' . $e((string) $id) . '"' . $sel . '>' . $e($optLabel) . '</option>' . "\n";
-            }
-            $html .= '  </select>' . "\n";
+            $all = $known ? $this->entries($cfg) : [];
+            $entries = array_intersect_key($all, array_flip($selected));
+            // No access to the target type: list nothing else, keep what is linked (saving keeps it).
+            $search = $canView && $known ? ['options' => array_values(array_map(
+                static fn (string $id, array $entry): array => ['id' => $id] + $entry,
+                array_keys($all),
+                $all,
+            ))] : null;
         }
 
+        return $this->rows($ctx, $cfg, $selected, $entries, $label, $search, $canView && $known);
+    }
+
+    /**
+     * The relation editor (board LibFields): the linked records as rows (a grip when several can be
+     * linked, the target's tinted initials, the label and its meta line, open in the drawer, remove),
+     * under them a search row and its results with "Show more". fields.js runs the search: through
+     * the embedded options of a small target, the search endpoint of a large one. Each row holds a
+     * hidden input under the field's name, so the links submit unchanged without script.
+     *
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string} $cfg
+     * @param list<string> $selected
+     * @param array<string, array{label: string, meta: ?string}> $entries
+     * @param array{url?: string, options?: list<array{id: string, label: string, meta: ?string}>}|null $search
+     */
+    private function rows(FieldContext $ctx, array $cfg, array $selected, array $entries, string $label, ?array $search, bool $canOpen): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        $multiple = $cfg['multiple'];
+        $inputName = $multiple ? $ctx->name . '[]' : $ctx->name;
+        $family = $this->catalog?->get($cfg['to'])?->family?->value ?? '';
+        $openPattern = $canOpen && $this->prefix !== null ? $this->prefix . '/' . rawurlencode($cfg['to']) . '/{id}/edit' : null;
+        $hasError = $ctx->errors !== [];
+
+        $html = '<fieldset class="form-group folio-relation' . ($multiple ? ' folio-relation-multi' : '') . ($hasError ? ' has-error' : '') . '" data-folio-relation'
+            . ' data-folio-relation-name="' . $e($inputName) . '"' . ($multiple ? ' data-folio-relation-multiple' : '')
+            . ($openPattern !== null ? ' data-folio-relation-open="' . $e($openPattern) . '"' : '') . '>' . "\n";
+        $html .= '  <legend>' . $e($label) . ($ctx->required ? ' <span class="form-required">*</span>' : '') . '</legend>' . "\n";
+        $html .= '  <div class="folio-relation-box">' . "\n";
+        $html .= '    <ul class="folio-relation-rows" data-folio-relation-selected>';
+        if (!$multiple && $selected === []) {
+            // An emptied single relation still posts its name, so removing the link saves.
+            $html .= '<li hidden><input type="hidden" name="' . $e($inputName) . '" value=""></li>';
+        }
+        foreach ($selected as $id) {
+            $entry = $entries[$id] ?? ['label' => $id, 'meta' => null];
+            $html .= $this->row($id, $entry['label'], $entry['meta'], $inputName, $family, $multiple, $openPattern);
+        }
+        $html .= '</ul>' . "\n";
+        if ($search !== null) {
+            $find = \Preflow\Folio\FolioText::get('folio.fields.search_label', ['label' => $label]);
+            $html .= '    <label class="folio-relation-search" data-folio-no-edit>' . \Preflow\Folio\View\InlineIcon::svg('ui-search')
+                . '<input type="search" data-folio-relation-find'
+                . (isset($search['url']) ? ' data-folio-relation-url="' . $e($search['url']) . '"' : '')
+                . ' placeholder="' . $e(\Preflow\Folio\FolioText::get('folio.common.search_placeholder')) . '" aria-label="' . $e($find) . '" autocomplete="off"></label>' . "\n";
+            if (isset($search['options'])) {
+                $html .= '    <script type="application/json" data-folio-relation-options>' . json_encode($search['options'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+            }
+            $html .= '    <ul class="folio-relation-results" data-folio-relation-results data-text-more="' . $e(\Preflow\Folio\FolioText::get('folio.fields.show_more')) . '"'
+                . ' data-text-empty="' . $e(\Preflow\Folio\FolioText::get('folio.fields.no_results')) . '" hidden></ul>' . "\n";
+            // The row fields.js copies for a picked record.
+            $html .= '    <template data-folio-relation-template>' . $this->row('', '', null, $inputName, $family, $multiple, $openPattern) . '</template>' . "\n";
+        }
+        $html .= '  </div>' . "\n";
         if ($ctx->help !== null && $ctx->help !== '') {
             $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
         }
         if ($hasError) {
             $html .= '  <div class="form-error">' . $e((string) ($ctx->errors[0] ?? '')) . '</div>' . "\n";
         }
-        $html .= $cfg['multiple'] ? '</fieldset>' : '</div>';
+
+        return $html . '</fieldset>';
+    }
+
+    /** One linked record's row; with an empty id, the template fields.js fills. */
+    private function row(string $id, string $label, ?string $meta, string $inputName, string $family, bool $multiple, ?string $openPattern): string
+    {
+        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+        $named = static fn (string $key): string => $e(\Preflow\Folio\FolioText::get($key, ['label' => $label]));
+        $html = '<li class="folio-relation-row" data-folio-relation-item>';
+        if ($multiple) {
+            $html .= '<button type="button" class="folio-relation-grip" data-folio-sort-handle aria-label="' . $named('folio.fields.move_named') . '" title="' . $named('folio.fields.move_named') . '">'
+                . \Preflow\Folio\View\InlineIcon::svg('ui-grip') . '</button>';
+        }
+        $html .= '<span class="folio-relation-avatar folio-type-icon" data-family="' . $e($family) . '" aria-hidden="true">' . $e(self::initials($label)) . '</span>'
+            . '<span class="folio-relation-text"><span class="folio-relation-label">' . $e($label) . '</span>'
+            . '<span class="folio-relation-meta"' . ($meta === null || $meta === '' ? ' hidden' : '') . '>' . $e((string) $meta) . '</span></span>';
+        if ($openPattern !== null) {
+            $html .= '<a class="folio-relation-action" href="' . $e(str_replace('{id}', rawurlencode($id), $openPattern)) . '" data-folio-relation-open-item aria-label="' . $named('folio.fields.open_named') . '" title="' . $named('folio.fields.open_named') . '">'
+                . \Preflow\Folio\View\InlineIcon::svg('ui-external') . '</a>';
+        }
+        $html .= '<button type="button" class="folio-relation-action" data-folio-relation-remove aria-label="' . $named('folio.fields.remove_named') . '" title="' . $named('folio.fields.remove_named') . '">'
+            . \Preflow\Folio\View\InlineIcon::svg('ui-x') . '</button>'
+            . '<input type="hidden" name="' . $e($inputName) . '" value="' . $e($id) . '"></li>';
 
         return $html;
+    }
+
+    /** "Dubach Holzbau AG" → "DH": the first letters of the first two words. */
+    public static function initials(string $label): string
+    {
+        $words = preg_split('/[\s\-_.,·&\/]+/u', trim($label), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $letters = '';
+        foreach (array_slice($words, 0, 2) as $word) {
+            $letters .= mb_strtoupper(mb_substr($word, 0, 1));
+        }
+
+        return $letters !== '' ? $letters : '?';
+    }
+
+    /** @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string} $cfg */
+    private function searchUrl(array $cfg): string
+    {
+        $query = [];
+        if ($cfg['labelField'] !== null) {
+            $query['label'] = $cfg['labelField'];
+        }
+        if ($cfg['orderBy'] !== null) {
+            $query['order'] = $cfg['orderBy'];
+        }
+        if ($cfg['metaField'] !== null) {
+            $query['meta'] = $cfg['metaField'];
+        }
+
+        return $this->prefix . '/_relation/' . rawurlencode($cfg['to']) . ($query !== [] ? '?' . http_build_query($query) : '');
     }
 
     /**
@@ -138,74 +211,18 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
     }
 
     /**
-     * The large-target editor: only the linked records (labels loaded in one query) as removable
-     * chips with hidden inputs under the usual input names, plus a search box that the admin script
-     * wires to the endpoint. Without script the linked records still submit unchanged.
-     *
-     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg
-     * @param string[] $selected
-     */
-    private function renderRemote(FieldContext $ctx, array $cfg, array $selected, string $label, bool $hasError): string
-    {
-        $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
-        $name = $ctx->name;
-        $multiple = $cfg['multiple'];
-        $inputName = $multiple ? $name . '[]' : $name;
-        $labels = $this->labelsFor($cfg, $selected);
-        $canSearch = $this->can === null || ($this->can)($cfg['to'] . '.view');
-
-        $query = [];
-        if ($cfg['labelField'] !== null) {
-            $query['label'] = $cfg['labelField'];
-        }
-        if ($cfg['orderBy'] !== null) {
-            $query['order'] = $cfg['orderBy'];
-        }
-        $url = $this->prefix . '/_relation/' . rawurlencode($cfg['to']) . ($query !== [] ? '?' . http_build_query($query) : '');
-
-        $class = 'form-group folio-relation folio-relation-remote' . ($multiple ? ' folio-relation-multi' : '') . ($hasError ? ' has-error' : '');
-        $required = $ctx->required ? ' <span class="form-required">*</span>' : '';
-        $html = '<fieldset class="' . $class . '" data-folio-relation-remote data-folio-relation-name="' . $e($inputName) . '"'
-            . ($multiple ? ' data-folio-relation-multiple' : '') . '>' . "\n";
-        $html .= '  <legend>' . $e($label) . $required . '</legend>' . "\n";
-        $html .= '  <div class="folio-chips" data-folio-relation-selected>' . "\n";
-        if (!$multiple && $selected === []) {
-            $html .= '    <input type="hidden" name="' . $e($inputName) . '" value="">' . "\n";
-        }
-        foreach ($selected as $id) {
-            $text = $labels[$id] ?? $id;
-            $html .= '    <span class="folio-chip" data-folio-relation-item><span class="folio-chip-label">' . $e($text) . '</span>'
-                . '<input type="hidden" name="' . $e($inputName) . '" value="' . $e($id) . '">'
-                . '<button type="button" class="folio-chip-remove" data-folio-relation-remove aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.remove_named', ['label' => $text])) . '">×</button></span>' . "\n";
-        }
-        $html .= '  </div>' . "\n";
-        if ($canSearch) {
-            $html .= '  <input type="search" class="folio-relation-filter" data-folio-relation-search data-folio-relation-url="' . $e($url) . '"'
-                . ' placeholder="' . $e(\Preflow\Folio\FolioText::get('folio.common.search_placeholder')) . '" aria-label="' . $e(\Preflow\Folio\FolioText::get('folio.fields.search_label', ['label' => $label])) . '" autocomplete="off">' . "\n";
-            $html .= '  <ul class="folio-relation-results" data-folio-relation-results hidden></ul>' . "\n";
-        }
-        if ($ctx->help !== null && $ctx->help !== '') {
-            $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
-        }
-        if ($hasError) {
-            $html .= '  <div class="form-error">' . $e((string) ($ctx->errors[0] ?? '')) . '</div>' . "\n";
-        }
-
-        return $html . '</fieldset>';
-    }
-
-    /**
      * One page of the search endpoint: loose search over the target (a blank term lists all), in the
      * picker's order, then by id. Labels follow the picker's rule (labelField, else the first string
      * field that is not hidden).
      *
-     * $labelField and $orderBy come from the request, so they are only used when a relation field
-     * pointing at $to declares that very labelField / orderBy, and never when the field is hidden;
+     * $labelField, $orderBy and $metaField come from the request, so they are only used when a relation
+     * field pointing at $to declares that very labelField / orderBy / metaField, and never when the field
+     * is hidden; with a meta field each item carries "meta" (0.75);
      * anything else is ignored (no hidden value can be read or sorted on through here).
      *
-     * @return array{items: list<array{id: string, label: string}>, more: bool}
+     * @return array{items: list<array{id: string, label: string, meta?: ?string}>, more: bool}
      */
-    public function page(string $to, ?string $labelField, ?string $orderBy, string $term, int $page): array
+    public function page(string $to, ?string $labelField, ?string $orderBy, string $term, int $page, ?string $metaField = null): array
     {
         if ($to === '' || !$this->registry->has($to)) {
             return ['items' => [], 'more' => false];
@@ -217,6 +234,7 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
             'multiple' => false,
             'labelField' => $labelField !== null && in_array($labelField, $declared['labelField'], true) ? $labelField : null,
             'orderBy' => $orderBy !== null && in_array($orderBy, $declared['orderBy'], true) ? $orderBy : null,
+            'metaField' => $metaField !== null && in_array($metaField, $declared['metaField'], true) ? $metaField : null,
         ];
         $query = $this->dm->queryType($to);
         if ($cfg['orderBy'] !== null) {
@@ -230,7 +248,8 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         foreach ($result->items as $record) {
             $id = $record->getId();
             if ($id !== null) {
-                $items[] = ['id' => (string) $id, 'label' => $this->labelFor($record, $cfg)];
+                $items[] = ['id' => (string) $id, 'label' => $this->labelFor($record, $cfg)]
+                    + ($cfg['metaField'] !== null ? ['meta' => $this->metaFor($record, $cfg)] : []);
             }
         }
 
@@ -241,15 +260,15 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
      * The labelField / orderBy values relation fields pointing at $to declare, limited to existing
      * fields of $to that are not hidden.
      *
-     * @return array{labelField: list<string>, orderBy: list<string>}
+     * @return array{labelField: list<string>, orderBy: list<string>, metaField: list<string>}
      */
     private function declaredFor(string $to): array
     {
         $target = $this->registry->get($to);
-        $out = ['labelField' => [], 'orderBy' => []];
+        $out = ['labelField' => [], 'orderBy' => [], 'metaField' => []];
         foreach ($this->dm->relationsTo($to) as $relation) {
             $config = $this->registry->get($relation->type)->fields[$relation->field]->config['relation'] ?? [];
-            foreach (['labelField', 'orderBy'] as $key) {
+            foreach (['labelField', 'orderBy', 'metaField'] as $key) {
                 $name = is_array($config) ? ($config[$key] ?? null) : null;
                 if (is_string($name) && isset($target->fields[$name]) && !self::hidden($target->fields[$name])) {
                     $out[$key][] = $name;
@@ -273,28 +292,6 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         }
 
         return count($this->dm->queryType($cfg['to'])->limit(self::INLINE_LIMIT + 1)->get()->items()) > self::INLINE_LIMIT;
-    }
-
-    /**
-     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg
-     * @param string[] $ids
-     * @return array<string, string> id => label
-     */
-    private function labelsFor(array $cfg, array $ids): array
-    {
-        if ($ids === []) {
-            return [];
-        }
-        $idField = $this->registry->get($cfg['to'])->idField;
-        $out = [];
-        foreach ($this->dm->queryType($cfg['to'])->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $ids]])->get()->items() as $record) {
-            $id = $record->getId();
-            if ($id !== null) {
-                $out[(string) $id] = $this->labelFor($record, $cfg);
-            }
-        }
-
-        return $out;
     }
 
     public function normalizeInput(mixed $raw, array $config): mixed
@@ -352,12 +349,12 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
 
     public function assets(): array
     {
-        return [];
+        return ['fields.js'];
     }
 
     /**
      * @param array<string, mixed> $config
-     * @return array{to: string, multiple: bool, labelField: ?string, orderBy: ?string}
+     * @return array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string}
      */
     private function relationConfig(array $config): array
     {
@@ -367,14 +364,26 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
             'multiple' => (bool) ($r['multiple'] ?? false),
             'labelField' => isset($r['labelField']) ? (string) $r['labelField'] : null,
             'orderBy' => isset($r['orderBy']) && $r['orderBy'] !== '' ? (string) $r['orderBy'] : null,
+            'metaField' => isset($r['metaField']) && is_string($r['metaField']) && $r['metaField'] !== '' ? $r['metaField'] : null,
         ];
     }
 
     /**
-     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string} $cfg
      * @return array<string, string> id => label
      */
     private function options(array $cfg): array
+    {
+        return array_map(static fn (array $entry): string => $entry['label'], $this->entries($cfg));
+    }
+
+    /**
+     * Every target record as id => {label, meta} (the relation's "metaField", 0.75), in the picker's order.
+     *
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string} $cfg
+     * @return array<string, array{label: string, meta: ?string}>
+     */
+    private function entries(array $cfg): array
     {
         if ($cfg['to'] === '' || !$this->registry->has($cfg['to'])) {
             return [];
@@ -386,7 +395,7 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
             if ($id === null) {
                 continue;
             }
-            $out[(string) $id] = $this->labelFor($record, $cfg);
+            $out[(string) $id] = ['label' => $this->labelFor($record, $cfg), 'meta' => $this->metaFor($record, $cfg)];
             if ($cfg['orderBy'] !== null) {
                 $v = $record->localized($this->contentLocale?->get() ?? $record->getType()->locales->default)->get($cfg['orderBy']);
                 $keys[(string) $id] = is_scalar($v) ? mb_strtolower((string) $v) : '';
@@ -400,7 +409,49 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         return $out;
     }
 
-    /** @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string} $cfg */
+    /**
+     * The linked records of a large target as id => {label, meta} (one query; an id that no longer
+     * resolves is left out).
+     *
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string} $cfg
+     * @param string[] $ids
+     * @return array<string, array{label: string, meta: ?string}>
+     */
+    private function entriesFor(array $cfg, array $ids): array
+    {
+        if ($ids === [] || $cfg['to'] === '' || !$this->registry->has($cfg['to'])) {
+            return [];
+        }
+        $idField = $this->registry->get($cfg['to'])->idField;
+        $out = [];
+        foreach ($this->dm->queryType($cfg['to'])->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $ids]])->get()->items() as $record) {
+            $id = $record->getId();
+            if ($id !== null) {
+                $out[(string) $id] = ['label' => $this->labelFor($record, $cfg), 'meta' => $this->metaFor($record, $cfg)];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The meta line under a row's label: the record's "metaField" in the content language (as the
+     * label), null when unset, empty, hidden or not text.
+     *
+     * @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string} $cfg
+     */
+    private function metaFor(DynamicRecord $record, array $cfg): ?string
+    {
+        $def = $cfg['metaField'] !== null && $this->registry->has($cfg['to']) ? ($this->registry->get($cfg['to'])->fields[$cfg['metaField']] ?? null) : null;
+        if ($def === null || self::hidden($def)) {
+            return null;
+        }
+        $value = $record->localized($this->contentLocale?->get() ?? $record->getType()->locales->default)->get($cfg['metaField']);
+
+        return is_string($value) && $value !== '' ? $value : (is_int($value) || is_float($value) ? (string) $value : null);
+    }
+
+    /** @param array{to: string, multiple: bool, labelField: ?string, orderBy: ?string, metaField: ?string} $cfg */
     private function labelFor(DynamicRecord $record, array $cfg): string
     {
         $localized = $record->localized($this->contentLocale?->get() ?? $record->getType()->locales->default);

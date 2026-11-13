@@ -30,7 +30,17 @@ final class FieldRendererTest extends TestCase
         $this->assertStringContainsString('<textarea', $html);
         $this->assertStringContainsString('name="bio"', $html);
         $this->assertStringContainsString('rows="5"', $html);
-        $this->assertStringContainsString('>Hello</textarea>', $html);
+        $this->assertStringContainsString(">\nHello</textarea>", $html);
+    }
+
+    /** The HTML parser drops one newline right after <textarea>: the guard newline keeps a leading one. */
+    public function test_textarea_value_starting_with_a_newline_round_trips(): void
+    {
+        foreach (["\nHello", "\n\nTwo", 'Plain', ''] as $value) {
+            $html = $this->renderer->renderInput('bio', 'textarea', $value, []);
+            $doc = \Dom\HTMLDocument::createFromString('<!DOCTYPE html><html><body>' . $html . '</body></html>', LIBXML_NOERROR, 'UTF-8');
+            $this->assertSame($value, $doc->querySelector('textarea')->textContent, var_export($value, true));
+        }
     }
 
     public function test_renders_select(): void

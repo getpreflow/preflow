@@ -10,6 +10,7 @@ import { createWindow, load } from './fake-dom.mjs';
 
 const ADMIN_JS = fileURLToPath(new URL('../../assets/admin.js', import.meta.url));
 const EDITOR_JS = fileURLToPath(new URL('../../assets/editor-frame.js', import.meta.url));
+const FIELDS_JS = fileURLToPath(new URL('../../assets/fields.js', import.meta.url));
 
 function page({ date = '' } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
@@ -28,15 +29,17 @@ function page({ date = '' } = {}) {
     menu.open = false;
     const summary = el(menu, 'summary', { 'aria-haspopup': 'dialog' });
     const panel = el(menu, 'div', { role: 'dialog' }, 'folio-split-panel');
-    const input = el(panel, 'input', { type: 'datetime-local', name: '_publish_at', form: 'folio-record', 'data-folio-publish-at': '' });
+    const box = el(panel, 'div', {}, 'folio-date-input');
+    const input = el(box, 'input', { type: 'datetime-local', name: '_publish_at', form: 'folio-record', 'data-folio-publish-at': '' });
     input.type = 'datetime-local';
     input.value = date;
-    const clear = el(panel, 'button', { type: 'button', 'data-folio-date-clear': '' });
+    const clear = el(box, 'button', { type: 'button', 'data-folio-date-clear': '' });
     const hint = el(panel, 'p', { 'data-folio-date-hint': '' });
     const at = el(panel, 'button', { type: 'submit', form: 'folio-record', name: '_action', value: 'schedule', 'data-folio-schedule': '', 'data-busy-label': 'Saving…' });
     at.disabled = false;
     const form = el(doc.body, 'form', { id: 'folio-record' });
     load(w, ADMIN_JS);
+    load(w, FIELDS_JS); // the date's clear button and Folio.relativeTime()
     load(w, EDITOR_JS);
     return { w, doc, outside, group, main, menu, summary, input, clear, hint, at, form };
 }
@@ -109,7 +112,10 @@ test('a date turns Publish into "Schedule" (a save that keeps the date) with a r
     const p = page();
     assert.equal(p.main.textContent, 'Publish');
     assert.equal(p.at.disabled, true, '"Publish at this time" waits for a date');
-    p.input.value = localValue(2 * 86400000 + 3600000);
+    // Noon two calendar days ahead: "In 2 days" at any time of day (Folio.relativeTime counts calendar days from a day on).
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    p.input.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T12:00`;
     fire(p.input, 'input');
     assert.equal(p.main.textContent, 'Schedule');
     assert.equal(p.main.getAttribute('value'), 'schedule', '_action=publish would publish now and drop the date');

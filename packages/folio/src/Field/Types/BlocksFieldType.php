@@ -539,6 +539,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
                 placeholder: $placeholder,
                 locale: $locale,
                 locales: $locales,
+                validate: $def->validate,
             ));
         }
 

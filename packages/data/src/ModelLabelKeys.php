@@ -50,6 +50,20 @@ final class ModelLabelKeys
         return "{$group}.options.{$type}.{$field}.{$value}";
     }
 
+    /**
+     * The key of a select option's description ("help" of an option given as {label, help}).
+     *
+     * @since 0.75
+     */
+    public static function optionHelp(string $group, string $type, string $field, string $value): ?string
+    {
+        if ($value === '' || str_contains($value, '.')) {
+            return null;
+        }
+
+        return "{$group}.option_helps.{$type}.{$field}.{$value}";
+    }
+
     public static function section(string $group, string $section): string
     {
         return "{$group}.sections.{$section}";
@@ -86,10 +100,17 @@ final class ModelLabelKeys
             if (($field['type'] ?? null) === 'select' && is_array($field['options'] ?? null)) {
                 $options = $field['options'];
                 foreach ($options as $value => $label) {
+                    // An option with a description ({label, help}, 0.75): a key for each.
+                    $help = is_array($label) && array_key_exists('label', $label) ? ($label['help'] ?? null) : null;
+                    $label = is_array($label) && array_key_exists('label', $label) ? $label['label'] : $label;
                     $value = array_is_list($options) ? (is_scalar($label) ? (string) $label : '') : (string) $value;
                     $key = self::option($group, $type, $name, $value);
                     if ($key !== null) {
                         $keys[$key] = self::text($label);
+                    }
+                    $helpKey = $help !== null ? self::optionHelp($group, $type, $name, $value) : null;
+                    if ($helpKey !== null) {
+                        $keys[$helpKey] = self::text($help);
                     }
                 }
             }

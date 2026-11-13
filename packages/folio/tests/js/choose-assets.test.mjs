@@ -49,11 +49,12 @@ test('a pick calls back with the valid items and closes the drawer in single mod
 
     w.receive({ source: 'folio-assets', items: [
         { id: '../x', thumb: '/t', label: 'Bad' },
-        { id: ID, thumb: '/media/t.webp', label: 'Box' },
+        { id: ID, thumb: '/media/t.webp', label: 'Box', meta: 'image · 160 × 100', warn: true, focal: '30,70', extra: '<b>' },
         { id: 42 },
     ] });
     assert.equal(calls.length, 1);
-    assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), [{ id: ID, thumb: '/media/t.webp', label: 'Box' }]);
+    // Since 0.75 a pick also carries what the asset field's card shows: kind and size, the alt-text warning, the focal point.
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), [{ id: ID, thumb: '/media/t.webp', label: 'Box', meta: 'image · 160 × 100', warn: true, focal: '30,70' }]);
     assert.equal(drawer(w), null, 'single mode closes the drawer');
 
     w.receive({ source: 'folio-assets', items: [{ id: ID2 }] });

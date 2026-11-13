@@ -186,6 +186,8 @@ final class DisplayLabels
         $translator = self::translator();
         $out = [];
         foreach ($raw as $key => $label) {
+            // An option with a description ({label, help}, the select's radio cards): its label.
+            $label = self::isDescribed($label) ? $label['label'] : $label;
             $value = array_is_list($raw) ? (is_scalar($label) ? (string) $label : '') : (string) $key;
             $text = is_string($label) || is_array($label) ? $label : (is_scalar($label) ? (string) $label : null);
             $optionKey = ModelLabelKeys::option($group, $type, $field, $value);
@@ -193,6 +195,43 @@ final class DisplayLabels
         }
 
         return $out;
+    }
+
+    /**
+     * The descriptions of a select's options given as {label, help} (radio cards), value => text in
+     * the interface language ({group}.option_helps.{type}.{field}.{value}, else the file's text).
+     *
+     * @since 0.75
+     *
+     * @param array<string, mixed>|null $config
+     * @return array<string, string>
+     */
+    public function optionHelps(string $type, string $field, ?array $config = null): array
+    {
+        $config ??= $this->definition($type, $field)?->config ?? [];
+        $raw = is_array($config['options'] ?? null) ? $config['options'] : [];
+        $group = $this->group($type);
+        $translator = self::translator();
+        $out = [];
+        foreach ($raw as $value => $option) {
+            if (!self::isDescribed($option) || !isset($option['help'])) {
+                continue;
+            }
+            $value = (string) $value;
+            $key = ModelLabelKeys::optionHelp($group, $type, $field, $value);
+            $text = $key !== null ? Labels::resolve($translator, $key, $option['help']) : self::pick($option['help']);
+            if ($text !== null && $text !== '') {
+                $out[$value] = $text;
+            }
+        }
+
+        return $out;
+    }
+
+    /** An option given as {label, help}. */
+    private static function isDescribed(mixed $option): bool
+    {
+        return is_array($option) && array_key_exists('label', $option) && array_diff(array_keys($option), ['label', 'help']) === [];
     }
 
     /**

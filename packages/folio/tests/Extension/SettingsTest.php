@@ -279,13 +279,13 @@ final class SettingsTest extends TestCase
         $this->members();
 
         $unset = (string) $this->get('/folio/members_settings')->getBody();
-        $this->assertStringContainsString('<code>' . self::ENV . '</code> <span class="folio-badge">not set</span>', $unset);
+        $this->assertStringContainsString('<code class="folio-env-name">' . self::ENV . '</code><span class="folio-env-state is-missing"><span class="folio-env-dot" aria-hidden="true"></span>not set</span>', $unset);
         $this->assertStringNotContainsString('name="mail_password"', $unset);
         $this->assertNull($this->app()->container()->get(ExtensionSettings::class)->get('members', 'mail_password'));
 
         putenv(self::ENV . '=env-secret-value');
         $set = (string) $this->get('/folio/members_settings')->getBody();
-        $this->assertStringContainsString('<code>' . self::ENV . '</code> <span class="folio-badge">set</span>', $set);
+        $this->assertStringContainsString('<code class="folio-env-name">' . self::ENV . '</code><span class="folio-env-state is-set"><span class="folio-env-dot" aria-hidden="true"></span>set</span>', $set);
         $this->assertStringNotContainsString('env-secret-value', $set);
     }
 

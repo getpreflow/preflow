@@ -1009,6 +1009,7 @@ final class AssetLibraryController
             'url' => $this->library->url($asset),
             'thumb' => $this->library->thumbnailUrl($asset),
             'alt' => $asset->alt,
+            'has_alt' => array_filter($asset->alt, static fn (mixed $text): bool => is_string($text) && trim($text) !== '') !== [],
             'title' => $asset->title,
             'focal_x' => $asset->focalX,
             'focal_y' => $asset->focalY,

@@ -25,6 +25,14 @@
         return d.innerHTML;
     }
 
+    // A copy of a <template>'s first element (a matrix row, an asset card the server rendered as the
+    // pattern for ones added here). The only clone in this file: duplicating a block is a server fragment.
+    function fromTemplate(template) {
+        if (!template) { return null; }
+        var source = template.content ? template.content.firstElementChild : template.children[0];
+        return source ? source.cloneNode(true) : null;
+    }
+
     var activeMatrix = null;   // the matrix root that opened the current drawer
     var drawerEl = null;       // the current drawer overlay element
     var activePicker = null;   // {multiple, onPicked} of the asset picker in the drawer
@@ -91,34 +99,45 @@
             });
         }
 
+        // A new row: the field's <template data-matrix-template> (grip, entry, view, trash), filled.
+        var rowTemplate = root.querySelector('template[data-matrix-template]');
+
         function addRow(type, id, label, view) {
             view = view || '';
             var i = next++;
-            var row = document.createElement('div');
-            row.className = 'folio-matrix-row';
-            row.setAttribute('data-matrix-row', '');
-
             var views = (opts.views && opts.views[type]) || [];
-            var viewSelect = '';
-            if (views.length) {
-                viewSelect = '<select name="' + esc(field) + '[' + i + '][view]" data-matrix-view>' +
-                    '<option value="">' + esc(folioT('default')) + '</option>';
-                views.forEach(function (v) {
-                    viewSelect += '<option value="' + esc(v) + '"' + (v === view ? ' selected' : '') + '>' + esc(v) + '</option>';
+            var row = fromTemplate(rowTemplate);
+            if (!row) { return; }
+            var inputs = row.querySelectorAll('input[type="hidden"]');
+            inputs[0].name = field + '[' + i + '][_type]';
+            inputs[0].value = type;
+            inputs[1].name = field + '[' + i + '][id]';
+            inputs[1].value = id;
+            var name = row.querySelector('.folio-matrix-name');
+            if (name) { name.textContent = label; }
+            var kind = row.querySelector('.folio-matrix-label em');
+            if (kind) { kind.textContent = type; }
+            var viewCell = row.querySelector('.folio-matrix-view');
+            if (viewCell && views.length) {
+                var select = document.createElement('select');
+                select.name = field + '[' + i + '][view]';
+                select.setAttribute('data-matrix-view', '');
+                [''].concat(views).forEach(function (v) {
+                    var o = document.createElement('option');
+                    o.value = v;
+                    o.textContent = v === '' ? folioT('default') : v;
+                    if (v === view) { o.selected = true; }
+                    select.appendChild(o);
                 });
-                viewSelect += '</select>';
+                viewCell.appendChild(select);
             }
-
-            row.innerHTML =
-                '<input type="hidden" name="' + esc(field) + '[' + i + '][_type]" value="' + esc(type) + '">' +
-                '<input type="hidden" name="' + esc(field) + '[' + i + '][id]" value="' + esc(id) + '">' +
-                '<span class="folio-matrix-label">' + esc(label) + ' <em>(' + esc(type) + ')</em></span>' +
-                viewSelect +
-                '<span class="folio-matrix-controls">' +
-                '<button type="button" class="btn btn-ghost" data-matrix-up>' + esc(folioT('up')) + '</button>' +
-                '<button type="button" class="btn btn-ghost" data-matrix-down>' + esc(folioT('down')) + '</button>' +
-                '<button type="button" class="btn btn-ghost" data-tone="danger" data-matrix-remove>' + esc(folioT('remove')) + '</button>' +
-                '</span>';
+            [['[data-folio-sort-handle]', 'fields.move_named'], ['[data-matrix-remove]', 'fields.remove_named']].forEach(function (pair) {
+                var el = row.querySelector(pair[0]);
+                if (el) {
+                    el.setAttribute('aria-label', folioT(pair[1], { label: label }));
+                    el.setAttribute('title', folioT(pair[1], { label: label }));
+                }
+            });
             rowsEl.appendChild(row);
             notifyChange(root);
         }
@@ -153,11 +172,11 @@
             var row = btn.closest('[data-matrix-row]');
             if (!row) { return; }
             if (btn.hasAttribute('data-matrix-remove')) {
+                // The focus goes to the next row's trash, else the one before, else "Add row".
+                var after = row.nextElementSibling || row.previousElementSibling;
+                var focusTo = after ? after.querySelector('[data-matrix-remove]') : addBtn;
                 row.remove();
-            } else if (btn.hasAttribute('data-matrix-up') && row.previousElementSibling) {
-                rowsEl.insertBefore(row, row.previousElementSibling);
-            } else if (btn.hasAttribute('data-matrix-down') && row.nextElementSibling) {
-                rowsEl.insertBefore(row.nextElementSibling, row);
+                if (focusTo && typeof focusTo.focus === 'function') { focusTo.focus(); }
             } else {
                 return;
             }
@@ -215,6 +234,7 @@
     }
     window.Folio = window.Folio || {};
     window.Folio.chooseAssets = chooseAssets;
+    window.Folio.openDrawer = openDrawer;
 
     function onAssetsPicked(data) {
         var picker = activePicker;
@@ -222,33 +242,58 @@
         var items = [];
         (Array.isArray(data.items) ? data.items : []).forEach(function (item) {
             var id = String((item && item.id) || '');
-            if (/^[a-f0-9]{32}$/.test(id)) { items.push({ id: id, thumb: String(item.thumb || ''), label: String(item.label || '') }); }
+            if (/^[a-f0-9]{32}$/.test(id)) {
+                items.push({ id: id, thumb: String(item.thumb || ''), label: String(item.label || ''), meta: String(item.meta || ''), warn: item.warn === true, focal: String(item.focal || '') });
+            }
         });
         if (!picker.multiple) { closeDrawer(); }
         if (items.length && typeof picker.onPicked === 'function') { picker.onPicked(items); }
     }
 
-    // Asset fields: "Choose" opens the picker; picked assets become hidden {name}_ids[] inputs
-    // with a thumbnail.
-    function assetItem(field, id, thumb, label) {
+    // Asset fields: "Choose" opens the picker; picked assets become hidden {name}_ids[] inputs in a
+    // card. The field's <template data-folio-asset-template> is the card (thumbnail with the focal
+    // point, name, kind and size, the alt-text warning, Remove); without one, a plain item.
+    function assetItem(field, item) {
+        var card = fromTemplate(field.querySelector('template[data-folio-asset-template]'));
+        if (card) {
+            var preview = card.querySelector('.folio-asset-preview');
+            var img = card.querySelector('img');
+            if (item.thumb && img) { img.src = item.thumb; img.setAttribute('src', item.thumb); } else if (preview) { preview.parentNode.removeChild(preview); }
+            var focal = card.querySelector('.folio-asset-focal');
+            if (focal && item.thumb && /^\d{1,3},\d{1,3}$/.test(String(item.focal || ''))) {
+                focal.setAttribute('data-focal', String(item.focal));
+                if (window.Folio.placeFocal) { window.Folio.placeFocal(focal); }
+            }
+            var name = card.querySelector('.folio-asset-name');
+            if (name) { name.textContent = item.label || item.id; }
+            var meta = card.querySelector('.folio-asset-meta');
+            if (meta) { meta.textContent = item.meta || ''; meta.hidden = !item.meta; }
+            var warn = card.querySelector('.folio-asset-warn');
+            if (warn) { warn.hidden = !item.warn; }
+            var hidden = card.querySelector('input[type="hidden"]');
+            if (hidden) { hidden.value = item.id; hidden.setAttribute('value', item.id); }
+            var drop = card.querySelector('[data-folio-asset-remove]');
+            if (drop) { drop.setAttribute('aria-label', folioT('remove_named', { label: item.label || item.id })); }
+            return card;
+        }
         var li = document.createElement('li');
         li.className = 'folio-asset-item';
         li.setAttribute('data-asset-item', '');
-        if (thumb) {
-            var img = document.createElement('img');
-            img.src = thumb;
-            img.alt = '';
-            img.className = 'folio-asset-thumb';
-            li.appendChild(img);
+        if (item.thumb) {
+            var thumb = document.createElement('img');
+            thumb.src = item.thumb;
+            thumb.alt = '';
+            thumb.className = 'folio-asset-thumb';
+            li.appendChild(thumb);
         } else {
             var span = document.createElement('span');
-            span.textContent = label || id;
+            span.textContent = item.label || item.id;
             li.appendChild(span);
         }
         var input = document.createElement('input');
         input.type = 'hidden';
         input.name = field.getAttribute('data-selection-name');
-        input.value = id;
+        input.value = item.id;
         li.appendChild(input);
         var remove = document.createElement('button');
         remove.type = 'button';
@@ -259,17 +304,30 @@
         return li;
     }
 
+    // The change is announced on a control of the record form (the field may sit in the side panel,
+    // outside the <form>): the new card's input, else the field's empty marker.
+    function assetChanged(field, control) {
+        var target = control || field.querySelector('input[type="hidden"]');
+        if (target && target.dispatchEvent) { target.dispatchEvent(new Event('change', { bubbles: true })); } else { notifyChange(field); }
+    }
+
     function fillAssetField(field, items) {
         if (!field.isConnected) { return; }
         var list = field.querySelector('.folio-asset-selection');
         var multiple = field.getAttribute('data-multiple') === '1';
+        var last = null;
         items.forEach(function (item) {
             if (!multiple) { list.innerHTML = ''; }
             var dupe = list.querySelector('input[value="' + item.id + '"]');
-            if (!dupe) { list.appendChild(assetItem(field, item.id, item.thumb, item.label)); }
+            if (!dupe) {
+                var card = assetItem(field, item);
+                list.appendChild(card);
+                last = card.querySelector('input[type="hidden"]');
+            }
         });
-        notifyChange(field);
+        assetChanged(field, last);
     }
+    window.Folio.fillAssetField = fillAssetField;
 
     function onAssetFieldClick(e) {
         var choose = e.target.closest ? e.target.closest('[data-folio-asset-choose]') : null;
@@ -288,7 +346,7 @@
             var item = remove.closest('[data-asset-item]');
             var owner = remove.closest('[data-folio-asset-field]');
             if (item) { item.parentNode.removeChild(item); }
-            notifyChange(owner);
+            if (owner) { assetChanged(owner, null); }
             e.preventDefault();
         }
     }
@@ -1585,7 +1643,6 @@
         if (!root || !root.querySelectorAll) { return; }
         if (root.hasAttribute && root.hasAttribute('data-folio-matrix')) { initMatrix(root); }
         root.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
-        initRelationFilter(root);
         if (root.hasAttribute && root.hasAttribute('data-block-card')) { notifyChange(root); }
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
@@ -1809,7 +1866,10 @@
         window.parent.postMessage({ source: 'folio-assets', multiple: btn.getAttribute('data-multiple') === '1', items: [{
             id: btn.getAttribute('data-id'),
             thumb: btn.getAttribute('data-thumb') || '',
-            label: btn.getAttribute('data-label') || ''
+            label: btn.getAttribute('data-label') || '',
+            meta: btn.getAttribute('data-meta') || '',
+            warn: btn.getAttribute('data-warn') === '1',
+            focal: btn.getAttribute('data-focal') || ''
         }] }, window.location.origin);
         btn.textContent = folioT('selected');
     }
@@ -1878,28 +1938,9 @@
         box.setAttribute('data-folio-tabs-ready', '');
     }
 
-    // Multi relation: the filter input narrows the checkbox chips (checked ones stay in the form).
-    function initRelationFilter(root) {
-        var inputs = Array.prototype.slice.call(root.querySelectorAll('[data-folio-relation-filter]'));
-        if (root.matches && root.matches('[data-folio-relation-filter]')) { inputs.unshift(root); }
-        inputs.forEach(function (input) {
-            var box = input.closest('[data-folio-relation-multi]');
-            if (!box || input.hasAttribute('data-folio-relation-ready')) { return; }
-            input.setAttribute('data-folio-relation-ready', '');
-            input.addEventListener('input', function () {
-                var q = input.value.trim().toLowerCase();
-                box.querySelectorAll('.folio-chip').forEach(function (chip) {
-                    chip.hidden = q !== '' && chip.textContent.toLowerCase().indexOf(q) === -1;
-                });
-            });
-            input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); } });
-        });
-    }
-
-    // Relation search (large targets). The editor renders [data-folio-relation-remote] with the linked
-    // records as chips + hidden inputs and a [data-folio-relation-search] box; the list's relation
-    // filter is a [data-folio-list-relation] text input. Both query {prefix}/_relation/{type}
-    // ({items: [{id, label}], more}) as the user types. Delegated, so swapped partials keep working.
+    // The list's relation filter: a [data-folio-list-relation] text input that queries
+    // {prefix}/_relation/{type} ({items: [{id, label}], more}) as the user types. Delegated, so
+    // swapped partials keep working. (The editor's relation field is fields.js's, since 0.75.)
     var relationSeq = 0;
 
     function relationUrl(box, q, page) {
@@ -1979,7 +2020,7 @@
     }
 
     function onRelationSearchInput(e) {
-        var box = e.target.closest ? e.target.closest('[data-folio-relation-search], [data-folio-list-relation]') : null;
+        var box = e.target.closest ? e.target.closest('[data-folio-list-relation]') : null;
         if (!box) { return; }
         prepareRelationBox(box);
         // The filter submits what is typed (a record id works) until a result is picked; typing over
@@ -1998,101 +2039,41 @@
     }
 
     function onRelationKeydown(e) {
-        var box = e.target.closest ? e.target.closest('[data-folio-relation-search], [data-folio-list-relation]') : null;
+        var box = e.target.closest ? e.target.closest('[data-folio-list-relation]') : null;
         if (!box) { return; }
         if (e.key === 'Enter') { e.preventDefault(); }
         if (e.key === 'Escape') { relationResults(box).hidden = true; }
     }
 
-    function addRelationItem(field, id, text) {
-        var name = field.getAttribute('data-folio-relation-name') || '';
-        var holder = field.querySelector('[data-folio-relation-selected]');
-        if (!holder) { return; }
-        if (!field.hasAttribute('data-folio-relation-multiple')) {
-            holder.innerHTML = '';
-        } else {
-            var dup = Array.prototype.some.call(holder.querySelectorAll('input[type="hidden"]'), function (i) { return i.value === id; });
-            if (dup) { return; }
-        }
-        var chip = document.createElement('span');
-        chip.className = 'folio-chip';
-        chip.setAttribute('data-folio-relation-item', '');
-        var label = document.createElement('span');
-        label.className = 'folio-chip-label';
-        label.textContent = text;
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = name;
-        input.value = id;
-        var remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'folio-chip-remove';
-        remove.setAttribute('data-folio-relation-remove', '');
-        remove.setAttribute('aria-label', folioT('remove_named', { label: text }));
-        remove.textContent = '×';
-        chip.appendChild(label);
-        chip.appendChild(input);
-        chip.appendChild(remove);
-        holder.appendChild(chip);
-        // Code-made changes fire no events: autosave, live preview and the unsaved-changes guard listen for change.
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
     function onRelationClick(e) {
         var t = e.target.closest ? e.target : null;
         if (!t) { return; }
-        var remove = t.closest('[data-folio-relation-remove]');
-        if (remove) {
-            var field = remove.closest('[data-folio-relation-remote]');
-            var chip = remove.closest('[data-folio-relation-item]');
-            var chipHolder = chip ? chip.parentNode : null;
-            if (chip && chip.parentNode) { chip.parentNode.removeChild(chip); }
-            if (field && !field.hasAttribute('data-folio-relation-multiple')) {
-                var holder = field.querySelector('[data-folio-relation-selected]');
-                if (holder && !holder.querySelector('input')) {
-                    var blank = document.createElement('input');
-                    blank.type = 'hidden';
-                    blank.name = field.getAttribute('data-folio-relation-name') || '';
-                    blank.value = '';
-                    holder.appendChild(blank);
-                }
-            }
-            if (chipHolder) { chipHolder.dispatchEvent(new Event('change', { bubbles: true })); }
-            return;
-        }
         var more = t.closest('[data-folio-relation-more]');
-        if (more) {
-            var scope = more.closest('[data-folio-relation-remote]') || more.closest('.folio-filter-field') || more.parentNode.parentNode.parentNode;
-            var moreBox = scope.querySelector('[data-folio-relation-search], [data-folio-list-relation]');
+        if (more && !more.closest('[data-folio-relation]')) {
+            var scope = more.closest('.folio-filter-field') || more.parentNode.parentNode.parentNode;
+            var moreBox = scope.querySelector('[data-folio-list-relation]');
             if (moreBox) {
                 relationFetch(moreBox, moreBox.value.trim(), parseInt(more.getAttribute('data-page') || '2', 10), true);
             }
             return;
         }
         var pick = t.closest('[data-folio-relation-pick]');
-        if (pick) {
+        if (pick && !pick.closest('[data-folio-relation]')) {
             var list = pick.closest('[data-folio-relation-results]');
             var id = pick.getAttribute('data-id') || '';
             var text = pick.textContent || id;
-            var remote = pick.closest('[data-folio-relation-remote]');
-            if (remote) {
-                addRelationItem(remote, id, text);
-                var search = remote.querySelector('[data-folio-relation-search]');
-                if (search) { search.value = ''; }
-            } else {
-                var fb = list.parentNode.querySelector('[data-folio-list-relation]');
-                if (fb && fb._folioRelationHidden) {
-                    fb._folioRelationHidden.value = id;
-                    fb.value = text;
-                    fb._folioRelationPicked = text;
-                }
+            var fb = list.parentNode.querySelector('[data-folio-list-relation]');
+            if (fb && fb._folioRelationHidden) {
+                fb._folioRelationHidden.value = id;
+                fb.value = text;
+                fb._folioRelationPicked = text;
             }
             list.hidden = true;
             list.innerHTML = '';
             return;
         }
         document.querySelectorAll('[data-folio-relation-results]').forEach(function (l) {
-            if (!l.parentNode.contains(t)) { l.hidden = true; }
+            if (!l.closest('[data-folio-relation]') && !l.parentNode.contains(t)) { l.hidden = true; }
         });
     }
 
@@ -2754,7 +2735,6 @@
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);
         initTabs(document);
-        initRelationFilter(document);
         document.addEventListener('input', onRelationSearchInput);
         document.addEventListener('focusin', onRelationFocusIn);
         document.addEventListener('keydown', onRelationKeydown);

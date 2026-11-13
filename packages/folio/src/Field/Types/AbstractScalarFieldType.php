@@ -42,6 +42,43 @@ abstract class AbstractScalarFieldType implements FieldType
     }
 
     /**
+     * FieldRenderer's field with its input replaced by $control (the input inside an affix or a
+     * stepper) and $aside placed beside the label (a counter). $options are renderField()'s.
+     *
+     * @param array<string, mixed> $options
+     * @param \Closure(string): string $control gets the input's HTML, returns what stands in its place
+     */
+    protected function renderDecorated(string $name, array $options, \Closure $control, string $aside = '', string $class = ''): string
+    {
+        $html = $this->renderer->renderField($name, $options);
+        $input = $this->renderer->renderInput(
+            $name,
+            (string) ($options['type'] ?? 'text'),
+            (string) ($options['value'] ?? ''),
+            array_merge(['id' => $options['id'] ?? $name], $options['attrs'] ?? []),
+        );
+        $at = strpos($html, $input);
+        if ($at === false) {
+            throw new \LogicException('The input was not found in the rendered field.');
+        }
+        $html = substr_replace($html, $control($input), $at, strlen($input));
+        if ($aside !== '') {
+            $html = (string) preg_replace('~(<label for="[^"]*">.*?</label>)~s', '<div class="folio-label-row">$1' . str_replace(['\\', '$'], ['\\\\', '\\$'], $aside) . '</div>', $html, 1);
+        }
+        if ($class !== '') {
+            $html = (string) preg_replace('~^<div class="form-group~', '<div class="form-group ' . $class, $html, 1);
+        }
+
+        return $html;
+    }
+
+    /** @return \Closure(string): string HTML-escapes for an attribute or text */
+    protected static function escaper(): \Closure
+    {
+        return static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    /**
      * Extra attributes for the input element (e.g. a class). Override in subclasses.
      *
      * @return array<string, mixed>
@@ -76,8 +113,9 @@ abstract class AbstractScalarFieldType implements FieldType
         return [];
     }
 
+    /** fields.js runs the controls of the scalar fields (copy, counter, stepper, date hint; 0.75). */
     public function assets(): array
     {
-        return [];
+        return ['fields.js'];
     }
 }

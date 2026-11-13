@@ -37,9 +37,11 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
         $name = $e($ctx->name);
         $checked = $this->normalizeInput($ctx->value, $ctx->config) ? ' checked' : '';
 
+        $switch = self::display($ctx->config) === 'switch';
+
         $html = '<input type="hidden" name="' . $name . '" value="0">'
-            . '<div class="form-group folio-boolean' . ($ctx->errors !== [] ? ' has-error' : '') . '">' . "\n"
-            . '  <label class="form-check" for="' . $name . '"><input type="checkbox" name="' . $name . '" id="' . $name . '" value="1"' . $checked . '>'
+            . '<div class="form-group folio-boolean' . ($switch ? ' folio-boolean-switch' : '') . ($ctx->errors !== [] ? ' has-error' : '') . '">' . "\n"
+            . '  <label class="form-check" for="' . $name . '"><input type="checkbox"' . ($switch ? ' role="switch" class="folio-switch"' : '') . ' name="' . $name . '" id="' . $name . '" value="1"' . $checked . '>'
             . '<span class="folio-boolean-label">' . $e($ctx->label ?? $this->renderer->humanize($ctx->name)) . '</span></label>' . "\n";
         if ($ctx->help !== null && $ctx->help !== '') {
             $html .= '  <small class="form-help">' . $e($ctx->help) . '</small>' . "\n";
@@ -49,6 +51,23 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
         }
 
         return $html . '</div>';
+    }
+
+    /**
+     * The "display" option: "checkbox" (the default) or "switch", for a setting that acts at once
+     * (board LibFields; a checkbox with role="switch", so it still posts like one).
+     *
+     * @param array<string, mixed> $config
+     * @throws \LogicException for another value (TypeCatalog reports it at boot)
+     */
+    public static function display(array $config): string
+    {
+        $display = $config['display'] ?? 'checkbox';
+        if (!in_array($display, ['checkbox', 'switch'], true)) {
+            throw new \LogicException('Boolean field option "display" must be "checkbox" or "switch".');
+        }
+
+        return $display;
     }
 
     public function normalizeInput(mixed $raw, array $config): bool
