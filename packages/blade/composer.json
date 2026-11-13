@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.60 || @dev",
-        "preflow/view": "^0.1 || @dev",
+        "preflow/view": "^0.72 || @dev",
         "illuminate/view": "^11.0 || ^12.0",
         "illuminate/filesystem": "^11.0 || ^12.0",
         "illuminate/events": "^11.0 || ^12.0"
@@ -16,7 +16,8 @@
         "preflow/testing": "^0.64 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.60"
+        "preflow/core": "<0.60",
+        "preflow/view": "<0.72"
     },
     "autoload": {
         "psr-4": {

@@ -7,12 +7,12 @@
         "php": ">=8.4",
         "preflow/core": "^0.70 || @dev",
         "preflow/routing": "^0.1 || @dev",
-        "preflow/data": "^0.67 || @dev"
+        "preflow/data": "^0.72 || @dev"
     },
     "conflict": {
         "preflow/auth": "<0.62",
         "preflow/core": "<0.70",
-        "preflow/data": "<0.67"
+        "preflow/data": "<0.72"
     },
     "suggest": {
         "preflow/auth": "Needed for the auth:token command (bearer tokens for API routes)"
