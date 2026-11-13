@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-13 (v0.73.0)
+> Last updated: 2026-11-13 (v0.74.0)
 
 ## Current State
 
-**v0.73.0** — 7442 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.74.0** — 7480 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,28 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Run the SEO audit from Folio (v0.74.0, released 2026-11-13):** Settings → SEO audit runs the audit itself: Run
+  audit, Continue and Start over, in steps of about 20 s while the page is open, with progress ("3 of 4 pages") until the
+  report is complete (plan `docs/superpowers/plans/2026-11-13-release-0.74-seo-audit-from-folio.md`).
+  - **view:** `Preflow\View\Audit\Audits` (container singleton): `step()`, `quick()`, `report()`, `running()`, `file()`;
+    `seo:audit` uses it. A starting run retries the lock briefly (`AuditRun::lockFile()`, optional `$sleep`).
+  - **core / notify:** every internal render (SEO audit, GEO `.md` sub-requests, page-cache rebuilds) drops mail queued
+    with `sendLater()` (`Notifier::discardingQueued()`), and the audit's renders run with anonymous PHP globals.
+  - **folio:** permission `seo.audit.run`; POST `/seo-audit/run` and `/seo-audit/step` (htmx self-polling, plain POST
+    without JS); "running elsewhere" with Try again; failed steps show a generic message (details in the log);
+    audit renders read the published site, not the admin's working copies; `Http\LongRequest::allow()` shared with AI
+    translate.
+  - **Upgrading:**
+    - Upgrade core, view, notify and folio together (`composer update "preflow/*" -W`); the constraints refuse mixes.
+    - Roles with only `seo.audit` keep the read-only screen; grant `seo.audit.run` in Settings → Roles where needed
+      (the `admin` role has it). Without Folio auth anyone who can open Folio can run it.
+    - Mail queued with `sendLater()` while a page renders internally is now dropped, not sent (also `defer => false`;
+      onFailure is not called). `send()` still sends at once. A site that queues mail during a render (visit
+      notifications, error alerts) gets none from GEO, rebuild or audit renders: use `send()` or a logger.
+    - Web steps close the session, ignore client aborts and raise a time limit below 60 s to 60. `storage/data/` (report
+      and lock) must be writable by the web user. On LiteSpeed consider `SetEnv noabort 1`. Pages too slow for a web
+      request need `preflow seo:audit`.
+    - `folio.audit.intro` changed and `folio.audit.*` keys were added: check translation overrides.
 - **Folio redesign, part 1 (v0.73.0, released 2026-11-13):** the admin gets the redesign's tokens, primitives and
   shell (handoff phases 0–3; plan `docs/superpowers/plans/2026-11-13-release-0.73-folio-redesign-foundation.md`, every
   difference from the boards in `docs/superpowers/notes/2026-11-13-folio-redesign-deviations.md`). Folio only; no PHP
@@ -554,7 +576,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       `content` need no change.
     - JS: the theme switch reacts to `[data-theme-choice]` inside `[data-theme-switch]`.
     - `composer update "preflow/*"`.
-  - **Next:** 0.74 runs the SEO audit from Folio; the redesign continues with lists and editors (0.75) and settings,
+  - **Next:** ~~0.74 runs the SEO audit from Folio~~ done; the redesign continues with lists and editors (0.75) and settings,
     library screens and ink (0.76). Proposals (⌘K, styled confirm, `/` block picker, …) wait for a yes.
 - **Manifest with shared middleware (v0.72.1, released 2026-11-13):** `preflow optimize` refused to write the boot
   manifest when one `MiddlewareWith` sat on a controller class (its routes share the object), so a starter made from 0.72.0
