@@ -9,8 +9,9 @@ declare(strict_types=1);
  * release; use the new names. A config/auth.php naming the old provider logs a deprecation
  * (FolioServiceProvider). Loaded by Composer ("autoload.files").
  *
- * Preflow\Folio\Publishing\Publisher is no alias but a subclass (Publishing/Publisher.php): it still takes
- * the constructor arguments of before 0.71. It goes in 0.72, with these aliases.
+ * Preflow\Folio\Publishing\Publisher and Preflow\Folio\Content\RecordDeleter are no aliases but subclasses
+ * (Publishing/Publisher.php, Content/RecordDeleter.php): they still take the constructor arguments of before
+ * 0.71 (the deleter also keeps summary() and its Refused texts). They go in 0.72, with these aliases.
  */
 
 $aliases = [

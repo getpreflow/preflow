@@ -17,7 +17,7 @@ use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\ListView;
 use Preflow\Folio\Content\ListCells;
 use Preflow\Folio\Content\ListExport;
-use Preflow\Folio\Content\RecordDeleter;
+use Preflow\Folio\Content\DeleteSummary;
 use Preflow\Folio\Content\RecordId;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\ReviewIndexUpdater;
@@ -27,6 +27,8 @@ use Preflow\Folio\Content\RecordValidator;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\VersionConflict;
+use Preflow\Publishing\DeleteRefused;
+use Preflow\Publishing\RecordDeleter;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
@@ -812,6 +814,8 @@ final class AdminController
         // a restriction or any hook's refusal leaves everything in place.
         try {
             $this->deleter()->delete($type, [$id], $this->removalTarget($request));
+        } catch (DeleteRefused $e) {
+            self::flash($request, 'error', $this->deleteSummary()->refusal($e));
         } catch (Refused $e) {
             self::flash($request, 'error', $e->getMessage());
         }
@@ -834,8 +838,7 @@ final class AdminController
             return new Response(422, [], FolioText::get($ids === null ? 'folio.errors.too_many_records' : 'folio.errors.no_records'));
         }
 
-        $deleter = $this->deleter();
-        $payload = json_encode($deleter->summary($deleter->plan($type, $ids)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $payload = json_encode($this->deleteSummary()->summary($this->deleter()->plan($type, $ids)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
         return new Response(200, ['Content-Type' => 'application/json; charset=UTF-8'], $payload);
     }
@@ -844,13 +847,18 @@ final class AdminController
     {
         return new RecordDeleter(
             $this->dm,
-            $this->catalog,
+            new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog),
             $this->publisher,
-            $this->customizations !== null ? $this->customizations->runHooks(...) : null,
-            $this->labels,
+            $this->customizations !== null ? new \Preflow\Folio\Publishing\FolioSaveHooks($this->customizations) : new \Preflow\Publishing\NoSaveHooks(),
             $this->review,
-            $this->addresses,
+            $this->addresses !== null ? new \Preflow\Folio\Publishing\FolioRecordAddresses($this->addresses, null, null) : null,
         );
+    }
+
+    /** The delete confirmation and the reasons a delete is refused, in the editor's words. */
+    private function deleteSummary(): DeleteSummary
+    {
+        return new DeleteSummary($this->labels, $this->addresses);
     }
 
     /** "Send its old links to…" of a delete (the posted _redirect_to); null: they answer 404. */
@@ -876,6 +884,8 @@ final class AdminController
         try {
             $this->deleter()->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records), $this->removalTarget($request));
             self::flash($request, 'success', FolioText::get('folio.common.done_count', ['label' => FolioText::get('folio.common.delete'), 'count' => count($records)]));
+        } catch (DeleteRefused $e) {
+            self::flash($request, 'error', $this->deleteSummary()->refusal($e));
         } catch (Refused $e) {
             self::flash($request, 'error', $e->getMessage());
         }

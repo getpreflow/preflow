@@ -363,6 +363,22 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_record_writer_runs_the_types_hooks_in_folio(): void
+    {
+        $this->saveRecordType();
+        $this->as('admin');
+        $container = $this->session->container();
+
+        $this->assertInstanceOf(\Preflow\Folio\Publishing\FolioSaveHooks::class, $container->get(\Preflow\Publishing\SaveHooks::class));
+        $this->assertInstanceOf(\Preflow\Folio\Publishing\FolioRecordTypes::class, $container->get(\Preflow\Publishing\RecordTypes::class));
+        $record = DynamicRecord::fromArray($container->get(DataManager::class)->getTypeRegistry()->get('contact'), ['name' => 'Writer']);
+        $container->get(\Preflow\Publishing\RecordWriter::class)->create($record);
+
+        $this->assertSame(['write:Writer:previous=none', 'after:Writer'], \App\Folio\Crm\Log::$entries);
+        $this->assertSame([], $container->get(DataManager::class)->queryType('contact')->get()->items(), 'the #[SaveRecord] method is the write');
+    }
+
+    #[RunInSeparateProcess]
     public function test_save_record_can_refuse_the_save_with_a_validation_error(): void
     {
         $this->saveRecordType();

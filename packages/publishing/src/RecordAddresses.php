@@ -7,8 +7,9 @@ namespace Preflow\Publishing;
 use Preflow\Data\DynamicRecord;
 
 /**
- * The public addresses of published records, told by the Publisher what changed: an address
- * book behind automatic redirects, and a page cache whose pages at those addresses change.
+ * The public addresses of records, told by the Publisher, RecordWriter and RecordDeleter what
+ * changed: an address book behind automatic redirects, and a page cache whose pages at those
+ * addresses change.
  * The default does nothing; Folio binds its redirects and page-cache tags.
  */
 interface RecordAddresses
@@ -33,4 +34,13 @@ interface RecordAddresses
      * @param \Closure(): ?DynamicRecord $before
      */
     public function changed(\Closure $before, ?DynamicRecord $after): void;
+
+    /**
+     * Where $target leads for a delete (RecordDeleter), decided before anything is deleted (an
+     * address of a page may become its record); null when it leads to one of the records the
+     * delete removes, whose old links would end in a 404 too.
+     *
+     * @param array<string, list<string>> $deleting type => the ids the delete removes
+     */
+    public function finalTarget(?RemovalTarget $target, array $deleting): ?RemovalTarget;
 }

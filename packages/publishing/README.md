@@ -64,6 +64,41 @@ type's table), `{table}__published` and `{table}__revisions`, with the publishin
 columns are added, nothing is dropped or changed, so running it again changes nothing. Run it after
 turning publishing on for a type or adding a field.
 
+## Saving and deleting records
+
+`RecordWriter` (from the container) is the one write path for records, of every type: an admin, a
+translation run and your own code save through it and get the same steps.
+
+```php
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
+
+$writer = $container->get(RecordWriter::class);
+
+$writer->create($record);                                  // a new id when it has none; last in an orderable list
+$writer->save($record, new SaveOptions(by: $userId, publish: true, loadedVersion: $version));
+$writer->setField($record, 'status', 'archived');          // one field, then save()
+$writer->reorder('faq', $id, 'up');                        // false when it is first already
+```
+
+A save runs `SaveHooks::before()` first (a `ValidationException` there stores nothing). A type that
+publishes then saves its working copy (`saveDraft()`) and, with `publish: true`, publishes it;
+`SaveHooks::after()` runs once the working copy is stored, also when the publish fails. Any other
+type is checked (`RecordChecks`), stored (or handed to `SaveHooks::save()` when the type saves
+itself), indexed and synced with its addresses; `SaveOutcome::$addressesLeft` says whether it left
+the site.
+
+`SaveOptions`: `by` (who), `mayPublish` (false: the save cancels a pending schedule, so changes of
+someone who may not publish never go live unreviewed), `publish`, `loadedVersion` (else
+`VersionConflict`), `publishAt` (null keeps the schedule, `''` clears it, `Y-m-d\TH:i` sets it; a
+past time clears it).
+
+`RecordDeleter` deletes through the delete plan of the type's relations (cascade, detach,
+restrict): `plan($type, $ids)` says what would happen, `delete($type, $ids, $target)` does it, all
+or nothing, and throws `DeleteRefused` (with the plan) when records still point here. Deleted
+records lose their snapshot, revisions, index entry and addresses (`$target`: where their old links
+lead).
+
 ## Reading what is live
 
 - **`LiveContent`** reads records for rendering: the snapshots of a publishing type on public pages,
@@ -117,8 +152,8 @@ return [
 
 ## Your own rules
 
-The `Publisher` asks five interfaces. Bind your own in a service provider's `register()`; the
-package binds a plain default for each one you leave open:
+The `Publisher`, `RecordWriter` and `RecordDeleter` ask these interfaces. Bind your own in a
+service provider's `register()`; the package binds a plain default for each one you leave open:
 
 | Interface | Asks | Default |
 |---|---|---|
@@ -126,9 +161,11 @@ package binds a plain default for each one you leave open:
 | `RecordChecks` | `validate($record)`: the rules before a publish (throws `ValidationException`) | none |
 | `LanguageChecks` | `clearMachineMarks($record)`; `incomplete($record)`: errors keyed `_translations.<locale>`; `stateKeys()`: translation keys a restore or discard clears when the content lacks them | none |
 | `RecordIndex` | `refresh($record)` after each save, `forget($type, $id)` | none |
-| `RecordAddresses` | `sync()` after a publish, `removed()` after an unpublish (to a `RemovalTarget`), `changed($before, $after)` (`$before` a closure that reads the old snapshot when called) | none |
+| `RecordAddresses` | `sync()` after a publish or a save, `removed()` after an unpublish or a delete (to a `RemovalTarget`), `changed($before, $after)` (`$before` a closure that reads the old snapshot when called), `finalTarget($target, $deleting)`: where a delete's old links lead | none |
 | `RecordColumns` | `columns($definition)`: columns your app writes besides the fields, added to the type's tables | none |
 | `PublishSkips` | `reason($record)`: why `publish <type>` leaves a never-published record alone without `--all` | none |
+| `SaveHooks` | `before()`, `after()`, `beforeDelete()`, `afterDelete()` around each write; `replacesSave($type)` and `save($record, $previous)` for a type that stores its records itself | none |
+| `RecordTypes` | `orderable($type)`: records kept in a manual order (`_order`) | none |
 
 `complete_languages` only takes effect with a `LanguageChecks` that finds something.
 
@@ -141,12 +178,14 @@ schedule, list position and share token stay, and so do columns of your own that
 Folio registers this package and binds its rules: a type with a `frontend` route and every
 singleton publish unless they say otherwise, a publish runs Folio's field and type rules, languages
 follow Folio's translation status, the review index and redirects follow each publish, and the page
-cache drops the pages at the addresses a record leaves and takes. Its own columns (translation
+cache drops the pages at the addresses a record leaves and takes. The writer and the deleter run its type
+customizations' hooks (`#[BeforeSave]`, `#[AfterSave]`, `#[BeforeDelete]`, `#[AfterDelete]`,
+`#[SaveRecord]`) and keep its orderable lists in order. Its own columns (translation
 marks, SEO) go into the tables of publishing types, and `publish` skips the records a legacy
 frontend `published` field marks as drafts. Folio's README ("Drafts and
 publishing") has the screens.
 
-Until 0.72 the names of before 0.71 still work: `Preflow\Folio\Publishing\*` and
-`Preflow\Folio\Content\LiveContent`, the commands `folio:publish` and `folio:publish-scheduled`,
+Until 0.72 the names of before 0.71 still work: `Preflow\Folio\Publishing\*`,
+`Preflow\Folio\Content\LiveContent` and `Preflow\Folio\Content\RecordDeleter`, the commands `folio:publish` and `folio:publish-scheduled`,
 and `config/folio.php` `'publishing'` while `config/publishing.php` does not exist (with a
 deprecation note).

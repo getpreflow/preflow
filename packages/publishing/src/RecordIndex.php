@@ -7,8 +7,9 @@ namespace Preflow\Publishing;
 use Preflow\Data\DynamicRecord;
 
 /**
- * An index that follows the working copies: refreshed after every save the Publisher makes
- * (draft, publish, discard, restore), told when a record is gone. The default keeps none;
+ * An index that follows the working copies: refreshed after every save the Publisher and
+ * RecordWriter make (draft, publish, discard, restore, a type without publishing), told by
+ * RecordDeleter when a record is gone. The default keeps none;
  * Folio binds its translation review index.
  */
 interface RecordIndex

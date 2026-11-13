@@ -17,4 +17,9 @@ final class NoRecordAddresses implements RecordAddresses
     public function removed(string $type, string $id, ?RemovalTarget $target): void {}
 
     public function changed(\Closure $before, ?DynamicRecord $after): void {}
+
+    public function finalTarget(?RemovalTarget $target, array $deleting): ?RemovalTarget
+    {
+        return $target;
+    }
 }

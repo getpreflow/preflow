@@ -1831,7 +1831,8 @@ final class FolioServiceProvider extends ServiceProvider
      * (preflow/publishing binds the plain defaults for the rest at boot): which types publish
      * (the catalog), the rules (RecordValidator), the languages (TranslationStatus), the review
      * index, the addresses (redirects, page-cache tags), the columns Folio adds to the record
-     * tables and the legacy drafts `publish` skips. Its settings come from config/publishing.php;
+     * tables, the legacy drafts `publish` skips, and for RecordWriter and RecordDeleter the save
+     * and delete hooks of the type customizations and the orderable listings. Its settings come from config/publishing.php;
      * while that file does not exist, from config/folio.php 'publishing' (read until 0.72, with a
      * deprecation note).
      *
@@ -1878,6 +1879,17 @@ final class FolioServiceProvider extends ServiceProvider
         }
         if (!$container->bound(\Preflow\Publishing\RecordColumns::class)) {
             $container->singleton(\Preflow\Publishing\RecordColumns::class, static fn (): \Preflow\Publishing\RecordColumns => new \Preflow\Folio\Publishing\FolioRecordColumns());
+        }
+        // The save and delete hooks of the type customizations, and the orderable listings, for RecordWriter and RecordDeleter.
+        if (!$container->bound(\Preflow\Publishing\SaveHooks::class)) {
+            $container->singleton(\Preflow\Publishing\SaveHooks::class, static fn (Container $c): \Preflow\Publishing\SaveHooks => new \Preflow\Folio\Publishing\FolioSaveHooks(
+                $c->get(Customizations::class),
+            ));
+        }
+        if (!$container->bound(\Preflow\Publishing\RecordTypes::class)) {
+            $container->singleton(\Preflow\Publishing\RecordTypes::class, static fn (Container $c): \Preflow\Publishing\RecordTypes => new \Preflow\Folio\Publishing\FolioRecordTypes(
+                $c->get(TypeCatalog::class),
+            ));
         }
         if (!$container->bound(\Preflow\Publishing\PublishSkips::class)) {
             $container->singleton(\Preflow\Publishing\PublishSkips::class, static fn (Container $c): \Preflow\Publishing\PublishSkips => new \Preflow\Folio\Publishing\FolioPublishSkips(

@@ -18,8 +18,9 @@ use Preflow\Data\Schema\RecordTables;
  *
  * The Publisher asks PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and
  * RecordAddresses, the tables (PublishingTables, the `publishing.tables` migrate step) ask
- * RecordColumns, and `publish` asks PublishSkips: a provider (the app's, Folio) binds its own in
- * register(), and boot() binds the plain defaults for the rest.
+ * RecordColumns, and `publish` asks PublishSkips. RecordWriter and RecordDeleter, the one write
+ * and delete path for records, also ask SaveHooks and RecordTypes. A provider (the app's, Folio)
+ * binds its own in register(), and boot() binds the plain defaults for the rest.
  *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -77,6 +78,24 @@ final class PublishingServiceProvider extends ServiceProvider
         if ($container->bound(MigrationRegistry::class)) {
             $container->get(MigrationRegistry::class)->afterMigrate('publishing.tables', static fn (): array => $container->get(PublishingTables::class)->sync());
         }
+        // The one write and delete path for records (an admin, a translation run, an app's own code).
+        $container->singleton(RecordWriter::class, static fn (Container $c): RecordWriter => new RecordWriter(
+            $c->get(DataManager::class),
+            $c->get(Publisher::class),
+            $c->get(RecordChecks::class),
+            $c->get(SaveHooks::class),
+            $c->get(RecordTypes::class),
+            $c->get(RecordIndex::class),
+            $c->get(RecordAddresses::class),
+        ));
+        $container->singleton(RecordDeleter::class, static fn (Container $c): RecordDeleter => new RecordDeleter(
+            $c->get(DataManager::class),
+            $c->get(PublishingTypes::class),
+            $c->get(Publisher::class),
+            $c->get(SaveHooks::class),
+            $c->get(RecordIndex::class),
+            $c->get(RecordAddresses::class),
+        ));
         // Signed with the app key: without a real one, share previews are off (PreviewLinks::enabled()).
         $container->singleton(PreviewLinks::class, static fn (Container $c): PreviewLinks => new PreviewLinks(
             (string) $app->config()->get('app.key', ''),
@@ -110,6 +129,12 @@ final class PublishingServiceProvider extends ServiceProvider
         }
         if (!$container->bound(PublishSkips::class)) {
             $container->singleton(PublishSkips::class, static fn (): PublishSkips => new NoPublishSkips());
+        }
+        if (!$container->bound(SaveHooks::class)) {
+            $container->singleton(SaveHooks::class, static fn (): SaveHooks => new NoSaveHooks());
+        }
+        if (!$container->bound(RecordTypes::class)) {
+            $container->singleton(RecordTypes::class, static fn (): RecordTypes => new NoRecordTypes());
         }
     }
 }

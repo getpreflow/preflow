@@ -5,394 +5,116 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
-use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Extension\AfterDelete;
 use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
-use Preflow\Publishing\PublishedCopies;
-use Preflow\Publishing\Publisher;
+use Preflow\Folio\Publishing\FolioPublishingTypes;
+use Preflow\Folio\Publishing\FolioRecordAddresses;
 use Preflow\Folio\Redirects\RecordAddresses;
-use Preflow\Folio\Redirects\RemovalTarget;
-use Preflow\Validation\ValidationException;
+use Preflow\Publishing\DeleteRefused;
+use Preflow\Publishing\NoSaveHooks;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\PublishingTypes;
+use Preflow\Publishing\RecordAddresses as PublishingAddresses;
+use Preflow\Publishing\RecordIndex;
+use Preflow\Publishing\RemovalTarget;
+use Preflow\Publishing\SaveHooks;
 
 /**
- * Folio's delete: through the data package's delete plan, executed record by record
- * on Folio's own save and delete paths, so a cascaded record goes exactly like a
- * single admin delete and a detach is a save of the pointing record.
+ * @deprecated since 0.71, use Preflow\Publishing\RecordDeleter (preflow/publishing) and
+ *             DeleteSummary for the texts.
  *
- * delete() computes the plan itself, right before executing it: a plan shown to the
- * admin in an earlier request (summary()) is never executed.
- *
- * Order: plan → refused if restricted → #[BeforeSave] on every detached record (the
- * ids already removed) and #[BeforeDelete] on every record to delete, all before any
- * write (a Refused or ValidationException cancels everything) → the writes (detaches
- * via saveDraft or saveType, then deletes with Publisher::forget) → #[AfterSave] and
- * #[AfterDelete]. SQL writes run in one transaction per connection; JSON-file writes
- * cannot be rolled back if a later write fails.
+ * The deleter under its name of before 0.71, for one release. It takes the old arguments
+ * (TypeCatalog, the hooks as a Customizations::runHooks closure, DisplayLabels, Folio's address
+ * book) and the new ones, keeps summary(), and refuses with Folio's Refused and its text as before.
+ * In 0.72 this class goes and Preflow\Publishing\RecordDeleter is final again.
  */
-final class RecordDeleter
+class RecordDeleter extends \Preflow\Publishing\RecordDeleter
 {
-    private readonly DisplayLabels $labels;
-
-    /** The most ids one request may name (a list page holds 50). */
-    public const int MAX_IDS = 500;
+    private readonly DeleteSummary $summary;
 
     /**
-     * @param (\Closure(class-string, DynamicRecord): void)|null $hooks runs a type's hooks
+     * @param (\Closure(class-string, DynamicRecord): void)|SaveHooks|null $hooks runs a type's hooks
      *        (Customizations::runHooks); null: no hooks
      */
     public function __construct(
-        private readonly DataManager $dm,
-        private readonly TypeCatalog $catalog,
-        private readonly ?Publisher $publisher = null,
-        private readonly ?\Closure $hooks = null,
+        DataManager $dm,
+        TypeCatalog|PublishingTypes $catalog,
+        ?Publisher $publisher = null,
+        \Closure|SaveHooks|null $hooks = null,
         ?DisplayLabels $labels = null,
-        private readonly ?ReviewIndexUpdater $review = null,
-        private readonly ?RecordAddresses $addresses = null,
+        ?RecordIndex $review = null,
+        RecordAddresses|PublishingAddresses|null $addresses = null,
     ) {
-        $this->labels = $labels ?? new DisplayLabels($catalog);
-    }
-
-    /**
-     * What deleting these records would do. Publishing types count links in their
-     * published snapshot too (restrict only), once the snapshot table exists.
-     * Only ids of stored records of $type are planned: unknown ids, ids of other types
-     * and repeats are ignored (a dangling pointer to an unknown id is never "detached").
-     *
-     * @param list<string> $ids
-     */
-    public function plan(string $type, array $ids): DeletePlan
-    {
-        return $this->dm->deletePlan($type, $this->existing($type, $ids), fn (TypeDefinition $def): array => $this->copies($def), DeletedBy::Staff);
-    }
-
-    /**
-     * The given ids that name stored records of $type, in the given order, each once (one query).
-     *
-     * @param list<string> $ids
-     * @return list<string>
-     */
-    private function existing(string $type, array $ids): array
-    {
-        $ids = array_values(array_unique(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== '')));
-        if ($ids === []) {
-            return [];
+        if ($labels === null && !$catalog instanceof TypeCatalog) {
+            throw new \InvalidArgumentException('RecordDeleter needs DisplayLabels without a TypeCatalog.');
         }
-        $found = [];
-        $idField = $this->dm->getTypeRegistry()->get($type)->idField;
-        foreach ($this->dm->queryType($type)->whereAny([['field' => $idField, 'operator' => 'IN', 'value' => $ids]])->get()->items() as $record) {
-            $found[(string) $record->getId()] = true;
-        }
-
-        return array_values(array_filter($ids, static fn (string $id): bool => isset($found[$id])));
+        parent::__construct(
+            $dm,
+            $catalog instanceof TypeCatalog ? new FolioPublishingTypes($catalog) : $catalog,
+            $publisher,
+            $hooks instanceof \Closure ? self::closureHooks($hooks) : ($hooks ?? new NoSaveHooks()),
+            $review,
+            $addresses instanceof RecordAddresses ? new FolioRecordAddresses($addresses, null, null) : $addresses,
+        );
+        $this->summary = new DeleteSummary($labels ?? new DisplayLabels($catalog), $addresses instanceof RecordAddresses ? $addresses : null);
     }
 
-    /**
-     * @param list<string> $ids
-     * @param RemovalTarget|null $target where the old addresses of every deleted record (those
-     *                                   deleted by cascade too) redirect; null: they answer 404
-     * @throws Refused restricted, or a hook refused (nothing was written)
-     */
+    /** @throws Refused restricted, or a hook refused (nothing was written) */
     public function delete(string $type, array $ids, ?RemovalTarget $target = null): void
     {
-        $plan = $this->plan($type, $ids);
-        if ($plan->restricted()) {
-            throw new Refused($this->restrictedText($plan));
-        }
-        $target = $this->removalTarget($plan, $target);
-
-        // Pre-phase: load and hook everything, write nothing.
-        /** @var list<DynamicRecord> $saves */
-        $saves = [];
-        foreach ($this->detachedRecords($plan) as $record) {
-            try {
-                $this->hook(BeforeSave::class, $record);
-            } catch (ValidationException $e) {
-                throw new Refused(\Preflow\Folio\FolioText::get('folio.delete.refused', [
-                    'noun' => $this->noun($record->getType()->key, 1),
-                    'messages' => implode(' ', self::messages($e->errors())),
-                ]), 0, $e);
-            }
-            $saves[] = $record;
-        }
-        /** @var list<DynamicRecord> $deletes */
-        $deletes = [];
-        foreach ($plan->deletes() as $deleteType => $deleteIds) {
-            foreach ($deleteIds as $id) {
-                $record = $this->dm->findType($deleteType, $id);
-                if ($record === null) {
-                    continue;
-                }
-                $this->hook(BeforeDelete::class, $record);
-                $deletes[] = $record;
-            }
-        }
-
-        $this->transaction([...$saves, ...$deletes], function () use ($saves, $deletes): void {
-            foreach ($saves as $record) {
-                if ($this->publishes($record->getType()->key)) {
-                    $this->publisher->saveDraft($record, null); // the working copy; the live snapshot keeps its links until the next publish
-                } else {
-                    $this->dm->saveType($record, false);
-                }
-            }
-            foreach ($deletes as $record) {
-                $key = $record->getType()->key;
-                $id = (string) $record->getId();
-                $this->dm->deleteType($key, $id);
-                if ($this->publishes($key)) {
-                    $this->publisher->forget($key, $id);
-                }
-            }
-        });
-        foreach ($deletes as $record) {
-            $this->review?->forget($record->getType()->key, (string) $record->getId());
-            $this->addresses?->removed($record->getType()->key, (string) $record->getId(), $target);
-        }
-
-        foreach ($saves as $record) {
-            $this->hook(AfterSave::class, $record);
-        }
-        foreach ($deletes as $record) {
-            $this->hook(AfterDelete::class, $record);
+        try {
+            parent::delete($type, $ids, $target);
+        } catch (DeleteRefused $e) {
+            throw new Refused($this->summary->refusal($e), 0, $e);
         }
     }
 
-    /**
-     * The confirmation for a plan: "This can't be undone." and a line per type of
-     * what else happens; a restricted plan gives the refusal instead. "addresses" counts
-     * the public addresses the plan's deleted records hold (those deleted by cascade too),
-     * so the admin can ask where their old links go ("Send its old links to…").
-     *
-     * @return array{restricted: bool, lines: list<string>, confirm: string, addresses: int}
-     */
+    /** @return array{restricted: bool, lines: list<string>, confirm: string, addresses: int} */
     public function summary(DeletePlan $plan): array
     {
-        if ($plan->restricted()) {
-            $text = $this->restrictedText($plan);
-
-            return ['restricted' => true, 'lines' => [$text], 'confirm' => $text, 'addresses' => 0];
-        }
-
-        $counts = $plan->counts();
-        $lines = [];
-        foreach ($counts['deleted'] as $type => $n) {
-            $lines[] = \Preflow\Folio\FolioText::get('folio.delete.also_deletes', ['count' => $n, 'noun' => $this->noun($type, $n)]);
-        }
-        foreach ($counts['detached'] as $type => $n) {
-            $lines[] = \Preflow\Folio\FolioText::choice('folio.delete.loses_link', $n, ['noun' => $this->noun($type, $n)]);
-        }
-
-        return [
-            'restricted' => false,
-            'lines' => $lines,
-            'confirm' => implode("\n", [\Preflow\Folio\FolioText::get('folio.delete.cannot_undo'), ...$lines]),
-            'addresses' => $this->addressCount($plan),
-        ];
+        return $this->summary->summary($plan);
     }
 
-    /**
-     * The target as it leads before anything is deleted (a page's URL becomes its record), and no
-     * target when that is one of the records the plan deletes: their old links would end in a 404.
-     */
-    private function removalTarget(DeletePlan $plan, ?RemovalTarget $target): ?RemovalTarget
+    /** @param \Closure(class-string, DynamicRecord): void $run */
+    private static function closureHooks(\Closure $run): SaveHooks
     {
-        $target = $this->addresses?->finalTarget($target) ?? ($this->addresses === null ? $target : null);
-        if ($target?->type !== null && in_array($target->id, array_map(strval(...), $plan->deletes()[$target->type] ?? []), true)) {
-            return null;
-        }
+        return new class ($run) implements SaveHooks {
+            public function __construct(private readonly \Closure $run) {}
 
-        return $target;
-    }
-
-    /** The public addresses (one per record and language) of the records the plan deletes. */
-    private function addressCount(DeletePlan $plan): int
-    {
-        if ($this->addresses === null) {
-            return 0;
-        }
-        $count = 0;
-        foreach ($plan->deletes() as $type => $ids) {
-            foreach ($ids as $id) {
-                $count += count($this->addresses->of($type, (string) $id));
-            }
-        }
-
-        return $count;
-    }
-
-    private function restrictedText(DeletePlan $plan): string
-    {
-        $parts = [];
-        foreach ($plan->restrictions() as $type => $n) {
-            $parts[] = sprintf('%d %s', $n, $this->noun($type, $n));
-        }
-        $total = array_sum($plan->restrictions());
-
-        return \Preflow\Folio\FolioText::choice('folio.delete.restricted', $total, ['records' => self::join($parts)]);
-    }
-
-    /**
-     * The pointing records with the plan's ids removed, one per record (all its fields
-     * applied); records that are gone or would not change are left out.
-     *
-     * @return list<DynamicRecord>
-     */
-    private function detachedRecords(DeletePlan $plan): array
-    {
-        /** @var array<string, array<string, array<string, list<string>>>> $grouped type => id => field => remove */
-        $grouped = [];
-        foreach ($plan->detaches() as $detach) {
-            $grouped[$detach['type']][$detach['id']][$detach['field']] = array_values(array_unique([
-                ...($grouped[$detach['type']][$detach['id']][$detach['field']] ?? []),
-                ...$detach['remove'],
-            ]));
-        }
-
-        $records = [];
-        foreach ($grouped as $type => $byId) {
-            foreach ($byId as $id => $fields) {
-                $record = $this->dm->findType($type, (string) $id);
-                if ($record === null) {
-                    continue;
-                }
-                $changed = false;
-                foreach ($fields as $field => $remove) {
-                    $value = $record->get($field);
-                    $next = DeletePlan::valueWithout($value, $remove);
-                    if ($next !== $value) {
-                        $record->set($field, $next);
-                        $changed = true;
-                    }
-                }
-                if ($changed) {
-                    $records[] = $record;
-                }
-            }
-        }
-
-        return $records;
-    }
-
-    /**
-     * Runs $writes inside one transaction per SQL connection the records live on
-     * (a transaction already open there is left to its owner).
-     *
-     * @param list<DynamicRecord> $records
-     */
-    private function transaction(array $records, \Closure $writes): void
-    {
-        /** @var array<int, \PDO> $began */
-        $began = [];
-        try {
-            foreach ($records as $record) {
-                $driver = $this->dm->driver($record->getType()->storage);
-                if (!$driver instanceof PdoDriver) {
-                    continue;
-                }
-                $pdo = $driver->pdo();
-                $key = spl_object_id($pdo);
-                if (!isset($began[$key]) && !$pdo->inTransaction()) {
-                    $pdo->beginTransaction();
-                    $began[$key] = $pdo;
-                }
+            public function before(DynamicRecord $record): void
+            {
+                ($this->run)(BeforeSave::class, $record);
             }
 
-            $writes();
-
-            foreach ($began as $pdo) {
-                $pdo->commit();
+            public function after(DynamicRecord $record): void
+            {
+                ($this->run)(AfterSave::class, $record);
             }
-        } catch (\Throwable $e) {
-            foreach ($began as $pdo) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
+
+            public function beforeDelete(DynamicRecord $record): void
+            {
+                ($this->run)(BeforeDelete::class, $record);
             }
-            throw $e;
-        }
-    }
 
-    /**
-     * The published snapshot of a publishing type, once its storage exists (on SQL the
-     * table is made by `preflow migrate`; a JSON directory that isn't there has no rows).
-     *
-     * @return list<TypeDefinition>
-     */
-    private function copies(TypeDefinition $def): array
-    {
-        return (new PublishedCopies($this->dm, $this->publisher))->of($def);
-    }
+            public function afterDelete(DynamicRecord $record): void
+            {
+                ($this->run)(AfterDelete::class, $record);
+            }
 
-    /** @phpstan-assert-if-true !null $this->publisher */
-    private function publishes(string $type): bool
-    {
-        return $this->publisher !== null && $this->publisher->enabled($type);
-    }
+            public function replacesSave(string $type): bool
+            {
+                return false;
+            }
 
-    /** @param class-string $hook */
-    private function hook(string $hook, DynamicRecord $record): void
-    {
-        if ($this->hooks !== null) {
-            ($this->hooks)($hook, $record);
-        }
-    }
-
-    /**
-     * The type's label as a noun for $n records: "jobs", "1 job", through folio.format.type_noun
-     * (the language's plural forms) with the singular label ("label_singular", a key) and the
-     * plural one. FolioText::noun(): in lower case where the language writes nouns so; a label
-     * starting with an acronym keeps its case ("FAQ entries"). Without a singular, English
-     * guesses one; other languages use the label.
-     */
-    private function noun(string $type, int $n): string
-    {
-        $plural = $this->labels->type($type);
-        $singular = $this->labels->singular($type) ?? (\Preflow\Folio\FolioText::locale() === 'en' ? self::guessSingular($plural) : $plural);
-
-        return \Preflow\Folio\FolioText::choice('folio.format.type_noun', $n, [
-            'singular' => \Preflow\Folio\FolioText::noun($singular),
-            'plural' => \Preflow\Folio\FolioText::noun($plural),
-        ]);
-    }
-
-    private static function guessSingular(string $label): string
-    {
-        return match (true) {
-            (bool) preg_match('/ies$/u', $label) => mb_substr($label, 0, -3) . 'y',
-            (bool) preg_match('/(ss|us|is)$/u', $label) => $label,
-            (bool) preg_match('/s$/u', $label) => mb_substr($label, 0, -1),
-            default => $label,
+            public function save(DynamicRecord $record, ?DynamicRecord $previous): void
+            {
+                throw new \LogicException('The hooks closure saves no records.');
+            }
         };
-    }
-
-    /** @param list<string> $parts "a", "a and b", "a, b and c" */
-    private static function join(array $parts): string
-    {
-        $last = array_pop($parts);
-
-        return $parts === [] ? (string) $last : \Preflow\Folio\FolioText::get('folio.delete.and', ['list' => implode(', ', $parts), 'last' => (string) $last]);
-    }
-
-    /**
-     * @param array<mixed> $errors
-     * @return list<string>
-     */
-    private static function messages(array $errors): array
-    {
-        $messages = [];
-        array_walk_recursive($errors, static function (mixed $message) use (&$messages): void {
-            if (is_string($message)) {
-                $messages[] = $message;
-            }
-        });
-
-        return $messages;
     }
 }
