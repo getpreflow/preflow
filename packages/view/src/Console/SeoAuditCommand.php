@@ -8,7 +8,7 @@ use Preflow\Core\Application;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\View\Audit\AuditRegistry;
 use Preflow\View\Audit\AuditReport;
-use Preflow\View\Audit\AuditRun;
+use Preflow\View\Audit\Audits;
 use Preflow\View\Audit\AuditRunning;
 use Preflow\View\Audit\Finding;
 use Preflow\View\Audit\PageRenderer;
@@ -26,7 +26,8 @@ use Preflow\View\Seo\PublicPages;
  * Exit code 0 for a run with or without findings, finished or not, and when another
  * audit is running; 1 for a bad flag, an app that doesn't boot, or a run that fails.
  * The app is booted without a session store, so the audit leaves no session file,
- * and mail queued while a page renders isn't sent. The package lists it in
+ * and mail queued while a page renders isn't sent (the internal render scope drops
+ * it). The run goes through the Audits service (since 0.74), as Folio's does. The package lists it in
  * composer.json (extra.preflow.commands), so a site needs no setup.
  *
  * @since 0.54
@@ -89,12 +90,12 @@ final class SeoAuditCommand implements CommandInterface
             if (!$container->bound(PageRenderer::class)) {
                 throw new \RuntimeException('The app has no SEO audit page renderer (preflow/view is not set up).');
             }
-            $run = new AuditRun(
+            // An app whose core binds no Audits (before 0.74) gets one built here.
+            $audits = $container->bound(Audits::class) ? $container->get(Audits::class) : new Audits(
                 $container->get(AuditRegistry::class),
                 $container->get(PageRenderer::class),
                 $container->get(PublicPages::class),
                 AuditReport::file($app->basePath()),
-                static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
             );
         } catch (\Throwable $e) {
             $this->error('Error: the app could not be booted: ' . $e->getMessage() . "\n");
@@ -104,7 +105,9 @@ final class SeoAuditCommand implements CommandInterface
 
         $progress = $this->progress();
         try {
-            $report = $run->run($options['budget'], $options['limit'], $options['url'], $options['fresh'], $progress->report(...));
+            $report = $options['limit'] !== null || $options['url'] !== null
+                ? $audits->quick($options['limit'], $options['url'], $options['budget'], $progress->report(...))
+                : $audits->step($options['budget'], $options['fresh'], $progress->report(...));
         } catch (AuditRunning $e) {
             echo $e->getMessage() . "\n";
 

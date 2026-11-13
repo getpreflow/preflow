@@ -504,7 +504,8 @@ final class Application
             $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         );
 
-        // An internal render (the SEO audit) sends no mail: what it queues is not flushed here.
+        // An internal render sends no mail: it doesn't flush the queue here, and its render scope
+        // (anonymousRenderScope()) drops what it queues, so a later flush doesn't send it either.
         $flush = !$this->emitting && !$internal;
 
         try {
@@ -2401,9 +2402,10 @@ final class Application
 
     /**
      * The SEO audit's PageRenderer: renders a page through the app (handle(), so the
-     * whole pipeline) inside the internal render scopes, from the console too. Built
-     * on first use only, so web requests don't pay for it. The debug collector (debug
-     * mode) starts empty for each render.
+     * whole pipeline) inside the internal render scopes, from the console too, and
+     * the Audits service around it (since 0.74). Both built on first use only, so web
+     * requests don't pay for them. The debug collector (debug mode) starts empty for
+     * each render.
      */
     private function bootAudit(): void
     {
@@ -2432,6 +2434,16 @@ final class Application
                 $defaultLocale,
             );
         });
+
+        // The audit as a service (a step, the quick checks, the saved report), for the command and the admin.
+        if (class_exists(\Preflow\View\Audit\Audits::class)) {
+            $this->container->singleton(\Preflow\View\Audit\Audits::class, fn (): \Preflow\View\Audit\Audits => new \Preflow\View\Audit\Audits(
+                $this->container->get(\Preflow\View\Audit\AuditRegistry::class),
+                $this->container->get(\Preflow\View\Audit\PageRenderer::class),
+                $this->container->get(\Preflow\View\Seo\PublicPages::class),
+                \Preflow\View\Audit\AuditReport::file($this->basePath()),
+            ));
+        }
     }
 
     /**
@@ -2452,8 +2464,9 @@ final class Application
      * Wraps an internal render (GEO, the SEO audit): the request context names the rendered page,
      * the visitor's session data is hidden (templates read the session directly,
      * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
-     * is signed in during it, and the translator locale and signed-in users are
-     * put back afterwards, so nothing passes between the request and its renders.
+     * is signed in during it, mail it queues is dropped (Notifier::discardingQueued(),
+     * since 0.74), and the translator locale and signed-in users are put back
+     * afterwards, so nothing passes between the request and its renders.
      *
      * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
      */
@@ -2476,6 +2489,17 @@ final class Application
                 : null;
             $users = $auth?->users() ?? [];
             $guard = $auth?->guardName();
+
+            // Mail the render queues is dropped, not sent: the request that flushes the queue
+            // afterwards (an admin request running an audit step, a visitor's request whose GEO
+            // view rendered the page) sends only its own (notify 0.74+).
+            $notifier = class_exists(\Preflow\Notify\Notifier::class) && $container->bound(\Preflow\Notify\Notifier::class)
+                ? $container->get(\Preflow\Notify\Notifier::class)
+                : null;
+            if ($notifier !== null && method_exists($notifier, 'discardingQueued')) {
+                $render = $next;
+                $next = static fn (): ResponseInterface => $notifier->discardingQueued($render);
+            }
 
             $sessionData->hide();
             // Nobody is signed in for the render, even when it is called from inside the pipeline.

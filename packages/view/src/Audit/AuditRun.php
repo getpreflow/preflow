@@ -54,6 +54,16 @@ final class AuditRun
     ) {}
 
     /**
+     * The lock file a full run holds for the report $file, so only one runs at a time.
+     *
+     * @since 0.74
+     */
+    public static function lockFile(string $file): string
+    {
+        return $file . '.lock';
+    }
+
+    /**
      * Audit pages until all are done or the time budget would be passed (at least one page per run).
      *
      * @param int     $timeBudgetSeconds stop before this much time has passed
@@ -142,9 +152,9 @@ final class AuditRun
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }
-        $lock = @fopen($this->file . '.lock', 'c');
+        $lock = @fopen(self::lockFile($this->file), 'c');
         if ($lock === false) {
-            throw new \RuntimeException("Can't open the SEO audit's lock file: {$this->file}.lock");
+            throw new \RuntimeException("Can't open the SEO audit's lock file: " . self::lockFile($this->file));
         }
         if (!flock($lock, LOCK_EX | LOCK_NB)) {
             fclose($lock);

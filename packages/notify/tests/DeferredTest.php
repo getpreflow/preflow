@@ -184,4 +184,42 @@ final class DeferredTest extends TestCase
 
         $this->assertSame(1, $logger->count);
     }
+
+    public function test_messages_queued_while_discarding_are_dropped_and_the_queue_before_is_kept(): void
+    {
+        $n = $this->notifier();
+        $n->sendLater($this->mail('before@x.test'));
+        $failed = false;
+
+        $result = $n->discardingQueued(function () use ($n, &$failed): string {
+            $n->sendLater($this->mail('during@x.test'), function () use (&$failed): void { $failed = true; });
+            // Nested: still discarding after the inner one ends.
+            $n->discardingQueued(fn () => $n->sendLater($this->mail('nested@x.test')));
+            $n->sendLater($this->mail('after-nested@x.test'));
+
+            return 'rendered';
+        });
+        $n->sendLater($this->mail('after@x.test'));
+
+        $this->assertSame('rendered', $result);
+        $this->assertSame(2, $n->flushDeferred());
+        $this->assertSame(['before@x.test', 'after@x.test'], $this->recipients());
+        $this->assertFalse($failed);
+    }
+
+    public function test_discarding_also_drops_what_defer_false_would_send_at_once_and_ends_on_an_exception(): void
+    {
+        $n = $this->notifier(defer: false);
+
+        try {
+            $n->discardingQueued(function () use ($n): never {
+                $n->sendLater($this->mail('during@x.test'));
+                throw new \RuntimeException('render failed');
+            });
+        } catch (\RuntimeException) {
+        }
+        $n->sendLater($this->mail('after@x.test'));
+
+        $this->assertSame(['after@x.test'], $this->recipients());
+    }
 }

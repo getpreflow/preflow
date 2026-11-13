@@ -16,6 +16,9 @@ final class Notifier
     /** @var list<array{Message, ?\Closure}> */
     private array $deferred = [];
 
+    /** How many discardingQueued() calls are running; sendLater() drops its message while above 0. */
+    private int $discarding = 0;
+
     /**
      * @param array<string, array{transport?: string, from?: string|null}> $channels
      * @param \Psr\Log\LoggerInterface|\Closure():(\Psr\Log\LoggerInterface|null)|null $logger
@@ -39,6 +42,9 @@ final class Notifier
      */
     public function sendLater(Message $message, ?\Closure $onFailure = null): void
     {
+        if ($this->discarding > 0) {
+            return;
+        }
         if (!$this->defer) {
             $this->deliver($message, $onFailure);
 
@@ -46,6 +52,31 @@ final class Notifier
         }
 
         $this->deferred[] = [$message, $onFailure];
+    }
+
+    /**
+     * Runs $work and returns what it returns; a message it queues with sendLater() is dropped,
+     * never sent (also when sendLater() would send at once), and its onFailure is not called.
+     * The queue from before stays as it was and goes out at the next flush. Core runs every
+     * internal render (the SEO audit's, GEO's, the page cache's rebuilds) inside it, so a page
+     * that queues a mail when a visitor opens it sends none when the site renders it for itself,
+     * whichever request flushes the queue afterwards. send() still sends at once: it is not
+     * queued. Calls nest.
+     *
+     * @since 0.74
+     *
+     * @template T
+     * @param \Closure(): T $work
+     * @return T
+     */
+    public function discardingQueued(\Closure $work): mixed
+    {
+        $this->discarding++;
+        try {
+            return $work();
+        } finally {
+            $this->discarding--;
+        }
     }
 
     /** Sends the queue in FIFO order, each message isolated. Returns how many were sent. */

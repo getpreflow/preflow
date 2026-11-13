@@ -15,6 +15,6 @@ final class AuditRunning extends \RuntimeException
 {
     public static function at(string $file): self
     {
-        return new self("Another SEO audit is running on this site (it holds {$file}.lock). Wait until it has finished, then run the audit again.");
+        return new self('Another SEO audit is running on this site (it holds ' . AuditRun::lockFile($file) . "). Wait until it has finished, then run the audit again.");
     }
 }
