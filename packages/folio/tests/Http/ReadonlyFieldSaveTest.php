@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\RecordWriters;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Container\Container;
@@ -68,6 +69,7 @@ final class ReadonlyFieldSaveTest extends TestCase
             new TypeCatalog($this->base . '/m'), $this->registry, $this->dm, $engine,
             new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
             $fields, '/folio', new RecordLabeler(), new FrontendResolver($this->dm, 'page'),
+            ...RecordWriters::for($this->dm, new TypeCatalog($this->base . '/m'), $fields, new FrontendResolver($this->dm, 'page')),
         );
     }
 

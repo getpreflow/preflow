@@ -28,7 +28,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * (only the ones still new count) and make them known for good; "Add to role" first gives
  * them to the chosen role (role = its id) and saves it as the role editor does, through the
  * RecordWriter: every #[BeforeSave] of the type (RoleRules among them: delegation, lock-out), the
- * type's validation, the save, every #[AfterSave]. A refusal changes nothing. Each answers with a redirect to the
+ * type's validation, the save, every #[AfterSave]. A refusal changes nothing; an #[AfterSave]
+ * that refuses (ValidationException, Refused) shows as a refusal too, although the role was saved
+ * by then (its permissions stay new). Each answers with a redirect to the
  * Roles list and a flash message, also when the new permissions can't be read (a site not
  * migrated) and when the save or an #[AfterSave] fails (logged).
  *

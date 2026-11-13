@@ -84,7 +84,10 @@ $writer->restore('post', $id, $revisionId, new SaveOptions(mayPublish: false)); 
 
 A save runs `SaveHooks::before()` first (a `ValidationException` there stores nothing). A type that
 publishes then saves its working copy (`saveDraft()`) and, with `publish: true`, publishes it;
-`SaveHooks::after()` runs once the working copy is stored, also when the publish fails. Any other
+`SaveHooks::after()` runs once the working copy is stored, also when the publish fails: then
+`PublishFailed` is thrown, with the stored draft (`$outcome`) and the cause (`getPrevious()`: the
+checks' `ValidationException` or a `VersionConflict`). A `ValidationException` or `VersionConflict`
+thrown by `save()` itself means nothing was stored (unless `SaveHooks::after()` threw it). Any other
 type is checked (`RecordChecks`), stored (or handed to `SaveHooks::save()` when the type saves
 itself), indexed and synced with its addresses; `SaveOutcome::$addressesLeft` says whether it left
 the site.

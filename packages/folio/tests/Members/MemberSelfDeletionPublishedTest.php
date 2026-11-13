@@ -75,6 +75,38 @@ final class MemberSelfDeletionPublishedTest extends TestCase
         $this->assertSame('', (string) $snapshot->get('member'), 'the published snapshot points at nobody');
     }
 
+    /** A #[BeforeSave] refusing the detached record's save again never keeps a snapshot pointing at the deleted member. */
+    #[RunInSeparateProcess]
+    public function test_a_refused_save_of_the_detached_record_still_clears_the_snapshot(): void
+    {
+        $this->site('detach');
+        $m = $this->makeMember();
+        $this->publishedOrder('o1', $m);
+        $c = $this->flow->container();
+        $refusing = new class implements \Preflow\Publishing\SaveHooks {
+            public function before(DynamicRecord $record): void
+            {
+                throw new \Preflow\Validation\ValidationException(new \Preflow\Validation\ValidationResult(['member' => ['Orders keep their member.']]));
+            }
+            public function after(DynamicRecord $record): void {}
+            public function beforeDelete(DynamicRecord $record): void {}
+            public function afterDelete(DynamicRecord $record): void {}
+            public function replacesSave(string $type): bool { return false; }
+            public function save(DynamicRecord $record, ?DynamicRecord $previous): void {}
+        };
+        $c->singleton(\Preflow\Publishing\RecordWriter::class, static fn () => new \Preflow\Publishing\RecordWriter(
+            $c->get(DataManager::class), $c->get(Publisher::class), $c->get(\Preflow\Publishing\RecordChecks::class), $refusing,
+        ));
+        $version = (int) $c->get(DataManager::class)->findType('order', 'o1')?->get('_version');
+
+        $this->assertTrue($c->get(Members::class)->delete($m)->deleted);
+
+        $this->assertSame('', (string) $this->publisher()->snapshot('order', 'o1')?->get('member'), 'scrubbed although the save was refused');
+        $working = $c->get(DataManager::class)->findType('order', 'o1');
+        $this->assertSame('', (string) $working?->get('member'), 'the working copy is detached');
+        $this->assertSame($version, (int) $working?->get('_version'), 'only its version bump was refused');
+    }
+
     #[RunInSeparateProcess]
     public function test_detach_clears_a_snapshot_only_pointer(): void
     {

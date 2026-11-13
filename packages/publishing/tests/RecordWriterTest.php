@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Publishing\Tests;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Publishing\PublishFailed;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\RecordWriter;
 use Preflow\Publishing\SaveOptions;
@@ -134,8 +135,12 @@ final class RecordWriterTest extends PublishingAppTestCase
 
         try {
             $writer->save($this->record('post', 'p1', ['title' => ['en' => 'Draft']]), new SaveOptions(publish: true));
-            $this->fail('Expected ValidationException');
-        } catch (ValidationException) {
+            $this->fail('Expected PublishFailed');
+        } catch (PublishFailed $e) {
+            $this->assertInstanceOf(ValidationException::class, $e->cause());
+            $this->assertSame($e->cause(), $e->getPrevious());
+            $this->assertSame(['en' => 'Draft'], $e->outcome->record->get('title'));
+            $this->assertSame(1, $e->outcome->record->get('_version'), 'the stored draft');
         }
 
         $this->assertSame(['before:post:p1', 'refresh:post:p1', 'checks:post:p1', 'after:post:p1'], $this->recorder->log);
@@ -155,9 +160,10 @@ final class RecordWriterTest extends PublishingAppTestCase
 
         try {
             $writer->save($this->record('post', 'p1', ['title' => ['en' => 'Draft']]), new SaveOptions(publish: true));
-            $this->fail('Expected VersionConflict');
-        } catch (VersionConflict $e) {
-            $this->assertSame(2, $e->current);
+            $this->fail('Expected PublishFailed');
+        } catch (PublishFailed $e) {
+            $this->assertInstanceOf(VersionConflict::class, $e->cause());
+            $this->assertSame(2, $e->cause()->current);
         }
 
         $this->assertSame('after:post:p1', array_last($this->recorder->log));
@@ -170,8 +176,27 @@ final class RecordWriterTest extends PublishingAppTestCase
         $recorder->failChecks = static fn () => throw self::refusal();
         $writer = new RecordWriter($this->dm(), new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $recorder), $recorder, new ThrowingAfter($recorder));
 
-        $this->expectException(ValidationException::class);
-        $writer->save($this->record('post', 'p1'), new SaveOptions(publish: true));
+        try {
+            $writer->save($this->record('post', 'p1'), new SaveOptions(publish: true));
+            $this->fail('Expected PublishFailed');
+        } catch (PublishFailed $e) {
+            $this->assertInstanceOf(ValidationException::class, $e->cause());
+        }
+    }
+
+    public function test_an_after_hook_refusing_a_saved_draft_is_no_publish_failure(): void
+    {
+        $recorder = new Recorder($this->dm());
+        $writer = new RecordWriter($this->dm(), new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $recorder), $recorder, new ThrowingAfter($recorder));
+
+        try {
+            $writer->save($this->record('post', 'p1', ['title' => ['en' => 'Draft']]));
+            $this->fail('Expected the hook\'s exception');
+        } catch (PublishFailed) {
+            $this->fail('No publish was asked for.');
+        } catch (\Throwable) {
+        }
+        $this->assertSame(['en' => 'Draft'], $this->stored('post', 'p1')->get('title'));
     }
 
     public function test_a_stale_version_conflicts_before_after(): void

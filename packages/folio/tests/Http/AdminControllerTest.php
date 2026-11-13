@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Http;
 
+use Preflow\Folio\Tests\Support\RecordWriters;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Container\Container;
@@ -100,6 +101,7 @@ final class AdminControllerTest extends TestCase
             '/folio',
             new RecordLabeler(),
             new FrontendResolver($this->dm, 'page'),
+            ...RecordWriters::for($this->dm, new TypeCatalog($this->base . '/m'), $this->fieldTypeRegistry(), new FrontendResolver($this->dm, 'page')),
         );
     }
 
@@ -124,6 +126,7 @@ final class AdminControllerTest extends TestCase
             '/folio',
             new RecordLabeler(),
             new FrontendResolver($this->dm, 'page'),
+            ...RecordWriters::for($this->dm, new TypeCatalog($this->base . '/m'), $this->fieldTypeRegistry(), new FrontendResolver($this->dm, 'page')),
         );
     }
 
@@ -466,6 +469,7 @@ final class AdminControllerTest extends TestCase
             '/folio',
             new RecordLabeler(),
             new FrontendResolver($this->dm, 'page'),
+            ...RecordWriters::for($this->dm, new TypeCatalog($this->base . '/m'), $fieldTypes, new FrontendResolver($this->dm, 'page')),
         );
     }
 
@@ -746,6 +750,7 @@ final class AdminControllerTest extends TestCase
             '/folio',
             new RecordLabeler(),
             new FrontendResolver($this->dm, 'page'),
+            ...RecordWriters::for($this->dm, new TypeCatalog($this->base . '/m'), $fieldTypes, new FrontendResolver($this->dm, 'page')),
             export: new \Preflow\Folio\Content\ListExport($this->dm, $fieldTypes, new \Preflow\Folio\Content\RelationLabels($this->dm, new RecordLabeler()), $available),
         );
     }

@@ -427,7 +427,8 @@ class Publisher
      * Copy a revision into the working copy; it must be published again to go live.
      * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
      * $publishAt is the schedule the restored working copy gets: null keeps the stored one, ''
-     * cancels it (RecordWriter::restore() decides, by its schedule rule).
+     * cancels it. Callers restore through RecordWriter::restore(), which applies the schedule rule
+     * (who may not publish cancels a pending schedule); calling this directly skips it.
      *
      * @throws VersionConflict
      * @throws ValidationException when the storage refuses the revision's content (validateStorable(); nothing saved)

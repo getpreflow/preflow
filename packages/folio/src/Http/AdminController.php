@@ -20,13 +20,12 @@ use Preflow\Folio\Content\ListExport;
 use Preflow\Folio\Content\DeleteSummary;
 use Preflow\Folio\Content\RecordId;
 use Preflow\Folio\Content\RecordLabeler;
-use Preflow\Folio\Content\ReviewIndexUpdater;
 use Preflow\Folio\Content\RelationLabels;
 use Preflow\Folio\Content\DraftRecordFactory;
-use Preflow\Folio\Content\RecordValidator;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\VersionConflict;
+use Preflow\Publishing\PublishFailed;
 use Preflow\Publishing\DeleteRefused;
 use Preflow\Publishing\RecordDeleter;
 use Preflow\Publishing\RecordWriter;
@@ -55,8 +54,6 @@ final class AdminController
     private readonly DraftRecordFactory $drafts;
     private readonly DisplayLabels $labels;
     private readonly TranslationStatus $translations;
-    private readonly RecordWriter $writer;
-    private readonly RecordDeleter $deleter;
 
     public function __construct(
         private readonly TypeCatalog $catalog,
@@ -68,8 +65,11 @@ final class AdminController
         private readonly string $prefix,
         private readonly RecordLabeler $labeler,
         private readonly FrontendResolver $frontend,
+        /** Every save and list move goes through it (since 0.71). */
+        private readonly RecordWriter $writer,
+        /** Every delete goes through it. */
+        private readonly RecordDeleter $deleter,
         ?DraftRecordFactory $drafts = null,
-        ?RecordValidator $validator = null,
         private readonly ?Publisher $publisher = null,
         private readonly ?\Preflow\Publishing\PreviewLinks $previewLinks = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
@@ -81,25 +81,16 @@ final class AdminController
         ?TranslationStatus $translations = null,
         /** Asked whether machine translation is available (since 0.66; before, the AI connection). */
         private readonly ?\Preflow\I18n\Machine\MachineTranslator $translator = null,
-        ?ReviewIndexUpdater $review = null,
         private readonly ?\Preflow\I18n\Machine\JobRunner $jobs = null,
         private readonly ?\Preflow\I18n\Machine\ReviewIndex $reviewIndex = null,
         private readonly ?\Preflow\I18n\Machine\TranslationWorker $worker = null,
         private readonly ?\Preflow\View\Seo\SeoConfig $seo = null,
         private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
         private readonly ?\Preflow\Folio\Redirects\OldAddresses $oldAddresses = null,
-        /** Every save, list move and delete goes through these (the container's; since 0.71). */
-        ?RecordWriter $writer = null,
-        ?RecordDeleter $deleter = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
-        // Without the container's (a controller built by hand, as in unit tests): from the parts given here.
-        $hooks = $customizations !== null ? new \Preflow\Folio\Publishing\FolioSaveHooks($customizations) : new \Preflow\Publishing\NoSaveHooks();
-        $recordAddresses = $addresses !== null ? new \Preflow\Folio\Publishing\FolioRecordAddresses($addresses, null, null) : null;
-        $this->writer = $writer ?? new RecordWriter($dm, $publisher, new \Preflow\Folio\Publishing\FolioRecordChecks($validator ?? new RecordValidator($fieldTypes, $dm, $frontend)), $hooks, new \Preflow\Folio\Publishing\FolioRecordTypes($catalog), $review, $recordAddresses);
-        $this->deleter = $deleter ?? new RecordDeleter($dm, $publisher, $hooks, $review, $recordAddresses);
     }
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -537,12 +528,15 @@ final class AdminController
         }
         // The writer gives the new record its id and, in an orderable list, the last place.
         $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
-        $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: true), true, function (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload) use ($type, $record, $drawer, $csrf, $layout, $locale): ResponseInterface {
+        $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: true), true, function (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload) use ($type, $typeDef, $drawer, $csrf, $layout, $locale): ResponseInterface {
             if (!$saved) {
+                // Nothing stored: the form creates again (the writer assigns a fresh id and place then).
+                unset($values[$typeDef->idField], $values['_order']);
+
                 return $this->form($type, $values, $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]), $errors, $csrf, $status, $layout, $locale);
             }
-            // Once saved, the record exists: a re-rendered form must update it, not create another.
-            $base = $this->prefix . '/' . $type . '/' . $record->getId();
+            // The draft is stored: a re-rendered form must update it, not create another.
+            $base = $this->prefix . '/' . $type . '/' . $values[$typeDef->idField];
 
             return $this->form($type, $values, $base . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, $status, $layout, $locale, $base . '/edit',
                 notice: $notice,
@@ -710,17 +704,16 @@ final class AdminController
             return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
         }
 
+        if ($this->dm->findType($type, $id) === null) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
         $direction = (string) (((array) $request->getParsedBody())['direction'] ?? '');
-        try {
-            if ($direction === 'up' || $direction === 'down') {
+        if ($direction === 'up' || $direction === 'down') {
+            try {
                 $this->writer->reorder($type, $id, $direction);
-            } elseif ($this->dm->findType($type, $id) === null) {
-                return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            } catch (ValidationException $e) {
+                self::flash($request, 'error', self::errorText($e));
             }
-        } catch (\InvalidArgumentException) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found')); // no such record in the list
-        } catch (ValidationException $e) {
-            self::flash($request, 'error', self::errorText($e));
         }
 
         // Back to the page the move was made on.
@@ -1564,27 +1557,28 @@ final class AdminController
      * orderable list), an existing one saved; a record that leaves the site with it is flashed
      * (leftSite()). null when saved, else $again shows the form again: on a version conflict (409,
      * with the stored version, so saving again overwrites, deliberately; $reload offers the stored
-     * one), a refusal (422: a #[BeforeSave] hook, the rules, what the storage refuses) or a failed
-     * publish (422, with the "not published" notice). $saved says whether the record is stored by
-     * now (its working copy took a new version), so a new record's form updates it instead of
-     * creating another.
+     * one) or a refusal (422: a #[BeforeSave] hook, the rules, what the storage refuses), both with
+     * nothing stored; or, the draft stored (PublishFailed), a failed publish: 422 with the "not
+     * published" notice, 409 when a save landed in between. $saved says whether the record is
+     * stored by now, so a new record's form updates it instead of creating another.
      *
      * @param \Closure(array<string, mixed> $values, array<string, mixed> $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface $again
      */
     private function saveForm(ServerRequestInterface $request, DynamicRecord $record, SaveOptions $options, bool $new, \Closure $again): ?ResponseInterface
     {
-        $version = $record->get('_version');
         try {
             $outcome = $new ? $this->writer->create($record, $options) : $this->writer->save($record, $options);
+        } catch (PublishFailed $e) {
+            $cause = $e->cause();
+            if ($cause instanceof VersionConflict) {
+                return $again([...$e->outcome->record->toArray(), '_version' => $cause->current], [], 409, true, FolioText::get('folio.form.conflict'), true);
+            }
+
+            return $again($e->outcome->record->toArray(), $cause->errors(), 422, true, FolioText::get('folio.form.not_published'), false);
         } catch (VersionConflict $e) {
-            $values = $record->toArray();
-            $values['_version'] = $e->current;
-
-            return $again($values, [], 409, $record->get('_version') !== $version, FolioText::get('folio.form.conflict'), true);
+            return $again([...$record->toArray(), '_version' => $e->current], [], 409, false, FolioText::get('folio.form.conflict'), true);
         } catch (ValidationException $e) {
-            $saved = $record->get('_version') !== $version; // then only the publish failed
-
-            return $again($record->toArray(), $e->errors(), 422, $saved, $saved ? FolioText::get('folio.form.not_published') : null, false);
+            return $again($record->toArray(), $e->errors(), 422, false, null, false);
         }
         $this->leftSite($request, $outcome->addressesLeft ? [$outcome->record] : []);
 

@@ -47,7 +47,7 @@ final class WriterEntryPointsTest extends TestCase
         ]);
         $this->writeModel('memo', [
             'label' => 'Memos',
-            'fields' => ['text' => ['type' => 'string', 'translatable' => true], 'via' => ['type' => 'string']],
+            'fields' => ['text' => ['type' => 'string', 'translatable' => true], 'via' => ['type' => 'string'], 'code' => ['type' => 'string', 'validate' => ['required']]],
         ]);
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -110,6 +110,11 @@ final class WriterEntryPointsTest extends TestCase
         $this->assertSame(302, $this->send('POST', '/folio/story/s1/_translations/confirm', ['locale' => 'de', '_version' => $this->version('s1')])->getStatusCode());
         $this->assertSame('', $this->stored('story', 's1')?->get('_publish_at'), '"still correct" without the form');
 
+        $this->schedule('s1');
+        $res = $this->send('POST', '/folio/story/s1/_translations/confirm', ['_locale' => 'de', 'title' => 'Eins', 'mood' => 'busy', '_confirm_path' => 'title', '_version' => $this->version('s1'), '_publish_at' => self::LATER]);
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertSame('', $this->stored('story', 's1')?->get('_publish_at'), '"still correct" from the form');
+
         $publisher = $this->session->container()->get(Publisher::class);
         $publisher->publish($this->stored('story', 's1'), 'admin');
         $revision = $publisher->revisions('story', 's1')[0]->id;
@@ -140,7 +145,7 @@ final class WriterEntryPointsTest extends TestCase
         $this->as('admin');
         $this->seed('story', 's1', ['title' => ['en' => 'One'], 'mood' => 'calm', '_version' => 1, '_order' => 10]);
         $this->seed('story', 's2', ['title' => ['en' => 'Two'], 'mood' => 'calm', '_version' => 1, '_order' => 20]);
-        $this->seed('memo', 'm1', ['text' => ['en' => 'Hello'], 'via' => 'seed']);
+        $this->seed('memo', 'm1', ['text' => ['en' => 'Hello'], 'via' => 'seed', 'code' => 'm']);
         $before = $this->stored('story', 's1')?->toArray();
         \App\Folio\Shop\Log::$refuse = true;
 
@@ -152,7 +157,9 @@ final class WriterEntryPointsTest extends TestCase
         $this->assertSame(422, $new->getStatusCode());
         $this->assertStringContainsString('action="/folio/story"', (string) $new->getBody(), 'nothing stored: the form still creates');
 
-        $this->send('POST', '/folio/story/s1/autosave', ['_locale' => 'en', 'title' => 'Autosaved', '_version' => '1']);
+        $autosave = $this->send('POST', '/folio/story/s1/autosave', ['_locale' => 'en', 'title' => 'Autosaved', '_version' => '1']);
+        $this->assertSame(200, $autosave->getStatusCode());
+        $this->assertStringContainsString('Refused by the hook.', (string) $autosave->getBody(), 'the header says why it was not saved');
 
         $this->assertSame(302, $this->send('POST', '/folio/story/_bulk/set-mood', ['ids' => ['s1'], 'value' => 'busy'])->getStatusCode());
         $this->assertStringContainsString('Refused by the hook.', $this->text($this->send('GET', '/folio/story')));
@@ -161,8 +168,12 @@ final class WriterEntryPointsTest extends TestCase
         $this->assertSame(302, $move->getStatusCode());
         $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert">Refused by the hook.</div>', $this->text($this->send('GET', '/folio/story')));
         $this->assertSame(20, (int) $this->stored('story', 's2')?->get('_order'));
+        $this->assertSame(10, (int) $this->stored('story', 's1')?->get('_order'));
 
         $this->assertSame(422, $this->send('POST', '/folio/story/s1/_translations/confirm', ['locale' => 'de', '_version' => '1'])->getStatusCode());
+        $confirmForm = $this->send('POST', '/folio/story/s1/_translations/confirm', ['_locale' => 'de', 'title' => 'Eins', 'mood' => 'calm', '_confirm_path' => 'title', '_version' => '1']);
+        $this->assertSame(422, $confirmForm->getStatusCode());
+        $this->assertStringContainsString('Refused by the hook.', (string) $confirmForm->getBody());
 
         $this->assertSame(WriteOutcomeStatus::Skipped, $this->source('story')->write('s1', 'de', ['title' => 'Eins'])->status);
         $this->assertSame(WriteOutcomeStatus::Skipped, $this->source('memo')->write('m1', 'de', ['text' => 'Hallo'])->status);
@@ -179,18 +190,46 @@ final class WriterEntryPointsTest extends TestCase
     public function test_a_failed_publish_keeps_the_draft_and_runs_after_save(): void
     {
         $this->as('admin');
+        $this->seed('story', 's0', ['title' => ['en' => 'Zero'], 'mood' => 'calm', '_version' => 1, '_order' => 30]);
 
         $res = $this->send('POST', '/folio/story', ['_locale' => 'en', 'title' => '', 'mood' => 'calm', '_action' => 'publish']);
 
         $this->assertSame(422, $res->getStatusCode());
-        $stories = array_values($this->session->container()->get(DataManager::class)->queryType('story')->get()->items());
+        $stories = array_values(array_filter(
+            $this->session->container()->get(DataManager::class)->queryType('story')->get()->items(),
+            static fn (DynamicRecord $r): bool => $r->getId() !== 's0',
+        ));
         $this->assertCount(1, $stories, 'the draft is saved');
         $id = (string) $stories[0]->getId();
         $this->assertStringContainsString('Saved as draft — not published.', (string) $res->getBody());
         $this->assertStringContainsString('action="/folio/story/' . $id . '"', (string) $res->getBody(), 'saving again updates the draft');
         $this->assertNull($this->session->container()->get(Publisher::class)->snapshot('story', $id));
         $this->assertSame(['before:' . $id, 'after:' . $id], \App\Folio\Shop\Log::$entries);
-        $this->assertSame(10, (int) $stories[0]->get('_order'), 'placed last by the writer');
+        $this->assertSame(40, (int) $stories[0]->get('_order'), 'placed last by the writer');
+
+        // The same on an update: the draft is stored (a new version), the publish refused.
+        \App\Folio\Shop\Log::$entries = [];
+        $update = $this->send('POST', '/folio/story/s0', ['_locale' => 'en', 'title' => '', 'mood' => 'busy', '_version' => '1', '_action' => 'publish']);
+        $this->assertSame(422, $update->getStatusCode());
+        $this->assertStringContainsString('Saved as draft — not published.', (string) $update->getBody());
+        $this->assertSame(2, (int) $this->stored('story', 's0')?->get('_version'));
+        $this->assertSame('busy', $this->stored('story', 's0')?->get('mood'));
+        $this->assertNull($this->session->container()->get(Publisher::class)->snapshot('story', 's0'));
+        $this->assertSame(['before:s0', 'after:s0'], \App\Folio\Shop\Log::$entries);
+    }
+
+    /** An AI write on a type without publishing is checked first: a record the rules refuse is skipped, not stored. */
+    #[RunInSeparateProcess]
+    public function test_an_ai_write_the_rules_refuse_is_skipped(): void
+    {
+        $this->as('admin');
+        $this->seed('memo', 'm2', ['text' => ['en' => 'Hello'], 'via' => 'seed']); // no code: required
+
+        $outcome = $this->source('memo')->write('m2', 'de', ['text' => 'Hallo']);
+
+        $this->assertSame(WriteOutcomeStatus::Skipped, $outcome->status);
+        $this->assertSame(['en' => 'Hello'], $this->stored('memo', 'm2')?->get('text'));
+        $this->assertSame(['before:m2'], \App\Folio\Shop\Log::$entries, 'no #[SaveRecord], no #[AfterSave]');
     }
 
     /** Review Focus 3: AI translation of a type that saves itself goes through its #[SaveRecord]. */
@@ -198,7 +237,7 @@ final class WriterEntryPointsTest extends TestCase
     public function test_ai_translation_uses_the_types_save_record(): void
     {
         $this->as('admin');
-        $this->seed('memo', 'm1', ['text' => ['en' => 'Hello'], 'via' => 'seed']);
+        $this->seed('memo', 'm1', ['text' => ['en' => 'Hello'], 'via' => 'seed', 'code' => 'm']);
 
         $outcome = $this->source('memo')->write('m1', 'de', ['text' => 'Hallo']);
 

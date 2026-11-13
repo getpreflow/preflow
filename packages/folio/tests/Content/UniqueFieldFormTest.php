@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use Preflow\Folio\Tests\Support\RecordWriters;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Container\Container;
@@ -198,13 +199,14 @@ final class UniqueFieldFormTest extends TestCase
             public function addNamespace(string $n, string $p): void {}
         };
         $validator = new RecordValidator($fields, $this->dm);
+        $publisher = new Publisher($this->dm, $this->catalog, $validator);
 
         return new AdminController(
             $this->catalog, $this->registry, $this->dm, $engine,
             new ActionResolver(new Container(), 'Preflow\\Folio\\Tests\\Overrides\\'),
             $fields, '/folio', new RecordLabeler(), new FrontendResolver($this->dm, 'page'),
-            validator: $validator,
-            publisher: new Publisher($this->dm, $this->catalog, $validator),
+            ...RecordWriters::for($this->dm, $this->catalog, $fields, new FrontendResolver($this->dm, 'page'), $publisher, $validator),
+            publisher: $publisher,
         );
     }
 }

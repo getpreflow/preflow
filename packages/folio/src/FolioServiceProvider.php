@@ -692,8 +692,9 @@ final class FolioServiceProvider extends ServiceProvider
             $prefix,
             new RecordLabeler(),
             $c->get(FrontendResolver::class),
+            $c->get(\Preflow\Publishing\RecordWriter::class),
+            $c->get(\Preflow\Publishing\RecordDeleter::class),
             $c->get(DraftRecordFactory::class),
-            $c->get(\Preflow\Folio\Content\RecordValidator::class),
             $c->get(\Preflow\Publishing\Publisher::class),
             $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Auth\Access\Access::class),
@@ -703,7 +704,6 @@ final class FolioServiceProvider extends ServiceProvider
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             translator: $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
-            review: $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
             jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
@@ -714,8 +714,6 @@ final class FolioServiceProvider extends ServiceProvider
                 new \Preflow\Folio\Redirects\VisibleAddress(($locales ?? \Preflow\Data\Locales::single('en'))->default, self::prefixedUrls($app)),
                 $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
             ) : null,
-            writer: $c->get(\Preflow\Publishing\RecordWriter::class),
-            deleter: $c->get(\Preflow\Publishing\RecordDeleter::class),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -1414,6 +1412,7 @@ final class FolioServiceProvider extends ServiceProvider
                     $container->get(\Preflow\Publishing\Publisher::class),
                     $container->get(\Preflow\Publishing\PublishedCopies::class),
                     $container->get(\Preflow\Publishing\RecordWriter::class),
+                    self::logger($container),
                 ))($payload);
             });
         }
@@ -1915,6 +1914,20 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Publishing\RecordAddresses::class),
             );
         });
+    }
+
+    /**
+     * The site's PSR logger as a warning sink, where one is bound; null leaves the caller to error_log().
+     *
+     * @return \Closure(string): void|null
+     */
+    private static function logger(Container $c): ?\Closure
+    {
+        $logger = 'Psr\Log\LoggerInterface';
+
+        return interface_exists($logger) && $c->bound($logger)
+            ? static fn (string $message) => $c->get($logger)->warning($message)
+            : null;
     }
 
     /** A deprecation note: in the debug toolbar (DebugCollector) and the site's log (its PSR logger), where bound. */

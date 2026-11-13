@@ -17,12 +17,14 @@ use Preflow\Validation\ValidationException;
  * 2. a type that publishes: the schedule rule (a save by someone who may not publish cancels a
  *    pending _publish_at, else SaveOptions::$publishAt applies), the working copy
  *    (Publisher::saveDraft(), no rules), then Publisher::publish() when asked. SaveHooks::after()
- *    runs once the working copy is stored, also when the publish fails (its exception is rethrown);
+ *    runs once the working copy is stored, also when the publish fails (then PublishFailed is
+ *    thrown, with the stored draft);
  * 3. any other type: RecordChecks::validate(), the type's own save (SaveHooks::replacesSave()) or
  *    the storage's, RecordIndex::refresh(), RecordAddresses::sync() (did an address leave the
  *    site?), SaveHooks::after().
  *
- * A failed write (ValidationException, VersionConflict) propagates to the caller, who shows it.
+ * A failed write (ValidationException, VersionConflict: nothing stored; PublishFailed: the draft
+ * stored, its publish refused) propagates to the caller, who shows it.
  *
  * Whether a type publishes, the Publisher decides; without one, none does.
  */
@@ -77,14 +79,16 @@ final class RecordWriter
     /**
      * Saves the record, new or changed, in the order the class describes.
      *
-     * @throws ValidationException from SaveHooks::before() (nothing stored), a draft the storage
-     *                             refuses (nothing stored), the checks of a type that does not
-     *                             publish (nothing stored), or a failed publish (the draft is stored)
-     * @throws VersionConflict
+     * @throws ValidationException from SaveHooks::before(), a draft the storage refuses, or the
+     *                             checks of a type that does not publish: nothing stored (one
+     *                             from SaveHooks::after() comes after the store)
+     * @throws VersionConflict     the draft's $loadedVersion is stale: nothing stored
+     * @throws PublishFailed       the draft is stored and SaveHooks::after() has run, but the
+     *                             publish failed: its checks refused (a ValidationException) or a
+     *                             save landed after the draft (a VersionConflict), in getPrevious()
      *
-     * When the publish fails and SaveHooks::after() then throws too, the publish's exception is
-     * thrown and the hook's is dropped: an exception already thrown cannot take another as its
-     * previous one, and the publish failure is what the caller must show.
+     * When the publish fails and SaveHooks::after() then throws too, PublishFailed is thrown and
+     * the hook's exception is dropped: the publish failure is what the caller must show.
      */
     public function save(DynamicRecord $record, SaveOptions $options = new SaveOptions()): SaveOutcome
     {
@@ -106,7 +110,9 @@ final class RecordWriter
                     } catch (\Throwable) {
                         // The publish failure wins (see above).
                     }
-                    throw $e;
+                    throw $e instanceof ValidationException || $e instanceof VersionConflict
+                        ? new PublishFailed(new SaveOutcome($record, false), $e)
+                        : $e;
                 }
             }
             $this->hooks->after($record);
