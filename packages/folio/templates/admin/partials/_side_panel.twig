@@ -149,7 +149,7 @@
             <button type="submit" class="btn btn-secondary">{% if record_action.icon %}<svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ record_action.icon }}"></use></svg>{% endif %}{{ record_action.label }}</button>
         </form>{% endfor %}
         {% if publishing and publishing.discard_url %}
-            <form method="post" action="{{ publishing.discard_url }}" data-confirm="{{ t('folio.publishing.confirm_discard') }}">
+            <form method="post" action="{{ publishing.discard_url }}" data-confirm="{{ t('folio.publishing.confirm_discard') }}" data-confirm-tone="danger">
                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                 <button type="submit" class="btn btn-ghost">{{ t('folio.publishing.discard') }}</button>
             </form>

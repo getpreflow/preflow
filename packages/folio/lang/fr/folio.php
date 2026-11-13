@@ -924,6 +924,18 @@ return [
         'shortcut_save' => 'Enregistrer le brouillon',
         'shortcut_publish' => 'Publier',
         'shortcut_close_side' => 'Fermer le panneau latéral',
+        // The styled dialog (folioConfirm / folioAlert) and the unsaved-changes guard.
+        'cancel' => 'Annuler',
+        'confirm' => 'Confirmer',
+        'ok' => 'OK',
+        'delete' => 'Supprimer',
+        'delete_blocked' => 'Encore utilisé',
+        'leave_title' => 'Quitter sans enregistrer ?',
+        'leave_message' => 'Vos modifications sur cette page ne sont pas encore enregistrées.',
+        'leave_confirm' => 'Quitter sans enregistrer',
+        'leave_stay' => 'Rester',
+        'save_and_leave' => 'Enregistrer et quitter',
+        'leave_failed_title' => 'Vos modifications ne sont pas enregistrées',
     ],
     'format' => [
         'noun_case' => 'lower',

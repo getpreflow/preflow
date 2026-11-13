@@ -808,39 +808,241 @@
         }
     }
 
-    // Confirmation for destructive forms: <form data-confirm="…"> (replaces inline
-    // onsubmit handlers, which the strict CSP blocks). In a form with several buttons
-    // (the list's bulk bar) the clicked button may carry its own data-confirm / data-delete-plan.
+    // ---- Dialogs: window.folioConfirm and window.folioAlert ---------------------------------
+    // One native <dialog> for every question Folio asks (partials/_dialog.twig, rendered once by the
+    // layouts; built here when a layout has none): a title, a message, an optional list (the delete
+    // plan's lines), Cancel and the confirm button (.btn-danger for tone 'danger', else .btn-primary),
+    // and an optional third button. For extensions too:
+    //   folioConfirm({title, message, items, confirm, cancel, tone, extra, icon}) → Promise<'confirm'|'cancel'|'extra'>
+    //   folioAlert({title, message, items, icon}) → Promise<void> (one OK button)
+    // icon: an id from icons.svg for the tile (default ui-info, ui-warn for danger).
+    // Escape and a click on the backdrop cancel. A danger dialog starts on Cancel, any other on its
+    // confirm button; closing returns the focus to where it was (a closed menu's toggle when the
+    // opener sat in that menu). A second ask while one is open cancels the first.
+    var dialogState = null; // { dialog, resolve, opener } while a dialog is open
+
+    function dialogPart(dialog, name) {
+        return dialog.querySelector('[data-folio-dialog-' + name + ']');
+    }
+
+    function buildDialog() {
+        var make = function (parent, tag, className, attr) {
+            var node = document.createElement(tag);
+            if (className) { node.className = className; }
+            if (attr) { node.setAttribute(attr, ''); }
+            parent.appendChild(node);
+            return node;
+        };
+        var dialog = make(document.body, 'dialog', 'folio-dialog', 'data-folio-dialog');
+        dialog.id = 'folio-dialog';
+        var panel = make(dialog, 'div', 'folio-dialog-panel');
+        var tile = make(panel, 'span', 'folio-dialog-icon', 'data-folio-dialog-icon');
+        tile.setAttribute('aria-hidden', 'true');
+        tile.appendChild(icon('ui-info'));
+        make(panel, 'h2', 'folio-dialog-title', 'data-folio-dialog-title').id = 'folio-dialog-title';
+        make(panel, 'p', 'folio-dialog-message', 'data-folio-dialog-message').id = 'folio-dialog-message';
+        make(panel, 'ul', 'folio-dialog-items', 'data-folio-dialog-items').id = 'folio-dialog-items';
+        var actions = make(panel, 'div', 'folio-dialog-actions');
+        [['cancel', 'btn btn-secondary', folioT('cancel')], ['extra', 'btn btn-secondary', ''], ['confirm', 'btn btn-primary', folioT('confirm')]].forEach(function (b) {
+            var button = make(actions, 'button', b[1], 'data-folio-dialog-' + b[0]);
+            button.type = 'button';
+            button.textContent = b[2];
+        });
+        return dialog;
+    }
+
+    function dialogEl() {
+        var dialog = document.querySelector('dialog[data-folio-dialog]') || buildDialog();
+        if (dialog._folioReady) { return dialog; }
+        dialog._folioReady = true;
+        // The labels the layout rendered (the interface language) are the defaults.
+        ['cancel', 'confirm'].forEach(function (name) {
+            var b = dialogPart(dialog, name);
+            if (b) { b._folioDefault = b.textContent || folioT(name); }
+        });
+        dialog.addEventListener('click', function (e) {
+            var t = e.target;
+            if (t === dialog) { finishDialog('cancel'); return; } // the backdrop: the panel fills the dialog
+            var b = t && t.closest ? t.closest('[data-folio-dialog-cancel], [data-folio-dialog-confirm], [data-folio-dialog-extra]') : null;
+            if (!b) { return; }
+            finishDialog(b.hasAttribute('data-folio-dialog-confirm') ? 'confirm' : b.hasAttribute('data-folio-dialog-extra') ? 'extra' : 'cancel');
+        });
+        dialog.addEventListener('cancel', function (e) { e.preventDefault(); finishDialog('cancel'); }); // Escape
+        dialog.addEventListener('close', function () { if (dialogState && dialogState.dialog === dialog) { finishDialog('cancel'); } });
+        return dialog;
+    }
+
+    function finishDialog(answer) {
+        var state = dialogState;
+        if (!state) { return; }
+        dialogState = null;
+        var dialog = state.dialog;
+        if (dialog.open && typeof dialog.close === 'function') { dialog.close(); }
+        dialog.removeAttribute('open');
+        var back = state.opener;
+        var menu = back && back.closest ? back.closest('details') : null;
+        if (menu && !menu.open && menu.querySelector('summary')) { back = menu.querySelector('summary'); }
+        if (back && back !== document.body && typeof back.focus === 'function' && back.isConnected !== false) { back.focus(); }
+        state.resolve(answer);
+    }
+
+    function openDialog(options, alertOnly) {
+        var o = options || {};
+        if (dialogState) { finishDialog('cancel'); }
+        var dialog = dialogEl();
+        var title = String(o.title || '');
+        var message = String(o.message || '');
+        if (title === '') { title = message; message = ''; }
+        var items = Array.isArray(o.items) ? o.items.map(String).filter(function (s) { return s !== ''; }) : [];
+        var danger = !alertOnly && o.tone === 'danger';
+
+        var titleEl = dialogPart(dialog, 'title');
+        var messageEl = dialogPart(dialog, 'message');
+        var list = dialogPart(dialog, 'items');
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+        messageEl.hidden = message === '';
+        list.innerHTML = '';
+        items.forEach(function (text) {
+            var li = document.createElement('li');
+            li.textContent = text;
+            list.appendChild(li);
+        });
+        list.hidden = items.length === 0;
+        dialog.setAttribute('aria-labelledby', titleEl.id);
+        var described = message !== '' ? messageEl.id : (items.length ? list.id : '');
+        if (described) { dialog.setAttribute('aria-describedby', described); } else { dialog.removeAttribute('aria-describedby'); }
+
+        var cancel = dialogPart(dialog, 'cancel');
+        var extra = dialogPart(dialog, 'extra');
+        var ok = dialogPart(dialog, 'confirm');
+        cancel.hidden = !!alertOnly;
+        cancel.textContent = o.cancel || cancel._folioDefault;
+        extra.hidden = alertOnly || !o.extra;
+        extra.textContent = o.extra && !alertOnly ? String(o.extra) : '';
+        // The third button is the safe way on (Save and leave): primary beside a danger confirm.
+        extra.className = 'btn ' + (danger ? 'btn-primary' : 'btn-secondary');
+        ok.textContent = alertOnly ? (dialog.getAttribute('data-text-ok') || folioT('ok')) : (o.confirm || dialog.getAttribute('data-text-confirm') || ok._folioDefault);
+        ok.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+        var use = dialog.querySelector('[data-folio-dialog-icon] use');
+        var glyph = typeof o.icon === 'string' && /^[a-z0-9-]+$/.test(o.icon) ? o.icon : (danger ? 'ui-warn' : 'ui-info');
+        if (use) { use.setAttribute('href', String(use.getAttribute('href') || '').split('#')[0] + '#' + glyph); }
+        dialog.classList.toggle('is-danger', danger);
+        dialog.classList.toggle('is-alert', !!alertOnly);
+        dialog.classList.toggle('has-extra', !extra.hidden);
+
+        return new Promise(function (resolve) {
+            dialogState = { dialog: dialog, resolve: resolve, opener: document.activeElement };
+            if (!dialog.open && typeof dialog.showModal === 'function') { dialog.showModal(); }
+            dialog.setAttribute('open', ''); // showModal() sets it too; without it the dialog shows in place
+            (danger ? cancel : ok).focus();
+        });
+    }
+
+    function folioConfirm(options) { return openDialog(options, false); }
+    function folioAlert(options) { return openDialog(options, true).then(function () {}); }
+    window.folioConfirm = folioConfirm;
+    window.folioAlert = folioAlert;
+
+    // ---- Confirmations: data-confirm, the delete plan, hx-confirm -------------------------------
+    // <form data-confirm="…"> (inline onsubmit handlers are blocked by the strict CSP): the submit is
+    // held and asked through the dialog; on confirm the same submitter is sent again with
+    // form.requestSubmit(submitter), so its name and value (_action), its busy state and the form's CSRF
+    // token go along as on the first click. Without script the form simply submits. In a form with
+    // several buttons (the list's bulk bar) the clicked button may carry its own data-confirm or
+    // data-delete-plan. The confirm button says what the submitter says ("Delete", "Restore"), or
+    // data-confirm-label; data-confirm-tone="danger" (or a danger submitter: .btn-danger, .is-danger,
+    // data-tone="danger") makes it a danger dialog.
     function confirmSource(e) {
         var s = e.submitter;
         if (s && s.hasAttribute && (s.hasAttribute('data-confirm') || s.hasAttribute('data-delete-plan'))) { return s; }
         return e.target;
     }
 
+    function confirmLabel(src, submitter) {
+        var own = src && src.getAttribute ? src.getAttribute('data-confirm-label') : null;
+        if (own) { return own; }
+        var b = submitter || (src && src.tagName === 'BUTTON' ? src : null);
+        if (!b || !b.getAttribute) { return ''; }
+        var text = b.getAttribute('aria-label') || (b.tagName === 'INPUT' ? b.value : b.textContent) || '';
+        return String(text).replace(/\s+/g, ' ').trim().replace(/(…|\.\.\.)$/, '');
+    }
+
+    function confirmTone(src, submitter) {
+        var own = src && src.getAttribute ? src.getAttribute('data-confirm-tone') : null;
+        if (own) { return own; }
+        var b = submitter || src;
+        var danger = !!(b && b.classList && (b.classList.contains('btn-danger') || b.classList.contains('is-danger') || (b.getAttribute && b.getAttribute('data-tone') === 'danger')));
+        return danger ? 'danger' : 'default';
+    }
+
+    /**
+     * Sends a held form again with its submitter: every submit handler runs once more (busy state,
+     * the unsaved-changes guard), the confirmation ones let it through. Browsers without
+     * requestSubmit() post the form directly (with the button's formaction).
+     */
+    function resubmit(form, submitter) {
+        form._folioConfirmed = true;
+        try {
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit(submitter && formOf(submitter) === form ? submitter : undefined);
+            } else {
+                if (submitter && submitter.getAttribute('formaction')) { form.setAttribute('action', submitter.getAttribute('formaction')); }
+                allowLeave();
+                HTMLFormElement.prototype.submit.call(form);
+            }
+        } finally {
+            form._folioConfirmed = false;
+        }
+    }
+
     function onSubmitConfirm(e) {
         var f = e.target;
-        if (!f || !f.hasAttribute) { return; }
+        // htmx forms prevent their own submit and ask through htmx:confirm (onHtmxConfirm).
+        if (!f || !f.hasAttribute || e.defaultPrevented || f._folioConfirmed) { return; }
         var src = confirmSource(e);
         if (src.hasAttribute('data-delete-plan')) { return; } // onDeletePlanSubmit asks
         if (removalAddresses(src) > 0) { return; } // onRemovalSubmit asks
-        if (src.hasAttribute('data-confirm') && !window.confirm(src.getAttribute('data-confirm'))) {
+        if (!src.hasAttribute('data-confirm')) { return; }
+        e.preventDefault();
+        var submitter = e.submitter || null;
+        folioConfirm({ title: src.getAttribute('data-confirm'), confirm: confirmLabel(src, submitter), tone: confirmTone(src, submitter) })
+            .then(function (answer) { if (answer === 'confirm') { resubmit(f, submitter); } });
+    }
+
+    // htmx asks hx-confirm (and data-confirm on an htmx element) through htmx:confirm: held, asked
+    // through the dialog, then issueRequest(true) sends it without htmx's own window.confirm.
+    // A boosted link or form (hx-boost) is a navigation: the unsaved-changes guard comes first.
+    function onHtmxConfirm(e) {
+        var d = e.detail || {};
+        var elt = d.elt;
+        if (typeof d.issueRequest !== 'function' || !elt || !elt.getAttribute) { return; }
+        var question = d.question || elt.getAttribute('data-confirm');
+        if (question) {
+            e.preventDefault();
+            folioConfirm({ title: question, confirm: confirmLabel(elt, null), tone: confirmTone(elt, null) })
+                .then(function (answer) { if (answer === 'confirm') { d.issueRequest(true); } });
+            return;
+        }
+        var boosted = elt.closest ? elt.closest('[hx-boost]') : null;
+        if (boosted && boosted.getAttribute('hx-boost') === 'true' && holdLeave(function () { d.issueRequest(true); }, { href: null })) {
             e.preventDefault();
         }
     }
 
-    // Delete forms with data-delete-plan="{url}" data-delete-id="{id}": fetch what the
-    // delete would also do ("Also deletes 12 jobs.") and confirm that; a restricted plan
-    // only shows why. The server plans again when the form is submitted. If the summary
-    // can't be fetched, the form's generic data-confirm text is asked instead.
-    // The bulk bar's Delete button carries data-delete-plan itself: the plan is asked for
-    // the ticked ids[], and the button is submitted again once confirmed.
+    // Delete forms with data-delete-plan="{url}" data-delete-id="{id}": fetch what the delete would
+    // also do ("Also deletes 12 jobs.") and ask that, the plan's lines as the dialog's list; a
+    // restricted plan only tells why not (with what still points here). The server plans again when
+    // the form is submitted. If the plan can't be fetched, the form's own data-confirm is asked.
+    // The bulk bar's Delete button carries data-delete-plan itself: the plan is asked for the ticked
+    // ids[], and the button is submitted again once confirmed.
     function onDeletePlanSubmit(e) {
         var f = e.target;
-        if (!f || !f.hasAttribute) { return; }
-        if (f.hasAttribute('data-delete-confirmed')) { f.removeAttribute('data-delete-confirmed'); return; }
+        if (!f || !f.hasAttribute || e.defaultPrevented || f._folioConfirmed) { return; }
         var src = confirmSource(e);
         if (!src.hasAttribute('data-delete-plan')) { return; }
         e.preventDefault();
+        var submitter = e.submitter || (src !== f ? src : null);
         var ids = src === f
             ? [f.getAttribute('data-delete-id') || '']
             : Array.prototype.filter.call(f.elements, function (el) { return el.name === 'ids[]' && el.checked; })
@@ -851,16 +1053,29 @@
         var token = f.querySelector('input[name="_csrf_token"]');
         if (token) { body.append('_csrf_token', token.value); }
         ids.forEach(function (id) { body.append('ids[]', id); });
-        var send = function () {
-            if (src === f) {
-                HTMLFormElement.prototype.submit.call(f);
-            } else if (f.requestSubmit) {
-                f.setAttribute('data-delete-confirmed', '1');
-                f.requestSubmit(src);
+        var send = function () { resubmit(f, submitter); };
+        var question = src.getAttribute('data-confirm') || folioT('confirm_delete');
+        var label = src.getAttribute('data-confirm-label') || folioT('delete');
+        var showPlan = function (plan) {
+            if (plan.restricted) {
+                // What still points here, as a list once it is more than one type (one is said in the sentence).
+                var usedBy = Array.isArray(plan.used_by) && plan.used_by.length > 1 ? plan.used_by : [];
+                folioAlert({ title: folioT('delete_blocked'), message: plan.confirm, items: usedBy });
+            } else if ((parseInt(plan.addresses, 10) || 0) > 0) {
+                // The records have public addresses: ask where their old links go as well.
+                removalPrompt(plan.confirm.split('\n'), folioT('redirects.prompt.delete'), function (target) {
+                    setRemovalTarget(f, target);
+                    send();
+                });
             } else {
-                f.setAttribute('action', src.getAttribute('formaction') || f.getAttribute('action') || '');
-                HTMLFormElement.prototype.submit.call(f);
+                var lines = Array.isArray(plan.lines) ? plan.lines : [];
+                folioConfirm({ title: question, message: plan.confirm.split('\n')[0], items: lines, confirm: label, tone: 'danger', icon: 'ui-trash' })
+                    .then(function (answer) { if (answer === 'confirm') { send(); } });
             }
+        };
+        var askPlain = function () {
+            folioConfirm({ title: question, confirm: label, tone: 'danger', icon: 'ui-trash' })
+                .then(function (answer) { if (answer === 'confirm') { send(); } });
         };
         fetch(src.getAttribute('data-delete-plan'), {
             method: 'POST',
@@ -871,21 +1086,9 @@
             .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('plan ' + r.status)); })
             .then(function (plan) {
                 if (!plan || typeof plan.confirm !== 'string') { throw new Error('plan shape'); }
-                if (plan.restricted) {
-                    window.alert(plan.confirm);
-                } else if ((parseInt(plan.addresses, 10) || 0) > 0) {
-                    // The records have public addresses: ask where their old links go as well.
-                    removalPrompt(plan.confirm.split('\n'), folioT('redirects.prompt.delete'), function (target) {
-                        setRemovalTarget(f, target);
-                        send();
-                    });
-                } else if (window.confirm(plan.confirm)) {
-                    send();
-                }
+                return plan;
             })
-            .catch(function () {
-                if (window.confirm(src.getAttribute('data-confirm') || folioT('confirm_delete'))) { send(); }
-            })
+            .then(showPlan, askPlain)
             .then(function () { f.removeAttribute('data-delete-busy'); });
     }
 
@@ -913,11 +1116,12 @@
 
     function onRemovalSubmit(e) {
         var f = e.target;
-        if (!f || !f.hasAttribute || f.hasAttribute('data-delete-plan') || removalAddresses(f) <= 0) { return; }
+        if (!f || !f.hasAttribute || e.defaultPrevented || f._folioConfirmed || f.hasAttribute('data-delete-plan') || removalAddresses(f) <= 0) { return; }
         e.preventDefault();
+        var submitter = e.submitter || null;
         removalPrompt([f.getAttribute('data-confirm') || ''], folioT('redirects.prompt.unpublish'), function (target) {
             setRemovalTarget(f, target);
-            HTMLFormElement.prototype.submit.call(f);
+            resubmit(f, submitter);
         });
     }
 
@@ -1404,6 +1608,7 @@
     }
 
     function onGuardBeforeUnload(e) {
+        if (leaveOnce) { leaveOnce = false; return; } // the dialog let this leave go
         if (unsaved.dirty.length === 0) { return; }
         for (var i = 0; i < unsaved.leaveChecks.length; i++) {
             if (unsaved.leaveChecks[i](e) === true) { return; }
@@ -1433,15 +1638,264 @@
         onLeave: function (fn) { if (typeof fn === 'function') { unsaved.leaveChecks.push(fn); } }
     };
 
+    // ---- Leaving with unsaved changes: the styled dialog -------------------------------------------
+    // In-admin navigation (a same-origin link: the sidebar, the rail, breadcrumbs, a row menu, a link a
+    // shortcut clicks; a plain form that leaves, such as Log out; Folio.navigate(href)) while a guarded
+    // form holds unsaved changes asks through the dialog: "Leave without saving" (danger), "Stay", and
+    // for a link "Save and leave" where the form has a Save submitter ([data-folio-save]): the form is
+    // saved with _folio_next=<the link's path>, and the server goes there once the save succeeds (a
+    // refused save shows the form with its errors instead). An autosaving form (the record editor) is
+    // not asked about: its pending edits are saved now (no 3 s wait) and the page leaves once they
+    // are; only a save that fails (refused, offline, a conflict) asks, with the reason. Not guarded:
+    // ⌘/Ctrl/Shift/Alt or middle clicks, target="_blank", download, #hash links on the same page, other
+    // origins, and links htmx handles (they keep the form). The browser's own beforeunload question
+    // stays for closing the tab, reloading, a typed address and back/forward (no page can style those);
+    // a leave the dialog allowed (or a confirmed data-confirm submit) suppresses it once.
+    var FLUSH_MAX_MS = 20000;
+    var leaveOnce = false;
+    var leaveOnceTimer = null;
+    var flushing = false;
+
+    function allowLeave() {
+        leaveOnce = true;
+        clearTimeout(leaveOnceTimer);
+        // A navigation that never unloads (a download, a 204) must not switch the guard off for good.
+        leaveOnceTimer = setTimeout(function () { leaveOnce = false; }, 5000);
+    }
+
+    /** The path a click on a link leaves for, or null when the click does not leave this page. */
+    function leavingLink(e) {
+        if (e.defaultPrevented || (typeof e.button === 'number' && e.button !== 0) || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return null; }
+        var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!a) { return null; }
+        var target = String(a.getAttribute('target') || '').toLowerCase();
+        if ((target !== '' && target !== '_self') || a.hasAttribute('download')) { return null; }
+        var url, here;
+        try {
+            url = new URL(a.getAttribute('href'), window.location.href);
+            here = new URL(window.location.href);
+        } catch (err) {
+            return null;
+        }
+        if (url.origin !== here.origin || !/^https?:$/.test(url.protocol)) { return null; }
+        if (url.hash !== '' && url.pathname === here.pathname && url.search === here.search) { return null; }
+        return url.pathname + url.search + url.hash;
+    }
+
+    /** The autosaving form whose state is the topbar's save state (the record editor), if any. */
+    function autosaveForm() {
+        var stateEl = document.getElementById('folio-save-state');
+        if (!stateEl) { return null; }
+        var forms = document.querySelectorAll('form[hx-post]');
+        for (var i = 0; i < forms.length; i++) {
+            if (saveStateOf(forms[i]) === stateEl) { return forms[i]; }
+        }
+        return null;
+    }
+
+    function saveStateText(stateEl) {
+        if (!stateEl) { return ''; }
+        var label = stateEl.querySelector('[data-folio-save-text]');
+        return String((label || stateEl).textContent || '').trim();
+    }
+
+    /** The enabled Save button ([data-folio-save]) that submits form, or null. */
+    function saveButtonOf(form) {
+        var buttons = document.querySelectorAll('[data-folio-save]');
+        for (var i = 0; i < buttons.length; i++) {
+            if (formOf(buttons[i]) === form && !buttons[i].disabled) { return buttons[i]; }
+        }
+        return null;
+    }
+
+    function setLeaveTo(form, href) {
+        form.querySelectorAll('input[name="_folio_next"]').forEach(function (el) { el.remove(); });
+        if (href === null) { return null; }
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = '_folio_next';
+        input.value = href;
+        form.appendChild(input);
+        return input;
+    }
+
+    // Save, then leave for href: the save posts _folio_next. A save the browser does not send (a
+    // required field left empty) leaves nothing behind: no _folio_next, and the guard is on again.
+    function saveAndLeave(form, save, href) {
+        setLeaveTo(form, href.split('#')[0]); // the server takes a path and query (SafeReturnPath)
+        allowLeave();
+        var sent = false;
+        var mark = function (e) { if (e.target === form && !e.defaultPrevented) { sent = true; } };
+        window.addEventListener('submit', mark);
+        try { submitWith(save); } finally { window.removeEventListener('submit', mark); }
+        if (!sent) {
+            setLeaveTo(form, null);
+            leaveOnce = false;
+        }
+    }
+
+    function askLeave(form, go, href) {
+        var save = href !== null ? saveButtonOf(form) : null;
+        folioConfirm({
+            title: folioT('leave_title'),
+            message: folioT('leave_message'),
+            confirm: folioT('leave_confirm'),
+            cancel: folioT('leave_stay'),
+            tone: 'danger',
+            extra: save ? folioT('save_and_leave') : null
+        }).then(function (answer) {
+            if (answer === 'confirm') {
+                allowLeave();
+                go();
+            } else if (answer === 'extra') {
+                saveAndLeave(form, save, href);
+            }
+        });
+    }
+
+    // The autosaving form's edits are saved now: a running autosave is waited for; else "folio:save-now"
+    // (the form's second hx-trigger) sends one at once. The delayed autosave still queued is dropped
+    // (onBeforeRequest). Edits made while a save ran are saved in another round. Once saved, go(); a
+    // refused or failed save (or none within FLUSH_MAX_MS) asks with its reason.
+    function flushThenLeave(form, go) {
+        if (flushing) { return; }
+        flushing = true;
+        form._folioLeaving = true;
+        var rounds = 0;
+        var finished = false;
+        var timer = null;
+        var names = ['htmx:afterRequest', 'htmx:sendError', 'htmx:timeout', 'htmx:sendAbort'];
+        var done = function (ok, reason) {
+            if (finished) { return; }
+            finished = true;
+            flushing = false;
+            clearTimeout(timer);
+            names.forEach(function (name) { document.removeEventListener(name, onEnd); });
+            if (ok) {
+                allowLeave();
+                go();
+                return;
+            }
+            form._folioLeaving = false;
+            folioConfirm({
+                title: folioT('leave_failed_title'),
+                message: reason || folioT('not_saved_offline'),
+                confirm: folioT('leave_confirm'),
+                cancel: folioT('leave_stay'),
+                tone: 'danger'
+            }).then(function (answer) {
+                if (answer === 'confirm') {
+                    allowLeave();
+                    go();
+                }
+            });
+        };
+        var saveNow = function () {
+            rounds++;
+            form.dispatchEvent(new CustomEvent('folio:save-now'));
+        };
+        var onEnd = function (e) {
+            if (!e.detail || e.detail.elt !== form) { return; }
+            var stateEl = document.getElementById('folio-save-state');
+            if (e.type !== 'htmx:afterRequest' || !e.detail.successful) {
+                done(false, saveStateText(stateEl));
+            } else if (stateEl && stateEl.classList.contains('is-conflict')) {
+                done(false, saveStateText(stateEl)); // refused (a conflict, a hook): answered 200 with the reason
+            } else if (form._folioEditedSince && rounds < 3) {
+                saveNow();
+            } else {
+                done(true);
+            }
+        };
+        names.forEach(function (name) { document.addEventListener(name, onEnd); });
+        timer = setTimeout(function () { done(false, folioT('not_saved_offline')); }, FLUSH_MAX_MS);
+        var stateEl = document.getElementById('folio-save-state');
+        if (!(stateEl && stateEl.classList.contains('is-saving'))) { saveNow(); }
+    }
+
+    /**
+     * Whether leaving now must wait: true when it asks (the dialog) or saves first (autosave), and
+     * go() runs once leaving is fine; false when nothing holds the page (go() is the caller's).
+     * href: the path a link leaves for (it offers "Save and leave"), null for a submit.
+     */
+    function holdLeave(go, href, e) {
+        if (leaveOnce) { return false; }
+        for (var i = 0; i < unsaved.leaveChecks.length; i++) {
+            if (unsaved.leaveChecks[i](e || null) === true) { return false; }
+        }
+        var dirty = unsaved.dirty.filter(function (f) { return f.isConnected !== false; });
+        if (dirty.length) {
+            askLeave(dirty[0], go, href);
+            return true;
+        }
+        // Pending edits, or a save that failed (a conflict, offline): saving again is tried first.
+        var stateEl = document.getElementById('folio-save-state');
+        var form = savePending() || (stateEl && stateEl.classList.contains('is-conflict')) ? autosaveForm() : null;
+        if (form) {
+            flushThenLeave(form, go);
+            return true;
+        }
+        return false;
+    }
+
+    function navigateTo(href) {
+        window.location.href = href;
+    }
+
+    /** Folio.navigate(href): go to an admin page as a link would, through the unsaved-changes guard. */
+    function navigate(href) {
+        if (!holdLeave(function () { navigateTo(href); }, href, null)) { navigateTo(href); }
+    }
+
+    // On the window: after every document listener, so links a script handles (drawers, menus, htmx)
+    // have prevented their default already.
+    function onLeaveClick(e) {
+        var href = leavingLink(e);
+        if (href === null) { return; }
+        if (holdLeave(function () { navigateTo(href); }, href, e)) { e.preventDefault(); }
+    }
+
+    // A plain form that leaves the page (Log out, the interface language, a side panel action) while
+    // another form holds unsaved changes. The guarded form's own submit is its save; the autosaving
+    // form's own submit is Save draft or Publish; a confirmed data-confirm submit knows it leaves.
+    function onLeaveSubmit(e) {
+        var f = e.target;
+        if (e.defaultPrevented || !f || f.tagName !== 'FORM') { return; }
+        if (f._folioConfirmed) { allowLeave(); return; }
+        if (f._folioLeaveOk || f === autosaveForm()) { return; }
+        var sub = e.submitter || null;
+        var target = String((sub && sub.getAttribute && sub.getAttribute('formtarget')) || f.getAttribute('target') || '').toLowerCase();
+        if ((target !== '' && target !== '_self') || String(f.getAttribute('method') || '').toLowerCase() === 'dialog') { return; }
+        var others = unsaved.dirty.filter(function (form) { return form !== f && form.isConnected !== false; });
+        if (others.length === 0 && !savePending() && !document.querySelector('#folio-save-state.is-conflict')) { return; }
+        var again = function () {
+            f._folioLeaveOk = true;
+            try {
+                if (typeof f.requestSubmit === 'function') { f.requestSubmit(sub && formOf(sub) === f ? sub : undefined); } else { HTMLFormElement.prototype.submit.call(f); }
+            } finally {
+                f._folioLeaveOk = false;
+            }
+        };
+        var saved = unsaved.dirty;
+        unsaved.dirty = others; // f itself is not what would be lost
+        var held = holdLeave(again, null, e);
+        unsaved.dirty = saved;
+        if (held) { e.preventDefault(); }
+    }
+
+    window.Folio.navigate = navigate;
+
     // ---- Edits across the form attribute, the save state, "needs change" -------------
     // A form's controls may sit outside it and name it with form="…" (the editor's side panel). Their
     // events do not bubble to the form, so a document listener tells the form: every input, change and
     // trix-change of a control of an autosaving form (hx-post) is announced as "folio:edit" on the form,
-    // which is its autosave trigger (hx-trigger="folio:edit delay:3s"). Controls added later count too.
+    // which is its autosave trigger (hx-trigger="folio:edit delay:3s, folio:save-now": leaving sends
+    // "folio:save-now" to save at once). Controls added later count too.
     function onFormEdit(e) {
         if (!isEdit(e.target)) { return; }
         var form = formOf(e.target);
         if (!form || !form.hasAttribute || !form.hasAttribute('hx-post')) { return; }
+        form._folioEditedSince = true; // since its last autosave started (a flush saves again for it)
         form.dispatchEvent(new CustomEvent('folio:edit', { detail: { source: e.target, type: e.type } }));
     }
 
@@ -1839,9 +2293,17 @@
         if (e.target && e.target.hasAttribute && e.target.hasAttribute('hx-post')) { e.target._folioSubmitting = true; }
     }
 
+    // Leaving (flushThenLeave): the delayed autosave still queued is dropped; the flush sends its own.
     function onBeforeRequest(e) {
         var elt = e.detail && e.detail.elt;
-        if (elt && elt._folioSubmitting) { e.preventDefault(); }
+        if (!elt) { return; }
+        var config = e.detail.requestConfig || {};
+        var trigger = config.triggeringEvent || e.detail.triggeringEvent;
+        if (elt._folioSubmitting || (elt._folioLeaving && trigger && trigger.type === 'folio:edit')) {
+            e.preventDefault();
+            return;
+        }
+        if (elt.tagName === 'FORM' && elt.hasAttribute && elt.hasAttribute('hx-post')) { elt._folioEditedSince = false; }
     }
 
     // A failed autosave must say so: htmx does not swap error responses.
@@ -2657,7 +3119,7 @@
         var link = row ? row.querySelector('.folio-row-link') : null;
         // Enter only for the row's own link (Enter on a button or a menu item keeps its own meaning).
         if (!link || (e.key === 'Enter' && document.activeElement !== link)) { return false; }
-        window.location.href = link.getAttribute('href');
+        navigate(link.getAttribute('href'));
         return true;
     }
 
@@ -2715,6 +3177,10 @@
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('submit', onDeletePlanSubmit);
         document.addEventListener('submit', onRemovalSubmit);
+        document.addEventListener('htmx:confirm', onHtmxConfirm);
+        // The leave guard on the window: after every document listener (see onLeaveClick).
+        window.addEventListener('click', onLeaveClick);
+        window.addEventListener('submit', onLeaveSubmit);
         initBulk(document);
         initRowMenus(document);
         document.addEventListener('click', onRowMenuClick);

@@ -10,16 +10,16 @@ const ADMIN_JS = fileURLToPath(new URL('../../assets/admin.js', import.meta.url)
 const settle = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * The admin script with fetch, confirm and alert faked: `plan` is the delete plan's answer (null: the
- * plan request fails), `targets` the page picker's items. Every request, dialog question and submitted
- * form is logged.
+ * The admin script with fetch faked: `plan` is the delete plan's answer (null: the plan request
+ * fails), `targets` the page picker's items. Every request is logged; window.confirm and alert throw
+ * (the styled dialog asks: folioDialog() reads it, answerDialog() answers it). Sent forms keep their
+ * submitters in form.sent (requestSubmit).
  */
 function admin({ plan = null, targets = [] } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
-    const log = { fetched: [], bodies: [], confirmed: [], alerted: [], submitted: [] };
-    w.confirmAnswer = true;
-    w.confirm = (text) => { log.confirmed.push(text); return w.confirmAnswer; };
-    w.alert = (text) => { log.alerted.push(text); };
+    const log = { fetched: [], bodies: [], submitted: [] };
+    w.confirm = () => { throw new Error('window.confirm called'); };
+    w.alert = () => { throw new Error('window.alert called'); };
     w.URLSearchParams = URLSearchParams;
     w.fetch = (url, options = {}) => {
         log.fetched.push(url);
@@ -66,6 +66,18 @@ function submit(w, form) {
 }
 
 const dialog = (w) => w.document.body.querySelector('dialog[data-removal-dialog]');
+
+/** The styled dialog's question while it is open ({title, message, alert}), else null. */
+function folioDialog(w) {
+    const d = w.document.body.querySelector('dialog[data-folio-dialog]');
+    if (!d || !d.open) { return null; }
+    const text = (name) => d.querySelector('[data-folio-dialog-' + name + ']');
+    return { title: text('title').textContent, message: text('message').textContent, alert: text('cancel').hidden };
+}
+
+function answerDialog(w, answer) {
+    w.document.body.querySelector('dialog[data-folio-dialog]').querySelector('[data-folio-dialog-' + answer + ']').click();
+}
 const posted = (form) => form.querySelector('input[name="_redirect_to"]')?.value ?? null;
 
 function type(input, value) {
@@ -80,9 +92,11 @@ test('test_no_addresses_keeps_the_plain_confirm', async () => {
     assert.equal(submit(w, form).defaultPrevented, true, 'held while the plan is asked for');
     await settle();
 
-    assert.deepEqual(log.confirmed, ["This can't be undone."]);
+    assert.deepEqual(folioDialog(w), { title: 'Delete this record?', message: "This can't be undone.", alert: false });
     assert.equal(dialog(w), null, 'no prompt');
-    assert.deepEqual(log.submitted, [form]);
+    answerDialog(w, 'confirm');
+    await settle();
+    assert.deepEqual(form.sent, [null]);
     assert.equal(posted(form), null);
 
     // The plan can't be fetched: the form's own question, as before.
@@ -90,17 +104,21 @@ test('test_no_addresses_keeps_the_plain_confirm', async () => {
     const other = deleteForm(failing.w);
     submit(failing.w, other);
     await settle();
-    assert.deepEqual(failing.log.confirmed, ['Delete this record?']);
+    assert.equal(folioDialog(failing.w).title, 'Delete this record?');
     assert.equal(dialog(failing.w), null);
-    assert.deepEqual(failing.log.submitted, [other]);
+    answerDialog(failing.w, 'confirm');
+    await settle();
+    assert.deepEqual(other.sent, [null]);
 
     // An unpublish form without addresses: its data-confirm, and nothing else.
     const plain = admin();
     const off = unpublishForm(plain.w, 0);
-    plain.w.confirmAnswer = false;
-    assert.equal(submit(plain.w, off).defaultPrevented, true, 'cancelled by the plain confirm');
-    assert.deepEqual(plain.log.confirmed, ['Take this page off the site?']);
+    assert.equal(submit(plain.w, off).defaultPrevented, true, 'held by the plain confirm');
+    assert.equal(folioDialog(plain.w).title, 'Take this page off the site?');
     assert.equal(dialog(plain.w), null);
+    answerDialog(plain.w, 'cancel');
+    await settle();
+    assert.equal(off.sent, undefined, 'cancelled');
 });
 
 test('test_addresses_open_the_dialog_and_post_the_chosen_page', async () => {
@@ -116,7 +134,7 @@ test('test_addresses_open_the_dialog_and_post_the_chosen_page', async () => {
     submit(w, form);
     await settle();
 
-    assert.deepEqual(log.confirmed, [], 'the dialog replaces window.confirm');
+    assert.equal(folioDialog(w), null, 'the prompt asks instead of the plain confirm');
     const d = dialog(w);
     assert.ok(d, 'the prompt is shown');
     assert.equal(d.open, true, 'as a modal');
@@ -136,7 +154,7 @@ test('test_addresses_open_the_dialog_and_post_the_chosen_page', async () => {
     d.querySelector('button[data-removal-confirm]').click();
 
     assert.equal(posted(form), 'page:p9', 'the type key from value, not the display type');
-    assert.deepEqual(log.submitted, [form]);
+    assert.deepEqual(form.sent, [null]);
     assert.equal(d.open, false);
 });
 
@@ -145,7 +163,7 @@ test('test_url_target_is_posted', async () => {
     const form = unpublishForm(w, 2);
 
     assert.equal(submit(w, form).defaultPrevented, true);
-    assert.deepEqual(log.confirmed, [], 'the prompt asks instead of data-confirm');
+    assert.equal(folioDialog(w), null, 'the prompt asks instead of data-confirm');
     const d = dialog(w);
     assert.ok(d);
     assert.match(d.descendants().map((el) => el.textContent).join('\n'), /Take this page off the site\?/);
@@ -154,7 +172,7 @@ test('test_url_target_is_posted', async () => {
     type(url, '//evil.example/x');
     assert.equal(d.querySelector('input[value="url"]').checked, true, 'typing a URL chooses that option');
     d.querySelector('button[data-removal-confirm]').click();
-    assert.deepEqual(log.submitted, [], 'a protocol-relative address is refused');
+    assert.equal(form.sent, undefined, 'a protocol-relative address is refused');
     assert.ok(d.querySelector('[data-removal-error]').textContent !== '');
     assert.equal(d.open, true);
 
@@ -162,7 +180,7 @@ test('test_url_target_is_posted', async () => {
     d.querySelector('button[data-removal-confirm]').click();
 
     assert.equal(posted(form), 'https://example.org/archive');
-    assert.deepEqual(log.submitted, [form]);
+    assert.deepEqual(form.sent, [null]);
 });
 
 test('test_leave_as_not_found_posts_no_target', async () => {
@@ -176,7 +194,7 @@ test('test_leave_as_not_found_posts_no_target', async () => {
     await settle();
     let d = dialog(w);
     d.querySelector('button[data-removal-cancel]').click();
-    assert.deepEqual(log.submitted, [], 'cancel sends nothing');
+    assert.equal(form.sent, undefined, 'cancel sends nothing');
     assert.equal(d.open, false);
 
     // Asked again: a page picked, then "Leave them as not found" chosen after all.
@@ -194,7 +212,7 @@ test('test_leave_as_not_found_posts_no_target', async () => {
     d.querySelector('button[data-removal-confirm]').click();
 
     assert.equal(posted(form), null, 'no _redirect_to: the old links answer 404');
-    assert.deepEqual(log.submitted, [form]);
+    assert.deepEqual(form.sent, [null]);
 });
 
 test('test_restricted_plan_only_alerts', async () => {
@@ -204,10 +222,11 @@ test('test_restricted_plan_only_alerts', async () => {
     submit(w, form);
     await settle();
 
-    assert.deepEqual(log.alerted, ["Can't delete: 2 progress records still point here."]);
-    assert.deepEqual(log.confirmed, []);
+    assert.deepEqual(folioDialog(w), { title: 'delete_blocked', message: "Can't delete: 2 progress records still point here.", alert: true });
     assert.equal(dialog(w), null);
-    assert.deepEqual(log.submitted, []);
+    answerDialog(w, 'confirm');
+    await settle();
+    assert.equal(form.sent, undefined);
 });
 
 /** The list's bulk bar: ticked ids[] and a Delete button carrying data-delete-plan and its formaction. */
@@ -248,8 +267,10 @@ test('test_bulk_delete_asks_for_the_ticked_ids_and_submits_the_button_again', as
     const { w, log } = admin({ plan: { restricted: false, lines: [], confirm: "This can't be undone.", addresses: 2 } });
     const { form, button } = bulkForm(w, ['n1', 'n2']);
     const requested = [];
+    const send = form.requestSubmit.bind(form);
     form.requestSubmit = (submitter) => {
-        requested.push({ submitter, target: posted(form), confirmed: form.getAttribute('data-delete-confirmed') });
+        requested.push({ submitter, target: posted(form), confirmed: form._folioConfirmed === true });
+        send(submitter);
     };
 
     assert.equal(submitBy(w, form, button).defaultPrevented, true, 'held while the plan is asked for');
@@ -257,18 +278,16 @@ test('test_bulk_delete_asks_for_the_ticked_ids_and_submits_the_button_again', as
 
     assert.deepEqual(log.fetched, ['/folio/news/_delete-plan']);
     assert.equal(log.bodies[0], '_csrf_token=tok&ids%5B%5D=n1&ids%5B%5D=n2', 'the ticked ids only');
-    assert.deepEqual(log.confirmed, [], 'the dialog replaces window.confirm');
+    assert.equal(folioDialog(w), null, 'the prompt asks instead');
     const d = dialog(w);
     assert.ok(d, 'the prompt is shown');
 
     type(d.querySelector('input[data-removal-url]'), '/team');
     d.querySelector('button[data-removal-confirm]').click();
 
-    assert.deepEqual(requested, [{ submitter: button, target: '/team', confirmed: '1' }], 'the Delete button is submitted again, with _redirect_to');
+    assert.deepEqual(requested, [{ submitter: button, target: '/team', confirmed: true }], 'the Delete button is submitted again, with _redirect_to');
+    assert.deepEqual(form.sent, [button], 'through every submit handler, which let it go');
     assert.deepEqual(log.submitted, [], 'not a plain form.submit(): that would drop the button\'s formaction');
-
-    // The browser's second submit (marked confirmed) goes through untouched.
-    assert.equal(submitBy(w, form, button).defaultPrevented, false);
-    assert.equal(form.getAttribute('data-delete-confirmed'), null);
+    assert.equal(form._folioConfirmed, false, 'only that one submit');
     assert.equal(log.fetched.length, 1, 'the plan is not asked for again');
 });

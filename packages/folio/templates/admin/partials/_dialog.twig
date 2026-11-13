@@ -1,0 +1,19 @@
+{# The one dialog for every question the admin asks (rendered once by each layout): admin.js fills it
+   through window.folioConfirm({title, message, items, confirm, cancel, tone, extra}) and
+   window.folioAlert({title, message, items}); see the README's "Dialogs". A native modal <dialog>: the
+   panel fills it, so a click on the dialog element itself is a click on the backdrop. The labels here
+   are the defaults in the interface language; the icon tile shows ui-info, ui-warn for danger (or the
+   asker's icon). Without script it never opens: forms submit as they are. #}
+<dialog class="folio-dialog" id="folio-dialog" data-folio-dialog aria-labelledby="folio-dialog-title" aria-describedby="folio-dialog-message" data-text-ok="{{ t('folio.js.ok') }}" data-text-confirm="{{ t('folio.js.confirm') }}">
+    <div class="folio-dialog-panel">
+        <span class="folio-dialog-icon" aria-hidden="true" data-folio-dialog-icon><svg class="folio-icon"><use href="{{ folio_asset('icons.svg') }}#ui-info"></use></svg></span>
+        <h2 class="folio-dialog-title" id="folio-dialog-title" data-folio-dialog-title></h2>
+        <p class="folio-dialog-message" id="folio-dialog-message" data-folio-dialog-message></p>
+        <ul class="folio-dialog-items" id="folio-dialog-items" data-folio-dialog-items hidden></ul>
+        <div class="folio-dialog-actions">
+            <button type="button" class="btn btn-secondary" data-folio-dialog-cancel>{{ t('folio.js.cancel') }}</button>
+            <button type="button" class="btn btn-secondary" data-folio-dialog-extra hidden></button>
+            <button type="button" class="btn btn-primary" data-folio-dialog-confirm>{{ t('folio.js.confirm') }}</button>
+        </div>
+    </div>
+</dialog>

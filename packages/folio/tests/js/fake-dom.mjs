@@ -1,6 +1,7 @@
 // A minimal DOM for node tests of admin.js: elements, attributes, classes, simple selectors
 // ("tag#id.class[attr][attr=\"v\"]", descendants with a space, groups with a comma, a leading
-// ":scope >"), insertBefore, cloneNode, contains, events,
+// ":scope >"), insertBefore, cloneNode, contains, events (bubbling on to the document and the window),
+// <dialog> with showModal(), close() and escape(),
 // form owners (form="…") and requestSubmit(), a MutationObserver for appended elements, and a
 // window that delivers postMessage events.
 // load(file) runs a browser script against it.
@@ -36,14 +37,27 @@ class Element {
         this.alt = '';
         // A frame's window: what a message event from that frame carries as its source.
         if (this.tagName === 'IFRAME') { this.contentWindow = { frame: this }; }
-        // A <dialog>: showModal() opens it, close() closes it and sends "close".
+        // A <dialog>: showModal() opens it (the open attribute too, as in the DOM), close() closes it and
+        // sends "close"; escape() is the Escape key: a cancelable "cancel", then close() unless prevented.
         if (this.tagName === 'DIALOG') {
             this.open = false;
-            this.showModal = () => { this.open = true; };
+            this.showModal = () => {
+                if (this.open) { throw new Error('fake-dom: showModal on an open dialog'); }
+                this.open = true;
+                this.attributes.open = '';
+                this.ownerDocument.modals = (this.ownerDocument.modals || 0) + 1;
+            };
             this.close = () => {
                 if (!this.open) { return; }
                 this.open = false;
+                delete this.attributes.open;
+                this.ownerDocument.modals -= 1;
                 this.dispatchEvent(new Event('close'));
+            };
+            this.escape = () => {
+                const event = new Event('cancel', { cancelable: true });
+                if (this.dispatchEvent(event)) { this.close(); }
+                return event;
             };
         }
     }
@@ -150,7 +164,11 @@ class Element {
         const path = [this];
         if (event.bubbles) {
             for (let up = this.parentNode; up; up = up.parentNode) { path.push(up); }
-            if (path[path.length - 1] === this.ownerDocument.documentElement) { path.push(this.ownerDocument); }
+            // On to the document and its window, as in the DOM (a window listener runs after every document one).
+            if (path[path.length - 1] === this.ownerDocument.documentElement) {
+                path.push(this.ownerDocument);
+                if (this.ownerDocument.defaultView) { path.push(this.ownerDocument.defaultView); }
+            }
         }
         path.forEach((node) => { (node.listeners[event.type] || []).slice().forEach((fn) => fn(event)); });
         return !event.defaultPrevented;
@@ -175,8 +193,14 @@ class Element {
         this.dispatchEvent(event);
         return event;
     }
-    /** A click as the browser sends it: bubbles to the document. */
-    click() { this.dispatchEvent(new Event('click', { bubbles: true, cancelable: true })); }
+    /** A click as the browser sends it: bubbles to the document; init adds button, metaKey, ctrlKey, shiftKey, altKey. Returns the event. */
+    click(init = {}) {
+        const event = new Event('click', { bubbles: true, cancelable: true });
+        Object.entries({ button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, ...init })
+            .forEach(([k, v]) => Object.defineProperty(event, k, { value: v }));
+        this.dispatchEvent(event);
+        return event;
+    }
     matches(selector) { return selector.split(',').some((group) => matchesChain(this, group.trim().split(/\s+/))); }
     closest(selector) {
         for (let node = this; node && node instanceof Element; node = node.parentNode) {
@@ -288,7 +312,7 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         receive: (data, fromOrigin = origin, source = document.documentElement.querySelector('iframe')?.contentWindow ?? null) => {
             (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin, source }));
         },
-        Event, CustomEvent, console, JSON, Math, Date,
+        Event, CustomEvent, console, JSON, Math, Date, URL, URLSearchParams,
         /** observe(target, {childList, subtree}): appended elements are reported (removals are not). */
         MutationObserver: class {
             constructor(callback) { this.callback = callback; }
@@ -307,6 +331,7 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
     };
     window.window = window;
     window.self = window;
+    document.defaultView = window;
     window.parent = window;
     return window;
 }

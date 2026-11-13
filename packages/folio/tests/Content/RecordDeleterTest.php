@@ -488,6 +488,7 @@ final class RecordDeleterTest extends TestCase
         $this->assertTrue($summary['restricted']);
         $this->assertSame(["Can't delete: 2 progress records still point here."], $summary['lines']);
         $this->assertSame("Can't delete: 2 progress records still point here.", $summary['confirm']);
+        $this->assertSame(['2 progress records'], $summary['used_by'], 'what still points here, per type (the dialog\'s list)');
     }
 
     public function test_sqlite_delete_runs_through_and_publishing_without_published_table_plans(): void

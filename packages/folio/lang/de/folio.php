@@ -924,6 +924,18 @@ return [
         'shortcut_save' => 'Entwurf speichern',
         'shortcut_publish' => 'Veröffentlichen',
         'shortcut_close_side' => 'Seitenleiste schließen',
+        // The styled dialog (folioConfirm / folioAlert) and the unsaved-changes guard.
+        'cancel' => 'Abbrechen',
+        'confirm' => 'Bestätigen',
+        'ok' => 'OK',
+        'delete' => 'Löschen',
+        'delete_blocked' => 'Wird noch verwendet',
+        'leave_title' => 'Ohne Speichern verlassen?',
+        'leave_message' => 'Deine Änderungen auf dieser Seite sind noch nicht gespeichert.',
+        'leave_confirm' => 'Ohne Speichern verlassen',
+        'leave_stay' => 'Bleiben',
+        'save_and_leave' => 'Speichern und verlassen',
+        'leave_failed_title' => 'Deine Änderungen sind nicht gespeichert',
     ],
     'format' => [
         'noun_case' => 'keep',

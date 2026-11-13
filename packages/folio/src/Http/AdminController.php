@@ -752,7 +752,7 @@ final class AdminController
             ]));
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
+        return new Response(302, ['Location' => self::leaveTo($request) ?? $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
     }
 
     public function editForm(ServerRequestInterface $request): ResponseInterface
@@ -885,7 +885,19 @@ final class AdminController
             return $failed;
         }
 
-        return new Response(302, ['Location' => $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
+        return new Response(302, ['Location' => self::leaveTo($request) ?? $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
+    }
+
+    /**
+     * "Save and leave" (admin.js's unsaved-changes dialog) posts the link the editor was leaving for as
+     * _folio_next: once the save succeeded, the answer goes there instead of the list. Only a path on
+     * this site (SafeReturnPath); anything else is ignored. A refused save shows the form as always.
+     */
+    private static function leaveTo(ServerRequestInterface $request): ?string
+    {
+        $next = ((array) $request->getParsedBody())['_folio_next'] ?? null;
+
+        return is_string($next) ? \Preflow\Core\Http\SafeReturnPath::check($next, ['/']) : null;
     }
 
     /**

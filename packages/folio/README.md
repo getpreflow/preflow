@@ -1634,6 +1634,52 @@ through the `<style>` element.
 `editor_assets` (the template variable behind a field type's `assets()`) is internal to
 Folio's own pages; extensions use the options above.
 
+### Dialogs
+
+Folio asks every question through one styled dialog (a native `<dialog>`, rendered once by each
+admin layout as `partials/_dialog.twig`); it never shows the browser's own `confirm`, `alert` or
+`prompt`. Extensions use the same dialog from `admin.js`, on every admin page:
+
+```js
+const answer = await window.folioConfirm({
+    title: 'Archive “Winter news”?',   // the question (a message alone becomes the title)
+    message: 'It leaves the list but stays searchable.',
+    items: ['3 pages link to it'],      // optional list under the message
+    confirm: 'Archive',                // the confirm button's label (default "Confirm")
+    cancel: 'Keep it',                 // default "Cancel"
+    tone: 'danger',                    // .btn-danger and the focus on Cancel; else primary, focus on confirm
+    extra: 'Archive and next',         // an optional third button
+    icon: 'ui-trash',                  // an id from Folio's icons.svg (default ui-info, ui-warn for danger)
+});                                    // 'confirm' | 'cancel' | 'extra'
+await window.folioAlert({ title: 'Still in use', message: '…', items: ['2 jobs'] }); // one OK button
+```
+
+Escape and a click on the backdrop cancel; the focus returns to where it was. A second question
+while one is open cancels the first. Without a layout's markup (a site that overrides the layout)
+`admin.js` builds the dialog itself.
+
+- **`data-confirm="…"`** on a form (or on one of its submit buttons, such as the list's bulk bar)
+  asks before it is sent. On confirm the same button is submitted again (`form.requestSubmit(button)`),
+  so its `name`/`value`, its busy state and the form's CSRF token go along; without script the form
+  simply submits. The confirm button says what the clicked button says (or `data-confirm-label`);
+  `data-confirm-tone="danger"` (or a danger button: `.btn-danger`, `.is-danger`, `data-tone="danger"`)
+  makes it a danger dialog.
+- **`hx-confirm`** (and `data-confirm` on an htmx element) asks through the same dialog: Folio
+  answers htmx's `htmx:confirm` event and sends the request with `issueRequest(true)`.
+- **Delete** forms with `data-delete-plan` show what the delete also does as the dialog's list; a
+  plan that may not go ahead tells why ("Still in use", with what still points here).
+
+**Leaving with unsaved changes.** A link, a breadcrumb, the sidebar, a row menu or a shortcut that
+leaves an editor with unsaved changes asks **Leave without saving** / **Stay** / **Save and leave**
+(where the form has a Save button: it saves with `_folio_next`, and a successful save goes to the
+link; a refused one shows the errors). An autosaving editor does not ask: its pending edits are
+saved at once and the page leaves when they are; only a save that fails asks, with the reason.
+⌘/Ctrl/Shift/Alt and middle clicks, `target="_blank"`, `download`, `#hash` links on the same page
+and other sites are not held. Closing the tab, reloading, typing an address and back/forward keep
+the browser's own question (no page can style it). `Folio.navigate(href)` goes to a page through the
+same guard; `Folio.unsaved.isDirty()`, `.dirtyForms()`, `.clear(form)`, `.onLeave(fn)` and
+`.pending()` are the hooks behind it.
+
 ### Type customizations
 
 A class with `#[FolioType('note')]` customizes the admin of an existing type (an unknown

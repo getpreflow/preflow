@@ -950,6 +950,18 @@ return [
         'shortcut_save' => 'Save the draft',
         'shortcut_publish' => 'Publish',
         'shortcut_close_side' => 'Close the side panel',
+        // The styled dialog (folioConfirm / folioAlert) and the unsaved-changes guard.
+        'cancel' => 'Cancel',
+        'confirm' => 'Confirm',
+        'ok' => 'OK',
+        'delete' => 'Delete',
+        'delete_blocked' => 'Still in use',
+        'leave_title' => 'Leave without saving?',
+        'leave_message' => 'Your changes on this page are not saved yet.',
+        'leave_confirm' => 'Leave without saving',
+        'leave_stay' => 'Stay',
+        'save_and_leave' => 'Save and leave',
+        'leave_failed_title' => 'Your changes are not saved',
     ],
     // ICU patterns (d, dd, MM, MMM, yyyy, HH, mm) and, without ext-intl, the number separators.
     'format' => [

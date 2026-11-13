@@ -3450,3 +3450,59 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-old-addresses ul { margin: 0 0 8px; padding: 0; list-style: none; }
 .folio-old-addresses li { padding: 2px 0; font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
 .folio-old-addresses-help, .folio-old-addresses-more { margin: 0 0 8px; color: var(--c-text-muted); }
+
+/* ---- The dialog (partials/_dialog.twig; admin.js folioConfirm / folioAlert): every question the admin
+   asks (data-confirm, the delete plan, unsaved changes). A small card on the overlay: an icon tile
+   (accent; danger red), the question, a muted line, an optional list on a sunken card, then the buttons
+   (danger confirm, or primary). A third button (Save and leave) takes the right; the danger one moves
+   left. At phone width the buttons stack, the safe one first. ---- */
+.folio-dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xl);
+  background: var(--c-surface-raised);
+  color: var(--c-text);
+  box-shadow: var(--shadow-lg);
+}
+.folio-dialog[open] { animation: folio-dialog-in .16s ease-out; }
+.folio-dialog::backdrop { background: var(--c-overlay); }
+.folio-dialog[open]::backdrop { animation: folio-dialog-fade .16s ease-out; }
+@keyframes folio-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+@keyframes folio-dialog-fade { from { opacity: 0; } }
+.folio-dialog-panel { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; padding: 20px 22px 18px; }
+.folio-dialog-icon {
+  grid-row: 1 / span 3; align-self: start;
+  display: grid; place-items: center; width: 36px; height: 36px;
+  border-radius: 10px; background: var(--c-accent-soft); color: var(--c-accent-text);
+}
+.folio-dialog-icon .folio-icon { width: 18px; height: 18px; }
+.folio-dialog.is-danger .folio-dialog-icon { background: var(--c-danger-soft); color: var(--c-danger); }
+.folio-dialog-title { grid-column: 2; margin: 7px 0 0; font-size: 15.5px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.folio-dialog-message { grid-column: 2; margin: 6px 0 0; color: var(--c-text-muted); font-size: 13.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.folio-dialog-items {
+  grid-column: 2; margin: 12px 0 0; padding: 8px 12px; list-style: none;
+  max-height: 200px; overflow-y: auto;
+  border: 1px solid var(--c-border); border-radius: var(--r-sm);
+  background: var(--c-surface-2); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere;
+}
+.folio-dialog-items li + li { margin-top: 4px; }
+.folio-dialog-message[hidden], .folio-dialog-items[hidden], .folio-dialog-actions [hidden] { display: none; }
+.folio-dialog-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.folio-dialog.has-extra [data-folio-dialog-confirm] { order: -1; margin-right: auto; }
+@media (max-width: 480px) {
+  .folio-dialog-panel { padding: 18px 16px 16px; column-gap: 12px; }
+  .folio-dialog-actions { flex-direction: column; align-items: stretch; }
+  .folio-dialog-actions .btn { justify-content: center; }
+  [data-folio-dialog-extra] { order: 0; }
+  .folio-dialog-actions [data-folio-dialog-confirm] { order: 1; margin-right: 0; }
+  [data-folio-dialog-cancel] { order: 2; }
+  .folio-dialog.has-extra [data-folio-dialog-confirm] { order: 3; margin-right: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .folio-dialog[open], .folio-dialog[open]::backdrop { animation: none; }
+}

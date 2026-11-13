@@ -242,8 +242,8 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("hasAttribute('data-delete-plan')", $js);      // the form opts in
         $this->assertStringContainsString("body.append('ids[]'", $js);                     // posts the ids
         $this->assertStringContainsString("body.append('_csrf_token'", $js);               // with the form's token
-        $this->assertStringContainsString('window.alert(plan.confirm)', $js);              // restricted: only the reason
-        $this->assertStringContainsString('window.confirm(plan.confirm)', $js);            // else the summary
+        $this->assertStringContainsString("folioAlert({ title: folioT('delete_blocked'), message: plan.confirm", $js); // restricted: only the reason (styled dialog)
+        $this->assertStringContainsString("folioConfirm({ title: question, message: plan.confirm.split('\\n')[0], items: lines", $js); // else the summary, its lines as the list
         $this->assertStringContainsString("document.addEventListener('submit', onDeletePlanSubmit)", $js);
 
         $list = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/_list_results.twig');
@@ -264,7 +264,8 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString("document.addEventListener('reset', onBulkReset)", $js); // Clear
         // Buttons of the bar carry their own confirm / delete plan; the plan posts the ticked ids.
         $this->assertStringContainsString('e.submitter', $js);
-        $this->assertStringContainsString('f.requestSubmit(src)', $js);
+        $this->assertStringContainsString("var submitter = e.submitter || (src !== f ? src : null);", $js); // the clicked bar button is sent again
+        $this->assertStringContainsString('form.requestSubmit(submitter && formOf(submitter) === form ? submitter : undefined)', $js);
         $this->assertStringContainsString("el.name === 'ids[]' && el.checked", $js);
         $bulk = (int) strpos($js, 'function bulkUpdate');
         $this->assertStringNotContainsString('.style.', substr($js, $bulk, (int) strpos($js, 'function onEnablesChange') - $bulk), 'the bar shows and hides by [hidden], no inline styles');

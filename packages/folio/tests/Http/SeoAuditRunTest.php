@@ -373,7 +373,7 @@ final class SeoAuditRunTest extends TestCase
         $body = (string) $res->getBody();
         $this->assertSame(200, $res->getStatusCode());
         $this->assertStringNotContainsString('/folio/seo-audit/run', $body);
-        $this->assertStringNotContainsString('<button', preg_replace('#<(aside|header|nav)\b.*?</\1>#s', '', $body) ?? '', 'no run buttons on the screen');
+        $this->assertStringNotContainsString('<button', preg_replace('#<(aside|header|nav|dialog)\b.*?</\1>#s', '', $body) ?? '', 'no run buttons on the screen (the shell and the dialog have their own)');
         $this->assertStringContainsString('No audit has run on this site yet. Run it on the server with', $body);
 
         $this->assertSame(403, $this->send('POST', '/folio/seo-audit/run')->getStatusCode());

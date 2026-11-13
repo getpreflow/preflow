@@ -667,6 +667,7 @@ final class AdminControllerTest extends TestCase
         $this->assertTrue($data['restricted']);
         $this->assertSame(["Can't delete: 2 locks still point here."], $data['lines']);
         $this->assertSame("Can't delete: 2 locks still point here.", $data['confirm']);
+        $this->assertSame(['2 locks'], $data['used_by']);
     }
 
     public function test_delete_plan_refuses_unknown_types_singletons_and_missing_ids(): void

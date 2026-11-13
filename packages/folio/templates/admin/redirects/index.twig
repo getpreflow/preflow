@@ -95,7 +95,7 @@
                     <td>{{ row.created_at ? folio_date(row.created_at, 'date') : '—' }}</td>
                     <td><div class="folio-row-actions">
                         <a class="btn btn-ghost btn-sm" href="{{ row.edit }}">{{ t('folio.common.edit') }}</a>
-                        <form method="post" action="{{ row.edit }}/delete" data-confirm="{{ t('folio.redirects.delete_confirm') }}">
+                        <form method="post" action="{{ row.edit }}/delete" data-confirm="{{ t('folio.redirects.delete_confirm') }}" data-confirm-tone="danger">
                             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                             <button type="submit" class="btn btn-ghost btn-sm">{{ t('folio.common.delete') }}</button>
                         </form>

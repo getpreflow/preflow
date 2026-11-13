@@ -19,7 +19,7 @@ function list({ plan = { restricted: false, lines: [], confirm: "This can't be u
     const doc = w.document;
     const log = { fetched: [], confirmed: [], submitted: [] };
     w.URLSearchParams = URLSearchParams;
-    w.confirm = (text) => { log.confirmed.push(text); return true; };
+    w.confirm = () => { throw new Error('window.confirm called'); };
     w.fetch = (url) => { log.fetched.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve(url.endsWith('/share') ? share : plan) }); };
     if (clipboard) {
         log.copied = [];
@@ -202,7 +202,12 @@ test('Review Focus 4: Delete in the menu still asks for the delete plan, then co
     assert.equal(event.defaultPrevented, true, 'held while the plan is asked for');
     await settle();
     assert.deepEqual(l.log.fetched, ['/folio/news/_delete-plan']);
-    assert.deepEqual(l.log.confirmed, ["This can't be undone."]);
-    assert.equal(l.log.submitted.length, 1);
-    assert.equal(l.log.submitted[0], r.del);
+    const dialog = l.w.document.body.querySelector('dialog[data-folio-dialog]');
+    assert.equal(dialog.open, true, 'the styled dialog asks');
+    assert.equal(dialog.querySelector('[data-folio-dialog-message]').textContent, "This can't be undone.");
+    assert.equal(dialog.querySelector('[data-folio-dialog-confirm]').textContent, 'delete', 'folio.js.delete (no dictionary on this page: the key)');
+    assert.ok(dialog.querySelector('[data-folio-dialog-confirm]').classList.contains('btn-danger'));
+    dialog.querySelector('[data-folio-dialog-confirm]').click();
+    await settle();
+    assert.deepEqual(r.del.sent, [r.delButton], 'the menu item is submitted again');
 });

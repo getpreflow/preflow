@@ -102,7 +102,8 @@ Each row carries exactly one label.
 | Asset detail: crop previews (16:9, 4:3, 1:1, 9:16) | AssetDetail | Proposal |
 | Ink layer: marks in `icons.svg`, `.folio-ink-marks`, the marks macro, ink empty states, the 404 and forbidden ink cards (today forbidden is a plain card and an unknown admin path answers the plain text "Unknown type"), the sign-in switched to the shared classes (`.folio-caret` and the save status with caret came with the editor in 0.75) | Ink | 0.76 |
 | The removal dialog restyle (radio cards, "Now: …") | LibOverlays | 0.76 (with redirects) |
-| Styled confirm dialog, AI "Write a draft" in rich text, the "+" insert line and `/` block picker, ⌘K palette | LibOverlays, PageEditor, RecordEditor | Proposal |
+| Styled confirm dialog: one native `<dialog>` (`partials/_dialog.twig`, `.folio-dialog`) behind `window.folioConfirm` / `window.folioAlert` replaces every `window.confirm`/`alert`: `data-confirm`, the delete plan (its lines as the list; "Still in use" with what points here), `hx-confirm` (`htmx:confirm`) and the unsaved-changes guard (Leave without saving / Stay / Save and leave; autosaving editors save first and ask only on failure). Task 7. | LibOverlays | Fixed in 0.75 |
+| AI "Write a draft" in rich text, the "+" insert line and `/` block picker, ⌘K palette | PageEditor, RecordEditor | Proposal |
 | The share link's "Link copied · 7 days" state | LibOverlays | Fixed in 0.75 |
 
 ## Lists (0.75, Task 3)

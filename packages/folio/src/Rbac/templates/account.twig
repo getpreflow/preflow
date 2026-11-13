@@ -26,7 +26,7 @@
             </form>
         {% endif %}
         {% if active %}
-            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/disable" data-confirm="{{ t('rbac-admin.account.disable_confirm', {email: record.email}) }}">
+            <form method="post" action="{{ prefix }}/{{ type }}/{{ id }}/_action/disable" data-confirm="{{ t('rbac-admin.account.disable_confirm', {email: record.email}) }}" data-confirm-tone="danger">
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
                 <button type="submit" class="btn btn-ghost">{{ t('rbac-admin.actions.disable') }}</button>
             </form>

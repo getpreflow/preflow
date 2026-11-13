@@ -75,7 +75,7 @@
                                 </form>
                                 {% endif %}
                                 {% if can('assets.delete') %}
-                                <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/delete{{ back_q }}" data-confirm="{{ t('folio.assets.confirm_delete_version', {number: v.number}) }}">
+                                <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/delete{{ back_q }}" data-confirm="{{ t('folio.assets.confirm_delete_version', {number: v.number}) }}" data-confirm-tone="danger">
                                     <input type="hidden" name="_csrf_token" value="{{ csrf }}">
                                     <button type="submit" class="btn btn-ghost">{{ t('folio.common.delete') }}</button>
                                 </form>

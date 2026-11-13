@@ -812,7 +812,7 @@ final class PublishingAppTest extends TestCase
         // The topbar's buttons (outside the form, form="folio-record") are disabled too.
         $this->assertStringContainsString('hx-disabled-elt="button[type=submit][form=folio-record], find button[type=submit]"', $body);
         // Every edit of a control of the form, the side panel's too, is "folio:edit" on it (admin.js).
-        $this->assertStringContainsString('hx-trigger="folio:edit delay:3s"', $body);
+        $this->assertStringContainsString('hx-trigger="folio:edit delay:3s, folio:save-now"', $body);
         $this->assertStringContainsString('/editor-frame.js?v=', $body, 'the editor frame\'s script');
     }
 
