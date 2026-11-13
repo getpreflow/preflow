@@ -2151,6 +2151,10 @@ final class FolioServiceProvider extends ServiceProvider
             'ai-translate-core.js' => 'ai-translate-core.js',
             'ai-translate.js' => 'ai-translate.js',
             'icons.svg' => 'icons.svg',
+            // Self-hosted fonts (SIL OFL 1.1, licences beside them), referenced by admin.css.
+            'InterVariable.woff2' => 'fonts/InterVariable.woff2',
+            'JetBrainsMono-Regular.woff2' => 'fonts/JetBrainsMono-Regular.woff2',
+            'JetBrainsMono-Medium.woff2' => 'fonts/JetBrainsMono-Medium.woff2',
             // The vendored htmx build from preflow/htmx (block picker fragments).
             'htmx.js' => dirname((string) (new \ReflectionClass(\Preflow\Htmx\HtmxAssets::class))->getFileName(), 2) . '/assets/htmx.min.js',
         ];

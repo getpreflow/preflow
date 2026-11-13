@@ -80,7 +80,7 @@ final class FolioAuthTest extends TestCase
     {
         $body = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/login'))->getBody();
         $body = (string) preg_replace(
-            ['~name="_csrf_token" value="[^"]*"~', '~nonce="[^"]*"~', '~(admin\.css)\?v=[^"]*~', '~<div id="preflow-debug-toolbar">.*(?=</body>)~s'],
+            ['~name="_csrf_token" value="[^"]*"~', '~nonce="[^"]*"~', '~(admin\.css|InterVariable\.woff2)\?v=[^"]*~', '~<div id="preflow-debug-toolbar">.*(?=</body>)~s'],
             ['name="_csrf_token" value=""', 'nonce=""', '$1?v=', ''],
             $body,
         );

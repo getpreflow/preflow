@@ -29,7 +29,7 @@ Each row carries exactly one label.
 
 | Difference | Label | Why / what |
 |---|---|---|
-| Inter and JetBrains Mono are not shipped. The stacks name them first and fall back to the system fonts. There is no `@font-face`. | Adaptation | The font download waits for the owner's approval. Phase 1's self-hosting step stays open until then. |
+| Inter and JetBrains Mono were not shipped: the stacks named them first and fell back to the system fonts, with no `@font-face`. | Fixed in 0.75 | Self-hosted now: `InterVariable.woff2`, `JetBrainsMono-Regular.woff2` and `-Medium.woff2` with their OFL licences in `assets/fonts/`, served by the asset controller and loaded by `@font-face` in `admin.css`. Inter is preloaded in the layouts. |
 | Dark `--c-neutral-soft` is `#2d3833`, not the handoff's `#26302b`. | Adaptation | The handoff value equals `--c-row-hover`, so draft badges disappeared on hovered rows (AdminCssTest). |
 | `--focus-ring` is a new token: a 2px surface gap, then a 2px solid accent ring. Buttons, chips, danger buttons, the asset view toggle and the rbac switch and chips use it. Native checkbox, radio and file inputs get the accent outline. | Adaptation | The boards draw no focus states. The soft `--c-focus-ring` halo measured about 1.5:1, while the new ring is at least 4.7:1 on every surface in both themes. Text fields keep the board's accent border plus soft ring. |
 

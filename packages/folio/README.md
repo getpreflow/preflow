@@ -315,6 +315,11 @@ The admin ships a single stylesheet served by Folio itself at
 `<link>` URL is content-hash versioned via the `folio_admin_css_url` Twig
 global, so it caches immutably and busts on change.
 
+Inter and JetBrains Mono are self-hosted (since 0.75): Folio serves the font files from
+`{prefix}/_assets/` and loads them with `@font-face` in `admin.css`. Nothing is fetched from a font
+CDN, and a strict `font-src 'self'` policy is enough. Both fonts are under the SIL Open Font
+License 1.1, and the licence texts ship beside them in `assets/fonts/`.
+
 Dark mode is built in. Every colour is one token in the `:root` block, written
 as `light-dark(light, dark)`, with an emerald accent and the sign-in's green-black
 "ink" (since 0.73). The default follows the operating system (`prefers-color-scheme`).

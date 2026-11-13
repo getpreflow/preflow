@@ -3,11 +3,37 @@
    color-scheme, which is the OS default unless [data-theme] forces one.
    Components only read tokens and never branch on the theme. */
 
+/* Self-hosted fonts (SIL OFL 1.1; licences in assets/fonts/). The url()s resolve against
+   {prefix}/_assets/admin.css, so they hit the allowlisted font files. The ?v= is the same
+   12-char xxh3 hash AdminAssetUrls uses for the file, so the immutable cache stays correct;
+   FontsTest fails when a font file changes and these hashes do not follow. */
+@font-face {
+  font-family: "Inter";
+  src: url("InterVariable.woff2?v=9a299940e63a") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("JetBrainsMono-Regular.woff2?v=9b3bf7842f38") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("JetBrainsMono-Medium.woff2?v=71facc9c3679") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
 
-  /* Inter and JetBrains Mono lead the stacks; no font files are shipped (no @font-face), so the
-     system fallback renders until they are self-hosted. */
+  /* Inter and JetBrains Mono lead the stacks (self-hosted, see @font-face above); the system
+     fonts are the fallback while they load. */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 

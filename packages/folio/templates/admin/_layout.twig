@@ -35,6 +35,7 @@
         });
     })();
     </script>
+    <link rel="preload" href="{{ folio_asset('InterVariable.woff2') }}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">
     {% if 'htmx.js' in editor_assets|default([]) or (page_assets|default(null)).htmx|default(false) %}
     {# htmx inserts its own indicator styles (needs the nonce); swapped admin fragments never run scripts. #}

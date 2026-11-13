@@ -38,10 +38,13 @@ final class AssetController
             return new Response(404, [], 'Not found');
         }
 
+        $type = $this->contentType($file);
+        $text = in_array($type, ['text/css', 'text/javascript', 'image/svg+xml'], true);
+
         return new Response(
             200,
             [
-                'Content-Type' => $this->contentType($file) . '; charset=UTF-8',
+                'Content-Type' => $text ? $type . '; charset=UTF-8' : $type,
                 'Cache-Control' => 'public, max-age=31536000, immutable',
             ],
             (string) file_get_contents($path),
@@ -54,6 +57,7 @@ final class AssetController
             str_ends_with($file, '.css') => 'text/css',
             str_ends_with($file, '.js') => 'text/javascript',
             str_ends_with($file, '.svg') => 'image/svg+xml',
+            str_ends_with($file, '.woff2') => 'font/woff2',
             default => 'application/octet-stream',
         };
     }
