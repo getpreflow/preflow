@@ -949,7 +949,10 @@ phone, **?** lists them.
 
 The buttons and the side panel's record controls sit outside the record's `<form id="folio-record">`
 and name it with the HTML `form` attribute (`form="folio-record"`), so a click sends every value of
-the record, the side panel's too, with the form's CSRF token; no script copies values.
+the record, the side panel's too, with the form's CSRF token; no script copies values. Controls a
+field's script adds later inside the side panel get the attribute too (`editor-frame.js`), and every
+edit of a control of the form is announced as `folio:edit` on it, the autosave trigger. A side field's
+`<button>` without `type="button"` becomes a submit of the record form.
 
 **Upgrading to 0.75:** a site that overrides `form.twig` (an `ActionResolver` override or a theme)
 must give its submit buttons and any control outside the form `form="folio-record"`, and render the

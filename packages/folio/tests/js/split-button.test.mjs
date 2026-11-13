@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createWindow, load } from './fake-dom.mjs';
 
 const ADMIN_JS = fileURLToPath(new URL('../../assets/admin.js', import.meta.url));
+const EDITOR_JS = fileURLToPath(new URL('../../assets/editor-frame.js', import.meta.url));
 
 function page({ date = '' } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
@@ -36,6 +37,7 @@ function page({ date = '' } = {}) {
     at.disabled = false;
     const form = el(doc.body, 'form', { id: 'folio-record' });
     load(w, ADMIN_JS);
+    load(w, EDITOR_JS);
     return { w, doc, outside, group, main, menu, summary, input, clear, hint, at, form };
 }
 

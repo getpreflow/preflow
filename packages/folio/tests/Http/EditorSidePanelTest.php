@@ -150,7 +150,7 @@ final class EditorSidePanelTest extends TestCase
         $side = self::side($page);
 
         $this->assertStringContainsString('<h2 class="folio-panel-title" id="folio-side-details">Details</h2>', $side);
-        $this->assertMatchesRegularExpression('~<input form="folio-record"[^>]* name="position"~', $side);
+        $this->assertMatchesRegularExpression('~<input [^>]*name="position"[^>]* form="folio-record"~', $side);
         $this->assertStringNotContainsString('name="position"', self::form($page));
 
         // Posted with the form, it is saved.

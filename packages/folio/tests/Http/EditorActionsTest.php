@@ -77,7 +77,7 @@ final class EditorActionsTest extends TestCase
         $this->assertStringContainsString('(⌘S)', $top, 'the shortcut hint in the button\'s title');
 
         $side = self::side($page);
-        $this->assertMatchesRegularExpression('~<input form="folio-record"[^>]* name="slug"~', $side, 'the address field, outside the form');
+        $this->assertMatchesRegularExpression('~<input [^>]*name="slug"[^>]* form="folio-record"~', $side, 'the address field, outside the form');
         $this->assertStringContainsString('<input type="checkbox" form="folio-record" name="_locales[]" value="de"', $side);
         // Inside the form: the token, the language, the "Visible in" marker and the default language.
         $form = self::recordForm($page);

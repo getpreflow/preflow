@@ -1232,10 +1232,11 @@
     // a control of a form marks that form dirty: a control inside it, or outside with form="…" (the
     // editor's side panel names the record form so). A submit that goes ahead clears it, before the
     // navigation's beforeunload. Forms that autosave (hx-post) never lose work and are not guarded; their
-    // edits show as "Unsaved changes" in the save state instead (onRecordEdit).
+    // edits show as "Unsaved changes" in the save state instead (editor-frame.js).
     // Hooks for in-admin navigation (a styled leave dialog, 0.75 Task 7): Folio.unsaved.isDirty(),
     // .dirtyForms(), .clear(form), and .onLeave(fn), a check every leave runs through (fn(e) returns true
-    // to let the page go; beforeunload asks the browser's own question only while no hook answered).
+    // to let the page go; beforeunload asks the browser's own question only while no hook answered), and
+    // .pending(): an autosaving form holds edits not saved yet ("Unsaved changes" or "Saving…").
 
     // The form a control belongs to: its form owner (form="…" included), else the form around it.
     function formOf(el) {
@@ -1297,11 +1298,16 @@
         onLeave: function (fn) { if (typeof fn === 'function') { unsaved.leaveChecks.push(fn); } }
     };
 
-    // ---- Editor frame (form.twig, 0.75) ----------------------------------------
-    // The record form (#folio-record) is posted by buttons outside it (the topbar) and holds controls
-    // outside it (the side panel), all naming it with form="…". Their events do not bubble to the form,
-    // so what reacts to an edit listens on the document and asks formOf(): the save state, the preview,
-    // the guard, "needs change" buttons.
+    // ---- Edits across the form attribute, the save state, "needs change" -------------
+    // A form's controls may sit outside it and name it with form="…" (the editor's side panel). Their
+    // events do not bubble to the form, so a document listener tells the form: every input, change and
+    // trix-change of a control of an autosaving form (hx-post) is announced as "folio:edit" on the form,
+    // which is its autosave trigger (hx-trigger="folio:edit delay:3s"). Controls added later count too.
+    function onFormEdit(e) {
+        var form = formOf(e.target);
+        if (!form || !form.hasAttribute || !form.hasAttribute('hx-post')) { return; }
+        form.dispatchEvent(new CustomEvent('folio:edit', { detail: { source: e.target, type: e.type } }));
+    }
 
     // The save state (#folio-save-state): its text, and the state class (unsaved, saving, conflict; none = saved).
     function setSaveState(stateEl, state, text) {
@@ -1319,21 +1325,12 @@
         return target.charAt(0) === '#' ? document.getElementById(target.slice(1)) : null;
     }
 
-    // The first edit after a save says so ("Unsaved changes"); autosave then shows "Saving…", and its
-    // answer replaces the element ("Draft saved 19:37").
-    function onRecordEdit(e) {
-        var form = formOf(e.target);
-        var stateEl = saveStateOf(form);
-        if (!stateEl || stateEl.classList.contains('is-unsaved') || stateEl.classList.contains('is-saving')) { return; }
-        setSaveState(stateEl, 'unsaved', stateEl.getAttribute('data-text-unsaved') || '');
+    // Edits an autosaving form has not saved yet ("Unsaved changes" during the delay, or "Saving…").
+    function savePending() {
+        var stateEl = document.getElementById('folio-save-state');
+        return !!stateEl && (stateEl.classList.contains('is-unsaved') || stateEl.classList.contains('is-saving'));
     }
-
-    function onAutosaveStart(e) {
-        var elt = e.detail && e.detail.elt;
-        if (e.defaultPrevented || !elt || elt.tagName !== 'FORM') { return; }
-        var stateEl = saveStateOf(elt);
-        if (stateEl) { setSaveState(stateEl, 'saving', stateEl.getAttribute('data-text-saving') || ''); }
-    }
+    window.Folio.unsaved.pending = savePending;
 
     // "Needs change": a submit with data-folio-needs-change stays disabled until a control of its own form
     // changes (a panel's "Transfer" with nothing picked yet); a reset of the form disables it again.
@@ -1373,127 +1370,7 @@
         return true;
     }
 
-    // ---- Publish split button --------------------------------------------------
-    // Publish, and a chevron opening "Publish at…" (a <details>, so it works without script). With
-    // script: aria-expanded on the chevron, Escape and a click elsewhere close it (Escape returns the
-    // focus to the chevron), opening moves the focus to the date; a date set turns Publish into
-    // "Schedule", and the hint under the date says when ("in 2 days").
-    function relativeWhen(value) {
-        var at = value ? new Date(value) : null;
-        if (!at || isNaN(at.getTime())) { return ''; }
-        var seconds = Math.round((at.getTime() - Date.now()) / 1000);
-        var units = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
-        var unit = 'second', amount = seconds;
-        for (var i = 0; i < units.length; i++) {
-            if (Math.abs(seconds) >= units[i][1]) { unit = units[i][0]; amount = Math.round(seconds / units[i][1]); break; }
-        }
-        try {
-            var lang = (document.documentElement.getAttribute && document.documentElement.getAttribute('lang')) || undefined;
-            return new Intl.RelativeTimeFormat(lang, { numeric: 'auto' }).format(amount, unit);
-        } catch (err) {
-            return '';
-        }
-    }
-
-    // Publish publishes now (_action=publish); with a date it schedules: _action=schedule, a save that
-    // keeps the date (the server publishes it when due). "Publish at this time" waits for a date.
-    function publishLabel(group) {
-        var main = group.querySelector('[data-folio-publish]');
-        var input = group.querySelector('[data-folio-publish-at]');
-        var hint = group.querySelector('[data-folio-date-hint]');
-        var at = group.querySelector('[data-folio-schedule]');
-        if (!main || !input) { return; }
-        var scheduled = String(input.value || '') !== '';
-        var text = main.getAttribute(scheduled ? 'data-label-schedule' : 'data-label-publish') || '';
-        if (!main._folioBusy) {
-            main.setAttribute('value', scheduled ? 'schedule' : 'publish');
-            main.value = scheduled ? 'schedule' : 'publish';
-            var busy = main.getAttribute(scheduled ? 'data-busy-schedule' : 'data-busy-publish');
-            if (busy) { main.setAttribute('data-busy-label', busy); }
-            if (text) {
-                main.textContent = text;
-                main.setAttribute('title', text + ' (' + modHint('↵') + ')');
-            }
-        }
-        if (at && !at._folioBusy) { at.disabled = !scheduled; }
-        if (hint) { hint.textContent = scheduled ? relativeWhen(input.value) : ''; }
-    }
-
-    function splitMenuOf(group) { return group.querySelector('[data-folio-publish-menu]'); }
-
-    function setSplitOpen(group, open, refocus) {
-        var menu = splitMenuOf(group);
-        if (!menu) { return; }
-        var summary = menu.querySelector('summary');
-        menu.open = open;
-        if (open) { menu.setAttribute('open', ''); } else { menu.removeAttribute('open'); }
-        if (summary) { summary.setAttribute('aria-expanded', open ? 'true' : 'false'); }
-        if (open) {
-            var input = group.querySelector('[data-folio-publish-at]');
-            if (input && typeof input.focus === 'function') { input.focus(); }
-        } else if (refocus && summary) {
-            summary.focus();
-        }
-    }
-
-    function initSplitButtons(root) {
-        root.querySelectorAll('[data-folio-split-button]').forEach(function (group) {
-            if (group.hasAttribute('data-folio-split-ready')) { return; }
-            group.setAttribute('data-folio-split-ready', '');
-            var menu = splitMenuOf(group);
-            var summary = menu ? menu.querySelector('summary') : null;
-            if (summary) { summary.setAttribute('aria-expanded', menu.open ? 'true' : 'false'); }
-            if (menu) {
-                // The browser toggled it (a click on the chevron): keep aria-expanded and the focus in step.
-                menu.addEventListener('toggle', function () {
-                    var open = !!menu.open;
-                    if (summary && summary.getAttribute('aria-expanded') !== String(open)) { setSplitOpen(group, open, false); }
-                });
-            }
-            publishLabel(group);
-        });
-    }
-
-    function onSplitButtonEvent(e) {
-        var target = e.target;
-        if (e.type === 'keydown') {
-            var group = target && target.closest ? target.closest('[data-folio-split-ready]') : null;
-            var menu = group ? splitMenuOf(group) : null;
-            if (e.key === 'Escape' && menu && menu.open) {
-                e.preventDefault();
-                setSplitOpen(group, false, true);
-            }
-            return;
-        }
-        if (e.type === 'click') {
-            var clear = target && target.closest ? target.closest('[data-folio-date-clear]') : null;
-            if (clear) {
-                var box = clear.closest('[data-folio-split-ready]') || document;
-                var input = box.querySelector('[data-folio-publish-at]');
-                if (input) {
-                    input.value = '';
-                    input.dispatchEvent(new Event('input', { bubbles: true }));
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                    if (typeof input.focus === 'function') { input.focus(); }
-                }
-                return;
-            }
-            // A click elsewhere closes an open menu.
-            document.querySelectorAll('[data-folio-split-ready]').forEach(function (g) {
-                var m = splitMenuOf(g);
-                var inside = target && target.closest ? target.closest('[data-folio-split-ready]') === g : false;
-                if (m && m.open && !inside) { setSplitOpen(g, false, false); }
-            });
-            return;
-        }
-        // input / change on the date
-        if (target && target.hasAttribute && target.hasAttribute('data-folio-publish-at')) {
-            var owner = target.closest('[data-folio-split-ready]');
-            if (owner) { publishLabel(owner); }
-        }
-    }
-
-    // ---- Tabs in the editor: an invalid field in a hidden panel opens its tab; a link to a tab opens it.
+    // Tabs: an invalid field in a hidden panel opens its tab, so the browser can show its message there.
     function tabFor(panel) {
         var box = panel && panel.closest ? panel.closest('[data-folio-tabs]') : null;
         var key = panel ? panel.getAttribute('data-folio-tabpanel') : null;
@@ -1505,120 +1382,26 @@
         return null;
     }
 
-    // The browser shows its message at the first invalid field, so that field must be visible: its tab
-    // opens, and a field in the side panel's closed phone sheet (an empty required address) opens the sheet.
     function onInvalidInTab(e) {
-        var target = e.target;
-        var side = target && target.closest ? target.closest('[data-folio-side-ready]') : null;
-        var form = formOf(target);
-        var earlier = form && form.querySelector ? form.querySelector(':invalid') : null; // a field in the form itself comes first
-        if (side && !earlier && !sidePanelOpen() && window.getComputedStyle && window.getComputedStyle(side).display === 'none') {
-            openSidePanel();
-            return;
-        }
-        var panel = target && target.closest ? target.closest('[data-folio-tabpanel]') : null;
+        var panel = e.target && e.target.closest ? e.target.closest('[data-folio-tabpanel]') : null;
         if (!panel || !panel.hidden) { return; }
         var tab = tabFor(panel);
         if (tab) { tab.click(); }
     }
 
-    function onTabLink(e) {
-        var link = e.target && e.target.closest ? e.target.closest('[data-folio-tab-link]') : null;
-        if (!link) { return; }
-        var tab = document.querySelector('[data-folio-tabs-ready] [data-folio-tab="' + link.getAttribute('data-folio-tab-link').replace(/[^\w-]/g, '') + '"]');
-        if (!tab) { return; }
-        e.preventDefault();
-        closeSidePanel(false);
-        tab.click();
-        tab.focus();
-    }
-
-    // ---- The side panel at phone width: a sheet the topbar's toggle opens; Esc and × close it.
-    var sidePanel = null;
-
-    function sidePanelOpen() {
-        return !!(sidePanel && sidePanel.classList.contains('is-open'));
-    }
-
-    function openSidePanel() {
-        if (!sidePanel) { return; }
-        sidePanel.classList.add('is-open');
-        var toggle = document.querySelector('[data-folio-side-toggle]');
-        if (toggle) { toggle.setAttribute('aria-expanded', 'true'); }
-        var close = sidePanel.querySelector('[data-folio-side-close]');
-        if (close) { close.focus(); }
-    }
-
-    function closeSidePanel(refocus) {
-        if (!sidePanelOpen()) { return false; }
-        sidePanel.classList.remove('is-open');
-        var toggle = document.querySelector('[data-folio-side-toggle]');
-        if (toggle) {
-            toggle.setAttribute('aria-expanded', 'false');
-            if (refocus) { toggle.focus(); }
-        }
-        return true;
-    }
-
-    function initSidePanel() {
-        sidePanel = document.querySelector('[data-folio-side]');
-        var toggle = document.querySelector('[data-folio-side-toggle]');
-        if (!sidePanel || !toggle) { return; }
-        sidePanel.setAttribute('data-folio-side-ready', '');
-        toggle.hidden = false;
-        toggle.addEventListener('click', function () {
-            if (sidePanelOpen()) { closeSidePanel(true); } else { openSidePanel(); }
-        });
-        var close = sidePanel.querySelector('[data-folio-side-close]');
-        if (close) { close.addEventListener('click', function () { closeSidePanel(true); }); }
-    }
-
-    // ---- Editor shortcuts: ⌘S / Ctrl+S saves (the Save draft or Save button, also while typing; the
-    // browser's save dialog never opens in the editor), ⌘↵ / Ctrl+Enter publishes (only while Publish is
-    // there and enabled), Esc closes the side panel sheet (phone width).
-    function initEditorShortcuts() {
-        var save = document.querySelector('[data-folio-save]');
-        if (save) {
-            addShortcut({ key: 's', mod: true, typing: true, label: folioT('shortcut_save'), run: function () {
-                submitWith(document.querySelector('[data-folio-save]'));
-                return true;
-            } });
-        }
-        if (document.querySelector('[data-folio-publish]')) {
-            addShortcut({ key: 'Enter', mod: true, typing: true, label: folioT('shortcut_publish'), run: function () {
-                return submitWith(document.querySelector('[data-folio-publish]'));
-            } });
-        }
-        if (sidePanel && document.querySelector('[data-folio-side-toggle]')) {
-            addShortcut({ key: 'Escape', typing: true, label: folioT('shortcut_close_side'), hint: 'Esc', run: function () {
-                return closeSidePanel(true);
-            } });
-        }
-    }
-
-    function initEditor() {
-        // The buttons' shortcut hints say Ctrl+ where there is no ⌘.
-        if (!isMac()) {
-            document.querySelectorAll('[aria-keyshortcuts][title]').forEach(function (el) {
-                el.setAttribute('title', el.getAttribute('title').replace(/⌘/g, 'Ctrl+'));
-            });
-        }
-        document.addEventListener('input', onRecordEdit);
-        document.addEventListener('change', onRecordEdit);
-        document.addEventListener('htmx:beforeRequest', onAutosaveStart);
+    function initFormEdits() {
+        ['input', 'change', 'trix-change'].forEach(function (name) { document.addEventListener(name, onFormEdit); });
         initNeedsChange(document);
         document.addEventListener('input', onNeedsChangeEdit);
         document.addEventListener('change', onNeedsChangeEdit);
         document.addEventListener('reset', onNeedsChangeReset);
-        initSplitButtons(document);
-        document.addEventListener('keydown', onSplitButtonEvent);
-        document.addEventListener('click', onSplitButtonEvent);
-        document.addEventListener('input', onSplitButtonEvent);
-        document.addEventListener('change', onSplitButtonEvent);
         document.addEventListener('invalid', onInvalidInTab, true);
-        document.addEventListener('click', onTabLink);
-        initSidePanel();
     }
+
+    // What the editor frame (editor-frame.js) uses from here.
+    window.Folio.formOf = formOf;
+    window.Folio.submitWith = submitWith;
+    window.Folio.saveState = { set: setSaveState, of: saveStateOf };
 
     // ---- Settings → Translations: "Save all filled" -------------------------
     // Each row is its own form, so saving one row reloads the page over every other filled one.
@@ -1758,7 +1541,6 @@
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
         initNeedsChange(root);
-        initSplitButtons(root);
     }
 
     // Share-preview link: copy the URL (select it when the clipboard is unavailable).
@@ -2736,7 +2518,7 @@
     }
 
     window.Folio = window.Folio || {};
-    window.Folio.shortcuts = { add: addShortcut, show: showShortcuts, isTyping: isTyping };
+    window.Folio.shortcuts = { add: addShortcut, show: showShortcuts, isTyping: isTyping, isMac: isMac, modHint: modHint };
 
     // A list's keys: / search, n new, j / k move the row focus, Enter or e open the row, x tick it,
     // . open its "…" menu, d duplicate it (its menu's Duplicate, so only where that item is there).
@@ -2890,7 +2672,7 @@
         document.addEventListener('click', onRelationClick);
         initSplit();
         initUnsavedGuard();
-        initEditor();
+        initFormEdits();
         initTranslationsSaveAll();
         initRedirectTargets();
         initNavSections();
@@ -2899,7 +2681,6 @@
         // After the menus' own keys (Escape, arrows), which mark their events handled.
         initShortcuts();
         initListShortcuts();
-        initEditorShortcuts();
         // Last, after the unsaved-changes guards: when one of them asked "Leave the page?" and the
         // person chose to stay, nothing else would release a plain submit's busy button.
         window.addEventListener('beforeunload', onBusyBeforeUnload);

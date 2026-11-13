@@ -2153,6 +2153,7 @@ final class FolioServiceProvider extends ServiceProvider
             'ai-translate.css' => 'ai-translate.css',
             'ai-translate-core.js' => 'ai-translate-core.js',
             'ai-translate.js' => 'ai-translate.js',
+            'editor-frame.js' => 'editor-frame.js',
             'icons.svg' => 'icons.svg',
             // Self-hosted fonts (SIL OFL 1.1, licences beside them), referenced by admin.css.
             'InterVariable.woff2' => 'fonts/InterVariable.woff2',

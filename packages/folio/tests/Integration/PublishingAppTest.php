@@ -575,9 +575,9 @@ final class PublishingAppTest extends TestCase
         $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
         $this->working('memo', 'm1', ['title' => 'M']);
 
-        $this->assertStringContainsString('hx-trigger="input delay:3s', (string) $this->get('/folio/post/p1/edit')->getBody());
-        $this->assertStringNotContainsString('hx-trigger="input delay:3s', (string) $this->get('/folio/post/new')->getBody());
-        $this->assertStringNotContainsString('hx-trigger="input delay:3s', (string) $this->get('/folio/memo/m1/edit')->getBody());
+        $this->assertStringContainsString('hx-trigger="folio:edit delay:3s', (string) $this->get('/folio/post/p1/edit')->getBody());
+        $this->assertStringNotContainsString('hx-trigger="folio:edit delay:3s', (string) $this->get('/folio/post/new')->getBody());
+        $this->assertStringNotContainsString('hx-trigger="folio:edit delay:3s', (string) $this->get('/folio/memo/m1/edit')->getBody());
     }
 
     public function test_edit_form_lists_revisions(): void
@@ -811,8 +811,9 @@ final class PublishingAppTest extends TestCase
         $body = (string) $this->get('/folio/post/p1/edit')->getBody();
         // The topbar's buttons (outside the form, form="folio-record") are disabled too.
         $this->assertStringContainsString('hx-disabled-elt="button[type=submit][form=folio-record], find button[type=submit]"', $body);
-        // The side panel's record controls trigger autosave like the form's own.
-        $this->assertStringContainsString('input from:[form=folio-record] delay:3s, change from:[form=folio-record] delay:3s', $body);
+        // Every edit of a control of the form, the side panel's too, is "folio:edit" on it (admin.js).
+        $this->assertStringContainsString('hx-trigger="folio:edit delay:3s"', $body);
+        $this->assertStringContainsString('/editor-frame.js?v=', $body, 'the editor frame\'s script');
     }
 
     public function test_published_field_is_ignored_when_publishing(): void

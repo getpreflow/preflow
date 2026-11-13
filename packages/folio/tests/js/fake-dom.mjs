@@ -1,6 +1,7 @@
 // A minimal DOM for node tests of admin.js: elements, attributes, classes, simple selectors
 // ("tag#id.class[attr][attr=\"v\"]", descendants with a space, groups with a comma), events,
-// form owners (form="…") and requestSubmit(), and a window that delivers postMessage events.
+// form owners (form="…") and requestSubmit(), a MutationObserver for appended elements, and a
+// window that delivers postMessage events.
 // load(file) runs a browser script against it.
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -17,6 +18,7 @@ class Text {
 
 class Element {
     constructor(tag, doc) {
+        this.nodeType = 1;
         this.tagName = tag.toUpperCase();
         this.ownerDocument = doc;
         this.children = [];
@@ -112,6 +114,7 @@ class Element {
         }
         child.parentNode = this;
         this.children.push(child);
+        notifyAdded(this, child);
         return child;
     }
     removeChild(child) { child.remove(); return child; }
@@ -175,6 +178,19 @@ class Element {
     getBoundingClientRect() { return { left: 0, top: 0, width: 0, height: 0 }; }
 }
 
+/** MutationObserver childList records for an appended element (delivered in a microtask, as in the DOM). */
+function notifyAdded(parent, child) {
+    const observers = parent.ownerDocument._observers || [];
+    observers.forEach((o) => {
+        for (let node = parent; node; node = node.parentNode) {
+            if (node === o.target && (node === parent || o.options.subtree)) {
+                queueMicrotask(() => o.callback([{ type: 'childList', target: parent, addedNodes: [child] }], o.observer));
+                return;
+            }
+        }
+    });
+}
+
 function matchesCompound(el, compound) {
     const re = /([a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[([\w-]+)(?:([*^$]?=)"([^"]*)")?\]/g;
     let m, seen = 0;
@@ -234,6 +250,12 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
             (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin, source }));
         },
         Event, CustomEvent, console, JSON, Math, Date,
+        /** observe(target, {childList, subtree}): appended elements are reported (removals are not). */
+        MutationObserver: class {
+            constructor(callback) { this.callback = callback; }
+            observe(target, options = {}) { (document._observers = document._observers || []).push({ target, options, callback: this.callback, observer: this }); }
+            disconnect() { document._observers = (document._observers || []).filter((o) => o.observer !== this); }
+        },
         // The page's timers (resolved at call time, so node:test mock.timers applies) never keep the test process alive.
         setTimeout: (fn, ms, ...args) => { const t = setTimeout(fn, ms, ...args); if (t && t.unref) { t.unref(); } return t; },
         clearTimeout: (t) => clearTimeout(t),

@@ -64,9 +64,10 @@
         {% set form_attrs = {'id': record_form} %}
         {% if multipart|default(false) %}{% set form_attrs = form_attrs|merge({'enctype': 'multipart/form-data'}) %}{% endif %}
         {% if publishing and publishing.autosave_url %}
-            {# Autosave: debounced htmx POST of the whole form, the side panel's form="…" controls too (their
-               events do not bubble to the form); the native submit stays a normal save. #}
-            {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'input delay:3s, change delay:3s, trix-change delay:3s, input from:[form=' ~ record_form ~ '] delay:3s, change from:[form=' ~ record_form ~ '] delay:3s', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML', 'hx-disabled-elt': 'button[type=submit][form=' ~ record_form ~ '], find button[type=submit]'}) %}
+            {# Autosave: debounced htmx POST of the whole form, the side panel's form="…" controls too. Their
+               events do not bubble to the form, so admin.js announces every edit of a control of the form
+               (inside or outside, added later too) as "folio:edit" on it; the native submit stays a normal save. #}
+            {% set form_attrs = form_attrs|merge({'hx-post': publishing.autosave_url, 'hx-trigger': 'folio:edit delay:3s', 'hx-target': '#folio-save-state', 'hx-swap': 'outerHTML', 'hx-disabled-elt': 'button[type=submit][form=' ~ record_form ~ '], find button[type=submit]'}) %}
         {% endif %}
         {% set form = form_begin({action: action, csrf_token: csrf, attrs: form_attrs}) %}
         {{ form.begin()|raw }}

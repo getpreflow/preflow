@@ -1537,7 +1537,8 @@ final class AdminController
             'record_id' => isset($values[$typeDef->idField]) ? rawurlencode((string) $values[$typeDef->idField]) : '',
             'csrf' => $csrf,
             'fields' => $fields,
-            'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : [])),
+            // editor-frame.js: the save state, the Publish split button, the side panel, the editor's keys.
+            'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : []) + ['editor-frame.js' => true]),
             'multipart' => $multipart,
             'layout' => $layout,
             // No preview in the create drawer: its form posts to the save route.

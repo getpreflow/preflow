@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { createWindow, load } from './fake-dom.mjs';
 
 const ADMIN_JS = fileURLToPath(new URL('../../assets/admin.js', import.meta.url));
+const EDITOR_JS = fileURLToPath(new URL('../../assets/editor-frame.js', import.meta.url));
 
 /**
  * An editor page: topbar (save state, Save draft, Publish, the side panel toggle), the record form in
@@ -48,9 +49,10 @@ function editor({ autosave = false, publish = true } = {}) {
     title.type = 'text';
     const side = el(doc.body, 'aside', { id: 'folio-side', 'data-folio-side': '' }, 'folio-side');
     const close = el(side, 'button', { type: 'button', 'data-folio-side-close': '' });
-    const slug = el(side, 'input', { type: 'text', name: 'slug', form: 'folio-record' });
+    const fields = el(side, 'fieldset', { form: 'folio-record' }, 'folio-side-fields');
+    const slug = el(fields, 'input', { type: 'text', name: 'slug', form: 'folio-record' });
     slug.type = 'text';
-    const visible = el(side, 'input', { type: 'checkbox', name: '_locales[]', value: 'de', form: 'folio-record' });
+    const visible = el(fields, 'input', { type: 'checkbox', name: '_locales[]', value: 'de', form: 'folio-record' });
     visible.type = 'checkbox';
     const panelForm = el(side, 'form', { method: 'post', action: '/folio/news/n1/_action/transfer' });
     const owner = el(panelForm, 'select', { name: 'owner' });
@@ -58,7 +60,8 @@ function editor({ autosave = false, publish = true } = {}) {
     transfer.type = 'submit';
     transfer.disabled = false;
     load(w, ADMIN_JS);
-    return { w, doc, state, stateText, toggle, save, pub, form, title, side, close, slug, visible, panelForm, owner, transfer };
+    load(w, EDITOR_JS);
+    return { w, doc, el, state, stateText, toggle, save, pub, form, title, side, fields, close, slug, visible, panelForm, owner, transfer };
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -141,6 +144,44 @@ test('an autosaving form is not guarded; its first edit says "Unsaved changes", 
     assert.equal(p.stateText.textContent, 'Saving…', 'an edit while it saves keeps "Saving…"; the answer replaces the element');
 });
 
+test('every edit of a record control, the side panel\'s too, is "folio:edit" on the form (the autosave trigger)', () => {
+    const p = editor({ autosave: true });
+    const seen = [];
+    p.form.addEventListener('folio:edit', (e) => seen.push(e.detail.source));
+    fire(p.title, 'input');
+    fire(p.visible, 'change');
+    fire(p.owner, 'change');
+    assert.deepEqual(seen, [p.title, p.visible], 'not the panel form\'s own select');
+});
+
+test('a control added later inside a side fieldset gets its form, so it is posted and autosaves', async () => {
+    const p = editor({ autosave: true });
+    const chip = p.el(p.el(p.fields, 'span', {}, 'folio-relation-item'), 'input', { type: 'hidden', name: 'related' });
+    chip.type = 'hidden';
+    const copy = p.el(p.fields, 'button', { type: 'button', 'data-copy': 'x' });
+    await Promise.resolve();
+    assert.equal(chip.getAttribute('form'), 'folio-record');
+    assert.equal(chip.form, p.form, 'in the record form\'s elements');
+    assert.equal(copy.getAttribute('form'), null, 'a type="button" button submits nothing and stays without');
+
+    const seen = [];
+    p.form.addEventListener('folio:edit', () => seen.push(1));
+    fire(chip, 'change');
+    assert.equal(seen.length, 1, 'its edit triggers autosave');
+    assert.ok(p.state.classList.contains('is-unsaved'));
+});
+
+test('Folio.unsaved.pending(): edits an autosave has not saved yet', () => {
+    const p = editor({ autosave: true });
+    assert.equal(p.w.Folio.unsaved.pending(), false);
+    fire(p.slug, 'input');
+    assert.equal(p.w.Folio.unsaved.pending(), true, '"Unsaved changes"');
+    htmx(p.form, 'htmx:beforeRequest', { requestConfig: { triggeringEvent: { type: 'folio:edit' } } });
+    assert.equal(p.w.Folio.unsaved.pending(), true, '"Saving…"');
+    p.w.Folio.saveState.set(p.state, null, 'Draft saved 19:37'); // the answer's element
+    assert.equal(p.w.Folio.unsaved.pending(), false);
+});
+
 test('a failed autosave says so in the save state (and keeps its caret element)', () => {
     const p = editor({ autosave: true });
     htmx(p.form, 'htmx:responseError', { xhr: { status: 500 } });
@@ -149,17 +190,33 @@ test('a failed autosave says so in the save state (and keeps its caret element)'
     assert.equal(p.state.querySelector('[data-folio-save-text]'), p.stateText);
 });
 
-test('busy: the topbar Publish an htmx request belongs to is released when the request fails', () => {
-    const p = editor();
-    const requestConfig = { triggeringEvent: { submitter: p.pub } };
-    const xhr = {};
-    htmx(p.form, 'htmx:beforeRequest', { requestConfig, xhr });
-    assert.ok(p.pub.classList.contains('is-busy'));
-    assert.equal(p.pub.disabled, true);
-    htmx(p.form, 'htmx:responseError', { requestConfig, xhr });
-    assert.ok(!p.pub.classList.contains('is-busy'));
-    assert.equal(p.pub.disabled, false);
+test('a failed autosave leaves Save draft and Publish usable (not busy)', () => {
+    const p = editor({ autosave: true });
+    const requestConfig = { triggeringEvent: { type: 'folio:edit' } };
+    htmx(p.form, 'htmx:beforeRequest', { requestConfig, xhr: {} });
+    htmx(p.form, 'htmx:responseError', { requestConfig, xhr: { status: 500 } });
+    htmx(p.form, 'htmx:afterRequest', { requestConfig, xhr: { status: 500 } });
+    for (const b of [p.save, p.pub]) {
+        assert.ok(!b.classList.contains('is-busy'));
+        assert.equal(b.disabled, false);
+    }
+    assert.equal(p.save.textContent, 'Save draft');
     assert.equal(p.pub.textContent, 'Publish');
+});
+
+test('⌘S during an autosave waits for it and then saves once', async () => {
+    const p = editor({ autosave: true });
+    htmx(p.form, 'htmx:beforeRequest', { requestConfig: { triggeringEvent: { type: 'folio:edit' } }, xhr: {} });
+    p.save.disabled = true; // hx-disabled-elt while the request runs
+    const e = press(p, 's', { meta: true, from: p.title });
+    press(p, 's', { meta: true, from: p.title });
+    assert.equal(e.defaultPrevented, true, 'no browser save dialog');
+    assert.equal(p.form.sent, undefined, 'nothing sent while autosave runs');
+
+    p.save.disabled = false; // htmx gives it back
+    htmx(p.form, 'htmx:afterRequest', { xhr: {} });
+    await tick();
+    assert.deepEqual(p.form.sent, [p.save], 'one save, after the autosave');
 });
 
 test('busy: a plain submit through the topbar button makes that button busy (e.submitter)', async () => {
