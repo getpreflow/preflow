@@ -93,10 +93,14 @@ final class MysqlGrammar implements SchemaGrammar
         };
     }
 
-    public function createRecordIndex(string $name, string $table, array $columns, bool $unique): string
+    /** A TEXT or BLOB column (one made before it was indexed) is indexed by its first 191 characters. */
+    public function createRecordIndex(string $name, string $table, array $columns, bool $unique, array $columnTypes = []): string
     {
+        $parts = array_map(fn (string $column): string => $this->quote($column)
+            . (preg_match('/(text|blob)$/', strtolower($columnTypes[$column] ?? '')) === 1 ? '(' . FieldKinds::DEFAULT_LENGTH . ')' : ''), $columns);
+
         return 'CREATE ' . ($unique ? 'UNIQUE ' : '') . 'INDEX ' . $this->quote($name) . ' ON ' . $this->quote($table)
-            . ' (' . implode(', ', array_map($this->quote(...), $columns)) . ')';
+            . ' (' . implode(', ', $parts) . ')';
     }
 
     public function createIndex(string $table, string $column): string

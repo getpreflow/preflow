@@ -2,6 +2,7 @@
     "key": "article",
     "table": "articles",
     "id_field": "id",
+    "indexes": [["section", "published_at"], ["featured", "rating"]],
     "matrixable": false,
     "views": [],
     "label": {

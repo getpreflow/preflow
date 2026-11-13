@@ -77,6 +77,30 @@ final class PublishingTablesMysqlTest extends TestCase
         $this->assertSame(['title'], $p->revisions('article', 'a1')[0]->changed);
     }
 
+    /** Declared indexes reach the existing working and published tables (a LONGTEXT column by a prefix); the revisions get none. */
+    public function test_declared_indexes_reach_the_existing_published_table(): void
+    {
+        (new PublishingTables($this->dm, new SchemaPublishingTypes($this->dm), new NoRecordColumns()))->sync();
+        file_put_contents($this->dir . '/article.json', (string) json_encode([
+            'key' => 'article', 'table' => 'article', 'storage' => 'mysql', 'publishing' => true,
+            'fields' => ['title' => ['type' => 'string', 'index' => true], 'views' => ['type' => 'number']],
+            'indexes' => [['title', 'views']],
+        ]));
+        $dm = new DataManager(['mysql' => new MysqlDriver($this->pdo)], 'mysql', new TypeRegistry($this->dir));
+        $tables = new PublishingTables($dm, new SchemaPublishingTypes($dm), new NoRecordColumns());
+
+        $lines = $tables->sync();
+
+        $schema = new Schema($this->pdo);
+        foreach (['article', 'article__published'] as $table) {
+            $this->assertContains("added index idx_{$table}_title", $lines);
+            $this->assertContains("added index idx_{$table}_title_views", $lines);
+            $this->assertEqualsCanonicalizing(['PRIMARY', "idx_{$table}_title", "idx_{$table}_title_views"], $schema->indexes($table), $table);
+        }
+        $this->assertSame(['PRIMARY'], $schema->indexes('article__revisions'));
+        $this->assertSame([], array_values(array_filter($tables->sync(), static fn (string $l): bool => !str_starts_with($l, 'warning: '))), 'a second run adds nothing');
+    }
+
     private function stored(string $id): DynamicRecord
     {
         return $this->dm->findType('article', $id) ?? throw new \RuntimeException("no article {$id}");

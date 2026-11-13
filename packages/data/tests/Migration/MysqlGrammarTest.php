@@ -155,4 +155,19 @@ final class MysqlGrammarTest extends TestCase
         );
         $this->assertSame('CREATE INDEX "idx_e_slug" ON "e" ("slug")', (new SqliteGrammar())->createRecordIndex('idx_e_slug', 'e', ['slug'], false));
     }
+
+    /** A column made before it was indexed may be TEXT: MySQL indexes its first 191 characters, SQLite the whole value. */
+    public function test_a_text_column_is_indexed_by_a_prefix_on_mysql(): void
+    {
+        $types = ['company' => 'longtext', 'state' => 'varchar(191)', 'body' => 'mediumblob'];
+
+        $this->assertSame(
+            'CREATE INDEX `idx_e_company_state_body` ON `e` (`company`(191), `state`, `body`(191))',
+            (new MysqlGrammar())->createRecordIndex('idx_e_company_state_body', 'e', ['company', 'state', 'body'], false, $types),
+        );
+        $this->assertSame(
+            'CREATE INDEX "idx_e_company" ON "e" ("company")',
+            (new SqliteGrammar())->createRecordIndex('idx_e_company', 'e', ['company'], false, ['company' => 'text']),
+        );
+    }
 }

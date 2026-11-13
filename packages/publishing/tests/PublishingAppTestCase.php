@@ -64,6 +64,12 @@ abstract class PublishingAppTestCase extends TestCase
         return $this->app;
     }
 
+    /** The next app() boots afresh (after a config or model file changed). */
+    protected function reboot(): void
+    {
+        $this->app = null;
+    }
+
     protected function dm(): DataManager
     {
         return $this->app()->container()->get(DataManager::class);

@@ -90,9 +90,12 @@ final class MysqlTypedSyncTest extends TestCase
             'warning: event.city is longtext, expected short; convert the table (see the data README)',
             'warning: event.short is longtext, expected short; convert the table (see the data README)',
             'warning: event.slug has no unique index; convert the table (see the data README)',
-        ], $lines);
+            'added index idx_event_city',
+            'added index idx_event_short',
+        ], $lines, 'plain indexes on the LONGTEXT columns by a prefix; no unique index over a column of another type');
         $this->assertSame($before, (new Schema($this->pdo))->columnTypes('event'));
-        $this->assertSame(['PRIMARY'], (new Schema($this->pdo))->indexes('event'));
+        $this->assertEqualsCanonicalizing(['PRIMARY', 'idx_event_city', 'idx_event_short'], (new Schema($this->pdo))->indexes('event'));
+        $this->assertSame(array_slice($lines, 0, 7), $sync->sync(self::def()), 'nothing changed, so the same warnings again');
     }
 
     public function testNewColumnOnExistingTableIsTyped(): void

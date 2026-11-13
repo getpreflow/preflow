@@ -213,6 +213,27 @@ final class TypeRegistry
         return $scope === [] ? true : $scope;
     }
 
+    /**
+     * The composite indexes of a model file ("indexes": [["state", "updated_at"]]).
+     *
+     * @return list<list<string>>
+     */
+    private static function indexes(mixed $value, string $key): array
+    {
+        if ($value === null) {
+            return [];
+        }
+        $indexes = [];
+        foreach (is_array($value) && array_is_list($value) ? $value : [null] as $columns) {
+            if (!is_array($columns) || !array_is_list($columns) || array_filter($columns, static fn (mixed $c): bool => !is_string($c)) !== []) {
+                throw new \InvalidArgumentException("Type \"{$key}\": \"indexes\" is a list of field lists, such as [[\"state\", \"updated_at\"]].");
+            }
+            $indexes[] = $columns;
+        }
+
+        return $indexes;
+    }
+
     private function parse(array $schema): TypeDefinition
     {
         $fields = [];
@@ -268,6 +289,7 @@ final class TypeRegistry
             searchableFields: $searchableFields,
             transformers: $transformers,
             locales: $this->locales ?? Locales::single('en'),
+            indexes: self::indexes($schema['indexes'] ?? null, (string) $schema['key']),
         );
     }
 }

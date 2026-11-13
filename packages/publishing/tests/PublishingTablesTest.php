@@ -55,6 +55,28 @@ final class PublishingTablesTest extends PublishingAppTestCase
         $this->assertSame(count($listed), count(array_unique($listed)), 'each table listed once');
     }
 
+    /** A type's declared indexes reach its existing tables and the published copies; the revisions get none. */
+    public function test_declared_indexes_reach_the_published_table_but_not_the_revisions(): void
+    {
+        $this->migrate();
+        $this->write('config/models/article.json', (string) json_encode([
+            'key' => 'article', 'table' => 'article', 'storage' => 'sqlite', 'publishing' => true,
+            'fields' => ['title' => ['type' => 'string', 'index' => true], 'views' => ['type' => 'number'], 'state' => ['type' => 'string']],
+            'indexes' => [['state', 'views']],
+        ]));
+        $this->reboot();
+
+        $lines = $this->migrate();
+
+        foreach (['article', 'article__published'] as $table) {
+            $this->assertContains("added index idx_{$table}_title", $lines);
+            $this->assertContains("added index idx_{$table}_state_views", $lines);
+            $this->assertEqualsCanonicalizing(["idx_{$table}_title", "idx_{$table}_state_views"], self::own($this->schema()->indexes($table)), $table);
+        }
+        $this->assertSame([], self::own($this->schema()->indexes('article__revisions')));
+        $this->assertSame([], $this->migrate(), 'a second migrate is a no-op');
+    }
+
     public function test_publish_and_revisions_work_on_the_tables(): void
     {
         $this->migrate();
@@ -108,6 +130,12 @@ final class PublishingTablesTest extends PublishingAppTestCase
         $step = $this->app()->container()->get(MigrationRegistry::class)->steps()['publishing.tables'] ?? throw new \RuntimeException('step not registered');
 
         return $step();
+    }
+
+    /** @param list<string> $indexes @return list<string> without SQLite's own (primary key) indexes */
+    private static function own(array $indexes): array
+    {
+        return array_values(array_filter($indexes, static fn (string $i): bool => !str_starts_with($i, 'sqlite_')));
     }
 
     private function schema(): Schema

@@ -10,6 +10,7 @@ use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Schema\RecordTables;
+use Preflow\Folio\Storage\TableSync;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Testing\MysqlTestDatabase;
 
@@ -41,6 +42,44 @@ final class TableSyncTypedTest extends TestCase
         $this->assertSame(['text'], array_values(array_unique($schema->columnTypes('event__revisions'))));
         $this->assertSame([], self::own($schema->indexes('event__revisions')));
         $this->assertSame([], $this->migrateStep());
+    }
+
+    /**
+     * Declared indexes added to an existing publishing type reach its working and published tables
+     * once, whichever of Folio's syncs runs: the two migrate steps and folio:extensions:apply agree.
+     */
+    public function testDeclaredIndexesReachExistingTablesOnce(): void
+    {
+        $this->scaffoldEvents('sqlite');
+        $this->writeModel('memo', ['label' => 'Memos', 'fields' => ['title' => ['type' => 'string']]]);
+        $this->migrateStep();
+        $this->writeModel('event', [
+            'label' => 'Events',
+            'publishing' => true,
+            'fields' => [
+                'name' => ['type' => 'string', 'index' => true],
+                'slug' => ['type' => 'string', 'unique' => true],
+                'seats' => ['type' => 'number'],
+                'open' => ['type' => 'boolean'],
+                'starts' => ['type' => 'date'],
+            ],
+            'indexes' => [['open', 'starts']],
+        ]);
+        $this->writeModel('memo', ['label' => 'Memos', 'fields' => ['title' => ['type' => 'string', 'index' => true]]]);
+
+        $lines = $this->migrateStep();
+
+        $this->assertEqualsCanonicalizing([
+            'added index idx_event_name', 'added index idx_event_open_starts',
+            'added index idx_event__published_name', 'added index idx_event__published_open_starts',
+            'added index idx_memo_title',
+        ], $lines);
+        $schema = $this->schema();
+        $this->assertEqualsCanonicalizing(['uniq_event_slug', 'idx_event_name', 'idx_event_open_starts'], self::own($schema->indexes('event')));
+        $this->assertEqualsCanonicalizing(['idx_event__published_slug', 'idx_event__published_name', 'idx_event__published_open_starts'], self::own($schema->indexes('event__published')));
+        $this->assertSame([], self::own($schema->indexes('event__revisions')));
+        $this->assertSame([], $this->migrateStep(), 'a second migrate is a no-op');
+        $this->assertSame([], $this->app()->container()->get(TableSync::class)->sync(), 'folio:extensions:apply finds nothing to do');
     }
 
     #[Group('mysql')]

@@ -112,11 +112,12 @@ final class TypedSyncTest extends TestCase
         $this->assertSame([
             'warning: event.seats is text, expected number; convert the table (see the data README)',
             'warning: event.open is text, expected boolean; convert the table (see the data README)',
-            'warning: event.slug has no unique index; convert the table (see the data README)',
-        ], $lines);
+            'added unique index uniq_event_slug',
+            'added index idx_event_city',
+        ], $lines, 'the indexes on the columns of their type (TEXT on SQLite), which hold no duplicates');
         $this->assertSame($before, (new Schema($this->pdo))->columnTypes('event'));
-        $this->assertSame([], array_values(array_filter((new Schema($this->pdo))->indexes('event'), static fn (string $i): bool => !str_starts_with($i, 'sqlite_'))));
-        $this->assertSame($lines, $sync->sync(self::def()), 'nothing changed, so the same warnings again');
+        $this->assertEqualsCanonicalizing(['uniq_event_slug', 'idx_event_city'], array_values(array_filter((new Schema($this->pdo))->indexes('event'), static fn (string $i): bool => !str_starts_with($i, 'sqlite_'))));
+        $this->assertSame(array_slice($lines, 0, 2), $sync->sync(self::def()), 'nothing changed, so the same warnings again');
     }
 
     public function testNewColumnOnExistingTableIsTyped(): void

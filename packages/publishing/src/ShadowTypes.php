@@ -37,8 +37,9 @@ final class ShadowTypes
     }
 
     /**
-     * The snapshots: the record's fields, its unique fields and their scopes plain indexed ones
-     * (stored alike, never checked: a snapshot may hold a value another record has taken since).
+     * The snapshots: the record's fields and composite indexes, its unique fields and their scopes
+     * plain indexed ones (stored alike, never checked: a snapshot may hold a value another record
+     * has taken since).
      */
     public static function published(TypeDefinition $def): TypeDefinition
     {
@@ -63,6 +64,7 @@ final class ShadowTypes
             searchableFields: $def->searchableFields,
             transformers: $def->transformers,
             locales: $def->locales,
+            indexes: $def->indexes,
         );
     }
 

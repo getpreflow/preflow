@@ -23,6 +23,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Entity(table: 'posts', storage: 'sqlite')]` | Class | Maps model to a table/collection and a named driver. `storage` defaults to `'default'`. |
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
+| `#[Index('state', 'updated_at')]` | Class (repeatable) | A composite index over fields of a type (`#[Entity(type: …)]`), in that order; see [Unique fields and indexes](#unique-fields-and-indexes). |
 | `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `createdAt` or `created_at` (the first the model has) when it is empty and `updatedAt` or `updated_at` on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text, an `?int` one the Unix time; a `?\DateTimeImmutable` one is stored as that text. Other types (a mutable `\DateTime` too) are not stamped. A class-backed type (`#[Entity(type: …)]`) is not stamped: it stores what its type definition says, so it sets these values itself or declares them as type fields. |
 
 ### `Model`
@@ -357,7 +358,8 @@ its old value.
 ## Unique fields and indexes
 
 A field is declared unique in the model JSON or with the attribute, optionally scoped by other
-fields (unique within them), and may carry an index and a length:
+fields (unique within them), and may carry an index and a length. A type may also declare
+composite indexes, each over several of its fields in order:
 
 ```json
 "slug":   { "type": "string", "unique": true, "length": 191 },
@@ -365,9 +367,17 @@ fields (unique within them), and may carry an index and a length:
 "city":   { "type": "string", "index": true }
 ```
 
+```json
+{ "key": "job", "table": "jobs", "fields": { … }, "indexes": [["state", "updated_at"]] }
+```
+
 ```php
 #[Field(unique: true, length: 320)] public ?string $email = null;
 #[Field(unique: ['purpose'])] public ?string $code = null;
+
+#[Index('state', 'updated_at')]          // Preflow\Data\Attributes\Index, repeatable
+#[Entity(table: 'jobs', type: 'job')]
+final class Job extends Model { … }
 ```
 
 - **Validation.** `save()`, `insert()`, `update()`, `saveType()` and `saveTypeIfVersion()` add the
@@ -396,12 +406,29 @@ fields (unique within them), and may carry an index and a length:
   refuse a second `''`). For a `Model`, the property must accept `null`.
 - **Index and length.** `unique` and `index` make a short text column: `VARCHAR(length)` (default
   191) with `utf8mb4_bin` on MySQL, so the index compares exactly; validation then limits the
-  value to `length` characters, also for the scope fields of a unique field. Free text, blocks
-  and translatable fields get no index. `__revisions` tables are never checked or indexed;
-  `__published` tables are typed like their working table but carry plain indexes only.
-- **What sync does.** A new unique field's index is made with its column (`uniq_{table}_{field}`
-  over the field and its scope); on an existing column migrate never adds it (it prints the
-  drift warning below). MySQL caps a composite key at 3072 bytes, so keep scopes short.
+  value to `length` characters, also for the scope fields of a unique field and the fields of a
+  composite index. Free text, blocks and translatable fields get no index. `__revisions` tables
+  are never checked or indexed; `__published` tables are typed like their working table and carry
+  its declared indexes (field and composite), plain ones only (never unique).
+- **Composite indexes.** `"indexes"` (or `#[Index]`) lists the fields of each index in order; the
+  index is `idx_{table}_{field1}_{field2}…` (shortened past 64 characters like every index name).
+  An index without fields, or over a name that is not one of the type's fields (the id is not
+  one), is refused when the type is defined, naming the type and the field. A class's admin
+  file may not set `"indexes"` (it is schema).
+- **What sync does.** `preflow migrate` makes every declared index that is missing, on new and
+  existing columns alike: `idx_{table}_{field}` for `index`, the composite ones, and
+  `uniq_{table}_{field}` (over the field and its scope) for `unique`. A unique index is made on
+  an existing column only when every column it covers has its expected type and no value is
+  there twice (empty values never count); otherwise migrate prints
+  `warning: post.slug has no unique index (2 values are there more than once); convert the table`
+  and makes it on a later run, once the duplicates are gone. On MySQL a plain index over an
+  existing TEXT column (made before it was indexed) covers its first 191 characters. An index is
+  found by its name, so a second migrate changes nothing. MySQL caps a composite key at 3072
+  bytes, so keep scopes and composite indexes short.
+- **Upgrading to 0.72.** Before 0.72 an index came only with a new column. The first
+  `preflow migrate` after the upgrade adds every declared index an existing table lacks (the
+  working and `__published` tables); on big tables that can take a while, so run it when the
+  site is quiet.
 - Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
   (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
 
@@ -462,11 +489,12 @@ SQLite), and every other column is nullable and typed by its field's column kind
 | boolean | boolean | INTEGER | TINYINT(1) |
 | date | date | TEXT | VARCHAR(32) (ISO text) |
 
-Columns are typed only when sync creates them (with the table, or added later), and so are the
-unique (`uniq_{table}_{field}`, over the field and its scope) and plain (`idx_{table}_{field}`)
-indexes; names past 64 characters are shortened with a crc32 hash. An existing column is never
-altered and never gets an index: a column whose type differs from its kind, or a unique field
-without its index, is printed as a warning (`warning: post.seats is text, expected number;
+Columns are typed only when sync creates them (with the table, or added later). The unique
+(`uniq_{table}_{field}`, over the field and its scope), plain (`idx_{table}_{field}`) and composite
+(`idx_{table}_{field1}_{field2}…`) indexes are made whenever they are missing (see
+[Unique fields and indexes](#unique-fields-and-indexes)); names past 64 characters are shortened
+with a crc32 hash. An existing column is never altered: a column whose type differs from its kind,
+or a unique field without its index, is printed as a warning (`warning: post.seats is text, expected number;
 convert the table (see the data README)`; see Converting record tables below). Packages register
 their tables with `RecordTables`: it lists every record table, whichever package syncs it.
 
@@ -884,13 +912,14 @@ with `type: 'date'`. `#[Field]` takes `type`, `label`, `help` (text or a locale 
 (kind settings written at field level, as in a JSON file: `options`, `accept`, `time`, `blocks`,
 `fields`, `multiple`), `default`, `translatable`, `unique` (or a scope list), `index`, `length`,
 `searchable` and `transform`. `#[Relation(to:, onDelete:, onSelfDelete:, labelField:)]` writes the
-relation the JSON file would. `ModelSchema::of(Job::class)` shows the type derived from a class.
+relation the JSON file would, and `#[Index('state', 'updated_at')]` on the class its `"indexes"`.
+`ModelSchema::of(Job::class)` shows the type derived from a class.
 
 **What goes where.** On the class: everything with data meaning, plus labels and help, which forms
 outside Folio use too. In the admin-only file `config/models/job.json`: presentation (the type's
 label, icon, section, list columns, filters, sort, `publishing`; per field `readonly`, `hidden`,
 `placeholder`, …). The file may not set schema: `table`, `storage`, `id_field`, `matrixable`,
-`views`, a field's `type`, `validate`, `translatable`, `unique`, `index`, `length`, `searchable`,
+`views`, `indexes`, a field's `type`, `validate`, `translatable`, `unique`, `index`, `length`, `searchable`,
 `transform`, `default`, `relation`, `options`, `accept`, `time`, `blocks`, `fields` or `multiple`
 is refused with a message naming the file. A site without Folio never sees these files.
 Folio's columns (`_version`, `_publish_at`, …) are invisible to the class.

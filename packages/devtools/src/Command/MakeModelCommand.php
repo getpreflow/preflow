@@ -277,9 +277,22 @@ final class MakeModelCommand implements CommandInterface
             $body[] = self::property((string) $name, $def, $file, $uses);
         }
 
+        $indexes = $type['indexes'] ?? [];
+        if (!is_array($indexes) || !array_is_list($indexes)) {
+            throw new \RuntimeException("{$file} has \"indexes\" that are not a list of field lists.");
+        }
+        $entity = '';
+        foreach ($indexes as $columns) {
+            if (!is_array($columns) || $columns === [] || array_filter($columns, static fn (mixed $c): bool => !is_string($c)) !== []) {
+                throw new \RuntimeException("{$file} has an entry in \"indexes\" that is not a list of field names.");
+            }
+            $entity .= '#[Index(' . implode(', ', array_map(static fn (string $c): string => self::export($c), $columns)) . ")]\n";
+            $uses[] = 'Preflow\\Data\\Attributes\\Index';
+        }
+
         $uses = array_unique($uses);
         sort($uses);
-        $entity = self::attribute('Entity', ['table' => $table, 'storage' => $storage, 'type' => $key], '');
+        $entity .= self::attribute('Entity', ['table' => $table, 'storage' => $storage, 'type' => $key], '');
 
         return "<?php\n\ndeclare(strict_types=1);\n\nnamespace App\\Models;\n\n"
             . implode('', array_map(static fn (string $use): string => "use {$use};\n", $uses))

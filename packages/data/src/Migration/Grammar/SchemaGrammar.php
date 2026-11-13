@@ -35,8 +35,12 @@ interface SchemaGrammar
     /** A record table's index name: "{prefix}_{table}_{field}", shortened with a hash past 64 characters. */
     public function indexName(string $prefix, string $table, string $field): string;
 
-    /** @param list<string> $columns */
-    public function createRecordIndex(string $name, string $table, array $columns, bool $unique): string;
+    /**
+     * @param list<string> $columns
+     * @param array<string, string> $columnTypes the columns' types as columnTypes() reports them, for columns
+     *        the table already has: a server that can't index a TEXT column whole indexes a prefix
+     */
+    public function createRecordIndex(string $name, string $table, array $columns, bool $unique, array $columnTypes = []): string;
 
     public function createIndex(string $table, string $column): string;
 

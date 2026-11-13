@@ -89,8 +89,9 @@ final class FieldKinds
     }
 
     /**
-     * The length rules of a type's bounded string columns: its unique or indexed string fields and
-     * the scope fields of its unique fields (stored as indexed), by field.
+     * The length rules of a type's bounded string columns: its unique or indexed string fields, the
+     * scope fields of its unique fields and the fields of its composite indexes (stored as
+     * indexed), by field.
      *
      * @return array<string, MaxChars>
      */
@@ -107,13 +108,10 @@ final class FieldKinds
      */
     public function lengths(TypeDefinition $def): array
     {
-        $scopes = [];
-        foreach ($def->uniqueFields() as $scope) {
-            array_push($scopes, ...$scope);
-        }
+        $indexed = $def->indexedByOthers();
         $lengths = [];
         foreach ($def->fields as $name => $field) {
-            $field = in_array($name, $scopes, true) ? $field->withIndex() : $field;
+            $field = in_array($name, $indexed, true) ? $field->withIndex() : $field;
             if ($this->columnKindOf($field) === ColumnKind::Short) {
                 $lengths[$name] = $field->length ?? self::DEFAULT_LENGTH;
             }

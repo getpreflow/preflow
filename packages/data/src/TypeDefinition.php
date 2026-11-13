@@ -10,6 +10,8 @@ final readonly class TypeDefinition
      * @param array<string, TypeFieldDefinition> $fields
      * @param string[] $searchableFields
      * @param array<string, FieldTransformer> $transformers
+     * @param list<list<string>> $indexes composite indexes, each the fields it covers in order
+     * @throws \InvalidArgumentException an index without fields, or over a field the type does not have
      */
     public function __construct(
         public string $key,
@@ -20,7 +22,19 @@ final readonly class TypeDefinition
         public array $searchableFields = [],
         public array $transformers = [],
         public Locales $locales = new Locales(['en'], 'en'),
-    ) {}
+        public array $indexes = [],
+    ) {
+        foreach ($indexes as $columns) {
+            if ($columns === []) {
+                throw new \InvalidArgumentException("Type \"{$key}\" has an index without fields.");
+            }
+            foreach ($columns as $column) {
+                if (!isset($fields[$column])) {
+                    throw new \InvalidArgumentException("Type \"{$key}\" has an index over \"{$column}\", which is not one of its fields.");
+                }
+            }
+        }
+    }
 
     /**
      * Fields whose values differ per locale. Empty for single-locale apps:
@@ -58,6 +72,25 @@ final readonly class TypeDefinition
     public function indexedFields(): array
     {
         return array_keys(array_filter($this->fields, static fn ($f) => $f->index));
+    }
+
+    /**
+     * Fields stored as indexed columns without an index of their own: the scope fields of unique
+     * fields and the fields of composite indexes.
+     *
+     * @return list<string>
+     */
+    public function indexedByOthers(): array
+    {
+        $names = [];
+        foreach ($this->uniqueFields() as $scope) {
+            array_push($names, ...$scope);
+        }
+        foreach ($this->indexes as $columns) {
+            array_push($names, ...$columns);
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**

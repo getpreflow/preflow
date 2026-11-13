@@ -72,7 +72,7 @@ final class SqliteGrammar implements SchemaGrammar
         };
     }
 
-    public function createRecordIndex(string $name, string $table, array $columns, bool $unique): string
+    public function createRecordIndex(string $name, string $table, array $columns, bool $unique, array $columnTypes = []): string
     {
         return 'CREATE ' . ($unique ? 'UNIQUE ' : '') . 'INDEX ' . $this->quote($name) . ' ON ' . $this->quote($table)
             . ' (' . implode(', ', array_map($this->quote(...), $columns)) . ')';
