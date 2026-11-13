@@ -1,7 +1,7 @@
 // Busy buttons (assets/admin.js): a submit button with data-busy-label shows its request is running
 // (is-busy, aria-busy, disabled, the label) and is always restored when the request ends.
 // Run: node --test 'packages/folio/tests/js/*.test.mjs'
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createWindow, load } from './fake-dom.mjs';
@@ -101,7 +101,7 @@ test('an htmx request from the form shows its submitter busy and clears it on su
     assert.ok(isIdle(save, 'Save draft'));
 });
 
-for (const failure of ['htmx:responseError', 'htmx:sendError', 'htmx:timeout']) {
+for (const failure of ['htmx:responseError', 'htmx:sendError', 'htmx:timeout', 'htmx:sendAbort']) {
     test(`an htmx request that fails (${failure}) clears the busy state`, () => {
         const { form, publish } = editor();
         const requestConfig = { triggeringEvent: { submitter: publish } };
@@ -113,6 +113,93 @@ for (const failure of ['htmx:responseError', 'htmx:sendError', 'htmx:timeout']) 
         assert.ok(isIdle(publish, 'Publish'));
     });
 }
+
+test('a failed request gives the keyboard focus back to the button', () => {
+    const { doc, form, publish } = editor();
+    const requestConfig = { triggeringEvent: { submitter: publish } };
+    htmx(form, 'htmx:beforeRequest', { requestConfig });
+    assert.equal(doc.activeElement, doc.body, 'the disabled button lost the focus');
+
+    htmx(form, 'htmx:responseError', { requestConfig });
+    htmx(form, 'htmx:afterRequest', { requestConfig, successful: false });
+
+    assert.equal(doc.activeElement, publish);
+});
+
+test('a failed request does not take the focus from where the user moved it', () => {
+    const { doc, form, publish } = editor();
+    const requestConfig = { triggeringEvent: { submitter: publish } };
+    const field = form.appendChild(doc.createElement('input'));
+    htmx(form, 'htmx:beforeRequest', { requestConfig });
+    field.focus();
+
+    htmx(form, 'htmx:sendError', { requestConfig });
+
+    assert.ok(isIdle(publish, 'Publish'));
+    assert.equal(doc.activeElement, field);
+});
+
+test('a successful request leaves the focus alone', () => {
+    const { doc, form, save } = editor();
+    const requestConfig = { triggeringEvent: { submitter: save } };
+    htmx(form, 'htmx:beforeRequest', { requestConfig });
+    htmx(form, 'htmx:afterRequest', { requestConfig, successful: true });
+
+    assert.equal(doc.activeElement, doc.body);
+});
+
+test('the button gets its own nodes back (icon and text), not just its text', () => {
+    const { doc, form, save } = editor();
+    save.textContent = '';
+    const icon = save.appendChild(doc.createElement('svg'));
+    icon.className = 'folio-icon';
+    save.appendChild(doc.createTextNode('Save draft'));
+    const requestConfig = { triggeringEvent: { submitter: save } };
+
+    htmx(form, 'htmx:beforeRequest', { requestConfig });
+    assert.equal(save.textContent, 'Saving…');
+    assert.equal(save.querySelector('svg'), null, 'the label replaces the content while busy');
+
+    htmx(form, 'htmx:afterRequest', { requestConfig, successful: true });
+    assert.equal(save.querySelector('svg'), icon, 'the same icon element is back');
+    assert.equal(save.textContent, 'Save draft');
+    assert.ok(save.childNodes.some((n) => n.nodeType === 3), 'and its text node');
+});
+
+test('a request that never reports back releases the button after 45 seconds', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const { doc, form, publish } = editor();
+        htmx(form, 'htmx:beforeRequest', { requestConfig: { triggeringEvent: { submitter: publish } } });
+
+        mock.timers.tick(44999);
+        assert.ok(isBusy(publish), 'still running just before the limit');
+
+        mock.timers.tick(1);
+        assert.ok(isIdle(publish, 'Publish'));
+        assert.equal(doc.activeElement, publish, 'released as a failure: focus back on the button');
+    } finally {
+        mock.timers.reset();
+    }
+});
+
+test('a request that ends in time cancels the safety timer', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const { doc, form, save } = editor();
+        const requestConfig = { triggeringEvent: { submitter: save } };
+        htmx(form, 'htmx:beforeRequest', { requestConfig });
+        htmx(form, 'htmx:afterRequest', { requestConfig, successful: true });
+        // A second request from the same button: the first timer must not cut it short.
+        htmx(form, 'htmx:beforeRequest', { requestConfig });
+
+        mock.timers.tick(44999);
+        assert.ok(isBusy(save));
+        assert.equal(doc.activeElement, doc.body);
+    } finally {
+        mock.timers.reset();
+    }
+});
 
 test('a button that sends its own htmx request is busy itself', () => {
     const { doc } = editor();

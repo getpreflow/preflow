@@ -4,7 +4,7 @@
 {% block actions %}<a class="btn btn-secondary" href="{{ prefix }}/assets">{{ t('folio.assets.back') }}</a>{% endblock %}
 {% block content %}
 <div class="folio-assets folio-asset-bin">
-    {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
     {% if has_bin %}
         <p class="folio-help">{{ t('folio.assets.bin_help', {days: bin_days}) }}</p>
     {% else %}

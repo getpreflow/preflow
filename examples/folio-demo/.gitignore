@@ -15,3 +15,6 @@ storage/locks/
 # Asset library files (public, served by the web server) — keep the dir, ignore contents.
 public/media/*
 !public/media/.gitkeep
+
+# Earlier versions of replaced asset files (asset Versions tab), created through the admin.
+storage/media-versions/

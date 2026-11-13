@@ -4,6 +4,16 @@
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
+/** A text node: what setting textContent leaves inside an element (one per element here). */
+class Text {
+    constructor(data) { this.nodeType = 3; this.data = String(data); this.parentNode = null; }
+    get textContent() { return this.data; }
+    remove() {
+        if (this.parentNode && this.parentNode._text === this) { this.parentNode._text = null; }
+        this.parentNode = null;
+    }
+}
+
 class Element {
     constructor(tag, doc) {
         this.tagName = tag.toUpperCase();
@@ -13,7 +23,7 @@ class Element {
         this.attributes = {};
         this.listeners = {};
         this.className = '';
-        this.textContent = '';
+        this._text = null;
         this.hidden = false;
         this.type = '';
         this.name = '';
@@ -33,6 +43,19 @@ class Element {
             };
         }
     }
+    /** As in the DOM: setting it replaces every child with one text node; reading it joins the text of all. */
+    get textContent() { return (this._text ? this._text.data : '') + this.children.map((c) => c.textContent).join(''); }
+    set textContent(value) {
+        this.children.forEach((c) => { c.parentNode = null; });
+        this.children = [];
+        if (this._text) { this._text.parentNode = null; }
+        this._text = null;
+        const text = value == null ? '' : String(value);
+        if (text !== '') { this._text = new Text(text); this._text.parentNode = this; }
+    }
+    /** The text node (if any) first, then the element children. */
+    get childNodes() { return [...(this._text ? [this._text] : []), ...this.children]; }
+    get firstChild() { return this.childNodes[0] || null; }
     get id() { return this.getAttribute('id') || ''; }
     set id(v) { this.setAttribute('id', v); }
     get classList() {
@@ -64,6 +87,10 @@ class Element {
     get nextElementSibling() { const s = this.parentNode ? this.parentNode.children : []; return s[s.indexOf(this) + 1] || null; }
     appendChild(child) {
         if (child.parentNode) { child.remove(); }
+        if (child instanceof Text) {
+            if (this._text) { this._text.data += child.data; } else { this._text = child; child.parentNode = this; }
+            return child;
+        }
         child.parentNode = this;
         this.children.push(child);
         return child;
@@ -164,6 +191,7 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         readyState: 'complete',
         listeners: {},
         createElement: (tag) => new Element(tag, document),
+        createTextNode: (data) => new Text(data),
         createElementNS: (ns, tag) => new Element(tag, document),
         addEventListener: (name, fn) => { (document.listeners[name] = document.listeners[name] || []).push(fn); },
         removeEventListener() {},
@@ -186,7 +214,10 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         receive: (data, fromOrigin = origin, source = document.documentElement.querySelector('iframe')?.contentWindow ?? null) => {
             (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin, source }));
         },
-        Event, CustomEvent, console, setTimeout, clearTimeout, JSON, Math, Date,
+        Event, CustomEvent, console, JSON, Math, Date,
+        // The page's timers (resolved at call time, so node:test mock.timers applies) never keep the test process alive.
+        setTimeout: (fn, ms, ...args) => { const t = setTimeout(fn, ms, ...args); if (t && t.unref) { t.unref(); } return t; },
+        clearTimeout: (t) => clearTimeout(t),
         localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
         // A working session store; tests replace it with one that throws to play a browser that refuses storage.
         sessionStorage: (() => {

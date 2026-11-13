@@ -3,7 +3,8 @@
   account link, the theme and language switches and Log out. A dialog, not role="menu": the theme and
   language rows are segmented groups of toggle buttons, which a menu may not hold. admin.js opens and
   closes it (Enter/Space, Escape back to the button, arrow keys between the rows, Tab out closes it).
-  Without script the panel stays open in place, so Log out and the language still work.
+  Without script the panel stays open in place, so Log out and the language still work: the button says
+  aria-expanded="true" until admin.js closes the panel (the rail's panel stays shut without script).
   menu_id: 'sidebar' or 'rail' (the rail shows the avatar only and opens the panel to its right).
 #}
 {% set email = auth_user().email %}
@@ -11,7 +12,7 @@
 {% set interface_locales = folio_interface_locales() %}
 {% set compact = menu_id == 'rail' %}
 <div class="folio-user-menu{{ compact ? ' is-compact' : '' }}" data-user-menu>
-    <button type="button" class="folio-user" id="folio-user-button-{{ menu_id }}" aria-haspopup="dialog" aria-expanded="false" aria-controls="folio-user-panel-{{ menu_id }}"{% if compact %} aria-label="{{ t('folio.layout.your_account') }}: {{ email }}" title="{{ email }}"{% endif %}>
+    <button type="button" class="folio-user" id="folio-user-button-{{ menu_id }}" aria-haspopup="dialog" aria-expanded="{{ compact ? 'false' : 'true' }}" aria-controls="folio-user-panel-{{ menu_id }}"{% if compact %} aria-label="{{ t('folio.layout.your_account') }}: {{ email }}" title="{{ email }}"{% endif %}>
         <span class="folio-avatar" aria-hidden="true">{{ email|first|upper }}</span>
         {%- if not compact %}
         <span class="folio-user-email">{{ email }}</span>

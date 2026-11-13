@@ -1412,16 +1412,23 @@
     // ---- Busy buttons ---------------------------------------------------------
     // A submit button with data-busy-label shows that its request runs: is-busy (spinner), aria-busy,
     // disabled and the label as its text. Set on a plain submit (kept until the page unloads) and for
-    // an htmx request it sends; always cleared when the request ends, fails, its markup is swapped
-    // away, or the page comes back from the back/forward cache.
+    // an htmx request it sends; always cleared when the request ends, fails or is aborted, its markup is
+    // swapped away, the page comes back from the back/forward cache, or after BUSY_MAX_MS at the latest
+    // (a request that never reports back must not leave the button dead). Clearing puts the button's own
+    // nodes back (its icon too); after a failure the button gets the keyboard focus back.
 
+    var BUSY_MAX_MS = 45000;
     var busyButtons = [];
 
     function setBusy(btn) {
         if (!btn || btn._folioBusy || !btn.getAttribute) { return; }
         var label = btn.getAttribute('data-busy-label');
         if (!label) { return; }
-        btn._folioBusy = { text: btn.textContent, disabled: !!btn.disabled };
+        btn._folioBusy = {
+            nodes: Array.prototype.slice.call(btn.childNodes),
+            disabled: !!btn.disabled,
+            timer: setTimeout(function () { clearBusy(btn, true); }, BUSY_MAX_MS)
+        };
         btn.classList.add('is-busy');
         btn.setAttribute('aria-busy', 'true');
         btn.disabled = true;
@@ -1429,18 +1436,25 @@
         busyButtons.push(btn);
     }
 
-    function clearBusy(btn) {
+    function clearBusy(btn, failed) {
         if (!btn || !btn._folioBusy) { return; }
         var saved = btn._folioBusy;
         btn._folioBusy = null;
+        clearTimeout(saved.timer);
         btn.classList.remove('is-busy');
         btn.removeAttribute('aria-busy');
         btn.disabled = saved.disabled;
-        btn.textContent = saved.text;
+        btn.textContent = '';
+        saved.nodes.forEach(function (node) { btn.appendChild(node); });
         busyButtons = busyButtons.filter(function (b) { return b !== btn; });
+        // The disabled button lost the focus; after a failure the user tries again from where they were.
+        var active = document.activeElement;
+        if (failed && btn.isConnected && !btn.disabled && (!active || active === document.body || active === btn)) {
+            btn.focus();
+        }
     }
 
-    function clearAllBusy() { busyButtons.slice().forEach(clearBusy); }
+    function clearAllBusy() { busyButtons.slice().forEach(function (btn) { clearBusy(btn); }); }
 
     // A plain submit: the button is disabled only after the browser has collected the form's values,
     // or a disabled submitter (Publish: _action=publish) would be left out of them.
@@ -1471,7 +1485,7 @@
     function onBusyDone(e) {
         var elt = e.detail && e.detail.elt;
         if (!elt) { return; }
-        clearBusy(elt._folioBusyButton || busyButtonOf(e.detail));
+        clearBusy(elt._folioBusyButton || busyButtonOf(e.detail), e.type !== 'htmx:afterRequest');
         elt._folioBusyButton = null;
     }
 
@@ -2026,7 +2040,7 @@
         // Busy buttons: after the confirm, removal and delete-plan handlers above, so a cancelled submit stays idle.
         document.addEventListener('submit', onBusySubmit);
         document.addEventListener('htmx:beforeRequest', onBusyRequest);
-        ['htmx:afterRequest', 'htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach(function (name) {
+        ['htmx:afterRequest', 'htmx:responseError', 'htmx:sendError', 'htmx:timeout', 'htmx:sendAbort'].forEach(function (name) {
             document.addEventListener(name, onBusyDone);
         });
         document.addEventListener('htmx:afterSwap', onBusySwap);
@@ -2138,9 +2152,21 @@
     // The editor rail (.folio-shell.is-rail): its expand button shows the sidebar instead and keeps that for
     // the session (sessionStorage 'folio-shell'; the layout's head script applies it before the first paint);
     // the sidebar's collapse button goes back to the rail. Storage may be refused: then it holds for this page.
+    // A nav that scrolls (the sidebar's row on a phone, the rail's strip, a long rail on a short screen):
+    // bring the current item into view, or headings and other items push it out.
+    function revealCurrent(nav) {
+        var active = nav ? nav.querySelector('a[aria-current="page"]') : null;
+        if (!active || typeof nav.getBoundingClientRect !== 'function') { return; }
+        var box = nav.getBoundingClientRect();
+        var at = active.getBoundingClientRect();
+        if (nav.scrollWidth > nav.clientWidth + 1 && (at.right > box.right || at.left < box.left)) { nav.scrollLeft += at.left - box.left - 16; }
+        if (nav.scrollHeight > nav.clientHeight + 1 && (at.bottom > box.bottom || at.top < box.top)) { nav.scrollTop += at.top - box.top - 16; }
+    }
+
     function initShellRail() {
         var shell = document.querySelector('.folio-shell.is-rail');
         if (!shell) { return; }
+        revealCurrent(shell.querySelector('.folio-rail-nav'));
         var root = document.documentElement;
         var remember = function (mode) {
             try {
@@ -2171,13 +2197,7 @@
     function initNavSections() {
         var nav = document.querySelector('nav.folio-nav');
         if (!nav) { return; }
-        // Narrow screens: the nav is one scrolling row, where headings push the current item out of view.
-        var active = nav.querySelector('a[aria-current="page"]');
-        if (active && nav.scrollWidth > nav.clientWidth + 1 && typeof nav.getBoundingClientRect === 'function') {
-            var box = nav.getBoundingClientRect();
-            var at = active.getBoundingClientRect();
-            if (at.right > box.right || at.left < box.left) { nav.scrollLeft += at.left - box.left - 16; }
-        }
+        revealCurrent(nav);
         var url = nav.getAttribute('data-nav-save');
         if (!url) { return; }
         nav.querySelectorAll('details.folio-nav-section').forEach(function (section) {

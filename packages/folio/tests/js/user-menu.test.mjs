@@ -19,7 +19,7 @@ function admin() {
         return e;
     };
     const menu = el(doc.body, 'div', { 'data-user-menu': '' }, 'folio-user-menu');
-    const button = el(menu, 'button', { type: 'button', id: 'folio-user-button-sidebar', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-controls': 'folio-user-panel-sidebar' }, 'folio-user');
+    const button = el(menu, 'button', { type: 'button', id: 'folio-user-button-sidebar', 'aria-haspopup': 'dialog', 'aria-expanded': 'true', 'aria-controls': 'folio-user-panel-sidebar' }, 'folio-user');
     const panel = el(menu, 'div', { id: 'folio-user-panel-sidebar', role: 'dialog', 'data-user-panel': '' }, 'folio-user-panel folio-menu');
     const account = el(panel, 'a', { href: '/folio/_account', 'data-menu-row': '' }, 'folio-menu-item');
     const themeRow = el(panel, 'div', { 'data-menu-row': '' }, 'folio-user-row');
@@ -41,7 +41,18 @@ const active = (m) => m.doc.activeElement;
 
 test('the script closes the panel that is open without script, and the button says so', () => {
     const m = admin();
-    assert.ok(isClosed(m));
+    assert.ok(isClosed(m), 'the server renders aria-expanded="true" (open in place); the script resets it');
+});
+
+test('the script marks the menu as set up: the closed-panel CSS is keyed on that, not on folio-js', async () => {
+    const m = admin();
+    assert.equal(m.menu.getAttribute('data-user-menu-ready'), '1');
+    const { readFileSync } = await import('node:fs');
+    const css = readFileSync(fileURLToPath(new URL('../../assets/admin.css', import.meta.url)), 'utf8');
+    assert.match(css, /\.folio-user-menu\[data-user-menu-ready\]:not\(\.is-open\) > \.folio-user-panel/);
+    assert.doesNotMatch(css, /\.folio-js \.folio-user-menu:not\(\.is-open\)/, 'a failed admin.js must not leave the panel shut for good');
+    const layout = readFileSync(fileURLToPath(new URL('../../templates/admin/_layout.twig', import.meta.url)), 'utf8');
+    assert.match(layout, /addEventListener\('load'[\s\S]*\[data-user-menu\]:not\(\[data-user-menu-ready\]\)[\s\S]*classList\.remove\('folio-js'\)/, 'the head script falls back to the no-script layout');
 });
 
 test('Enter or Space on the button (its click) opens the panel and focuses the first row', () => {

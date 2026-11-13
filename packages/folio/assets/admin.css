@@ -59,7 +59,9 @@
   --c-inverse-fg:     light-dark(#e9f0ec, #121816);
   --c-inverse-danger: light-dark(#ffb4ab, #b42318);
 
-  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(52 211 153 / .36));
+  --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(52 211 153 / .36));   /* soft halo (lifted block), never the only focus cue */
+  /* Keyboard focus on filled controls: a surface gap, then a solid accent ring (>= 3:1 on every surface). */
+  --focus-ring: 0 0 0 2px var(--c-surface), 0 0 0 4px var(--c-accent);
   --c-overlay:    light-dark(rgb(20 24 22 / .42), rgb(6 10 8 / .6));
 
   /* NEW: type tints. The six hues of the sign-in marks; light values darkened for contrast.
@@ -128,7 +130,10 @@ h2 { font-size: .9375rem; font-weight: 650; margin: 0 0 8px; }
 :where(.folio-shell, .folio-drawer-body) h3 { font-size: .875rem; font-weight: 620; margin: 0 0 6px; }
 h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 
-:where(a, button, summary, [tabindex]):focus-visible {
+/* Keyboard focus: a solid 2px accent outline on links, buttons and native boxes (checkbox, radio, file,
+   range, colour); text fields show focus with their accent border and soft ring; filled controls (.btn,
+   chips) draw --focus-ring. */
+:where(a, button, summary, [tabindex], input:is([type="checkbox"], [type="radio"], [type="file"], [type="range"], [type="color"])):focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
   border-radius: var(--r-xs);
@@ -338,8 +343,10 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-theme-switch .folio-icon { width: 16px; height: 16px; }
 
 /* The user menu (partials/_user_menu.twig): one button (avatar, email, chevron) that opens a panel
-   above it with the account link, theme, language and Log out. Without script the panel stays open in
-   place; with script (folio-js) it is closed until opened. */
+   above it with the account link, theme, language and Log out. Once admin.js has set the menu up
+   (data-user-menu-ready) the panel is closed until opened. Without script it stays open in place. While
+   admin.js loads (folio-js, set in <head>) it is closed too, so it does not flash open; if admin.js never
+   sets the menu up, the head script drops folio-js at load and the panel is open in place again. */
 .folio-user-menu { position: relative; min-width: 0; }
 .folio-user {
   display: flex;
@@ -380,8 +387,9 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-user-chevron { flex: none; width: 16px; height: 16px; color: var(--c-text-subtle); }
 .folio-user-panel { gap: 2px; padding: 6px; margin-bottom: 8px; }
 .folio-user-panel[hidden],
-.folio-js .folio-user-menu:not(.is-open) > .folio-user-panel { display: none; }
-.folio-js .folio-user-panel {
+.folio-user-menu[data-user-menu-ready]:not(.is-open) > .folio-user-panel,
+.folio-js .folio-user-menu:not([data-user-menu-ready]) > .folio-user-panel { display: none; }
+.folio-user-menu[data-user-menu-ready] > .folio-user-panel {
   position: absolute;
   z-index: 40;
   left: 0;
@@ -389,8 +397,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   bottom: calc(100% + 8px);
   margin: 0;
 }
-:root:not(.folio-js) .folio-user-menu:not(.is-compact) { display: flex; flex-direction: column-reverse; }
-:root:not(.folio-js) .folio-user-chevron { display: none; }
+.folio-user-menu:not([data-user-menu-ready], .is-compact) { display: flex; flex-direction: column-reverse; }
+.folio-user-menu:not([data-user-menu-ready]) .folio-user-chevron { display: none; }
 .folio-user-panel .folio-menu-item { min-height: 34px; gap: 10px; padding: 0 10px; border-radius: var(--r-sm); }
 .folio-user-panel .folio-menu-item .folio-icon { color: var(--c-text-subtle); }
 .folio-user-row {
@@ -418,8 +426,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   border-radius: 50%;
   background: transparent;
 }
-.folio-js .folio-user-menu.is-compact > .folio-user-panel { left: calc(100% + 10px); right: auto; bottom: 0; width: 232px; }
-:root:not(.folio-js) .folio-user-menu.is-compact > .folio-user-panel { display: none; }
+.folio-user-menu.is-compact[data-user-menu-ready] > .folio-user-panel { left: calc(100% + 10px); right: auto; bottom: 0; width: 232px; }
+.folio-user-menu.is-compact:not([data-user-menu-ready]) > .folio-user-panel { display: none; }
 
 /* The editor rail: brand tile, the nav items as 38px icon links, the expand button, the avatar. */
 .folio-rail {
@@ -561,7 +569,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   transition: background-color .12s, border-color .12s, color .12s, box-shadow .12s;
 }
 .btn .folio-icon { width: 16px; height: 16px; }
-.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--c-focus-ring); }
+.btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 /* Disabled: a quiet surface-2 fill with subtle text (a ghost button stays without fill). */
 .btn:is(:disabled, [aria-disabled="true"]):not(.is-busy) {
   background: var(--c-surface-2);
@@ -586,7 +594,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 /* Danger: filled (Delete). data-tone="danger" on another button turns red on hover only. */
 .btn-danger { background: var(--c-danger); color: var(--c-danger-fg); font-weight: 600; box-shadow: var(--shadow-sm); }
 .btn-danger:hover { background: color-mix(in srgb, var(--c-danger) 86%, var(--c-text)); color: var(--c-danger-fg); }
-.btn-danger:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-danger) 30%, transparent); }
+.btn-danger:focus-visible { box-shadow: var(--focus-ring); }
 
 .btn[data-tone="danger"]:hover { background: var(--c-danger-soft); color: var(--c-danger); }
 
@@ -1077,7 +1085,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-boolean.has-error > .form-check { color: var(--c-danger); }
 .folio-boolean.has-error > .form-check > input { outline: 2px solid var(--c-danger); outline-offset: 1px; border-radius: 3px; }
 /* Keyboard focus in the error state: keep a visible ring on top of the red outline. */
-.folio-boolean.has-error > .form-check > input:focus-visible { box-shadow: 0 0 0 4px var(--c-focus-ring); }
+.folio-boolean.has-error > .form-check > input:focus-visible { box-shadow: 0 0 0 3px var(--c-surface), 0 0 0 5px var(--c-accent); }
 /* Read-only form (fieldset[disabled]): the label is muted and no longer looks clickable. */
 .folio-boolean > .form-check:has(input:disabled) { color: var(--c-text-muted); cursor: default; }
 .folio-boolean > .form-check > input:disabled { cursor: default; }
@@ -1126,6 +1134,7 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 /* Alerts (flash messages) and notices: a soft tone fill, a tone glyph at the left, the text in --c-text
    and links in the tone colour. Tones: success (accent), warning, error (danger), info.
    .folio-notice is info; a notice that warns (role="alert", or .is-warning) keeps the warning tone.
+   Something that failed (an upload, a move to the bin) is .folio-alert-error.
    .folio-locale-errors: danger border and the list of missing fields per language. */
 .folio-alert,
 .folio-notice,
@@ -1154,9 +1163,9 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 }
 :is(.folio-alert, .folio-notice, .folio-saved) a { color: var(--folio-tone); font-weight: 600; }
 :is(.folio-alert, .folio-notice, .folio-saved) a:hover { color: var(--c-text); }
-.folio-notice p, .folio-locale-errors p { margin: 0; }
-.folio-notice p + p { margin-top: 4px; }
-.folio-notice ul, .folio-locale-errors ul { margin: 6px 0 0; padding-left: 18px; }
+:is(.folio-alert, .folio-notice, .folio-locale-errors) p { margin: 0; }
+:is(.folio-alert, .folio-notice) p + p { margin-top: 4px; }
+:is(.folio-alert, .folio-notice, .folio-locale-errors) ul { margin: 6px 0 0; padding-left: 18px; }
 /* Notices stacked above a list or the dashboard (#[ListNotice], #[DashboardNotice]): the wrapper spaces
    them. A notice's list of items with their own actions (.folio-notice-list) goes without bullets. */
 .folio-page-notices { display: grid; gap: 10px; margin-bottom: 18px; }
@@ -1560,6 +1569,7 @@ html trix-toolbar .trix-input--dialog { color: var(--c-text); background: var(--
 .folio-assets-views { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--c-border); border-radius: var(--r-sm); background: var(--c-surface-2); }
 .folio-assets-views .btn { min-height: 28px; padding: 0 12px; font-size: 13px; }
 .folio-assets-views .btn.is-active { background: var(--c-surface-raised); box-shadow: var(--shadow-sm); }
+.folio-assets-views .btn.is-active:focus-visible { box-shadow: var(--focus-ring); }
 .folio-assets-upload { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
 
 .folio-asset-grid {
@@ -2089,7 +2099,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   color: var(--c-accent-text);
   font-weight: 500;
 }
-.folio-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--c-focus-ring); }
+.folio-chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }
 /* Disabled (a denied role, or every box in a read-only fieldset[disabled]): readable, visibly inert. */
 .folio-chip:has(input:disabled) { color: var(--c-text-muted); background: var(--c-surface-2); border-color: var(--c-border); cursor: default; }
 .folio-chip:has(input:disabled:checked) { background: var(--c-neutral-soft); border-color: var(--c-border-strong); }
@@ -2272,8 +2282,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   /* The user button shrinks to the avatar; its panel drops below, right-aligned, inside the screen. */
   .folio-user { width: auto; padding: 3px; border: 0; background: none; }
   .folio-user-email, .folio-user-chevron { display: none; }
-  .folio-js .folio-user-panel,
-  .folio-js .folio-user-menu.is-compact > .folio-user-panel {
+  .folio-user-menu[data-user-menu-ready] > .folio-user-panel,
+  .folio-user-menu.is-compact[data-user-menu-ready] > .folio-user-panel {
     top: calc(100% + 8px);
     right: 0;
     bottom: auto;
@@ -2348,6 +2358,10 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* ---- Settings → Translations ---- */
 .folio-translations td { vertical-align: top; }
 .folio-translations code { word-break: break-all; }
+/* Phone width: the key and the delivered text keep a readable width and the table scrolls in its box,
+   instead of breaking the key into two-letter lines. */
+.folio-translations td:first-child { min-width: 12rem; }
+.folio-translations td:nth-child(2) { min-width: 10rem; }
 .folio-table.folio-translations .folio-row-actions { justify-content: flex-start; flex-wrap: wrap; min-width: 16rem; }
 .folio-translations .folio-row-actions :is(input[type="text"], textarea) { flex: 1 1 14rem; }
 

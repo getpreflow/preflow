@@ -8,7 +8,7 @@
     <meta name="robots" content="noindex">
     <title>{% block title %}Folio{% endblock %}</title>
     {# No-flash theme and shell: apply the stored choices before first paint, and mark that script runs
-       (folio-js: the user menu's panel starts closed). Plain inline script because action-mode
+       (folio-js: the user menu's panel starts closed while admin.js loads). Plain inline script because action-mode
        responses bypass the asset collector. #}
     <script nonce="{{ csp_nonce() }}">
     (function () {
@@ -26,6 +26,13 @@
                 root.setAttribute('data-folio-shell', 'sidebar');
             }
         } catch (e) {}
+        // admin.js sets each user menu up (data-user-menu-ready) before load. If it never did (it failed
+        // to load or stopped), drop folio-js so the no-script layout shows: the user panel open in place.
+        window.addEventListener('load', function () {
+            if (document.querySelector('[data-user-menu]:not([data-user-menu-ready])')) {
+                root.classList.remove('folio-js');
+            }
+        });
     })();
     </script>
     <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">

@@ -510,6 +510,7 @@ final class RedirectsControllerTest extends TestCase
         foreach ($answers as $what => $res) {
             $this->assertSame(503, $res->getStatusCode(), $what);
             $this->assertStringContainsString('Redirects need their database tables. Run this command on the server: <code>preflow migrate</code>', (string) $res->getBody(), $what);
+            $this->assertStringNotContainsString('folio-subtitle', (string) $res->getBody(), $what . ': no intro over a screen that cannot work');
         }
     }
 

@@ -1327,7 +1327,11 @@ final class FolioServiceProvider extends ServiceProvider
             $env = getenv('APP_ENV');
         }
         if (!is_string($env) || trim($env) === '') {
-            $env = (int) $app->config()->get('app.debug', 0) !== 0 ? 'development' : 'production';
+            // app.debug may be a bool, a number or a string from .env ("true", "on", "1"): (int) "true" is 0.
+            $debug = $app->config()->get('app.debug', false);
+            $on = filter_var($debug, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE)
+                ?? (is_numeric($debug) && (float) $debug != 0);
+            $env = $on ? 'development' : 'production';
         }
         $env = strtolower(trim($env));
 

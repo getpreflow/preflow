@@ -6,7 +6,7 @@
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}{% if can('assets.delete') %} <a href="{{ prefix }}/assets/bin">{{ t('folio.assets.bin') }}</a>{% endif %}</p>{% endif %}
     {% if no_bin %}<p class="folio-help folio-assets-no-bin" role="note">{{ t('folio.assets.no_bin') }}</p>{% endif %}
     {% if errors is not empty %}
-        <div class="folio-notice" role="alert">
+        <div class="folio-alert folio-alert-error" role="alert">
             <p>{{ t('folio.assets.not_uploaded') }}</p>
             <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
         </div>

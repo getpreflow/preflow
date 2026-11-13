@@ -1,6 +1,6 @@
 <section class="folio-asset-panel" aria-label="{{ t('folio.assets.details_label') }}">
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
-    {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
     {% if note %}<p class="folio-asset-note" role="note">{{ note }}</p>{% endif %}
     {% if copy %}
     <div class="folio-asset-original">

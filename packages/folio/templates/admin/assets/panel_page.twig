@@ -1,4 +1,6 @@
 {% extends '@folio/admin/_layout.twig' %}
+{# The asset's Details tab is an editor like its Edit image tab: both use the icon rail. #}
+{% set shell = 'rail' %}
 {% block title %}Folio — {{ asset.label }}{% endblock %}
 {% block page_title %}{{ asset.label }}{% endblock %}
 {% block actions %}<a class="btn btn-secondary" href="{{ back }}">{{ t('folio.assets.back') }}</a>{% endblock %}

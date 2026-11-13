@@ -218,6 +218,37 @@ final class AdminCssTest extends TestCase
             $this->assertMatchesRegularExpression('/(?<![\w-])' . preg_quote($surface, '/') . ' \{[^}]*border: 1px solid var\(--c-border\);[^}]*border-radius: var\(--r\);[^}]*box-shadow: var\(--shadow-sm\);/', $plain, $surface);
         }
     }
+    public function test_keyboard_focus_is_a_solid_ring_on_every_filled_control(): void
+    {
+        $css = $this->css();
+        // A surface gap, then the solid accent (>= 3:1 on every surface); the soft --c-focus-ring alone was ~1.5:1.
+        $this->assertStringContainsString('--focus-ring: 0 0 0 2px var(--c-surface), 0 0 0 4px var(--c-accent);', $css);
+        foreach (['.btn:focus-visible', '.btn-danger:focus-visible', '.folio-chip:has(input:focus-visible)', '.folio-assets-views .btn.is-active:focus-visible'] as $rule) {
+            $this->assertMatchesRegularExpression('/' . preg_quote($rule, '/') . ' \{[^}]*box-shadow: var\(--focus-ring\);/', $css, $rule);
+        }
+        $this->assertDoesNotMatchRegularExpression('/:focus-visible[^{]*\{[^}]*box-shadow: 0 0 0 3px var\(--c-focus-ring\)/', $css, 'no faint halo as the only focus cue');
+        // Native boxes (checkbox, radio, file) get the accent outline instead of the browser's own.
+        $this->assertMatchesRegularExpression('/:where\(a, button, summary, \[tabindex\], input:is\(\[type="checkbox"\], \[type="radio"\], \[type="file"\][^)]*\)\):focus-visible \{\s*outline: 2px solid var\(--c-accent\);/', $css);
+        $rbac = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/rbac/rbac.css');
+        $this->assertStringContainsString('.rbac-switch-input:focus-visible + .rbac-switch { box-shadow: var(--focus-ring); }', $rbac);
+        $this->assertStringContainsString('.rbac-chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }', $rbac);
+    }
+
+    public function test_failures_on_the_asset_screens_are_error_alerts(): void
+    {
+        foreach (['index', 'panel', 'edit', 'bin'] as $template) {
+            $twig = (string) file_get_contents(dirname(__DIR__, 2) . "/templates/admin/assets/{$template}.twig");
+            $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert">', $twig, $template);
+            $this->assertStringNotContainsString('<div class="folio-notice" role="alert">', $twig, $template . ': not the warning tone');
+        }
+    }
+
+    public function test_translation_keys_stay_readable_at_phone_width(): void
+    {
+        $css = $this->css();
+        $this->assertStringContainsString('.folio-translations td:first-child { min-width: 12rem; }', $css);
+    }
+
     public function test_redesigned_primitives(): void
     {
         $css = $this->css();

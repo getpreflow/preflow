@@ -13,7 +13,7 @@
 {% set action = prefix ~ '/assets/' ~ asset.id ~ '/edit' ~ back_q %}
 <section class="folio-image-editor" data-folio-image-editor aria-label="{{ t('folio.assets.edit_image') }}">
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
-    {% if error %}<div class="folio-notice" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
 
     <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/copy{{ back_q }}" class="folio-image-editor-copy">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">

@@ -86,7 +86,7 @@ final class ShellTest extends TestCase
         // User menu: one button that opens a dialog with the account link, theme, language and Log out.
         $button = $this->one($x, '//button[@id="folio-user-button-sidebar"]', 'the user button');
         $this->assertSame('dialog', $button->getAttribute('aria-haspopup'));
-        $this->assertSame('false', $button->getAttribute('aria-expanded'));
+        $this->assertSame('true', $button->getAttribute('aria-expanded'), 'open in place without script; admin.js closes it');
         $this->assertSame('folio-user-panel-sidebar', $button->getAttribute('aria-controls'));
         $this->assertSame('ada@site.test', trim($this->one($x, '//button[@id="folio-user-button-sidebar"]/span[' . self::cls('folio-user-email') . ']', 'email')->textContent));
         $panel = $this->one($x, '//*[@id="folio-user-panel-sidebar"]', 'the panel');
@@ -151,16 +151,42 @@ final class ShellTest extends TestCase
     #[RunInSeparateProcess]
     public function test_help_banners_are_the_subtitle_line_under_the_title(): void
     {
+        // AI on (the fake provider needs no key and sends nothing), so the glossary and tuning screens exist.
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake'];\n");
+        $this->flow = $this->app();
         $this->signIn();
 
-        foreach (['/folio/translations' => 'Change the interface texts', '/folio/cache' => null] as $uri => $start) {
+        $pages = [
+            '/folio/translations' => 'Change the interface texts',
+            '/folio/cache' => 'Every cache rebuilds itself',
+            '/folio/redirects' => 'Old addresses that send visitors on',
+            '/folio/redirects?tab=not-found' => 'Addresses visitors asked for',
+            '/folio/ai/glossary' => 'Terms that are always translated',
+            '/folio/ai/tuning' => 'Instructions for the translations',
+            '/folio/seo-audit' => 'The last run of the SEO audit',
+        ];
+        foreach ($pages as $uri => $start) {
             $x = $this->dom($uri);
             $subtitle = $this->one($x, '//header[' . self::cls('folio-topbar') . ']/div[' . self::cls('folio-topbar-title') . ']/h1/following-sibling::p[' . self::cls('folio-subtitle') . ']', $uri . ': the subtitle under the title');
             $this->assertNotSame('', trim($subtitle->textContent));
-            if ($start !== null) {
-                $this->assertStringStartsWith($start, trim($subtitle->textContent));
-            }
+            $this->assertStringStartsWith($start, trim($subtitle->textContent), $uri);
+            $this->assertSame(0, $x->query('//main//p[' . self::cls('folio-help') . ' and normalize-space(.)="' . trim($subtitle->textContent) . '"]')->length, $uri . ': no help paragraph with the same text');
             $this->assertSame(0, $x->query('//main//div[' . self::cls('folio-notice') . ' and @role="status"]/p[normalize-space(.)="' . trim($subtitle->textContent) . '"]')->length, $uri . ': no banner with the same text');
+        }
+    }
+
+    #[RunInSeparateProcess]
+    public function test_debug_as_a_string_from_env_counts_as_on(): void
+    {
+        putenv('APP_ENV');
+        foreach (['true' => 'Folio · development', 'on' => 'Folio · development', '1' => 'Folio · development', 'false' => 'Folio', '0' => 'Folio'] as $debug => $line) {
+            $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => $debug, 'engine' => 'twig', 'key' => 'folio-staff-test-key', 'url' => 'https://site.test'], true) . ";\n");
+            $this->flow = $this->app();
+            $this->signIn();
+
+            $this->assertSame($line, trim($this->one($this->dom('/folio'), '//*[' . self::cls('folio-brand-env') . ']', 'environment')->textContent), 'debug = "' . $debug . '"');
+            $this->removeSite();
+            $this->staffSite();
         }
     }
 

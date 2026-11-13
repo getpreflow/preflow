@@ -94,6 +94,7 @@ final class AssetDetailPageTest extends TestCase
         $this->assertStringContainsString('<html', $body);
         $this->assertStringContainsString('class="folio-tabs"', $body);
         $this->assertStringContainsString('>Details</a>', $body);
+        $this->assertStringContainsString('class="folio-shell is-rail"', $body, 'Details uses the editor rail, like Edit image');
         $this->assertMatchesRegularExpression('#<a [^>]*href="/folio/assets/' . $asset->id . '/edit\?back=[^"]*"[^>]*>Edit image</a>#', $body);
         $this->assertStringContainsString('folio-asset-columns', $body);
         $this->assertStringContainsString('data-folio-focal', $body);
@@ -242,6 +243,7 @@ final class AssetDetailPageTest extends TestCase
         $body = (string) $this->app()->handle($req)->getBody();
 
         $this->assertStringContainsString('class="folio-tabs"', $body);
+        $this->assertStringContainsString('class="folio-shell is-rail"', $body, 'the same shell on both tabs');
         $q = htmlspecialchars('?back=' . rawurlencode($back), ENT_QUOTES);
         $this->assertMatchesRegularExpression('#<a [^>]*href="/folio/assets/' . $asset->id . preg_quote($q, '#') . '"[^>]*>Details</a>#', $body);
         $this->assertMatchesRegularExpression('#<a [^>]*aria-current="page"[^>]*>Edit image</a>#', $body);
