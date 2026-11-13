@@ -32,6 +32,12 @@ final class AuditRun
     /** Save progress at least this often (seconds of work); a killed run loses no more. */
     private const SAVE_EVERY = 2.0;
 
+    /** Tries to take the lock before giving up (a probe holds it only for an instant). */
+    private const LOCK_TRIES = 3;
+
+    /** The wait between two tries. */
+    private const LOCK_RETRY_MICROSECONDS = 20_000;
+
     /** A failed check's error is cut to this many characters. */
     private const ERROR_LENGTH = 200;
 
@@ -142,7 +148,8 @@ final class AuditRun
     }
 
     /**
-     * The lock that keeps a second full run away: held (non-blocking) on the report's .lock file.
+     * The lock that keeps a second full run away: held (non-blocking, tried 3 times 20 ms apart)
+     * on the report's .lock file.
      *
      * @return resource
      */
@@ -156,9 +163,13 @@ final class AuditRun
         if ($lock === false) {
             throw new \RuntimeException("Can't open the SEO audit's lock file: " . self::lockFile($this->file));
         }
-        if (!flock($lock, LOCK_EX | LOCK_NB)) {
-            fclose($lock);
-            throw AuditRunning::at($this->file);
+        // A moment's retry: Audits::running() takes the lock for an instant to probe it.
+        for ($try = 1; !flock($lock, LOCK_EX | LOCK_NB); $try++) {
+            if ($try >= self::LOCK_TRIES) {
+                fclose($lock);
+                throw AuditRunning::at($this->file);
+            }
+            usleep(self::LOCK_RETRY_MICROSECONDS);
         }
 
         return $lock;

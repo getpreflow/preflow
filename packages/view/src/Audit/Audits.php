@@ -14,9 +14,11 @@ use Preflow\View\Seo\PublicPages;
  * where the last step stopped (or starts over when asked, when the last run was
  * complete or when there is none), saves its progress and returns the report;
  * steps one after another complete it. Only one full run at a time: a step
- * while another holds the lock throws AuditRunning. Pages are rendered in the
- * app's internal render scopes, so mail a page queues while it renders is
- * dropped, never sent, also when the step runs inside a web request.
+ * while another holds the lock throws AuditRunning. The app's PageRenderer
+ * renders each page in core's internal render scope, which drops what the page
+ * queues with sendLater() (Notifier::discardingQueued()), so the audited pages
+ * send no mail, also when the step runs inside a web request whose end flushes
+ * the queue: that request sends only the mail it queued itself.
  *
  * One per app (bound in the container next to the PageRenderer, built on first
  * use, so a request that never audits doesn't build the checks).
@@ -87,7 +89,7 @@ final class Audits
         if (!is_file($file)) {
             return false;
         }
-        $lock = @fopen($file, 'r');
+        $lock = @fopen($file, 'r+'); // never 'c': the probe creates no file
         if ($lock === false) {
             return false;
         }

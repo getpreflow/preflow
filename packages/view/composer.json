@@ -6,7 +6,7 @@
     "require": {
         "php": ">=8.4",
         "ext-dom": "*",
-        "preflow/core": "^0.66 || @dev",
+        "preflow/core": "^0.74 || @dev",
         "matthiasmullie/minify": "^1.3"
     },
     "require-dev": {
@@ -17,7 +17,7 @@
         "preflow/devtools": "^0.54 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.66",
+        "preflow/core": "<0.74",
         "preflow/routing": "<0.54",
         "preflow/media": "<0.67",
         "preflow/devtools": "<0.54"

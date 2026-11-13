@@ -148,6 +148,30 @@ final class AuditsTest extends TestCase
         $this->assertSame(2, $audits->step(1)->done());
     }
 
+    public function test_a_step_waits_a_moment_for_a_lock_held_only_briefly(): void
+    {
+        $audits = $this->audits();
+        $audits->step(1); // makes the lock file
+
+        // Another process (a running() probe, say) holds the lock for 10 ms.
+        $holder = proc_open(
+            [PHP_BINARY, '-r', '$f = fopen($argv[1], "r+"); flock($f, LOCK_EX); echo "locked\n"; fflush(STDOUT); usleep(10000); flock($f, LOCK_UN);', AuditRun::lockFile($this->file)],
+            [1 => ['pipe', 'w']],
+            $pipes,
+        );
+        $this->assertIsResource($holder);
+        $this->assertSame("locked\n", fgets($pipes[1]));
+
+        try {
+            $report = $audits->step(1);
+        } finally {
+            fclose($pipes[1]);
+            proc_close($holder);
+        }
+
+        $this->assertSame(2, $report->done());
+    }
+
     public function test_running_creates_no_files(): void
     {
         $this->assertFalse($this->audits()->running());

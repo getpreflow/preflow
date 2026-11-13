@@ -2436,14 +2436,12 @@ final class Application
         });
 
         // The audit as a service (a step, the quick checks, the saved report), for the command and the admin.
-        if (class_exists(\Preflow\View\Audit\Audits::class)) {
-            $this->container->singleton(\Preflow\View\Audit\Audits::class, fn (): \Preflow\View\Audit\Audits => new \Preflow\View\Audit\Audits(
-                $this->container->get(\Preflow\View\Audit\AuditRegistry::class),
-                $this->container->get(\Preflow\View\Audit\PageRenderer::class),
-                $this->container->get(\Preflow\View\Seo\PublicPages::class),
-                \Preflow\View\Audit\AuditReport::file($this->basePath()),
-            ));
-        }
+        $this->container->singleton(\Preflow\View\Audit\Audits::class, fn (): \Preflow\View\Audit\Audits => new \Preflow\View\Audit\Audits(
+            $this->container->get(\Preflow\View\Audit\AuditRegistry::class),
+            $this->container->get(\Preflow\View\Audit\PageRenderer::class),
+            $this->container->get(\Preflow\View\Seo\PublicPages::class),
+            \Preflow\View\Audit\AuditReport::file($this->basePath()),
+        ));
     }
 
     /**
@@ -2492,11 +2490,11 @@ final class Application
 
             // Mail the render queues is dropped, not sent: the request that flushes the queue
             // afterwards (an admin request running an audit step, a visitor's request whose GEO
-            // view rendered the page) sends only its own (notify 0.74+).
+            // view rendered the page) sends only its own. (Core conflicts with notify before 0.74.)
             $notifier = class_exists(\Preflow\Notify\Notifier::class) && $container->bound(\Preflow\Notify\Notifier::class)
                 ? $container->get(\Preflow\Notify\Notifier::class)
                 : null;
-            if ($notifier !== null && method_exists($notifier, 'discardingQueued')) {
+            if ($notifier !== null) {
                 $render = $next;
                 $next = static fn (): ResponseInterface => $notifier->discardingQueued($render);
             }

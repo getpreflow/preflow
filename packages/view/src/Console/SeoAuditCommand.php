@@ -6,14 +6,12 @@ namespace Preflow\View\Console;
 
 use Preflow\Core\Application;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\View\Audit\AuditRegistry;
 use Preflow\View\Audit\AuditReport;
 use Preflow\View\Audit\Audits;
 use Preflow\View\Audit\AuditRunning;
 use Preflow\View\Audit\Finding;
 use Preflow\View\Audit\PageRenderer;
 use Preflow\View\Audit\Severity;
-use Preflow\View\Seo\PublicPages;
 
 /**
  * preflow seo:audit [--fresh] [--limit=N] [--url=/path] [--budget=600]: audits the
@@ -90,13 +88,7 @@ final class SeoAuditCommand implements CommandInterface
             if (!$container->bound(PageRenderer::class)) {
                 throw new \RuntimeException('The app has no SEO audit page renderer (preflow/view is not set up).');
             }
-            // An app whose core binds no Audits (before 0.74) gets one built here.
-            $audits = $container->bound(Audits::class) ? $container->get(Audits::class) : new Audits(
-                $container->get(AuditRegistry::class),
-                $container->get(PageRenderer::class),
-                $container->get(PublicPages::class),
-                AuditReport::file($app->basePath()),
-            );
+            $audits = $container->get(Audits::class);
         } catch (\Throwable $e) {
             $this->error('Error: the app could not be booted: ' . $e->getMessage() . "\n");
 

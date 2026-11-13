@@ -22,10 +22,11 @@
         "preflow/htmx": "<0.65",
         "preflow/i18n": "<0.67",
         "preflow/routing": "<0.62",
-        "preflow/view": "<0.66",
+        "preflow/view": "<0.74",
         "preflow/twig": "<0.60",
         "preflow/blade": "<0.60",
-        "preflow/folio": "<0.67"
+        "preflow/folio": "<0.67",
+        "preflow/notify": "<0.74"
     },
     "autoload": {
         "psr-4": {
