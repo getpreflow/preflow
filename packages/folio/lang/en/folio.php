@@ -321,7 +321,9 @@ return [
         'de' => 'German',
         'fr' => 'French',
         'it' => 'Italian',
-        // The language indicator (lists): a language's state in words.
+    ],
+    // The language indicator (lists): a language's state in words.
+    'language_state' => [
         'complete' => ':language: complete',
         'partial' => ':language: partial, :count missing',
         'missing' => ':language: missing',

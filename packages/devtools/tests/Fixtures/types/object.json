@@ -37,7 +37,8 @@
             "relation": {
                 "to": "category",
                 "onDelete": "restrict",
-                "labelField": "title"
+                "labelField": "title",
+                "metaField": "slug"
             }
         },
         "owner": {

@@ -43,4 +43,35 @@ final class PublisherChangesTest extends PublishingAppTestCase
 
         $this->assertSame([], $this->publisher()->changes($working));
     }
+
+    public function test_visible_in_alone_is_named(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Hello'], '_locales' => ['en']]), 'ana');
+        $working = $this->stored('post', 'p1');
+        $working->set('_locales', ['en', 'de']);
+
+        $this->assertSame(['_locales'], $this->publisher()->changes($working));
+        $this->assertSame(\Preflow\Publishing\PublishState::Changed, $this->publisher()->state($working));
+    }
+
+    public function test_seo_alone_is_named_after_the_fields(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Hello']]), 'ana');
+        $working = $this->stored('post', 'p1');
+        $working->set('_seo', ['en' => ['title' => 'Hello there']]);
+
+        $this->assertSame(['_seo'], $this->publisher()->changes($working));
+
+        $working->set('body', ['en' => 'New']);
+        $this->assertSame(['body', '_seo'], $this->publisher()->changes($working), 'fields first, then the other keys');
+    }
+
+    public function test_values_are_compared_as_stored(): void
+    {
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Hello'], '_seo' => ['en' => ['noindex' => true]]]), 'ana');
+        $working = $this->stored('post', 'p1');
+        $working->set('_seo', (string) json_encode(['en' => ['noindex' => 1]]));
+
+        $this->assertSame([], $this->publisher()->changes($working), 'JSON text and numbers as SQL returns them');
+    }
 }

@@ -12,7 +12,7 @@
 {%- for entry in states %}
     {%- set state = entry.state %}
     {%- set level = state.completeness.value %}
-    {%- set words = [level == 'partial' ? t('folio.languages.partial', {language: entry.name, count: state.missing}, state.missing) : t('folio.languages.' ~ level, {language: entry.name})] %}
+    {%- set words = [level == 'partial' ? t('folio.language_state.partial', {language: entry.name, count: state.missing}, state.missing) : t('folio.language_state.' ~ level, {language: entry.name})] %}
     {%- if state.outdated > 0 %}{% set words = words|merge([t('folio.list.outdated', {locale: entry.code, count: state.outdated})]) %}{% endif %}
     {%- if state.unchecked > 0 %}{% set words = words|merge([entry.code ~ ' · ' ~ t('folio.list.unchecked', {count: state.unchecked})]) %}{% endif %}
     {%- set text = words|join('; ') %}

@@ -6,6 +6,7 @@ namespace Preflow\Publishing\Tests\Fixtures;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Publishing\RecordAddressFields;
 use Preflow\Publishing\RecordAddresses;
 use Preflow\Publishing\RecordChecks;
 use Preflow\Publishing\RecordIndex;
@@ -19,7 +20,7 @@ use Preflow\Publishing\WriteKind;
  * ("step:type:id"), so a test sees the order of the steps. The $fail* closures, when set, run
  * inside a step (to throw).
  */
-final class Recorder implements SaveHooks, RecordChecks, RecordIndex, RecordAddresses, RecordTypes
+final class Recorder implements SaveHooks, RecordChecks, RecordIndex, RecordAddresses, RecordTypes, RecordAddressFields
 {
     /** @var list<string> */
     public array $log = [];
@@ -29,6 +30,9 @@ final class Recorder implements SaveHooks, RecordChecks, RecordIndex, RecordAddr
 
     /** @var list<string> types kept in a manual order */
     public array $orderable = [];
+
+    /** @var array<string, array<string, bool>> type => its address fields (name => catch-all) */
+    public array $addressFields = [];
 
     /** @var list<string> types whose records save() stores */
     public array $replaces = [];
@@ -141,6 +145,11 @@ final class Recorder implements SaveHooks, RecordChecks, RecordIndex, RecordAddr
     public function orderable(string $type): bool
     {
         return in_array($type, $this->orderable, true);
+    }
+
+    public function addressFields(string $type): array
+    {
+        return $this->addressFields[$type] ?? [];
     }
 
     private function record(string $step, DynamicRecord $record): void

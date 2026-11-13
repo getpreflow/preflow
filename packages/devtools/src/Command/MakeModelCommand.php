@@ -432,7 +432,7 @@ final class MakeModelCommand implements CommandInterface
             return null;
         }
         foreach ($relation as $k => $v) {
-            if (!in_array($k, ['to', 'onDelete', 'onSelfDelete', 'labelField'], true) || !is_string($v)) {
+            if (!in_array($k, ['to', 'onDelete', 'onSelfDelete', 'labelField', 'metaField'], true) || !is_string($v)) {
                 return null;
             }
         }
@@ -441,7 +441,7 @@ final class MakeModelCommand implements CommandInterface
             $args['onDelete'] = $relation['onDelete'];
         }
 
-        return $args + array_intersect_key($relation, ['onSelfDelete' => true, 'labelField' => true]);
+        return $args + array_intersect_key($relation, ['onSelfDelete' => true, 'labelField' => true, 'metaField' => true]);
     }
 
     /**

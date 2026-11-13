@@ -93,12 +93,18 @@ final class RecordWriter
      * part of its values, so the copy owns its own), and the same references to assets and other
      * records. What makes a record one of a kind is new:
      * - a new id (32 hex characters);
-     * - the slug (a field named "slug", or one with the "slug" rule) takes the first free one,
-     *   Slugs::unique() ("about" → "about-2"); a translatable slug takes it in each language;
+     * - the address takes a free one, unique or not: the fields of the type's address
+     *   (RecordAddressFields, when the RecordTypes binding implements it: a route's "{handle}"),
+     *   a field named "slug" and a field with the "slug" rule. A slug takes the first free one by
+     *   Slugs::unique() ("about" → "about-2"); a catch-all ("{...path}", or the "slug:path" rule)
+     *   takes the "-2", "-3"... suffix on the whole path ("docs/ueber-uns" → "docs/ueber-uns-2");
+     *   a translatable one takes it in each language;
      * - any other unique field of free text (string or text, not translatable, without an email,
      *   url, numeric, integer, in or regex rule) takes the same "-2", "-3"... suffix, within its
      *   length; every other unique field (a number, a date, an email, a relation, a translatable
-     *   one) is left empty, since no suffix keeps it valid;
+     *   one) is left empty, since no suffix keeps it valid. A value is free when no other record of
+     *   the type holds it at all: the fields that scope a unique field are not looked at, so a
+     *   copy's value is free across the whole table, not only within its scope;
      * - system keys are those of a new record: no _version, schedule (_publish_at), share token
      *   or publish stamps, and a model class with #[Timestamps] loses its created and updated
      *   values (a SaveHooks implementation that stamps them, or an author, runs as for a new record);
@@ -127,9 +133,10 @@ final class RecordWriter
         $data = array_diff_key($source->toArray(), array_flip([...Publisher::META, '_published_at', '_published_by', ...$this->timestamps($def)]));
         $data[$def->idField] = bin2hex(random_bytes(16));
         $copy = DynamicRecord::fromArray($def, $data);
+        $address = $this->types instanceof RecordAddressFields ? $this->types->addressFields($def->key) : [];
         foreach ($def->fields as $name => $field) {
             if ($name !== $def->idField && $copy->get($name) !== null) {
-                $this->freeValue($copy, $field);
+                $this->freeValue($copy, $field, $address);
             }
         }
 
@@ -169,29 +176,36 @@ final class RecordWriter
         return array_values(array_intersect([...Timestamps::CREATED_NAMES, ...Timestamps::UPDATED_NAMES], array_keys($def->fields)));
     }
 
-    /** A copy's value of a slug or unique field: a free one, or none (see duplicate()). */
-    private function freeValue(DynamicRecord $copy, TypeFieldDefinition $field): void
+    /**
+     * A copy's value of an address, slug or unique field: a free one, or none (see duplicate()).
+     *
+     * @param array<string, bool> $address the type's address fields (RecordAddressFields): name => catch-all
+     */
+    private function freeValue(DynamicRecord $copy, TypeFieldDefinition $field, array $address): void
     {
         $def = $copy->getType();
         $name = $field->name;
         $value = $copy->get($name);
-        $rules = array_map(static fn (string $rule): string => strtolower(trim(explode(':', $rule, 2)[0])), array_filter($field->validate, 'is_string'));
-        $path = in_array('slug:path', array_map(static fn (string $rule): string => strtolower(str_replace(' ', '', $rule)), array_filter($field->validate, 'is_string')), true);
-        $slug = !$path && ($name === 'slug' || in_array('slug', $rules, true));
+        $validate = array_map(static fn (string $rule): string => strtolower(str_replace(' ', '', $rule)), array_filter($field->validate, 'is_string'));
+        $rules = array_map(static fn (string $rule): string => explode(':', $rule, 2)[0], $validate);
+        $path = ($address[$name] ?? false) || in_array('slug:path', $validate, true);
+        $slug = isset($address[$name]) || $name === 'slug' || in_array('slug', $rules, true);
         $translatable = in_array($name, $def->translatableFields(), true);
         $max = $field->length ?? FieldKinds::DEFAULT_LENGTH;
 
         if ($slug && $translatable) {
-            $copy->set($name, $this->freeSlugs($def, $name, LocaleValue::map($value, $def->locales), $max));
+            $copy->set($name, $this->freeSlugs($def, $name, LocaleValue::map($value, $def->locales), $max, $path));
 
             return;
         }
-        if ($slug && is_string($value) && $value !== '') {
-            $copy->set($name, Slugs::unique($this->dm, $def->key, $value, $name, max: $max));
+        if ($slug) {
+            if (is_string($value) && $value !== '') {
+                $copy->set($name, $path ? $this->suffixed($def, $name, $value, $max) : Slugs::unique($this->dm, $def->key, $value, $name, max: $max));
+            }
 
             return;
         }
-        if ($field->unique === false || $slug) {
+        if ($field->unique === false) {
             return;
         }
         $suffixable = !$translatable
@@ -201,13 +215,15 @@ final class RecordWriter
     }
 
     /**
-     * A translatable slug's free value per language: Slugs::among() against what the type's other
-     * records hold in that language.
+     * A translatable address's free value per language, against what the type's other records
+     * hold in that language: Slugs::among() for a slug, the "-2", "-3"... suffix for a path.
+     * It reads every record of the type (a translatable value is a locale map, which a query
+     * cannot look up per language); a copy is made by hand, one at a time.
      *
-     * @param array<string, mixed> $values locale => slug
+     * @param array<string, mixed> $values locale => value
      * @return array<string, mixed>
      */
-    private function freeSlugs(TypeDefinition $def, string $name, array $values, int $max): array
+    private function freeSlugs(TypeDefinition $def, string $name, array $values, int $max, bool $path): array
     {
         $taken = [];
         foreach ($this->dm->queryType($def->key)->get()->items() as $record) {
@@ -218,10 +234,17 @@ final class RecordWriter
             }
         }
         foreach ($values as $locale => $slug) {
-            if (is_string($slug) && $slug !== '') {
-                $inLocale = $taken[$locale] ?? [];
-                $values[$locale] = Slugs::among($slug, $inLocale, $max);
+            if (!is_string($slug) || $slug === '') {
+                continue;
             }
+            $inLocale = $taken[$locale] ?? [];
+            if (!$path) {
+                $values[$locale] = Slugs::among($slug, $inLocale, $max);
+                continue;
+            }
+            for ($n = 2; isset($inLocale[$candidate = self::withSuffix($slug, $n, $max)]); $n++) {
+            }
+            $values[$locale] = $candidate;
         }
 
         return $values;
@@ -231,12 +254,18 @@ final class RecordWriter
     private function suffixed(TypeDefinition $def, string $field, string $value, int $max): string
     {
         for ($n = 2; ; $n++) {
-            $suffix = '-' . $n;
-            $candidate = mb_substr($value, 0, max(1, $max - mb_strlen($suffix))) . $suffix;
+            $candidate = self::withSuffix($value, $n, $max);
             if ($this->dm->queryType($def->key)->where($field, $candidate)->first() === null) {
                 return $candidate;
             }
         }
+    }
+
+    private static function withSuffix(string $value, int $n, int $max): string
+    {
+        $suffix = '-' . $n;
+
+        return mb_substr($value, 0, max(1, $max - mb_strlen($suffix))) . $suffix;
     }
 
     /**

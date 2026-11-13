@@ -103,7 +103,7 @@ final class MakeModelFromTypeTest extends TestCase
         $this->assertStringContainsString("final class WoodObject extends Model", $php);
         $this->assertStringContainsString("    #[Id]\n    public ?string \$uuid = null;", $php);
         $this->assertStringContainsString("    #[Field(label: 'Title')]\n    #[Validate('required')]\n    public ?string \$title = null;", $php);
-        $this->assertStringContainsString("    #[Field(label: 'Category')]\n    #[Relation(to: 'category', labelField: 'title')]\n    public ?string \$category = null;", $php);
+        $this->assertStringContainsString("    #[Field(label: 'Category')]\n    #[Relation(to: 'category', labelField: 'title', metaField: 'slug')]\n    public ?string \$category = null;", $php);
     }
 
     public function test_an_empty_object_in_the_admin_file_stays_an_object(): void

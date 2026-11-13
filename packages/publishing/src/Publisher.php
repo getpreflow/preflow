@@ -99,21 +99,42 @@ final class Publisher
     }
 
     /**
-     * The fields a publish of the working copy would change: those whose working value differs
-     * from the published one, compared as a revision's changed fields are (top-level fields; the
-     * id and META never count, nor does an empty value against a missing one). Empty for a
-     * record never published, which has nothing to compare with. Reads the snapshot once.
+     * What a publish of the working copy would change: the top-level keys whose working value
+     * differs from the published one. First the type's fields that differ, in field order; then
+     * the other content keys a record carries besides its fields (its languages "_locales", its
+     * SEO "_seo", translation markers…), sorted, so an edit to those alone is named too. The id
+     * and META never count, nor does an empty value against a missing one. Both sides are
+     * compared as stored (comparable(): JSON text decoded, numbers and booleans as SQL returns
+     * them), so the working copy may be the stored one or one built in PHP. Empty for a record
+     * never published, which has nothing to compare with. Reads the snapshot once.
      *
      * @since 0.75
      *
-     * @return list<string> field names, in the type's field order
+     * @return list<string>
      */
     public function changes(DynamicRecord $working): array
     {
         $def = $working->getType();
         $snapshot = $this->dm->findIn(ShadowTypes::published($def), (string) $working->getId());
+        if ($snapshot === null) {
+            return [];
+        }
+        $now = self::normalized($working);
+        $before = self::normalized($snapshot);
+        $others = array_diff(array_unique([...array_keys($now), ...array_keys($before)]), array_keys($def->fields));
+        sort($others);
 
-        return $snapshot === null ? [] : self::changedFields($def, $working, $snapshot);
+        $changed = [];
+        foreach ([...array_keys($def->fields), ...$others] as $key) {
+            if ($key === $def->idField) {
+                continue;
+            }
+            if (json_encode(self::sortKeys($now[$key] ?? null)) !== json_encode(self::sortKeys($before[$key] ?? null))) {
+                $changed[] = $key;
+            }
+        }
+
+        return $changed;
     }
 
     /**
@@ -521,12 +542,14 @@ final class Publisher
     private static function changedFields(TypeDefinition $def, DynamicRecord $snapshot, ?DynamicRecord $previous): array
     {
         $changed = [];
+        $nowAll = $snapshot->toArray();
+        $beforeAll = $previous?->toArray() ?? [];
         foreach (array_keys($def->fields) as $name) {
             if ($name === $def->idField) {
                 continue;
             }
-            $now = $snapshot->toArray()[$name] ?? null;
-            $before = $previous?->toArray()[$name] ?? null;
+            $now = $nowAll[$name] ?? null;
+            $before = $beforeAll[$name] ?? null;
             if (self::isEmpty($now) && self::isEmpty($before)) {
                 continue;
             }
@@ -600,24 +623,26 @@ final class Publisher
             return PublishState::Draft;
         }
 
-        return self::content($working) === self::content($snapshot) ? PublishState::Published : PublishState::Changed;
-    }
-
-    /** Canonical content of a record: everything but the id and META, keys sorted. */
-    private static function content(DynamicRecord $record): string
-    {
-        $data = array_diff_key($record->toArray(), array_flip([...self::META, $record->getType()->idField]));
-        // A field never saved and a field saved empty (as a form does) are the same content.
-        $data = array_filter($data, static fn (mixed $value): bool => !self::isEmpty($value));
-
-        return (string) json_encode(self::sortKeys($data));
+        // As stored on both sides (comparable()), as changes() compares: the two never disagree.
+        return self::comparable($working) === self::comparable($snapshot) ? PublishState::Published : PublishState::Changed;
     }
 
     /**
-     * content() as stored, so a record built in PHP and the same record read back from SQL
+     * The record's content (everything but the id and META, keys sorted) as stored, so a record built in PHP and the same record read back from SQL
      * compare equal: JSON text decoded, numbers and booleans as the text SQL returns.
      */
     private static function comparable(DynamicRecord $record): string
+    {
+        return (string) json_encode(self::sortKeys(self::normalized($record)));
+    }
+
+    /**
+     * The record's content as stored (see comparable()): everything but the id and META, empty
+     * values left out.
+     *
+     * @return array<string, mixed>
+     */
+    private static function normalized(DynamicRecord $record): array
     {
         $fields = $record->getType()->fields;
         $data = array_diff_key($record->toArray(), array_flip([...self::META, $record->getType()->idField]));
@@ -627,9 +652,7 @@ final class Publisher
                 ? (in_array($value, [true, 1, '1'], true) ? '1' : '')
                 : self::asStored($value);
         }
-        $data = array_filter($data, static fn (mixed $value): bool => !self::isEmpty($value));
-
-        return (string) json_encode(self::sortKeys($data));
+        return array_filter($data, static fn (mixed $value): bool => !self::isEmpty($value));
     }
 
     private static function asStored(mixed $value): mixed

@@ -7,7 +7,8 @@ namespace Preflow\Publishing;
 /**
  * What RecordWriter asks about a type besides publishing: whether its records are kept in a
  * manual order (_order: a new record goes last, reorder() moves one). The default orders none;
- * Folio binds its listings ("list": {"orderable": true}).
+ * Folio binds its listings ("list": {"orderable": true}). A binding that also implements
+ * RecordAddressFields tells RecordWriter::duplicate() which fields hold a type's address.
  */
 interface RecordTypes
 {

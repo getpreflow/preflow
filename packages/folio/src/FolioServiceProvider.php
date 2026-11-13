@@ -1905,6 +1905,7 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->bound(\Preflow\Publishing\RecordTypes::class)) {
             $container->singleton(\Preflow\Publishing\RecordTypes::class, static fn (Container $c): \Preflow\Publishing\RecordTypes => new \Preflow\Folio\Publishing\FolioRecordTypes(
                 $c->get(TypeCatalog::class),
+                static fn (): ?FrontendResolver => $c->get(FrontendResolver::class),
             ));
         }
         if (!$container->bound(\Preflow\Publishing\PublishSkips::class)) {

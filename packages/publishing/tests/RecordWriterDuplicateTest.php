@@ -35,6 +35,13 @@ final class RecordWriterDuplicateTest extends PublishingAppTestCase
             'image' => ['type' => 'asset'],
             'note' => ['type' => 'relation', 'relation' => ['to' => 'note']],
         ]]));
+        $this->write('config/models/doc.json', (string) json_encode(['key' => 'doc', 'table' => 'doc', 'storage' => 'json', 'fields' => [
+            'handle' => ['type' => 'string'],
+            'path' => ['type' => 'string'],
+            'slug' => ['type' => 'string', 'validate' => ['slug:path']],
+            'site' => ['type' => 'string'],
+            'code' => ['type' => 'string', 'unique' => ['site']],
+        ]]));
         $this->write('config/models/topic.json', (string) json_encode(['key' => 'topic', 'table' => 'topic', 'storage' => 'json', 'fields' => [
             'name' => ['type' => 'string', 'translatable' => true],
             'slug' => ['type' => 'string', 'translatable' => true],
@@ -195,6 +202,56 @@ final class RecordWriterDuplicateTest extends PublishingAppTestCase
 
         $this->assertCount(1, $this->dm()->queryType('page')->get()->items());
         $this->assertSame([], $this->recorder->log);
+    }
+
+    public function test_the_fields_of_the_address_are_freed_whatever_their_name(): void
+    {
+        $writer = $this->writer();
+        $this->recorder->addressFields = ['doc' => ['handle' => false, 'path' => true]];
+        $this->working('doc', 'd1', ['handle' => 'about', 'path' => 'docs/ueber-uns', 'slug' => 'guides/intro']);
+
+        $first = $this->stored('doc', (string) $writer->duplicate('doc', 'd1')->record->getId());
+        $second = $this->stored('doc', (string) $writer->duplicate('doc', 'd1')->record->getId());
+
+        $this->assertSame(['about-2', 'docs/ueber-uns-2'], [$first->get('handle'), $first->get('path')], '"/{handle}" and a catch-all "{...path}"');
+        $this->assertSame(['about-3', 'docs/ueber-uns-3'], [$second->get('handle'), $second->get('path')]);
+        $this->assertSame('guides/intro-2', $first->get('slug'), 'a slug:path field that is not unique: the suffix on the whole path');
+    }
+
+    public function test_without_address_fields_a_field_of_another_name_is_copied_as_it_is(): void
+    {
+        $this->working('doc', 'd1', ['handle' => 'about']);
+
+        $copy = $this->stored('doc', (string) $this->writer()->duplicate('doc', 'd1')->record->getId());
+
+        $this->assertSame('about', $copy->get('handle'), 'the RecordTypes binding names no address');
+    }
+
+    public function test_a_scoped_unique_value_is_freed_across_the_whole_table(): void
+    {
+        $writer = $this->writer();
+        $this->working('doc', 'd1', ['site' => 'a', 'code' => 'X']);
+        $this->working('doc', 'd2', ['site' => 'b', 'code' => 'X-2']);
+
+        $copy = $this->stored('doc', (string) $writer->duplicate('doc', 'd1')->record->getId());
+
+        $this->assertSame('X-3', $copy->get('code'), 'X-2 is free within site "a", but held in "b": the scope is not looked at');
+    }
+
+    public function test_a_publishing_orderable_copy_renumbers_the_list_and_the_snapshots_follow(): void
+    {
+        $writer = $this->writer();
+        $this->recorder->orderable = ['post'];
+        foreach (['p1' => 10, 'p2' => 11] as $id => $order) {
+            $writer->save(DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('post'), ['uuid' => $id, 'title' => ['en' => $id], '_order' => $order]), new SaveOptions(publish: true));
+        }
+
+        $copy = (string) $writer->duplicate('post', 'p1')->record->getId();
+
+        $this->assertSame([10, 20, 30], array_map(fn (string $id): int => (int) $this->stored('post', $id)->get('_order'), ['p1', $copy, 'p2']));
+        $this->assertSame(30, (int) $this->publisher()->snapshot('post', 'p2')?->get('_order'), 'a position is carried into the snapshot');
+        $this->assertNull($this->publisher()->snapshot('post', $copy));
+        $this->assertSame(PublishState::Published, $this->publisher()->state($this->stored('post', 'p2')), 'a position is no content change');
     }
 
     /** @return list<string> the notes' ids in list order */
