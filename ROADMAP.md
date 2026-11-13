@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-13 (v0.71.1)
+> Last updated: 2026-11-13 (v0.72.0)
 
 ## Current State
 
-**v0.71.0** — 7279 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.72.0** — 7418 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -99,7 +99,7 @@ for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
 **Done 2026-11-12:** all 25 packages audited (`.superpowers/audit-2026-11-12/`, local); the owner decided to fix
 all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, releases 0.67 (clean-ups, done)
 → 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio; done) → 0.70 (done: preflow/blocks and rules out of Folio) → 0.71 (done: preflow/publishing, one record
-write path) → 0.72 (gaps the starters fill).
+write path) → 0.72 (done: gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
 Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
@@ -524,6 +524,46 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Gaps the starters filled, now in the framework (v0.72.0, released 2026-11-13):** sixth and last release of the
+  package audit's fixes (spec D9; plan `docs/superpowers/plans/2026-11-13-release-0.72-gaps.md`).
+  - **Indexes (data):** a declared index (`#[Field(index: true)]`, `"index": true`) is made on existing tables too, on
+    every `preflow migrate`, also on the `__published` tables of publishing types (field and composite indexes, unique
+    fields and their scopes as plain indexes; `__revisions` get none). An index counts as present by its name or by an
+    index over the same columns (a unique one only by a unique one), so hand-made indexes under other names are kept and
+    not duplicated, by migrate and by `tools/convert-typed-columns.php`. A late unique index is added only when the
+    column holds no value twice (the warning counts them). Composite indexes: `#[Preflow\Data\Attributes\Index('state',
+    'updated_at')]` (repeatable) or `"indexes": [["state", "updated_at"]]`, named `idx_<table>_<f1>_<f2>…`; refused
+    when the type is defined: unknown, duplicated or translatable fields, an index over a unique field alone, two indexes
+    with one name. MySQL: an index over an existing TEXT column gets a prefix; one longer than 3072 bytes is reported, not
+    made. An index over free text (text, blocks, multiple relation) is not made and migrate warns.
+  - **SEO description (view, twig, blade):** with SEO on, `<head>` gets `<meta name="description">` (the page's, else
+    the site's; cleaned and cut like `og:description`) unless the layout prints one; not on noindex or private pages.
+    `seo_description()` (Twig) / `@seo_description` (Blade) give the same text, uncut.
+  - **Unique slugs (data):** `Preflow\Data\Slugs::unique($data, $typeOrClass, $text, field: 'slug', exceptId: null,
+    max: 80, fallback: 'item')` and `Slugs::among($text, &$taken)` on `Slug::clean()` (`Zürich` → `zuerich`).
+  - **Middleware arguments (routing, core):** `#[Middleware(new MiddlewareWith(AuthMiddleware::class, guard:
+    'employers'))]`, also in `#[Route(middleware: [...])]`; arguments are named constructor parameters, type-checked
+    when routes are scanned, kept by the route cache and boot manifest. Core: `ConfiguredMiddleware`;
+    `Container::make($id, $params)` hands the parameters through class bindings and to factories that take them.
+  - **Safe return paths (core, members):** `Preflow\Core\Http\SafeReturnPath::check(?string $next, list<string>
+    $allowedPrefixes): ?string` (a path, never a URL; no `..`, `//`, `\`, control characters, also percent-encoded;
+    prefixes match at a segment boundary); members' `SafeNext` uses it.
+  - **Starters:** their own `Slugs`, `EmployerAuth`, `safeNext()`, `page_description()` and the `app.indexes` step are
+    gone; the layouts let SEO print the description.
+  - **Removed:** the 0.71 aliases (`Preflow\Folio\Publishing\*`, `Preflow\Folio\Content\LiveContent`,
+    `Preflow\Folio\Content\RecordDeleter`), the commands `folio:publish`/`folio:publish-scheduled`, the
+    `config/folio.php` `publishing` fallback; `Publisher` and `RecordDeleter` are `final` again; the old
+    `Preflow\Folio\Users\RecordUserProvider` name and the `Preflow\Folio\Assets\*` aliases.
+  - **Behaviour changes:** the first `preflow migrate` may add indexes to existing tables (it prints them; plan for big
+    tables). Pages whose layout printed no description get one from SEO. `Container::make()` with parameters on an id
+    bound to a factory that takes no parameters throws `ContainerException` instead of dropping them. A field in a
+    composite index or a unique scope is stored as Short (VARCHAR(191) on MySQL, MaxChars 191).
+  - **Upgrading:** raise all `preflow/*` to `^0.72`; `composer update "preflow/*"`; `preflow migrate` and read its
+    output. Replace the removed names (see 0.71's Upgrading); cron lines say `publish:scheduled`. Hand-made index code
+    can go once the indexes are declared. Own slug helpers, guard wrappers and "next" checks can use `Slugs`,
+    `MiddlewareWith` and `SafeReturnPath`. A custom `SchemaGrammar` implements `uniqueIndexes()` and the new
+    `createRecordIndex()` parameter; an app factory binding for a class the framework builds with parameters takes
+    `(Container $c, array $parameters = [])`.
 - **Starter pins (v0.71.1, released 2026-11-13):** both starters still required `preflow/i18n` `^0.70`, which Folio 0.71
   refuses, so `create-project preflow/starter-folio` could not install. Both pin `^0.71`; a starter test now checks that
   every `preflow/*` requirement names the same release. **Upgrading:** projects made from a 0.71.0 starter set
