@@ -8,6 +8,8 @@ use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Data\DataManager;
+use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Schema\RecordTables;
 
 /**
  * Publishing: drafts and published snapshots (Publisher), revisions, scheduled publishing
@@ -15,8 +17,9 @@ use Preflow\Data\DataManager;
  * LiveContent and PublishedModels, configured by config/publishing.php (PublishingConfig).
  *
  * The Publisher asks PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and
- * RecordAddresses: a provider (the app's, Folio) binds its own in register(), and boot() binds
- * the plain defaults for the rest.
+ * RecordAddresses, the tables (PublishingTables, the `publishing.tables` migrate step) ask
+ * RecordColumns, and `publish` asks PublishSkips: a provider (the app's, Folio) binds its own in
+ * register(), and boot() binds the plain defaults for the rest.
  *
  * Listed in config/providers.php by a site without Folio; Folio registers it itself.
  */
@@ -62,6 +65,18 @@ final class PublishingServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(LiveContent::class),
         ));
+        // The tables of the publishing types on SQL storage: created by `preflow migrate`, listed for the data layer.
+        $container->singleton(PublishingTables::class, static fn (Container $c): PublishingTables => new PublishingTables(
+            $c->get(DataManager::class),
+            $c->get(PublishingTypes::class),
+            $c->get(RecordColumns::class),
+        ));
+        if ($container->bound(RecordTables::class)) {
+            $container->get(RecordTables::class)->add('publishing', static fn (): array => $container->get(PublishingTables::class)->tables());
+        }
+        if ($container->bound(MigrationRegistry::class)) {
+            $container->get(MigrationRegistry::class)->afterMigrate('publishing.tables', static fn (): array => $container->get(PublishingTables::class)->sync());
+        }
         // Signed with the app key: without a real one, share previews are off (PreviewLinks::enabled()).
         $container->singleton(PreviewLinks::class, static fn (Container $c): PreviewLinks => new PreviewLinks(
             (string) $app->config()->get('app.key', ''),
@@ -89,6 +104,12 @@ final class PublishingServiceProvider extends ServiceProvider
         }
         if (!$container->bound(RecordAddresses::class)) {
             $container->singleton(RecordAddresses::class, static fn (): RecordAddresses => new NoRecordAddresses());
+        }
+        if (!$container->bound(RecordColumns::class)) {
+            $container->singleton(RecordColumns::class, static fn (): RecordColumns => new NoRecordColumns());
+        }
+        if (!$container->bound(PublishSkips::class)) {
+            $container->singleton(PublishSkips::class, static fn (): PublishSkips => new NoPublishSkips());
         }
     }
 }

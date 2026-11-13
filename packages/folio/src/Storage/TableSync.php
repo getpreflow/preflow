@@ -24,16 +24,22 @@ use Preflow\Folio\Seo\SeoSection;
  * The id is the primary key; the working and internal tables are typed with
  * their unique indexes, the published snapshots typed without them, the
  * revisions free text (RecordTableSync, ShadowTypes). Missing tables and
- * columns are added; nothing is ever dropped or altered. tables() is what
- * Folio registers with the data layer's RecordTables.
+ * columns are added; nothing is ever dropped or altered.
+ *
+ * The tables of publishing types are preflow/publishing's (PublishingTables,
+ * its `publishing.tables` step and RecordTables entries), with Folio's
+ * SYSTEM columns through FolioRecordColumns: sync() makes them in the same
+ * shape too, so either step alone gives a working site, and own() — what
+ * Folio registers with the data layer's RecordTables — leaves them out, so
+ * each table is listed once.
  * JSON-stored types are left alone.
  *
  * @phpstan-import-type Entry from RecordTables
  */
 final class TableSync
 {
-    /** System keys Folio writes besides a type's fields. */
-    private const array SYSTEM = ['_locales', TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE, '_order', SeoSection::KEY, ...Publisher::META];
+    /** System keys Folio writes besides a type's fields (columns() without the repeated _order). */
+    public const array SYSTEM = ['_locales', TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE, '_order', SeoSection::KEY, ...Publisher::META];
 
     private readonly RecordTableSync $records;
 
@@ -59,13 +65,35 @@ final class TableSync
         $tables = [];
         foreach ($this->catalog->all() as $listing) {
             $def = $this->registry->get($listing->key);
-            $tables[] = RecordTables::entry($def, self::SYSTEM);
+            $tables[] = RecordTables::entry($def, self::columns());
             if ($listing->publishing) {
-                array_push($tables, ...ShadowTypes::tables($def, self::SYSTEM));
+                array_push($tables, ...ShadowTypes::tables($def, self::columns()));
             }
         }
         foreach ($this->internal as $def) {
-            $tables[] = RecordTables::entry($def, self::SYSTEM);
+            $tables[] = RecordTables::entry($def, self::columns());
+        }
+
+        return $tables;
+    }
+
+    /** @return list<string> SYSTEM, each key once: the extra columns of every Folio table (FolioRecordColumns gives them to preflow/publishing) */
+    public static function columns(): array
+    {
+        return array_values(array_unique(self::SYSTEM));
+    }
+
+    /** @return list<Entry> the tables but those of publishing types (preflow/publishing lists them) */
+    public function own(): array
+    {
+        $tables = [];
+        foreach ($this->catalog->all() as $listing) {
+            if (!$listing->publishing) {
+                $tables[] = RecordTables::entry($this->registry->get($listing->key), self::columns());
+            }
+        }
+        foreach ($this->internal as $def) {
+            $tables[] = RecordTables::entry($def, self::columns());
         }
 
         return $tables;

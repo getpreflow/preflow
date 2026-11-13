@@ -55,7 +55,20 @@ final class PublishCommandsTest extends TestCase
 
         [, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['nope']);
         $this->assertStringContainsString('"folio:publish" is deprecated; use "publish"', $out);
-        $this->assertStringContainsString('preflow folio:publish <type>', $out);
+        $this->assertStringContainsString('not a publishing type', $out);
+    }
+
+    public function test_publish_skips_the_legacy_drafts_through_folio(): void
+    {
+        $this->working('post', 'live', ['title' => ['en' => 'Live'], 'slug' => ['en' => 'live'], 'status' => 'published']);
+        $this->working('post', 'old', ['title' => ['en' => 'Old draft'], 'slug' => ['en' => 'old'], 'status' => 'draft']);
+
+        [$code, $out] = $this->runCommand(new \Preflow\Publishing\Console\PublishCommand(fn () => $this->app()), ['post']);
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('Published post/live', $out);
+        $this->assertStringContainsString('Skipped post/old (status is not "published"', $out);
+        $this->assertNull($this->publisher()->snapshot('post', 'old'));
     }
 
     public function test_concurrent_run_is_locked_out(): void

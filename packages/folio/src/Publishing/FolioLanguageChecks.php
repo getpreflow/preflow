@@ -51,6 +51,11 @@ final class FolioLanguageChecks implements LanguageChecks
         return $errors;
     }
 
+    public function stateKeys(): array
+    {
+        return [TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE];
+    }
+
     private static function languageName(string $locale): string
     {
         $name = FolioText::get('folio.languages.' . $locale);

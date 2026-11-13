@@ -258,6 +258,57 @@ final class SqliteContentTest extends TestCase
      * @param array<string, string>|null $slug
      * @param list<string>|null          $related
      */
+    public function test_restoring_a_revision_from_before_a_field_existed_clears_that_field(): void
+    {
+        $this->publishPost('p1', ['en' => 'First'], 1);
+        $fields = json_decode((string) file_get_contents($this->dir . '/models/post.json'), true)['fields'];
+        $this->model('post', ['frontend' => ['route' => '/{slug}'], 'list' => ['orderable' => true], 'fields' => $fields + ['subtitle' => ['type' => 'string']]]);
+        $this->dm = $this->dataManager($this->dir . '/a.sqlite');
+        $publisher = new Publisher($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->fieldTypes(), $this->dm));
+        $working = $this->dm->findType('post', 'p1') ?? throw new \RuntimeException('missing p1');
+        $working->set('subtitle', 'Added later');
+        $publisher->publish($working, 'tester');
+        $first = $publisher->revisions('post', 'p1')[1];
+
+        $publisher->restore('post', 'p1', $first->id);
+
+        $this->assertNull($this->dm->findType('post', 'p1')?->get('subtitle'));
+        $this->assertSame('First', $this->dm->findType('post', 'p1')?->localized('en')->toArray()['title']);
+    }
+
+    public function test_discard_keeps_order_schedule_and_share_token(): void
+    {
+        $this->publishPost('p1', ['en' => 'Live'], 1);
+        $working = $this->dm->findType('post', 'p1') ?? throw new \RuntimeException('missing p1');
+        $working->set('title', ['en' => 'Draft']);
+        $working->set('_order', 5);
+        $working->set('_publish_at', '2999-01-01T00:00');
+        $working->set('_share_token', 'tok');
+        $this->publisher->saveDraft($working, null);
+
+        $this->publisher->discard('post', 'p1');
+
+        $stored = $this->dm->findType('post', 'p1') ?? throw new \RuntimeException('missing p1');
+        $this->assertSame('Live', $stored->localized('en')->toArray()['title']);
+        $this->assertSame(5, (int) $stored->get('_order'));
+        $this->assertSame('2999-01-01T00:00', $stored->get('_publish_at'));
+        $this->assertSame('tok', $stored->get('_share_token'));
+    }
+
+    public function test_a_site_owned_column_survives_a_restore(): void
+    {
+        $this->publishPost('p1', ['en' => 'First'], 1);
+        $driver = $this->dm->driver('sqlite');
+        \assert($driver instanceof \Preflow\Data\Driver\PdoDriver);
+        $driver->pdo()->exec('ALTER TABLE post ADD COLUMN site_note TEXT');
+        $driver->pdo()->exec("UPDATE post SET site_note = 'keep me' WHERE uuid = 'p1'");
+        $first = $this->publisher->revisions('post', 'p1')[0];
+
+        $this->publisher->restore('post', 'p1', $first->id);
+
+        $this->assertSame('keep me', $driver->pdo()->query("SELECT site_note FROM post WHERE uuid = 'p1'")->fetchColumn());
+    }
+
     private function publishPost(string $id, array $title, int $order, ?array $slug = null, ?array $related = null): void
     {
         $data = ['uuid' => $id, '_order' => $order, 'title' => $title, 'slug' => $slug ?? ['en' => $id], '_locales' => array_keys($title)];

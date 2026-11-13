@@ -35,13 +35,13 @@ final class FolioRecordAddresses implements PublishingAddresses
         $this->addresses?->removed($type, $id, $target instanceof RemovalTarget ? $target : null);
     }
 
-    /** The pages of the record itself follow its record tag anyway. */
-    public function changed(?DynamicRecord $before, ?DynamicRecord $after): void
+    /** Reads the snapshot before only with a page cache. The pages of the record itself follow its record tag anyway. */
+    public function changed(\Closure $before, ?DynamicRecord $after): void
     {
         if ($this->pageCache === null || $this->resolver === null) {
             return;
         }
-        $tags = array_values(array_unique([...$this->resolver->addressTags($before), ...$this->resolver->addressTags($after)]));
+        $tags = array_values(array_unique([...$this->resolver->addressTags($before()), ...$this->resolver->addressTags($after)]));
         if ($tags !== []) {
             $this->pageCache->changed(...$tags);
         }

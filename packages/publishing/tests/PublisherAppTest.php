@@ -150,6 +150,11 @@ final class PublisherAppTest extends PublishingAppTestCase
             {
                 return ($record->get('body')['de'] ?? '') === '' ? ['_translations.de' => ['German lacks Body']] : [];
             }
+
+            public function stateKeys(): array
+            {
+                return ['_machine_translated'];
+            }
         });
         $p = $this->publisher();
         $record = $this->working('post', 'p1', ['title' => ['en' => 'Hi', 'de' => 'Hallo'], 'body' => ['en' => 'Text'], '_locales' => ['en', 'de'], '_machine_translated' => ['de' => ['title']]]);
@@ -177,6 +182,11 @@ final class PublisherAppTest extends PublishingAppTestCase
             }
 
             public function incomplete(DynamicRecord $record): array
+            {
+                return [];
+            }
+
+            public function stateKeys(): array
             {
                 return [];
             }

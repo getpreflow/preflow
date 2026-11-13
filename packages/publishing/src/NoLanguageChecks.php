@@ -15,4 +15,9 @@ final class NoLanguageChecks implements LanguageChecks
     {
         return [];
     }
+
+    public function stateKeys(): array
+    {
+        return [];
+    }
 }

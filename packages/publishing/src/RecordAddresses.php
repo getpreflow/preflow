@@ -25,9 +25,12 @@ interface RecordAddresses
     public function removed(string $type, string $id, ?RemovalTarget $target): void;
 
     /**
-     * The addresses the record had ($before, its snapshot before) and has ($after, null when it
-     * left the site): the pages at them change (a record that takes over an address, one that
-     * leaves it).
+     * The addresses the record had ($before returns its snapshot before, null when there was none)
+     * and has ($after, null when it leaves the site): the pages at them change (a record that takes
+     * over an address, one that leaves it). $before reads the snapshot only when called; call it
+     * here, not later (on an unpublish the snapshot is deleted next).
+     *
+     * @param \Closure(): ?DynamicRecord $before
      */
-    public function changed(?DynamicRecord $before, ?DynamicRecord $after): void;
+    public function changed(\Closure $before, ?DynamicRecord $after): void;
 }

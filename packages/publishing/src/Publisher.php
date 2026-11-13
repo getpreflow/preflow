@@ -258,7 +258,7 @@ class Publisher
             $working->set('_publish_at', '');
             $this->dm->saveType($working, false);
             $snapshot = $this->writeSnapshot($working, $previous, $by);
-            $this->addresses?->changed($previous, $snapshot);
+            $this->addresses?->changed(static fn (): ?DynamicRecord => $previous, $snapshot);
             $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
             $this->index?->refresh($working);
 
@@ -279,7 +279,7 @@ class Publisher
 
             return $this->writeSnapshot($working, $previous, $by);
         });
-        $this->addresses?->changed($previous, $snapshot);
+        $this->addresses?->changed(static fn (): ?DynamicRecord => $previous, $snapshot);
         // After the commit: the address book writes on its own (it never fails a publish).
         $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
         $this->index?->refresh($working);
@@ -369,7 +369,7 @@ class Publisher
      */
     public function unpublish(string $type, string $id, ?RemovalTarget $target = null): void
     {
-        $this->addresses?->changed($this->addresses !== null ? $this->snapshot($type, $id) : null, null);
+        $this->addresses?->changed(fn (): ?DynamicRecord => $this->snapshot($type, $id), null);
         $this->dm->deleteIn(ShadowTypes::published($this->definition($type)), $id);
         $this->addresses?->removed($type, $id, $target);
     }
@@ -389,7 +389,7 @@ class Publisher
     public function forget(string $type, string $id): void
     {
         $def = $this->definition($type);
-        $this->addresses?->changed($this->addresses !== null ? $this->snapshot($type, $id) : null, null);
+        $this->addresses?->changed(fn (): ?DynamicRecord => $this->snapshot($type, $id), null);
         $this->dm->deleteIn(ShadowTypes::published($def), $id);
         foreach ($this->revisionsOf($def, $id) as $revision) {
             $this->dm->deleteIn(ShadowTypes::revisions($def), $revision->id);
@@ -536,10 +536,11 @@ class Publisher
                 $data[$key] = $value;
             }
         }
-        // A snapshot from before a key existed (translation fingerprints, sources, machine marks) has no
+        // A snapshot from before a field or a translation key (LanguageChecks::stateKeys()) existed has no
         // such key; SQL leaves unnamed columns as they are, which would keep the working row's current ones.
-        foreach (array_keys($working?->toArray() ?? []) as $key) {
-            if (!array_key_exists($key, $data) && !in_array($key, self::META, true)) {
+        // Other columns (a site's own) are not content and stay as they are.
+        foreach ([...array_keys($def->fields), ...($this->languages?->stateKeys() ?? [])] as $key) {
+            if ($key !== $def->idField && !array_key_exists($key, $data)) {
                 $data[$key] = null;
             }
         }

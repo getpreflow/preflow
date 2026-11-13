@@ -57,9 +57,12 @@ $publisher->restore('post', $id, $revisionId);   // into the working copy; publi
 the stored version) instead of overwriting it. `null` skips the check (importers, the scheduler).
 `publish()`, `discard()` and `restore()` take it as their last argument too.
 
-**Storage:** on JSON storage nothing needs creating. On SQL storage the snapshot and revision tables
-are `ShadowTypes::tables($definition)`; Folio's `preflow migrate` step creates them. Without Folio, sync
-them with `Preflow\Data\Schema\RecordTableSync` (and the working table, as for any type).
+**Storage:** on JSON storage nothing needs creating. On SQL storage `php preflow migrate` (its step
+`publishing.tables`) creates the tables of every type that publishes: the working copies (the
+type's table), `{table}__published` and `{table}__revisions`, with the publishing keys (`_version`,
+`_publish_at`, `_share_token`, `_order`, `_locales`, …) besides the fields. Missing tables and
+columns are added, nothing is dropped or changed, so running it again changes nothing. Run it after
+turning publishing on for a type or adding a field.
 
 ## Reading what is live
 
@@ -84,7 +87,7 @@ every run.
 
 `php preflow publish <type> [--id=<id>] [--all]` publishes the drafts of a type at once, e.g. after
 turning publishing on for a type with content. Without `--all` it skips records that are already
-published.
+published, and those `PublishSkips` gives a reason for.
 
 Both commands need `preflow/devtools`; the package lists them in its `composer.json`
 (`extra.preflow.commands`), so installing it is enough.
@@ -121,18 +124,26 @@ package binds a plain default for each one you leave open:
 |---|---|---|
 | `PublishingTypes` | `publishes($type)`, `publishing()`: which types publish | `SchemaPublishingTypes`: the `"publishing"` flag |
 | `RecordChecks` | `validate($record)`: the rules before a publish (throws `ValidationException`) | none |
-| `LanguageChecks` | `clearMachineMarks($record)`; `incomplete($record)`: errors keyed `_translations.<locale>` | none |
+| `LanguageChecks` | `clearMachineMarks($record)`; `incomplete($record)`: errors keyed `_translations.<locale>`; `stateKeys()`: translation keys a restore or discard clears when the content lacks them | none |
 | `RecordIndex` | `refresh($record)` after each save, `forget($type, $id)` | none |
-| `RecordAddresses` | `sync()` after a publish, `removed()` after an unpublish (to a `RemovalTarget`), `changed($before, $after)` | none |
+| `RecordAddresses` | `sync()` after a publish, `removed()` after an unpublish (to a `RemovalTarget`), `changed($before, $after)` (`$before` a closure that reads the old snapshot when called) | none |
+| `RecordColumns` | `columns($definition)`: columns your app writes besides the fields, added to the type's tables | none |
+| `PublishSkips` | `reason($record)`: why `publish <type>` leaves a never-published record alone without `--all` | none |
 
 `complete_languages` only takes effect with a `LanguageChecks` that finds something.
+
+**Restore and discard** replace the working copy's content: its fields, and the `stateKeys()`, take
+the revision's or snapshot's values (a field the revision does not have becomes empty). The
+schedule, list position and share token stay, and so do columns of your own that are no fields.
 
 ## With Folio
 
 Folio registers this package and binds its rules: a type with a `frontend` route and every
 singleton publish unless they say otherwise, a publish runs Folio's field and type rules, languages
 follow Folio's translation status, the review index and redirects follow each publish, and the page
-cache drops the pages at the addresses a record leaves and takes. Folio's README ("Drafts and
+cache drops the pages at the addresses a record leaves and takes. Its own columns (translation
+marks, SEO) go into the tables of publishing types, and `publish` skips the records a legacy
+frontend `published` field marks as drafts. Folio's README ("Drafts and
 publishing") has the screens.
 
 Until 0.72 the names of before 0.71 still work: `Preflow\Folio\Publishing\*` and

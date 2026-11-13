@@ -353,7 +353,7 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->get(\Preflow\Data\Schema\RecordTables::class)->add(
             'folio',
-            static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->tables(),
+            static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->own(),
         );
         $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
             'folio.tables',
@@ -1830,9 +1830,10 @@ final class FolioServiceProvider extends ServiceProvider
      * Folio's answers to the publishing core's questions, unless the app bound its own
      * (preflow/publishing binds the plain defaults for the rest at boot): which types publish
      * (the catalog), the rules (RecordValidator), the languages (TranslationStatus), the review
-     * index, and the addresses (redirects, page-cache tags). Its settings come from
-     * config/publishing.php; while that file does not exist, from config/folio.php 'publishing'
-     * (read until 0.72, with a deprecation note).
+     * index, the addresses (redirects, page-cache tags), the columns Folio adds to the record
+     * tables and the legacy drafts `publish` skips. Its settings come from config/publishing.php;
+     * while that file does not exist, from config/folio.php 'publishing' (read until 0.72, with a
+     * deprecation note).
      *
      * For 0.71 the Publisher handed out is Folio's class of the old name (a subclass), so code
      * that type-hints either name accepts it.
@@ -1873,6 +1874,15 @@ final class FolioServiceProvider extends ServiceProvider
                 // The page cache: the addresses a publish, unpublish or delete leaves and takes
                 $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
                 $c->get(FrontendResolver::class),
+            ));
+        }
+        if (!$container->bound(\Preflow\Publishing\RecordColumns::class)) {
+            $container->singleton(\Preflow\Publishing\RecordColumns::class, static fn (): \Preflow\Publishing\RecordColumns => new \Preflow\Folio\Publishing\FolioRecordColumns());
+        }
+        if (!$container->bound(\Preflow\Publishing\PublishSkips::class)) {
+            $container->singleton(\Preflow\Publishing\PublishSkips::class, static fn (Container $c): \Preflow\Publishing\PublishSkips => new \Preflow\Folio\Publishing\FolioPublishSkips(
+                $c->get(TypeCatalog::class),
+                $c->get(DataManager::class),
             ));
         }
         $container->singleton(\Preflow\Publishing\Publisher::class, static function (Container $c): \Preflow\Publishing\Publisher {

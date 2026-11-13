@@ -25,4 +25,12 @@ interface LanguageChecks
      * @return array<string, list<string>>
      */
     public function incomplete(DynamicRecord $record): array;
+
+    /**
+     * The keys that hold a record's translation state (fingerprints, sources, machine marks):
+     * content restored or discarded without them clears them on the working copy.
+     *
+     * @return list<string>
+     */
+    public function stateKeys(): array;
 }

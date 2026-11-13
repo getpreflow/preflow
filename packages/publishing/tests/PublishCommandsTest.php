@@ -76,6 +76,23 @@ final class PublishCommandsTest extends PublishingAppTestCase
         $this->assertStringContainsString('"note" is not a publishing type', $out);
     }
 
+    public function test_publish_skips_what_publish_skips_names(): void
+    {
+        $this->working('post', 'a', ['title' => ['en' => 'A']]);
+        $this->working('post', 'b', ['title' => ['en' => 'B']]);
+        $this->app()->container()->singleton(\Preflow\Publishing\PublishSkips::class, static fn () => new class implements \Preflow\Publishing\PublishSkips {
+            public function reason(\Preflow\Data\DynamicRecord $record): ?string
+            {
+                return $record->getId() === 'b' ? 'not ready' : null;
+            }
+        });
+
+        [, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['post']);
+
+        $this->assertStringContainsString('Published post/a', $out);
+        $this->assertStringContainsString('Skipped post/b (not ready; use --all to publish anyway)', $out);
+    }
+
     /**
      * @param list<string> $args
      * @return array{0: int, 1: string}

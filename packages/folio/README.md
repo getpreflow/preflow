@@ -884,10 +884,9 @@ return [...\Preflow\Folio\Console\FolioCommands::all()];
 ```
 
 `php preflow publish <type> [--id=<id>] [--all]` publishes the drafts of a type
-at once. By default it skips records that are already published. `--all`
-publishes every working copy, including unfinished edits. The deprecated
-`folio:publish` also skips records whose legacy `frontend.published` field (e.g. `status`)
-does not say published.
+at once. By default it skips records that are already published, and records whose
+legacy `frontend.published` field (e.g. `status`) does not say published. `--all`
+publishes every working copy, including unfinished edits.
 
 "Publish at" is a wall-clock time in `app.timezone` (`config/app.php`), which Preflow
 applies on boot, in web requests and in the CLI alike. A time in the past is not
