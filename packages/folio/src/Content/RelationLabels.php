@@ -12,7 +12,8 @@ use Preflow\Data\TypeDefinition;
  * Labels of related records for the admin list: relation cells for a page of records (one query
  * per target type, never one per row), filter chips and the relation filter's options. A label is
  * the relation's "labelField" when set and non-empty, else the record's label (RecordLabeler),
- * both in the target's default locale.
+ * both in the target's default locale. entries() adds the meta line a relation row shows under
+ * the label: the relation's "metaField" (@since 0.75).
  */
 final class RelationLabels
 {
@@ -81,6 +82,28 @@ final class RelationLabels
     }
 
     /**
+     * Labels with the meta line under them: the target record's $metaField in its default locale
+     * (null when unset, empty or not text). One query.
+     *
+     * @since 0.75
+     *
+     * @param list<string> $ids
+     * @return array<string, array{label: string, meta: ?string}> id => entry, in the order asked for (ids that no longer resolve left out)
+     */
+    public function entries(string $target, array $ids, ?string $labelField, ?string $metaField): array
+    {
+        $records = $this->load($target, $ids);
+        $entries = [];
+        foreach ($ids as $id) {
+            if (isset($records[$id])) {
+                $entries[$id] = ['label' => $this->label($records[$id], $labelField), 'meta' => self::text($records[$id], $metaField)];
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
      * The target's records as id => label, or null when it has more than $limit (or is unknown).
      *
      * @return array<string, string>|null
@@ -132,6 +155,18 @@ final class RelationLabels
         return is_string($labelField) && $labelField !== '' ? $labelField : null;
     }
 
+    /**
+     * The relation's "metaField", if set.
+     *
+     * @since 0.75
+     */
+    public static function metaField(TypeDefinition $def, string $field): ?string
+    {
+        $metaField = $def->fields[$field]->config['relation']['metaField'] ?? null;
+
+        return is_string($metaField) && $metaField !== '' ? $metaField : null;
+    }
+
     private static function target(TypeDefinition $def, string $field): string
     {
         return (string) ($def->fields[$field]->config['relation']['to'] ?? '');
@@ -154,6 +189,17 @@ final class RelationLabels
         }
 
         return $records;
+    }
+
+    /** A field's text in the record's default locale; null when there is none. */
+    private static function text(DynamicRecord $record, ?string $field): ?string
+    {
+        if ($field === null) {
+            return null;
+        }
+        $value = $record->localized($record->getType()->locales->default)->get($field);
+
+        return is_string($value) && $value !== '' ? $value : (is_int($value) || is_float($value) ? (string) $value : null);
     }
 
     private function label(DynamicRecord $record, ?string $labelField): string

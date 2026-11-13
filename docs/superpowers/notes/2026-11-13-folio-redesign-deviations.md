@@ -37,9 +37,10 @@ Each row carries exactly one label.
 
 | Difference | Label | Why / what |
 |---|---|---|
-| `--c-type-*` (the type tints) and `--w-side-panel` are defined, but nothing reads them yet. | 0.75 | They are reserved for `.folio-type-icon` and the editor side panel. `admin.css` says so next to them. |
+| `--c-type-*` (the type tints) and `--w-side-panel` are defined, but nothing reads them yet. | 0.75 | `.folio-type-icon` reads the type tints since 0.75 (one rule per `TypeFamily` value in `admin.css`); `--w-side-panel` waits for the editor side panel. |
+| The `live` type family is tinted with the accent (emerald: `--c-accent-text` on `--c-accent-soft`), as the HolzDashboard board tints CO₂-Rechner. Emerald also marks actions (primary buttons, the active nav item). | Adaptation | Ruling for 0.75: stay close to the board; the handoff's README keeps emerald for actions, so a live tile shares the action colour. If the owner objects, it is one CSS rule (`.folio-type-icon[data-family="live"]`). |
 | `.folio-notice` is the info tone (blue) by default. Before 0.73 every notice was amber. `is-warning` or `role="alert"` gives the amber warning tone, and `folio-alert-error` the red. | Adaptation | COMPONENTS §3 makes the notice the info tone. Extension notices (`#[ListNotice]`, `#[DashboardNotice]`) that warn need `is-warning`. The README's Admin styling section and the attribute table say so. |
-| Locale dots show complete and missing only, never "partial". The interface-language switch has no dots. | Adaptation | There is no data for partial. The interface languages have no completeness data. |
+| Locale dots show complete and missing only, never "partial". The interface-language switch has no dots. | 0.75 | Since 0.75 `TranslationStatus::state()` gives a language's `Completeness` (complete, partial, missing); the editor's language segmented shows it (Task 4). The interface languages still have no completeness data. |
 | The draft badge is filled with `--c-neutral-soft`, not the board's hover colour. | Adaptation | It has to stay visible on hovered rows (see the token above). |
 | Error toasts (`folio:error`) show a warning glyph and have no countdown bar. | Adaptation | A check would misreport an error, and error toasts have no undo window. |
 | In dark mode, the toast's check and bar mix ink-accent with inverse-fg. | Adaptation | The board's `#34d399` is too faint on the light inverse toast. |
@@ -49,7 +50,7 @@ Each row carries exactly one label.
 | The drawer has no accent-soft "Saved" line. | Adaptation | `drawer_saved.twig` posts a message and closes the drawer at once, so there is no saved state to show. |
 | Danger buttons are filled, as on the board. Unpublish and the asset's Move to bin are outlined danger buttons (`btn btn-secondary` with `data-tone="danger"`, red text and a red-tinted border); a delete for good keeps the filled `.btn-danger`. | Fixed in 0.73 | The board's Unpublish is outlined. The board's text-only "Move to bin" link comes with the asset detail redesign (0.76). |
 | `.folio-filter-add` ("+ Filter", dashed) exists in CSS only. The list toolbar still uses the `details` Filter button. | 0.75 | It comes with the list toolbar and the filter popover. |
-| The review-queue card has no type icon. | 0.75 | `.folio-type-icon` comes with the lists. |
+| The review-queue card has no type icon. | Fixed in 0.75 | Each type's group heading shows its tile (`type_icon` macro: the type's icon on its family's tint, from `TypeListing::$family`). |
 | The review-queue card shows the translated progress sentence in mono, not a bare "6 / 17". | Adaptation | The sentence keeps the translation keys. |
 | Alert, notice, field-error, chip and toast glyphs are CSS masks (copies of the icons.md paths), not `<use>` icons. | Adaptation | Field-type PHP and flash markup stay unchanged. |
 | The `is-failed` badge exists, but the AI run item status "failed" still renders `is-incomplete`. | 0.76 | It is a markup change in the AI run screen. |

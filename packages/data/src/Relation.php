@@ -17,6 +17,13 @@ final readonly class Relation
         public OnDelete $onDelete,
         public OnDelete $onSelfDelete,
         public ?string $labelField,
+        /**
+         * The target's field a picker shows under the label (an email under a name), from
+         * "metaField"; null: none.
+         *
+         * @since 0.75
+         */
+        public ?string $metaField = null,
     ) {}
 
     /**
@@ -38,6 +45,7 @@ final readonly class Relation
         $onSelfDelete = self::rule($config, 'onSelfDelete', $onDelete, $type, $field->name);
 
         $labelField = $config['labelField'] ?? null;
+        $metaField = $config['metaField'] ?? null;
 
         return new self(
             type: $type,
@@ -47,6 +55,7 @@ final readonly class Relation
             onDelete: $onDelete,
             onSelfDelete: $onSelfDelete,
             labelField: is_string($labelField) && $labelField !== '' ? $labelField : null,
+            metaField: is_string($metaField) && $metaField !== '' ? $metaField : null,
         );
     }
 

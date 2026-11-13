@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Data\TypeFamily;
+
 final readonly class TypeListing
 {
     /**
@@ -19,6 +21,7 @@ final readonly class TypeListing
      * @param string|array<string, string>|null $labels   "label" as the model file writes it (a string, or a map per language; null: none). $label is its default text
      * @param string|array<string, string>|null $singular "label_singular" likewise (one record: delete plans, counts)
      * @param string                   $group    the translation group of its labels: "site" for the site's own types, the package's group for a type an extension ships
+     * @param TypeFamily|null          $family   what kind of content it holds ("family"); undeclared: page for a type with a "frontend", member for a user type, else none (@since 0.75)
      */
     public function __construct(
         public string $key,
@@ -36,5 +39,16 @@ final readonly class TypeListing
         public string|array|null $labels = null,
         public string|array|null $singular = null,
         public string $group = 'site',
+        public ?TypeFamily $family = null,
     ) {}
+
+    /**
+     * The icon its tile and nav item show: "icon", else ui-settings for a singleton, ui-file otherwise.
+     *
+     * @since 0.75
+     */
+    public function glyph(): string
+    {
+        return $this->icon !== '' ? $this->icon : ($this->singleton ? 'ui-settings' : 'ui-file');
+    }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Closure;
+use Preflow\Data\TypeFamily;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\TypeCatalog;
@@ -22,7 +23,7 @@ final class AdminNav
 
     private string $prefix;
     private string $path = '';
-    /** @var list<array{section: string, label: string|Closure, url: string, icon: string, permission: ?string, order: int, badge: ?Closure}> */
+    /** @var list<array{section: string, label: string|Closure, url: string, icon: string, permission: ?string, order: int, badge: ?Closure, family: ?TypeFamily}> */
     private array $added = [];
     /** @var (Closure(string): ?int)|null the count badge of a type key; set at boot (Customizations resolve after the nav is built) */
     private ?Closure $badges = null;
@@ -53,13 +54,14 @@ final class AdminNav
      *
      * @param string|Closure(): string $label a closure is asked when the sidebar renders (a text in the interface language)
      * @param (Closure(): mixed)|null $badge a count for the item, asked once and only while the item is visible; anything but an int above 0 (or a throw) shows none
+     * @param TypeFamily|null $family what kind of content the item leads to, for its tint; null: none (@since 0.75)
      */
-    public function add(string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order = 100, ?Closure $badge = null): void
+    public function add(string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order = 100, ?Closure $badge = null, ?TypeFamily $family = null): void
     {
         if (preg_match('/^[a-z][a-z0-9_-]{0,63}$/D', $section) !== 1) {
             throw new \InvalidArgumentException('Nav section "' . $section . '" is not a valid name: lower case letters, digits, "_" and "-", starting with a letter, at most 64 characters.');
         }
-        $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order', 'badge');
+        $this->added[] = compact('section', 'label', 'url', 'icon', 'permission', 'order', 'badge', 'family');
     }
 
     /** @param Closure(string): ?int $badges a type key's nav badge count; called only for visible items */
@@ -84,24 +86,28 @@ final class AdminNav
         $this->path = '/' . trim($path, '/');
     }
 
-    /** @return list<array{name: string, label: string, badge: ?int, open: bool, items: list<array{label: string, url: string, icon: string, active: bool, badge: ?int}>}> */
+    /**
+     * Each item's "family" is the type's (TypeListing::$family), the asset family for the media
+     * library, and what add() was given for an added item (@since 0.75).
+     *
+     * @return list<array{name: string, label: string, badge: ?int, open: bool, items: list<array{label: string, url: string, icon: string, active: bool, badge: ?int, family: ?TypeFamily}>}>
+     */
     public function sections(): array
     {
         $groups = array_fill_keys(array_keys(self::BUILTIN), []);
-        $add = function (string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null, ?Closure $badge = null) use (&$groups): void {
-            $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order', 'type', 'badge');
+        $add = function (string $section, string|Closure $label, string $url, string $icon, ?string $permission, int $order, ?string $type = null, ?Closure $badge = null, ?TypeFamily $family = null) use (&$groups): void {
+            $groups[$section][] = compact('label', 'url', 'icon', 'permission', 'order', 'type', 'badge', 'family');
         };
 
         $add('dashboard', static fn (): string => FolioText::get('folio.nav.dashboard'), $this->prefix === '' ? '/' : $this->prefix, 'ui-dashboard', 'folio.dashboard', 100);
         foreach ($this->catalog->all() as $listing) {
             if ($listing->nav) {
-                $icon = $listing->icon !== '' ? $listing->icon : ($listing->singleton ? 'ui-settings' : 'ui-file');
-                $add($listing->section, $this->labels->type($listing->key), $this->prefix . '/' . $listing->key, $icon, $listing->key . '.view', $listing->order, $listing->key);
+                $add($listing->section, $this->labels->type($listing->key), $this->prefix . '/' . $listing->key, $listing->glyph(), $listing->key . '.view', $listing->order, $listing->key, null, $listing->family);
             }
         }
-        $add('library', static fn (): string => FolioText::get('folio.nav.assets'), $this->prefix . '/assets', 'ui-library', 'assets.view', 100);
+        $add('library', static fn (): string => FolioText::get('folio.nav.assets'), $this->prefix . '/assets', 'ui-library', 'assets.view', 100, null, null, TypeFamily::Asset);
         foreach ($this->added as $item) {
-            $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order'], null, $item['badge']);
+            $add($item['section'], $item['label'], $item['url'], $item['icon'], $item['permission'], $item['order'], null, $item['badge'], $item['family']);
         }
 
         $ordered = $groups;
@@ -133,6 +139,7 @@ final class AdminNav
                 'icon' => $item['icon'],
                 'active' => $item['url'] === $active,
                 'badge' => $this->badge($item),
+                'family' => $item['family'],
             ], $items);
             $badges = array_sum(array_map(static fn (array $item): int => max(0, $item['badge'] ?? 0), $mapped));
             $hasActive = in_array(true, array_column($mapped, 'active'), true);

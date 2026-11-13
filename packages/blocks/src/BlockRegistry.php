@@ -6,6 +6,7 @@ namespace Preflow\Blocks;
 
 use Preflow\Components\Component;
 use Preflow\Components\ComponentMap;
+use Preflow\Data\TypeFamily;
 use Preflow\Data\TypeFieldDefinition;
 
 /** All declared blocks, by key, built from classes carrying #[Block]. */
@@ -44,7 +45,7 @@ final class BlockRegistry
         // adding, removing or editing a block rebuilds it (no manual clearing).
         $signature = $useCache && $cacheFile !== null ? self::signature($all) : null;
         if ($signature !== null && is_file($cacheFile)) {
-            $cached = @unserialize((string) file_get_contents($cacheFile), ['allowed_classes' => [BlockDefinition::class, TypeFieldDefinition::class]]);
+            $cached = @unserialize((string) file_get_contents($cacheFile), ['allowed_classes' => [BlockDefinition::class, TypeFieldDefinition::class, TypeFamily::class]]);
             if (is_array($cached) && ($cached['signature'] ?? null) === $signature && is_array($cached['blocks'] ?? null)) {
                 $registry = new self();
                 foreach ($cached['blocks'] as $definition) {
@@ -67,7 +68,8 @@ final class BlockRegistry
     }
 
     /**
-     * The blocks as plain data (the boot manifest stores it), for fromArray().
+     * The blocks as plain data (the boot manifest stores it), for fromArray(). A family is its
+     * value ("asset"), null when the block has none.
      *
      * @return list<array<string, mixed>>
      */
@@ -77,6 +79,7 @@ final class BlockRegistry
         foreach ($this->blocks as $definition) {
             $block = get_object_vars($definition);
             $block['fields'] = array_map(static fn (TypeFieldDefinition $field): array => get_object_vars($field), $definition->fields);
+            $block['family'] = $definition->family?->value;
             $out[] = $block;
         }
 
@@ -89,6 +92,8 @@ final class BlockRegistry
         $registry = new self();
         foreach ($blocks as $block) {
             $block['fields'] = array_map(static fn (array $field): TypeFieldDefinition => new TypeFieldDefinition(...$field), (array) $block['fields']);
+            // A manifest written before 0.75 has no family.
+            $block['family'] = is_string($block['family'] ?? null) ? TypeFamily::tryFrom($block['family']) : null;
             $registry->add(new BlockDefinition(...$block));
         }
 
@@ -127,7 +132,8 @@ final class BlockRegistry
     /** @param list<class-string> $classes */
     private static function signature(array $classes): string
     {
-        $parts = [];
+        // The shape of a cached BlockDefinition: a cache written before it gained $family (0.75) is rebuilt.
+        $parts = ['definition:2'];
         foreach ($classes as $class) {
             $file = class_exists($class) ? (new \ReflectionClass($class))->getFileName() : false;
             $parts[] = $class . '@' . ($file !== false && is_file($file) ? filemtime($file) : 0);
@@ -198,6 +204,7 @@ final class BlockRegistry
             class: $class,
             isComponent: $reflection->isSubclassOf(Component::class),
             fields: $fields,
+            family: $block->family,
         );
     }
 

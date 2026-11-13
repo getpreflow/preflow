@@ -34,13 +34,14 @@ final class RelationLabelsTest extends TestCase
             'tag' => ['key' => 'tag', 'table' => 'tag', 'storage' => 'json', 'id_field' => 'uuid',
                 'fields' => ['code' => ['type' => 'number'], 'name' => ['type' => 'string'], 'short' => ['type' => 'string']]],
             'person' => ['key' => 'person', 'table' => 'person', 'storage' => 'json', 'id_field' => 'uuid',
-                'fields' => ['name' => ['type' => 'string']]],
+                'fields' => ['name' => ['type' => 'string'], 'email' => ['type' => 'string']]],
             'item' => ['key' => 'item', 'table' => 'item', 'storage' => 'json', 'id_field' => 'uuid',
                 'fields' => [
                     'title' => ['type' => 'string'],
                     'tags' => ['type' => 'relation', 'relation' => ['to' => 'tag', 'multiple' => true]],
                     'main' => ['type' => 'relation', 'relation' => ['to' => 'tag', 'labelField' => 'short']],
                     'owner' => ['type' => 'relation', 'relation' => ['to' => 'person']],
+                    'contact' => ['type' => 'relation', 'relation' => ['to' => 'person', 'metaField' => 'email']],
                 ]],
         ];
         foreach ($models as $k => $m) {
@@ -53,7 +54,8 @@ final class RelationLabelsTest extends TestCase
         $this->save('tag', ['uuid' => 't1', 'name' => 'red', 'short' => 'R']);
         $this->save('tag', ['uuid' => 't2', 'name' => 'blue', 'short' => '']);
         $this->save('tag', ['uuid' => 't3', 'name' => 'green']);
-        $this->save('person', ['uuid' => 'p1', 'name' => 'Ada']);
+        $this->save('person', ['uuid' => 'p1', 'name' => 'Ada', 'email' => 'ada@example.com']);
+        $this->save('person', ['uuid' => 'p2', 'name' => 'Bo', 'email' => '']);
     }
 
     protected function tearDown(): void
@@ -111,6 +113,27 @@ final class RelationLabelsTest extends TestCase
     public function test_labels_of_ids(): void
     {
         $this->assertSame(['t3' => 'green', 't1' => 'red'], (new RelationLabels($this->dm, new RecordLabeler()))->labels('tag', ['t3', 't1', 'gone'], null));
+    }
+
+    public function test_entries_add_the_meta_line(): void
+    {
+        $labels = new RelationLabels($this->dm, new RecordLabeler());
+        $this->calls->exchangeArray([]);
+
+        $this->assertSame([
+            'p2' => ['label' => 'Bo', 'meta' => null],
+            'p1' => ['label' => 'Ada', 'meta' => 'ada@example.com'],
+        ], $labels->entries('person', ['p2', 'gone', 'p1'], null, 'email'), 'an empty meta value is none');
+        $this->assertSame(['person' => 1], $this->calls->getArrayCopy(), 'one query');
+        $this->assertSame(['t1' => ['label' => 'R', 'meta' => null]], $labels->entries('tag', ['t1'], 'short', null));
+    }
+
+    public function test_the_relation_names_its_meta_field(): void
+    {
+        $item = $this->registry->get('item');
+
+        $this->assertSame('email', RelationLabels::metaField($item, 'contact'));
+        $this->assertNull(RelationLabels::metaField($item, 'owner'));
     }
 
     /** @param array<string, mixed> $data */

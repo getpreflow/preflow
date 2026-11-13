@@ -7,6 +7,8 @@ namespace Preflow\Blocks\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.75: data 0.75 (TypeFamily, which #[Block(family: …)] and BlockDefinition::$family carry).
+ *
  * "^0.70 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing blocks with a release that lacks the APIs it calls: core 0.70 (boot manifest
  * catalogs, installedPackages(), CacheRegistry, PageCache::refuse()), components 0.70 (root attributes,
@@ -22,10 +24,11 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
+        $this->assertSame('^0.75 || @dev', $composer['require']['preflow/data'] ?? null);
         $this->assertSame([
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.70',
-            'preflow/data' => '<0.70',
+            'preflow/data' => '<0.75',
             'preflow/folio' => '<0.71',
             'preflow/view' => '<0.70',
         ], $composer['conflict'] ?? null);

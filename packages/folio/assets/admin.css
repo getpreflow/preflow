@@ -93,14 +93,14 @@
   --c-overlay:    light-dark(rgb(20 24 22 / .42), rgb(6 10 8 / .6));
 
   /* NEW: type tints. The six hues of the sign-in marks; light values darkened for contrast.
-     Reserved for 0.75 (lists/editors: .folio-type-icon); nothing reads them yet.
+     Read by .folio-type-icon only (one rule per TypeFamily value, see "type tiles").
      Only for type icons, block icons and chart segments. Never buttons, never states. */
   --c-type-page:      light-dark(#0b6a94, #7dd3fc);  --c-type-page-soft:      light-dark(#e2f2fa, #15303d);
   --c-type-reference: light-dark(#6d4fc2, #c4b5fd);  --c-type-reference-soft: light-dark(#efebfb, #2c2942);
   --c-type-asset:     light-dark(#8a5a00, #fbbf24);  --c-type-asset-soft:     light-dark(#fbf1d6, #3a2f14);
   --c-type-member:    light-dark(#4d6b0a, #bef264);  --c-type-member-soft:    light-dark(#eef6dc, #27341a);
   --c-type-shop:      light-dark(#b4234a, #fb7185);  --c-type-shop-soft:      light-dark(#fde8ed, #3d1f27);
-  /* the sixth hue is the accent (emerald) */
+  /* the sixth hue is the accent (emerald): the "live" family uses --c-accent-text on --c-accent-soft */
 
   /* NEW: ink. Same in both themes, like the sign-in's left side. */
   --ink:        #0c1714;
@@ -169,6 +169,29 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 }
 
 .folio-icon { width: 1.15em; height: 1.15em; flex: none; vertical-align: -.2em; }
+
+/* ---- type tiles (COMPONENTS §1 "Type icons", partials/_type_icon.twig) ----
+   A type's or a block's icon on the tint of its family (Preflow\Data\TypeFamily, data-family).
+   These rules are the only place a family meets a colour; no family: a neutral tile. */
+.folio-type-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-xs);
+  background: var(--c-neutral-soft);
+  color: var(--c-text-muted);
+  vertical-align: middle;
+}
+.folio-type-icon .folio-icon { width: 16px; height: 16px; vertical-align: 0; }
+.folio-type-icon-lg { width: 28px; height: 28px; border-radius: 7px; }
+.folio-type-icon[data-family="page"] { background: var(--c-type-page-soft); color: var(--c-type-page); }
+.folio-type-icon[data-family="reference"] { background: var(--c-type-reference-soft); color: var(--c-type-reference); }
+.folio-type-icon[data-family="asset"] { background: var(--c-type-asset-soft); color: var(--c-type-asset); }
+.folio-type-icon[data-family="member"] { background: var(--c-type-member-soft); color: var(--c-type-member); }
+.folio-type-icon[data-family="shop"] { background: var(--c-type-shop-soft); color: var(--c-type-shop); }
+.folio-type-icon[data-family="live"] { background: var(--c-accent-soft); color: var(--c-accent-text); }
 
 .folio-sr {
   position: absolute;
@@ -686,7 +709,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 /* ---- dashboard: translations waiting for review ---- */
 .folio-review { margin-top: 28px; }
 .folio-review-title { margin: 0 0 12px; }
-.folio-review-type { font-size: 13px; font-weight: 620; color: var(--c-text-muted); margin: 16px 0 6px; }
+.folio-review-type { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 620; color: var(--c-text-muted); margin: 16px 0 6px; }
 .folio-review-list, .folio-review-jobs { list-style: none; margin: 0; padding: 0; }
 .folio-review-list li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--c-border); }
 /* A running or waiting job: a card (title, progress, state, who and since, the record in progress). */
@@ -1278,16 +1301,40 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-count:is(.is-incomplete, .is-outdated, .is-unchecked) { font-size: 11px; font-weight: 600; }
 
 /* ---- content languages ---- */
+/* A segmented row of languages: the editor's language switch (.folio-languages-editor, links of
+   .folio-language) and the lists' language indicator (.folio-languages-item, partials/_languages.twig). */
 .folio-languages {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 2px;
-  margin-bottom: 20px;
   padding: 2px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
   background: var(--c-surface-2);
+  vertical-align: middle;
 }
+.folio-languages-editor { margin-bottom: 20px; }
+/* The indicator: the mono code on the state's tint (COMPONENTS §1 "Language indicator"); a 4px
+   warning dot after it when the language holds outdated or not checked translations. */
+.folio-languages-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .02em;
+  line-height: 1;
+  text-decoration: none;
+}
+.folio-languages-item.is-complete { background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-languages-item.is-partial { background: var(--c-warning-soft); color: var(--c-warning); }
+.folio-languages-item.is-missing { color: var(--c-text-subtle); text-decoration: line-through; }
+.folio-languages-item.is-stale::after { content: ""; flex: none; width: 4px; height: 4px; border-radius: 50%; background: var(--c-warning); }
+a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
 /* A language of the editor: the segmented look plus a 6px status dot from the completeness the page
    already shows (a missing-fields count): filled accent = complete, subtle ring = fields missing.
    The design's third state (warning ring = partial) has no data source yet. */

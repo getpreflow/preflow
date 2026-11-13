@@ -14,5 +14,7 @@ final class Relation
         public readonly string $onDelete = 'restrict',
         public readonly ?string $onSelfDelete = null,
         public readonly ?string $labelField = null,
+        /** The target's field shown under the label ("metaField"). @since 0.75 */
+        public readonly ?string $metaField = null,
     ) {}
 }

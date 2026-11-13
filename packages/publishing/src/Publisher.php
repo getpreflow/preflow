@@ -99,6 +99,24 @@ final class Publisher
     }
 
     /**
+     * The fields a publish of the working copy would change: those whose working value differs
+     * from the published one, compared as a revision's changed fields are (top-level fields; the
+     * id and META never count, nor does an empty value against a missing one). Empty for a
+     * record never published, which has nothing to compare with. Reads the snapshot once.
+     *
+     * @since 0.75
+     *
+     * @return list<string> field names, in the type's field order
+     */
+    public function changes(DynamicRecord $working): array
+    {
+        $def = $working->getType();
+        $snapshot = $this->dm->findIn(ShadowTypes::published($def), (string) $working->getId());
+
+        return $snapshot === null ? [] : self::changedFields($def, $working, $snapshot);
+    }
+
+    /**
      * States of a type's working copies, with one snapshot query: every working copy, or
      * the ones with these ids (ids that do not exist are left out; one query per 500 ids).
      *

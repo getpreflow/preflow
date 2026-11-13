@@ -4,6 +4,7 @@
     "label_singular": "Company",
     "section": "content",
     "order": 20,
+    "family": "member",
     "publishing": true,
     "list": {
         "columns": [

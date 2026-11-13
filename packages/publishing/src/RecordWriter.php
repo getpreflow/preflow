@@ -4,8 +4,15 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing;
 
+use Preflow\Data\Attributes\Timestamps;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\FieldKinds;
+use Preflow\Data\LocaleValue;
+use Preflow\Data\ModelMetadata;
+use Preflow\Data\Slugs;
+use Preflow\Data\TypeDefinition;
+use Preflow\Data\TypeFieldDefinition;
 use Preflow\Validation\ValidationException;
 use Psr\Log\LoggerInterface;
 
@@ -76,6 +83,194 @@ final class RecordWriter
         }
 
         return $this->save($record, $options);
+    }
+
+    /**
+     * Saves a copy of a record as a new record, through save() (SaveHooks get WriteKind::Save,
+     * whatever $options->kind says), and returns it.
+     *
+     * The copy has the record's values in every language, its blocks and matrix rows (they are
+     * part of its values, so the copy owns its own), and the same references to assets and other
+     * records. What makes a record one of a kind is new:
+     * - a new id (32 hex characters);
+     * - the slug (a field named "slug", or one with the "slug" rule) takes the first free one,
+     *   Slugs::unique() ("about" → "about-2"); a translatable slug takes it in each language;
+     * - any other unique field of free text (string or text, not translatable, without an email,
+     *   url, numeric, integer, in or regex rule) takes the same "-2", "-3"... suffix, within its
+     *   length; every other unique field (a number, a date, an email, a relation, a translatable
+     *   one) is left empty, since no suffix keeps it valid;
+     * - system keys are those of a new record: no _version, schedule (_publish_at), share token
+     *   or publish stamps, and a model class with #[Timestamps] loses its created and updated
+     *   values (a SaveHooks implementation that stamps them, or an author, runs as for a new record);
+     * - an orderable type's copy is placed right after the record (between it and the next, or the
+     *   list renumbered 10, 20... when there is no room, as reorder() numbers it);
+     * - a type that publishes gets a draft that has never been live: nothing is published, no
+     *   revision is copied, and the record itself stays as it is.
+     *
+     * $options->by and $options->mayPublish apply as to save(); a copy is never published or
+     * scheduled with it.
+     *
+     * @since 0.75
+     *
+     * @throws \InvalidArgumentException when the type has no record with this id, or $options asks to publish (nothing written)
+     * @throws ValidationException        from SaveHooks::before(), the storage or the checks of a type that does not publish (nothing stored)
+     * @throws VersionConflict
+     */
+    public function duplicate(string $type, string $id, SaveOptions $options = new SaveOptions()): SaveOutcome
+    {
+        if ($options->publish) {
+            throw new \InvalidArgumentException('A copy starts as a draft: publish it with save() once it is checked.');
+        }
+        $source = $this->dm->findType($type, $id) ?? throw new \InvalidArgumentException("Type \"{$type}\" has no record \"{$id}\" to copy.");
+        $def = $source->getType();
+
+        $data = array_diff_key($source->toArray(), array_flip([...Publisher::META, '_published_at', '_published_by', ...$this->timestamps($def)]));
+        $data[$def->idField] = bin2hex(random_bytes(16));
+        $copy = DynamicRecord::fromArray($def, $data);
+        foreach ($def->fields as $name => $field) {
+            if ($name !== $def->idField && $copy->get($name) !== null) {
+                $this->freeValue($copy, $field);
+            }
+        }
+
+        $renumber = null;
+        if ($this->types->orderable($def->key)) {
+            $renumber = $this->placeAfter($source, $copy);
+        }
+
+        $outcome = $this->save($copy, new SaveOptions(by: $options->by, mayPublish: $options->mayPublish, kind: WriteKind::Save));
+        if ($renumber !== null) {
+            foreach ($renumber as $i => $record) {
+                $position = ($i + 1) * 10;
+                $record ??= $copy;
+                if (!is_numeric($record->get(self::ORDER)) || (int) $record->get(self::ORDER) !== $position) {
+                    $record->set(self::ORDER, $position);
+                    $this->storePosition($record);
+                }
+            }
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * The created and updated fields of a model class with #[Timestamps] (Timestamps::CREATED_NAMES,
+     * UPDATED_NAMES), which a copy does not take over.
+     *
+     * @return list<string>
+     */
+    private function timestamps(TypeDefinition $def): array
+    {
+        $class = $this->dm->getTypeRegistry()?->classFor($def->key);
+        if ($class === null || !ModelMetadata::for($class)->hasTimestamps) {
+            return [];
+        }
+
+        return array_values(array_intersect([...Timestamps::CREATED_NAMES, ...Timestamps::UPDATED_NAMES], array_keys($def->fields)));
+    }
+
+    /** A copy's value of a slug or unique field: a free one, or none (see duplicate()). */
+    private function freeValue(DynamicRecord $copy, TypeFieldDefinition $field): void
+    {
+        $def = $copy->getType();
+        $name = $field->name;
+        $value = $copy->get($name);
+        $rules = array_map(static fn (string $rule): string => strtolower(trim(explode(':', $rule, 2)[0])), array_filter($field->validate, 'is_string'));
+        $path = in_array('slug:path', array_map(static fn (string $rule): string => strtolower(str_replace(' ', '', $rule)), array_filter($field->validate, 'is_string')), true);
+        $slug = !$path && ($name === 'slug' || in_array('slug', $rules, true));
+        $translatable = in_array($name, $def->translatableFields(), true);
+        $max = $field->length ?? FieldKinds::DEFAULT_LENGTH;
+
+        if ($slug && $translatable) {
+            $copy->set($name, $this->freeSlugs($def, $name, LocaleValue::map($value, $def->locales), $max));
+
+            return;
+        }
+        if ($slug && is_string($value) && $value !== '') {
+            $copy->set($name, Slugs::unique($this->dm, $def->key, $value, $name, max: $max));
+
+            return;
+        }
+        if ($field->unique === false || $slug) {
+            return;
+        }
+        $suffixable = !$translatable
+            && $this->dm->fieldKinds()->isText($field->type)
+            && array_intersect($rules, ['email', 'url', 'numeric', 'integer', 'in', 'regex']) === [];
+        $copy->set($name, $suffixable && is_string($value) && $value !== '' ? $this->suffixed($def, $name, $value, $max) : null);
+    }
+
+    /**
+     * A translatable slug's free value per language: Slugs::among() against what the type's other
+     * records hold in that language.
+     *
+     * @param array<string, mixed> $values locale => slug
+     * @return array<string, mixed>
+     */
+    private function freeSlugs(TypeDefinition $def, string $name, array $values, int $max): array
+    {
+        $taken = [];
+        foreach ($this->dm->queryType($def->key)->get()->items() as $record) {
+            foreach (LocaleValue::map($record->get($name), $def->locales) as $locale => $slug) {
+                if (is_string($slug) && $slug !== '') {
+                    $taken[$locale][$slug] = true;
+                }
+            }
+        }
+        foreach ($values as $locale => $slug) {
+            if (is_string($slug) && $slug !== '') {
+                $inLocale = $taken[$locale] ?? [];
+                $values[$locale] = Slugs::among($slug, $inLocale, $max);
+            }
+        }
+
+        return $values;
+    }
+
+    /** $value with the first free "-2", "-3"... suffix in the field, the whole within $max characters. */
+    private function suffixed(TypeDefinition $def, string $field, string $value, int $max): string
+    {
+        for ($n = 2; ; $n++) {
+            $suffix = '-' . $n;
+            $candidate = mb_substr($value, 0, max(1, $max - mb_strlen($suffix))) . $suffix;
+            if ($this->dm->queryType($def->key)->where($field, $candidate)->first() === null) {
+                return $candidate;
+            }
+        }
+    }
+
+    /**
+     * Gives the copy of an orderable record the position right after it: halfway to the next
+     * record when there is room. Else the list must be renumbered once the copy is saved: the
+     * order to number, the source and null (the copy) in their places.
+     *
+     * @return list<DynamicRecord|null>|null
+     */
+    private function placeAfter(DynamicRecord $source, DynamicRecord $copy): ?array
+    {
+        $def = $source->getType();
+        // As reorder() reads them: by position (numeric: SQL keeps it as text), then id.
+        $records = array_values($this->dm->queryType($def->key)->orderBy(self::ORDER, numeric: true)->orderBy($def->idField)->get()->items());
+        $index = null;
+        foreach ($records as $i => $record) {
+            if ((string) $record->getId() === (string) $source->getId()) {
+                $index = $i;
+                $records[$i] = $source;
+            }
+        }
+        $here = $source->get(self::ORDER);
+        $next = $index === null ? null : ($records[$index + 1] ?? null)?->get(self::ORDER);
+        $numbered = !array_any($records, static fn (DynamicRecord $r): bool => !is_numeric($r->get(self::ORDER)));
+        if ($numbered && is_numeric($here) && ($next === null || (int) $next - (int) $here >= 2)) {
+            $copy->set(self::ORDER, $next === null ? (int) $here + 10 : (int) $here + intdiv((int) $next - (int) $here, 2));
+
+            return null;
+        }
+
+        $copy->set(self::ORDER, is_numeric($here) ? (int) $here : 0);
+        array_splice($records, ($index ?? count($records) - 1) + 1, 0, [null]);
+
+        return $records;
     }
 
     /**

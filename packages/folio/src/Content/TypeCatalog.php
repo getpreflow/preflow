@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Data\TypeFamily;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Extension\ModelExtension;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
@@ -67,14 +68,15 @@ final class TypeCatalog
         }
 
         return array_map(
-            static fn (array $listing): TypeListing => new TypeListing(...$listing),
+            // The manifest holds a family as its value; one written before 0.75 has none.
+            static fn (array $listing): TypeListing => new TypeListing(...['family' => is_string($listing['family'] ?? null) ? TypeFamily::tryFrom($listing['family']) : null] + $listing),
             $this->manifest->remember(
                 'folio.type_listings',
                 function (): array {
                     // The model classes are sources too: a changed class changes its listing.
                     $this->manifest?->addSources($this->classFiles());
 
-                    return array_map(static fn (TypeListing $listing): array => get_object_vars($listing), $this->scanFiles());
+                    return array_map(static fn (TypeListing $listing): array => ['family' => $listing->family?->value] + get_object_vars($listing), $this->scanFiles());
                 },
                 [$this->modelsPath],
             ),
@@ -186,6 +188,7 @@ final class TypeCatalog
         if (array_key_exists('nav', $data) && !is_bool($data['nav'])) {
             throw new FrontendConfigException("Type \"{$key}\": \"nav\" must be true or false");
         }
+        $family = self::family($key, $data, $frontend, $users);
         return new TypeListing(
             $key,
             $label,
@@ -202,7 +205,34 @@ final class TypeCatalog
             $labels,
             $singular,
             $group,
+            $family,
         );
+    }
+
+    /**
+     * The type's "family": the declared one, else page for a type with a "frontend", member for a
+     * user type, else none (a tint has to mean something the site said).
+     *
+     * @param array<string, mixed>      $data
+     * @param array<string, mixed>|null $frontend
+     */
+    private static function family(string $key, array $data, ?array $frontend, ?string $users): ?TypeFamily
+    {
+        if (array_key_exists('family', $data)) {
+            $family = is_string($data['family']) ? TypeFamily::tryFrom($data['family']) : null;
+            if ($family === null) {
+                $values = implode(', ', array_map(static fn (TypeFamily $f): string => $f->value, TypeFamily::cases()));
+                throw new FrontendConfigException("Type \"{$key}\": \"family\" must be one of {$values}");
+            }
+
+            return $family;
+        }
+
+        return match (true) {
+            $frontend !== null => TypeFamily::Page,
+            $users !== null => TypeFamily::Member,
+            default => null,
+        };
     }
 
     /**

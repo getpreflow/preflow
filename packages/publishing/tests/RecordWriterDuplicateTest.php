@@ -1,0 +1,207 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Publishing\Tests;
+
+use Preflow\Data\DynamicRecord;
+use Preflow\Publishing\PublishState;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
+use Preflow\Publishing\SchemaPublishingTypes;
+use Preflow\Publishing\Tests\Fixtures\Recorder;
+use Preflow\Publishing\WriteKind;
+
+/**
+ * RecordWriter::duplicate(): "page" publishes and holds a slug, unique fields of several kinds,
+ * blocks and references; "topic" has a translatable slug; "note" (no publishing) is made
+ * orderable through the Recorder.
+ */
+final class RecordWriterDuplicateTest extends PublishingAppTestCase
+{
+    private Recorder $recorder;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->write('config/models/page.json', (string) json_encode(['key' => 'page', 'table' => 'page', 'storage' => 'json', 'publishing' => true, 'fields' => [
+            'title' => ['type' => 'string', 'translatable' => true],
+            'slug' => ['type' => 'string', 'validate' => ['required', 'slug']],
+            'code' => ['type' => 'string', 'unique' => true, 'length' => 6],
+            'email' => ['type' => 'string', 'unique' => true, 'validate' => ['email']],
+            'number' => ['type' => 'number', 'unique' => true],
+            'content' => ['type' => 'blocks'],
+            'image' => ['type' => 'asset'],
+            'note' => ['type' => 'relation', 'relation' => ['to' => 'note']],
+        ]]));
+        $this->write('config/models/topic.json', (string) json_encode(['key' => 'topic', 'table' => 'topic', 'storage' => 'json', 'fields' => [
+            'name' => ['type' => 'string', 'translatable' => true],
+            'slug' => ['type' => 'string', 'translatable' => true],
+        ]]));
+    }
+
+    private function writer(): RecordWriter
+    {
+        $this->recorder ??= new Recorder($this->dm());
+        $publisher = new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $this->recorder, index: $this->recorder, addresses: $this->recorder);
+
+        return new RecordWriter($this->dm(), $publisher, $this->recorder, $this->recorder, $this->recorder, $this->recorder, $this->recorder);
+    }
+
+    /** @return array<string, mixed> */
+    private static function page(): array
+    {
+        return [
+            'title' => ['en' => 'About', 'de' => 'Über uns'],
+            'slug' => 'about',
+            'code' => 'ABOUT',
+            'email' => 'team@example.com',
+            'number' => 7,
+            'content' => [['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'text', 'body' => ['en' => 'Hello', 'de' => 'Hallo']]],
+            'image' => 'asset-1',
+            'note' => 'n1',
+            '_locales' => ['en', 'de'],
+        ];
+    }
+
+    public function test_the_copy_has_every_language_its_own_blocks_and_the_same_references(): void
+    {
+        $writer = $this->writer();
+        $this->working('page', 'p1', self::page());
+
+        $copy = $writer->duplicate('page', 'p1', new SaveOptions(by: 'ana', kind: WriteKind::Autosave))->record;
+        $id = (string) $copy->getId();
+
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $id);
+        $stored = $this->stored('page', $id);
+        $this->assertSame(['en' => 'About', 'de' => 'Über uns'], $stored->get('title'));
+        $this->assertSame(['en', 'de'], $stored->get('_locales'));
+        $this->assertSame(self::page()['content'], $stored->get('content'));
+        $this->assertSame('asset-1', $stored->get('image'));
+        $this->assertSame('n1', $stored->get('note'));
+        $this->assertSame(["before:page:{$id}:save", "after:page:{$id}:save"], $this->recorder->kinds, 'the usual save hooks, as a save');
+
+        // The copy's blocks are its own: changing them leaves the record's alone.
+        $stored->set('content', [['_uid' => 'aaaaaaaaaaaaaaaa', '_block' => 'text', 'body' => ['en' => 'Changed']]]);
+        $writer->save($stored);
+        $this->assertSame(self::page()['content'], $this->stored('page', 'p1')->get('content'));
+    }
+
+    public function test_the_slug_takes_the_next_free_one(): void
+    {
+        $writer = $this->writer();
+        $this->working('page', 'p1', self::page());
+
+        $first = $writer->duplicate('page', 'p1')->record;
+        $second = $writer->duplicate('page', 'p1')->record;
+
+        $this->assertSame('about-2', $this->stored('page', (string) $first->getId())->get('slug'));
+        $this->assertSame('about-3', $this->stored('page', (string) $second->getId())->get('slug'));
+        $this->assertSame('about', $this->stored('page', 'p1')->get('slug'));
+    }
+
+    public function test_unique_text_takes_a_suffix_and_unique_fields_that_cannot_are_left_empty(): void
+    {
+        $writer = $this->writer();
+        $this->working('page', 'p1', self::page());
+
+        $first = $this->stored('page', (string) $writer->duplicate('page', 'p1')->record->getId());
+        $second = $this->stored('page', (string) $writer->duplicate('page', 'p1')->record->getId());
+
+        $this->assertSame('ABOU-2', $first->get('code'), 'within its length (6)');
+        $this->assertSame('ABOU-3', $second->get('code'));
+        $this->assertNull($first->get('email'), 'an email with a suffix is no address');
+        $this->assertNull($first->get('number'), 'a number takes no suffix');
+    }
+
+    public function test_a_translatable_slug_is_freed_in_each_language(): void
+    {
+        $writer = $this->writer();
+        $this->working('topic', 't1', ['name' => ['en' => 'News', 'de' => 'Neues'], 'slug' => ['en' => 'news', 'de' => 'neues']]);
+        $this->working('topic', 't2', ['slug' => ['en' => 'news-2']]);
+
+        $copy = $this->stored('topic', (string) $writer->duplicate('topic', 't1')->record->getId());
+
+        $this->assertSame(['en' => 'news-3', 'de' => 'neues-2'], $copy->get('slug'));
+        $this->assertSame(['en' => 'News', 'de' => 'Neues'], $copy->get('name'));
+    }
+
+    public function test_an_orderable_copy_goes_right_after_its_record(): void
+    {
+        $writer = $this->writer();
+        $this->recorder->orderable = ['note'];
+        $this->working('note', 'n1', ['title' => ['en' => 'One'], '_order' => 10]);
+        $this->working('note', 'n2', ['title' => ['en' => 'Two'], '_order' => '20']);
+        $this->working('note', 'n3', ['title' => ['en' => 'Three'], '_order' => 30]);
+
+        $copy = (string) $writer->duplicate('note', 'n1')->record->getId();
+
+        $this->assertSame(15, $this->stored('note', $copy)->get('_order'));
+        $this->assertSame(['n1', $copy, 'n2', 'n3'], $this->order());
+
+        $last = (string) $writer->duplicate('note', 'n3')->record->getId();
+        $this->assertSame(40, $this->stored('note', $last)->get('_order'), 'after the last: +10');
+    }
+
+    public function test_without_room_after_the_record_the_list_is_renumbered(): void
+    {
+        $writer = $this->writer();
+        $this->recorder->orderable = ['note'];
+        $this->working('note', 'n1', ['_order' => 10]);
+        $this->working('note', 'n2', ['_order' => 11]);
+        $this->working('note', 'n3', ['_order' => 12]);
+
+        $copy = (string) $writer->duplicate('note', 'n2')->record->getId();
+
+        $this->assertSame(['n1', 'n2', $copy, 'n3'], $this->order());
+        $this->assertSame([10, 20, 30, 40], array_map(fn (string $id): int => (int) $this->stored('note', $id)->get('_order'), $this->order()));
+    }
+
+    public function test_a_publishing_copy_is_a_draft_and_its_record_stays_published(): void
+    {
+        $writer = $this->writer();
+        $writer->save(DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('page'), ['uuid' => 'p1'] + self::page()), new SaveOptions(by: 'ana', publish: true));
+        $source = $this->stored('page', 'p1');
+        $source->set('_publish_at', '2099-01-01T10:00');
+        $source->set('_share_token', 'secret');
+        $this->dm()->saveType($source, false);
+
+        $copy = (string) $writer->duplicate('page', 'p1', new SaveOptions(by: 'bo', mayPublish: false))->record->getId();
+
+        $stored = $this->stored('page', $copy);
+        $this->assertSame(PublishState::Draft, $this->publisher()->state($stored));
+        $this->assertNull($this->publisher()->snapshot('page', $copy));
+        $this->assertSame([], $this->publisher()->revisions('page', $copy));
+        $this->assertSame(1, $stored->get('_version'), 'a new working copy');
+        $this->assertEmpty($stored->get('_publish_at'), 'no schedule');
+        $this->assertNull($stored->get('_share_token'), 'no share link');
+        $this->assertSame(PublishState::Published, $this->publisher()->state($this->stored('page', 'p1')));
+        $this->assertCount(1, $this->publisher()->revisions('page', 'p1'));
+    }
+
+    public function test_a_missing_record_or_a_publish_is_refused_and_nothing_is_written(): void
+    {
+        $writer = $this->writer();
+        $this->working('page', 'p1', self::page());
+
+        foreach ([['gone', new SaveOptions()], ['p1', new SaveOptions(publish: true)]] as [$id, $options]) {
+            try {
+                $writer->duplicate('page', $id, $options);
+                $this->fail('Expected InvalidArgumentException');
+            } catch (\InvalidArgumentException) {
+            }
+        }
+
+        $this->assertCount(1, $this->dm()->queryType('page')->get()->items());
+        $this->assertSame([], $this->recorder->log);
+    }
+
+    /** @return list<string> the notes' ids in list order */
+    private function order(): array
+    {
+        $items = $this->dm()->queryType('note')->orderBy(RecordWriter::ORDER, numeric: true)->orderBy('uuid')->get()->items();
+
+        return array_values(array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $items));
+    }
+}

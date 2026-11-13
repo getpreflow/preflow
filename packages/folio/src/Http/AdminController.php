@@ -145,7 +145,7 @@ final class AdminController
      * item); while a shown job is queued or running and has changed in the last 10 minutes, the
      * section refreshes itself ("polling").
      *
-     * @return array{groups: list<array{label: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool, polling: bool}|null
+     * @return array{groups: list<array{label: string, family: ?\Preflow\Data\TypeFamily, icon: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool, polling: bool}|null
      */
     private function reviewSection(): ?array
     {
@@ -172,7 +172,10 @@ final class AdminController
                 $languages[] = self::languageName((string) $locale) . ' (' . $count . ')';
             }
             $locale = (string) array_key_first($counts);
+            $listing = $this->catalog->get($entry->collection);
             $groups[$entry->collection]['label'] = $this->labels->type($entry->collection);
+            $groups[$entry->collection]['family'] = $listing?->family;
+            $groups[$entry->collection]['icon'] = $listing?->glyph() ?? 'ui-file';
             $groups[$entry->collection]['rows'][] = [
                 'title' => $entry->title,
                 'languages' => $languages,

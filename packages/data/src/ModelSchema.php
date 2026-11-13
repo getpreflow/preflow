@@ -195,6 +195,7 @@ final class ModelSchema
                 'onDelete' => $relation->onDelete,
                 'onSelfDelete' => $relation->onSelfDelete,
                 'labelField' => $relation->labelField,
+                'metaField' => $relation->metaField,
             ], static fn(mixed $v): bool => $v !== null);
         }
 

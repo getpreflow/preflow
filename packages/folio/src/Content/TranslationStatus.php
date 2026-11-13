@@ -17,6 +17,7 @@ use Preflow\Folio\Field\Types\BooleanFieldType;
 use Preflow\Folio\Field\Types\EnvFieldType;
 use Preflow\Folio\Field\Types\RichTextFieldType;
 use Preflow\Form\FieldRenderer;
+use Preflow\I18n\Completeness;
 use Preflow\I18n\Machine\MachineMarks;
 
 /**
@@ -125,13 +126,43 @@ final class TranslationStatus
      */
     public function missing(TypeDefinition $def, DynamicRecord $record, string $locale): array
     {
-        $default = $def->locales->default;
-        if ($locale === $default) {
-            return [];
-        }
+        return $locale === $def->locales->default ? [] : self::missingOf($this->texts($def, $record), $def->locales->default, $locale);
+    }
 
+    /**
+     * How far the record is in $locale: Completeness::of() whether it is visible there
+     * (availableLocales()), the texts the default language has and those $locale misses, with the
+     * outdated and unchecked counts. The default language is complete. Reads the texts once.
+     *
+     * @since 0.75
+     */
+    public function state(TypeDefinition $def, DynamicRecord $record, string $locale): LocaleState
+    {
+        $default = $def->locales->default;
+        $texts = $this->texts($def, $record);
+        $total = count(array_filter($texts, static fn (TranslatableText $t): bool => $t->in($default) !== null));
+        if ($locale === $default) {
+            return new LocaleState(Completeness::Complete, $total, 0, 0, 0);
+        }
+        $missing = count(self::missingOf($texts, $default, $locale));
+
+        return new LocaleState(
+            Completeness::of(in_array($locale, $record->availableLocales(), true), $total, $missing),
+            $total,
+            $missing,
+            count($this->outdatedOf($texts, $record, $default, $locale)),
+            count(self::uncheckedOf($texts, $record, $locale)),
+        );
+    }
+
+    /**
+     * @param list<TranslatableText> $texts
+     * @return list<TranslatableText>
+     */
+    private static function missingOf(array $texts, string $default, string $locale): array
+    {
         return array_values(array_filter(
-            $this->texts($def, $record),
+            $texts,
             static fn (TranslatableText $t): bool => $t->in($default) !== null && $t->in($locale) === null,
         ));
     }
@@ -144,13 +175,26 @@ final class TranslationStatus
     public function outdated(TypeDefinition $def, DynamicRecord $record, string $locale): array
     {
         $default = $def->locales->default;
+        if ($locale === $default || (self::entries($record, self::KEY)[$locale] ?? []) === []) {
+            return [];
+        }
+
+        return $this->outdatedOf($this->texts($def, $record), $record, $default, $locale);
+    }
+
+    /**
+     * @param list<TranslatableText> $texts
+     * @return list<TranslatableText>
+     */
+    private function outdatedOf(array $texts, DynamicRecord $record, string $default, string $locale): array
+    {
         $stamped = self::entries($record, self::KEY)[$locale] ?? [];
         if ($locale === $default || $stamped === []) {
             return [];
         }
 
         return array_values(array_filter(
-            $this->texts($def, $record),
+            $texts,
             fn (TranslatableText $t): bool => $t->in($locale) !== null
                 && isset($stamped[$t->path])
                 && $stamped[$t->path] !== $this->fingerprint($t->in($default)),
@@ -164,13 +208,26 @@ final class TranslationStatus
      */
     public function unchecked(TypeDefinition $def, DynamicRecord $record, string $locale): array
     {
+        if ((self::entries($record, self::MACHINE)[$locale] ?? []) === []) {
+            return [];
+        }
+
+        return self::uncheckedOf($this->texts($def, $record), $record, $locale);
+    }
+
+    /**
+     * @param list<TranslatableText> $texts
+     * @return list<TranslatableText>
+     */
+    private static function uncheckedOf(array $texts, DynamicRecord $record, string $locale): array
+    {
         $marks = self::entries($record, self::MACHINE);
         if (($marks[$locale] ?? []) === []) {
             return [];
         }
 
         return array_values(array_filter(
-            $this->texts($def, $record),
+            $texts,
             static fn (TranslatableText $t): bool => $t->in($locale) !== null
                 && MachineMarks::isUnchecked($marks, $locale, $t->path, $t->in($locale)),
         ));

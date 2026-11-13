@@ -4,6 +4,7 @@
     "label_singular": "Job",
     "section": "content",
     "order": 10,
+    "family": "reference",
     "publishing": true,
     "list": {
         "columns": [

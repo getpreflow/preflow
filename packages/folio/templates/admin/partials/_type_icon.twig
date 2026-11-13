@@ -1,0 +1,8 @@
+{# The type tile (COMPONENTS §1 "Type icons"): a type's or a block's icon on the tint of its
+   family. Import it: {% import '@folio/admin/partials/_type_icon.twig' as types %} and call
+   types.type_icon(listing.family, listing.glyph). family is a Preflow\Data\TypeFamily or null (a
+   neutral tile); icon is a sprite id; size is 24, or 28 for list headers. admin.css alone maps a
+   family to its colours: no template names one. #}
+{% macro type_icon(family, icon, size = 24) -%}
+<span class="folio-type-icon{% if size == 28 %} folio-type-icon-lg{% endif %}" data-family="{{ family.value|default('') }}" aria-hidden="true"><svg class="folio-icon"><use href="{{ folio_asset('icons.svg') }}#{{ icon }}"></use></svg></span>
+{%- endmacro %}
