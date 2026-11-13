@@ -23,6 +23,8 @@ use Preflow\Validation\ValidationException;
  *    site?), SaveHooks::after().
  *
  * A failed write (ValidationException, VersionConflict) propagates to the caller, who shows it.
+ *
+ * Whether a type publishes, the Publisher decides; without one, none does.
  */
 final class RecordWriter
 {
@@ -36,7 +38,7 @@ final class RecordWriter
 
     public function __construct(
         private readonly DataManager $dm,
-        private readonly Publisher $publisher,
+        private readonly ?Publisher $publisher,
         private readonly RecordChecks $checks,
         private readonly SaveHooks $hooks = new NoSaveHooks(),
         private readonly RecordTypes $types = new NoRecordTypes(),
@@ -87,10 +89,12 @@ final class RecordWriter
     public function save(DynamicRecord $record, SaveOptions $options = new SaveOptions()): SaveOutcome
     {
         $this->hooks->before($record);
-        $type = $record->getType()->key;
 
-        if ($this->publisher->enabled($type)) {
-            $this->schedule($record, $options);
+        if ($this->publishes($record->getType()->key)) {
+            $schedule = $this->schedule($options);
+            if ($schedule !== null) {
+                $record->set('_publish_at', $schedule);
+            }
             $this->publisher->saveDraft($record, $options->loadedVersion);
             if ($options->publish) {
                 try {
@@ -201,26 +205,58 @@ final class RecordWriter
         return true;
     }
 
+    /**
+     * Copies a revision into the working copy of a publishing type (Publisher::restore()), under
+     * the schedule rule: restored by someone who may not publish, a pending schedule is cancelled
+     * in the same write, so the restored content goes live only when someone who may publish says
+     * so; else SaveOptions::$publishAt applies. $loadedVersion is checked as by save(). A restore
+     * copies content the record had before, it is not an edit: no save hooks, no checks, no
+     * publish (SaveOptions::$publish is refused).
+     *
+     * @return DynamicRecord|null the restored working copy; null when the record has no such revision
+     * @throws \InvalidArgumentException when the type does not publish, or $options asks to publish
+     * @throws ValidationException when the storage refuses the revision's content (nothing saved)
+     * @throws VersionConflict
+     */
+    public function restore(string $type, string $id, string $revisionId, SaveOptions $options = new SaveOptions()): ?DynamicRecord
+    {
+        if (!$this->publishes($type)) {
+            throw new \InvalidArgumentException("Type \"{$type}\" does not publish: it has no revisions to restore.");
+        }
+        if ($options->publish) {
+            throw new \InvalidArgumentException('A restore does not publish: publish the restored record with save().');
+        }
+
+        return $this->publisher->restore($type, $id, $revisionId, $options->loadedVersion, $this->schedule($options));
+    }
+
     /** A new position: stored without a new version, and carried into the snapshot of a publishing type. */
     private function storePosition(DynamicRecord $record): void
     {
         $this->store->write($record);
-        if ($this->publisher->enabled($record->getType()->key)) {
+        if ($this->publishes($record->getType()->key)) {
             $this->publisher->syncOrder($record);
         }
     }
 
+    /** @phpstan-assert-if-true !null $this->publisher */
+    private function publishes(string $type): bool
+    {
+        return $this->store->publishes($type);
+    }
+
     /**
-     * The schedule rule of a publishing type: a save by someone who may not publish cancels a
-     * pending schedule; else $publishAt sets it ('' rather than null: SQL drivers skip null values).
+     * The schedule rule of a publishing type: the _publish_at a save writes, null to keep the
+     * stored one. A save by someone who may not publish cancels a pending schedule; else
+     * $publishAt sets it ('' rather than null: SQL drivers skip null values).
      */
-    private function schedule(DynamicRecord $record, SaveOptions $options): void
+    private function schedule(SaveOptions $options): ?string
     {
         if (!$options->mayPublish) {
-            $record->set('_publish_at', '');
-        } elseif ($options->publishAt !== null) {
-            $record->set('_publish_at', $this->publishAt($options->publishAt));
+            return '';
         }
+
+        return $options->publishAt !== null ? $this->publishAt($options->publishAt) : null;
     }
 
     /** A valid future "Y-m-d\TH:i" (datetime-local) in the app's zone, else '' (cleared). */

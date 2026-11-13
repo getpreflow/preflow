@@ -13,6 +13,8 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\PreviewLinks;
 use Preflow\Publishing\PublishState;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
 use Preflow\Publishing\VersionConflict;
 use Preflow\Validation\ValidationException;
 use Preflow\View\TemplateEngineInterface;
@@ -29,15 +31,18 @@ final class PublishingController
         private readonly DataManager $dm,
         private readonly DraftRecordFactory $drafts,
         private readonly TemplateEngineInterface $engine,
+        /** Autosave and restore save through it (since 0.71). */
+        private readonly RecordWriter $writer,
         private readonly ?PreviewLinks $links = null,
         private readonly ?FrontendResolver $resolver = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
     ) {}
 
     /**
-     * Save the working copy from the form (no rules, no uploads) and answer
-     * with the header's save state plus the new _version (out-of-band), so
-     * the editor's next save is not taken for a conflict.
+     * Save the working copy from the form (no rules, no uploads) through the RecordWriter (the
+     * type's save hooks run; saved by someone who may not publish, a pending schedule is cancelled)
+     * and answer with the header's save state plus the new _version (out-of-band), so the editor's
+     * next save is not taken for a conflict.
      */
     public function autosave(ServerRequestInterface $request): ResponseInterface
     {
@@ -52,29 +57,29 @@ final class PublishingController
         $locale = is_string($body['_locale'] ?? null) ? $body['_locale'] : $typeDef->locales->default;
         $record = $this->drafts->build($typeDef, $request, $current->toArray(), $locale, writeUploads: false);
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
-        if (!$this->mayPublish($type)) {
-            $record->set('_publish_at', ''); // an unreviewed change cancels a pending schedule
-        }
 
         try {
-            $this->publisher->saveDraft($record, $loaded);
+            $this->writer->save($record, new SaveOptions(mayPublish: $this->mayPublish($type), loadedVersion: $loaded));
         } catch (VersionConflict) {
             return $this->status(\Preflow\Folio\FolioText::get('folio.publishing.not_saved_conflict'), null, true);
         } catch (ValidationException $e) {
-            // What the storage refuses (a taken unique value, an overlong bounded one): the editor keeps its version.
+            // What a #[BeforeSave] hook or the storage refuses (a taken unique value, an overlong bounded one): the editor keeps its version.
             return $this->status(self::refusal('folio.publishing.not_saved_invalid', $typeDef, $e), null, true);
         }
 
         return $this->status(self::stateText($this->publisher->state($record)), (int) $record->get('_version'));
     }
 
-    /** Copy a revision into the working copy (publish again to make it live). */
+    /**
+     * Copy a revision into the working copy (publish again to make it live), through the
+     * RecordWriter: restored by someone who may not publish, a pending schedule is cancelled with it.
+     */
     public function restore(ServerRequestInterface $request): ResponseInterface
     {
         [$type, $id] = $this->target($request);
         $revision = (string) $request->getAttribute('rev', '');
         try {
-            $restored = $type !== null ? $this->publisher->restore($type, $id, $revision) : null;
+            $restored = $type !== null ? $this->writer->restore($type, $id, $revision, new SaveOptions(mayPublish: $this->mayPublish($type))) : null;
         } catch (ValidationException $e) {
             \assert($type !== null);
             self::flash($request, 'error', self::refusal('folio.revisions.not_restored', $this->dm->getTypeRegistry()?->get($type), $e));
@@ -83,10 +88,6 @@ final class PublishingController
         }
         if ($type === null || $restored === null) {
             return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
-        }
-        if (!$this->mayPublish($type) && (string) $restored->get('_publish_at') !== '') {
-            $restored->set('_publish_at', ''); // restored content goes live only when someone who may publish says so
-            $this->dm->saveType($restored, false);
         }
 
         return $this->backToEditor($type, $id, '?restored=1');

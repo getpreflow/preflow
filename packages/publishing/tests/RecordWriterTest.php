@@ -235,6 +235,54 @@ final class RecordWriterTest extends PublishingAppTestCase
         $this->assertSame('', $this->stored('post', 'p1')->get('_publish_at'), "'' clears it");
     }
 
+    /** Review Focus 1 for a restore: one write, the schedule cancelled with the restored content. */
+    public function test_a_restore_by_someone_who_may_not_publish_cancels_the_schedule(): void
+    {
+        $writer = $this->writer();
+        $writer->save($this->record('post', 'p1', ['title' => ['en' => 'One']]), new SaveOptions(publish: true));
+        $second = $this->stored('post', 'p1');
+        $second->set('title', ['en' => 'Two']);
+        $writer->save($second, new SaveOptions(publish: true));
+        $writer->save($this->stored('post', 'p1'), new SaveOptions(publishAt: '2030-02-01T09:00'));
+        $first = $this->publisher()->revisions('post', 'p1')[1];
+        $this->recorder->log = [];
+
+        $restored = $writer->restore('post', 'p1', $first->id);
+        $this->assertSame(['en' => 'One'], $restored?->get('title'));
+        $this->assertSame('2030-02-01T09:00', $this->stored('post', 'p1')->get('_publish_at'), 'kept for someone who may publish');
+
+        $version = (int) $this->stored('post', 'p1')->get('_version');
+        $writer->restore('post', 'p1', $first->id, new SaveOptions(mayPublish: false));
+        $this->assertSame('', $this->stored('post', 'p1')->get('_publish_at'));
+        $this->assertSame($version + 1, (int) $this->stored('post', 'p1')->get('_version'), 'one write');
+        $this->assertNotContains('before:post:p1', $this->recorder->log, 'a restore is not an edit');
+        $this->assertNull($writer->restore('post', 'p1', 'no-such-revision'));
+    }
+
+    public function test_a_restore_neither_publishes_nor_restores_a_type_without_publishing(): void
+    {
+        try {
+            $this->writer()->restore('post', 'p1', 'r', new SaveOptions(publish: true));
+            $this->fail('A restore that publishes is refused.');
+        } catch (\InvalidArgumentException) {
+        }
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->writer()->restore('note', 'n1', 'r');
+    }
+
+    public function test_without_a_publisher_no_type_publishes(): void
+    {
+        $this->recorder = new Recorder($this->dm());
+        $writer = new RecordWriter($this->dm(), null, $this->recorder, $this->recorder);
+
+        $writer->save($this->record('post', 'p1', ['title' => ['en' => 'Live']]), new SaveOptions(mayPublish: false));
+
+        $this->assertSame(['before:post:p1', 'checks:post:p1', 'after:post:p1'], $this->recorder->log);
+        $this->assertSame(['en' => 'Live'], $this->stored('post', 'p1')->get('title'));
+        $this->assertNull($this->stored('post', 'p1')->get('_publish_at'), 'no schedule rule for a type that does not publish');
+    }
+
     public function test_publishing_needs_the_right_to(): void
     {
         $this->expectException(\InvalidArgumentException::class);

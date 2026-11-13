@@ -13,6 +13,8 @@ use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\ReportsTranslatableTexts;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Publisher;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
 use Preflow\Publishing\VersionConflict;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextFormat;
@@ -31,10 +33,12 @@ use Preflow\Validation\ValidationException;
  * model opts out of with "ai": {"translate": false}. Writing goes the way of a manual save in the
  * target language: the texts are set (top-level fields as locale maps, structured fields through
  * AcceptsTranslatedTexts), stamped (TranslationStatus::stamp()) and marked as machine-made, then
- * saved. Publishing types get a working copy saved with the version check (a save by someone else
- * in between is a Conflict, never overwritten) and never a publish; a pending "Publish at" is
- * cancelled, as a save by someone who may not publish cancels it, so machine texts never go live
- * unreviewed. Types without publishing are saved directly (writesLive()).
+ * saved through the RecordWriter as by someone who may not publish: the type's save hooks run
+ * (#[BeforeSave], #[SaveRecord], #[AfterSave]; since 0.71). Publishing types get a working copy
+ * saved with the version check (a save by someone else in between is a Conflict, never
+ * overwritten) and never a publish; a pending "Publish at" is cancelled, so machine texts never go
+ * live unreviewed. Types without publishing are checked and saved live (writesLive()), their
+ * addresses following a translated slug. A refusal (a hook, the rules, the storage) skips the record.
  *
  * A run reads units, waits seconds to minutes for the model, then writes. A save made in that time
  * (an autosave of the edit form, another field, a person's own translation) is never overwritten
@@ -66,8 +70,7 @@ final class FolioTextSource implements TextSource
         private readonly ?Publisher $publisher,
         private readonly RecordLabeler $labeler,
         private readonly TranslationSettings $settings,
-        private readonly ?ReviewIndexUpdater $review = null,
-        private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
+        private readonly RecordWriter $writer,
         private readonly ?FrontendResolver $frontend = null,
     ) {}
 
@@ -279,24 +282,13 @@ final class FolioTextSource implements TextSource
             $after = $this->translations->madeFrom($after, $to, $sent);
         }
 
-        if ($this->writesLive()) {
-            $this->dm->saveType($after, false);
-            $this->review?->refresh($after);
-            // A translated slug moves the record's address in that language.
-            $this->addresses?->sync($this->typeKey, (string) $after->getId());
-
-            return new WriteOutcome(WriteOutcomeStatus::Written, $leftMessage, false, $leftAlone);
-        }
-
-        \assert($this->publisher !== null);
-        $hadDraftChanges = $this->publisher->state($record) === PublishState::Changed;
-        if (($record->get('_publish_at') ?? '') !== '') {
-            $after->set('_publish_at', '');
-        }
-        // The version just read: what changed since units() read the record is already taken care
-        // of above (texts left alone, kept fields), so only a save landing from here on conflicts.
+        $live = $this->writesLive();
+        $hadDraftChanges = !$live && $this->publisher?->state($record) === PublishState::Changed;
+        // A working copy is checked against the version just read: what changed since units() read
+        // the record is already taken care of above (texts left alone, kept fields), so only a save
+        // landing from here on conflicts.
         try {
-            $this->publisher->saveDraft($after, (int) ($record->get('_version') ?? 0));
+            $this->writer->save($after, new SaveOptions(mayPublish: false, loadedVersion: $live ? null : (int) ($record->get('_version') ?? 0)));
         } catch (ValidationException $e) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, self::firstError($e), $hadDraftChanges);
         }

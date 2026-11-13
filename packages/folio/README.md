@@ -923,7 +923,24 @@ snapshots (or over the records themselves when the type does not publish), and
 `->live($type, $id)` returns one record. Querying the type directly with `DataManager`
 returns working copies, drafts included.
 
-**Saving working copies in your own code:** `Publisher::saveDraft($record, $loadedVersion)`
+**Saving records in your own code:** Folio saves every record through `RecordWriter` and deletes
+through `RecordDeleter` (preflow/publishing, from the container; see its
+[README](../publishing/README.md#saving-and-deleting-records)). Folio keeps only the forms, the
+permissions, the messages and the rendering: the writer runs the type's `#[BeforeSave]`, the
+draft save or, for a type without publishing, Folio's validation (blocks included) and the live
+save (`#[SaveRecord]` where the type has one), the publish (validated), the list position, the
+review index, the addresses and `#[AfterSave]`. Save through it too and your code gets the same
+steps:
+
+```php
+$writer = $container->get(\Preflow\Publishing\RecordWriter::class);
+$writer->save($record, new \Preflow\Publishing\SaveOptions(by: $userId, mayPublish: $access->can('article.publish'), loadedVersion: (int) $body['_version']));
+```
+
+A save by someone who may not publish (`mayPublish: false`) cancels a pending "Publish at", as
+Folio's form, autosave, revision restore, bulk "Set …", "still correct" and AI translation do.
+
+**Saving working copies without the hooks:** `Publisher::saveDraft($record, $loadedVersion)`
 saves without rules as version stored + 1 and throws `VersionConflict` (with `->current`,
 the stored version) when the stored version is not `$loadedVersion`, also when another save
 lands between the check and the write. With `null` it does not check and retries on a newer
@@ -1459,9 +1476,9 @@ final class NoteTweaks
 | `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[DashboardNotice]` | `fn(): ?string` | A notice above the dashboard's cards (since 0.53), the same rules as `#[ListNotice]`. Only called for a user who may view the type (`{type}.view`); the notices are grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
-| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: the form is shown again with its errors (422). Runs on every Folio save of the record: the form, autosave, and each record of the bulk bar's "Set …". |
-| `#[SaveRecord]` | `fn(DynamicRecord $record, ?DynamicRecord $previous): void` | Writes the record itself instead of Folio's whole-record save, for types without publishing: after `#[BeforeSave]` and validation, before `#[AfterSave]`, on the form's create and update (and the bulk "Set …"). `$previous` is the stored record before the change, `null` for a new one. One per type (a second is a boot error). Throw `ValidationException` to refuse the save (422, the form shown again). Use it when the store has rules a whole-record write would break, e.g. a counter changed at the same time. |
-| `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored, on the same saves as `#[BeforeSave]` (the bulk "Set …" included). |
+| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: nothing is stored, the form is shown again with its errors (422). Runs on every save through the `RecordWriter` (see [Saving records in your own code](#drafts-and-publishing)): the form, autosave, each record of the bulk bar's "Set …", both records of a list move, "still correct" of a translation, AI translation (since 0.71), and an app's own writer calls. |
+| `#[SaveRecord]` | `fn(DynamicRecord $record, ?DynamicRecord $previous): void` | Writes the record itself instead of the whole-record save, for types without publishing: after `#[BeforeSave]` and validation, before `#[AfterSave]`, on every save through the `RecordWriter` (the form's create and update, the bulk "Set …", AI translation, a list move's positions). `$previous` is the stored record before the change, `null` for a new one. One per type (a second is a boot error). Throw `ValidationException` to refuse the save (422, the form shown again). Use it when the store has rules a whole-record write would break, e.g. a counter changed at the same time. |
+| `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored, on the same saves as `#[BeforeSave]`; on a publishing type also when the publish after the saved draft fails. |
 | `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |
 | `#[AfterDelete]` | `fn(DynamicRecord): void` | After the record is gone. |
 

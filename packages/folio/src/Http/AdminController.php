@@ -29,13 +29,13 @@ use Preflow\Publishing\Publisher;
 use Preflow\Publishing\VersionConflict;
 use Preflow\Publishing\DeleteRefused;
 use Preflow\Publishing\RecordDeleter;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\Badge;
 use Preflow\Folio\Extension\Link;
-use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Folio\Extension\Screen\ScreenView;
@@ -53,12 +53,10 @@ use Psr\Http\Message\ServerRequestInterface;
 final class AdminController
 {
     private readonly DraftRecordFactory $drafts;
-    private readonly RecordValidator $validator;
     private readonly DisplayLabels $labels;
     private readonly TranslationStatus $translations;
-
-    /** System key holding the manual position of a record in an orderable list. */
-    private const ORDER = '_order';
+    private readonly RecordWriter $writer;
+    private readonly RecordDeleter $deleter;
 
     public function __construct(
         private readonly TypeCatalog $catalog,
@@ -83,18 +81,25 @@ final class AdminController
         ?TranslationStatus $translations = null,
         /** Asked whether machine translation is available (since 0.66; before, the AI connection). */
         private readonly ?\Preflow\I18n\Machine\MachineTranslator $translator = null,
-        private readonly ?ReviewIndexUpdater $review = null,
+        ?ReviewIndexUpdater $review = null,
         private readonly ?\Preflow\I18n\Machine\JobRunner $jobs = null,
         private readonly ?\Preflow\I18n\Machine\ReviewIndex $reviewIndex = null,
         private readonly ?\Preflow\I18n\Machine\TranslationWorker $worker = null,
         private readonly ?\Preflow\View\Seo\SeoConfig $seo = null,
         private readonly ?\Preflow\Folio\Redirects\RecordAddresses $addresses = null,
         private readonly ?\Preflow\Folio\Redirects\OldAddresses $oldAddresses = null,
+        /** Every save, list move and delete goes through these (the container's; since 0.71). */
+        ?RecordWriter $writer = null,
+        ?RecordDeleter $deleter = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
-        $this->validator = $validator ?? new RecordValidator($fieldTypes, $dm, $frontend);
+        // Without the container's (a controller built by hand, as in unit tests): from the parts given here.
+        $hooks = $customizations !== null ? new \Preflow\Folio\Publishing\FolioSaveHooks($customizations) : new \Preflow\Publishing\NoSaveHooks();
+        $recordAddresses = $addresses !== null ? new \Preflow\Folio\Publishing\FolioRecordAddresses($addresses, null, null) : null;
+        $this->writer = $writer ?? new RecordWriter($dm, $publisher, new \Preflow\Folio\Publishing\FolioRecordChecks($validator ?? new RecordValidator($fieldTypes, $dm, $frontend)), $hooks, new \Preflow\Folio\Publishing\FolioRecordTypes($catalog), $review, $recordAddresses);
+        $this->deleter = $deleter ?? new RecordDeleter($dm, $publisher, $hooks, $review, $recordAddresses);
     }
 
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -530,52 +535,28 @@ final class AdminController
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
             return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale);
         }
-        $record->set($typeDef->idField, bin2hex(random_bytes(16)));
-        if (($this->catalog->get($type)?->list['orderable'] ?? false) === true) {
-            $record->set(self::ORDER, $this->maxOrder($type) + 10);
-        }
-        $data = [$typeDef->idField => $record->getId()];
-        if (($errors = $this->beforeSave($record)) !== null) {
-            $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]), $errors, $csrf, 422, $layout, $locale);
-        }
-
-        if ($this->publishes($type)) {
+        // The writer gives the new record its id and, in an orderable list, the last place.
+        $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
+        $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: true), true, function (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload) use ($type, $record, $drawer, $csrf, $layout, $locale): ResponseInterface {
+            if (!$saved) {
+                return $this->form($type, $values, $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]), $errors, $csrf, $status, $layout, $locale);
+            }
             // Once saved, the record exists: a re-rendered form must update it, not create another.
-            $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
             $base = $this->prefix . '/' . $type . '/' . $record->getId();
-            $failed = $this->savePublishing($request, $record, $type, $base . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $csrf, $locale, $base . '/edit', $layout,
-                newAction: $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''),
-                newHeading: FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]),
-            );
-            if ($failed !== null) {
-                return $failed;
-            }
-        } else {
-            try {
-                $this->saveWithBlocks($typeDef, $record, $request);
-            } catch (ValidationException $e) {
-                $action = $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : '');
-                $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
 
-                return $this->form(
-                    $type,
-                    $record->toArray(),
-                    $action,
-                    FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]),
-                    $e->errors(),
-                    $csrf,
-                    422,
-                    $layout,
-                    $locale,
-                );
-            }
+            return $this->form($type, $values, $base . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, $status, $layout, $locale, $base . '/edit',
+                notice: $notice,
+                reloadUrl: $reload ? $base . '/edit' : null,
+            );
+        });
+        if ($failed !== null) {
+            return $failed;
         }
 
         if ($drawer) {
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/drawer_saved.twig', [
                 'type' => $type,
-                'id' => $data[$typeDef->idField],
+                'id' => $record->getId(),
             ]));
         }
 
@@ -611,8 +592,8 @@ final class AdminController
 
     /**
      * "Still correct": the translations in a language (all, or those under the path) are marked as
-     * made from the current default texts. Saves the working copy with the version check; nothing
-     * is published.
+     * made from the current default texts. Saves through the RecordWriter (the type's save hooks,
+     * the schedule rule) with the version check; nothing is published.
      *
      * From the editor form (it posts _locale and the fields, the button names the path in
      * _confirm_path) the submitted values are saved together with the stamp, with the form's
@@ -649,38 +630,27 @@ final class AdminController
                 return $this->form($type, $built->toArray(), $action, $heading, $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
             }
             $record = $this->translations->confirm($typeDef, $built, $locale, $path);
-            if (($errors = $this->beforeSave($record)) !== null) {
-                return $this->form($type, $record->toArray(), $action, $heading, $errors, $csrf, 422, locale: $locale, editUrl: $editUrl);
-            }
-            if ($this->publishes($type)) {
-                return $this->savePublishing($request, $record, $type, $action, $heading, $csrf, $locale, $editUrl) ?? $done;
-            }
-            try {
-                $this->saveWithBlocks($typeDef, $record, $request);
-            } catch (ValidationException $e) {
-                return $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
-            }
+            $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: false), false,
+                fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, $heading, $errors, $csrf, $status, locale: $locale, editUrl: $editUrl, notice: $notice, reloadUrl: $reload ? $editUrl : null),
+            );
 
-            return $done;
+            return $failed ?? $done;
         }
 
         $confirmed = $this->translations->confirm($typeDef, $current, $locale, $path);
-        $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
         try {
-            if ($this->publishes($type)) {
-                $this->publisher->saveDraft($confirmed, $loaded);
-            } else {
-                $this->dm->saveType($confirmed, false);
-                $this->review?->refresh($confirmed);
-                $this->syncAddresses($request, [$confirmed]);
-            }
+            $outcome = $this->writer->save($confirmed, $this->saveOptions($request, $type, publish: false));
         } catch (VersionConflict $e) {
             $values = $current->toArray();
             $values['_version'] = $e->current;
 
             return $this->form($type, $values, $action, $heading, [], $csrf, 409, locale: $locale, editUrl: $editUrl,
                 notice: FolioText::get('folio.form.conflict'), reloadUrl: $editUrl . '?locale=' . rawurlencode($locale));
+        } catch (ValidationException $e) {
+            // A #[BeforeSave] hook, the rules or the storage refused: nothing saved.
+            return $this->form($type, $confirmed->toArray(), $action, $heading, $e->errors(), $csrf, 422, locale: $locale, editUrl: $editUrl);
         }
+        $this->leftSite($request, $outcome->addressesLeft ? [$outcome->record] : []);
 
         return $done;
     }
@@ -710,39 +680,27 @@ final class AdminController
         if ($this->drafts->uploadErrors() !== []) {
             return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
         }
-        if (($errors = $this->beforeSave($record)) !== null) {
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, 422, locale: $locale, editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit');
-        }
-
-        if ($this->publishes($type)) {
-            $failed = $this->savePublishing($request, $record, $type, $this->prefix . '/' . $type . '/' . $id, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $csrf, $locale, $this->prefix . '/' . $type . '/' . $id . '/edit');
-            if ($failed !== null) {
-                return $failed;
-            }
-        } else {
-            try {
-                $this->saveWithBlocks($typeDef, $record, $request);
-            } catch (ValidationException $e) {
-                return $this->form(
-                    $type,
-                    $record->toArray(),
-                    $this->prefix . '/' . $type . '/' . $id,
-                    FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]),
-                    $e->errors(),
-                    $csrf,
-                    422,
-                    locale: $locale,
-                    editUrl: $this->prefix . '/' . $type . '/' . $id . '/edit',
-                );
-            }
+        $action = $this->prefix . '/' . $type . '/' . $id;
+        $failed = $this->saveForm($request, $record, $this->saveOptions($request, $type, publish: true), false,
+            fn (array $values, array $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface => $this->form($type, $values, $action, FolioText::get('folio.form.edit', ['label' => $this->labelFor($type)]), $errors, $csrf, $status,
+                locale: $locale,
+                editUrl: $action . '/edit',
+                notice: $notice,
+                reloadUrl: $reload ? $action . '/edit' : null,
+            ),
+        );
+        if ($failed !== null) {
+            return $failed;
         }
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type . $this->localeQuery($typeDef, $locale)]);
     }
 
     /**
-     * Move a record one step up or down in an orderable list (POST direction=up|down).
-     * Records that have no _order yet are numbered in their current order first.
+     * Move a record one step up or down in an orderable list (POST direction=up|down), through the
+     * RecordWriter: records without a position yet are numbered in their current order first, the
+     * two records' save hooks run (a #[BeforeSave] refusal moves nothing and is flashed). At either
+     * end of the list nothing moves.
      */
     public function reorder(ServerRequestInterface $request): ResponseInterface
     {
@@ -752,40 +710,17 @@ final class AdminController
             return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
         }
 
-        $typeDef = $this->registry->get($type);
-        $records = array_values($this->listQuery($type, $typeDef, ['orderable' => true])->get()->items());
-
-        $missing = false;
-        foreach ($records as $record) {
-            // Numeric, not int: SQL drivers return positions as text.
-            $missing = $missing || !is_numeric($record->get(self::ORDER));
-        }
-        if ($missing) {
-            foreach ($records as $i => $record) {
-                $record->set(self::ORDER, ($i + 1) * 10);
-                $this->dm->saveType($record, validate: false);
-                $this->syncOrder($type, $record);
-            }
-        }
-
-        $ids = array_map(static fn ($r) => (string) $r->getId(), $records);
-        $index = array_search($id, $ids, true);
-        if ($index === false) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
-        }
-
         $direction = (string) (((array) $request->getParsedBody())['direction'] ?? '');
-        $neighbour = $direction === 'up' ? $index - 1 : ($direction === 'down' ? $index + 1 : null);
-        if ($neighbour !== null && isset($records[$neighbour])) {
-            $a = $records[$index];
-            $b = $records[$neighbour];
-            $orderA = $a->get(self::ORDER);
-            $a->set(self::ORDER, $b->get(self::ORDER));
-            $b->set(self::ORDER, $orderA);
-            $this->dm->saveType($a, validate: false);
-            $this->dm->saveType($b, validate: false);
-            $this->syncOrder($type, $a);
-            $this->syncOrder($type, $b);
+        try {
+            if ($direction === 'up' || $direction === 'down') {
+                $this->writer->reorder($type, $id, $direction);
+            } elseif ($this->dm->findType($type, $id) === null) {
+                return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            }
+        } catch (\InvalidArgumentException) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found')); // no such record in the list
+        } catch (ValidationException $e) {
+            self::flash($request, 'error', self::errorText($e));
         }
 
         // Back to the page the move was made on.
@@ -813,7 +748,7 @@ final class AdminController
         // Through the delete plan: cascades, detaches and restrictions of declared relations;
         // a restriction or any hook's refusal leaves everything in place.
         try {
-            $this->deleter()->delete($type, [$id], $this->removalTarget($request));
+            $this->deleter->delete($type, [$id], $this->removalTarget($request));
         } catch (DeleteRefused $e) {
             self::flash($request, 'error', $this->deleteSummary()->refusal($e));
         } catch (Refused $e) {
@@ -838,20 +773,9 @@ final class AdminController
             return new Response(422, [], FolioText::get($ids === null ? 'folio.errors.too_many_records' : 'folio.errors.no_records'));
         }
 
-        $payload = json_encode($this->deleteSummary()->summary($this->deleter()->plan($type, $ids)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $payload = json_encode($this->deleteSummary()->summary($this->deleter->plan($type, $ids)), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
         return new Response(200, ['Content-Type' => 'application/json; charset=UTF-8'], $payload);
-    }
-
-    private function deleter(): RecordDeleter
-    {
-        return new RecordDeleter(
-            $this->dm,
-            $this->publisher,
-            $this->customizations !== null ? new \Preflow\Folio\Publishing\FolioSaveHooks($this->customizations) : new \Preflow\Publishing\NoSaveHooks(),
-            $this->review,
-            $this->addresses !== null ? new \Preflow\Folio\Publishing\FolioRecordAddresses($this->addresses, null, null) : null,
-        );
     }
 
     /** The delete confirmation and the reasons a delete is refused, in the editor's words. */
@@ -881,7 +805,7 @@ final class AdminController
         }
 
         try {
-            $this->deleter()->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records), $this->removalTarget($request));
+            $this->deleter->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records), $this->removalTarget($request));
             self::flash($request, 'success', FolioText::get('folio.common.done_count', ['label' => FolioText::get('folio.common.delete'), 'count' => count($records)]));
         } catch (DeleteRefused $e) {
             self::flash($request, 'error', $this->deleteSummary()->refusal($e));
@@ -895,7 +819,7 @@ final class AdminController
     /**
      * Any other bulk action (POST {type}/_bulk/{name}, ids[]; the route asks {type}.edit):
      * "set-{field}" for a select or boolean field the model's "list.bulk" names (value: one of
-     * its options, '1'/'0' for a boolean), saved per record on the form's save path; a failing
+     * its options, '1'/'0' for a boolean), saved per record through the RecordWriter (as a form save); a failing
      * record is reported, the others are saved. Else the type's #[BulkAction] of that name,
      * for those with its permission. Ids of other types or without a record are ignored.
      */
@@ -957,28 +881,24 @@ final class AdminController
         $fieldType = $this->fieldTypes->get($fieldDef->type);
         $stored = $fieldType->toStorage($fieldType->normalizeInput($value, $fieldDef->config));
 
+        // Not from the post: a bulk set is no form (no loaded version, no schedule of its own).
+        $options = new SaveOptions(by: self::userId($request), mayPublish: $this->can($type . '.publish'));
         $done = 0;
         $failed = [];
-        $saved = [];
+        $left = [];
         foreach ($records as $record) {
-            $record->set($field['name'], $stored);
             try {
-                $this->saveChanged($record);
+                $outcome = $this->writer->setField($record, $field['name'], $stored, $options);
                 $done++;
-                $saved[] = $record;
+                if ($outcome->addressesLeft) {
+                    $left[] = $outcome->record;
+                }
             } catch (ValidationException $e) {
-                $messages = [];
-                $errors = $e->errors();
-                array_walk_recursive($errors, static function (mixed $m) use (&$messages): void {
-                    $messages[] = (string) $m;
-                });
-                $failed[] = $this->labeler->label($record) . ' — ' . implode(' ', $messages);
+                $failed[] = $this->labeler->label($record) . ' — ' . self::errorText($e);
             }
         }
 
-        if (!$this->publishes($type)) {
-            $this->syncAddresses($request, $saved);
-        }
+        $this->leftSite($request, $left);
         $message = FolioText::get('folio.list.set_done', ['label' => $field['label'], 'count' => $done]);
         if ($failed !== []) {
             self::flash($request, 'error', FolioText::get('folio.list.failed', ['message' => $message, 'count' => count($failed), 'records' => implode('; ', $failed)]));
@@ -1640,64 +1560,65 @@ final class AdminController
     }
 
     /**
-     * The #[BeforeSave] hooks, before validation. A hook throwing ValidationException refuses
-     * the save: its errors, for the form to show again.
+     * The form's save through the RecordWriter: a new record is created (its id, its place in an
+     * orderable list), an existing one saved; a record that leaves the site with it is flashed
+     * (leftSite()). null when saved, else $again shows the form again: on a version conflict (409,
+     * with the stored version, so saving again overwrites, deliberately; $reload offers the stored
+     * one), a refusal (422: a #[BeforeSave] hook, the rules, what the storage refuses) or a failed
+     * publish (422, with the "not published" notice). $saved says whether the record is stored by
+     * now (its working copy took a new version), so a new record's form updates it instead of
+     * creating another.
      *
-     * @return array<string, list<string>>|null
+     * @param \Closure(array<string, mixed> $values, array<string, mixed> $errors, int $status, bool $saved, ?string $notice, bool $reload): ResponseInterface $again
      */
-    private function beforeSave(DynamicRecord $record): ?array
+    private function saveForm(ServerRequestInterface $request, DynamicRecord $record, SaveOptions $options, bool $new, \Closure $again): ?ResponseInterface
     {
+        $version = $record->get('_version');
         try {
-            $this->customizations?->runHooks(BeforeSave::class, $record);
+            $outcome = $new ? $this->writer->create($record, $options) : $this->writer->save($record, $options);
+        } catch (VersionConflict $e) {
+            $values = $record->toArray();
+            $values['_version'] = $e->current;
+
+            return $again($values, [], 409, $record->get('_version') !== $version, FolioText::get('folio.form.conflict'), true);
         } catch (ValidationException $e) {
-            return $e->errors();
+            $saved = $record->get('_version') !== $version; // then only the publish failed
+
+            return $again($record->toArray(), $e->errors(), 422, $saved, $saved ? FolioText::get('folio.form.not_published') : null, false);
         }
+        $this->leftSite($request, $outcome->addressesLeft ? [$outcome->record] : []);
 
         return null;
     }
 
     /**
-     * Full validation (blocks, then the type's rules), then save (the type's #[SaveRecord] method, else saveType) and the #[AfterSave] hooks.
-     * The record's public addresses follow (a live save of a type without publishing); with the
-     * request, a record that has just left the site is flashed (syncAddresses()).
-     *
-     * @throws ValidationException
+     * How a post saves: by the user, under their right to publish (without it, a pending schedule
+     * is cancelled), published when "_action" asks and $publish allows (refusePublish() refused
+     * those who may not), against the loaded "_version", scheduled by "_publish_at" when posted.
      */
-    private function saveWithBlocks(TypeDefinition $typeDef, DynamicRecord $record, ?ServerRequestInterface $request = null): void
+    private function saveOptions(ServerRequestInterface $request, string $type, bool $publish): SaveOptions
     {
-        $this->validator->validate($record);
-        // A type's #[SaveRecord] writes instead of saveType().
-        if ($this->customizations?->hasSaveRecord($typeDef->key) === true) {
-            $this->customizations->saveRecord($record, $this->dm->findType($typeDef->key, (string) $record->getId()));
-        } else {
-            $this->dm->saveType($record, false);
-        }
-        $this->review?->refresh($record);
-        if ($request !== null) {
-            $this->syncAddresses($request, [$record]);
-        }
-        $this->customizations?->runHooks(AfterSave::class, $record);
+        $body = (array) $request->getParsedBody();
+
+        return new SaveOptions(
+            by: self::userId($request),
+            mayPublish: $this->can($type . '.publish'),
+            publish: $publish && ($body['_action'] ?? null) === 'publish' && $this->publishes($type),
+            loadedVersion: is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null,
+            publishAt: array_key_exists('_publish_at', $body) ? (is_string($body['_publish_at']) ? $body['_publish_at'] : '') : null,
+        );
     }
 
     /**
-     * After live saves (types without publishing): old addresses redirect to the records
-     * (RecordAddresses::sync()). Records that have just left the site (their status changed)
-     * leave their old links answering 404: a warning says so, with a link to pick where they go
-     * (Settings → Redirects, filtered to the record) for those who may manage redirects.
+     * Records a save took off the site (SaveOutcome::$addressesLeft: a type without publishing
+     * whose status changed) leave their old links answering 404: a warning says so, with a link to
+     * pick where they go (Settings → Redirects, filtered to the record) for those who may manage
+     * redirects.
      *
-     * @param list<DynamicRecord> $records
+     * @param list<DynamicRecord> $left
      */
-    private function syncAddresses(ServerRequestInterface $request, array $records): void
+    private function leftSite(ServerRequestInterface $request, array $left): void
     {
-        if ($this->addresses === null) {
-            return;
-        }
-        $left = [];
-        foreach ($records as $record) {
-            if ($this->addresses->sync($record->getType()->key, (string) $record->getId())) {
-                $left[] = $record;
-            }
-        }
         if ($left === []) {
             return;
         }
@@ -1713,39 +1634,16 @@ final class AdminController
         }
     }
 
-    /**
-     * The form's save path for a record changed without the form (a bulk set): #[BeforeSave];
-     * publishing types save the working copy (schedule as the form handles it), other types
-     * validate fully and save; then #[AfterSave].
-     *
-     * @throws ValidationException from a BeforeSave hook or validation (nothing saved)
-     */
-    private function saveChanged(DynamicRecord $record): void
+    /** A refusal's messages in one line (a bulk action's report, a flash). */
+    private static function errorText(ValidationException $e): string
     {
-        $this->customizations?->runHooks(BeforeSave::class, $record);
-        $type = $record->getType()->key;
-        if ($this->publishes($type)) {
-            $this->applySchedule($record, $type, []);
-            $this->publisher->saveDraft($record, null);
-            $this->customizations?->runHooks(AfterSave::class, $record);
-        } else {
-            $this->saveWithBlocks($record->getType(), $record);
-        }
-    }
+        $messages = [];
+        $errors = $e->errors();
+        array_walk_recursive($errors, static function (mixed $m) use (&$messages): void {
+            $messages[] = (string) $m;
+        });
 
-    /**
-     * "Publish at" schedules a publish: only for those who may publish. A save by anyone
-     * else cancels a pending schedule, so their changes never go live unreviewed.
-     *
-     * @param array<string, mixed> $body the posted form ("_publish_at", when it has one)
-     */
-    private function applySchedule(DynamicRecord $record, string $type, array $body): void
-    {
-        if (!$this->can($type . '.publish')) {
-            $record->set('_publish_at', '');
-        } elseif (array_key_exists('_publish_at', $body)) {
-            $record->set('_publish_at', self::publishAt($body['_publish_at']));
-        }
+        return implode(' ', $messages);
     }
 
     /** Publishing through the form without the right to: refused before anything (uploads included) is written. */
@@ -1767,58 +1665,6 @@ final class AdminController
     private function publishes(string $type): bool
     {
         return $this->publisher !== null && $this->publisher->enabled($type);
-    }
-
-    /**
-     * Publishing types: save the working copy (no rules; _publish_at and the
-     * loaded _version from the form), then publish when "_action" asks for it.
-     * The #[AfterSave] hooks run once the working copy is saved (after the publish attempt).
-     * Returns the form to re-render on a version conflict or a failed publish.
-     */
-    private function savePublishing(ServerRequestInterface $request, DynamicRecord $record, string $type, string $action, string $heading, string $csrf, string $locale, string $editUrl, string $layout = '@folio/admin/_layout.twig', ?string $newAction = null, ?string $newHeading = null): ?ResponseInterface
-    {
-        $body = (array) $request->getParsedBody();
-        $this->applySchedule($record, $type, $body);
-        $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
-
-        try {
-            $this->publisher?->saveDraft($record, $loaded);
-        } catch (VersionConflict $e) {
-            $values = $record->toArray();
-            $values['_version'] = $e->current; // saving again overwrites, deliberately
-            return $this->form($type, $values, $action, $heading, [], $csrf, 409, $layout, $locale, $editUrl,
-                notice: FolioText::get('folio.form.conflict'),
-                reloadUrl: $editUrl,
-            );
-        } catch (ValidationException $e) {
-            // A unique value another record has: nothing saved, so a new record's form creates it again.
-            return $newAction !== null
-                ? $this->form($type, $record->toArray(), $newAction, $newHeading ?? $heading, $e->errors(), $csrf, 422, $layout, $locale)
-                : $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, $locale, $editUrl);
-        }
-
-        if (($body['_action'] ?? null) === 'publish') {
-            try {
-                // Checked against the version the draft save just wrote: a save landing in between conflicts.
-                $this->publisher?->publish($record, self::userId($request), (int) $record->get('_version'));
-            } catch (VersionConflict $e) {
-                $this->customizations?->runHooks(AfterSave::class, $record); // the working copy was saved
-                $values = $record->toArray();
-                $values['_version'] = $e->current;
-                return $this->form($type, $values, $action, $heading, [], $csrf, 409, $layout, $locale, $editUrl,
-                    notice: FolioText::get('folio.form.conflict'),
-                    reloadUrl: $editUrl,
-                );
-            } catch (ValidationException $e) {
-                $this->customizations?->runHooks(AfterSave::class, $record); // the working copy was saved
-                return $this->form($type, $record->toArray(), $action, $heading, $e->errors(), $csrf, 422, $layout, $locale, $editUrl,
-                    notice: FolioText::get('folio.form.not_published'),
-                );
-            }
-        }
-        $this->customizations?->runHooks(AfterSave::class, $record);
-
-        return null;
     }
 
     /**
@@ -1855,29 +1701,6 @@ final class AdminController
             'unpublish_addresses' => $publish && $state !== PublishState::Draft ? count($this->addresses?->of($type, (string) $id) ?? []) : 0,
             'discard_url' => $edit && $state === PublishState::Changed ? $base . '/discard' : null,
         ];
-    }
-
-    private function syncOrder(string $type, DynamicRecord $record): void
-    {
-        if ($this->publishes($type)) {
-            $this->publisher->syncOrder($record);
-        }
-    }
-
-    /**
-     * A valid future "Y-m-d\TH:i" (datetime-local) value in the app's zone; else ''
-     * (cleared). A past time is dropped: it is either a mistake or a stale tab
-     * re-sending a schedule that already ran. '' rather than null, because SQL
-     * drivers skip null values.
-     */
-    private static function publishAt(mixed $value): string
-    {
-        if (!is_string($value)) {
-            return '';
-        }
-        $at = \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value);
-
-        return $at !== false && $at->format('Y-m-d\TH:i') === $value && $at > new \DateTimeImmutable() ? $value : '';
     }
 
     /** Types with publishing are told to publish; others are already saved. */
@@ -2087,16 +1910,6 @@ final class AdminController
     private function listQuery(string $type, TypeDefinition $typeDef, array $listConfig): \Preflow\Data\QueryBuilder
     {
         return \Preflow\Folio\Content\ListOrder::apply($this->dm->queryType($type), $typeDef, $listConfig);
-    }
-
-    private function maxOrder(string $type): int
-    {
-        $max = 0;
-        foreach ($this->dm->queryType($type)->get()->items() as $record) {
-            $max = max($max, (int) $record->get(self::ORDER));
-        }
-
-        return $max;
     }
 
     private function isDrawer(ServerRequestInterface $request): bool

@@ -9,14 +9,16 @@ use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
 use Preflow\Publishing\PublishedCopies;
 use Preflow\Publishing\Publisher;
+use Preflow\Publishing\RecordWriter;
 
 /**
  * Carries a member's own deletion (MemberEvents::DELETED, the applied plan) into Folio's
  * publishing types, as a staff delete would:
  *
  * - each deleted record of a publishing type is forgotten (snapshot and revisions: unpublished);
- * - a detached working copy of a publishing type gets a new draft version (an open editor sees
- *   the change instead of overwriting it);
+ * - a detached working copy of a publishing type is saved again through the RecordWriter, as a
+ *   staff delete saves it: the type's save hooks run and it gets a new draft version (an open
+ *   editor sees the change instead of overwriting it);
  * - no published snapshot keeps pointing at a deleted record: the deleted ids are taken out of
  *   every snapshot whose relation field holds them (also snapshot-only pointers; the snapshot is
  *   edited in place, without a revision; older revisions keep their history).
@@ -30,6 +32,7 @@ final class PublishedMemberDeletion
         private readonly DataManager $dm,
         private readonly Publisher $publisher,
         private readonly PublishedCopies $copies,
+        private readonly RecordWriter $writer,
     ) {}
 
     /** @param array<string, mixed> $payload the DELETED payload */
@@ -57,7 +60,7 @@ final class PublishedMemberDeletion
             $bumped[$key] = true;
             $working = $this->dm->findType($detach['type'], $detach['id']);
             if ($working !== null) {
-                $this->publisher->saveDraft($working, null); // already detached; this moves its version on
+                $this->writer->save($working); // already detached; this moves its version on
             }
         }
 

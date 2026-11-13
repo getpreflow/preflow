@@ -505,9 +505,10 @@ final class FolioTextSourceTest extends TestCase
             $racingDm,
             $c->get(TranslationStatus::class),
             $c->get(FieldTypeRegistry::class),
-            new Publisher($racingDm, $c->get(TypeCatalog::class), $c->get(RecordValidator::class)),
+            $publisher = new Publisher($racingDm, $c->get(TypeCatalog::class), $c->get(RecordValidator::class)),
             new RecordLabeler(),
             $c->get(TranslationSettings::class),
+            new \Preflow\Publishing\RecordWriter($racingDm, $publisher, $c->get(\Preflow\Publishing\RecordChecks::class), $c->get(\Preflow\Publishing\SaveHooks::class)),
         );
     }
 

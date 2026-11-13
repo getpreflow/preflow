@@ -426,15 +426,17 @@ class Publisher
     /**
      * Copy a revision into the working copy; it must be published again to go live.
      * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
+     * $publishAt is the schedule the restored working copy gets: null keeps the stored one, ''
+     * cancels it (RecordWriter::restore() decides, by its schedule rule).
      *
      * @throws VersionConflict
      * @throws ValidationException when the storage refuses the revision's content (validateStorable(); nothing saved)
      */
-    public function restore(string $type, string $id, string $revisionId, ?int $loadedVersion = null): ?DynamicRecord
+    public function restore(string $type, string $id, string $revisionId, ?int $loadedVersion = null, ?string $publishAt = null): ?DynamicRecord
     {
         foreach ($this->revisions($type, $id) as $revision) {
             if ($revision->id === $revisionId) {
-                return $this->replaceContent($type, $id, $revision->data, $loadedVersion);
+                return $this->replaceContent($type, $id, $revision->data, $loadedVersion, $publishAt);
             }
         }
 
@@ -517,14 +519,14 @@ class Publisher
     }
 
     /**
-     * Overwrite the working copy's content, keeping its system keys and
-     * bumping its version (so open editors see a conflict).
+     * Overwrite the working copy's content, keeping its system keys (the schedule too, unless
+     * $publishAt is given) and bumping its version (so open editors see a conflict).
      *
      * @param array<string, mixed> $content
      * @throws VersionConflict when $loadedVersion is given and stale
      * @throws ValidationException when the storage refuses the content
      */
-    private function replaceContent(string $type, string $id, array $content, ?int $loadedVersion = null): DynamicRecord
+    private function replaceContent(string $type, string $id, array $content, ?int $loadedVersion = null, ?string $publishAt = null): DynamicRecord
     {
         $def = $this->definition($type);
         $working = $this->dm->findIn($def, $id);
@@ -535,6 +537,9 @@ class Publisher
             if ($value !== null) {
                 $data[$key] = $value;
             }
+        }
+        if ($publishAt !== null) {
+            $data['_publish_at'] = $publishAt;
         }
         // A snapshot from before a field or a translation key (LanguageChecks::stateKeys()) existed has no
         // such key; SQL leaves unnamed columns as they are, which would keep the working row's current ones.

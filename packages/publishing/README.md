@@ -79,6 +79,7 @@ $writer->create($record);                                  // a new id when it h
 $writer->save($record, new SaveOptions(by: $userId, publish: true, loadedVersion: $version));
 $writer->setField($record, 'status', 'archived');          // one field, then save()
 $writer->reorder('faq', $id, 'up');                        // false when it is first already
+$writer->restore('post', $id, $revisionId, new SaveOptions(mayPublish: false)); // a revision into the working copy
 ```
 
 A save runs `SaveHooks::before()` first (a `ValidationException` there stores nothing). A type that
@@ -92,6 +93,9 @@ the site.
 someone who may not publish never go live unreviewed), `publish`, `loadedVersion` (else
 `VersionConflict`), `publishAt` (null keeps the schedule, `''` clears it, `Y-m-d\TH:i` sets it; a
 past time clears it).
+
+`restore()` copies a revision into the working copy (`Publisher::restore()`) under the same schedule
+rule, in one write; it runs no save hooks (it is not an edit) and never publishes.
 
 `RecordDeleter` deletes through the delete plan of the type's relations (cascade, detach,
 restrict): `plan($type, $ids)` says what would happen, `delete($type, $ids, $target)` does it, all

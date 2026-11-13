@@ -714,6 +714,8 @@ final class FolioServiceProvider extends ServiceProvider
                 new \Preflow\Folio\Redirects\VisibleAddress(($locales ?? \Preflow\Data\Locales::single('en'))->default, self::prefixedUrls($app)),
                 $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
             ) : null,
+            writer: $c->get(\Preflow\Publishing\RecordWriter::class),
+            deleter: $c->get(\Preflow\Publishing\RecordDeleter::class),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),
@@ -750,6 +752,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(DraftRecordFactory::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $c->get(\Preflow\Publishing\RecordWriter::class),
             $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Auth\Access\Access::class),
@@ -1410,6 +1413,7 @@ final class FolioServiceProvider extends ServiceProvider
                     $container->get(DataManager::class),
                     $container->get(\Preflow\Publishing\Publisher::class),
                     $container->get(\Preflow\Publishing\PublishedCopies::class),
+                    $container->get(\Preflow\Publishing\RecordWriter::class),
                 ))($payload);
             });
         }
@@ -1817,8 +1821,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(\Preflow\Publishing\Publisher::class),
                 new RecordLabeler(),
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
-                $container->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
-                self::addresses($container),
+                $container->get(\Preflow\Publishing\RecordWriter::class),
                 $container->get(FrontendResolver::class),
             ), static fn (): bool => $container->get(\Preflow\Folio\Content\TranslationStatus::class)->translatable(
                 $container->get(DataManager::class)->getTypeRegistry()?->get($key) ?? throw new \LogicException('Text sources need a TypeRegistry.'),

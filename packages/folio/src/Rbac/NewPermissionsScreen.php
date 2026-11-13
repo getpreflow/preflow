@@ -9,14 +9,10 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Content\RecordValidator;
-use Preflow\Folio\Extension\AfterSave;
 use Preflow\Folio\Extension\Attributes\FolioScreen;
-use Preflow\Folio\Extension\BeforeSave;
-use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Customization\Refused;
-use Preflow\Folio\Rbac\Types\RoleRules;
 use Preflow\I18n\Translator;
+use Preflow\Publishing\RecordWriter;
 use Preflow\Rbac\Messages;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Rbac\RoleList;
@@ -30,9 +26,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * The actions of the new-permissions notice on the Roles list (NewPermissions), outside the
  * sidebar, for those who may edit roles. Dismiss and "Add to role" take the line's names[]
  * (only the ones still new count) and make them known for good; "Add to role" first gives
- * them to the chosen role (role = its id) and saves it as the role editor does: every
- * #[BeforeSave] of the type (RoleRules among them: delegation, lock-out), the type's validation,
- * the save, every #[AfterSave]. A refusal changes nothing. Each answers with a redirect to the
+ * them to the chosen role (role = its id) and saves it as the role editor does, through the
+ * RecordWriter: every #[BeforeSave] of the type (RoleRules among them: delegation, lock-out), the
+ * type's validation, the save, every #[AfterSave]. A refusal changes nothing. Each answers with a redirect to the
  * Roles list and a flash message, also when the new permissions can't be read (a site not
  * migrated) and when the save or an #[AfterSave] fails (logged).
  *
@@ -46,7 +42,7 @@ final class NewPermissionsScreen
     public function __construct(
         private readonly NewPermissions $permissions,
         private readonly DataManager $dm,
-        private readonly RoleRules $rules,
+        private readonly RecordWriter $writer,
         private readonly Messages $messages,
         private readonly Translator $translator,
         private readonly Container $container,
@@ -100,22 +96,13 @@ final class NewPermissionsScreen
 
         $current = RoleList::normalize($role->get('permissions'));
         $role->set('permissions', [...$current, ...array_values(array_diff($names, $current))]);
-        $customizations = $this->container->bound(Customizations::class) ? $this->container->get(Customizations::class) : null;
         try {
-            // As the role editor saves (AdminController): the type's #[BeforeSave] hooks, then validation.
-            $customizations !== null ? $customizations->runHooks(BeforeSave::class, $role) : $this->rules->beforeSave($role);
-            if ($this->container->bound(RecordValidator::class)) {
-                $this->container->get(RecordValidator::class)->validate($role);
-            }
+            $this->writer->save($role);
+            $this->permissions->markKnown($names);
         } catch (ValidationException $e) {
             return self::back($request, 'error', self::firstMessage($e) ?? $e->getMessage());
         } catch (Refused $e) {
             return self::back($request, 'error', $e->getMessage());
-        }
-        try {
-            $this->dm->saveType($role, false);
-            $this->permissions->markKnown($names);
-            $customizations?->runHooks(AfterSave::class, $role);
         } catch (\Throwable $e) {
             // The storage or a site's #[AfterSave] failed: a message instead of a 500, the cause in the log.
             error_log('rbac: add to role failed: ' . $e->getMessage());
