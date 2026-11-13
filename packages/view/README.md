@@ -501,7 +501,8 @@ none, like its other cards (since 0.72).
 A template that needs the text itself (a visible lead, a `<title>` suffix) calls `seo_description()`: the same merged
 description, as plain text (cleaned like the tags, but **not** cut at 200 characters), `''` when neither the page nor the
 site has one or SEO is off. Both engines escape it. Call it after the page's own `seo({…})`, as a layout does when it
-renders after its child template.
+renders after its child template. Inside GEO's Markdown renders it returns the page's own description only, never the
+site's.
 
 ```twig
 {% do seo({description: job.teaser}) %}

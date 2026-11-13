@@ -80,8 +80,22 @@ final class SeoMiddleware implements MiddlewareInterface
         }
 
         $this->context->reset();
-        $this->context->resolveDefaultsWith(fn (): ?PageMeta => $this->siteDefaults($this->pageLocale($request->getUri()->getPath())));
-        $response = $handler->handle($request);
+        // Built at most once per request, and dropped with it so the closure doesn't keep the request alive.
+        $found = false;
+        $site = null;
+        $this->context->resolveDefaultsWith(function () use ($request, &$found, &$site): ?PageMeta {
+            if (!$found) {
+                $site = $this->siteDefaults($this->pageLocale($request->getUri()->getPath()));
+                $found = true;
+            }
+
+            return $site;
+        });
+        try {
+            $response = $handler->handle($request);
+        } finally {
+            $this->context->clearDefaultsResolver();
+        }
         if ($response->getStatusCode() !== 200 || !self::isHtml($response)) {
             return $response;
         }

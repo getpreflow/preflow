@@ -89,6 +89,11 @@ final class SeoContext
         $this->siteDefaults = $siteDefaults;
     }
 
+    public function clearDefaultsResolver(): void
+    {
+        $this->siteDefaults = null;
+    }
+
     /**
      * The description the page gets: its own, else the site's ($defaults, or those the SEO
      * middleware resolves for the request). The text as it was set, not yet cleaned.

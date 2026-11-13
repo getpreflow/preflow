@@ -130,4 +130,22 @@ final class SeoContextTest extends TestCase
         $context->resolveDefaultsWith(static fn (): ?PageMeta => null);
         $this->assertSame('', $context->description());
     }
+
+    public function test_reset_and_clear_drop_the_site_defaults_resolver_and_scoped_restores_it(): void
+    {
+        $site = static fn (): PageMeta => new PageMeta(description: 'Site');
+        $context = new SeoContext();
+
+        $context->resolveDefaultsWith($site);
+        $inner = $context->scoped(static fn (): string => $context->description());
+        $this->assertSame('', $inner);
+        $this->assertSame('Site', $context->description());
+
+        $context->clearDefaultsResolver();
+        $this->assertSame('', $context->description());
+
+        $context->resolveDefaultsWith($site);
+        $context->reset();
+        $this->assertSame('', $context->description());
+    }
 }

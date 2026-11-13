@@ -126,6 +126,15 @@ final class HeadTagsTest extends TestCase
         $this->assertStringNotContainsString('<meta name="description" content="Who we are.">', $html);
     }
 
+    public function test_noindex_and_private_pages_print_no_description_tag(): void
+    {
+        $noindex = HeadTags::inject(self::PAGE, $this->meta(['noindex' => true]), 'Example', [], []);
+        $private = HeadTags::inject(self::PAGE, $this->meta(), 'Example', [], [], false);
+
+        $this->assertStringNotContainsString('name="description"', $noindex);
+        $this->assertStringNotContainsString('name="description"', $private);
+    }
+
     public function test_no_description_prints_no_description_tag(): void
     {
         $html = HeadTags::inject(self::PAGE, $this->meta(['description' => '']), 'Example', [], []);
