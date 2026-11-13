@@ -27,7 +27,7 @@ final class MatrixFieldType implements FieldType, \Preflow\Folio\Field\DisplaysI
         private readonly RecordRenderer $records,
         private readonly RecordLabeler $labeler,
         private readonly string $prefix,
-        private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
+        private readonly ?\Preflow\Publishing\LiveContent $live = null,
         /** @var (\Closure(string): bool)|null permission check; null allows everything */
         private readonly ?\Closure $can = null,
     ) {}

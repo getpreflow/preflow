@@ -14,7 +14,7 @@ use Preflow\Folio\Content\FrontendGate;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\FrontendRoute;
 use Preflow\Folio\Content\RecordRenderer;
-use Preflow\Folio\Publishing\PreviewLinks;
+use Preflow\Publishing\PreviewLinks;
 use Preflow\Folio\Seo\FolioPageMeta;
 use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateEngineInterface;
@@ -30,7 +30,7 @@ final class FrontendController
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?DataManager $dm = null,
         private readonly ?PreviewLinks $previews = null,
-        private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
+        private readonly ?\Preflow\Publishing\LiveContent $live = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?FrontendGate $gate = null,
         private readonly ?ErrorHandler $errors = null,

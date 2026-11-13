@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Folio\Seo\FolioPageMeta;
 use Preflow\Folio\Tests\Support\AssetFixtures;
 use Preflow\Media\MediaLibrary;

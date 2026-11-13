@@ -43,6 +43,9 @@ use PHPUnit\Framework\TestCase;
  * preflow/blocks (required since 0.70: the block classes, registry and renderer that were Folio's own; BlockLocale,
  * BlockTextCleaner and BlockPreviewMarks, which ContentLocale, SafeRichText and FolioBlockPreviewMarks implement) has no
  * release before 0.70, so it needs no conflict.
+ * preflow/publishing (required since 0.71: the Publisher, LiveContent and the other publishing classes that were Folio's own;
+ * PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and RecordAddresses, which Folio's adapters implement) has no
+ * release before 0.71, so it needs no conflict.
  * preflow/rbac is suggested too (Folio carries its admin since 0.69); an rbac release before 0.69 still ships that admin
  * itself (its own extension "rbac", field types and texts) and lacks StaffAccounts, StaffLinks::available() and
  * StaffMail::sendTo(), which Folio's rbac admin and staff mails call, so it conflicts.

@@ -11,8 +11,8 @@ use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Seo\SeoSection;
 
 /**

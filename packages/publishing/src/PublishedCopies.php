@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Publishing;
+namespace Preflow\Publishing;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;

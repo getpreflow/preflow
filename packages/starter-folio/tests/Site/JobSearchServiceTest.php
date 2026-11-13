@@ -10,7 +10,7 @@ use App\Models\Company;
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 final class JobSearchServiceTest extends TestCase

@@ -11,7 +11,7 @@ use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Validation\ValidationException;
 
 /**

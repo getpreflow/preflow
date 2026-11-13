@@ -11,7 +11,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\DashboardNotice;
 use Preflow\Folio\Extension\ListColumn;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 
 /**
  * The company list shows how many jobs of each company the public sees (its published copies),

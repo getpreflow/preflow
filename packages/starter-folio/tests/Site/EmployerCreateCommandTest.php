@@ -9,7 +9,7 @@ use App\Models\Company;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 final class EmployerCreateCommandTest extends TestCase

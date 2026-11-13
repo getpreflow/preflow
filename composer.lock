@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d255f3d76883989af0146c3085f3fc2c",
+    "content-hash": "9419ab5746d2f67ef212c8e0b019bcb3",
     "packages": [
         {
             "name": "matthiasmullie/minify",
@@ -3200,23 +3200,25 @@
             "dist": {
                 "type": "path",
                 "url": "packages/blocks",
-                "reference": "494b32af7f90a76ac6c4d97ff8568f3ce9f344b1"
+                "reference": "791d9b272c32b68a71e6680f00a46562faef6fbd"
             },
             "require": {
                 "php": ">=8.4",
-                "preflow/components": "^0.69 || @dev",
-                "preflow/core": "^0.69 || @dev",
-                "preflow/data": "^0.69 || @dev",
-                "preflow/view": "^0.69 || @dev"
+                "preflow/components": "^0.70 || @dev",
+                "preflow/core": "^0.70 || @dev",
+                "preflow/data": "^0.70 || @dev",
+                "preflow/view": "^0.70 || @dev"
             },
             "conflict": {
-                "preflow/components": "<0.69",
-                "preflow/core": "<0.69",
-                "preflow/data": "<0.69",
-                "preflow/view": "<0.69"
+                "preflow/components": "<0.70",
+                "preflow/core": "<0.70",
+                "preflow/data": "<0.70",
+                "preflow/folio": "<0.70",
+                "preflow/view": "<0.70"
             },
             "require-dev": {
-                "phpunit/phpunit": "^11.0"
+                "phpunit/phpunit": "^11.0",
+                "psr/log": "^3.0"
             },
             "suggest": {
                 "preflow/i18n": "Blocks render in the request's locale"
@@ -3424,17 +3426,17 @@
             "dist": {
                 "type": "path",
                 "url": "packages/devtools",
-                "reference": "a0f321346c9ef9efdb6a990720867f00aef6cb11"
+                "reference": "bd0e4ad7581ef089dbb74496113bd7919a3b6843"
             },
             "require": {
                 "php": ">=8.4",
-                "preflow/core": "^0.62 || @dev",
+                "preflow/core": "^0.70 || @dev",
                 "preflow/data": "^0.67 || @dev",
                 "preflow/routing": "^0.1 || @dev"
             },
             "conflict": {
                 "preflow/auth": "<0.62",
-                "preflow/core": "<0.62",
+                "preflow/core": "<0.70",
                 "preflow/data": "<0.67"
             },
             "require-dev": {
@@ -3472,7 +3474,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/folio",
-                "reference": "40d16c85b078ca3f09f371cd86d0e62a1a1c0d30"
+                "reference": "0aa90e607d8a1c2a398b024c20a180c0af0f0514"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -3481,15 +3483,16 @@
                 "preflow/auth": "^0.69 || @dev",
                 "preflow/blocks": "^0.70 || @dev",
                 "preflow/components": "^0.1 || @dev",
-                "preflow/core": "^0.69.1 || @dev",
+                "preflow/core": "^0.70 || @dev",
                 "preflow/data": "^0.68 || @dev",
                 "preflow/devtools": "^0.20 || @dev",
                 "preflow/form": "^0.1 || @dev",
                 "preflow/htmx": "^0.65 || @dev",
-                "preflow/i18n": "^0.68 || @dev",
-                "preflow/media": "^0.50 || @dev",
+                "preflow/i18n": "^0.70 || @dev",
+                "preflow/media": "^0.70 || @dev",
                 "preflow/notify": "^0.69 || @dev",
-                "preflow/routing": "^0.59 || @dev",
+                "preflow/publishing": "^0.70 || @dev",
+                "preflow/routing": "^0.70 || @dev",
                 "preflow/twig": "^0.65 || @dev",
                 "preflow/validation": "^0.52 || @dev",
                 "preflow/view": "^0.65 || @dev",
@@ -3499,15 +3502,15 @@
                 "preflow/ai": "<0.66",
                 "preflow/auth": "<0.69",
                 "preflow/codes": "<0.68",
-                "preflow/core": "<0.69.1",
+                "preflow/core": "<0.70",
                 "preflow/data": "<0.68",
                 "preflow/htmx": "<0.65",
-                "preflow/i18n": "<0.68",
-                "preflow/media": "<0.50",
+                "preflow/i18n": "<0.70",
+                "preflow/media": "<0.70",
                 "preflow/members": "<0.68",
                 "preflow/notify": "<0.69",
-                "preflow/rbac": "<0.69",
-                "preflow/routing": "<0.59",
+                "preflow/rbac": "<0.69.1",
+                "preflow/routing": "<0.70",
                 "preflow/twig": "<0.65",
                 "preflow/validation": "<0.52",
                 "preflow/view": "<0.65"
@@ -3652,7 +3655,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/i18n",
-                "reference": "926f927730ac79f63edfb2412398a3ef29ede9fa"
+                "reference": "29d9254b60e936c5a15f2dcb3c6ecf73e61f4c41"
             },
             "require": {
                 "php": ">=8.4",
@@ -3676,7 +3679,8 @@
                 "preflow": {
                     "commands": [
                         "Preflow\\I18n\\Console\\TranslationsCheckCommand",
-                        "Preflow\\I18n\\Console\\TranslateWorkCommand"
+                        "Preflow\\I18n\\Console\\TranslateWorkCommand",
+                        "Preflow\\I18n\\Console\\TranslatePlanCommand"
                     ]
                 }
             },
@@ -3705,7 +3709,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/media",
-                "reference": "bf917718b6021d82cad948646bef4b7f02079467"
+                "reference": "7a5306d8217c973a6541fffe80d78a137a0c0d6b"
             },
             "require": {
                 "nyholm/psr7": "^1.8",
@@ -3718,16 +3722,18 @@
             "conflict": {
                 "preflow/core": "<0.54",
                 "preflow/data": "<0.60",
+                "preflow/i18n": "<0.47",
                 "preflow/routing": "<0.59",
                 "preflow/view": "<0.67"
             },
             "require-dev": {
                 "phpunit/phpunit": "^11.0",
-                "preflow/devtools": "^0.34 || @dev"
+                "preflow/devtools": "^0.34 || @dev",
+                "preflow/i18n": "^0.68 || @dev"
             },
             "suggest": {
                 "preflow/devtools": "The media:* commands",
-                "preflow/i18n": "Per-language alt text for assets"
+                "preflow/i18n": "Per-language alt text for assets, and alt texts as a machine-translation source"
             },
             "type": "library",
             "extra": {
@@ -3875,6 +3881,62 @@
                 "MIT"
             ],
             "description": "Preflow notify — send email, SMS and other messages through pluggable transports",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
+        },
+        {
+            "name": "preflow/publishing",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "packages/publishing",
+                "reference": "5719fb2e347d2de49c90fb350df2c21c56e89c04"
+            },
+            "require": {
+                "php": ">=8.4",
+                "preflow/core": "^0.70 || @dev",
+                "preflow/data": "^0.70 || @dev",
+                "preflow/validation": "^0.70 || @dev"
+            },
+            "conflict": {
+                "preflow/core": "<0.70",
+                "preflow/data": "<0.70",
+                "preflow/devtools": "<0.26",
+                "preflow/folio": "<0.71",
+                "preflow/validation": "<0.70"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^11.0",
+                "preflow/devtools": "^0.26 || @dev"
+            },
+            "suggest": {
+                "preflow/devtools": "The publish and publish:scheduled commands (php preflow)"
+            },
+            "type": "library",
+            "extra": {
+                "preflow": {
+                    "commands": [
+                        "Preflow\\Publishing\\Console\\PublishCommand",
+                        "Preflow\\Publishing\\Console\\PublishScheduledCommand"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Preflow\\Publishing\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Preflow\\Publishing\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Preflow publishing — drafts and published snapshots of records, revisions, scheduled publishing and share previews",
             "transport-options": {
                 "symlink": true,
                 "relative": true
@@ -8009,6 +8071,7 @@
         "preflow/media": 20,
         "preflow/members": 20,
         "preflow/notify": 20,
+        "preflow/publishing": 20,
         "preflow/rbac": 20,
         "preflow/roles": 20,
         "preflow/routing": 20,

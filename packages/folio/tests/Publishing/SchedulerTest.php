@@ -7,8 +7,8 @@ namespace Preflow\Folio\Tests\Publishing;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\Scheduler;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\Scheduler;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 
 final class SchedulerTest extends TestCase
@@ -68,6 +68,6 @@ final class SchedulerTest extends TestCase
     {
         $c = $this->app()->container();
 
-        return new Scheduler($c->get(Publisher::class), $c->get(TypeCatalog::class), $c->get(DataManager::class));
+        return new Scheduler($c->get(Publisher::class), new \Preflow\Folio\Publishing\FolioPublishingTypes($c->get(TypeCatalog::class)), $c->get(DataManager::class));
     }
 }

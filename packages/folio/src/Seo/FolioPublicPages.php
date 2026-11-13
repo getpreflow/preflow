@@ -8,7 +8,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\FrontendRoute;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\View\Geo\GeoConfig;
 use Preflow\View\Seo\PublicPage;
 use Preflow\View\Seo\SeoConfig;

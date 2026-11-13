@@ -6,7 +6,7 @@ namespace Tests\Site;
 
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Publishing\PublishedModels;
+use Preflow\Publishing\PublishedModels;
 use Preflow\Testing\TestResponse;
 use Psr\Http\Message\ResponseInterface;
 use Tests\Support\StarterApp;

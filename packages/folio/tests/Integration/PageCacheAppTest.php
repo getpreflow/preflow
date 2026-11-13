@@ -171,7 +171,7 @@ final class PageCacheAppTest extends TestCase
 
         // The same app rendered working copies before (an admin request): memos hold the drafts.
         $app = $this->app();
-        $app->container()->get(\Preflow\Folio\Content\LiveContent::class)->showWorkingCopies();
+        $app->container()->get(\Preflow\Publishing\LiveContent::class)->showWorkingCopies();
         $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
         $this->assertSame('Draft of one', $app->container()->get(\Preflow\Folio\Content\Collections::class)->list('post')[0]['title'] ?? null);
 
@@ -182,7 +182,7 @@ final class PageCacheAppTest extends TestCase
         $this->assertSame('<p>Public tagline</p><ul><li>Published one</li></ul>', $this->storedBody('/category'));
 
         // The admin request's own state is back afterwards.
-        $this->assertTrue($app->container()->get(\Preflow\Folio\Content\LiveContent::class)->showsWorkingCopies());
+        $this->assertTrue($app->container()->get(\Preflow\Publishing\LiveContent::class)->showsWorkingCopies());
         $this->assertSame('Draft tagline', $app->container()->get(\Preflow\Folio\Content\Singletons::class)->get('site')['tagline'] ?? null);
     }
 
@@ -289,7 +289,7 @@ final class PageCacheAppTest extends TestCase
         // Unpublished: the page at its address goes.
         $this->get('/joiner');
         $app = $this->app();
-        $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->unpublish('post', 'p2');
+        $app->container()->get(\Preflow\Publishing\Publisher::class)->unpublish('post', 'p2');
         $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
         $this->assertNull($this->stored('/joiner'));
         $this->assertNotSame('hit', $this->get('/joiner')->getHeaderLine('X-Page-Cache'), 'never served from the cache');
@@ -319,7 +319,7 @@ final class PageCacheAppTest extends TestCase
 
         // Deleted (RecordDeleter and member deletion go through Publisher::forget()).
         $app = $this->app();
-        $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->forget('post', 'p2');
+        $app->container()->get(\Preflow\Publishing\Publisher::class)->forget('post', 'p2');
         $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
         $this->assertNull($this->stored('/joiner'));
         $this->assertNotNull($this->stored('/carpenter'));
@@ -344,7 +344,7 @@ final class PageCacheAppTest extends TestCase
             $dm = $app->container()->get(\Preflow\Data\DataManager::class);
             $record = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get($type), ['uuid' => $id] + $data);
             $dm->saveType($record, false);
-            $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($record, null);
+            $app->container()->get(\Preflow\Publishing\Publisher::class)->publish($record, null);
             $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
         };
         $publish('page', 'home', ['title' => 'Welcome', 'path' => 'home']);
@@ -392,7 +392,7 @@ final class PageCacheAppTest extends TestCase
     private function publishNow(string $id, array $data): void
     {
         $app = $this->app();
-        $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($this->working('post', $id, $data), null);
+        $app->container()->get(\Preflow\Publishing\Publisher::class)->publish($this->working('post', $id, $data), null);
         $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
     }
 
@@ -688,7 +688,7 @@ final class PageCacheAppTest extends TestCase
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $record = \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('site'), ['uuid' => 'site', 'tagline' => ['en' => $tagline]]);
         $dm->saveType($record, false);
-        $app->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($record, null);
+        $app->container()->get(\Preflow\Publishing\Publisher::class)->publish($record, null);
         $app->container()->get(\Preflow\Core\PageCache\ChangeLog::class)->flush();
     }
 

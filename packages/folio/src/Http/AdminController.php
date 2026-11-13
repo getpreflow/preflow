@@ -24,9 +24,9 @@ use Preflow\Folio\Content\ReviewIndexUpdater;
 use Preflow\Folio\Content\RelationLabels;
 use Preflow\Folio\Content\DraftRecordFactory;
 use Preflow\Folio\Content\RecordValidator;
-use Preflow\Folio\Publishing\PublishState;
-use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\VersionConflict;
+use Preflow\Publishing\PublishState;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\VersionConflict;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
@@ -71,7 +71,7 @@ final class AdminController
         ?DraftRecordFactory $drafts = null,
         ?RecordValidator $validator = null,
         private readonly ?Publisher $publisher = null,
-        private readonly ?\Preflow\Folio\Publishing\PreviewLinks $previewLinks = null,
+        private readonly ?\Preflow\Publishing\PreviewLinks $previewLinks = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
         private readonly ?Customizations $customizations = null,
         private readonly ?\Preflow\Folio\Users\AuthorNames $authors = null,
@@ -1832,7 +1832,7 @@ final class AdminController
 
         return [
             'state' => $state->value,
-            'label' => $state->label(),
+            'label' => FolioText::get('folio.publishing.' . $state->value),
             'version' => (int) ($values['_version'] ?? 0),
             'publish_at' => is_string($values['_publish_at'] ?? null) ? $values['_publish_at'] : '',
             // Shown to those who may edit but not publish: saving cancels the schedule.

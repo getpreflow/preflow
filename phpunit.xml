@@ -79,6 +79,9 @@
         <testsuite name="Members">
             <directory>packages/members/tests</directory>
         </testsuite>
+        <testsuite name="Publishing">
+            <directory>packages/publishing/tests</directory>
+        </testsuite>
         <testsuite name="Examples">
             <directory>examples/folio-demo/tests</directory>
         </testsuite>
@@ -109,6 +112,7 @@
             <directory>packages/codes/src</directory>
             <directory>packages/media/src</directory>
             <directory>packages/members/src</directory>
+            <directory>packages/publishing/src</directory>
             <directory>packages/twig/src</directory>
             <directory>packages/blade/src</directory>
             <directory>packages/testing/src</directory>

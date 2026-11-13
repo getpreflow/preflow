@@ -6,7 +6,7 @@ namespace Preflow\Folio\Tests\Http;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Publishing\PublishState;
+use Preflow\Publishing\PublishState;
 use Preflow\Folio\Seo\SeoSection;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Data\Migration\MigrationRegistry;
@@ -190,7 +190,7 @@ final class SeoSectionFormTest extends TestCase
 
         $this->post('/folio/post/p1', ['_seo' => ['title' => 'Share me'], '_action' => 'publish'] + $form);
         $this->assertSame(PublishState::Published, $this->publisher()->state($this->stored('post', 'p1')));
-        $snapshot = $this->dm()->findIn(\Preflow\Folio\Publishing\ShadowTypes::published($this->dm()->getTypeRegistry()->get('post')), 'p1');
+        $snapshot = $this->dm()->findIn(\Preflow\Publishing\ShadowTypes::published($this->dm()->getTypeRegistry()->get('post')), 'p1');
         $this->assertNotNull($snapshot);
         $this->assertSame('Share me', SeoSection::fromRecord($snapshot)->title('en'), 'copied into the snapshot');
     }

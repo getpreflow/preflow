@@ -7,8 +7,8 @@ namespace Preflow\Folio\Members;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\PublishedCopies;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\PublishedCopies;
+use Preflow\Publishing\Publisher;
 
 /**
  * Carries a member's own deletion (MemberEvents::DELETED, the applied plan) into Folio's

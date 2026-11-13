@@ -13,7 +13,7 @@ use Preflow\Routing\Redirect\RedirectUrl;
  * record (type and id; its address is resolved when a link is followed) or a URL (an absolute
  * http(s) URL, or a path on this site).
  */
-final readonly class RemovalTarget
+final readonly class RemovalTarget implements \Preflow\Publishing\RemovalTarget
 {
     private function __construct(
         public ?string $type,

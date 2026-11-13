@@ -157,7 +157,8 @@ final class FolioServiceProviderTest extends TestCase
     }
 
     /** @param array<string, mixed> $folio */
-    private function appWith(array $folio): array
+    /** @param array<string, string> $files more files of the app, by path */
+    private function appWith(array $folio, array $files = []): array
     {
         $dir = sys_get_temp_dir() . '/folio_sp_' . bin2hex(random_bytes(5));
         $w = static function (string $rel, string $content) use ($dir): void {
@@ -176,6 +177,9 @@ final class FolioServiceProviderTest extends TestCase
         $w('app/Folio/CacheNotes/Extension.php', "<?php\nnamespace App\\Folio\\CacheNotes;\n#[\\Preflow\\Folio\\Extension\\Attributes\\FolioExtension(name: 'cache_notes', label: 'Cache notes')]\nfinal class Extension extends \\Preflow\\Folio\\Extension\\Extension {}\n");
         if (!class_exists(\App\Folio\CacheNotes\Extension::class, false)) {
             require $dir . '/app/Folio/CacheNotes/Extension.php';
+        }
+        foreach ($files as $rel => $content) {
+            $w($rel, $content);
         }
         $this->appDir = $dir;
         $app = Application::create($dir);
@@ -223,10 +227,16 @@ final class FolioServiceProviderTest extends TestCase
         $this->assertSame(15, $this->publishTimes(['publishing' => ['revisions' => '15']], 17));
     }
 
-    private function publishTimes(array $folio, int $times): int
+    public function test_config_publishing_wins_over_the_old_folio_key(): void
     {
-        [$app, $dir] = $this->appWith($folio);
-        $publisher = $app->container()->get(\Preflow\Folio\Publishing\Publisher::class);
+        $this->assertSame(3, $this->publishTimes(['publishing' => ['revisions' => 15]], 5, ['config/publishing.php' => "<?php\nreturn ['revisions' => 3];\n"]));
+    }
+
+    /** @param array<string, string> $files */
+    private function publishTimes(array $folio, int $times, array $files = []): int
+    {
+        [$app, $dir] = $this->appWith($folio, $files);
+        $publisher = $app->container()->get(\Preflow\Publishing\Publisher::class);
         $dm = $app->container()->get(\Preflow\Data\DataManager::class);
         $def = $dm->getTypeRegistry()->get('page');
         $record = \Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'r1', 'title' => 'T', 'slug' => 't']);

@@ -75,7 +75,7 @@ final class AssetCommandsTest extends TestCase
         $this->assertSame($id, $working->get('sections')[0]['tradeoff'][0]['cover']);
         $this->assertSame($id, $this->publisher()->snapshot('post', 'p1')?->get('cover'));
         $this->assertSame($id, $this->publisher()->revisions('post', 'p1')[0]->data['cover']);
-        $this->assertSame(\Preflow\Folio\Publishing\PublishState::Published, $this->publisher()->state($working));
+        $this->assertSame(\Preflow\Publishing\PublishState::Published, $this->publisher()->state($working));
     }
 
     public function test_import_is_idempotent_and_reports_missing(): void

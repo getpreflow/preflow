@@ -1,0 +1,43 @@
+{
+    "name": "preflow/publishing",
+    "description": "Preflow publishing — drafts and published snapshots of records, revisions, scheduled publishing and share previews",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "preflow/core": "^0.70 || @dev",
+        "preflow/data": "^0.70 || @dev",
+        "preflow/validation": "^0.70 || @dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "preflow/devtools": "^0.26 || @dev"
+    },
+    "suggest": {
+        "preflow/devtools": "The publish and publish:scheduled commands (php preflow)"
+    },
+    "conflict": {
+        "preflow/core": "<0.70",
+        "preflow/data": "<0.70",
+        "preflow/devtools": "<0.26",
+        "preflow/validation": "<0.70"
+    },
+    "autoload": {
+        "psr-4": {
+            "Preflow\\Publishing\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Preflow\\Publishing\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "preflow": {
+            "commands": [
+                "Preflow\\Publishing\\Console\\PublishCommand",
+                "Preflow\\Publishing\\Console\\PublishScheduledCommand"
+            ]
+        }
+    }
+}

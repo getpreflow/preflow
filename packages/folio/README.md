@@ -811,6 +811,20 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
 
 ## Drafts and publishing
 
+Publishing is its own package, [preflow/publishing](../publishing/README.md) (`Preflow\Publishing`,
+since 0.71): the `Publisher`, `LiveContent`, `PublishedModels`, revisions, scheduling, share
+previews, `config/publishing.php` and the commands `publish` and `publish:scheduled` are described
+there. Folio registers it and binds its own rules: which types publish (below), the validation a
+publish runs, the languages (`complete_languages`, machine marks), the review index, redirects and
+the page-cache tags of the addresses a record leaves and takes.
+
+- **Deprecated in 0.71, removed in 0.72:** `Preflow\Folio\Publishing\*` and
+  `Preflow\Folio\Content\LiveContent` (now `Preflow\Publishing\*`; the old `Publisher` still takes
+  its old arguments, `(DataManager, TypeCatalog, RecordValidator, …)`), `folio:publish` and
+  `folio:publish-scheduled` (now `publish` and `publish:scheduled`; the old names print a note), and
+  `config/folio.php` `'publishing'` (now `config/publishing.php`; read while that file does not exist,
+  with a deprecation note).
+
 Types with a `frontend` block and singletons publish by default. Set
 `"publishing": true|false` in the type JSON to override that.
 
@@ -843,10 +857,10 @@ header:
 - **Revisions:** every publish keeps a full copy in `{table}__revisions`, with the date,
   the user and the fields that changed. **Restore** copies one into the working copy,
   and it then has to be published again. Keep more or fewer revisions with
-  `config/folio.php`:
+  `config/publishing.php`:
 
   ```php
-  'publishing' => ['revisions' => 20, 'preview_ttl' => 604800],
+  return ['revisions' => 20, 'preview_ttl' => 604800];
   ```
 
   `0` or `null` keeps every revision (a missing key keeps 20). Anything but a whole number
@@ -858,21 +872,22 @@ header:
 Publish what is due from cron:
 
 ```
-*/5 * * * * cd /path/to/app && php preflow folio:publish-scheduled
+*/5 * * * * cd /path/to/app && php preflow publish:scheduled
 ```
 
 The command holds a lock, so overlapping runs do nothing. A record that fails validation
-stays scheduled and is reported on every run. To make Folio's commands available, list
-them in `config/commands.php`:
+stays scheduled and is reported on every run. `publish` and `publish:scheduled` come with
+preflow/publishing; to make Folio's own commands available, list them in `config/commands.php`:
 
 ```php
 return [...\Preflow\Folio\Console\FolioCommands::all()];
 ```
 
-`php preflow folio:publish <type> [--id=<id>] [--all]` publishes the drafts of a type
-at once. By default it skips records that are already published, and records whose
-legacy `frontend.published` field (e.g. `status`) does not say published. `--all`
-publishes every working copy, including unfinished edits.
+`php preflow publish <type> [--id=<id>] [--all]` publishes the drafts of a type
+at once. By default it skips records that are already published. `--all`
+publishes every working copy, including unfinished edits. The deprecated
+`folio:publish` also skips records whose legacy `frontend.published` field (e.g. `status`)
+does not say published.
 
 "Publish at" is a wall-clock time in `app.timezone` (`config/app.php`), which Preflow
 applies on boot, in web requests and in the CLI alike. A time in the past is not
@@ -885,7 +900,7 @@ stored.
 
 After deploying:
 1. On SQL storage, run the migrations below.
-2. Run `php preflow folio:publish <type>` for each such type.
+2. Run `php preflow publish <type>` for each such type.
 3. Or set `"publishing": false` to keep the previous behaviour.
 
 **Share preview links:**
@@ -904,7 +919,7 @@ for a record that is only a draft. The admin, the live preview and share-preview
 show working copies.
 
 **Live content in your own code:** read published content through
-`Preflow\Folio\Publishing\Publisher`. `->query('article')` returns a `QueryBuilder` over the
+`Preflow\Publishing\Publisher`. `->query('article')` returns a `QueryBuilder` over the
 snapshots (or over the records themselves when the type does not publish), and
 `->live($type, $id)` returns one record. Querying the type directly with `DataManager`
 returns working copies, drafts included.
@@ -937,7 +952,7 @@ status, an import), so an editor still on the old version conflicts instead of w
 content back; unchanged content (Folio's form: draft save, then publish; the scheduler) keeps
 the version. Read the version from the record after `publish()`. Without the third argument
 (`null`) the working copy is written unchecked (same version rule), as the scheduler,
-`folio:publish` and importers need. Folio's own form publish passes the version its
+`publish` and importers need. Folio's own form publish passes the version its
 draft save just wrote. `discard($type, $id, $loadedVersion)` and
 `restore($type, $id, $revision, $loadedVersion)` check the same way (they bump the version).
 
@@ -1953,14 +1968,14 @@ fields of blocks (also nested ones) and the texts a custom field type reports.
   (a published record becomes "changed"); nothing is published, and a stale `_version` is a
   conflict like any save. The route is `POST {prefix}/{type}/{id}/_translations/confirm`
   (`locale`, optional `path`, `_version`) and needs the type's edit permission.
-- **Publishing:** outdated never blocks. With `'publishing' => ['complete_languages' => true]`
-  in `config/folio.php` a record is not published while a language it is visible in
+- **Publishing:** outdated never blocks. With `'complete_languages' => true`
+  in `config/publishing.php` a record is not published while a language it is visible in
   (`_locales`) misses a text; the draft is saved and the error names the language and the
   texts (`_translations.de`). Off by default. Scheduled publishing reports such a record
   as failed. Machine translations nobody has checked yet (see `unchecked()`) show as a note
   with an accept button per field, a count on the language tab and a badge in the list (it
   links to the list narrowed with `?unchecked=1`). **Publishing is the check:** publishing a
-  record (form, bulk, `folio:publish`, the scheduler) clears the "not checked" marks of the
+  record (form, bulk, `publish`, the scheduler) clears the "not checked" marks of the
   languages it is visible in (**Visible in**, `_locales`), in the working copy and the
   published copy. Languages it is not visible in keep their marks: an AI write never ticks
   **Visible in**, so German nobody has looked at stays marked when the record is published for

@@ -14,17 +14,17 @@ use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\Collections;
 use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\FrontendResolver;
-use Preflow\Folio\Content\LiveContent;
+use Preflow\Publishing\LiveContent;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\Singletons;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\RelationFieldType;
 use Preflow\Folio\Field\Types\StringFieldType;
-use Preflow\Folio\Publishing\PublishState;
+use Preflow\Publishing\PublishState;
 use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\VersionConflict;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\VersionConflict;
+use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Storage\TableSync;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\Exporter;
@@ -64,7 +64,7 @@ final class SqliteContentTest extends TestCase
         $this->catalog = new TypeCatalog($this->dir . '/models');
         $this->dm = $this->dataManager($this->dir . '/a.sqlite');
         $this->publisher = new Publisher($this->dm, $this->catalog, new RecordValidator($this->fieldTypes(), $this->dm));
-        $this->live = new LiveContent($this->dm, $this->catalog);
+        $this->live = new LiveContent($this->dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog));
         $this->locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
     }
 
@@ -179,7 +179,7 @@ final class SqliteContentTest extends TestCase
         $this->assertSame([], array_filter($this->secondImportPlan($target), static fn (array $diff) => $diff !== ['added' => [], 'changed' => [], 'removed' => []]));
         $targetPublisher = new Publisher($target, $this->catalog, new RecordValidator($this->fieldTypes(), $target));
         $this->assertSame(PublishState::Changed, $targetPublisher->state($target->findType('post', 'p2') ?? throw new \RuntimeException()));
-        $this->assertSame('Two', (new LiveContent($target, $this->catalog))->find('post', 'p2')?->localized('en')->toArray()['title']);
+        $this->assertSame('Two', (new LiveContent($target, new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog)))->find('post', 'p2')?->localized('en')->toArray()['title']);
     }
 
     /** A re-export of the target imported into itself: nothing differs. */

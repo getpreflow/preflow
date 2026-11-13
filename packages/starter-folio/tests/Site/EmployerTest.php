@@ -10,7 +10,7 @@ use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 /** The employer area: sign-in, posting a draft, editing, publishing. */

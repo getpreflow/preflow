@@ -33,7 +33,7 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         private readonly DataManager $dm,
         private readonly TypeRegistry $registry,
         private readonly ?\Preflow\Folio\Content\ContentLocale $contentLocale = null,
-        private readonly ?\Preflow\Folio\Content\LiveContent $live = null,
+        private readonly ?\Preflow\Publishing\LiveContent $live = null,
         /** @var (\Closure(string): bool)|null permission check; null allows everything */
         private readonly ?\Closure $can = null,
         /** The admin prefix: the large-target picker searches {prefix}/_relation/{type}. Null keeps every picker inline. */

@@ -12,8 +12,8 @@ use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\PublishState;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\PublishState;
+use Preflow\Publishing\Publisher;
 use Preflow\Media\Image\ImageBackends;
 use Preflow\Media\MediaLibrary;
 

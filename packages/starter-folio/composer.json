@@ -19,6 +19,7 @@
         "preflow/form": "^0.70",
         "preflow/folio": "^0.70",
         "preflow/blocks": "^0.70",
+        "preflow/publishing": "^0.70",
         "preflow/media": "^0.70",
         "preflow/rbac": "^0.70",
         "preflow/notify": "^0.70",

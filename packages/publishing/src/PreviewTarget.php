@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Publishing;
+namespace Preflow\Publishing;
 
 /** What a verified share-preview token points at. */
 final readonly class PreviewTarget

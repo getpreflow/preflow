@@ -8,7 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Testing\MysqlTestDatabase;
 use Psr\Http\Message\ResponseInterface;
 
@@ -155,7 +155,7 @@ trait PublishingScaffold
         }, $skip);
         $racingDm = new \Preflow\Data\DataManager([$this->storage => $racing] + ['json' => $dm->driver('json'), 'default' => $dm->driver('default')], 'default', $dm->getTypeRegistry());
         $c->instance(\Preflow\Data\DataManager::class, $racingDm);
-        $c->instance(\Preflow\Folio\Publishing\Publisher::class, new \Preflow\Folio\Publishing\Publisher(
+        $c->instance(\Preflow\Publishing\Publisher::class, new \Preflow\Folio\Publishing\Publisher(
             $racingDm,
             $c->get(\Preflow\Folio\Content\TypeCatalog::class),
             $c->get(\Preflow\Folio\Content\RecordValidator::class),

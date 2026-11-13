@@ -7,7 +7,7 @@ namespace Preflow\Folio\Content;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\ShadowTypes;
 
 /**
  * Maps a public path to a published record of any type that declares a

@@ -4,50 +4,25 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Console;
 
-use Preflow\Data\DataManager;
+use Preflow\Core\Application;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\Scheduler;
+use Preflow\Publishing\Console\PublishScheduledCommand as PublishScheduled;
 
-/** Run from cron, e.g. every 5 minutes: cd /path/to/app && php preflow folio:publish-scheduled */
+/**
+ * @deprecated since 0.71, use "publish:scheduled" (preflow/publishing) in cron.
+ * folio:publish-scheduled still works for one release: it prints a note and runs publish:scheduled.
+ */
 final class PublishScheduledCommand implements CommandInterface
 {
     use BootsApplication;
 
     public function getName(): string { return 'folio:publish-scheduled'; }
-    public function getDescription(): string { return 'Publish Folio records whose "Publish at" time is due'; }
+    public function getDescription(): string { return 'Deprecated: use publish:scheduled'; }
 
     public function execute(array $args): int
     {
-        $app = $this->app();
-        $lockFile = $app->basePath('storage/locks/folio-publish-scheduled.lock');
-        @mkdir(dirname($lockFile), 0775, true);
-        $lock = fopen($lockFile, 'c');
-        if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
-            echo "Already running.\n";
-            return 0;
-        }
+        echo "Note: \"folio:publish-scheduled\" is deprecated; use \"publish:scheduled\".\n";
 
-        try {
-            $c = $app->container();
-            $result = (new Scheduler($c->get(Publisher::class), $c->get(TypeCatalog::class), $c->get(DataManager::class)))
-                ->runDue(new \DateTimeImmutable());
-        } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-        }
-
-        foreach ($result['published'] as $key) {
-            echo "Published {$key}\n";
-        }
-        foreach ($result['failed'] as $key => $reason) {
-            echo "Failed {$key}: {$reason}\n";
-        }
-        if ($result['published'] === [] && $result['failed'] === []) {
-            echo "Nothing due.\n";
-        }
-
-        return $result['failed'] === [] ? 0 : 1;
+        return (new PublishScheduled(fn (): Application => $this->app()))->execute($args);
     }
 }

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Publishing;
+namespace Preflow\Publishing;
 
 /** A save was based on an older _version than the stored working copy. */
 final class VersionConflict extends \RuntimeException

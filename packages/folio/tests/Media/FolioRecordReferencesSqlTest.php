@@ -17,7 +17,7 @@ use Preflow\Folio\Assets\AssetReferences;
 use Preflow\Blocks\BlockRegistry;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Media\FolioRecordReferences;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\TradeoffNoteBlock;

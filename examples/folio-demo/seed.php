@@ -22,7 +22,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Media\MediaLibrary;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 
 $base = isset($argv[1]) ? rtrim($argv[1], '/') : __DIR__;
 

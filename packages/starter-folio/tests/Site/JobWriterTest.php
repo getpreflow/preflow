@@ -11,7 +11,7 @@ use App\Models\Job;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Validation\ValidationException;
 use Tests\Support\StarterApp;
 

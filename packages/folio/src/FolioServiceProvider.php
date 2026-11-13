@@ -83,6 +83,21 @@ final class FolioServiceProvider extends ServiceProvider
         foreach (['Preflow\\Folio\\Block\\BlockRegistry' => BlockRegistry::class, 'Preflow\\Folio\\Block\\BlockRenderer' => \Preflow\Blocks\BlockRenderer::class] as $old => $new) {
             $container->bind($old, static fn (Container $c) => $c->get($new)); // deprecated names, the same services
         }
+        // The publishing core: Folio binds its rules (which types publish, validation, languages,
+        // the review index, redirects and page-cache tags) below and keeps the screens.
+        if (!$container->hasProvider(\Preflow\Publishing\PublishingServiceProvider::class)) {
+            $container->registerProvider(new \Preflow\Publishing\PublishingServiceProvider());
+        }
+        foreach ([
+            'Preflow\\Folio\\Publishing\\Publisher' => \Preflow\Publishing\Publisher::class,
+            'Preflow\\Folio\\Publishing\\PublishedModels' => \Preflow\Publishing\PublishedModels::class,
+            'Preflow\\Folio\\Publishing\\PublishedCopies' => \Preflow\Publishing\PublishedCopies::class,
+            'Preflow\\Folio\\Publishing\\PreviewLinks' => \Preflow\Publishing\PreviewLinks::class,
+            'Preflow\\Folio\\Publishing\\Scheduler' => \Preflow\Publishing\Scheduler::class,
+            'Preflow\\Folio\\Content\\LiveContent' => \Preflow\Publishing\LiveContent::class,
+        ] as $old => $new) {
+            $container->bind($old, static fn (Container $c) => $c->get($new)); // deprecated names (0.71), the same services
+        }
         // Machine translation from the i18n core, built on the AI core above.
         if (!$container->hasProvider(\Preflow\I18n\Machine\MachineServiceProvider::class)) {
             $container->registerProvider(new \Preflow\I18n\Machine\MachineServiceProvider());
@@ -232,7 +247,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $seo,
                 $geo,
                 $c->get(TypeCatalog::class),
-                $c->get(\Preflow\Folio\Publishing\Publisher::class),
+                $c->get(\Preflow\Publishing\Publisher::class),
                 $c->get(FrontendResolver::class),
             ));
             $container->get(\Preflow\View\Seo\PublicPages::class)->source(
@@ -374,7 +389,7 @@ final class FolioServiceProvider extends ServiceProvider
             ));
             $container->singleton(\Preflow\Folio\Redirects\LiveRecords::class, static fn (Container $c) => new \Preflow\Folio\Redirects\LiveRecords(
                 $c->get(DataManager::class),
-                $c->get(\Preflow\Folio\Publishing\Publisher::class),
+                $c->get(\Preflow\Publishing\Publisher::class),
                 $c->get(FrontendResolver::class),
             ));
             $container->singleton(\Preflow\Folio\Redirects\FolioRedirectTargets::class, static fn (Container $c) => new \Preflow\Folio\Redirects\FolioRedirectTargets(
@@ -524,14 +539,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Auth\Access\Access::class),
         ));
 
-        // Request-scoped: public renders read published snapshots, admin routes switch it to working copies.
-        $container->singleton(\Preflow\Folio\Content\LiveContent::class, fn (Container $c) => new \Preflow\Folio\Content\LiveContent(
-            $c->get(DataManager::class),
-            $c->get(TypeCatalog::class),
-        ));
         self::isolatePageCacheRenders($container);
         $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class,fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
-            $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
         $navCollapsed = self::navCollapsed($folioCfg);
@@ -616,7 +626,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(\Preflow\Data\DataManager::class),
                 $c->get(TypeRegistry::class),
                 $c->get(ContentLocale::class),
-                $c->get(\Preflow\Folio\Content\LiveContent::class),
+                $c->get(\Preflow\Publishing\LiveContent::class),
                 $can,
                 $prefix,
             ));
@@ -627,7 +637,7 @@ final class FolioServiceProvider extends ServiceProvider
                 new RecordRenderer($registry, $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
                 new RecordLabeler(),
                 $prefix,
-                $c->get(\Preflow\Folio\Content\LiveContent::class),
+                $c->get(\Preflow\Publishing\LiveContent::class),
                 $can,
             ));
             $registry->alias('int', 'number');
@@ -652,39 +662,16 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(FrontendResolver::class),
         ));
-        $keepRevisions = self::keepRevisions((array) ($folioConfig['publishing'] ?? []));
-        // App code's typed reads of what the public site sees of a model class (its published copies, as LiveContent decides).
-        $container->singleton(\Preflow\Folio\Publishing\PublishedModels::class, static fn (Container $c) => new \Preflow\Folio\Publishing\PublishedModels(
-            $c->get(DataManager::class),
-            $c->get(\Preflow\Folio\Content\LiveContent::class),
-        ));
-        $container->singleton(\Preflow\Folio\Publishing\Publisher::class, fn (Container $c) => new \Preflow\Folio\Publishing\Publisher(
-            $c->get(DataManager::class),
-            $c->get(TypeCatalog::class),
-            $c->get(\Preflow\Folio\Content\RecordValidator::class),
-            $keepRevisions,
-            null,
-            $c->get(\Preflow\Folio\Content\TranslationStatus::class),
-            (bool) ($folioConfig['publishing']['complete_languages'] ?? false),
-            $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
-            self::addresses($c),
-            // The page cache: the addresses a publish, unpublish or delete leaves and takes
-            $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
-            $c->get(FrontendResolver::class),
-        ));
+        $this->registerPublishing($container, $app, $folioConfig);
         $container->singleton(\Preflow\Folio\Content\ReviewIndexUpdater::class, fn (Container $c) => new \Preflow\Folio\Content\ReviewIndexUpdater(
             $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             (new RecordLabeler())->label(...),
         ));
-        $container->singleton(\Preflow\Folio\Publishing\PublishedCopies::class, fn (Container $c) => new \Preflow\Folio\Publishing\PublishedCopies(
-            $c->get(DataManager::class),
-            $c->get(\Preflow\Folio\Publishing\Publisher::class),
-        ));
         // A member's own deletion (preflow/members) counts pointers in published snapshots, as a staff delete does.
         if (interface_exists(\Preflow\Members\MemberDeleteCopies::class)) {
             $container->singleton(\Preflow\Members\MemberDeleteCopies::class, static fn (Container $c): \Preflow\Members\MemberDeleteCopies => new \Preflow\Folio\Members\FolioMemberDeleteCopies(
-                $c->get(\Preflow\Folio\Publishing\PublishedCopies::class),
+                $c->get(\Preflow\Publishing\PublishedCopies::class),
             ));
         }
         $container->singleton(\Preflow\Folio\Content\TranslationStatus::class, fn (Container $c) => new \Preflow\Folio\Content\TranslationStatus(
@@ -707,8 +694,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(FrontendResolver::class),
             $c->get(DraftRecordFactory::class),
             $c->get(\Preflow\Folio\Content\RecordValidator::class),
-            $c->get(\Preflow\Folio\Publishing\Publisher::class),
-            $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
+            $c->get(\Preflow\Publishing\Publisher::class),
+            $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(Customizations::class),
             new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
@@ -758,18 +745,14 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
-            $c->get(\Preflow\Folio\Publishing\Publisher::class),
+            $c->get(\Preflow\Publishing\Publisher::class),
             $prefix,
             $c->get(DataManager::class),
             $c->get(DraftRecordFactory::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
-            $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
+            $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(FrontendResolver::class),
             $c->get(\Preflow\Auth\Access\Access::class),
-        ));
-        $container->singleton(\Preflow\Folio\Publishing\PreviewLinks::class, fn () => new \Preflow\Folio\Publishing\PreviewLinks(
-            (string) $app->config()->get('app.key', ''),
-            (int) ($folioConfig['publishing']['preview_ttl'] ?? 604800),
         ));
         $container->bind(FrontendController::class, fn (Container $c) => new FrontendController(
             $c->get(FrontendResolver::class),
@@ -777,8 +760,8 @@ final class FolioServiceProvider extends ServiceProvider
             new RecordRenderer($c->get(FieldTypeRegistry::class), $c->get(\Preflow\Folio\View\FolioEngine::class), $c->get(ContentLocale::class)),
             $c->get(ContentLocale::class),
             $c->get(DataManager::class),
-            $c->get(\Preflow\Folio\Publishing\PreviewLinks::class),
-            $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\Publishing\PreviewLinks::class),
+            $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Content\FrontendGate::class),
             $c->get(\Preflow\Core\Error\ErrorHandler::class),
@@ -827,7 +810,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
-            $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
         ));
         $container->singleton(ExtensionSettings::class, fn (Container $c) => new ExtensionSettings(
@@ -840,7 +823,7 @@ final class FolioServiceProvider extends ServiceProvider
             (bool) $app->config()->get('app.debug', false),
         ));
         $container->singleton(\Preflow\Folio\Content\Collections::class, fn (Container $c) => new \Preflow\Folio\Content\Collections(
-            $c->get(\Preflow\Folio\Content\LiveContent::class),
+            $c->get(\Preflow\Publishing\LiveContent::class),
             $c->get(TypeCatalog::class),
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\Content\SafeRichText::class),
@@ -1043,7 +1026,7 @@ final class FolioServiceProvider extends ServiceProvider
         }
         $pageCache = $container->get(\Preflow\Core\PageCache\PageCache::class);
         $pageCache->isolate(static function () use ($container): \Closure {
-            $restores = [$container->get(\Preflow\Folio\Content\LiveContent::class)->isolate()];
+            $restores = [$container->get(\Preflow\Publishing\LiveContent::class)->isolate()];
             foreach ([\Preflow\Folio\Content\Collections::class, \Preflow\Folio\Content\Singletons::class] as $memo) {
                 // One not built yet starts empty; one built during the render is emptied after it.
                 $restores[] = $container->resolved($memo)
@@ -1061,8 +1044,8 @@ final class FolioServiceProvider extends ServiceProvider
                 }
             };
         });
-        $pageCache->refuseWhen('working-copy', static fn (): bool => $container->resolved(\Preflow\Folio\Content\LiveContent::class)
-            && $container->get(\Preflow\Folio\Content\LiveContent::class)->showsWorkingCopies());
+        $pageCache->refuseWhen('working-copy', static fn (): bool => $container->resolved(\Preflow\Publishing\LiveContent::class)
+            && $container->get(\Preflow\Publishing\LiveContent::class)->showsWorkingCopies());
     }
 
     /**
@@ -1425,8 +1408,8 @@ final class FolioServiceProvider extends ServiceProvider
             $container->get(\Preflow\Members\MemberEvents::class)->on(\Preflow\Members\MemberEvents::DELETED, static function (array $payload) use ($container): void {
                 (new \Preflow\Folio\Members\PublishedMemberDeletion(
                     $container->get(DataManager::class),
-                    $container->get(\Preflow\Folio\Publishing\Publisher::class),
-                    $container->get(\Preflow\Folio\Publishing\PublishedCopies::class),
+                    $container->get(\Preflow\Publishing\Publisher::class),
+                    $container->get(\Preflow\Publishing\PublishedCopies::class),
                 ))($payload);
             });
         }
@@ -1600,7 +1583,7 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_url',
                 callable: function (string $type, string $id, ?string $locale = null) use ($resolver, $container): ?string {
-                    $record = $container->get(\Preflow\Folio\Content\LiveContent::class)->find($type, $id);
+                    $record = $container->get(\Preflow\Publishing\LiveContent::class)->find($type, $id);
                     return $record === null ? null : $resolver()->urlFor($record, $locale ?? $container->get(ContentLocale::class)->get());
                 },
             ));
@@ -1831,7 +1814,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(DataManager::class),
                 $container->get(\Preflow\Folio\Content\TranslationStatus::class),
                 $container->get(FieldTypeRegistry::class),
-                $container->get(\Preflow\Folio\Publishing\Publisher::class),
+                $container->get(\Preflow\Publishing\Publisher::class),
                 new RecordLabeler(),
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
                 $container->get(\Preflow\Folio\Content\ReviewIndexUpdater::class),
@@ -1840,6 +1823,84 @@ final class FolioServiceProvider extends ServiceProvider
             ), static fn (): bool => $container->get(\Preflow\Folio\Content\TranslationStatus::class)->translatable(
                 $container->get(DataManager::class)->getTypeRegistry()?->get($key) ?? throw new \LogicException('Text sources need a TypeRegistry.'),
             ));
+        }
+    }
+
+    /**
+     * Folio's answers to the publishing core's questions, unless the app bound its own
+     * (preflow/publishing binds the plain defaults for the rest at boot): which types publish
+     * (the catalog), the rules (RecordValidator), the languages (TranslationStatus), the review
+     * index, and the addresses (redirects, page-cache tags). Its settings come from
+     * config/publishing.php; while that file does not exist, from config/folio.php 'publishing'
+     * (read until 0.72, with a deprecation note).
+     *
+     * For 0.71 the Publisher handed out is Folio's class of the old name (a subclass), so code
+     * that type-hints either name accepts it.
+     *
+     * @param array<string, mixed> $folioConfig
+     */
+    private function registerPublishing(Container $container, Application $app, array $folioConfig): void
+    {
+        $legacy = is_array($folioConfig['publishing'] ?? null) ? $folioConfig['publishing'] : null;
+        $container->singleton(\Preflow\Publishing\PublishingConfig::class, static function (Container $c) use ($app, $legacy): \Preflow\Publishing\PublishingConfig {
+            if ($legacy !== null && !$app->hasConfigFile('publishing')) {
+                self::deprecation($c, "config/folio.php 'publishing' moved to config/publishing.php (preflow/publishing: 'revisions', 'complete_languages', 'preview_ttl'); the old key is read until the next release.");
+            }
+
+            return \Preflow\Publishing\PublishingConfig::fromApp($app, $legacy);
+        });
+        if (!$container->bound(\Preflow\Publishing\PublishingTypes::class)) {
+            $container->singleton(\Preflow\Publishing\PublishingTypes::class, static fn (Container $c): \Preflow\Publishing\PublishingTypes => new \Preflow\Folio\Publishing\FolioPublishingTypes(
+                $c->get(TypeCatalog::class),
+            ));
+        }
+        if (!$container->bound(\Preflow\Publishing\RecordChecks::class)) {
+            $container->singleton(\Preflow\Publishing\RecordChecks::class, static fn (Container $c): \Preflow\Publishing\RecordChecks => new \Preflow\Folio\Publishing\FolioRecordChecks(
+                $c->get(\Preflow\Folio\Content\RecordValidator::class),
+            ));
+        }
+        if (!$container->bound(\Preflow\Publishing\LanguageChecks::class)) {
+            $container->singleton(\Preflow\Publishing\LanguageChecks::class, static fn (Container $c): \Preflow\Publishing\LanguageChecks => new \Preflow\Folio\Publishing\FolioLanguageChecks(
+                $c->get(\Preflow\Folio\Content\TranslationStatus::class),
+            ));
+        }
+        if (!$container->bound(\Preflow\Publishing\RecordIndex::class)) {
+            $container->singleton(\Preflow\Publishing\RecordIndex::class, static fn (Container $c): \Preflow\Publishing\RecordIndex => $c->get(\Preflow\Folio\Content\ReviewIndexUpdater::class));
+        }
+        if (!$container->bound(\Preflow\Publishing\RecordAddresses::class)) {
+            $container->singleton(\Preflow\Publishing\RecordAddresses::class, static fn (Container $c): \Preflow\Publishing\RecordAddresses => new \Preflow\Folio\Publishing\FolioRecordAddresses(
+                self::addresses($c),
+                // The page cache: the addresses a publish, unpublish or delete leaves and takes
+                $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
+                $c->get(FrontendResolver::class),
+            ));
+        }
+        $container->singleton(\Preflow\Publishing\Publisher::class, static function (Container $c): \Preflow\Publishing\Publisher {
+            $config = $c->get(\Preflow\Publishing\PublishingConfig::class);
+
+            return new \Preflow\Folio\Publishing\Publisher(
+                $c->get(DataManager::class),
+                $c->get(\Preflow\Publishing\PublishingTypes::class),
+                $c->get(\Preflow\Publishing\RecordChecks::class),
+                $config->revisions,
+                null,
+                $c->get(\Preflow\Publishing\LanguageChecks::class),
+                $config->completeLanguages,
+                $c->get(\Preflow\Publishing\RecordIndex::class),
+                $c->get(\Preflow\Publishing\RecordAddresses::class),
+            );
+        });
+    }
+
+    /** A deprecation note: in the debug toolbar (DebugCollector) and the site's log (its PSR logger), where bound. */
+    private static function deprecation(Container $c, string $message): void
+    {
+        if ($c->bound(\Preflow\Core\Debug\DebugCollector::class)) {
+            $c->get(\Preflow\Core\Debug\DebugCollector::class)->logDeprecation($message);
+        }
+        $logger = 'Psr\Log\LoggerInterface';
+        if (interface_exists($logger) && $c->bound($logger)) {
+            $c->get($logger)->warning('Deprecated: ' . $message);
         }
     }
 
@@ -2206,32 +2267,6 @@ final class FolioServiceProvider extends ServiceProvider
             return $data['models_path'];
         }
         return $app->basePath('config/models');
-    }
-
-    /**
-     * publishing.revisions: 0 or null keeps every revision; a missing key keeps 20. Checked at
-     * boot: a whole number (an int or a string of digits) of 0 or more, or null; anything else
-     * (a negative number, a float, text, a bool) throws.
-     *
-     * @param array<string, mixed> $publishing
-     */
-    private static function keepRevisions(array $publishing): ?int
-    {
-        if (!array_key_exists('revisions', $publishing)) {
-            return 20;
-        }
-        $value = $publishing['revisions'];
-        if ($value === null) {
-            return null;
-        }
-        if (is_string($value) && preg_match('/^-?\d+$/', $value) === 1) {
-            $value = (int) $value;
-        }
-        if (!is_int($value) || $value < 0) {
-            throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
-        }
-
-        return $value;
     }
 
     /**

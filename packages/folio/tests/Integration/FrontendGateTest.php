@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\UndeclaredPermission;
 use Preflow\Core\Application;
 use Preflow\Core\Http\Session\SessionInterface;
-use Preflow\Folio\Publishing\PreviewLinks;
+use Preflow\Publishing\PreviewLinks;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
 

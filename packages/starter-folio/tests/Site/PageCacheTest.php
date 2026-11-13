@@ -9,7 +9,7 @@ use App\Models\Job;
 use App\Models\User;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\PublishedModels;
+use Preflow\Publishing\PublishedModels;
 use Tests\Support\StarterApp;
 
 /** The page cache as production runs it: APP_DEBUG=0 (it is off while debugging). */

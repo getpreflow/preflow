@@ -6,6 +6,7 @@ namespace Preflow\Folio\Content;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Publishing\LiveContent;
 
 /**
  * One-off content (site settings…): a type flagged "singleton" holds one

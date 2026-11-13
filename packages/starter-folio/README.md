@@ -57,14 +57,14 @@ A known limit: Folio's own login at `/folio/login` compares the email case-sensi
 
 Staff accounts are not a model of this project: `preflow/rbac` defines the staff type (table `staff`) and the `staff` guard reads it through a `RecordUserProvider` (`config/auth.php`). Folio's revisions show a staff account by its name.
 
-### Publishing goes through Folio
+### Publishing goes through the Publisher
 
-There is no `status` field on `Job`. A job is public only when Folio has published it. The pages and the API read through `app/Jobs/JobSearch.php`, which uses Folio's `PublishedModels`, so a draft, or an edit nobody has published yet, never leaves that class. The list sorts by the `postedOn` field ("Posted on"), newest first, and then by the time Folio published the copy.
+There is no `status` field on `Job`. A job is public only when it has been published (by staff in Folio, or by its employer). The pages and the API read through `app/Jobs/JobSearch.php`, which uses `PublishedModels` (`preflow/publishing`), so a draft, or an edit nobody has published yet, never leaves that class. The list sorts by the `postedOn` field ("Posted on"), newest first, and then by the time Folio published the copy.
 
 Employers do not bypass this. `app/Jobs/JobWriter.php` is the one place that changes a job for the employer area and the API:
 
 - `create()` and `update()` change the working copy only.
-- `publish()` calls Folio's `Publisher`, as the Publish button in Folio does. The revision names the employer, so staff see who published it. It sets `postedOn` on the first publish. Publishing again, or unpublishing and publishing again, never moves a job to the top of the list.
+- `publish()` calls the `Publisher` (`preflow/publishing`), as the Publish button in Folio does. The revision names the employer, so staff see who published it. It sets `postedOn` on the first publish. Publishing again, or unpublishing and publishing again, never moves a job to the top of the list.
 - `unpublish()` and `delete()` go through the `Publisher` too, so no published copy is left behind.
 - `state()` is `draft`, `published`, or `changed` (published, with edits not yet published). The employer's job list and the API's owner view show it.
 
@@ -262,7 +262,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role.
 |---|---|
 | `app/Models/Job.php`, `Company.php` | `type: 'job'` / `type: 'company'` on `#[Entity]`; `Job::slug` is now `#[Validate('required', 'slug')]`; `Job` loses `status` and `publishedAt` and gains `postedOn`; `Company` gains `logo`; `Job::company` is a `#[Relation]` |
 | `app/Jobs/JobSearch.php` | Reads Folio's published copies (`PublishedModels`); `byId()` is new |
-| `app/Jobs/JobWriter.php` | The constructor takes `DataManager` and Folio's `Publisher` (starter 1 takes `DataManager` only); `publish()` takes the user and goes through Folio's `Publisher`; `state()` and `states()` are new; `create()`, `update()`, `unpublish()` and `delete()` keep their signatures |
+| `app/Jobs/JobWriter.php` | The constructor takes `DataManager` and the `Publisher` (`preflow/publishing`) (starter 1 takes `DataManager` only); `publish()` takes the user and goes through the `Publisher`; `state()` and `states()` are new; `create()`, `update()`, `unpublish()` and `delete()` keep their signatures |
 | `app/Jobs/JobResource.php` | `status` is the publish state; `published_at` is the posted date |
 | `app/Controllers/Api/JobsController.php`, `Site/EmployerJobController.php` | Call the new `publish()`; a failed publish gives a 422, or the form with the errors |
 | `app/Components/ErrorDemo/ErrorDemo.php` | The comment now points to the page it lives on |
@@ -312,7 +312,7 @@ Publishing in Folio, or an employer publishing a job, refreshes the pages that s
 7. Add these two cron jobs. The first rebuilds the pages that the page cache marked as outdated. The second publishes the content that staff scheduled with "Publish at":
    ```
    * * * * * cd /path/to/app && php preflow pages:work
-   * * * * * cd /path/to/app && php preflow folio:publish-scheduled
+   * * * * * cd /path/to/app && php preflow publish:scheduled
    ```
 8. Point the document root at `public/`. Keep `public/media` (the uploads) and `storage/` writable, and back them up together with the SQLite file in `storage/data`.
 9. Run `php preflow optimize`. Run it again after every deploy.

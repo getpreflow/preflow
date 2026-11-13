@@ -15,7 +15,7 @@ use Preflow\Media\AssetUploadException;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\AssetFieldType;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\ShadowTypes;
 
 /**
  * Move legacy upload paths into the asset library: folio:assets:import [--dry-run].

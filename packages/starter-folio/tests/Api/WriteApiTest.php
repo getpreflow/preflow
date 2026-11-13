@@ -10,7 +10,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\PersonalAccessToken;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Testing\TestResponse;
 use Tests\Support\StarterApp;
 

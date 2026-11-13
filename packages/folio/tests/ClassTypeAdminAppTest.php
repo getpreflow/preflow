@@ -6,7 +6,7 @@ namespace Preflow\Folio\Tests;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Publishing\PublishedModels;
+use Preflow\Publishing\PublishedModels;
 use Preflow\Folio\Tests\Fixtures\Models\Job;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 

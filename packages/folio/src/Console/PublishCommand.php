@@ -4,104 +4,56 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Console;
 
+use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\Folio\Content\FrontendRoute;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\PublishState;
-use Preflow\Folio\Publishing\Scheduler;
-use Preflow\Validation\ValidationException;
+use Preflow\Publishing\Console\PublishCommand as Publish;
 
 /**
- * Publish the drafts of a type, e.g. after turning "publishing" on for a type
- * with content. By default only records that were public before (the legacy
- * frontend.published field, when the type has it) and have never been
- * published; --all publishes every working copy, unfinished edits included.
+ * @deprecated since 0.71, use "publish" (preflow/publishing).
+ * folio:publish still works for one release: it prints a note and runs publish, which also skips
+ * the records that were not public before publishing was turned on (the legacy frontend
+ * "published" field, when the type still has it).
  */
 final class PublishCommand implements CommandInterface
 {
     use BootsApplication;
 
     public function getName(): string { return 'folio:publish'; }
-    public function getDescription(): string { return 'Publish drafts of a Folio type ([--id=<id>] [--all])'; }
+    public function getDescription(): string { return 'Deprecated: use publish'; }
 
     public function execute(array $args): int
     {
-        $type = '';
-        $id = null;
-        $all = false;
-        foreach ($args as $arg) {
-            if (str_starts_with($arg, '--id=')) {
-                $id = substr($arg, 5);
-            } elseif ($arg === '--all') {
-                $all = true;
-            } elseif (!str_starts_with($arg, '--')) {
-                $type = $arg;
-            }
-        }
+        echo "Note: \"folio:publish\" is deprecated; use \"publish\".\n";
 
-        $c = $this->app()->container();
-        $publisher = $c->get(Publisher::class);
-        if ($type === '' || !$publisher->enabled($type)) {
-            echo "Usage: preflow folio:publish <type> [--id=<id>] [--all] — \"{$type}\" is not a publishing type.\n";
-            return 1;
-        }
-
-        $dm = $c->get(DataManager::class);
-        $records = $id !== null
-            ? array_filter([$dm->findType($type, $id)])
-            : $dm->queryType($type)->get()->items();
-        $legacy = $this->legacyGate($c->get(TypeCatalog::class), $dm, $type);
-
-        $failed = false;
-        foreach ($records as $record) {
-            $key = $type . '/' . $record->getId();
-            $skip = $all ? null : $this->skipReason($publisher, $record, $legacy);
-            if ($skip !== null) {
-                echo "Skipped {$key} ({$skip}; use --all to publish anyway)\n";
-                continue;
-            }
-            try {
-                $publisher->publish($record, 'cli');
-                echo "Published {$key}\n";
-            } catch (ValidationException $e) {
-                $failed = true;
-                echo "Failed {$key}: " . Scheduler::firstMessage($e) . "\n";
-            }
-        }
-
-        return $failed ? 1 : 0;
-    }
-
-    /** @param array{0: string, 1: mixed}|null $legacy */
-    private function skipReason(Publisher $publisher, DynamicRecord $record, ?array $legacy): ?string
-    {
-        if ($publisher->state($record) !== PublishState::Draft) {
-            return 'already published';
-        }
-        if ($legacy !== null && $record->get($legacy[0]) !== $legacy[1]) {
-            return "{$legacy[0]} is not \"" . (is_scalar($legacy[1]) ? (string) $legacy[1] : '') . '"';
-        }
-
-        return null;
+        return (new Publish(fn (): Application => $this->app(), self::legacyGate(...), 'folio:publish'))->execute($args);
     }
 
     /**
-     * The legacy "published" field and value, when the type still has that field.
+     * The legacy "published" field and value, when the type still has that field: a record without
+     * that value was not public before.
      *
-     * @return array{0: string, 1: mixed}|null
+     * @return (\Closure(DynamicRecord): ?string)|null
      */
-    private function legacyGate(TypeCatalog $catalog, DataManager $dm, string $type): ?array
+    private static function legacyGate(Application $app, string $type): ?\Closure
     {
-        $frontend = $catalog->get($type)?->frontend;
+        $c = $app->container();
+        $frontend = $c->get(TypeCatalog::class)->get($type)?->frontend;
         if ($frontend === null) {
             return null;
         }
         $route = FrontendRoute::fromConfig($type, $frontend);
-        $fields = $dm->getTypeRegistry()?->get($type)->fields ?? [];
+        $fields = $c->get(DataManager::class)->getTypeRegistry()?->get($type)->fields ?? [];
+        if (!isset($fields[$route->publishedField])) {
+            return null;
+        }
+        [$field, $value] = [$route->publishedField, $route->publishedValue];
 
-        return isset($fields[$route->publishedField]) ? [$route->publishedField, $route->publishedValue] : null;
+        return static fn (DynamicRecord $record): ?string => $record->get($field) !== $value
+            ? "{$field} is not \"" . (is_scalar($value) ? (string) $value : '') . '"'
+            : null;
     }
 }

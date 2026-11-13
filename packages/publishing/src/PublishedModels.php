@@ -2,13 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Publishing;
+namespace Preflow\Publishing;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\Model;
 use Preflow\Data\ModelMetadata;
 use Preflow\Data\QueryBuilder;
-use Preflow\Folio\Content\LiveContent;
 
 /**
  * What the public site sees of a class-backed type, as objects of its class: the published

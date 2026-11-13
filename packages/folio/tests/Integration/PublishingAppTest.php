@@ -410,8 +410,8 @@ final class PublishingAppTest extends TestCase
         $publisher = $this->publisher();
         $this->assertSame(10, $publisher->snapshot('post', 'b')?->get('_order'));
         $this->assertSame(20, $publisher->snapshot('post', 'a')?->get('_order'));
-        $this->assertSame(\Preflow\Folio\Publishing\PublishState::Published, $publisher->state($this->stored('post', 'a')));
-        $this->assertSame(\Preflow\Folio\Publishing\PublishState::Published, $publisher->state($this->stored('post', 'b')));
+        $this->assertSame(\Preflow\Publishing\PublishState::Published, $publisher->state($this->stored('post', 'a')));
+        $this->assertSame(\Preflow\Publishing\PublishState::Published, $publisher->state($this->stored('post', 'b')));
     }
 
     public function test_destroy_removes_snapshot_and_revisions(): void
@@ -662,7 +662,7 @@ final class PublishingAppTest extends TestCase
         $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
         $this->shareToken('p1');
         $nonce = (string) $this->stored('post', 'p1')->get('_share_token');
-        $old = (new \Preflow\Folio\Publishing\PreviewLinks('folio-integration-test-key', 604800, fn (): int => time() - 8 * 86400))->create('post', 'p1', $nonce);
+        $old = (new \Preflow\Publishing\PreviewLinks('folio-integration-test-key', 604800, fn (): int => time() - 8 * 86400))->create('post', 'p1', $nonce);
 
         $this->assertSame(404, $this->getWithPreview('/hello', $old)->getStatusCode());
     }
@@ -859,7 +859,7 @@ final class PublishingAppTest extends TestCase
         $this->assertSame('/folio/post/p1/edit?locale=de&confirmed=1', $res->getHeaderLine('Location'));
         $stored = $this->stored('post', 'p1');
         $this->assertSame([], $status->outdated($def, $stored, 'de'));
-        $this->assertSame(\Preflow\Folio\Publishing\PublishState::Changed, $this->publisher()->state($stored));
+        $this->assertSame(\Preflow\Publishing\PublishState::Changed, $this->publisher()->state($stored));
         $this->assertSame('Hello', $this->publisher()->snapshot('post', 'p1')?->get('title')['en'] ?? null, 'the live page is untouched');
         $this->assertSame(['en' => 'Hello!', 'de' => 'Hallo'], $stored->get('title'));
         $this->assertStringContainsString('Marked as still correct', (string) $this->get('/folio/post/p1/edit?locale=de&confirmed=1')->getBody());

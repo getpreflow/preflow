@@ -12,7 +12,7 @@ use Preflow\Data\Locales;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\Collections;
 use Preflow\Folio\Content\ContentLocale;
-use Preflow\Folio\Content\LiveContent;
+use Preflow\Publishing\LiveContent;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
@@ -52,7 +52,7 @@ final class CollectionsTest extends TestCase
         $fieldTypes->register(new StringFieldType());
         $catalog = new TypeCatalog($this->dir . '/models');
         $this->publisher = new Publisher($this->dm, $catalog, new RecordValidator($fieldTypes, $this->dm));
-        $this->live = new LiveContent($this->dm, $catalog);
+        $this->live = new LiveContent($this->dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($catalog));
         $this->locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
     }
 

@@ -499,7 +499,7 @@ final class CustomizationTest extends TestCase
         $res = $this->send('POST', '/folio/note/n1', ['name' => 'Second', '_action' => 'publish']);
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('Second (checked)', $this->stored('note', 'n1')?->get('name'));
-        $this->assertSame('Second (checked)', $this->session->container()->get(\Preflow\Folio\Publishing\Publisher::class)->snapshot('note', 'n1')?->get('name'));
+        $this->assertSame('Second (checked)', $this->session->container()->get(\Preflow\Publishing\Publisher::class)->snapshot('note', 'n1')?->get('name'));
         $this->assertSame(['note-after:Second (checked)'], \App\Folio\Crm\Log::$entries);
     }
 
@@ -680,7 +680,7 @@ final class CustomizationTest extends TestCase
 
         $this->assertSame('busy', $this->stored('note', 'n1')?->get('mood'));
         $this->assertSame('First (checked) (checked)', $this->stored('note', 'n1')?->get('name'));
-        $this->assertSame('calm', $this->session->container()->get(\Preflow\Folio\Publishing\Publisher::class)->snapshot('note', 'n1')?->get('mood'));
+        $this->assertSame('calm', $this->session->container()->get(\Preflow\Publishing\Publisher::class)->snapshot('note', 'n1')?->get('mood'));
         $this->assertSame(['note-after:First (checked) (checked)'], \App\Folio\Crm\Log::$entries);
     }
 

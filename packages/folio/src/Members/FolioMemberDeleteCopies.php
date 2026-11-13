@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Members;
 
 use Preflow\Data\TypeDefinition;
-use Preflow\Folio\Publishing\PublishedCopies;
+use Preflow\Publishing\PublishedCopies;
 use Preflow\Members\MemberDeleteCopies;
 
 /**

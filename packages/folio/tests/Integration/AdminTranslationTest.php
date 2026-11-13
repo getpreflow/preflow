@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\AdminFormat;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\I18n\Translator;

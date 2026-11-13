@@ -38,6 +38,7 @@ jobs:
           - { local: 'packages/codes', remote: 'codes' }
           - { local: 'packages/media', remote: 'media' }
           - { local: 'packages/members', remote: 'members' }
+          - { local: 'packages/publishing', remote: 'publishing' }
           - { local: 'packages/core', remote: 'core' }
           - { local: 'packages/routing', remote: 'routing' }
           - { local: 'packages/view', remote: 'view' }

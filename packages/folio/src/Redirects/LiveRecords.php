@@ -7,7 +7,7 @@ namespace Preflow\Folio\Redirects;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Content\FrontendResolver;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Routing\Redirect\TargetIsLive;
 
 /**

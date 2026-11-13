@@ -9,7 +9,7 @@ use App\Models\Job;
 use Preflow\Data\PaginatedResult;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\SortDirection;
-use Preflow\Folio\Publishing\PublishedModels;
+use Preflow\Publishing\PublishedModels;
 
 /**
  * Everything the public pages and the API read. It reads Folio's published copies only, so a

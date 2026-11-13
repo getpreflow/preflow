@@ -7,8 +7,8 @@ namespace Tests\Api;
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\PublishState;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\PublishState;
+use Preflow\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 /** The public read side of the API. Nothing here renders HTML. */

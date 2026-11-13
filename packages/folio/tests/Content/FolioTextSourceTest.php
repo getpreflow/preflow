@@ -13,7 +13,7 @@ use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\PublishState;
+use Preflow\Publishing\PublishState;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Tests\Publishing\RacingDriver;
 use Preflow\Folio\Tests\Support\PublishingScaffold;

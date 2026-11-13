@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Publishing\LiveContent;
+
 /**
  * Records of a collection for public templates and app code (folio_list,
  * folio_find): live content only (published snapshots of publishing types;

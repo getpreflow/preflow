@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\ChangeLog;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Tests\Support\StarterApp;
 
 /** Folio's publishing is the only draft/published state: what staff publish is what the site and the API show. */

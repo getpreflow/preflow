@@ -41,11 +41,28 @@ final class PublishCommandsTest extends TestCase
         $this->assertNotNull($this->publisher()->snapshot('post', 'due'));
     }
 
+    public function test_the_old_names_say_so_and_still_publish(): void
+    {
+        $this->working('post', 'due', ['title' => ['en' => 'Due'], 'slug' => ['en' => 'due'], '_publish_at' => '2000-01-01T00:00']);
+        $this->working('post', 'later', ['title' => ['en' => 'Later'], 'slug' => ['en' => 'later'], '_publish_at' => '2999-01-01T00:00']);
+
+        [$code, $out] = $this->runCommand(new PublishScheduledCommand(fn () => $this->app()));
+
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('"folio:publish-scheduled" is deprecated; use "publish:scheduled"', $out);
+        $this->assertNotNull($this->publisher()->snapshot('post', 'due'));
+        $this->assertNull($this->publisher()->snapshot('post', 'later'));
+
+        [, $out] = $this->runCommand(new PublishCommand(fn () => $this->app()), ['nope']);
+        $this->assertStringContainsString('"folio:publish" is deprecated; use "publish"', $out);
+        $this->assertStringContainsString('preflow folio:publish <type>', $out);
+    }
+
     public function test_concurrent_run_is_locked_out(): void
     {
         $this->working('post', 'due', ['title' => ['en' => 'Due'], 'slug' => ['en' => 'due'], '_publish_at' => '2000-01-01T00:00']);
         @mkdir($this->dir . '/storage/locks', 0777, true);
-        $held = fopen($this->dir . '/storage/locks/folio-publish-scheduled.lock', 'c');
+        $held = fopen($this->dir . '/storage/locks/publish-scheduled.lock', 'c');
         $this->assertTrue(flock($held, LOCK_EX | LOCK_NB));
 
         [$code, $out] = $this->runCommand(new PublishScheduledCommand(fn () => $this->app()));

@@ -8,7 +8,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\TypeCatalog;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Translations\StoredOverrides;
 use Preflow\Media\MediaConfig;
 use Preflow\Media\MediaLibrary;

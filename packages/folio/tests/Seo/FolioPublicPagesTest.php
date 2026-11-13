@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\View\Geo\GeoEntries;
 use Preflow\View\Geo\GeoEntry;
 use Preflow\View\Seo\PublicPage;

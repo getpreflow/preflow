@@ -18,11 +18,11 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Field\Types\TextFieldType;
-use Preflow\Folio\Publishing\PublishState;
+use Preflow\Publishing\PublishState;
 use Preflow\I18n\Machine\FileReviewIndex;
 use Preflow\I18n\Machine\MachineMarks;
 use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\VersionConflict;
+use Preflow\Publishing\VersionConflict;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Redirects\LiveRecords;
 use Preflow\Folio\Redirects\RecordAddresses;
@@ -181,7 +181,7 @@ final class PublisherTest extends TestCase
 
         $p->publish($this->reload('post'), 'scheduler');
 
-        $due = (new \Preflow\Folio\Publishing\Scheduler($p, new TypeCatalog($this->dir . '/models'), $this->dm))
+        $due = (new \Preflow\Publishing\Scheduler($p, new \Preflow\Folio\Publishing\FolioPublishingTypes(new TypeCatalog($this->dir . '/models')), $this->dm))
             ->runDue(new \DateTimeImmutable('2026-10-20T10:00'));
         $this->assertSame([], $due['published']);
     }
@@ -877,7 +877,7 @@ final class PublisherTest extends TestCase
         $p->publish($this->article('r1', 'one'), null);
         $p->saveDraft($this->article('r1', 'two', ['_publish_at' => '2026-10-20T09:00']), null);
 
-        $due = (new \Preflow\Folio\Publishing\Scheduler($p, new TypeCatalog($this->dir . '/models'), $this->dm))
+        $due = (new \Preflow\Publishing\Scheduler($p, new \Preflow\Folio\Publishing\FolioPublishingTypes(new TypeCatalog($this->dir . '/models')), $this->dm))
             ->runDue(new \DateTimeImmutable('2026-10-20T10:00'));
 
         $this->assertSame(['article/r1'], $due['published']);
@@ -928,6 +928,20 @@ final class PublisherTest extends TestCase
 
         $p->unpublish('article', 'r1', RemovalTarget::parse('/elsewhere'));
         $this->assertNull($p->snapshot('article', 'r1'));
+    }
+
+    /** Review focus 4: a site that builds the old name with three arguments keeps working in 0.71. */
+    public function test_the_old_name_with_three_arguments_still_publishes(): void
+    {
+        $p = new Publisher($this->dm, new TypeCatalog($this->dir . '/models'), new RecordValidator($this->fieldTypes(), $this->dm));
+
+        $this->assertInstanceOf(\Preflow\Publishing\Publisher::class, $p);
+        $this->assertTrue($p->enabled('post'), 'a routed type publishes, as Folio says');
+        $this->assertFalse($p->enabled('memo'));
+        $p->publish(DynamicRecord::fromArray($this->registry->get('post'), ['uuid' => 'p1', 'title' => 'Hello']), null);
+        $this->assertSame('Hello', $p->snapshot('post', 'p1')?->get('title'));
+        $this->expectException(ValidationException::class);
+        $p->publish(DynamicRecord::fromArray($this->registry->get('post'), ['uuid' => 'p2', 'title' => '']), null);
     }
 
     private function publisher(?int $keep = 20, bool $complete = false, ?ReviewIndexUpdater $review = null): Publisher

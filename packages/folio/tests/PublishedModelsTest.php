@@ -6,7 +6,7 @@ namespace Preflow\Folio\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Migration\MigrationRegistry;
-use Preflow\Folio\Publishing\PublishedModels;
+use Preflow\Publishing\PublishedModels;
 use Preflow\Folio\Tests\Fixtures\Models\Job;
 use Preflow\Folio\Tests\Fixtures\Models\Poster;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
@@ -73,7 +73,7 @@ final class PublishedModelsTest extends TestCase
         $published = $app->container()->get(PublishedModels::class);
         $this->assertSame('Carpenter', $published->find(Job::class, $id)?->title, 'outside a preview: the published copy');
 
-        $app->container()->get(\Preflow\Folio\Content\LiveContent::class)->showWorkingCopies();
+        $app->container()->get(\Preflow\Publishing\LiveContent::class)->showWorkingCopies();
         $found = $published->find(Job::class, $id);
         $this->assertSame('Draft title', $found?->title, 'in a preview: the working copy');
         $this->assertSame(['Draft title'], array_map(static fn (Job $job): string => $job->title, $published->query(Job::class)->get()->items()));

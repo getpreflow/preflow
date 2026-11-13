@@ -18,7 +18,7 @@ use Preflow\I18n\Machine\ReviewIndex;
  * record's next Folio save or a rebuild (folio:review-index). For the same reason refresh() and
  * forget() never fail the save they follow: an index that cannot be written is logged, not thrown.
  */
-final class ReviewIndexUpdater
+final class ReviewIndexUpdater implements \Preflow\Publishing\RecordIndex
 {
     /** @param \Closure(DynamicRecord): string $title the record's label, as Folio's lists show it */
     public function __construct(

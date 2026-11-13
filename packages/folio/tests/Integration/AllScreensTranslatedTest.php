@@ -350,7 +350,7 @@ final class AllScreensTranslatedTest extends TestCase
         $save('code', ['uuid' => 'cd1', 'purpose' => 'members.book', 'code' => 'ABCD-EFGH', 'label' => 'One', 'max_uses' => 1, 'uses' => 0]);
         $record = $dm->findType('post', 'po1');
         $record->set('title', 'First, published');
-        $this->flow->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($record, 'old@site.test');
+        $this->flow->container()->get(\Preflow\Publishing\Publisher::class)->publish($record, 'old@site.test');
 
         $ids = ['page' => 'pg1', 'post' => 'po1', 'settings' => 'st1', 'staff' => 'sf1', 'member' => 'mb1', 'code' => 'cd1'];
         $role = $dm->queryType('rbac_role')->first();

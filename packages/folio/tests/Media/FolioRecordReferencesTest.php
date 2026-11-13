@@ -21,7 +21,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldTypeRegistry;
 use Preflow\Folio\Field\Types\StringFieldType;
 use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Tests\Fixtures\Blocks\HeroBlock\HeroBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\TradeoffNoteBlock;

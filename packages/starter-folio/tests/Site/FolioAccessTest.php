@@ -164,7 +164,7 @@ final class FolioAccessTest extends TestCase
         $editor = md5('starter-staff-2'); // the demo seed's editor@example.com, "Demo Editor"
         $record = $this->container()->get(DataManager::class)->findType('job', $job);
         $this->assertNotNull($record);
-        $this->container()->get(\Preflow\Folio\Publishing\Publisher::class)->publish($record, $editor);
+        $this->container()->get(\Preflow\Publishing\Publisher::class)->publish($record, $editor);
 
         $cookies = ['Cookie' => $this->cookieHeader($this->signInStaff('admin@example.com', 'demo-admin'))];
         $body = $this->get('/folio/job/' . $job . '/edit', $cookies)->assertOk()->body();

@@ -6,7 +6,7 @@ namespace App\Seeds;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 
 /**
  * The home page and the texts staff edit in Folio under Pages

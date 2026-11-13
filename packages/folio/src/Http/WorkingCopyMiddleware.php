@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Http;
 
-use Preflow\Folio\Content\LiveContent;
+use Preflow\Publishing\LiveContent;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;

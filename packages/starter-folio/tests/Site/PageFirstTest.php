@@ -7,7 +7,7 @@ namespace Tests\Site;
 use App\Seeds\ContentSeeder;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Media\Image\ImageBackends;
 use Tests\Support\StarterApp;
 

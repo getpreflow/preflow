@@ -9,8 +9,8 @@ use App\Models\Company;
 use App\Models\Job;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
-use Preflow\Folio\Publishing\Publisher;
-use Preflow\Folio\Publishing\PublishedModels;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\PublishedModels;
 use Tests\Support\StarterApp;
 
 /** The site's Folio extension (app/Folio/Jobs): open jobs per company in the list, a drafts notice on the dashboard. */

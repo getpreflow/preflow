@@ -131,7 +131,7 @@ final class MysqlAppTest extends TestCase
         try {
             $this->publisher()->publish($mine, 'me', 3);
             $this->fail('expected VersionConflict');
-        } catch (\Preflow\Folio\Publishing\VersionConflict $e) {
+        } catch (\Preflow\Publishing\VersionConflict $e) {
             $this->assertSame(4, $e->current);
         }
         $this->assertNull($this->publisher()->snapshot('post', 'p1'));

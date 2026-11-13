@@ -33,6 +33,7 @@
         "preflow/media": "@dev",
         "preflow/members": "@dev",
         "preflow/notify": "@dev",
+        "preflow/publishing": "@dev",
         "preflow/rbac": "@dev",
         "preflow/roles": "@dev",
         "preflow/routing": "@dev",
@@ -163,6 +164,11 @@
             "type": "path",
             "url": "packages/members",
             "options": { "symlink": true }
+        },
+        {
+            "type": "path",
+            "url": "packages/publishing",
+            "options": { "symlink": true }
         }
     ],
     "autoload": {},
@@ -181,6 +187,7 @@
             "Preflow\\Media\\Tests\\": "packages/media/tests/",
             "Preflow\\Members\\Tests\\": "packages/members/tests/",
             "Preflow\\Notify\\Tests\\": "packages/notify/tests/",
+            "Preflow\\Publishing\\Tests\\": "packages/publishing/tests/",
             "Preflow\\Rbac\\Tests\\": "packages/rbac/tests/",
             "Preflow\\Roles\\Tests\\": "packages/roles/tests/",
             "Preflow\\Validation\\Tests\\": "packages/validation/tests/",

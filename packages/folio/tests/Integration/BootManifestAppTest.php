@@ -18,7 +18,7 @@ use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\ExtensionsFile;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\I18n\TranslationRegistry;
 
 /**

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Publishing;
 
 use PHPUnit\Framework\TestCase;
-use Preflow\Folio\Publishing\PreviewLinks;
+use Preflow\Publishing\PreviewLinks;
 
 final class PreviewLinksTest extends TestCase
 {

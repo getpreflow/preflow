@@ -2,10 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Publishing;
+namespace Preflow\Publishing;
 
 use Preflow\Data\DataManager;
-use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -17,7 +16,7 @@ final class Scheduler
 {
     public function __construct(
         private readonly Publisher $publisher,
-        private readonly TypeCatalog $catalog,
+        private readonly PublishingTypes $types,
         private readonly DataManager $dm,
     ) {}
 
@@ -26,17 +25,14 @@ final class Scheduler
     {
         $published = [];
         $failed = [];
-        foreach ($this->catalog->all() as $listing) {
-            if (!$listing->publishing) {
-                continue;
-            }
-            foreach ($this->dm->queryType($listing->key)->get()->items() as $working) {
+        foreach ($this->types->publishing() as $type) {
+            foreach ($this->dm->queryType($type)->get()->items() as $working) {
                 $at = $working->get('_publish_at');
                 $due = is_string($at) ? \DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $at, $now->getTimezone()) : false;
                 if ($due === false || $due > $now) {
                     continue;
                 }
-                $key = $listing->key . '/' . $working->getId();
+                $key = $type . '/' . $working->getId();
                 try {
                     $this->publisher->publish($working, 'scheduler');
                     $published[] = $key;

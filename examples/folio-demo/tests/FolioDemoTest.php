@@ -128,7 +128,7 @@ final class FolioDemoTest extends TestCase
 
         $app = Application::create($copy);
         $app->boot();
-        $publisher = $app->container()->get(\Preflow\Folio\Publishing\Publisher::class);
+        $publisher = $app->container()->get(\Preflow\Publishing\Publisher::class);
         $get = fn (string $uri): int => $app->handle((new Psr17Factory())->createServerRequest('GET', $uri))->getStatusCode();
 
         $this->assertTrue($publisher->enabled('page'));

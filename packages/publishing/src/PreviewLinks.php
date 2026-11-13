@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Preflow\Folio\Publishing;
+namespace Preflow\Publishing;
 
 /**
  * Signed share-preview tokens: base64url(json [type, id, nonce, expires]) "."

@@ -8,7 +8,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
-use Preflow\Folio\Publishing\Publisher;
+use Preflow\Publishing\Publisher;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Support\MemberFlows;

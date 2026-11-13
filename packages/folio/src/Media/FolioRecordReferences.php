@@ -15,7 +15,7 @@ use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\RecordLabeler;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Content\TypeListing;
-use Preflow\Folio\Publishing\ShadowTypes;
+use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Seo\SeoSection;
 use Preflow\Media\Usage\AssetReferenceSource;
 use Preflow\Media\Usage\AssetUsageEntry;
