@@ -78,6 +78,6 @@ final class ExtendedTypeAppTest extends TestCase
     /** @return list<string> */
     private function migrateStep(): array
     {
-        return ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+        return \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
     }
 }

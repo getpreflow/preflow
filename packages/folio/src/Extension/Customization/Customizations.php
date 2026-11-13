@@ -23,6 +23,7 @@ use Preflow\Folio\Extension\ListNotice;
 use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\SaveRecord;
+use Preflow\Publishing\WriteKind;
 
 /**
  * The enabled type customizations (#[FolioType] parts of enabled extensions), by type key,
@@ -171,7 +172,7 @@ final class Customizations
                                     throw new ExtensionException("Type \"{$key}\" has more than one #[SaveRecord]; {$where} is the second.");
                                 }
                             }
-                            $types[$key]['hooks'][$attributeClass][] = $call;
+                            $types[$key]['hooks'][$attributeClass][] = $meta instanceof BeforeSave || $meta instanceof AfterSave ? self::saveHook($method, $call) : $call;
                         }
                     }
                 }
@@ -304,12 +305,34 @@ final class Customizations
         return $notices;
     }
 
-    /** @param class-string $hook one of HOOKS (BeforeSave::class, ...) */
-    public function runHooks(string $hook, DynamicRecord $record): void
+    /**
+     * @param class-string $hook one of HOOKS (BeforeSave::class, ...)
+     * @param WriteKind $kind the kind of write, for #[BeforeSave] and #[AfterSave] methods that take it
+     */
+    public function runHooks(string $hook, DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
     {
+        $save = $hook === BeforeSave::class || $hook === AfterSave::class;
         foreach ($this->types[$record->getType()->key]['hooks'][$hook] ?? [] as $call) {
-            $call($record);
+            $save ? $call($record, $kind) : $call($record);
         }
+    }
+
+    /**
+     * A #[BeforeSave] or #[AfterSave] method as runHooks() calls it, with the record and the kind of
+     * write: the method gets the kind when its second parameter is typed WriteKind (looked at once,
+     * here), else the record alone.
+     *
+     * @return \Closure(DynamicRecord, WriteKind): mixed
+     */
+    private static function saveHook(\ReflectionMethod $method, \Closure $call): \Closure
+    {
+        $second = $method->getParameters()[1] ?? null;
+        $type = $second?->getType();
+        if ($type instanceof \ReflectionNamedType && $type->getName() === WriteKind::class) {
+            return static fn (DynamicRecord $record, WriteKind $kind): mixed => $call($record, $kind);
+        }
+
+        return static fn (DynamicRecord $record, WriteKind $kind): mixed => $call($record);
     }
 
     public function hasSaveRecord(string $type): bool

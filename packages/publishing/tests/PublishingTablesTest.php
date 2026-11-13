@@ -71,6 +71,37 @@ final class PublishingTablesTest extends PublishingAppTestCase
         $this->assertSame(['title'], $p->revisions('article', 'a1')[0]->changed);
     }
 
+    public function test_a_restore_clears_an_app_column_the_old_revision_lacks(): void
+    {
+        // An app's column besides the fields (Folio: the SEO section), bound before the tables are made.
+        $this->app()->container()->singleton(RecordColumns::class, static fn (): RecordColumns => new class implements RecordColumns {
+            public function columns(\Preflow\Data\TypeDefinition $def): array
+            {
+                return ['_seo', '_version'];
+            }
+        });
+        $this->migrate();
+        $p = $this->publisher();
+        $p->saveDraft(DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('article'), ['uuid' => 'a1', 'title' => 'One']), null);
+        $p->publish($this->stored('article', 'a1'), 'ana');
+        // A revision from before the column existed has no such key.
+        $first = $p->revisions('article', 'a1')[0];
+        $data = $first->data;
+        unset($data['_seo']);
+        $this->dm()->execute('UPDATE article__revisions SET data = ? WHERE uuid = ?', [json_encode($data), $first->id], 'sqlite');
+        $again = $this->stored('article', 'a1');
+        $again->set('title', 'Two');
+        $again->set('_seo', '{"title":"Two"}');
+        $p->publish($again, 'ana');
+        $this->assertSame('{"title":"Two"}', $this->stored('article', 'a1')->get('_seo'));
+
+        $p->restore('article', 'a1', $first->id);
+
+        $this->assertSame('One', $this->stored('article', 'a1')->get('title'));
+        $this->assertNull($this->stored('article', 'a1')->get('_seo'), 'cleared: SQL would keep the current value of a column left unnamed');
+        $this->assertNotNull($this->stored('article', 'a1')->get('_version'), 'the system keys are kept');
+    }
+
     /** @return list<string> */
     private function migrate(): array
     {

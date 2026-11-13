@@ -30,6 +30,7 @@ use Preflow\Publishing\DeleteRefused;
 use Preflow\Publishing\RecordDeleter;
 use Preflow\Publishing\RecordWriter;
 use Preflow\Publishing\SaveOptions;
+use Preflow\Publishing\WriteKind;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
@@ -713,6 +714,9 @@ final class AdminController
                 $this->writer->reorder($type, $id, $direction);
             } catch (ValidationException $e) {
                 self::flash($request, 'error', self::errorText($e));
+            } catch (\InvalidArgumentException) {
+                // RecordTypes, not the catalog, says what is orderable: a site's own may disagree.
+                return new Response(404, [], FolioText::get('folio.errors.not_found'));
             }
         }
 
@@ -875,7 +879,7 @@ final class AdminController
         $stored = $fieldType->toStorage($fieldType->normalizeInput($value, $fieldDef->config));
 
         // Not from the post: a bulk set is no form (no loaded version, no schedule of its own).
-        $options = new SaveOptions(by: self::userId($request), mayPublish: $this->can($type . '.publish'));
+        $options = new SaveOptions(by: self::userId($request), mayPublish: $this->can($type . '.publish'), kind: WriteKind::Bulk);
         $done = 0;
         $failed = [];
         $left = [];

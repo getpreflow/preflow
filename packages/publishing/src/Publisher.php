@@ -20,7 +20,9 @@ use Preflow\Validation\ValidationResult;
  * What an app adds comes in through interfaces (the provider binds a default for each the app
  * leaves open): which types publish (PublishingTypes), the rules a publish checks
  * (RecordChecks), the languages a record must be complete in (LanguageChecks), an index that
- * follows each save (RecordIndex) and the record's public addresses (RecordAddresses).
+ * follows each save (RecordIndex), the record's public addresses (RecordAddresses) and the
+ * columns the app writes besides the fields (RecordColumns: a restore clears those an old
+ * revision lacks).
  *
  * Not final for 0.71 only: Folio's class of the old name extends it to take the
  * constructor arguments of before 0.71. It is final again from 0.72.
@@ -51,6 +53,7 @@ class Publisher
         private readonly bool $completeLanguages = false,
         private readonly ?RecordIndex $index = null,
         private readonly ?RecordAddresses $addresses = null,
+        private readonly ?RecordColumns $columns = null,
     ) {
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
@@ -399,18 +402,19 @@ class Publisher
     /**
      * Reset the working copy to the published content; null when nothing is published.
      * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
+     * $publishAt as for restore(); callers discard through RecordWriter::discard().
      *
      * @throws VersionConflict
      * @throws ValidationException when another record has taken a unique value since (nothing saved)
      */
-    public function discard(string $type, string $id, ?int $loadedVersion = null): ?DynamicRecord
+    public function discard(string $type, string $id, ?int $loadedVersion = null, ?string $publishAt = null): ?DynamicRecord
     {
         $snapshot = $this->snapshot($type, $id);
         if ($snapshot === null) {
             return null;
         }
 
-        return $this->replaceContent($type, $id, $snapshot->toArray(), $loadedVersion);
+        return $this->replaceContent($type, $id, $snapshot->toArray(), $loadedVersion, $publishAt);
     }
 
     /**
@@ -542,10 +546,12 @@ class Publisher
         if ($publishAt !== null) {
             $data['_publish_at'] = $publishAt;
         }
-        // A snapshot from before a field or a translation key (LanguageChecks::stateKeys()) existed has no
-        // such key; SQL leaves unnamed columns as they are, which would keep the working row's current ones.
+        // A snapshot from before a field, a translation key (LanguageChecks::stateKeys()) or an app's
+        // column (RecordColumns, but the system keys) existed has no such key; SQL leaves unnamed columns
+        // as they are, which would keep the working row's current ones.
         // Other columns (a site's own) are not content and stay as they are.
-        foreach ([...array_keys($def->fields), ...($this->languages?->stateKeys() ?? [])] as $key) {
+        $columns = array_diff($this->columns?->columns($def) ?? [], self::META);
+        foreach ([...array_keys($def->fields), ...($this->languages?->stateKeys() ?? []), ...$columns] as $key) {
             if ($key !== $def->idField && !array_key_exists($key, $data)) {
                 $data[$key] = null;
             }

@@ -16,6 +16,7 @@ use Preflow\Publishing\PublishState;
 use Preflow\Publishing\RecordWriter;
 use Preflow\Publishing\SaveOptions;
 use Preflow\Publishing\VersionConflict;
+use Preflow\Publishing\WriteKind;
 use Preflow\Validation\ValidationException;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -59,7 +60,7 @@ final class PublishingController
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
 
         try {
-            $this->writer->save($record, new SaveOptions(mayPublish: $this->mayPublish($type), loadedVersion: $loaded));
+            $this->writer->save($record, new SaveOptions(mayPublish: $this->mayPublish($type), loadedVersion: $loaded, kind: WriteKind::Autosave));
         } catch (VersionConflict) {
             return $this->status(\Preflow\Folio\FolioText::get('folio.publishing.not_saved_conflict'), null, true);
         } catch (ValidationException $e) {
@@ -159,7 +160,7 @@ final class PublishingController
             return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
         try {
-            $this->publisher->discard($type, $id);
+            $this->writer->discard($type, $id, new SaveOptions(mayPublish: $this->mayPublish($type)));
         } catch (ValidationException $e) {
             self::flash($request, 'error', self::refusal('folio.publishing.not_discarded', $this->dm->getTypeRegistry()?->get($type), $e));
         }

@@ -16,8 +16,8 @@ use Preflow\Data\Schema\RecordTables;
  * (Scheduler, publish:scheduled), share previews (PreviewLinks) and the public reads of
  * LiveContent and PublishedModels, configured by config/publishing.php (PublishingConfig).
  *
- * The Publisher asks PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and
- * RecordAddresses, the tables (PublishingTables, the `publishing.tables` migrate step) ask
+ * The Publisher asks PublishingTypes, RecordChecks, LanguageChecks, RecordIndex,
+ * RecordAddresses and RecordColumns, the tables (PublishingTables, the `publishing.tables` migrate step) ask
  * RecordColumns, and `publish` asks PublishSkips. RecordWriter and RecordDeleter, the one write
  * and delete path for records, also ask SaveHooks and RecordTypes. A provider (the app's, Folio)
  * binds its own in register(), and boot() binds the plain defaults for the rest.
@@ -45,6 +45,7 @@ final class PublishingServiceProvider extends ServiceProvider
                 $config->completeLanguages,
                 $c->get(RecordIndex::class),
                 $c->get(RecordAddresses::class),
+                $c->get(RecordColumns::class),
             );
         });
         $container->singleton(Scheduler::class, static fn (Container $c): Scheduler => new Scheduler(
@@ -87,6 +88,9 @@ final class PublishingServiceProvider extends ServiceProvider
             $c->get(RecordTypes::class),
             $c->get(RecordIndex::class),
             $c->get(RecordAddresses::class),
+            null,
+            // psr/log is suggested, not required: a bound logger gets RecordWriter's warnings.
+            interface_exists(\Psr\Log\LoggerInterface::class) && $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
         ));
         $container->singleton(RecordDeleter::class, static fn (Container $c): RecordDeleter => new RecordDeleter(
             $c->get(DataManager::class),

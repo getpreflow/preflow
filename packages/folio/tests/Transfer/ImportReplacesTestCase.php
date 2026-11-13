@@ -77,7 +77,7 @@ abstract class ImportReplacesTestCase extends TestCase
             ],
         ]);
         if ($this->storage() !== 'json') {
-            ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'])();
+            \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
         }
     }
 

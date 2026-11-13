@@ -84,11 +84,11 @@ final class MemberSelfDeletionPublishedTest extends TestCase
         $this->publishedOrder('o1', $m);
         $c = $this->flow->container();
         $refusing = new class implements \Preflow\Publishing\SaveHooks {
-            public function before(DynamicRecord $record): void
+            public function before(DynamicRecord $record, \Preflow\Publishing\WriteKind $kind = \Preflow\Publishing\WriteKind::Save): void
             {
                 throw new \Preflow\Validation\ValidationException(new \Preflow\Validation\ValidationResult(['member' => ['Orders keep their member.']]));
             }
-            public function after(DynamicRecord $record): void {}
+            public function after(DynamicRecord $record, \Preflow\Publishing\WriteKind $kind = \Preflow\Publishing\WriteKind::Save): void {}
             public function beforeDelete(DynamicRecord $record): void {}
             public function afterDelete(DynamicRecord $record): void {}
             public function replacesSave(string $type): bool { return false; }

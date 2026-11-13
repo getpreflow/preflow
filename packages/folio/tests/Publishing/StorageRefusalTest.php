@@ -184,7 +184,7 @@ final class StorageRefusalTest extends TestCase
                 'slug' => ['type' => 'string', 'label' => 'Slug', 'unique' => true],
             ],
         ]);
-        ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
+        \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
     }
 
     /** A session that records flashes. */

@@ -15,7 +15,7 @@ use Preflow\Folio\Transfer\Exporter;
 use Preflow\Folio\Transfer\Importer;
 use Preflow\Testing\MysqlTestDatabase;
 
-/** The publishing scaffold with MySQL-stored types, tables made by the `folio.tables` migrate step. */
+/** The publishing scaffold with MySQL-stored types, tables made by the `publishing.tables` and `folio.tables` migrate steps. */
 #[Group('mysql')]
 final class MysqlAppTest extends TestCase
 {
@@ -372,6 +372,6 @@ final class MysqlAppTest extends TestCase
 
     private function migrateStep(): array
     {
-        return ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
+        return \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
     }
 }

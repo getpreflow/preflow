@@ -16,6 +16,7 @@ use Preflow\Publishing\Publisher;
 use Preflow\Publishing\RecordWriter;
 use Preflow\Publishing\SaveOptions;
 use Preflow\Publishing\VersionConflict;
+use Preflow\Publishing\WriteKind;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextFormat;
 use Preflow\I18n\Machine\TextSource;
@@ -288,7 +289,7 @@ final class FolioTextSource implements TextSource
         // the record is already taken care of above (texts left alone, kept fields), so only a save
         // landing from here on conflicts.
         try {
-            $this->writer->save($after, new SaveOptions(mayPublish: false, loadedVersion: $live ? null : (int) ($record->get('_version') ?? 0)));
+            $this->writer->save($after, new SaveOptions(mayPublish: false, loadedVersion: $live ? null : (int) ($record->get('_version') ?? 0), kind: WriteKind::Translate));
         } catch (ValidationException $e) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, self::firstError($e), $hadDraftChanges);
         }

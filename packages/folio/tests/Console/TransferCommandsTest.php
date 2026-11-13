@@ -201,7 +201,7 @@ final class TransferCommandsTest extends TestCase
     {
         $this->removeScaffold();
         $this->scaffoldPublishing('sqlite');
-        ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+        \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
         $file = $this->dir . '/x.tar';
         $s = fopen($file, 'w+b');

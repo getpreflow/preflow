@@ -61,11 +61,11 @@ Staff accounts are not a model of this project: `preflow/rbac` defines the staff
 
 There is no `status` field on `Job`. A job is public only when it has been published (by staff in Folio, or by its employer). The pages and the API read through `app/Jobs/JobSearch.php`, which uses `PublishedModels` (`preflow/publishing`), so a draft, or an edit nobody has published yet, never leaves that class. The list sorts by the `postedOn` field ("Posted on"), newest first, and then by the time Folio published the copy.
 
-Employers do not bypass this. `app/Jobs/JobWriter.php` is the one place that changes a job for the employer area and the API:
+Employers do not bypass this. `app/Jobs/JobWriter.php` is the one place that changes a job for the employer area and the API. It takes the `DataManager`, the `Publisher`, the `RecordWriter` and the `RecordDeleter` (`preflow/publishing`), and writes through the last two, so the type's hooks and rules run as they do in Folio:
 
-- `create()` and `update()` change the working copy only.
-- `publish()` calls the `Publisher` (`preflow/publishing`), as the Publish button in Folio does. The revision names the employer, so staff see who published it. It sets `postedOn` on the first publish. Publishing again, or unpublishing and publishing again, never moves a job to the top of the list.
-- `unpublish()` and `delete()` go through the `Publisher` too, so no published copy is left behind.
+- `create()` and `update()` change the working copy only (`RecordWriter::create()` and `save()`). `update()` takes `mayPublish`: a save by an account without `job.publish` cancels a publish staff scheduled in Folio, as a save in the admin does.
+- `publish()` saves and publishes through the `RecordWriter` (`SaveOptions(publish: true)`), as the Publish button in Folio does. The revision names the employer, so staff see who published it. It sets `postedOn` on the first publish. Publishing again, or unpublishing and publishing again, never moves a job to the top of the list.
+- `unpublish()` goes through the `Publisher` and `delete()` through the `RecordDeleter`, so no published copy is left behind.
 - `state()` is `draft`, `published`, or `changed` (published, with edits not yet published). The employer's job list and the API's owner view show it.
 
 Publishing needs the permission `job.publish`, which `config/roles.php` gives the `employer` role (`employer:create` and the demo seed give every employer that role). The employer area and the API ask before they publish; an account without the role posts drafts. When it tries to publish, the employer area goes back to the job list with a notice and the API answers 403.
@@ -262,11 +262,11 @@ Ask an admin when you need more. Admins are the staff with the `admin` role.
 |---|---|
 | `app/Models/Job.php`, `Company.php` | `type: 'job'` / `type: 'company'` on `#[Entity]`; `Job::slug` is now `#[Validate('required', 'slug')]`; `Job` loses `status` and `publishedAt` and gains `postedOn`; `Company` gains `logo`; `Job::company` is a `#[Relation]` |
 | `app/Jobs/JobSearch.php` | Reads Folio's published copies (`PublishedModels`); `byId()` is new |
-| `app/Jobs/JobWriter.php` | The constructor takes `DataManager` and the `Publisher` (`preflow/publishing`) (starter 1 takes `DataManager` only); `publish()` takes the user and goes through the `Publisher`; `state()` and `states()` are new; `create()`, `update()`, `unpublish()` and `delete()` keep their signatures |
+| `app/Jobs/JobWriter.php` | The constructor takes `DataManager`, `Publisher`, `RecordWriter` and `RecordDeleter` (`preflow/publishing`) (starter 1 takes `DataManager` only); `create()`, `update()`, `publish()` and `delete()` write through the `RecordWriter` and `RecordDeleter`; `update()` takes `mayPublish`; `publish()` takes the user; `state()` and `states()` are new; `create()`, `unpublish()` and `delete()` keep their signatures |
 | `app/Jobs/JobResource.php` | `status` is the publish state; `published_at` is the posted date |
 | `app/Controllers/Api/JobsController.php`, `Site/EmployerJobController.php` | Call the new `publish()`; a failed publish gives a 422, or the form with the errors |
 | `app/Components/ErrorDemo/ErrorDemo.php` | The comment now points to the page it lives on |
-| `app/Console/EmployerCreateCommand.php` | Also publishes the new company |
+| `app/Console/EmployerCreateCommand.php` | Also publishes the new company (through the `RecordWriter`) |
 | `app/pages/_layout.twig`, `jobs/index.twig`, `_views/job.twig`, `_views/company.twig`, `_views/employer/index.twig` | News link and footer link, the singletons' texts, the publish state |
 | `config/commands.php`, `lang/en/app.php` | Folio's commands; a few new texts |
 

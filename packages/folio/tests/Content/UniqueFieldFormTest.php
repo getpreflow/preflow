@@ -77,7 +77,7 @@ final class UniqueFieldFormTest extends TestCase
         $this->registry = new TypeRegistry($this->dir . '/m');
         $this->catalog = new TypeCatalog($this->dir . '/m');
         $this->dm = new DataManager(['sqlite' => new SqliteDriver($this->pdo)], 'sqlite', $this->registry, new ValidatorFactory(new RuleFactory()));
-        (new TableSync($this->catalog, $this->registry, $this->dm))->sync();
+        (new TableSync($this->catalog, $this->registry, $this->dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog)))->sync();
     }
 
     protected function tearDown(): void

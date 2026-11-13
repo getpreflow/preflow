@@ -68,16 +68,17 @@ final class RecordDeleterTest extends PublishingAppTestCase
             'beforeDelete:author:a1',
             'beforeDelete:book:b1',
             'changed:book:b1>-',   // Publisher::forget(): the snapshot leaves its addresses
-            'refresh:shelf:s1',    // the detached record, as RecordWriter stores it
-            'sync:shelf:s1',
-            'forget:author:a1',
+            'forget:author:a1',    // the deleted first: their addresses are gone before the detached sync theirs
             'removed:author:a1',
             'forget:book:b1',
             'removed:book:b1',
+            'refresh:shelf:s1',    // the detached record, as RecordWriter stores it
+            'sync:shelf:s1',
             'after:shelf:s1',
             'afterDelete:author:a1',
             'afterDelete:book:b1',
         ], $this->recorder->log);
+        $this->assertSame(['before:shelf:s1:detach', 'after:shelf:s1:detach'], $this->recorder->kinds, 'the hooks know the save is a detach');
         $this->assertNull($this->dm()->findType('author', 'a1'));
         $this->assertNull($this->dm()->findType('book', 'b1'));
         $this->assertNull($this->publisher()->snapshot('book', 'b1'), 'the snapshot is forgotten');

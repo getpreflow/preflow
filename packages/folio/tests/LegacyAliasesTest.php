@@ -46,6 +46,11 @@ final class LegacyAliasesTest extends TestCase
         $this->assertSame($new, (new \ReflectionClass($old))->getName());
     }
 
+    public function test_the_block_names_of_before_preflow_blocks_are_gone(): void
+    {
+        $this->assertFalse(class_exists('Preflow\\Folio\\Block\\Block'));
+    }
+
     public function test_the_old_publisher_is_a_publisher_of_the_new_name(): void
     {
         $this->assertTrue(is_subclass_of('Preflow\\Folio\\Publishing\\Publisher', \Preflow\Publishing\Publisher::class));

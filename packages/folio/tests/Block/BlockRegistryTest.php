@@ -138,7 +138,7 @@ final class BlockRegistryTest extends TestCase
         $class = 'TmpBlock' . bin2hex(random_bytes(4));
         $file = $dir . '/' . $class . '.php';
         $write = static function (string $label) use ($file, $class): void {
-            file_put_contents($file, "<?php\nnamespace Preflow\\Folio\\Tests\\Tmp;\n#[\\Preflow\\Folio\\Block\\Block(key: 'tmp', label: '{$label}')]\nfinal class {$class} {}\n");
+            file_put_contents($file, "<?php\nnamespace Preflow\\Folio\\Tests\\Tmp;\n#[\\Preflow\\Blocks\\Block(key: 'tmp', label: '{$label}')]\nfinal class {$class} {}\n");
         };
         $write('First');
         require $file;

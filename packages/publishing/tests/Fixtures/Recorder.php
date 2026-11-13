@@ -12,6 +12,7 @@ use Preflow\Publishing\RecordIndex;
 use Preflow\Publishing\RecordTypes;
 use Preflow\Publishing\RemovalTarget;
 use Preflow\Publishing\SaveHooks;
+use Preflow\Publishing\WriteKind;
 
 /**
  * Every interface RecordWriter and RecordDeleter ask, recording each call in one log
@@ -22,6 +23,9 @@ final class Recorder implements SaveHooks, RecordChecks, RecordIndex, RecordAddr
 {
     /** @var list<string> */
     public array $log = [];
+
+    /** @var list<string> the kind of write each before() and after() got ("step:type:id:kind") */
+    public array $kinds = [];
 
     /** @var list<string> types kept in a manual order */
     public array $orderable = [];
@@ -49,17 +53,19 @@ final class Recorder implements SaveHooks, RecordChecks, RecordIndex, RecordAddr
         private readonly ?DataManager $dm = null,
     ) {}
 
-    public function before(DynamicRecord $record): void
+    public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
     {
         $this->record('before', $record);
+        $this->kinds[] = 'before:' . $record->getType()->key . ':' . $record->getId() . ':' . $kind->value;
         if ($this->failBefore !== null) {
             ($this->failBefore)($record);
         }
     }
 
-    public function after(DynamicRecord $record): void
+    public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
     {
         $this->record('after', $record);
+        $this->kinds[] = 'after:' . $record->getType()->key . ':' . $record->getId() . ':' . $kind->value;
     }
 
     public function beforeDelete(DynamicRecord $record): void

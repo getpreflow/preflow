@@ -247,6 +247,27 @@ final class WriterEntryPointsTest extends TestCase
         $this->assertSame(['en' => 'Hello', 'de' => 'Hallo'], $this->stored('memo', 'm1')?->get('text'));
     }
 
+    /** A hook that declares a WriteKind learns what kind of write runs it; a one-parameter hook still runs. */
+    #[RunInSeparateProcess]
+    public function test_a_save_hook_taking_a_write_kind_learns_the_kind(): void
+    {
+        $this->as('admin');
+        $this->seed('story', 's1', ['title' => ['en' => 'One'], 'mood' => 'calm', '_version' => 1, '_order' => 10]);
+        $this->seed('story', 's2', ['title' => ['en' => 'Two'], 'mood' => 'calm', '_version' => 1, '_order' => 20]);
+
+        $this->assertSame(200, $this->send('POST', '/folio/story/s1/autosave', ['_locale' => 'en', 'title' => 'Autosaved', '_version' => '1'])->getStatusCode());
+        $this->assertSame(['s1:autosave'], \App\Folio\Shop\Log::$kinds);
+        $this->assertSame(['before:s1', 'after:s1'], \App\Folio\Shop\Log::$entries, 'the one-parameter hooks ran too');
+
+        $res = $this->send('POST', '/folio/story/s1', ['_locale' => 'en', 'title' => 'Form', 'mood' => 'calm', '_version' => $this->version('s1')]);
+        $this->assertSame(302, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertSame(302, $this->send('POST', '/folio/story/_bulk/set-mood', ['ids' => ['s1'], 'value' => 'busy'])->getStatusCode());
+        $this->assertSame(302, $this->send('POST', '/folio/story/s2/move', ['direction' => 'up'])->getStatusCode());
+        $this->source('story')->write('s1', 'de', ['title' => 'Eins']);
+
+        $this->assertSame(['s1:autosave', 's1:save', 's1:bulk', 's2:reorder', 's1:reorder', 's1:translate'], \App\Folio\Shop\Log::$kinds);
+    }
+
     /** The "shop" extension: StoryAdmin (story) and MemoAdmin (memo, saving itself). */
     private function shop(): void
     {
@@ -263,6 +284,8 @@ final class WriterEntryPointsTest extends TestCase
             {
                 public static array $entries = [];
                 public static bool $refuse = false;
+                /** The kinds of write StoryAdmin::kind() got. */
+                public static array $kinds = [];
 
                 public static function before(\Preflow\Data\DynamicRecord $record): void
                 {
@@ -293,6 +316,12 @@ final class WriterEntryPointsTest extends TestCase
                 public function after(DynamicRecord $record): void
                 {
                     Log::$entries[] = 'after:' . $record->getId();
+                }
+
+                #[\Preflow\Folio\Extension\AfterSave]
+                public function kind(DynamicRecord $record, \Preflow\Publishing\WriteKind $kind): void
+                {
+                    Log::$kinds[] = $record->getId() . ':' . $kind->value;
                 }
             }
             PHP);

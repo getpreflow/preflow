@@ -148,7 +148,7 @@ final class SettingsTest extends TestCase
             ];
             PHP);
         $this->members();
-        ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+        \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
 
         // The unchecked box submits only its hidden "0".
         $this->assertSame(302, $this->post('/folio/members_settings/members_settings', ['registration_open' => '0'])->getStatusCode());

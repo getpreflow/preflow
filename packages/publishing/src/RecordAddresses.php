@@ -22,7 +22,7 @@ interface RecordAddresses
      */
     public function sync(string $type, string $id, ?DynamicRecord $previousLive): bool;
 
-    /** After an unpublish: the record's old addresses lead to $target, or answer 404 without one. */
+    /** After an unpublish or a delete: the record's old addresses lead to $target, or answer 404 without one. */
     public function removed(string $type, string $id, ?RemovalTarget $target): void;
 
     /**

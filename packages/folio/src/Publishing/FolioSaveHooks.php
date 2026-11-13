@@ -11,11 +11,12 @@ use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Publishing\SaveHooks;
+use Preflow\Publishing\WriteKind;
 
 /**
- * The save and delete hooks of Folio's type customizations: #[BeforeSave], #[AfterSave],
- * #[BeforeDelete] (a Refused cancels the delete), #[AfterDelete], and a type's #[SaveRecord] in
- * place of the storage's save.
+ * The save and delete hooks of Folio's type customizations: #[BeforeSave], #[AfterSave] (the kind
+ * of write to methods that take a second parameter typed WriteKind), #[BeforeDelete] (a Refused
+ * cancels the delete), #[AfterDelete], and a type's #[SaveRecord] in place of the storage's save.
  */
 final class FolioSaveHooks implements SaveHooks
 {
@@ -23,14 +24,14 @@ final class FolioSaveHooks implements SaveHooks
         private readonly Customizations $customizations,
     ) {}
 
-    public function before(DynamicRecord $record): void
+    public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
     {
-        $this->customizations->runHooks(BeforeSave::class, $record);
+        $this->customizations->runHooks(BeforeSave::class, $record, $kind);
     }
 
-    public function after(DynamicRecord $record): void
+    public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
     {
-        $this->customizations->runHooks(AfterSave::class, $record);
+        $this->customizations->runHooks(AfterSave::class, $record, $kind);
     }
 
     public function beforeDelete(DynamicRecord $record): void

@@ -20,9 +20,9 @@ final class AppServiceProvider extends ServiceProvider
     {
         // Bind your own services here.
 
-        // Folio makes the job tables (the folio.tables step of `preflow migrate`), but the framework
-        // doesn't index relation columns yet, and the job lists filter by company. A migration file
-        // can't add the index: on a fresh install it runs before Folio's step has made the tables.
+        // preflow/publishing makes the job tables (the publishing.tables step of `preflow migrate`), but
+        // the framework doesn't index relation columns yet, and the job lists filter by company. A
+        // migration file can't add the index: on a fresh install it runs before that step has made the tables.
         // This step runs after it, on every migrate; a rerun finds the indexes and does nothing.
         $container->get(MigrationRegistry::class)->afterMigrate('app.indexes', static function () use ($container): array {
             $driver = $container->get(DataManager::class)->driver('default');

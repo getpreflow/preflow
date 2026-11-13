@@ -11,10 +11,13 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
-        "preflow/devtools": "^0.26 || @dev"
+        "preflow/devtools": "^0.26 || @dev",
+        "preflow/testing": "^0.64 || @dev",
+        "psr/log": "^3.0"
     },
     "suggest": {
-        "preflow/devtools": "The publish and publish:scheduled commands (php preflow)"
+        "preflow/devtools": "The publish and publish:scheduled commands (php preflow)",
+        "psr/log": "RecordWriter logs to the app's bound Psr\\Log\\LoggerInterface (an after-save hook failing behind a failed publish)"
     },
     "conflict": {
         "preflow/core": "<0.70",

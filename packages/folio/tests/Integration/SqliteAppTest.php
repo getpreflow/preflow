@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 
-/** The publishing scaffold with SQLite-stored types, tables made by the `folio.tables` migrate step. */
+/** The publishing scaffold with SQLite-stored types, tables made by the `publishing.tables` and `folio.tables` migrate steps. */
 final class SqliteAppTest extends TestCase
 {
     use PublishingScaffold;
@@ -173,6 +173,6 @@ final class SqliteAppTest extends TestCase
 
     private function migrateStep(): array
     {
-        return ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
+        return \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
     }
 }

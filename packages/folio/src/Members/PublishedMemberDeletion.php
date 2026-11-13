@@ -10,6 +10,8 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Publishing\PublishedCopies;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
+use Preflow\Publishing\WriteKind;
 
 /**
  * Carries a member's own deletion (MemberEvents::DELETED, the applied plan) into Folio's
@@ -80,7 +82,7 @@ final class PublishedMemberDeletion
                 continue;
             }
             try {
-                $this->writer->save($working); // already detached; this moves its version on
+                $this->writer->save($working, new SaveOptions(kind: WriteKind::Detach)); // already detached; this moves its version on
             } catch (\Throwable $e) {
                 $message = "Member deletion: the detached {$detach['type']} \"{$detach['id']}\" was not saved again: " . $e->getMessage();
                 $this->log !== null ? ($this->log)($message) : error_log($message);

@@ -6,6 +6,7 @@ namespace Preflow\Publishing\Tests\Fixtures;
 
 use Preflow\Data\DynamicRecord;
 use Preflow\Publishing\SaveHooks;
+use Preflow\Publishing\WriteKind;
 
 /** SaveHooks whose after() throws; the rest is the Recorder's. */
 final class ThrowingAfter implements SaveHooks
@@ -14,12 +15,12 @@ final class ThrowingAfter implements SaveHooks
         private readonly Recorder $recorder,
     ) {}
 
-    public function before(DynamicRecord $record): void
+    public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
     {
-        $this->recorder->before($record);
+        $this->recorder->before($record, $kind);
     }
 
-    public function after(DynamicRecord $record): void
+    public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
     {
         throw new \RuntimeException('The after hook broke.');
     }

@@ -44,7 +44,7 @@ $publisher->state($record);                      // PublishState::Draft, Publish
 $publisher->live('post', $id);                   // what the site shows: the snapshot
 $publisher->query('post');                       // a QueryBuilder over the snapshots
 $publisher->unpublish('post', $id);              // the snapshot goes; the page answers 404
-$publisher->discard('post', $id);                // the working copy goes back to what is published
+$publisher->discard('post', $id);                // the working copy goes back to what is published (RecordWriter::discard() applies the schedule rule)
 $publisher->revisions('post', $id);              // newest first: list<Revision>
 $publisher->restore('post', $id, $revisionId);   // into the working copy; publish it again to go live
 ```
@@ -80,6 +80,7 @@ $writer->save($record, new SaveOptions(by: $userId, publish: true, loadedVersion
 $writer->setField($record, 'status', 'archived');          // one field, then save()
 $writer->reorder('faq', $id, 'up');                        // false when it is first already
 $writer->restore('post', $id, $revisionId, new SaveOptions(mayPublish: false)); // a revision into the working copy
+$writer->discard('post', $id, new SaveOptions(mayPublish: false));              // back to what is published
 ```
 
 A save runs `SaveHooks::before()` first (a `ValidationException` there stores nothing). A type that
@@ -95,10 +96,18 @@ the site.
 `SaveOptions`: `by` (who), `mayPublish` (false: the save cancels a pending schedule, so changes of
 someone who may not publish never go live unreviewed), `publish`, `loadedVersion` (else
 `VersionConflict`), `publishAt` (null keeps the schedule, `''` clears it, `Y-m-d\TH:i` sets it; a
-past time clears it).
+past time clears it), `kind`: the kind of write (`WriteKind`), handed to `SaveHooks::before()` and
+`after()` so a hook can leave some alone (one that reworks images has no business with an autosave):
+`Save` (the default), `Autosave`, `Bulk`, `Translate`; `reorder()` passes `Reorder`, the deleter's
+detaches `Detach`.
+
+When a publish fails and `SaveHooks::after()` throws too, `PublishFailed` is what the caller gets;
+the hook's exception goes to the `Psr\Log\LoggerInterface` bound in the container as a warning
+(psr/log, suggested).
 
 `restore()` copies a revision into the working copy (`Publisher::restore()`) under the same schedule
-rule, in one write; it runs no save hooks (it is not an edit) and never publishes.
+rule, in one write; it runs no save hooks (it is not an edit) and never publishes. `discard()` does
+the same with the published content (`Publisher::discard()`).
 
 `RecordDeleter` deletes through the delete plan of the type's relations (cascade, detach,
 restrict): `plan($type, $ids)` says what would happen, `delete($type, $ids, $target)` does it, all
@@ -169,16 +178,17 @@ service provider's `register()`; the package binds a plain default for each one 
 | `LanguageChecks` | `clearMachineMarks($record)`; `incomplete($record)`: errors keyed `_translations.<locale>`; `stateKeys()`: translation keys a restore or discard clears when the content lacks them | none |
 | `RecordIndex` | `refresh($record)` after each save, `forget($type, $id)` | none |
 | `RecordAddresses` | `sync()` after a publish or a save, `removed()` after an unpublish or a delete (to a `RemovalTarget`), `changed($before, $after)` (`$before` a closure that reads the old snapshot when called), `finalTarget($target, $deleting)`: where a delete's old links lead | none |
-| `RecordColumns` | `columns($definition)`: columns your app writes besides the fields, added to the type's tables | none |
+| `RecordColumns` | `columns($definition)`: columns your app writes besides the fields, added to the type's tables (a restore or discard clears those the content lacks) | none |
 | `PublishSkips` | `reason($record)`: why `publish <type>` leaves a never-published record alone without `--all` | none |
-| `SaveHooks` | `before()`, `after()`, `beforeDelete()`, `afterDelete()` around each write; `replacesSave($type)` and `save($record, $previous)` for a type that stores its records itself | none |
+| `SaveHooks` | `before($record, $kind)`, `after($record, $kind)` (a `WriteKind`), `beforeDelete()`, `afterDelete()` around each write; `replacesSave($type)` and `save($record, $previous)` for a type that stores its records itself | none |
 | `RecordTypes` | `orderable($type)`: records kept in a manual order (`_order`) | none |
 
 `complete_languages` only takes effect with a `LanguageChecks` that finds something.
 
-**Restore and discard** replace the working copy's content: its fields, and the `stateKeys()`, take
-the revision's or snapshot's values (a field the revision does not have becomes empty). The
-schedule, list position and share token stay, and so do columns of your own that are no fields.
+**Restore and discard** replace the working copy's content: its fields, the `stateKeys()` and the
+`RecordColumns`, take the revision's or snapshot's values (a field the revision does not have
+becomes empty). The schedule, list position and share token stay, and so do other columns of your
+own that are no fields.
 
 ## With Folio
 

@@ -16,6 +16,7 @@ namespace Preflow\Publishing;
  * - $publishAt: the schedule. null keeps the stored one, '' clears it, a "Y-m-d\TH:i" time in the
  *   app's zone sets it; a past or malformed time clears it (a mistake, or a stale tab re-sending a
  *   schedule that already ran). Only with $mayPublish.
+ * - $kind: what kind of write this is, handed to SaveHooks (an autosave, a bulk set, …).
  */
 final readonly class SaveOptions
 {
@@ -25,6 +26,7 @@ final readonly class SaveOptions
         public bool $publish = false,
         public ?int $loadedVersion = null,
         public ?string $publishAt = null,
+        public WriteKind $kind = WriteKind::Save,
     ) {
         if ($publish && !$mayPublish) {
             throw new \InvalidArgumentException('A save that may not publish cannot publish.');

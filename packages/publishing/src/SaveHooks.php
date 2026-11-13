@@ -16,14 +16,15 @@ use Preflow\Validation\ValidationException;
 interface SaveHooks
 {
     /**
-     * Before anything of the save is stored; may change the record.
+     * Before anything of the save is stored; may change the record. $kind is the kind of write
+     * (SaveOptions::$kind; Reorder for RecordWriter::reorder(), Detach for a delete's detaches).
      *
      * @throws ValidationException refuses the save (nothing is stored)
      */
-    public function before(DynamicRecord $record): void;
+    public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void;
 
-    /** Once the record is stored (a working copy also when its publish failed). */
-    public function after(DynamicRecord $record): void;
+    /** Once the record is stored (a working copy also when its publish failed); $kind as for before(). */
+    public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void;
 
     /** Before anything of the delete is written; any exception cancels the whole delete. */
     public function beforeDelete(DynamicRecord $record): void;

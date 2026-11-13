@@ -37,7 +37,7 @@ final class SeoSectionFormTest extends TestCase
 
     private function migrate(): void
     {
-        ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
+        \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
     }
 
     #[RunInSeparateProcess]

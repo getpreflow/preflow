@@ -16,6 +16,7 @@ use Preflow\Publishing\LanguageChecks;
 use Preflow\Publishing\PublishingTypes;
 use Preflow\Publishing\RecordAddresses as PublishingAddresses;
 use Preflow\Publishing\RecordChecks;
+use Preflow\Publishing\RecordColumns;
 use Preflow\Publishing\RecordIndex;
 
 /**
@@ -41,6 +42,7 @@ class Publisher extends \Preflow\Publishing\Publisher
         RecordAddresses|PublishingAddresses|null $addresses = null,
         ?PageCache $pageCache = null,
         ?FrontendResolver $resolver = null,
+        ?RecordColumns $columns = null,
     ) {
         parent::__construct(
             $dm,
@@ -54,6 +56,7 @@ class Publisher extends \Preflow\Publishing\Publisher
             $addresses instanceof PublishingAddresses ? $addresses : (
                 $addresses !== null || ($pageCache !== null && $resolver !== null) ? new FolioRecordAddresses($addresses, $pageCache, $resolver) : null
             ),
+            $columns,
         );
     }
 }

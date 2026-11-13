@@ -356,7 +356,8 @@ final class SqliteContentTest extends TestCase
             typeRegistry: $registry,
             validatorFactory: new ValidatorFactory(new RuleFactory()),
         );
-        (new TableSync(new TypeCatalog($this->dir . '/models'), $registry, $dm))->sync();
+        $catalog = new TypeCatalog($this->dir . '/models');
+        (new TableSync($catalog, $registry, $dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($catalog)))->sync();
 
         return $dm;
     }

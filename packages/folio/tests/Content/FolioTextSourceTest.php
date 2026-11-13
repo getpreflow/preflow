@@ -422,7 +422,7 @@ final class FolioTextSourceTest extends TestCase
         $this->removeScaffold();
         $this->scaffoldPublishing('sqlite');
         $this->writeModels();
-        ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+        \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
         $this->working('article', 'a1', [
             'title' => ['en' => 'Hello'],
             'sections' => [['_uid' => self::A, '_block' => 'hero', 'headline' => ['en' => 'Head']]],

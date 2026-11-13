@@ -9,9 +9,9 @@ use Preflow\Data\DynamicRecord;
 /** The default SaveHooks: none; every type is saved by the storage. */
 final class NoSaveHooks implements SaveHooks
 {
-    public function before(DynamicRecord $record): void {}
+    public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void {}
 
-    public function after(DynamicRecord $record): void {}
+    public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void {}
 
     public function beforeDelete(DynamicRecord $record): void {}
 

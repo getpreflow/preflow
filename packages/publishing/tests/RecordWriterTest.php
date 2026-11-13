@@ -13,6 +13,7 @@ use Preflow\Publishing\SchemaPublishingTypes;
 use Preflow\Publishing\Tests\Fixtures\Recorder;
 use Preflow\Publishing\Tests\Fixtures\ThrowingAfter;
 use Preflow\Publishing\VersionConflict;
+use Preflow\Publishing\WriteKind;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 
@@ -174,7 +175,17 @@ final class RecordWriterTest extends PublishingAppTestCase
     {
         $recorder = new Recorder($this->dm());
         $recorder->failChecks = static fn () => throw self::refusal();
-        $writer = new RecordWriter($this->dm(), new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $recorder), $recorder, new ThrowingAfter($recorder));
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<array{mixed, string, array<mixed>}> */
+            public array $logged = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->logged[] = [$level, (string) $message, $context];
+            }
+        };
+        $publisher = new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $recorder);
+        $writer = new RecordWriter($this->dm(), $publisher, $recorder, new ThrowingAfter($recorder), logger: $logger);
 
         try {
             $writer->save($this->record('post', 'p1'), new SaveOptions(publish: true));
@@ -182,6 +193,66 @@ final class RecordWriterTest extends PublishingAppTestCase
         } catch (PublishFailed $e) {
             $this->assertInstanceOf(ValidationException::class, $e->cause());
         }
+        $this->assertCount(1, $logger->logged);
+        [$level, $message, $context] = $logger->logged[0];
+        $this->assertSame('warning', $level);
+        $this->assertSame('RecordWriter: SaveHooks::after() failed after a failed publish of post p1', $message);
+        $this->assertInstanceOf(\RuntimeException::class, $context['exception']);
+    }
+
+    public function test_the_hooks_get_the_kind_of_write(): void
+    {
+        $writer = $this->writer();
+        $writer->save($this->record('post', 'p1'));
+        $writer->save($this->stored('post', 'p1'), new SaveOptions(kind: WriteKind::Autosave));
+        $writer->setField($this->record('note', 'n1'), 'title', ['en' => 'Set'], new SaveOptions(kind: WriteKind::Bulk));
+
+        $this->assertSame([
+            'before:post:p1:save',
+            'after:post:p1:save',
+            'before:post:p1:autosave',
+            'after:post:p1:autosave',
+            'before:note:n1:bulk',
+            'after:note:n1:bulk',
+        ], $this->recorder->kinds);
+    }
+
+    public function test_a_discard_goes_back_to_the_published_content_under_the_schedule_rule(): void
+    {
+        $writer = $this->writer();
+        $writer->save($this->record('post', 'p1', ['title' => ['en' => 'Live']]), new SaveOptions(publish: true));
+        $edited = $this->stored('post', 'p1');
+        $edited->set('title', ['en' => 'Draft']);
+        $writer->save($edited, new SaveOptions(publishAt: '2030-02-01T09:00'));
+        $version = (int) $this->stored('post', 'p1')->get('_version');
+        $this->recorder->log = [];
+
+        try {
+            $writer->discard('post', 'p1', new SaveOptions(loadedVersion: $version - 1));
+            $this->fail('A stale version conflicts.');
+        } catch (VersionConflict) {
+        }
+        $this->assertSame(['en' => 'Draft'], $this->stored('post', 'p1')->get('title'), 'nothing written');
+
+        $discarded = $writer->discard('post', 'p1', new SaveOptions(mayPublish: false, loadedVersion: $version));
+
+        $this->assertSame(['en' => 'Live'], $discarded?->get('title'));
+        $this->assertSame(['en' => 'Live'], $this->stored('post', 'p1')->get('title'));
+        $this->assertSame('', $this->stored('post', 'p1')->get('_publish_at'), 'discarded by someone who may not publish: the schedule is cancelled');
+        $this->assertSame([], array_filter($this->recorder->log, static fn (string $step): bool => str_starts_with($step, 'before:') || str_starts_with($step, 'after:')), 'no hooks');
+        $this->assertNull($writer->discard('post', 'never-published'));
+    }
+
+    public function test_a_discard_neither_publishes_nor_discards_a_type_without_publishing(): void
+    {
+        try {
+            $this->writer()->discard('post', 'p1', new SaveOptions(publish: true));
+            $this->fail('A discard that publishes is refused.');
+        } catch (\InvalidArgumentException) {
+        }
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->writer()->discard('note', 'n1');
     }
 
     public function test_an_after_hook_refusing_a_saved_draft_is_no_publish_failure(): void
@@ -355,6 +426,7 @@ final class RecordWriterTest extends PublishingAppTestCase
 
         $this->assertTrue($writer->reorder('note', 'c', 'up'));
         $this->assertSame(['before:note:c', 'before:note:b', 'after:note:c', 'after:note:b'], $this->recorder->log, 'no content checks');
+        $this->assertSame(['before:note:c:reorder', 'before:note:b:reorder', 'after:note:c:reorder', 'after:note:b:reorder'], $this->recorder->kinds);
         $this->assertSame([10, 30, 20], array_map(fn (string $id): int => (int) $this->stored('note', $id)->get('_order'), ['a', 'b', 'c']));
     }
 

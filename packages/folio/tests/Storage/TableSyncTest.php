@@ -12,6 +12,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Publishing\FolioPublishingTypes;
 use Preflow\Folio\Storage\TableSync;
 
 final class TableSyncTest extends TestCase
@@ -65,6 +66,18 @@ final class TableSyncTest extends TestCase
         $this->assertSame(['TEXT'], array_values(array_unique(array_column($info, 'type'))));
         $this->assertSame(['uuid'], array_column(array_filter($info, static fn ($c) => (int) $c['pk'] === 1), 'name'));
         $this->assertSame([], $this->sync(), 'a second run changes nothing');
+    }
+
+    public function test_the_folio_step_leaves_the_tables_of_publishing_types_to_preflow_publishing(): void
+    {
+        $this->model('post', ['publishing' => true, 'fields' => ['title' => ['type' => 'string']]]);
+        $this->model('memo', ['fields' => ['name' => ['type' => 'string']]]);
+
+        $lines = $this->tableSync()->syncOwn();
+
+        $this->assertSame(['created table memo'], $lines);
+        $this->assertFalse((new Schema($this->pdo))->hasTable('post'));
+        $this->assertSame(['memo'], array_map(static fn (array $e): string => $e['def']->table, $this->tableSync()->own()));
     }
 
     public function test_adds_new_field_column_and_keeps_data(): void
@@ -132,8 +145,9 @@ final class TableSyncTest extends TestCase
     {
         // Fresh catalog and registry each time: model files change between runs.
         $dm = $this->dm();
+        $catalog = new TypeCatalog($this->dir . '/models');
 
-        return new TableSync(new TypeCatalog($this->dir . '/models'), $dm->getTypeRegistry(), $dm);
+        return new TableSync($catalog, $dm->getTypeRegistry(), $dm, new FolioPublishingTypes($catalog));
     }
 
     private function dm(): DataManager

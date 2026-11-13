@@ -7,12 +7,13 @@ namespace Preflow\Publishing;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Validation\ValidationException;
+use Psr\Log\LoggerInterface;
 
 /**
  * The one write path for records: an admin's form, its autosave and bulk actions, a translation
  * run and an app's own code save through it and get the same steps.
  *
- * A save, in order:
+ * A save, in order (the hooks get SaveOptions::$kind):
  * 1. SaveHooks::before() (a ValidationException stops the save before anything is stored);
  * 2. a type that publishes: the schedule rule (a save by someone who may not publish cancels a
  *    pending _publish_at, else SaveOptions::$publishAt applies), the working copy
@@ -47,6 +48,7 @@ final class RecordWriter
         private readonly ?RecordIndex $index = null,
         private readonly ?RecordAddresses $addresses = null,
         ?\Closure $now = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
         $this->store = new RecordStore($dm, $publisher, $hooks, $index, $addresses);
@@ -88,11 +90,12 @@ final class RecordWriter
      *                             save landed after the draft (a VersionConflict), in getPrevious()
      *
      * When the publish fails and SaveHooks::after() then throws too, PublishFailed is thrown and
-     * the hook's exception is dropped: the publish failure is what the caller must show.
+     * the hook's exception is logged (a warning, with a logger): the publish failure is what the
+     * caller must show.
      */
     public function save(DynamicRecord $record, SaveOptions $options = new SaveOptions()): SaveOutcome
     {
-        $this->hooks->before($record);
+        $this->hooks->before($record, $options->kind);
 
         if ($this->publishes($record->getType()->key)) {
             $schedule = $this->schedule($options);
@@ -106,16 +109,17 @@ final class RecordWriter
                     $this->publisher->publish($record, $options->by, (int) $record->get('_version'));
                 } catch (\Throwable $e) {
                     try {
-                        $this->hooks->after($record); // the working copy was saved
-                    } catch (\Throwable) {
+                        $this->hooks->after($record, $options->kind); // the working copy was saved
+                    } catch (\Throwable $hookFailure) {
                         // The publish failure wins (see above).
+                        $this->logger?->warning("RecordWriter: SaveHooks::after() failed after a failed publish of {$record->getType()->key} {$record->getId()}", ['exception' => $hookFailure]);
                     }
                     throw $e instanceof ValidationException || $e instanceof VersionConflict
                         ? new PublishFailed(new SaveOutcome($record, false), $e)
                         : $e;
                 }
             }
-            $this->hooks->after($record);
+            $this->hooks->after($record, $options->kind);
 
             return new SaveOutcome($record, false);
         }
@@ -123,13 +127,13 @@ final class RecordWriter
         $this->checks->validate($record);
         $this->store->write($record);
         $left = $this->store->follow($record);
-        $this->hooks->after($record);
+        $this->hooks->after($record, $options->kind);
 
         return new SaveOutcome($record, $left);
     }
 
     /**
-     * Sets one field and saves the record (a bulk "set"): as save().
+     * Sets one field and saves the record (a bulk "set", SaveOptions::$kind Bulk): as save().
      *
      * @throws \InvalidArgumentException when the type has no such field
      * @throws ValidationException
@@ -149,7 +153,7 @@ final class RecordWriter
     /**
      * Moves a record of an orderable type one step up or down its list (by _order, then id): it
      * swaps positions with its neighbour. Both are saved through the hooks (before, the type's own
-     * save, after), without content checks and without a new version (a position is not content),
+     * save, after; WriteKind::Reorder), without content checks and without a new version (a position is not content),
      * and a publishing type carries the positions into its snapshots (Publisher::syncOrder()).
      * Records without a position yet are numbered in their current order first (10, 20, ...).
      *
@@ -196,8 +200,8 @@ final class RecordWriter
         $a->set(self::ORDER, $b->get(self::ORDER));
         $b->set(self::ORDER, $orderA);
 
-        $this->hooks->before($a);
-        $this->hooks->before($b);
+        $this->hooks->before($a, WriteKind::Reorder);
+        $this->hooks->before($b, WriteKind::Reorder);
         foreach ($numbered as $record) {
             if ($record !== $a && $record !== $b) {
                 $this->storePosition($record);
@@ -205,8 +209,8 @@ final class RecordWriter
         }
         $this->storePosition($a);
         $this->storePosition($b);
-        $this->hooks->after($a);
-        $this->hooks->after($b);
+        $this->hooks->after($a, WriteKind::Reorder);
+        $this->hooks->after($b, WriteKind::Reorder);
 
         return true;
     }
@@ -234,6 +238,28 @@ final class RecordWriter
         }
 
         return $this->publisher->restore($type, $id, $revisionId, $options->loadedVersion, $this->schedule($options));
+    }
+
+    /**
+     * Resets the working copy of a publishing type to its published content (Publisher::discard()),
+     * under the schedule rule and with $loadedVersion checked, as restore(): no save hooks, no
+     * checks, no publish.
+     *
+     * @return DynamicRecord|null the reset working copy; null when nothing is published
+     * @throws \InvalidArgumentException when the type does not publish, or $options asks to publish
+     * @throws ValidationException when another record has taken a unique value since (nothing saved)
+     * @throws VersionConflict
+     */
+    public function discard(string $type, string $id, SaveOptions $options = new SaveOptions()): ?DynamicRecord
+    {
+        if (!$this->publishes($type)) {
+            throw new \InvalidArgumentException("Type \"{$type}\" does not publish: it has no published content to go back to.");
+        }
+        if ($options->publish) {
+            throw new \InvalidArgumentException('A discard does not publish: it goes back to what is published.');
+        }
+
+        return $this->publisher->discard($type, $id, $options->loadedVersion, $this->schedule($options));
     }
 
     /** A new position: stored without a new version, and carried into the snapshot of a publishing type. */

@@ -10,8 +10,11 @@ use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
+use Preflow\Data\DynamicRecord;
 use Preflow\DevTools\Command\CommandInterface;
-use Preflow\Publishing\Publisher;
+use Preflow\Publishing\PublishFailed;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
 use Preflow\Validation\ValidationException;
 
 /**
@@ -64,9 +67,10 @@ final class EmployerCreateCommand implements CommandInterface
                 $company->uuid = bin2hex(random_bytes(16));
                 $company->name = $companyName;
                 $company->slug = Slugs::unique($data, Company::class, $companyName);
-                $data->save($company);
+                $record = DynamicRecord::fromArray($data->getTypeRegistry()->get('company'), $company->toArray());
+                $data->validate($record); // the draft save skips the rules: the command reports them before anything is stored
                 // Published right away: the company page and the jobs' company names read the published copy.
-                $app->container()->get(Publisher::class)->publish($data->findType('company', $company->uuid), 'employer:create');
+                $app->container()->get(RecordWriter::class)->save($record, new SaveOptions(by: 'employer:create', publish: true));
             }
 
             $password = bin2hex(random_bytes(9));
@@ -78,7 +82,14 @@ final class EmployerCreateCommand implements CommandInterface
             $user->company = $company->uuid;
             $user->createdAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
             $data->save($user);
-        } catch (ValidationException $e) {
+        } catch (ValidationException|PublishFailed $e) {
+            // A refused publish leaves the company as a draft; the errors say what to fix.
+            $e = $e instanceof PublishFailed ? $e->cause() : $e;
+            if (!$e instanceof ValidationException) {
+                echo 'Error: ' . $e->getMessage() . "\n";
+
+                return 1;
+            }
             foreach ($e->errors() as $field => $messages) {
                 echo $field . ': ' . implode(' ', $messages) . "\n";
             }

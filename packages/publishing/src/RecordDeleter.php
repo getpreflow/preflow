@@ -21,12 +21,12 @@ use Preflow\Validation\ValidationException;
  * request is never executed.
  *
  * Order: plan → DeleteRefused if restricted → SaveHooks::before() on every detached record (the
- * ids already removed) and SaveHooks::beforeDelete() on every record to delete, all before any
+ * ids already removed; WriteKind::Detach, as its after()) and SaveHooks::beforeDelete() on every record to delete, all before any
  * write (DeleteRefused, or the hook's own exception, cancels everything) → the writes (detaches
  * via Publisher::saveDraft(), or as RecordWriter stores a type without publishing: its own save
- * or the storage's; then deletes with Publisher::forget()) → the detached records' index and
- * addresses (RecordWriter's too), RecordIndex::forget() and RecordAddresses::removed() of the
- * deleted → SaveHooks::after() and afterDelete().
+ * or the storage's; then deletes with Publisher::forget()) → RecordIndex::forget() and
+ * RecordAddresses::removed() of the deleted → the detached records' index and addresses
+ * (RecordWriter's too) → SaveHooks::after() and afterDelete().
  * SQL writes run in one transaction per connection; JSON-file writes cannot be rolled back if a
  * later write fails.
  *
@@ -106,7 +106,7 @@ class RecordDeleter
         $saves = [];
         foreach ($this->detachedRecords($plan) as $record) {
             try {
-                $this->hooks->before($record);
+                $this->hooks->before($record, WriteKind::Detach);
             } catch (ValidationException $e) {
                 throw DeleteRefused::detachRefused($plan, $record, $e);
             }
@@ -142,18 +142,18 @@ class RecordDeleter
                 }
             }
         });
+        foreach ($deletes as $record) {
+            $this->index?->forget($record->getType()->key, (string) $record->getId());
+            $this->addresses?->removed($record->getType()->key, (string) $record->getId(), $target);
+        }
         foreach ($saves as $record) {
             if (!$this->publishes($record->getType()->key)) {
                 $this->store->follow($record); // saveDraft() refreshed the index of a publishing one
             }
         }
-        foreach ($deletes as $record) {
-            $this->index?->forget($record->getType()->key, (string) $record->getId());
-            $this->addresses?->removed($record->getType()->key, (string) $record->getId(), $target);
-        }
 
         foreach ($saves as $record) {
-            $this->hooks->after($record);
+            $this->hooks->after($record, WriteKind::Detach);
         }
         foreach ($deletes as $record) {
             $this->hooks->afterDelete($record);

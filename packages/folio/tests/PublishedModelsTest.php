@@ -21,7 +21,7 @@ final class PublishedModelsTest extends TestCase
         $this->scaffoldPublishing('sqlite', [__DIR__ . '/Fixtures/Models']);
         $this->write('config/models/job.json', (string) json_encode(['key' => 'job', 'label' => 'Jobs', 'publishing' => true]));
         $this->write('config/models/poster.json', (string) json_encode(['key' => 'poster', 'label' => 'Posters']));
-        ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
+        \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
     }
 
     protected function tearDown(): void

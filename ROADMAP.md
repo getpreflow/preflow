@@ -99,7 +99,7 @@ for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
 **Done 2026-11-12:** all 25 packages audited (`.superpowers/audit-2026-11-12/`, local); the owner decided to fix
 all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, releases 0.67 (clean-ups, done)
 → 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio; done) → 0.70 (done: preflow/blocks and rules out of Folio; 0.71 publishing,
-preflow/publishing, one record write path) → 0.71 (gaps the starters fill).
+preflow/publishing, one record write path) → 0.72 (gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
 Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and

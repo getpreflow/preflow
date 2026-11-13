@@ -65,7 +65,7 @@ final class RecordUserProviderTest extends TestCase
             typeRegistry: $registry,
             validatorFactory: new ValidatorFactory(new RuleFactory()),
         );
-        (new TableSync($this->catalog, $registry, $this->dm))->sync();
+        (new TableSync($this->catalog, $registry, $this->dm, new \Preflow\Folio\Publishing\FolioPublishingTypes($this->catalog)))->sync();
     }
 
     /** The rest of the test with both types on MySQL (an emptied test database). */
@@ -342,7 +342,7 @@ final class RecordUserProviderTest extends TestCase
         $app = Application::create($dir);
         $app->boot();
         $c = $app->container();
-        (new TableSync($c->get(TypeCatalog::class), $c->get(DataManager::class)->getTypeRegistry(), $c->get(DataManager::class)))->sync();
+        (new TableSync($c->get(TypeCatalog::class), $c->get(DataManager::class)->getTypeRegistry(), $c->get(DataManager::class), new \Preflow\Folio\Publishing\FolioPublishingTypes($c->get(TypeCatalog::class))))->sync();
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $c->get(DataManager::class)->saveType(new DynamicRecord($c->get(DataManager::class)->getTypeRegistry()->get('member'), [
             'uuid' => 'm1', 'email' => 'ada@example.com', 'password_hash' => $hash, 'roles' => '["gold"]',

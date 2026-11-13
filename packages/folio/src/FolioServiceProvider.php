@@ -80,9 +80,6 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Blocks\BlocksServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Blocks\BlocksServiceProvider());
         }
-        foreach (['Preflow\\Folio\\Block\\BlockRegistry' => BlockRegistry::class, 'Preflow\\Folio\\Block\\BlockRenderer' => \Preflow\Blocks\BlockRenderer::class] as $old => $new) {
-            $container->bind($old, static fn (Container $c) => $c->get($new)); // deprecated names, the same services
-        }
         // The publishing core: Folio binds its rules (which types publish, validation, languages,
         // the review index, redirects and page-cache tags) below and keeps the screens.
         if (!$container->hasProvider(\Preflow\Publishing\PublishingServiceProvider::class)) {
@@ -337,6 +334,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
             $c->get(DataManager::class),
+            $c->get(\Preflow\Publishing\PublishingTypes::class),
             [
                 ...($extensions->all() !== [] ? [$c->get(\Preflow\Folio\Extension\ExtensionState::class)->definition()] : []),
                 // With sign-in, the users' own settings (the interface language).
@@ -357,7 +355,7 @@ final class FolioServiceProvider extends ServiceProvider
         );
         $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
             'folio.tables',
-            static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->sync(),
+            static fn (): array => $container->get(\Preflow\Folio\Storage\TableSync::class)->syncOwn(),
         );
         // Which declared permissions are new since the site last looked (the Roles notice, badge and
         // dashboard line); migrate lists them once the table exists, and only where rbac's Roles screen
@@ -1912,6 +1910,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $config->completeLanguages,
                 $c->get(\Preflow\Publishing\RecordIndex::class),
                 $c->get(\Preflow\Publishing\RecordAddresses::class),
+                columns: $c->get(\Preflow\Publishing\RecordColumns::class),
             );
         });
     }

@@ -127,6 +127,6 @@ final class TableSyncTypedTest extends TestCase
     /** @return list<string> */
     private function migrateStep(): array
     {
-        return ($this->app()->container()->get(MigrationRegistry::class)->steps()['folio.tables'] ?? throw new \RuntimeException('step not registered'))();
+        return \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
     }
 }

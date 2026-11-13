@@ -12,6 +12,7 @@ use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TranslationStatus;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Publishing\Publisher;
+use Preflow\Publishing\PublishingTypes;
 use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Seo\SeoSection;
 
@@ -26,12 +27,13 @@ use Preflow\Folio\Seo\SeoSection;
  * revisions free text (RecordTableSync, ShadowTypes). Missing tables and
  * columns are added; nothing is ever dropped or altered.
  *
- * The tables of publishing types are preflow/publishing's (PublishingTables,
- * its `publishing.tables` step and RecordTables entries), with Folio's
- * SYSTEM columns through FolioRecordColumns: sync() makes them in the same
- * shape too, so either step alone gives a working site, and own() — what
- * Folio registers with the data layer's RecordTables — leaves them out, so
- * each table is listed once.
+ * The tables of publishing types (PublishingTypes, as the Publisher asks)
+ * are preflow/publishing's (PublishingTables, its `publishing.tables` step
+ * and RecordTables entries), with Folio's SYSTEM columns through
+ * FolioRecordColumns: own() — what Folio registers with the data layer's
+ * RecordTables, and syncOwn(), the `folio.tables` step — leaves them out, so
+ * each table is listed and made by one step. sync() makes them too, in the
+ * same shape (folio:extensions:apply, which runs no migrate steps).
  * JSON-stored types are left alone.
  *
  * @phpstan-import-type Entry from RecordTables
@@ -48,6 +50,7 @@ final class TableSync
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
         private readonly DataManager $dm,
+        private readonly PublishingTypes $types,
         private readonly array $internal = [],
     ) {
         $this->records = new RecordTableSync($dm);
@@ -59,6 +62,12 @@ final class TableSync
         return $this->records->syncAll($this->tables());
     }
 
+    /** @return list<string> as sync(), for own() only (the `folio.tables` step; `publishing.tables` makes the rest) */
+    public function syncOwn(): array
+    {
+        return $this->records->syncAll($this->own());
+    }
+
     /** @return list<Entry> every table, with the system columns Folio writes besides the fields */
     public function tables(): array
     {
@@ -66,7 +75,7 @@ final class TableSync
         foreach ($this->catalog->all() as $listing) {
             $def = $this->registry->get($listing->key);
             $tables[] = RecordTables::entry($def, self::columns());
-            if ($listing->publishing) {
+            if ($this->types->publishes($listing->key)) {
                 array_push($tables, ...ShadowTypes::tables($def, self::columns()));
             }
         }
@@ -88,7 +97,7 @@ final class TableSync
     {
         $tables = [];
         foreach ($this->catalog->all() as $listing) {
-            if (!$listing->publishing) {
+            if (!$this->types->publishes($listing->key)) {
                 $tables[] = RecordTables::entry($this->registry->get($listing->key), self::columns());
             }
         }

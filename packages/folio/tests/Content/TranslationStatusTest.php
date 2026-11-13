@@ -292,7 +292,7 @@ final class TranslationStatusTest extends TestCase
     {
         $this->removeScaffold();
         $this->scaffoldPublishing('sqlite');
-        ($this->app()->container()->get(\Preflow\Data\Migration\MigrationRegistry::class)->steps()['folio.tables'])();
+        \Preflow\Folio\Tests\Support\RecordTableSteps::run($this->app());
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
 
         $res = $this->post('/folio/post/p1/autosave', ['title' => 'Hallo', 'slug' => 'hallo', '_locale' => 'de', '_version' => '0']);

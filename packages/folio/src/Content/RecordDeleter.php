@@ -22,6 +22,7 @@ use Preflow\Publishing\RecordAddresses as PublishingAddresses;
 use Preflow\Publishing\RecordIndex;
 use Preflow\Publishing\RemovalTarget;
 use Preflow\Publishing\SaveHooks;
+use Preflow\Publishing\WriteKind;
 
 /**
  * @deprecated since 0.71, use Preflow\Publishing\RecordDeleter (preflow/publishing) and
@@ -85,12 +86,12 @@ class RecordDeleter extends \Preflow\Publishing\RecordDeleter
         return new class ($run) implements SaveHooks {
             public function __construct(private readonly \Closure $run) {}
 
-            public function before(DynamicRecord $record): void
+            public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
             {
                 ($this->run)(BeforeSave::class, $record);
             }
 
-            public function after(DynamicRecord $record): void
+            public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
             {
                 ($this->run)(AfterSave::class, $record);
             }

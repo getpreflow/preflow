@@ -823,7 +823,9 @@ the page-cache tags of the addresses a record leaves and takes.
   its old arguments, `(DataManager, TypeCatalog, RecordValidator, …)`), `folio:publish` and
   `folio:publish-scheduled` (now `publish` and `publish:scheduled`; the old names print a note), and
   `config/folio.php` `'publishing'` (now `config/publishing.php`; read while that file does not exist,
-  with a deprecation note).
+  with a deprecation note), and `Preflow\Folio\Content\RecordDeleter` (now
+  `Preflow\Publishing\RecordDeleter`; the editors' texts of a plan or a refusal are in
+  `DeleteSummary`, and the old class keeps `summary()` and `Refused`).
 
 Types with a `frontend` block and singletons publish by default. Set
 `"publishing": true|false` in the type JSON to override that.
@@ -1476,9 +1478,9 @@ final class NoteTweaks
 | `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[DashboardNotice]` | `fn(): ?string` | A notice above the dashboard's cards (since 0.53), the same rules as `#[ListNotice]`. Only called for a user who may view the type (`{type}.view`); the notices are grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
-| `#[BeforeSave]` | `fn(DynamicRecord): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: nothing is stored, the form is shown again with its errors (422). Runs on every save through the `RecordWriter` (see [Saving records in your own code](#drafts-and-publishing)): the form, autosave, each record of the bulk bar's "Set …", both records of a list move, "still correct" of a translation, AI translation (since 0.71), "Add to role" on the new-permissions notice, the detached records of a member's own deletion (a refusal there is logged; the deletion stands), and an app's own writer calls. |
+| `#[BeforeSave]` | `fn(DynamicRecord): void`, or `fn(DynamicRecord, WriteKind $kind): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: nothing is stored, the form is shown again with its errors (422). Runs on every save through the `RecordWriter` (see [Saving records in your own code](#drafts-and-publishing)): the form, autosave, each record of the bulk bar's "Set …", both records of a list move, "still correct" of a translation, AI translation (since 0.71), "Add to role" on the new-permissions notice, the detached records of a member's own deletion (a refusal there is logged; the deletion stands), and an app's own writer calls. A method whose second parameter is typed `Preflow\Publishing\WriteKind` gets the kind of write (since 0.71): `Save` (the form, "still correct", "Add to role", an app's own `save()`), `Autosave`, `Bulk`, `Reorder` (a list move), `Translate` (AI translation) or `Detach` (a delete takes the deleted ids out of the record), so a hook can leave some alone, e.g. skip image work on autosave. |
 | `#[SaveRecord]` | `fn(DynamicRecord $record, ?DynamicRecord $previous): void` | Writes the record itself instead of the whole-record save, for types without publishing: after `#[BeforeSave]` and validation, before `#[AfterSave]`, on every save through the `RecordWriter` (the form's create and update, the bulk "Set …", AI translation; a list move's positions too, there without validation). `$previous` is the stored record before the change, `null` for a new one. One per type (a second is a boot error). Throw `ValidationException` to refuse the save (422, the form shown again). Use it when the store has rules a whole-record write would break, e.g. a counter changed at the same time. |
-| `#[AfterSave]` | `fn(DynamicRecord): void` | After the record is stored, on the same saves as `#[BeforeSave]`; on a publishing type also when the publish after the saved draft fails. |
+| `#[AfterSave]` | `fn(DynamicRecord): void`, or `fn(DynamicRecord, WriteKind $kind): void` | After the record is stored, on the same saves as `#[BeforeSave]`, with the same optional `WriteKind`; on a publishing type also when the publish after the saved draft fails. |
 | `#[BeforeDelete]` | `fn(DynamicRecord): void` | Throw `Customization\Refused('message')` to keep the record; the message is shown to the editor. |
 | `#[AfterDelete]` | `fn(DynamicRecord): void` | After the record is gone. |
 
@@ -1572,8 +1574,8 @@ without forking it: a model file in `config/models/` whose key is that type and 
   is fine, a different one is a boot error naming the option. So is redefining a field the
   extension defines. Any other key (`label`, `icon`, `section`, a `list` option other than
   `columns`...) is a boot error too, as the merge would drop it; each error names the file.
-- The patch is never a type of its own; `folio.tables` (`preflow migrate`) adds the new
-  columns. A patch no enabled extension type takes is a boot error that names the file and,
+- The patch is never a type of its own; `preflow migrate` (its `folio.tables` step, or
+  `publishing.tables` for a type that publishes) adds the new columns. A patch no enabled extension type takes is a boot error that names the file and,
   when the extension is switched off, the command that enables it.
 - `folio:extensions:disable` (and the admin toggle) refuse to disable an extension or part a
   patch extends, so the site never ends up unbootable. Remove the file first. If it happens
@@ -1846,12 +1848,14 @@ fallback to the default). Tables come from the model JSON, with no migration fil
 
 ```
 php preflow migrate
-# [folio.tables] created table post
-# [folio.tables] created table post__published
+# [publishing.tables] created table post
+# [publishing.tables] created table post__published
 ```
 
-- The step creates the type's table, the `__published` and `__revisions` shadows of
-  publishing types, the asset table, and Folio's own internal tables. The id is
+- Folio's step (`folio.tables`) creates the tables of types without publishing and Folio's own
+  internal tables. The tables of publishing types (the type's table and its `__published` and
+  `__revisions` shadows, with Folio's system columns) come from preflow/publishing's step
+  (`publishing.tables`), the asset table from preflow/media's (`media.table`). The id is
   `TEXT PRIMARY KEY`; every other column is nullable and typed by its field (numbers and yes/no
   as numbers, everything else text; unique and indexed fields get their indexes), see
   `preflow/data` "Record tables". `__revisions` stay text. A site made before 0.42 keeps its text
