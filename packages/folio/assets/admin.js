@@ -1411,29 +1411,47 @@
 
     // ---- Busy buttons ---------------------------------------------------------
     // A submit button with data-busy-label shows that its request runs: is-busy (spinner), aria-busy,
-    // disabled and the label as its text. Set on a plain submit (kept until the page unloads) and for
-    // an htmx request it sends; always cleared when the request ends, fails or is aborted, its markup is
-    // swapped away, the page comes back from the back/forward cache, or after BUSY_MAX_MS at the latest
-    // (a request that never reports back must not leave the button dead). Clearing puts the button's own
+    // disabled and the label as its text. A plain submit keeps it until the page unloads or comes back
+    // from the back/forward cache (a slow Save or Publish must never be posted twice). An htmx request
+    // keeps it until that request ends, fails or is aborted, its markup is swapped away, or after
+    // BUSY_MAX_MS at the latest (a request that never reports back must not leave the button dead).
+    // Each htmx request carries its own token (its xhr): the end, abort or timer of an older request
+    // (hx-sync="replace") never clears the busy state of a newer one. Clearing puts the button's own
     // nodes back (its icon too); after a failure the button gets the keyboard focus back.
 
     var BUSY_MAX_MS = 45000;
     var busyButtons = [];
 
-    function setBusy(btn) {
-        if (!btn || btn._folioBusy || !btn.getAttribute) { return; }
+    // request: null for a plain submit (no timer); the request's token for htmx.
+    function setBusy(btn, request) {
+        if (!btn || !btn.getAttribute) { return; }
         var label = btn.getAttribute('data-busy-label');
         if (!label) { return; }
-        btn._folioBusy = {
-            nodes: Array.prototype.slice.call(btn.childNodes),
-            disabled: !!btn.disabled,
-            timer: setTimeout(function () { clearBusy(btn, true); }, BUSY_MAX_MS)
-        };
+        var state = btn._folioBusy;
+        if (state) {
+            // Already busy: a newer htmx request from the same button takes over the token and the timer.
+            if (request && state.request) {
+                clearTimeout(state.timer);
+                state.request = request;
+                state.timer = busyTimer(btn, state);
+            }
+            return;
+        }
+        state = { nodes: Array.prototype.slice.call(btn.childNodes), disabled: !!btn.disabled, request: request || null, timer: null };
+        if (request) { state.timer = busyTimer(btn, state); }
+        btn._folioBusy = state;
         btn.classList.add('is-busy');
         btn.setAttribute('aria-busy', 'true');
         btn.disabled = true;
         btn.textContent = label;
         busyButtons.push(btn);
+    }
+
+    function busyTimer(btn, state) {
+        var request = state.request;
+        return setTimeout(function () {
+            if (btn._folioBusy === state && state.request === request) { clearBusy(btn, true); }
+        }, BUSY_MAX_MS);
     }
 
     function clearBusy(btn, failed) {
@@ -1461,7 +1479,7 @@
     function onBusySubmit(e) {
         var btn = e.submitter;
         if (!btn || !btn.hasAttribute || !btn.hasAttribute('data-busy-label')) { return; }
-        setTimeout(function () { if (!e.defaultPrevented) { setBusy(btn); } }, 0);
+        setTimeout(function () { if (!e.defaultPrevented) { setBusy(btn, null); } }, 0);
     }
 
     // The button an htmx request belongs to: the element itself, or the submitter of the form it sends.
@@ -1479,13 +1497,18 @@
         var btn = busyButtonOf(e.detail);
         if (!btn) { return; }
         e.detail.elt._folioBusyButton = btn;
-        setBusy(btn);
+        setBusy(btn, e.detail.xhr || {});
     }
 
     function onBusyDone(e) {
         var elt = e.detail && e.detail.elt;
         if (!elt) { return; }
-        clearBusy(elt._folioBusyButton || busyButtonOf(e.detail), e.type !== 'htmx:afterRequest');
+        var btn = elt._folioBusyButton || busyButtonOf(e.detail);
+        var state = btn && btn._folioBusy;
+        if (!state || !state.request) { return; }
+        // The end of an older request, replaced by a newer one from the same button: not ours to clear.
+        if (e.detail.xhr && state.request !== e.detail.xhr) { return; }
+        clearBusy(btn, e.type !== 'htmx:afterRequest');
         elt._folioBusyButton = null;
     }
 
@@ -2167,6 +2190,8 @@
         var shell = document.querySelector('.folio-shell.is-rail');
         if (!shell) { return; }
         revealCurrent(shell.querySelector('.folio-rail-nav'));
+        // Once more after load: icons and fonts can change the strip's widths after this first pass.
+        window.addEventListener('load', function () { revealCurrent(shell.querySelector('.folio-rail-nav')); });
         var root = document.documentElement;
         var remember = function (mode) {
             try {
@@ -2198,6 +2223,7 @@
         var nav = document.querySelector('nav.folio-nav');
         if (!nav) { return; }
         revealCurrent(nav);
+        window.addEventListener('load', function () { revealCurrent(nav); });
         var url = nav.getAttribute('data-nav-save');
         if (!url) { return; }
         nav.querySelectorAll('details.folio-nav-section').forEach(function (section) {

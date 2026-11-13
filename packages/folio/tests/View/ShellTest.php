@@ -176,6 +176,32 @@ final class ShellTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_redirects_and_ai_settings_tab_bars_are_folio_tabs(): void
+    {
+        $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake'];\n");
+        $this->flow = $this->app();
+        $this->signIn();
+
+        $bars = [
+            'Redirects' => ['/folio/redirects' => '/folio/redirects', '/folio/redirects?tab=not-found' => '/folio/redirects?tab=not-found'],
+            'AI' => ['/folio/ai' => '/folio/ai', '/folio/ai/tuning' => '/folio/ai/tuning', '/folio/ai/glossary' => '/folio/ai/glossary'],
+        ];
+        foreach ($bars as $label => $tabs) {
+            foreach (array_keys($tabs) as $uri) {
+                $x = $this->dom($uri);
+                $this->one($x, '//main//nav[@class="folio-tabs"]', $uri . ': one tab bar');
+                $this->assertSame(0, $x->query('//nav[@class="folio-tabs"]/a[' . self::cls('btn') . ']')->length, $uri . ': links, not buttons');
+                $current = $this->one($x, '//nav[@class="folio-tabs"]/a[@aria-current="page"]', $uri . ': one current tab');
+                $this->assertSame($tabs[$uri], $current->getAttribute('href'), $uri . ': the current tab is this page');
+                foreach ($tabs as $other) {
+                    $this->one($x, '//nav[@class="folio-tabs"]/a[@href="' . $other . '"]', $uri . ': links ' . $other);
+                }
+                $this->assertSame(count($tabs), $x->query('//nav[@class="folio-tabs"]/a')->length, $label);
+            }
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_debug_as_a_string_from_env_counts_as_on(): void
     {
         putenv('APP_ENV');

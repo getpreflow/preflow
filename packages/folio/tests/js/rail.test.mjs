@@ -82,4 +82,9 @@ test('a rail strip that scrolls (phone width) brings the current item into view'
 
     assert.equal(nav.scrollLeft, 480 - 60 - 16, 'scrolled so the current item starts 16px in');
     assert.equal(nav.scrollTop, 0, 'no vertical scroll in a row');
+
+    // After load (icons and fonts in place) the strip is measured once more.
+    nav.scrollLeft = 0;
+    (w.listeners.load || []).forEach((fn) => fn({}));
+    assert.equal(nav.scrollLeft, 480 - 60 - 16, 'revealed again on load');
 });

@@ -18,6 +18,10 @@ Each item has one of four labels:
 - **0.75**: in scope for 0.75, which covers settings, library screens and the ink layer (phases 6–7).
 - **Adaptation**: a deliberate difference, with the reason.
 - **Proposal**: needs the owner's yes before anyone builds it (phase 8, or new).
+- **Fixed in 0.73**: a difference that Task 4 found and closed in this release. It is listed so the
+  record is complete.
+
+Each row carries exactly one label.
 
 ## Tokens and type (phase 1)
 
@@ -41,7 +45,8 @@ Each item has one of four labels:
 | The drawer has no accent-soft "Saved" line. | Adaptation | `drawer_saved.twig` posts a message and closes the drawer at once, so there is no saved state to show. |
 | Danger buttons are filled, as on the board. The board's outlined "Unpublish" (danger text) is missing. | 0.74 | It goes with the editor side panel's Unpublish and Delete. |
 | `.folio-filter-add` ("+ Filter", dashed) exists in CSS only. The list toolbar still uses the `details` Filter button. | 0.74 | It comes with the list toolbar and the filter popover. |
-| The review-queue card has no type icon. Its "6 / 17" is the translated progress sentence in mono. | 0.74 (icon), Adaptation (text) | `.folio-type-icon` comes in 0.74. The sentence keeps the translation keys. |
+| The review-queue card has no type icon. | 0.74 | `.folio-type-icon` comes with the lists. |
+| The review-queue card shows the translated progress sentence in mono, not a bare "6 / 17". | Adaptation | The sentence keeps the translation keys. |
 | Alert, notice, field-error, chip and toast glyphs are CSS masks (copies of the icons.md paths), not `<use>` icons. | Adaptation | Field-type PHP and flash markup stay unchanged. |
 | The `is-failed` badge exists, but the AI run item status "failed" still renders `is-incomplete`. | 0.75 | It is a markup change in the AI run screen. |
 | On a ticked list row, the accent-soft row fill hides the published badge's fill. The text and dot stay readable. | 0.74 | Part of the table restyle. |
@@ -62,7 +67,8 @@ Each item has one of four labels:
 | The sidebar's search entry ("Search or jump to… ⌘K") is not built. | Proposal | ⌘K palette, phase 8. |
 | Nav items have no plain count of entries (board: "Pages 2", "Objekte 436"). Nav badges stay the warning pill for "needs attention" counts. | Proposal | The nav model has no totals, and counting every type on every request costs queries. `#[NavBadge]` stays "needs attention". |
 | Nav and title icons are the icon each model configures, so several types share the sliders icon. The board has tinted type icons. | 0.74 | `.folio-type-icon` and the type tints come with the lists. |
-| Long subtitles wrap; for example, the not-found intro is four lines at 1440. The board's subtitle is one short line. | Adaptation | Cutting them would hide the explanation. Shorter copy is a **Proposal** (the keys stay). |
+| Long subtitles wrap; for example, the not-found intro is four lines at 1440. The board's subtitle is one short line. | Adaptation | Cutting them would hide the explanation. |
+| Shorter subtitle copy, so every subtitle fits one line as on the boards. | Proposal | A copy change the owner decides on. The keys stay. |
 | The editor topbar has a breadcrumb over the title. The board has a back button, the content-language and layout segmented controls, the save state, Save draft and the Publish split button. | 0.74 | Editor action bar. The rail shell's topbar is already compact (17px title). |
 | The content column stops at 1120px while the topbar runs full width, so on wide screens the header's "New" sits to the right of the table edge. The List board fills the width; the Dashboard and settings boards are capped like Folio. | 0.74 | It changes with the list layout (full-width lists). |
 | There are no phone variants on the boards. At 375 the sidebar stacks into a site row, an avatar and one scrolling nav row (section headings as chips), and the rail becomes a top strip. | Adaptation | Task 3's phone layout. No page scrolls sideways at 375; tables scroll in their box. |

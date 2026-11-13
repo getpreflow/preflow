@@ -201,6 +201,55 @@ test('a request that ends in time cancels the safety timer', () => {
     }
 });
 
+test('a plain submit is never released by the timer: it stays busy until the page unloads', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const { form, publish } = editor();
+        submit(form, publish);
+        mock.timers.tick(0);
+        assert.ok(isBusy(publish));
+
+        mock.timers.tick(60000);
+        assert.ok(isBusy(publish), 'a slow Publish cannot be posted twice');
+    } finally {
+        mock.timers.reset();
+    }
+});
+
+test('hx-sync="replace": the abort of the older request leaves the newer one busy', () => {
+    const { form, save } = editor();
+    const older = { id: 'older' };
+    const newer = { id: 'newer' };
+    const requestConfig = { triggeringEvent: { submitter: save } };
+    htmx(form, 'htmx:beforeRequest', { requestConfig, xhr: older });
+    htmx(form, 'htmx:beforeRequest', { requestConfig, xhr: newer });
+
+    htmx(form, 'htmx:sendAbort', { requestConfig, xhr: older });
+    htmx(form, 'htmx:afterRequest', { requestConfig, xhr: older, successful: false });
+    assert.ok(isBusy(save), 'the older request ending does not clear the newer one');
+
+    htmx(form, 'htmx:afterRequest', { requestConfig, xhr: newer, successful: true });
+    assert.ok(isIdle(save, 'Save draft'));
+});
+
+test('the timer of an older request does not cut a newer one short', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const { form, save } = editor();
+        const requestConfig = { triggeringEvent: { submitter: save } };
+        htmx(form, 'htmx:beforeRequest', { requestConfig, xhr: { id: 'older' } });
+        mock.timers.tick(30000);
+        htmx(form, 'htmx:beforeRequest', { requestConfig, xhr: { id: 'newer' } });
+
+        mock.timers.tick(20000);
+        assert.ok(isBusy(save), '50 s after the first request, 20 s after the newer one');
+        mock.timers.tick(25000);
+        assert.ok(isIdle(save, 'Save draft'), 'released 45 s after the newer request');
+    } finally {
+        mock.timers.reset();
+    }
+});
+
 test('a button that sends its own htmx request is busy itself', () => {
     const { doc } = editor();
     const btn = doc.body.appendChild(doc.createElement('button'));
