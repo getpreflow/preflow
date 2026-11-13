@@ -161,20 +161,18 @@ final class RedirectRules
     }
 
     /**
-     * The entries sending visitors to an address of this site (a path, or an absolute URL with the
-     * site's host or $host), with the address read as targetedBy() reads it: an entry's URL target
-     * lies at the address (exact; where a page answers the entry does not send on, so it is left
-     * out), or a "keep the rest" area's target lies above it. $area asks for an area's address: the
-     * entries whose target lies at or under it. An address of another host, or one that is not a
-     * path of this site, is led to by none.
+     * The entries whose target resolves to an address of this site (a path, or an absolute URL with
+     * the site's host or $host), read as targetedBy() reads it: an entry's URL target lies at the
+     * address, or a "keep the rest" area's target lies above it. Whether a page answers there is not
+     * asked. An address of another host, or one that is not a path of this site, is led to by none.
      *
      * @return list<Redirect>
      */
-    public function leadingTo(string $address, bool $area = false, string $host = ''): array
+    public function leadingTo(string $address, string $host = ''): array
     {
         $at = $this->site->address($address, $host);
 
-        return $at === null ? [] : $this->leading($at[0], $at[1], $area, null, $host);
+        return $at === null ? [] : $this->leading($at[0], $at[1], false, null, $host);
     }
 
     /**
@@ -185,10 +183,23 @@ final class RedirectRules
      */
     private function targetedBy(string $locale, string $path, bool $area, ?string $own, string $host): bool
     {
-        return $this->leading($locale, $path, $area, $own, $host) !== [];
+        foreach ($this->leading($locale, $path, $area, $own, $host) as $other) {
+            if ($other->area && $other->mode === AreaMode::Prefix) {
+                return true;
+            }
+            $at = $this->site->address((string) $other->targetUrl, $host);
+            if ($at !== null && !$this->pages->exists($this->site->lookupLocale($at[0]), $at[1])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
+     * The entries whose URL target lies at the address (under it for an $area), or a "keep the rest"
+     * area's target above it.
+     *
      * @param string $locale '' for any language
      * @return list<Redirect>
      */
@@ -209,8 +220,7 @@ final class RedirectRules
                 }
                 continue;
             }
-            $hit = $area ? RedirectPath::under($at[1], $path) !== null : $at[1] === $path;
-            if ($hit && !$this->pages->exists($this->site->lookupLocale($at[0]), $at[1])) {
+            if ($area ? RedirectPath::under($at[1], $path) !== null : $at[1] === $path) {
                 $leading[] = $other;
             }
         }

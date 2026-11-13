@@ -124,6 +124,17 @@ final class AiRunTest extends TestCase
         $this->assertSame(422, $this->estimate('post', ['scope' => 'some'])->getStatusCode());
     }
 
+    public function test_a_type_with_nothing_to_translate_offers_no_run_screen(): void
+    {
+        $this->writeModel('badge', ['label' => 'Badges', 'fields' => ['name' => ['type' => 'string']]]);
+        $this->working('badge', 'b1', ['name' => 'Gold']);
+
+        $this->assertStringContainsString('href="/folio/post/_ai/run"', (string) $this->request('GET', '/folio/post')->getBody(), 'a type with texts shows it');
+        $this->assertStringNotContainsString('/folio/badge/_ai/run', (string) $this->request('GET', '/folio/badge')->getBody());
+        $this->assertSame(404, $this->request('GET', '/folio/badge/_ai/run')->getStatusCode());
+        $this->assertSame(404, $this->estimate('badge')->getStatusCode());
+    }
+
     public function test_live_type_requires_confirmation(): void
     {
         $this->writeModel('faq', ['label' => 'FAQ', 'fields' => ['question' => ['type' => 'string', 'translatable' => true]]]);

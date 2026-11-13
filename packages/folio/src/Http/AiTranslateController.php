@@ -541,14 +541,14 @@ final class AiTranslateController
 
     /**
      * The languages a type's texts can be translated into: every one but the default (the
-     * source); none when the type has no translatable field.
+     * source); none when the type has nothing to translate (no text source).
      *
      * @return array<string, string> code => name
      */
     private function languages(string $type): array
     {
         $def = $this->registry->get($type);
-        if ($def->translatableFields() === [] || !$def->locales->isMultilingual()) {
+        if (!$def->locales->isMultilingual() || !$this->sources->has($type)) {
             return [];
         }
         $names = [];

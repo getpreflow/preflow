@@ -108,6 +108,14 @@ final class JobRunner
             return $job;
         }
 
+        if (!$this->sources->has($job->collection)) {
+            return $this->update($jobId, static function (Job $job): void {
+                if ($job->state !== 'stopped' && $job->state !== 'done') {
+                    $job->state = 'stopped';
+                    $job->message = "The collection \"{$job->collection}\" has no text source any more (nothing to translate in it); the job was stopped.";
+                }
+            });
+        }
         $source = $this->sources->get($job->collection);
         if ($source->writesLive() && !$job->confirmedLive) {
             return $this->update($jobId, static function (Job $job): void {

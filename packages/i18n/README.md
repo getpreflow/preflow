@@ -426,7 +426,11 @@ close, not exact.
 ### Translating collections: TextSource and JobRunner
 
 To translate many items (a Folio type, or your own data), implement `TextSource` and register it
-under a collection key in `TextSources`:
+under a collection key in `TextSources`. `add($key, $factory, $offered = null)` takes an optional third
+argument, a `Closure(): bool` asked once, when the collection is first looked up: when it returns false
+the collection is not listed (`has()` and `collections()`) and `get()` throws, so a collection with nothing
+to translate can stay out. It must not throw (an error there is not caught). A job whose collection is no
+longer offered stops with a message at its next step.
 
 - `collection()`, `label()`: the key and a name for people;
 - `items()` and `title($id)`: the ids of all items and a title for each;

@@ -80,6 +80,29 @@ final class JobRunnerTest extends TestCase
         $this->assertSame([], $this->fake->requests(), 'the runner\'s own client sent nothing');
     }
 
+    public function test_a_job_whose_collection_is_no_longer_offered_stops_with_a_message(): void
+    {
+        $offered = true;
+        $sources = new TextSources();
+        $sources->add('games', fn () => $this->source, static function () use (&$offered): bool {
+            return $offered;
+        });
+        $ai = $this->ai(new FakeAiClient([self::echo()]));
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), new FileJobStore($this->dir), $this->lease);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+
+        $offered = false;
+        $sources = new TextSources();
+        $sources->add('games', fn () => $this->source, static fn (): bool => false);
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), new FileJobStore($this->dir), $this->lease);
+
+        $job = $runner->step($job->id);
+
+        $this->assertSame('stopped', $job->state);
+        $this->assertStringContainsString('"games" has no text source any more', (string) $job->message);
+        $this->assertSame([], $this->source->writes);
+    }
+
     public function test_step_translates_one_item_per_call_and_finishes(): void
     {
         $runner = $this->runner([self::echo()]);

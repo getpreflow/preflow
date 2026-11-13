@@ -22,8 +22,8 @@ abstract class Extension
      * idempotent: what a deploy brings, such as a permission added to a seed list, reaches
      * sites that installed this version already. Since 0.53.
      *
-     * @return list<string>|null lines to print, one each (the rbac extension reports the undeclared
-     *                            permissions it granted); apply prints them and counts them as work.
+     * @return list<string> lines to print, one each (the rbac extension reports the undeclared
+     *                      permissions it granted); apply prints them and counts them as work.
      */
     public function seed(Container $c): array
     {

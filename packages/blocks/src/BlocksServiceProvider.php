@@ -50,7 +50,7 @@ final class BlocksServiceProvider extends ServiceProvider
                 $components,
                 $app->basePath('app/Blocks'),
                 // Installed packages' blocks (composer.json extra.preflow.blocks), then config/blocks.php's.
-                [...self::packageClasses($app, 'preflow.blocks'), ...$config->classes],
+                [...self::packageClasses($app), ...$config->classes],
                 $config->cacheFile,
                 useCache: !$app->config()->get('app.debug', false),
             )->toArray(), [$app->basePath('app/Blocks'), $app->basePath('app/Components')]));
@@ -102,20 +102,20 @@ final class BlocksServiceProvider extends ServiceProvider
     }
 
     /**
-     * Block classes installed packages list in composer.json extra.<$key> (read from
+     * Block classes installed packages list in composer.json extra.preflow.blocks (read from
      * vendor/composer/installed.json through the boot manifest). Installing the package is enough.
      *
      * @return list<class-string>
      */
-    public static function packageClasses(Application $app, string $key): array
+    public static function packageClasses(Application $app): array
     {
         $classes = [];
         foreach ($app->installedPackages() as $package) {
-            $declared = InstalledPackages::extra($package, $key);
+            $declared = InstalledPackages::extra($package, 'preflow.blocks');
             if ($declared === null) {
                 continue;
             }
-            $what = 'extra.' . $key;
+            $what = 'extra.preflow.blocks';
             $name = (string) ($package['name'] ?? '?');
             if (!is_array($declared)) {
                 throw new BlockConfigException("Package {$name}: {$what} must be a list of class names.");

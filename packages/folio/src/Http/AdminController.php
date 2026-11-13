@@ -1042,7 +1042,7 @@ final class AdminController
      */
     private function aiRunUrl(string $type, TypeDefinition $typeDef): ?string
     {
-        if (!($this->translator?->available() ?? false) || $typeDef->translatableFields() === [] || !$typeDef->locales->isMultilingual()
+        if (!($this->translator?->available() ?? false) || !$this->translations->translatable($typeDef)
             || !$this->can('ai.translate') || !$this->can($type . '.edit')) {
             return null;
         }

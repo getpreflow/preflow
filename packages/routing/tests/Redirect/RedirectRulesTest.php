@@ -163,9 +163,9 @@ final class RedirectRulesTest extends TestCase
         self::assertSame([$b->id, $absolute->id], array_map(static fn (Redirect $r): string => $r->id, $rules->leadingTo('https://example.test/b')));
         self::assertSame([], $rules->leadingTo('https://other.test/b'), 'another host is no address of this site');
         self::assertSame([], $rules->leadingTo('/nothing'));
-        // Where a page answers, an entry does not send on.
+        // Whether a page answers there is not asked (targetedBy() does).
         $this->pages = ['/b'];
-        self::assertSame([], $this->rules([$b, $absolute])->leadingTo('/b'));
+        self::assertSame([$b->id, $absolute->id], array_map(static fn (Redirect $r): string => $r->id, $this->rules([$b, $absolute])->leadingTo('/b')));
     }
 
     public function test_leading_to_reads_the_locale_of_the_address(): void
@@ -202,7 +202,7 @@ final class RedirectRulesTest extends TestCase
         self::assertSame([], $rules->leadingTo('/en/seite'), 'the same path in another language');
     }
 
-    public function test_leading_to_includes_a_keep_the_rest_area_above_the_address_and_areas_holding_it(): void
+    public function test_leading_to_includes_a_keep_the_rest_area_above_the_address(): void
     {
         $docs = self::area('/docs', '/guide', AreaMode::Prefix);
         $one = self::area('/old', '/guide/sub');
@@ -211,8 +211,6 @@ final class RedirectRulesTest extends TestCase
         self::assertSame([$docs], $rules->leadingTo('/guide/intro'));
         self::assertSame([$docs], $rules->leadingTo('/guide'));
         self::assertSame([], $rules->leadingTo('/other'));
-        // An area's address: what its own target lies under, too.
-        self::assertSame([$docs, $one], $rules->leadingTo('/guide', true));
     }
 
     public function test_a_target_is_needed_and_must_be_a_url_or_a_live_record(): void
