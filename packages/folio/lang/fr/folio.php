@@ -44,6 +44,10 @@ return [
         'your_account' => 'Votre compte',
         'log_out' => 'Se déconnecter',
         'waiting' => ':count en attente',
+        'environment' => 'Folio · :env',
+        'account_and_password' => 'Compte et mot de passe',
+        'expand_nav' => 'Afficher tout le menu',
+        'collapse_nav' => 'Afficher seulement les icônes',
     ],
     'nav' => [
         'dashboard' => 'Tableau de bord',

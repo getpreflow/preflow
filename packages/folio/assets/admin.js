@@ -2045,6 +2045,123 @@
         initTranslationsSaveAll();
         initRedirectTargets();
         initNavSections();
+        initUserMenus();
+        initShellRail();
+    }
+
+    // The user menu (partials/_user_menu.twig): a button that opens a small non-modal dialog. Not a
+    // role="menu", because its theme and language rows are segmented toggle groups. Enter or Space on
+    // the button opens it and moves focus to the first row; ArrowUp/ArrowDown move between the rows
+    // (a segmented row takes focus on its pressed button), ArrowLeft/ArrowRight move inside a row,
+    // Home/End jump to the first or last row; Escape closes it and returns focus to the button;
+    // tabbing out of it or clicking elsewhere closes it. Without this script the panel stays open in place.
+    function initUserMenus() {
+        document.querySelectorAll('[data-user-menu]').forEach(function (menu) {
+            var button = menu.querySelector('button[aria-controls]');
+            var panel = menu.querySelector('[data-user-panel]');
+            if (!button || !panel || menu.getAttribute('data-user-menu-ready') === '1') { return; }
+            menu.setAttribute('data-user-menu-ready', '1');
+            var inside = function (node) {
+                return !!(node && typeof node.closest === 'function' && node.closest('[data-user-menu]') === menu);
+            };
+            var rows = function () { return Array.prototype.slice.call(panel.querySelectorAll('[data-menu-row]')); };
+            var controls = function (row) {
+                if (row.matches('a, button')) { return [row]; }
+                return Array.prototype.slice.call(row.querySelectorAll('a, button'));
+            };
+            var target = function (row) {
+                var list = controls(row);
+                return list.filter(function (c) { return c.getAttribute('aria-pressed') === 'true'; })[0] || list[0] || null;
+            };
+            var focusRow = function (row) { var t = row ? target(row) : null; if (t) { t.focus(); } };
+            var isOpen = function () { return !panel.hidden; };
+            var open = function (last) {
+                panel.hidden = false;
+                menu.classList.add('is-open');
+                button.setAttribute('aria-expanded', 'true');
+                var list = rows();
+                focusRow(last ? list[list.length - 1] : list[0]);
+            };
+            var close = function (refocus) {
+                if (!isOpen()) { return; }
+                panel.hidden = true;
+                menu.classList.remove('is-open');
+                button.setAttribute('aria-expanded', 'false');
+                if (refocus) { button.focus(); }
+            };
+            panel.hidden = true;
+            button.setAttribute('aria-expanded', 'false');
+            button.addEventListener('click', function () {
+                if (isOpen()) { close(false); } else { open(false); }
+            });
+            menu.addEventListener('keydown', function (e) {
+                if (!isOpen()) {
+                    // As a menu button does: ArrowDown on the closed button opens it at the first row, ArrowUp at the last.
+                    if (e.target === button && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); open(e.key === 'ArrowUp'); }
+                    return;
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    close(true);
+                    return;
+                }
+                if (e.target === button) { return; }
+                var list = rows();
+                var row = e.target.closest ? e.target.closest('[data-menu-row]') : null;
+                var at = list.indexOf(row);
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+                    e.preventDefault();
+                    if (list.length === 0) { return; }
+                    var next = e.key === 'Home' ? 0
+                        : e.key === 'End' ? list.length - 1
+                        : e.key === 'ArrowDown' ? (at + 1) % list.length
+                        : (at <= 0 ? list.length - 1 : at - 1);
+                    focusRow(list[next]);
+                } else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && row) {
+                    var inRow = controls(row);
+                    var i = inRow.indexOf(e.target);
+                    if (inRow.length < 2 || i < 0) { return; }
+                    e.preventDefault();
+                    inRow[(i + (e.key === 'ArrowRight' ? 1 : inRow.length - 1)) % inRow.length].focus();
+                }
+            });
+            // Tab out: focus moved to something outside the menu.
+            menu.addEventListener('focusout', function (e) {
+                if (isOpen() && e.relatedTarget && !inside(e.relatedTarget)) { close(false); }
+            });
+            document.addEventListener('click', function (e) {
+                if (isOpen() && !inside(e.target)) { close(false); }
+            });
+        });
+    }
+
+    // The editor rail (.folio-shell.is-rail): its expand button shows the sidebar instead and keeps that for
+    // the session (sessionStorage 'folio-shell'; the layout's head script applies it before the first paint);
+    // the sidebar's collapse button goes back to the rail. Storage may be refused: then it holds for this page.
+    function initShellRail() {
+        var shell = document.querySelector('.folio-shell.is-rail');
+        if (!shell) { return; }
+        var root = document.documentElement;
+        var remember = function (mode) {
+            try {
+                if (mode) { window.sessionStorage.setItem('folio-shell', mode); } else { window.sessionStorage.removeItem('folio-shell'); }
+            } catch (e) { /* private mode or blocked storage: this page only */ }
+        };
+        shell.addEventListener('click', function (e) {
+            var expand = e.target.closest ? e.target.closest('[data-shell-expand]') : null;
+            var collapse = e.target.closest ? e.target.closest('[data-shell-collapse]') : null;
+            if (expand) {
+                root.setAttribute('data-folio-shell', 'sidebar');
+                remember('sidebar');
+                var back = shell.querySelector('[data-shell-collapse]');
+                if (back) { back.focus(); }
+            } else if (collapse) {
+                root.removeAttribute('data-folio-shell');
+                remember(null);
+                var again = shell.querySelector('[data-shell-expand]');
+                if (again) { again.focus(); }
+            }
+        });
     }
 
     // Sidebar sections (<details class="folio-nav-section">): each open or close is saved for the

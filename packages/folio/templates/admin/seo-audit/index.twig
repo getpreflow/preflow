@@ -2,12 +2,11 @@
 {# Settings → SEO audit (SeoAuditController): the last report of `preflow seo:audit`, read only. #}
 {% block title %}Folio — {{ t('folio.nav.seo_audit') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.seo_audit') }}{% endblock %}
+{% block subtitle %}{{ t('folio.audit.intro') }}{% endblock %}
 {% block content %}
     {% if report is null %}
         <div class="folio-notice" role="status"><p>{{ t('folio.audit.never_run') }} <code>preflow seo:audit</code></p></div>
-        <p class="folio-help">{{ t('folio.audit.intro') }}</p>
     {% else %}
-        <p class="folio-help">{{ t('folio.audit.intro') }}</p>
         <dl class="folio-audit-summary">
             <div><dt>{{ t('folio.audit.site') }}</dt><dd>{{ report.origin }}</dd></div>
             <div><dt>{{ t('folio.audit.started') }}</dt><dd>{{ folio_date(report.started_at, 'datetime') }}</dd></div>

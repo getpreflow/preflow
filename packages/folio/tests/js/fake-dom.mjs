@@ -94,6 +94,26 @@ class Element {
         path.forEach((node) => { (node.listeners[event.type] || []).slice().forEach((fn) => fn(event)); });
         return !event.defaultPrevented;
     }
+    /** Focus as the browser moves it: the document's activeElement, focusout (with relatedTarget) on the old one, focusin on this. */
+    focus() {
+        const doc = this.ownerDocument;
+        const prev = doc.activeElement;
+        if (prev === this) { return; }
+        doc.activeElement = this;
+        if (prev && prev !== doc.body) {
+            const out = new Event('focusout', { bubbles: true });
+            Object.defineProperty(out, 'relatedTarget', { value: this });
+            prev.dispatchEvent(out);
+        }
+        this.dispatchEvent(new Event('focusin', { bubbles: true }));
+    }
+    /** A key press: a keydown event with its key, bubbling and cancelable (the default action is the caller's). */
+    keydown(key) {
+        const event = new Event('keydown', { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'key', { value: key });
+        this.dispatchEvent(event);
+        return event;
+    }
     /** A click as the browser sends it: bubbles to the document. */
     click() { this.dispatchEvent(new Event('click', { bubbles: true, cancelable: true })); }
     matches(selector) { return selector.split(',').some((group) => matchesChain(this, group.trim().split(/\s+/))); }
@@ -153,6 +173,7 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
     };
     document.documentElement = new Element('html', document);
     document.body = document.documentElement.appendChild(new Element('body', document));
+    document.activeElement = document.body;
     Object.entries(body).forEach(([name, value]) => document.body.setAttribute(name, value));
 
     const window = {
@@ -167,6 +188,11 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         },
         Event, CustomEvent, console, setTimeout, clearTimeout, JSON, Math, Date,
         localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+        // A working session store; tests replace it with one that throws to play a browser that refuses storage.
+        sessionStorage: (() => {
+            const items = new Map();
+            return { getItem: (k) => (items.has(k) ? items.get(k) : null), setItem: (k, v) => { items.set(k, String(v)); }, removeItem: (k) => { items.delete(k); } };
+        })(),
     };
     window.window = window;
     window.self = window;

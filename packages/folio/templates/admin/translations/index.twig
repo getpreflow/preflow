@@ -1,8 +1,8 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% block title %}Folio — {{ t('folio.nav.translations') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.translations') }}{% endblock %}
+{% block subtitle %}{{ t('folio.translations.intro') }}{% endblock %}
 {% block content %}
-    <div class="folio-notice" role="status"><p>{{ t('folio.translations.intro') }}</p></div>
     <div class="folio-toolbar">
         {# One GET form: group, language and search stay in the URL. #}
         <form class="folio-toolbar-fields" method="get" action="{{ prefix }}/translations" role="search">

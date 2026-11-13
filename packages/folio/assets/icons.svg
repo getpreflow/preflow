@@ -39,4 +39,7 @@
   <!-- Redesign UI icons (icons.md): stroke 1.75. admin.css draws the same paths as mask glyphs (folio-glyph tokens). -->
   <symbol id="ui-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2zM12 10v5M12 18h.01"/></symbol>
   <symbol id="ui-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 11v6M12 7.5h.01"/></symbol>
+  <symbol id="ui-updown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></symbol>
+  <symbol id="ui-panel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4zM9 4v16"/></symbol>
+  <symbol id="ui-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8M4 21c0-4 3.6-7 8-7s8 3 8 7"/></symbol>
 </svg>

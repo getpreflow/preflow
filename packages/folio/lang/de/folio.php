@@ -44,6 +44,10 @@ return [
         'your_account' => 'Dein Konto',
         'log_out' => 'Abmelden',
         'waiting' => ':count offen',
+        'environment' => 'Folio · :env',
+        'account_and_password' => 'Konto & Passwort',
+        'expand_nav' => 'Ganzes Menü zeigen',
+        'collapse_nav' => 'Nur Symbole zeigen',
     ],
     'nav' => [
         'dashboard' => 'Übersicht',

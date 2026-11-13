@@ -49,6 +49,10 @@ return [
         'your_account' => 'Your account',
         'log_out' => 'Log out',
         'waiting' => ':count waiting',
+        'environment' => 'Folio · :env',
+        'account_and_password' => 'Account & password',
+        'expand_nav' => 'Show the full menu',
+        'collapse_nav' => 'Show icons only',
     ],
     // The sidebar's sections and Folio's own items.
     'nav' => [

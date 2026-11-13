@@ -2,9 +2,9 @@
 {# The glossary (AiSettingsController): per term a fixed rendering per language (text, or "keep" to leave the term as it is), the types it applies to and a note. #}
 {% block title %}Folio — {{ t('folio.ai_settings.tab_glossary') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.ai') }}{% endblock %}
+{% block subtitle %}{{ t('folio.ai_settings.glossary_intro') }}{% endblock %}
 {% block content %}
     {% include '@folio/admin/ai/_tabs.twig' %}
-    <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.glossary_intro') }}</p></div>
     <form class="folio-form" method="post" action="{{ prefix }}/ai/glossary">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
         <div class="folio-table-wrap">

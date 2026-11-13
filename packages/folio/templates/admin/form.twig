@@ -1,4 +1,6 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
+{# Editors use the icon rail: the form, preview and side panel get the room. #}
+{% set shell = 'rail' %}
 {% block title %}Folio — {{ record_title|default(null) ?: heading }}{% endblock %}
 {% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="{{ t('folio.form.breadcrumb') }}"><a href="{{ prefix }}/{{ type }}">{{ label }}</a>{% if record_title|default(null) %}<svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg><span>{{ t('folio.common.edit') }}</span>{% endif %}</nav>{% endblock %}
 {% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if publishing %} <span class="folio-badge is-{{ publishing.state }}">{{ publishing.label }}</span>{% if publishing.save_state %} <span id="folio-save-state" class="folio-save-state" aria-live="polite">{{ publishing.save_state != publishing.label ? publishing.save_state : '' }}</span>{% endif %}{% endif %}{% endblock %}

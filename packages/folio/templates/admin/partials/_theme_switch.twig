@@ -1,0 +1,9 @@
+{# The theme switch (system / light / dark): the layout's inline script stores the choice and marks the pressed button. #}
+<div id="{{ switch_id }}" class="folio-theme-switch" data-theme-switch role="group" aria-label="{{ t('folio.layout.theme') }}">
+    {% for choice, text in {'system': t('folio.layout.theme_system'), 'light': t('folio.layout.theme_light'), 'dark': t('folio.layout.theme_dark')} %}
+        <button type="button" data-theme-choice="{{ choice }}" aria-pressed="false" title="{{ text }}">
+            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ {'system': 'ui-monitor', 'light': 'ui-sun', 'dark': 'ui-moon'}[choice] }}"></use></svg>
+            <span class="folio-sr">{{ text }}</span>
+        </button>
+    {% endfor %}
+</div>

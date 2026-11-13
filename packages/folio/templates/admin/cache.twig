@@ -1,8 +1,8 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% block title %}Folio — {{ t('folio.nav.cache') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.cache') }}{% endblock %}
+{% block subtitle %}{{ t('folio.cache.intro') }}{% endblock %}
 {% block content %}
-    <div class="folio-notice" role="status"><p>{{ t('folio.cache.intro') }}</p></div>
     <div class="folio-list-toolbar">
         <form method="post" action="{{ prefix }}/cache/clear">
             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">

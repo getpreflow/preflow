@@ -2,6 +2,7 @@
 {# Settings → Redirects (RedirectsController): the entries, or the not-found list (tab "not-found"). #}
 {% block title %}Folio — {{ t('folio.nav.redirects') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.redirects') }}{% endblock %}
+{% block subtitle %}{% if not unavailable|default(false) %}{{ tab == 'not-found' ? t('folio.redirects.not_found_intro') : t('folio.redirects.intro') }}{% endif %}{% endblock %}
 {% block content %}
     {% if unavailable|default(false) %}
         {# A SQL site that has not run `preflow migrate` yet: no redirect tables. #}
@@ -12,7 +13,6 @@
         <a class="btn {{ tab == 'not-found' ? 'btn-secondary' : 'btn-ghost' }} btn-sm" href="{{ prefix }}/redirects?tab=not-found"{% if tab == 'not-found' %} aria-current="page"{% endif %}>{{ t('folio.redirects.tab_not_found') }}</a>
     </nav>
     {% if tab == 'not-found' %}
-        <div class="folio-notice" role="status"><p>{{ t('folio.redirects.not_found_intro') }}</p></div>
         {% if missing is empty %}
             <p class="folio-help">{{ t('folio.redirects.not_found_empty') }}</p>
         {% else %}
@@ -48,7 +48,6 @@
         </div>
         {% endif %}
     {% else %}
-        <div class="folio-notice" role="status"><p>{{ t('folio.redirects.intro') }}</p></div>
         <div class="folio-toolbar">
             <form class="folio-toolbar-fields" method="get" action="{{ prefix }}/redirects" role="search">
                 {% if record %}<input type="hidden" name="record" value="{{ record }}">{% endif %}

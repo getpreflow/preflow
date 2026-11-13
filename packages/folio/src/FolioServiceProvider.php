@@ -1316,6 +1316,25 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /**
+     * The environment the sidebar names under the site ("Folio · development"): app.env, else the
+     * APP_ENV variable, else app.debug (on: development). Null in production, which the sidebar
+     * leaves unsaid.
+     */
+    private static function environment(Application $app): ?string
+    {
+        $env = $app->config()->get('app.env');
+        if (!is_string($env) || trim($env) === '') {
+            $env = getenv('APP_ENV');
+        }
+        if (!is_string($env) || trim($env) === '') {
+            $env = (int) $app->config()->get('app.debug', 0) !== 0 ? 'development' : 'production';
+        }
+        $env = strtolower(trim($env));
+
+        return in_array($env, ['production', 'prod', 'live'], true) ? null : $env;
+    }
+
+    /**
      * admin.js's words: every folio.js.* key (as Folio's English file and the site's lang/en name
      * them), short keys ("confirm_delete"), and the redirect prompt's folio.redirects.prompt.*
      * ("redirects.prompt.leave"), in the translator's language, as JSON that cannot close or
@@ -1432,6 +1451,11 @@ final class FolioServiceProvider extends ServiceProvider
             // The interface language of the admin request (AdminLocaleMiddleware updates it) and the
             // offered languages with their own names (the sidebar switch, the account page).
             $engine->addGlobal('interface_locale', $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->default());
+            // The sidebar's site switcher: the site's name and its environment (null in production).
+            $engine->addGlobal('folio_site', [
+                'name' => (string) ($app->config()->get('app.name') ?: 'Folio'),
+                'env' => self::environment($app),
+            ]);
             // The app's directory, absolute: the cron line of the no-worker hint (folio.ai_queue.no_worker, :path).
             $base = $app->basePath();
             $engine->addGlobal('folio_app_path', str_starts_with($base, '/') ? $base : (realpath($base) ?: $base));

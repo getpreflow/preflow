@@ -1,0 +1,49 @@
+{#
+  The user menu: one button (avatar, email, chevron) that opens a small non-modal dialog with the
+  account link, the theme and language switches and Log out. A dialog, not role="menu": the theme and
+  language rows are segmented groups of toggle buttons, which a menu may not hold. admin.js opens and
+  closes it (Enter/Space, Escape back to the button, arrow keys between the rows, Tab out closes it).
+  Without script the panel stays open in place, so Log out and the language still work.
+  menu_id: 'sidebar' or 'rail' (the rail shows the avatar only and opens the panel to its right).
+#}
+{% set email = auth_user().email %}
+{% set account_url = folio_account_url() %}
+{% set interface_locales = folio_interface_locales() %}
+{% set compact = menu_id == 'rail' %}
+<div class="folio-user-menu{{ compact ? ' is-compact' : '' }}" data-user-menu>
+    <button type="button" class="folio-user" id="folio-user-button-{{ menu_id }}" aria-haspopup="dialog" aria-expanded="false" aria-controls="folio-user-panel-{{ menu_id }}"{% if compact %} aria-label="{{ t('folio.layout.your_account') }}: {{ email }}" title="{{ email }}"{% endif %}>
+        <span class="folio-avatar" aria-hidden="true">{{ email|first|upper }}</span>
+        {%- if not compact %}
+        <span class="folio-user-email">{{ email }}</span>
+        <svg class="folio-icon folio-user-chevron" aria-hidden="true"><use href="{{ icons }}#ui-updown"></use></svg>
+        {%- endif %}
+    </button>
+    <div class="folio-user-panel folio-menu" id="folio-user-panel-{{ menu_id }}" role="dialog" aria-label="{{ t('folio.layout.your_account') }}" data-user-panel>
+        {% if account_url %}
+        <a class="folio-menu-item" href="{{ account_url }}" data-menu-row>
+            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-user"></use></svg>{{ t('folio.layout.account_and_password') }}
+        </a>
+        {% endif %}
+        <div class="folio-user-row" data-menu-row>
+            <span class="folio-user-row-label" aria-hidden="true">{{ t('folio.layout.theme') }}</span>
+            {% include '@folio/admin/partials/_theme_switch.twig' with {switch_id: menu_id == 'sidebar' ? 'folio-theme-toggle' : 'folio-theme-toggle-' ~ menu_id} %}
+        </div>
+        {# The interface language: each button posts its locale (no script); shown with two or more languages. #}
+        {% if interface_locales|length > 1 %}
+        <div class="folio-user-row" data-menu-row>
+            <span class="folio-user-row-label" aria-hidden="true">{{ t('folio.layout.language') }}</span>
+            <form method="post" action="{{ prefix }}/_locale" class="folio-theme-switch folio-locale-switch" aria-label="{{ t('folio.layout.language') }}">{{ csrf_field()|raw }}
+                {% for code, name in interface_locales %}
+                    <button type="submit" name="locale" value="{{ code }}" lang="{{ code }}" title="{{ name }}" aria-pressed="{{ code == interface_locale ? 'true' : 'false' }}"><span aria-hidden="true">{{ code|upper }}</span><span class="folio-sr">{{ name }}</span></button>
+                {% endfor %}
+            </form>
+        </div>
+        {% endif %}
+        <hr class="folio-menu-sep">
+        <form method="post" action="{{ prefix }}/logout" class="folio-logout">{{ csrf_field()|raw }}
+            <button type="submit" class="folio-menu-item" data-menu-row>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-logout"></use></svg>{{ t('folio.layout.log_out') }}
+            </button>
+        </form>
+    </div>
+</div>

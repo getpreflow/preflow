@@ -7,14 +7,23 @@
     {# The admin is no public page: not indexed, and no GEO Markdown alternate (GEO skips noindex pages). #}
     <meta name="robots" content="noindex">
     <title>{% block title %}Folio{% endblock %}</title>
-    {# No-flash theme: apply the stored choice before first paint. Plain inline
-       script because action-mode responses bypass the asset collector. #}
+    {# No-flash theme and shell: apply the stored choices before first paint, and mark that script runs
+       (folio-js: the user menu's panel starts closed). Plain inline script because action-mode
+       responses bypass the asset collector. #}
     <script nonce="{{ csp_nonce() }}">
     (function () {
+        var root = document.documentElement;
+        root.classList.add('folio-js');
         try {
             var t = localStorage.getItem('folio-theme');
             if (t === 'light' || t === 'dark') {
-                document.documentElement.setAttribute('data-theme', t);
+                root.setAttribute('data-theme', t);
+            }
+        } catch (e) {}
+        // An editor's rail expanded to the sidebar earlier in this session (admin.js, data-shell-expand).
+        try {
+            if (sessionStorage.getItem('folio-shell') === 'sidebar') {
+                root.setAttribute('data-folio-shell', 'sidebar');
             }
         } catch (e) {}
     })();
@@ -47,12 +56,28 @@
 </head>
 <body data-folio-prefix="{{ prefix }}">
 {% set icons = folio_asset('icons.svg') %}
-<div class="folio-shell">
+{% set nav_sections = folio_nav() %}
+{% set signed_in = folio_auth_enabled|default(false) and auth_check() %}
+{# A template picks the editor rail with {% set shell = 'rail' %}; every other page has the sidebar. #}
+{% set rail = shell|default('sidebar') == 'rail' %}
+<div class="folio-shell{{ rail ? ' is-rail' : '' }}">
+    {% if rail %}{% include '@folio/admin/partials/_rail.twig' %}{% endif %}
     <aside class="folio-sidebar">
-        <a class="folio-brand" href="{{ prefix }}">
-            {% include '@folio/admin/_logo.twig' %}
-            <span class="folio-brand-name">Folio</span>
-        </a>
+        {# The site switcher: one site today, so a link to the dashboard (a site list comes with a second site). #}
+        <div class="folio-site">
+            <a class="folio-brand" href="{{ prefix }}">
+                <span class="folio-brand-tile folio-ink">{% include '@folio/admin/_logo.twig' %}</span>
+                <span class="folio-brand-text">
+                    <span class="folio-brand-name">{{ folio_site.name }}</span>
+                    <span class="folio-brand-env">{{ folio_site.env ? t('folio.layout.environment', {env: folio_site.env}) : 'Folio' }}</span>
+                </span>
+            </a>
+            {% if rail %}
+            <button type="button" class="btn btn-ghost btn-icon btn-sm folio-shell-collapse" data-shell-collapse aria-label="{{ t('folio.layout.collapse_nav') }}" title="{{ t('folio.layout.collapse_nav') }}">
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-panel"></use></svg>
+            </button>
+            {% endif %}
+        </div>
         {# Each section with a heading opens and closes (<details>, open from the person's saved state);
            admin.js saves a toggle to data-nav-save. A closed section shows its items' badges summed. #}
         {%- macro nav_item(item, icons) %}
@@ -60,8 +85,8 @@
                         <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.icon }}"></use></svg><span>{{ item.label }}</span>{% if item.badge %}<span class="folio-nav-badge" aria-label="{{ t('folio.layout.waiting', {count: item.badge}) }}">{{ item.badge }}</span>{% endif %}
                     </a>
         {%- endmacro %}
-        <nav class="folio-nav" aria-label="Folio"{% if folio_auth_enabled|default(false) and auth_check() %} data-nav-save="{{ prefix }}/_prefs/nav"{% endif %}>
-            {% for nav_section in folio_nav() %}
+        <nav class="folio-nav" aria-label="Folio"{% if signed_in %} data-nav-save="{{ prefix }}/_prefs/nav"{% endif %}>
+            {% for nav_section in nav_sections %}
                 {% if nav_section.name != '' and nav_section.label != '' %}
                 <details class="folio-nav-section" data-section="{{ nav_section.name }}"{% if nav_section.open %} open{% endif %}>
                     <summary><span class="folio-nav-label">{{ nav_section.label }}</span>{% if nav_section.badge %}<span class="folio-nav-badge folio-nav-section-badge" aria-label="{{ t('folio.layout.waiting', {count: nav_section.badge}) }}">{{ nav_section.badge }}</span>{% endif %}<svg class="folio-icon folio-nav-marker" aria-hidden="true"><use href="{{ icons }}#ui-chevron"></use></svg></summary>
@@ -70,39 +95,18 @@
                     </div>
                 </details>
                 {% else %}
+                    <div class="folio-nav-items">
                     {%- for item in nav_section.items %}{{ _self.nav_item(item, icons) }}{% endfor %}
+                    </div>
                 {% endif %}
             {% endfor %}
         </nav>
         <div class="folio-sidebar-foot">
-            <div id="folio-theme-toggle" class="folio-theme-switch" role="group" aria-label="{{ t('folio.layout.theme') }}">
-                {% for choice, text in {'system': t('folio.layout.theme_system'), 'light': t('folio.layout.theme_light'), 'dark': t('folio.layout.theme_dark')} %}
-                    <button type="button" data-theme-choice="{{ choice }}" aria-pressed="false" title="{{ text }}">
-                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ {'system': 'ui-monitor', 'light': 'ui-sun', 'dark': 'ui-moon'}[choice] }}"></use></svg>
-                        <span class="folio-sr">{{ text }}</span>
-                    </button>
-                {% endfor %}
-            </div>
-            {% if folio_auth_enabled|default(false) and auth_check() %}
-                {# The interface language: each button posts its locale (no script); shown with two or more languages. #}
-                {% set interface_locales = folio_interface_locales() %}
-                {% if interface_locales|length > 1 %}
-                <form method="post" action="{{ prefix }}/_locale" class="folio-theme-switch folio-locale-switch" aria-label="{{ t('folio.layout.language') }}">{{ csrf_field()|raw }}
-                    {% for code, name in interface_locales %}
-                        <button type="submit" name="locale" value="{{ code }}" lang="{{ code }}" title="{{ name }}" aria-pressed="{{ code == interface_locale ? 'true' : 'false' }}"><span aria-hidden="true">{{ code|upper }}</span><span class="folio-sr">{{ name }}</span></button>
-                    {% endfor %}
-                </form>
-                {% endif %}
-                {% set email = auth_user().email %}
-                <div class="folio-user">{% set account_url = folio_account_url() %}{% if account_url %}<a class="folio-user-link" href="{{ account_url }}" title="{{ t('folio.layout.your_account') }}">{% endif %}
-                    <span class="folio-avatar" aria-hidden="true">{{ email|first|upper }}</span>
-                    <span class="folio-user-email" title="{{ email }}">{{ email }}</span>{% if account_url %}</a>{% endif %}
-                    <form method="post" action="{{ prefix }}/logout" class="folio-logout">{{ csrf_field()|raw }}
-                        <button type="submit" class="btn btn-ghost btn-icon" title="{{ t('folio.layout.log_out') }}">
-                            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-logout"></use></svg><span class="folio-sr">{{ t('folio.layout.log_out') }}</span>
-                        </button>
-                    </form>
-                </div>
+            {% if signed_in %}
+                {% include '@folio/admin/partials/_user_menu.twig' with {menu_id: 'sidebar'} %}
+            {% else %}
+                {# No sign-in (auth is off): no user, so the theme switch stands on its own. #}
+                {% include '@folio/admin/partials/_theme_switch.twig' with {switch_id: 'folio-theme-toggle'} %}
             {% endif %}
         </div>
     </aside>
@@ -111,6 +115,9 @@
             <div class="folio-topbar-title">
                 {% block breadcrumb %}{% endblock %}
                 <h1>{% block page_title %}{% endblock %}</h1>
+                {# One muted line under the title: what the page is for (it replaces the help banners). #}
+                {% set subtitle = block('subtitle') is defined ? block('subtitle')|trim : '' %}
+                {% if subtitle != '' %}<p class="folio-subtitle">{{ subtitle|raw }}</p>{% endif %}
             </div>
             <div class="folio-actions">{% block actions %}{% endblock %}</div>
         </header>
@@ -123,8 +130,7 @@
 {% include '@folio/admin/_i18n.twig' %}
 <script nonce="{{ csp_nonce() }}">
 (function () {
-    var group = document.getElementById('folio-theme-toggle');
-    if (!group) { return; }
+    // The theme switches (the user menu's, or the sidebar's without sign-in): store the choice, mark the pressed button.
     var root = document.documentElement;
     function current() {
         var t = root.getAttribute('data-theme');
@@ -132,12 +138,12 @@
     }
     function mark() {
         var c = current();
-        group.querySelectorAll('[data-theme-choice]').forEach(function (b) {
+        document.querySelectorAll('[data-theme-switch] [data-theme-choice]').forEach(function (b) {
             b.setAttribute('aria-pressed', b.getAttribute('data-theme-choice') === c ? 'true' : 'false');
         });
     }
-    group.addEventListener('click', function (e) {
-        var b = e.target.closest('[data-theme-choice]');
+    document.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-theme-switch] [data-theme-choice]') : null;
         if (!b) { return; }
         var choice = b.getAttribute('data-theme-choice');
         try {

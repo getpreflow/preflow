@@ -1,0 +1,23 @@
+{#
+  The editor rail ({% set shell = 'rail' %} in form.twig and the asset editor): a 56px column with the
+  brand tile, the sidebar's nav items as icon links (aria-label + title; a line between sections), the
+  expand button and the user menu. The items are plain links, so the rail works without script; the
+  expand button (script only) shows the sidebar instead for the rest of the session.
+#}
+<aside class="folio-rail">
+    <a class="folio-rail-brand folio-ink" href="{{ prefix }}" aria-label="{{ folio_site.name }}: {{ t('folio.nav.dashboard') }}" title="{{ folio_site.name }}">{% include '@folio/admin/_logo.twig' %}</a>
+    <nav class="folio-rail-nav" aria-label="Folio">
+        {%- for nav_section in nav_sections %}
+            {%- if not loop.first and nav_section.items is not empty %}<span class="folio-rail-sep" aria-hidden="true"></span>{% endif %}
+            {%- for item in nav_section.items %}
+            <a class="folio-rail-item{% if item.active %} active{% endif %}" href="{{ item.url }}" aria-label="{{ item.label }}{% if item.badge %}, {{ t('folio.layout.waiting', {count: item.badge}) }}{% endif %}" title="{{ item.label }}"{% if item.active %} aria-current="page"{% endif %}>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.icon }}"></use></svg>{% if item.badge %}<span class="folio-rail-badge" aria-hidden="true"></span>{% endif %}
+            </a>
+            {%- endfor %}
+        {%- endfor %}
+    </nav>
+    <button type="button" class="folio-rail-expand" data-shell-expand aria-label="{{ t('folio.layout.expand_nav') }}" title="{{ t('folio.layout.expand_nav') }}">
+        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-panel"></use></svg>
+    </button>
+    {% if signed_in %}{% include '@folio/admin/partials/_user_menu.twig' with {menu_id: 'rail'} %}{% endif %}
+</aside>

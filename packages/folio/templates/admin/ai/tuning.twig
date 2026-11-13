@@ -2,9 +2,9 @@
 {# Translation instructions per level (AiSettingsController): a textarea per level, one instruction per line. Config defaults show as placeholders; emptying a field brings the default back. #}
 {% block title %}Folio — {{ t('folio.ai_settings.tab_tuning') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.ai') }}{% endblock %}
+{% block subtitle %}{{ t('folio.ai_settings.tuning_intro') }}{% endblock %}
 {% block content %}
     {% include '@folio/admin/ai/_tabs.twig' %}
-    <div class="folio-notice" role="status"><p>{{ t('folio.ai_settings.tuning_intro') }}</p></div>
     {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
     <form class="folio-form" method="post" action="{{ prefix }}/ai/tuning">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
