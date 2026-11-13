@@ -1183,6 +1183,7 @@
     // newer removal replaces it; Undo puts it back where it was.
 
     var pendingUndo = null; // { toast, timer }
+    var UNDO_MS = 8000;     // how long a removed block can be put back
 
     function dismissUndo() {
         if (!pendingUndo) { return; }
@@ -1212,10 +1213,16 @@
             var toggle = card.querySelector(':scope > .folio-block-head [data-block-collapse]');
             if (toggle) { toggle.focus(); }
         });
+        // The undo window, shown as a bar that runs out with it.
+        var timer = document.createElement('span');
+        timer.className = 'folio-toast-timer';
+        timer.setAttribute('aria-hidden', 'true');
+        if (timer.style) { timer.style.animationDuration = UNDO_MS + 'ms'; }
         toast.appendChild(text);
         toast.appendChild(undo);
+        toast.appendChild(timer);
         region.appendChild(toast);
-        pendingUndo = { toast: toast, timer: setTimeout(dismissUndo, 8000) };
+        pendingUndo = { toast: toast, timer: setTimeout(dismissUndo, UNDO_MS) };
     }
 
     // ---- Unsaved-changes guard ---------------------------------------------
@@ -1402,6 +1409,77 @@
         }, function () {});
     }
 
+    // ---- Busy buttons ---------------------------------------------------------
+    // A submit button with data-busy-label shows that its request runs: is-busy (spinner), aria-busy,
+    // disabled and the label as its text. Set on a plain submit (kept until the page unloads) and for
+    // an htmx request it sends; always cleared when the request ends, fails, its markup is swapped
+    // away, or the page comes back from the back/forward cache.
+
+    var busyButtons = [];
+
+    function setBusy(btn) {
+        if (!btn || btn._folioBusy || !btn.getAttribute) { return; }
+        var label = btn.getAttribute('data-busy-label');
+        if (!label) { return; }
+        btn._folioBusy = { text: btn.textContent, disabled: !!btn.disabled };
+        btn.classList.add('is-busy');
+        btn.setAttribute('aria-busy', 'true');
+        btn.disabled = true;
+        btn.textContent = label;
+        busyButtons.push(btn);
+    }
+
+    function clearBusy(btn) {
+        if (!btn || !btn._folioBusy) { return; }
+        var saved = btn._folioBusy;
+        btn._folioBusy = null;
+        btn.classList.remove('is-busy');
+        btn.removeAttribute('aria-busy');
+        btn.disabled = saved.disabled;
+        btn.textContent = saved.text;
+        busyButtons = busyButtons.filter(function (b) { return b !== btn; });
+    }
+
+    function clearAllBusy() { busyButtons.slice().forEach(clearBusy); }
+
+    // A plain submit: the button is disabled only after the browser has collected the form's values,
+    // or a disabled submitter (Publish: _action=publish) would be left out of them.
+    function onBusySubmit(e) {
+        var btn = e.submitter;
+        if (!btn || !btn.hasAttribute || !btn.hasAttribute('data-busy-label')) { return; }
+        setTimeout(function () { if (!e.defaultPrevented) { setBusy(btn); } }, 0);
+    }
+
+    // The button an htmx request belongs to: the element itself, or the submitter of the form it sends.
+    function busyButtonOf(detail) {
+        var elt = detail && detail.elt;
+        if (!elt || !elt.hasAttribute) { return null; }
+        if (elt.hasAttribute('data-busy-label')) { return elt; }
+        var ev = detail.requestConfig && detail.requestConfig.triggeringEvent;
+        var sub = ev && ev.submitter;
+        return sub && sub.hasAttribute && sub.hasAttribute('data-busy-label') ? sub : null;
+    }
+
+    function onBusyRequest(e) {
+        if (e.defaultPrevented) { return; }
+        var btn = busyButtonOf(e.detail);
+        if (!btn) { return; }
+        e.detail.elt._folioBusyButton = btn;
+        setBusy(btn);
+    }
+
+    function onBusyDone(e) {
+        var elt = e.detail && e.detail.elt;
+        if (!elt) { return; }
+        clearBusy(elt._folioBusyButton || busyButtonOf(e.detail));
+        elt._folioBusyButton = null;
+    }
+
+    // A swap that replaced a busy button: forget it (its new markup is not busy).
+    function onBusySwap() {
+        busyButtons.slice().forEach(function (btn) { if (!btn.isConnected) { clearBusy(btn); } });
+    }
+
     // Autosave never races a real save: once the form is submitted, pending
     // autosaves are dropped (their delay timer can still fire during navigation,
     // and would bump _version under the submit, which then looks like a conflict).
@@ -1431,7 +1509,7 @@
         var region = document.querySelector('[data-folio-toasts]');
         if (!region || !message) { return; }
         var toast = document.createElement('div');
-        toast.className = 'folio-toast';
+        toast.className = 'folio-toast is-error';
         toast.setAttribute('role', 'status');
         toast.textContent = message;
         region.appendChild(toast);
@@ -1945,6 +2023,14 @@
         });
         document.addEventListener('htmx:load', onHtmxLoad);
         document.addEventListener('folio:error', onFolioError);
+        // Busy buttons: after the confirm, removal and delete-plan handlers above, so a cancelled submit stays idle.
+        document.addEventListener('submit', onBusySubmit);
+        document.addEventListener('htmx:beforeRequest', onBusyRequest);
+        ['htmx:afterRequest', 'htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach(function (name) {
+            document.addEventListener(name, onBusyDone);
+        });
+        document.addEventListener('htmx:afterSwap', onBusySwap);
+        window.addEventListener('pageshow', clearAllBusy);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
         document.addEventListener('keydown', onKeydown);

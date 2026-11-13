@@ -134,10 +134,10 @@
                 <a class="btn btn-ghost" href="{{ prefix }}/{{ type }}">{{ t('folio.common.cancel') }}</a>
                 {% if not (can_save ?? true) %}
                 {% elseif publishing %}
-                    <button type="submit" class="btn {{ (can_publish ?? true) ? 'btn-secondary' : 'btn-primary' }}">{{ t('folio.form.save_draft') }}</button>
-                    {% if (can_publish ?? true) %}<button type="submit" class="btn btn-primary" name="_action" value="publish">{{ t('folio.form.publish') }}</button>{% endif %}
+                    <button type="submit" class="btn {{ (can_publish ?? true) ? 'btn-secondary' : 'btn-primary' }}" data-busy-label="{{ t('folio.form.saving') }}">{{ t('folio.form.save_draft') }}</button>
+                    {% if (can_publish ?? true) %}<button type="submit" class="btn btn-primary" name="_action" value="publish" data-busy-label="{{ t('folio.form.publishing') }}">{{ t('folio.form.publish') }}</button>{% endif %}
                 {% else %}
-                    {{ form.submit(t('folio.common.save'), {attrs: {class: 'btn btn-primary'}})|raw }}
+                    {{ form.submit(t('folio.common.save'), {attrs: {class: 'btn btn-primary', 'data-busy-label': t('folio.form.saving')}})|raw }}
                 {% endif %}
             </div>
         </div>

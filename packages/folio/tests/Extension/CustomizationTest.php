@@ -805,7 +805,7 @@ final class CustomizationTest extends TestCase
         $this->assertStringContainsString('<input type="hidden" name="_query" value="q=ad">', $bar);
         $this->assertStringContainsString('<span class="folio-bulk-count" data-folio-bulk-count>With selected:</span>', $bar);
         $this->assertMatchesRegularExpression('#<summary class="btn btn-sm">Set Stage ▾</summary>#', $bar);
-        $this->assertStringContainsString('<button type="submit" class="btn btn-sm" formaction="/folio/contact/_bulk/set-stage" name="value" value="customer">Customer</button>', $bar);
+        $this->assertStringContainsString('<button type="submit" class="folio-menu-item" formaction="/folio/contact/_bulk/set-stage" name="value" value="customer">Customer</button>', $bar);
         $this->assertStringContainsString('formaction="/folio/contact/_bulk/set-vip" name="value" value="0">No</button>', $bar);
         $this->assertStringNotContainsString('set-name', $bar);
         $this->assertStringContainsString('<button type="submit" class="btn btn-sm" formaction="/folio/contact/_bulk/tag" data-confirm="Tag these contacts?">Tag</button>', $bar);

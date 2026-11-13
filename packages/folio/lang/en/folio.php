@@ -143,6 +143,8 @@ return [
         'reference' => ':language text',
         'publish_at' => 'Publish at',
         'save_draft' => 'Save draft',
+        'saving' => 'Saving…',
+        'publishing' => 'Publishing…',
         'publish' => 'Publish',
         'side_panels' => 'Side panels',
         'history' => 'History and visibility',

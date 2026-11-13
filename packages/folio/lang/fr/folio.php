@@ -133,6 +133,8 @@ return [
         'reference' => 'Texte en :language',
         'publish_at' => 'Publier le',
         'save_draft' => 'Enregistrer le brouillon',
+        'saving' => 'Enregistrement…',
+        'publishing' => 'Publication…',
         'publish' => 'Publier',
         'side_panels' => 'Panneaux latéraux',
         'history' => 'Historique et visibilité',

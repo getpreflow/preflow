@@ -6,12 +6,12 @@ namespace Preflow\Folio\Extension;
 
 /**
  * A list cell shown as Folio's status pill: what a #[ListColumn] method returns instead of a
- * string. The label is escaped; the tone is '' (plain), 'published', 'draft', 'changed' or
- * 'incomplete', and any other value is shown plain.
+ * string. The label is escaped; the tone is '' (plain), 'published', 'draft', 'changed',
+ * 'scheduled', 'failed' or 'incomplete', and any other value is shown plain.
  */
 final class Badge
 {
-    private const array TONES = ['published', 'draft', 'changed', 'incomplete'];
+    private const array TONES = ['published', 'draft', 'changed', 'scheduled', 'failed', 'incomplete'];
 
     public function __construct(
         public readonly string $label,

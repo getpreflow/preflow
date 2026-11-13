@@ -40,8 +40,8 @@
             {% for field in bulk.fields %}
                 <details class="folio-bulk-menu">
                     <summary class="btn btn-sm">{{ t('folio.list.set_field', {label: field.label}) }} ▾</summary>
-                    <div class="folio-bulk-options">
-                        {% for value, text in field.options %}<button type="submit" class="btn btn-sm" formaction="{{ field.url }}" name="value" value="{{ value }}">{{ text }}</button>{% endfor %}
+                    <div class="folio-bulk-options folio-menu">
+                        {% for value, text in field.options %}<button type="submit" class="folio-menu-item" formaction="{{ field.url }}" name="value" value="{{ value }}">{{ text }}</button>{% endfor %}
                     </div>
                 </details>
             {% endfor %}

@@ -133,6 +133,8 @@ return [
         'reference' => 'Text auf :language',
         'publish_at' => 'Veröffentlichen am',
         'save_draft' => 'Entwurf speichern',
+        'saving' => 'Wird gespeichert…',
+        'publishing' => 'Wird veröffentlicht…',
         'publish' => 'Veröffentlichen',
         'side_panels' => 'Seitenleiste',
         'history' => 'Verlauf und Sichtbarkeit',

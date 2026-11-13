@@ -92,7 +92,7 @@ final class AssetDetailPageTest extends TestCase
         $this->assertSame(200, $res->getStatusCode());
         $body = (string) $res->getBody();
         $this->assertStringContainsString('<html', $body);
-        $this->assertStringContainsString('class="folio-asset-tabs"', $body);
+        $this->assertStringContainsString('class="folio-tabs"', $body);
         $this->assertStringContainsString('>Details</a>', $body);
         $this->assertMatchesRegularExpression('#<a [^>]*href="/folio/assets/' . $asset->id . '/edit\?back=[^"]*"[^>]*>Edit image</a>#', $body);
         $this->assertStringContainsString('folio-asset-columns', $body);
@@ -241,7 +241,7 @@ final class AssetDetailPageTest extends TestCase
 
         $body = (string) $this->app()->handle($req)->getBody();
 
-        $this->assertStringContainsString('class="folio-asset-tabs"', $body);
+        $this->assertStringContainsString('class="folio-tabs"', $body);
         $q = htmlspecialchars('?back=' . rawurlencode($back), ENT_QUOTES);
         $this->assertMatchesRegularExpression('#<a [^>]*href="/folio/assets/' . $asset->id . preg_quote($q, '#') . '"[^>]*>Details</a>#', $body);
         $this->assertMatchesRegularExpression('#<a [^>]*aria-current="page"[^>]*>Edit image</a>#', $body);
@@ -263,7 +263,7 @@ final class AssetDetailPageTest extends TestCase
         $image = $this->quadrant();
 
         $body = (string) $this->send('GET', '/folio/assets/' . $pdf->id)->getBody();
-        $this->assertStringContainsString('class="folio-asset-tabs"', $body);
+        $this->assertStringContainsString('class="folio-tabs"', $body);
         $this->assertStringNotContainsString('Edit image', $body);
 
         $this->session = null;

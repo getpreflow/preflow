@@ -1,7 +1,7 @@
 {# The new permissions above the Roles list (NewPermissions): one line per permission group, the roles
    that already cover it and how, "Add to role…" (the staff roles the user may give it) and Dismiss (only for what the user holds). #}
 {# Folio's own classes only: rbac.css loads with the permissions field, not on the list. #}
-<section class="folio-notice rbac-new" role="status" aria-labelledby="rbac-new-title">
+<section class="folio-notice is-warning rbac-new" role="status" aria-labelledby="rbac-new-title">
     <p><strong id="rbac-new-title">{{ t('rbac-admin.new.title') }}</strong></p>
     <p>{{ t('rbac-admin.new.intro') }}</p>
     <ul class="folio-notice-list rbac-new-list">

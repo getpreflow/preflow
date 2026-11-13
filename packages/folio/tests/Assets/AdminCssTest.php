@@ -153,10 +153,10 @@ final class AdminCssTest extends TestCase
         // Radio/checkbox groups and relation fields are fieldsets: borderless, the legend laid out like a
         // field label (floated full width, so every browser places it as a plain block above the options).
         $this->assertMatchesRegularExpression('/:where\(fieldset\.form-group\) \{[^}]*border: 0;[^}]*padding: 0;/', $css);
-        $this->assertMatchesRegularExpression('/:where\(fieldset\.form-group\) > legend \{[^}]*float: left;[^}]*width: 100%;[^}]*padding: 0;[^}]*font-weight: 620;/', $css);
+        $this->assertMatchesRegularExpression('/:where\(fieldset\.form-group\) > legend \{[^}]*float: left;[^}]*width: 100%;[^}]*padding: 0;[^}]*font-weight: 500;/', $css); // label weight 13/500 (redesign)
         $this->assertMatchesRegularExpression('/:where\(fieldset\.form-group\) > legend ~ \* \{ clear: left; \}/', $css);
         // A boolean: the box inline with its label, the label keeps the field-label weight.
-        $this->assertMatchesRegularExpression('/\.folio-boolean > \.form-check \{[^}]*display: inline-flex;[^}]*font-weight: 620;/', $css);
+        $this->assertMatchesRegularExpression('/\.folio-boolean > \.form-check \{[^}]*display: inline-flex;[^}]*font-weight: 500;/', $css);
     }
 
     public function test_chips_look_disabled_in_read_only_forms(): void
@@ -198,8 +198,9 @@ final class AdminCssTest extends TestCase
         $css = $this->css();
         $this->assertMatchesRegularExpression('/:where\(\.folio-shell, \.folio-drawer-body\) h3 \{/', $css);
         $this->assertDoesNotMatchRegularExpression('/^h3 \{/m', $css);
-        // "done" in an AI run and a complete language in a list read as success, like a published record.
-        $this->assertStringContainsString('.folio-badge.is-published, .folio-badge.is-ok { background: var(--c-success-soft); color: var(--c-success); }', $css);
+        // "done" in an AI run and a complete language in a list read as published: accent-soft, accent text, accent dot.
+        $this->assertStringContainsString('.folio-badge.is-published, .folio-badge.is-ok { background: var(--c-accent-soft); color: var(--c-accent-text); }', $css);
+        $this->assertStringContainsString('.folio-badge.is-published::before, .folio-badge.is-ok::before { background: var(--c-accent); }', $css);
     }
 
     public function test_row_actions_outside_tables_are_a_row_and_respect_hidden(): void
@@ -216,5 +217,27 @@ final class AdminCssTest extends TestCase
         foreach (['.folio-card', '.folio-table-wrap', '.folio-panel', '.folio-asset-panel', '.folio-assets-toolbar', '.folio-revisions', '.folio-share'] as $surface) {
             $this->assertMatchesRegularExpression('/(?<![\w-])' . preg_quote($surface, '/') . ' \{[^}]*border: 1px solid var\(--c-border\);[^}]*border-radius: var\(--r\);[^}]*box-shadow: var\(--shadow-sm\);/', $plain, $surface);
         }
+    }
+    public function test_redesigned_primitives(): void
+    {
+        $css = $this->css();
+        // Buttons: 34px, 13px/500, primary 600; a busy button draws a 14px spinner.
+        $this->assertMatchesRegularExpression('/\.btn \{[^}]*min-height: var\(--h-button\);[^}]*font-size: 13px;[^}]*font-weight: 500;/', $css);
+        $this->assertStringContainsString('.btn.is-busy::before', $css);
+        // Status badges: scheduled is info, failed is danger, changes-not-live has a ring dot.
+        $this->assertStringContainsString('.folio-badge.is-scheduled { background: var(--c-info-soft); color: var(--c-info); }', $css);
+        $this->assertStringContainsString('.folio-badge.is-failed { background: var(--c-danger-soft); color: var(--c-danger); }', $css);
+        $this->assertStringContainsString('.folio-badge.is-changed::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }', $css);
+        // One tabs row; one menu look.
+        $this->assertStringContainsString('.folio-tabs {', $css);
+        $this->assertStringNotContainsString('.folio-asset-tabs', $css);
+        $this->assertMatchesRegularExpression('/\.folio-menu \{[^}]*padding: 5px;[^}]*box-shadow: var\(--shadow-lg\);/', $css);
+        // A plain notice is info; one that warns (role="alert" or .is-warning) keeps the warning tone.
+        $this->assertMatchesRegularExpression('/\.folio-notice,\s*\.folio-locale-errors \{[^}]*background: var\(--c-info-soft\);/', $css);
+        $this->assertStringContainsString('.folio-notice:is([role="alert"], .is-warning), .folio-alert-warning {', $css);
+        // Focus ring of fields: accent border and a 3px accent-soft ring.
+        $this->assertStringContainsString('box-shadow: 0 0 0 3px var(--c-accent-soft);', $css);
+        // The toast's undo bar stops under reduced motion.
+        $this->assertMatchesRegularExpression('/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.folio-toast-timer \{ display: none; \}/', $css);
     }
 }

@@ -86,6 +86,16 @@
   --shadow-lg: 0 12px 32px light-dark(rgb(20 20 16 / .14), rgb(0 0 0 / .5)), 0 2px 6px light-dark(rgb(20 20 16 / .06), rgb(0 0 0 / .3));
 }
 
+/* Small glyphs drawn by CSS (alerts, notices, field errors, toasts, checked chips): the icons.md paths
+   (ui-check, ui-warn, ui-info, an alert circle) as mask images, painted with currentColor or a tone.
+   A mask carries no colour of its own, so these follow both themes. */
+:root {
+  --folio-glyph-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E");
+  --folio-glyph-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l10 18H2zM12 10v5M12 18h.01'/%3E%3C/svg%3E");
+  --folio-glyph-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 11v6M12 7.5h.01'/%3E%3C/svg%3E");
+  --folio-glyph-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 8v5M12 16h.01'/%3E%3C/svg%3E");
+}
+
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"]  { color-scheme: dark; }
 
@@ -207,8 +217,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   border-radius: 10px;
   background: var(--c-warning-soft);
   color: var(--c-warning);
-  font-size: 11.5px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 600;
   line-height: 20px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -255,9 +265,12 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   padding-top: 16px;
 }
 
+/* Segmented switches (.folio-theme-switch, .folio-locale-switch, .folio-segmented): a 2px inset track
+   on surface-2; the selected pill is surface with --shadow-sm. */
 .folio-theme-switch {
   display: flex;
-  padding: 3px;
+  gap: 2px;
+  padding: 2px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
   background: var(--c-surface-2);
@@ -275,7 +288,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 }
 .folio-theme-switch button:hover { color: var(--c-text); }
 .folio-theme-switch button[aria-pressed="true"] {
-  background: var(--c-surface-raised);
+  background: var(--c-surface);
   color: var(--c-text);
   box-shadow: var(--shadow-sm);
 }
@@ -362,16 +375,18 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 }
 .folio-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Breadcrumb: 12px subtle above the title, chevron separators; the current step in text colour. */
 .folio-breadcrumb {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12.5px;
+  gap: 6px;
+  font-size: 12px;
   color: var(--c-text-subtle);
 }
 .folio-breadcrumb a { color: var(--c-text-muted); }
 .folio-breadcrumb a:hover { color: var(--c-text); }
-.folio-breadcrumb .folio-icon { width: 13px; height: 13px; }
+.folio-breadcrumb .folio-icon { width: 12px; height: 12px; }
+.folio-breadcrumb > span:last-child:not(:first-child) { color: var(--c-text); font-weight: 500; }
 
 .folio-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 
@@ -388,8 +403,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   border-radius: var(--r-sm);
   border: 1px solid transparent;
   font: inherit;
-  font-size: 13.5px;
-  font-weight: 560;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
@@ -398,9 +413,18 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 }
 .btn .folio-icon { width: 16px; height: 16px; }
 .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--c-focus-ring); }
-.btn:disabled, .btn[aria-disabled="true"] { opacity: .4; cursor: default; pointer-events: none; }
+/* Disabled: a quiet surface-2 fill with subtle text (a ghost button stays without fill). */
+.btn:is(:disabled, [aria-disabled="true"]):not(.is-busy) {
+  background: var(--c-surface-2);
+  border-color: var(--c-border);
+  color: var(--c-text-subtle);
+  box-shadow: none;
+  cursor: default;
+  pointer-events: none;
+}
+.btn-ghost:is(:disabled, [aria-disabled="true"]):not(.is-busy) { background: transparent; border-color: transparent; }
 
-.btn-primary { background: var(--c-accent); color: var(--c-accent-fg); box-shadow: var(--shadow-sm); }
+.btn-primary { background: var(--c-accent); color: var(--c-accent-fg); font-weight: 600; box-shadow: var(--shadow-sm); }
 .btn-primary:hover { background: var(--c-accent-hover); color: var(--c-accent-fg); }
 
 .btn-secondary { background: var(--c-surface); color: var(--c-text); border-color: var(--c-border-strong); box-shadow: var(--shadow-sm); }
@@ -410,13 +434,29 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .btn-ghost:hover, .btn-ghost.is-active { background: var(--c-row-hover); color: var(--c-text); }
 .btn-ghost.is-active { background: var(--c-neutral-soft); }
 
-.btn-danger { background: transparent; color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 35%, transparent); }
-.btn-danger:hover { background: var(--c-danger); color: var(--c-danger-fg); border-color: var(--c-danger); }
+/* Danger: filled (Delete). data-tone="danger" on another button turns red on hover only. */
+.btn-danger { background: var(--c-danger); color: var(--c-danger-fg); font-weight: 600; box-shadow: var(--shadow-sm); }
+.btn-danger:hover { background: color-mix(in srgb, var(--c-danger) 86%, var(--c-text)); color: var(--c-danger-fg); }
+.btn-danger:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-danger) 30%, transparent); }
 
 .btn[data-tone="danger"]:hover { background: var(--c-danger-soft); color: var(--c-danger); }
 
-.btn-sm { min-height: var(--h-button-sm); padding: 0 10px; font-size: 13px; }
-.btn-icon { width: 32px; min-height: 32px; padding: 0; }
+.btn-sm { min-height: var(--h-button-sm); padding: 0 10px; border-radius: 7px; font-size: 12px; }
+.btn-icon { width: var(--h-button); min-height: var(--h-button); padding: 0; }
+
+/* Busy (admin.js, while the button's form request runs): a 14px spinner before data-busy-label. */
+.btn.is-busy { opacity: .85; cursor: progress; pointer-events: none; }
+.btn.is-busy::before {
+  content: "";
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: folio-spin .8s linear infinite;
+}
+@keyframes folio-spin { to { transform: rotate(360deg); } }
 
 /* ---- dashboard cards ---- */
 .folio-card-grid {
@@ -458,7 +498,22 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-review-title { margin: 0 0 12px; }
 .folio-review-type { font-size: 13px; font-weight: 620; color: var(--c-text-muted); margin: 16px 0 6px; }
 .folio-review-list, .folio-review-jobs { list-style: none; margin: 0; padding: 0; }
-.folio-review-list li, .folio-review-jobs li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--c-border); }
+.folio-review-list li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--c-border); }
+/* A running or waiting job: a card (title, progress, state, who and since, the record in progress). */
+.folio-review-jobs { display: grid; gap: 10px; }
+.folio-review-jobs > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface);
+}
+.folio-review-jobs > li > strong { flex: 1 1 auto; font-size: 13px; font-weight: 600; }
+.folio-review-jobs > li > .folio-help { font-size: 12px; color: var(--c-text-subtle); }
+.folio-review-jobs > li > .folio-help:first-of-type { font-family: var(--font-mono); color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
 
 /* ---- tables ---- */
 .folio-table-wrap {
@@ -534,7 +589,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 :is(.folio-list-toolbar, .folio-toolbar, .folio-toolbar-fields) > .btn,
 :is(.folio-list-toolbar, .folio-toolbar) > form > .btn,
 :is(.folio-list-toolbar, .folio-toolbar) > details > summary.btn,
-.folio-toolbar > .folio-ai > .folio-ai-open { min-height: var(--h-control); padding: 0 14px; font-size: 13.5px; }
+.folio-toolbar > .folio-ai > .folio-ai-open { min-height: var(--h-control); padding: 0 14px; font-size: 13px; }
 .folio-list-search { position: relative; flex: 1 1 12rem; min-width: 12rem; max-width: 26rem; }
 .folio-list-search .folio-icon {
   position: absolute; left: 10px; top: 50%; width: 15px; height: 15px;
@@ -564,15 +619,26 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-filter-range { display: flex; align-items: center; gap: 6px; color: var(--c-text-subtle); }
 .folio-filter-panel .btn { justify-self: start; }
 .folio-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+/* An active filter: accent-soft pill with its × (a link that drops the filter). */
 .folio-filter-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  min-height: 26px; padding: 0 4px 0 10px;
-  border: 1px solid color-mix(in srgb, var(--c-accent) 35%, transparent);
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 30px; padding: 0 6px 0 10px;
+  border: 1px solid var(--c-accent);
   border-radius: 999px;
   background: var(--c-accent-soft); color: var(--c-accent-text);
-  font-size: 12.5px; font-weight: 540;
+  font-size: 12px; font-weight: 600;
 }
-.folio-filter-chip a { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; color: inherit; }
+.folio-filter-chip a { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: inherit; }
+/* "+ Filter": the dashed pill that adds a filter. */
+.folio-filter-add {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 30px; padding: 0 10px;
+  border: 1px dashed var(--c-border-strong); border-radius: 999px;
+  background: transparent; color: var(--c-text-muted);
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.folio-filter-add:hover { color: var(--c-text); border-color: var(--c-text-subtle); }
+.folio-filter-add .folio-icon { width: 12px; height: 12px; }
 .folio-filter-chip a:hover { background: color-mix(in srgb, var(--c-accent) 18%, transparent); }
 .folio-filter-chip .folio-icon { width: 12px; height: 12px; }
 .folio-table thead th[aria-sort] { color: var(--c-text); }
@@ -625,15 +691,45 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-bulk-menu { position: relative; }
 .folio-bulk-menu summary { list-style: none; }
 .folio-bulk-menu summary::-webkit-details-marker { display: none; }
-.folio-bulk-options {
-  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0;
-  display: grid; gap: 4px; min-width: 10rem; padding: 6px;
-  border: 1px solid var(--c-border); border-radius: var(--r);
-  background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-lg);
+.folio-bulk-options { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 10rem; }
+
+/* Menu: one popover look for the bulk menu and (0.74) the row "…" menu. Items 32px with an optional
+   icon and a shortcut hint at the right; danger items go last, after a divider. */
+.folio-menu {
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface-raised);
+  color: var(--c-text);
+  box-shadow: var(--shadow-lg);
 }
-.folio-bulk-bar .folio-bulk-options .btn { justify-content: flex-start; background: transparent; border-color: transparent; color: var(--c-text); }
-.folio-bulk-bar .folio-bulk-options .btn:hover { background: var(--c-row-hover); color: var(--c-text); }
-.folio-bulk-bar .folio-bulk-options .btn:focus-visible { box-shadow: 0 0 0 3px var(--c-focus-ring); }
+.folio-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.folio-menu-item:hover, .folio-menu-item:focus-visible { background: var(--c-row-hover); color: var(--c-text); }
+.folio-menu-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--c-accent); }
+.folio-menu-item .folio-icon { width: 16px; height: 16px; color: var(--c-text-muted); }
+.folio-menu-item.is-danger, .folio-menu-item.is-danger .folio-icon { color: var(--c-danger); }
+.folio-menu-item.is-danger:hover { background: var(--c-danger-soft); }
+.folio-menu-hint { margin-left: auto; padding-left: 16px; font-family: var(--font-mono); font-size: 11px; color: var(--c-text-subtle); }
+.folio-menu-sep { height: 1px; margin: 4px -5px; border: 0; background: var(--c-border); }
 .folio-table .folio-bulk-cell { width: 1%; padding-right: 0; }
 .folio-bulk-cell input[hidden] { display: none; }
 .folio-table tr:has([data-folio-bulk-item]:checked) td { background: var(--c-accent-soft); }
@@ -650,9 +746,9 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 .form-label,
 .folio-field {
   display: block;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
   font-size: 13px;
-  font-weight: 620;
+  font-weight: 500;
   color: var(--c-text);
 }
 .form-required { color: var(--c-danger); margin-left: 2px; }
@@ -690,7 +786,7 @@ form:has(> .folio-form-actions) { container-type: inline-size; }
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:focus) {
   outline: none;
   border-color: var(--c-accent);
-  box-shadow: 0 0 0 3px var(--c-focus-ring);
+  box-shadow: 0 0 0 3px var(--c-accent-soft);
 }
 /* Read-only forms (fieldset disabled) stay readable: muted text on a quieter fill. */
 :where(.folio-shell, .folio-drawer-body, .folio-auth) :where(input:not([type="checkbox"], [type="radio"], [type="file"], [type="hidden"], [type="color"], [type="range"], [type="submit"], [type="button"], [type="reset"], [type="image"]), textarea, select):where(:disabled) {
@@ -783,13 +879,24 @@ input[type="file"]::file-selector-button {
 }
 input[type="file"]::file-selector-button:hover { background: var(--c-row-hover); }
 
-.form-help { display: block; margin-top: 6px; color: var(--c-text-muted); font-size: 12.5px; line-height: 1.45; }
+.form-help { display: block; margin-top: 6px; color: var(--c-text-subtle); font-size: 12px; line-height: 1.45; }
 .folio-readonly-value { margin: 0; font-size: 14px; color: var(--c-text); overflow-wrap: anywhere; }
-.form-error { margin-top: 6px; color: var(--c-danger); font-size: 12.5px; font-weight: 520; }
+/* Field error: the message in danger with a warning glyph (the field gets a danger border below). */
+.form-error { display: flex; align-items: flex-start; gap: 6px; margin-top: 6px; color: var(--c-danger); font-size: 12px; font-weight: 450; line-height: 1.45; }
+.form-error::before {
+  content: "";
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  background: currentColor;
+  -webkit-mask: var(--folio-glyph-warn) center / contain no-repeat;
+  mask: var(--folio-glyph-warn) center / contain no-repeat;
+}
 .has-error input,
 .has-error textarea,
 .has-error select { border-color: var(--c-danger) !important; }
-.has-error :is(input, textarea, select):focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-danger) 30%, transparent); }
+.has-error :is(input, textarea, select):focus { box-shadow: 0 0 0 3px var(--c-danger-soft); }
 
 .form-radio, .form-check, .folio-visibility-option { display: inline-flex; align-items: center; gap: 8px; margin-right: 16px; font-weight: 450; }
 :is(.form-radio, .form-check, .folio-visibility-option) > input { flex: none; margin: 0; }
@@ -804,15 +911,15 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   float: left;
   width: 100%;
   padding: 0;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
   font-size: 13px;
-  font-weight: 620;
+  font-weight: 500;
   color: var(--c-text);
 }
 :where(fieldset.form-group) > legend ~ * { clear: left; }
 
 /* Boolean: the box inline with its label (label weight kept), help and error below. */
-.folio-boolean > .form-check { display: inline-flex; align-items: center; gap: 9px; margin: 0; font-weight: 620; cursor: pointer; }
+.folio-boolean > .form-check { display: inline-flex; align-items: center; gap: 9px; margin: 0; font-weight: 500; cursor: pointer; }
 .folio-boolean > .form-help { margin-top: 4px; padding-left: 25px; }
 .folio-boolean > .form-error { padding-left: 25px; }
 /* A native checkbox shows no border colour: on error the label turns red and the box gets a red ring. */
@@ -865,66 +972,103 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 }
 
 /* ---- alerts and notices ---- */
+/* Alerts (flash messages) and notices: a soft tone fill, a tone glyph at the left, the text in --c-text
+   and links in the tone colour. Tones: success (accent), warning, error (danger), info.
+   .folio-notice is info; a notice that warns (role="alert", or .is-warning) keeps the warning tone.
+   .folio-locale-errors: danger border and the list of missing fields per language. */
 .folio-alert,
 .folio-notice,
 .folio-locale-errors {
+  --folio-tone: var(--c-info);
+  --folio-glyph: var(--folio-glyph-info);
+  position: relative;
   margin-bottom: 18px;
-  padding: 12px 14px;
-  border: 1px solid var(--c-border);
+  padding: 10px 12px 10px 36px;
+  border: 1px solid transparent;
   border-radius: var(--r);
-  font-size: 13.5px;
+  background: var(--c-info-soft);
+  color: var(--c-text);
+  font-size: 13px;
 }
+:is(.folio-alert, .folio-notice, .folio-saved)::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  background: var(--folio-tone);
+  -webkit-mask: var(--folio-glyph) center / contain no-repeat;
+  mask: var(--folio-glyph) center / contain no-repeat;
+}
+:is(.folio-alert, .folio-notice, .folio-saved) a { color: var(--folio-tone); font-weight: 600; }
+:is(.folio-alert, .folio-notice, .folio-saved) a:hover { color: var(--c-text); }
 .folio-notice p, .folio-locale-errors p { margin: 0; }
+.folio-notice p + p { margin-top: 4px; }
 .folio-notice ul, .folio-locale-errors ul { margin: 6px 0 0; padding-left: 18px; }
 /* Notices stacked above a list or the dashboard (#[ListNotice], #[DashboardNotice]): the wrapper spaces
    them. A notice's list of items with their own actions (.folio-notice-list) goes without bullets. */
 .folio-page-notices { display: grid; gap: 10px; margin-bottom: 18px; }
 .folio-page-notices > * { margin: 0; }
 .folio-notice .folio-notice-list { list-style: none; margin: 10px 0 0; padding: 0; }
-.folio-notice-list > li + li { margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--c-warning) 25%, transparent); }
+.folio-notice-list > li + li { margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--folio-tone) 25%, transparent); }
 .folio-notice-list .folio-form-buttons { margin-top: 6px; }
-.folio-notice, .folio-locale-errors {
+.folio-notice:is([role="alert"], .is-warning), .folio-alert-warning {
+  --folio-tone: var(--c-warning);
+  --folio-glyph: var(--folio-glyph-warn);
   background: var(--c-warning-soft);
-  border-color: color-mix(in srgb, var(--c-warning) 35%, transparent);
-  color: var(--c-text);
 }
-.folio-alert-warning { background: var(--c-warning-soft); border-color: color-mix(in srgb, var(--c-warning) 35%, transparent); color: var(--c-text); }
-.folio-alert-error { background: var(--c-danger-soft); border-color: color-mix(in srgb, var(--c-danger) 35%, transparent); color: var(--c-danger); }
-.folio-alert-success, .folio-saved { background: var(--c-success-soft); border-color: color-mix(in srgb, var(--c-success) 35%, transparent); color: var(--c-success); }
-.folio-saved { margin: 0; padding: 10px 14px; border: 1px solid; border-radius: var(--r); font-size: 13.5px; }
+.folio-alert-error { --folio-tone: var(--c-danger); --folio-glyph: var(--folio-glyph-alert); background: var(--c-danger-soft); }
+.folio-alert-success, .folio-saved { --folio-tone: var(--c-accent-text); --folio-glyph: var(--folio-glyph-check); background: var(--c-accent-soft); color: var(--c-text); }
+.folio-saved { position: relative; margin: 0; padding: 10px 12px 10px 36px; border-radius: var(--r); font-size: 13px; }
+.folio-locale-errors { padding-left: 12px; border-color: var(--c-danger); background: var(--c-danger-soft); }
+.folio-locale-errors > p:first-child { color: var(--c-danger); font-weight: 600; }
 
 /* ---- badges and save state ---- */
+/* Status pill: 24px, a 6px dot. Publishing: published (accent), changed = changes not live (warning,
+   ring dot), scheduled (info), draft (neutral), failed (danger). Audit severities (critical, warning,
+   notice) are square-ish (radius 6) without a dot, like every badge in the audit page. */
 .folio-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 22px;
+  min-height: 24px;
   padding: 0 9px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 560;
+  font-weight: 600;
   letter-spacing: 0;
   white-space: nowrap;
   background: var(--c-neutral-soft);
   color: var(--c-text-muted);
 }
-.folio-badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.folio-badge.is-published, .folio-badge.is-ok { background: var(--c-success-soft); color: var(--c-success); }
+.folio-badge::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.folio-badge.is-published, .folio-badge.is-ok { background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-badge.is-published::before, .folio-badge.is-ok::before { background: var(--c-accent); }
 .folio-badge.is-changed,
 .folio-badge.is-incomplete { background: var(--c-warning-soft); color: var(--c-warning); }
+.folio-badge.is-changed::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; }
 .folio-badge.is-unchecked, .folio-count.is-unchecked { background: var(--c-warning-soft); color: var(--c-warning); }
 .folio-badge.is-unchecked a { color: inherit; text-decoration: none; }
 .folio-badge.is-outdated, .folio-count.is-outdated { background: var(--c-accent-soft); color: var(--c-accent-text); }
 .folio-count.is-incomplete { background: var(--c-warning-soft); color: var(--c-warning); }
-.folio-badge.is-scheduled { background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-badge.is-scheduled { background: var(--c-info-soft); color: var(--c-info); }
 .folio-badge.is-draft { background: var(--c-neutral-soft); color: var(--c-text-muted); }
+.folio-badge.is-draft::before { background: var(--c-text-subtle); }
+.folio-badge.is-failed { background: var(--c-danger-soft); color: var(--c-danger); }
 .folio-badge.is-critical { background: var(--c-danger-soft); color: var(--c-danger); }
 .folio-badge.is-warning { background: var(--c-warning-soft); color: var(--c-warning); }
-.folio-badge.is-notice { background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-badge.is-notice { background: var(--c-info-soft); color: var(--c-info); }
+.folio-badge:is(.is-critical, .is-warning, .is-notice),
+:is(.folio-audit-summary, .folio-audit-counts, .folio-audit-check) .folio-badge { border-radius: var(--r-xs); }
+.folio-badge:is(.is-critical, .is-warning, .is-notice)::before,
+:is(.folio-audit-summary, .folio-audit-counts, .folio-audit-check) .folio-badge::before { display: none; }
 
 .folio-save-state { font-size: 12.5px; font-weight: 450; color: var(--c-text-subtle); }
 .folio-save-state.is-conflict { color: var(--c-danger); font-weight: 550; }
 
+/* Counts: a plain subtle number for totals; the language states (is-incomplete, -outdated, -unchecked)
+   keep their soft pill. "Needs attention" counts in the nav are .folio-nav-badge (warning-soft pill). */
 .folio-count {
   display: inline-grid;
   place-items: center;
@@ -932,11 +1076,13 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   height: 20px;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--c-neutral-soft);
-  color: var(--c-text-muted);
-  font-size: 11.5px;
-  font-weight: 600;
+  background: transparent;
+  color: var(--c-text-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
+.folio-count:is(.is-incomplete, .is-outdated, .is-unchecked) { font-size: 11px; font-weight: 600; }
 
 /* ---- content languages ---- */
 .folio-languages {
@@ -944,20 +1090,29 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
   flex-wrap: wrap;
   gap: 2px;
   margin-bottom: 20px;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid var(--c-border);
-  border-radius: var(--r);
+  border-radius: var(--r-sm);
   background: var(--c-surface-2);
 }
+/* A language of the editor: the segmented look plus a 6px status dot from the completeness the page
+   already shows (a missing-fields count): filled accent = complete, subtle ring = fields missing.
+   The design's third state (warning ring = partial) has no data source yet. */
 .folio-language {
-  padding: 5px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
   border-radius: var(--r-xs);
   color: var(--c-text-muted);
   font-size: 13px;
-  font-weight: 560;
+  font-weight: 450;
 }
+.folio-language::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--c-accent); }
+.folio-language:has(.folio-count.is-incomplete)::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c-text-subtle); }
 .folio-language:hover { color: var(--c-text); }
-.folio-language.is-active { background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-sm); }
+.folio-language.is-active { background: var(--c-surface); color: var(--c-text); font-weight: 500; box-shadow: var(--shadow-sm); }
 .folio-visibility { display: flex; gap: 10px 16px; align-items: center; flex-wrap: wrap; border: 0; padding: 0; margin: 0 0 22px; }
 .folio-visibility legend { float: left; margin-right: 8px; font-size: 13px; font-weight: 620; }
 .folio-shared, .folio-fallback-hint { margin: -14px 0 18px; font-size: 12px; color: var(--c-text-subtle); }
@@ -1117,20 +1272,44 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 }
 .folio-revisions summary::-webkit-details-marker { display: none; }
 .folio-revisions summary .folio-icon { color: var(--c-text-muted); }
-.folio-revision-list { list-style: none; margin: 0; padding: 0 16px 6px; }
+/* Revisions as a timeline: a dot per entry on a thin line, the date, then "by · changed" in subtle,
+   Restore as a quiet accent link at the right. The rows carry no state (draft / published / created),
+   so every dot is the neutral "line" dot of the design. */
+.folio-revision-list { list-style: none; margin: 0; padding: 0 16px 8px; }
 .folio-revision {
-  display: flex;
-  flex-wrap: wrap;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "date date act" "by changed act";
   align-items: center;
-  gap: 4px 14px;
-  padding: 8px 0;
+  gap: 1px 6px;
+  padding: 8px 0 8px 22px;
   border-top: 1px solid var(--c-border);
   font-size: 13px;
 }
-.folio-revision form { margin: 0 0 0 auto; }
-.folio-revision-date { font-variant-numeric: tabular-nums; font-weight: 560; }
-.folio-revision-by { color: var(--c-text-muted); }
-.folio-revision-changed { flex: 1; min-width: 12rem; color: var(--c-text-muted); }
+.folio-revision::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 13px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--c-border-strong);
+  border-radius: 50%;
+  background: var(--c-surface);
+}
+.folio-revision::before { z-index: 1; }
+.folio-revision::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; border-left: 2px solid var(--c-border); }
+.folio-revision:first-child::after { top: 18px; }
+.folio-revision:last-child::after { bottom: auto; height: 18px; }
+.folio-revision:only-child::after { display: none; }
+.folio-revision-date { grid-area: date; font-variant-numeric: tabular-nums; font-weight: 500; }
+.folio-revision-by { grid-area: by; }
+.folio-revision-changed { grid-area: changed; overflow-wrap: anywhere; }
+.folio-revision-by, .folio-revision-changed { font-size: 12px; color: var(--c-text-subtle); }
+.folio-revision-changed::before { content: "· "; }
+.folio-revision form { grid-area: act; margin: 0 0 0 12px; }
+.folio-revision .btn-ghost { min-height: 26px; padding: 0 8px; color: var(--c-accent-text); font-size: 12px; }
 .folio-publish-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .folio-publish-actions form { margin: 0; }
 
@@ -1181,7 +1360,7 @@ html trix-editor {
   border-radius: var(--r-sm);
   line-height: 1.6;
 }
-html trix-editor:focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-focus-ring); }
+html trix-editor:focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-soft); }
 html trix-toolbar { margin-bottom: 6px; }
 html trix-toolbar .trix-button-row { flex-wrap: wrap; gap: 6px; }
 html trix-toolbar .trix-button-group {
@@ -1305,17 +1484,30 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-asset-copy-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .folio-asset-copy-info { display: grid; gap: 2px; justify-items: start; min-width: 0; }
 
-.folio-asset-tabs { display: flex; gap: 4px; margin: 0 0 16px; border-bottom: 1px solid var(--c-border); }
-.folio-asset-tabs a {
-  padding: 8px 14px;
+/* Tabs: one underline row (asset detail now, editor tabs later). Links mark the current tab with
+   aria-current="page", tab buttons with aria-selected="true"; a count (.folio-tab-count) sits in subtle. */
+.folio-tabs { display: flex; flex-wrap: wrap; gap: 0 20px; margin: 0 0 16px; border-bottom: 1px solid var(--c-border); }
+.folio-tabs > :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
   margin-bottom: -1px;
+  padding: 0;
+  border: 0;
   border-bottom: 2px solid transparent;
+  background: transparent;
   color: var(--c-text-muted);
-  font-weight: 560;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 450;
   text-decoration: none;
+  cursor: pointer;
 }
-.folio-asset-tabs a:hover { color: var(--c-text); }
-.folio-asset-tabs a[aria-current="page"] { color: var(--c-text); border-bottom-color: var(--c-accent); }
+.folio-tabs > :is(a, button):hover { color: var(--c-text); }
+.folio-tabs > :is(a[aria-current="page"], [aria-selected="true"]) { color: var(--c-text); font-weight: 600; border-bottom-color: var(--c-accent); }
+.folio-tabs > :is(a, button):focus-visible { outline-offset: -2px; }
+.folio-tab-count { font-size: 11px; font-weight: 450; color: var(--c-text-subtle); }
 .folio-asset-panel {
   display: grid;
   gap: 24px;
@@ -1536,17 +1728,45 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-drawer-panel {
   display: flex;
   flex-direction: column;
-  width: min(640px, 100%);
+  width: min(440px, 100%);
   height: 100%;
-  background: var(--c-bg);
+  background: var(--c-surface);
   border-left: 1px solid var(--c-border);
   box-shadow: var(--shadow-lg);
 }
-.folio-drawer-close { align-self: flex-end; margin: 10px; }
-.folio-drawer-frame { flex: 1 1 auto; width: 100%; border: 0; background: var(--c-bg); }
-.folio-drawer-body { background: var(--c-bg); }
-.folio-drawer-content { padding: 24px; }
-.folio-drawer-heading { margin: 0 0 20px; font-size: 1.0625rem; }
+/* The panel's header row: the close button at its right, a line under it. */
+.folio-drawer-close.btn {
+  align-self: stretch;
+  justify-content: flex-end;
+  min-height: 48px;
+  margin: 0;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--c-border);
+  border-radius: 0;
+  background: var(--c-surface);
+  color: var(--c-text-muted);
+  box-shadow: none;
+  font-size: 12px;
+}
+.folio-drawer-close.btn:hover { background: var(--c-row-hover); color: var(--c-text); }
+.folio-drawer-close.btn:focus-visible { box-shadow: inset 0 0 0 2px var(--c-accent); }
+.folio-drawer-frame { flex: 1 1 auto; width: 100%; border: 0; background: var(--c-surface); }
+.folio-drawer-body { background: var(--c-surface); }
+.folio-drawer-content { padding: 16px 18px 24px; }
+.folio-drawer-heading { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
+/* The form's action bar is the drawer's footer: flat, full width, a line above. */
+.folio-drawer-content .folio-form-actions {
+  margin: 24px -18px -24px;
+  padding: 10px 18px;
+  border: 0;
+  border-top: 1px solid var(--c-border);
+  border-radius: 0;
+  background: var(--c-surface);
+  backdrop-filter: none;
+  box-shadow: none;
+  bottom: 0;
+}
 
 /* ---- split-view editor (routed types) ---- */
 .folio-main:has(.folio-split) { height: 100vh; }
@@ -1631,13 +1851,13 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   border-bottom: 1px solid var(--c-border);
 }
 .folio-preview-title { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; font-size: 13px; font-weight: 620; white-space: nowrap; }
-.folio-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-success); box-shadow: 0 0 0 3px var(--c-success-soft); }
+.folio-live-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-soft); }
 .folio-focus-toggle[aria-pressed="true"] { background: var(--c-accent-soft); color: var(--c-accent-text); }
 
 .folio-segmented {
   display: inline-flex;
   gap: 2px;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid var(--c-border);
   border-radius: var(--r-sm);
   background: var(--c-surface-2);
@@ -1653,14 +1873,14 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   background: transparent;
   color: var(--c-text-muted);
   font: inherit;
-  font-size: 12.5px;
-  font-weight: 560;
+  font-size: 12px;
+  font-weight: 450;
   white-space: nowrap;
   cursor: pointer;
 }
 .folio-segmented button:hover { color: var(--c-text); }
 .folio-segmented button[aria-pressed="true"],
-.folio-segmented button[aria-selected="true"] { background: var(--c-surface-raised); color: var(--c-text); box-shadow: var(--shadow-sm); }
+.folio-segmented button[aria-selected="true"] { background: var(--c-surface); color: var(--c-text); font-weight: 500; box-shadow: var(--shadow-sm); }
 .folio-segmented .folio-icon { width: 15px; height: 15px; }
 
 /* Checkbox chips (partials/checkbox-chips.twig): a small multi-select as a wrapping group of real checkboxes. */
@@ -1682,23 +1902,41 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   align-items: center;
   gap: 7px;
   min-height: 30px;
-  padding: 4px 12px 4px 10px;
+  padding: 4px 12px;
   margin: 0;
-  border: 1px solid var(--c-border);
+  border: 1px solid var(--c-border-strong);
   border-radius: 999px;
   background: var(--c-surface);
   font-size: 13px;
-  font-weight: 520;
+  font-weight: 450;
   color: var(--c-text-muted);
   cursor: pointer;
   transition: background-color .1s, border-color .1s, color .1s;
 }
 .folio-chip:hover { background: var(--c-row-hover); }
-.folio-chip input { flex: none; width: 14px; height: 14px; margin: 0; }
+/* Checkbox and radio chips: the box itself is drawn as a check that shows only when ticked (it stays a
+   real, focusable input; the chip shows its focus ring). */
+.folio-chip input {
+  flex: none;
+  width: 0;
+  height: 13px;
+  margin: 0 0 0 -7px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: currentColor;
+  -webkit-mask: var(--folio-glyph-check) center / 13px 13px no-repeat;
+  mask: var(--folio-glyph-check) center / 13px 13px no-repeat;
+  opacity: 0;
+  cursor: inherit;
+}
+.folio-chip input:checked { width: 13px; margin-left: 0; opacity: 1; }
+.folio-chip input:focus-visible { outline: none; }
 .folio-chip:has(input:checked) {
   background: var(--c-accent-soft);
-  border-color: color-mix(in srgb, var(--c-accent) 35%, transparent);
+  border-color: var(--c-accent);
   color: var(--c-accent-text);
+  font-weight: 500;
 }
 .folio-chip:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--c-focus-ring); }
 /* Disabled (a denied role, or every box in a read-only fieldset[disabled]): readable, visibly inert. */
@@ -1706,8 +1944,23 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-chip:has(input:disabled:checked) { background: var(--c-neutral-soft); border-color: var(--c-border-strong); }
 .folio-chip:has(input:disabled) input { cursor: default; }
 .folio-chip[hidden] { display: none; }
-.folio-chip-remove { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; line-height: 1; }
-.folio-chip-remove:hover { color: var(--c-danger); }
+/* A tag chip (a picked relation item with its remove button): radius 6 on row-hover. */
+.folio-chip:has(> .folio-chip-remove) {
+  gap: 4px;
+  min-height: 26px;
+  padding: 0 4px 0 9px;
+  border-color: transparent;
+  border-radius: var(--r-xs);
+  background: var(--c-row-hover);
+  color: var(--c-text);
+  cursor: default;
+}
+.folio-chip-remove {
+  display: inline-grid; place-items: center; width: 18px; height: 18px;
+  border: 0; border-radius: 4px; background: none; color: var(--c-text-subtle);
+  cursor: pointer; padding: 0; font: inherit; line-height: 1;
+}
+.folio-chip-remove:hover { color: var(--c-danger); background: var(--c-danger-soft); }
 .folio-relation-remote .folio-chips { margin-bottom: 10px; }
 .folio-relation-results {
     list-style: none; margin: 4px 0 0; padding: 4px; max-width: 360px; max-height: 260px; overflow-y: auto;
@@ -1774,19 +2027,66 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-toast {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 8px 8px 8px 16px;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
   border-radius: var(--r);
   background: var(--c-inverse);
   color: var(--c-inverse-fg);
   box-shadow: var(--shadow-lg);
-  font-size: 13.5px;
-  font-weight: 520;
+  font-size: 13px;
+  font-weight: 500;
   pointer-events: auto;
   animation: folio-toast-in .18s ease-out;
 }
-.folio-toast-action { background: transparent; color: light-dark(var(--ink-accent), var(--c-accent)); }
-.folio-toast-action:hover { background: color-mix(in srgb, var(--c-inverse-fg) 10%, transparent); color: light-dark(var(--ink-line), var(--c-accent-hover)); }
+/* No action: as much air on the right as on the left. */
+.folio-toast:not(:has(.folio-toast-action)) { padding-right: 14px; }
+/* The glyph: a check for a done action (Undo toasts), a warning for an error ("folio:error"). */
+.folio-toast::before {
+  content: "";
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: light-dark(var(--ink-accent), color-mix(in srgb, var(--ink-accent) 45%, var(--c-inverse-fg)));
+  -webkit-mask: var(--folio-glyph-check) center / contain no-repeat;
+  mask: var(--folio-glyph-check) center / contain no-repeat;
+}
+.folio-toast.is-error::before {
+  background: var(--c-inverse-danger);
+  -webkit-mask-image: var(--folio-glyph-warn);
+  mask-image: var(--folio-glyph-warn);
+}
+.folio-toast-action.btn {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--c-inverse-fg) 30%, transparent);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.folio-toast-action.btn:hover { background: color-mix(in srgb, var(--c-inverse-fg) 12%, transparent); color: inherit; }
+.folio-toast-action.btn:focus-visible { box-shadow: 0 0 0 2px var(--c-inverse-fg); }
+/* The undo window: a thin bar that runs out with it (admin.js sets the duration). */
+.folio-toast-timer {
+  flex: none;
+  width: 40px;
+  height: 3px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c-inverse-fg) 25%, transparent);
+  overflow: hidden;
+}
+.folio-toast-timer::before {
+  content: "";
+  display: block;
+  height: 100%;
+  background: light-dark(var(--ink-accent), color-mix(in srgb, var(--ink-accent) 45%, var(--c-inverse-fg)));
+  transform-origin: left;
+  animation: folio-toast-timer linear forwards;
+  animation-duration: inherit;
+}
+@keyframes folio-toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @keyframes folio-toast-in { from { opacity: 0; transform: translateY(6px); } }
 
 /* ---- small screens: the sidebar becomes a top bar ---- */
@@ -1822,6 +2122,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
+  /* A bar that cannot run out says nothing: the toast still leaves on time. */
+  .folio-toast-timer { display: none; }
 }
 
 /* ---- extension panels and record actions ---- */
@@ -1918,8 +2220,9 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 /* The interface language switch (sidebar foot), the theme switch's look with letters. */
 .folio-locale-switch button {
   font: inherit;
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.04em;
 }
 
@@ -1932,8 +2235,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-ai-progress-count progress { flex: 1 1 240px; height: 8px; }
 /* A record a job is translating right now: "Translating … (German)", a thin bar, "120 of 410 texts". */
 .folio-ai-progress-current { margin: 0 0 14px; }
-.folio-ai-item-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex-basis: 100%; font-variant-numeric: tabular-nums; }
-.folio-ai-item-progress progress { flex: 0 1 200px; height: 6px; }
+.folio-ai-item-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex-basis: 100%; font-size: 12px; color: var(--c-text-subtle); font-variant-numeric: tabular-nums; }
+.folio-ai-item-progress progress { flex: 1 1 200px; height: 6px; }
 .folio-ai-progress-section { margin-top: 22px; }
 .folio-ai-progress-section h2 { margin: 0 0 8px; font-size: 15px; font-weight: 650; }
 .folio-ai-progress-section ul { margin: 0; padding-left: 18px; }
