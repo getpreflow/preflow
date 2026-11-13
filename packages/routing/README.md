@@ -103,17 +103,29 @@ use Preflow\Routing\MiddlewareWith;
 final class EmployerController
 {
     #[Get('/jobs')]
-    #[Middleware(new MiddlewareWith(GuestMiddleware::class, redirectTo: '/employer'), AuditMiddleware::class)]
+    #[Middleware(AuditMiddleware::class)]   // plain class names and MiddlewareWith mix freely
     public function jobs(): ResponseInterface { /* ... */ }
+}
+
+#[Route('/employer-login')]
+final class EmployerLoginController
+{
+    #[Get('/')]
+    #[Middleware(new MiddlewareWith(GuestMiddleware::class, redirectTo: '/employer', guard: 'employers'))]
+    public function show(): ResponseInterface { /* ... */ }
 }
 ```
 
 The route gets a new instance from the container (`Container::make($class, $args)`): the named
-arguments win, the other parameters are autowired. Arguments are given by name and must be
-constructor parameters; an unknown class, a class that is no middleware, an unknown or a
-positional argument fails when the routes are scanned, a wrongly typed value when the route is
-dispatched. The route cache and the boot manifest keep them, so give values `var_export()`
-writes (strings, numbers, booleans, arrays, enums). Core's kernel builds anything that implements
+arguments win, the other parameters are autowired. Arguments are given by name, must be
+constructor parameters and match their types strictly (`guard: 5` is refused, not turned into
+`"5"`). The route cache and the boot manifest keep them, so they must be values `var_export()`
+writes (strings, numbers, booleans, arrays, enums). An unknown class, a class that is no
+middleware, or an unknown, positional, wrongly typed or unwritable argument fails when the routes
+are scanned. A middleware the container builds with a factory (`$container->bind(X::class, fn
+(Container $c) => new X(...))`) gets the arguments only when the factory takes them as its second
+parameter (`fn (Container $c, array $args)`); otherwise the request fails with a
+`ContainerException` instead of running the middleware without them. Core's kernel builds anything that implements
 `Preflow\Core\Routing\ConfiguredMiddleware`; `MiddlewareWith` is routing's.
 
 ### Catch-all params in attribute routes

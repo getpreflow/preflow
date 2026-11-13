@@ -52,4 +52,20 @@ final class SafeReturnPathTest extends TestCase
         $this->assertNull(SafeReturnPath::check('/a/../b', ['/']));
         $this->assertNull(SafeReturnPath::check('/employer', []));
     }
+
+    /** @return iterable<string, array{0: string}> */
+    public static function badPrefixes(): iterable
+    {
+        foreach (['', 'employer', 'https://site.test/employer'] as $prefix) {
+            yield json_encode($prefix) => [$prefix];
+        }
+    }
+
+    #[DataProvider('badPrefixes')]
+    public function test_a_prefix_that_is_no_path_fails(string $prefix): void
+    {
+        $this->expectExceptionMessage('SafeReturnPath: an allowed prefix is a path starting with "/"');
+        $this->expectException(\InvalidArgumentException::class);
+        SafeReturnPath::check('/employer', ['/account', $prefix]);
+    }
 }

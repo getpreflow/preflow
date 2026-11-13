@@ -28,6 +28,12 @@ final class Container implements ContainerInterface
     /** @var array<string, true> */
     private array $resolving = [];
 
+    /** @var array<string, string> the class an id is bound to with bind()/singleton(), by id */
+    private array $concretes = [];
+
+    /** @var array<string, bool> whether a callable binding takes make()'s parameters (a second parameter), by id */
+    private array $takesParameters = [];
+
     /** @var ServiceProvider[] */
     private array $providers = [];
 
@@ -77,9 +83,10 @@ final class Container implements ContainerInterface
     /** A new binding wins: an instance already resolved from an earlier singleton binding is dropped. */
     public function bind(string $abstract, string|callable $concrete): void
     {
-        unset($this->singletons[$abstract]);
+        unset($this->singletons[$abstract], $this->concretes[$abstract], $this->takesParameters[$abstract]);
         if (is_string($concrete)) {
             $this->bindings[$abstract] = fn () => $this->resolve($concrete);
+            $this->concretes[$abstract] = $concrete;
         } else {
             $this->bindings[$abstract] = $concrete;
         }
@@ -102,15 +109,42 @@ final class Container implements ContainerInterface
     }
 
     /**
+     * A new object; the parameters, by name, win over autowiring. An id bound to a class passes
+     * them on to that class; a callable binding gets them as its second argument, and one that
+     * takes none fails rather than drop them.
+     *
      * @param array<string, mixed> $parameters Override parameters by name
      */
     public function make(string $abstract, array $parameters = []): mixed
     {
+        if ($parameters !== [] && isset($this->concretes[$abstract])) {
+            $concrete = $this->concretes[$abstract];
+
+            return $concrete === $abstract ? $this->build($concrete, $parameters) : $this->make($concrete, $parameters);
+        }
         if (isset($this->bindings[$abstract])) {
+            if ($parameters !== [] && !$this->bindingTakesParameters($abstract)) {
+                throw new ContainerException("[{$abstract}] is bound to a factory that takes no parameters: it cannot be made with ["
+                    . implode(', ', array_keys($parameters)) . '].');
+            }
+
             return ($this->bindings[$abstract])($this, $parameters);
+        }
+        if ($parameters !== [] && isset($this->instances[$abstract]) && !class_exists($abstract)) {
+            throw new ContainerException("[{$abstract}] is a registered instance, not a class: it cannot be made with parameters.");
         }
 
         return $this->build($abstract, $parameters);
+    }
+
+    private function bindingTakesParameters(string $abstract): bool
+    {
+        if (!isset($this->takesParameters[$abstract])) {
+            $function = new \ReflectionFunction(\Closure::fromCallable($this->bindings[$abstract]));
+            $this->takesParameters[$abstract] = $function->isVariadic() || $function->getNumberOfParameters() >= 2;
+        }
+
+        return $this->takesParameters[$abstract];
     }
 
     /** A class marked #[Singleton] is shared when autowired. */

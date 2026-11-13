@@ -23,7 +23,13 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 final class GuardMiddleware implements MiddlewareInterface
 {
-    public function __construct(public readonly ?string $guard = null, public readonly string $redirectTo = '/') {}
+    public function __construct(
+        public readonly ?string $guard = null,
+        public readonly string $redirectTo = '/',
+        public readonly int|float $times = 1,
+        public readonly array $roles = [],
+        public readonly ?\Closure $callback = null,
+    ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -75,6 +81,27 @@ final class MiddlewareWithTest extends TestCase
     {
         $this->expectExceptionMessage('pass the arguments for [' . GuardMiddleware::class . "] by name (guard: 'employers').");
         new MiddlewareWith(GuardMiddleware::class, 'employers');
+    }
+
+    public function test_a_wrongly_typed_argument_fails_without_coercion(): void
+    {
+        $this->expectExceptionMessage('MiddlewareWith: [' . GuardMiddleware::class . '] argument [$guard] must be ?string, int given.');
+        new MiddlewareWith(GuardMiddleware::class, guard: 5);
+    }
+
+    public function test_typed_arguments_that_match_are_kept(): void
+    {
+        $with = new MiddlewareWith(GuardMiddleware::class, guard: null, redirectTo: '/x', times: 2.5, roles: ['a']);
+
+        $this->assertSame(['guard' => null, 'redirectTo' => '/x', 'times' => 2.5, 'roles' => ['a']], $with->arguments());
+        $this->expectExceptionMessage('argument [$times] must be int|float, string given.');
+        new MiddlewareWith(GuardMiddleware::class, times: '2');
+    }
+
+    public function test_an_argument_a_route_cache_cannot_write_fails_clearly(): void
+    {
+        $this->expectExceptionMessage('MiddlewareWith: the arguments for [' . GuardMiddleware::class . '] must be values a route cache can write');
+        new MiddlewareWith(GuardMiddleware::class, callback: static fn () => null);
     }
 
     public function test_a_route_attribute_with_something_else_fails_clearly(): void

@@ -226,6 +226,46 @@ final class ContainerTest extends TestCase
         $this->assertSame($shared, $mixed->service, 'the parameters not given are autowired');
     }
 
+    public function test_make_passes_parameters_through_a_class_binding(): void
+    {
+        $container = new Container();
+        $container->bind(SomeInterface::class, ConcreteImplementation::class);
+
+        $made = $container->make(SomeInterface::class, ['value' => 'given']);
+
+        $this->assertInstanceOf(ConcreteImplementation::class, $made);
+        $this->assertSame('given', $made->value);
+        $this->assertSame('default', $container->get(SomeInterface::class)->value, 'get() is unchanged');
+    }
+
+    public function test_make_passes_parameters_to_a_factory_that_takes_them(): void
+    {
+        $container = new Container();
+        $container->bind(ServiceWithScalar::class, static fn (Container $c, array $parameters): ServiceWithScalar => new ServiceWithScalar($parameters['name'] ?? 'bound'));
+
+        $this->assertSame('given', $container->make(ServiceWithScalar::class, ['name' => 'given'])->name);
+        $this->assertSame('bound', $container->make(ServiceWithScalar::class)->name);
+    }
+
+    public function test_make_refuses_parameters_a_factory_would_drop(): void
+    {
+        $container = new Container();
+        $container->bind(ServiceWithScalar::class, static fn (Container $c): ServiceWithScalar => new ServiceWithScalar('bound'));
+
+        $this->assertSame('bound', $container->make(ServiceWithScalar::class)->name, 'without parameters as before');
+        $this->expectExceptionObject(new ContainerException('[' . ServiceWithScalar::class . '] is bound to a factory that takes no parameters: it cannot be made with [name].'));
+        $container->make(ServiceWithScalar::class, ['name' => 'given']);
+    }
+
+    public function test_make_refuses_parameters_for_an_instance_that_is_no_class(): void
+    {
+        $container = new Container();
+        $container->instance('mailer', new SimpleService());
+
+        $this->expectExceptionObject(new ContainerException('[mailer] is a registered instance, not a class: it cannot be made with parameters.'));
+        $container->make('mailer', ['from' => 'x']);
+    }
+
     public function test_make_with_a_wrongly_typed_override_fails(): void
     {
         $this->expectException(\TypeError::class);

@@ -50,7 +50,7 @@ final class SafeNext
         foreach ($this->links->locales() as $locale) {
             $bases[] = $this->links->local($locale);
             foreach ($this->config->nextAllow() as $path) {
-                $bases[] = $this->links->localize($locale, rtrim($path, '/'));
+                $bases[] = $this->links->localize($locale, $path);
             }
         }
 

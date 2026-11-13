@@ -53,8 +53,10 @@ $obj = $container->make(MyService::class, ['timeout' => 30]);
 
 `make()` builds a new object of a class (an instance registered for it is not reused): the given
 parameters, by name, win over autowiring, `#[Config]` and `#[Env]`; the rest is resolved as `get()`
-would. An id bound with `bind()`/`singleton()` is the binding's to build: a closure gets the
-parameters as its second argument.
+would. An id bound to a class (`bind(Contract::class, Impl::class)`) passes them on to that class;
+a factory closure gets them as its second argument, and one that takes no second parameter
+throws a `ContainerException` rather than drop them (as does an instance registered under a
+name that is no class).
 Route middleware with arguments (`MiddlewareWith`, see `preflow/routing`) is built this way.
 
 ### Attribute injection
@@ -1111,7 +1113,8 @@ $to = SafeReturnPath::check($request->getQueryParams()['next'] ?? null, ['/emplo
 ```
 
 - A prefix matches whole segments: `/employer` allows `/employer`, `/employer/jobs` and
-  `/employer?tab=x`, not `/employerx`; `/` allows every path.
+  `/employer?tab=x`, not `/employerx`; `/` allows every path. A prefix that does not start
+  with `/` (`''`, `employer`, a URL) throws an `InvalidArgumentException`.
 - Refused: a URL (`https://…`, `//evil.example`), a backslash (`\evil`), a dot segment
   (`/a/../b`), a double slash, a control, space or non-ASCII character, and each of these
   percent-encoded (`/%2F%2Fevil.example`, `%252e%252e`), decoded down to the fixed point.

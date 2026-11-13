@@ -235,6 +235,18 @@ final class KernelTest extends TestCase
         $this->assertStringContainsString('Route middleware [' . htmlspecialchars(GreetingMiddleware::class) . '] cannot be built with the arguments [times]', (string) $response->getBody());
     }
 
+    public function test_route_middleware_with_arguments_fails_when_its_factory_would_drop_them(): void
+    {
+        $container = new Container();
+        $container->bind(GreetingMiddleware::class, static fn (): GreetingMiddleware => new GreetingMiddleware('factory'));
+        $route = new Route(mode: RouteMode::Action, handler: 'X@y', middleware: [new GreetingWith(GreetingMiddleware::class, ['greeting' => 'hoi'])]);
+
+        $response = $this->createKernel(new StubRouter($route), container: $container)->handle($this->createRequest());
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('[' . htmlspecialchars(GreetingMiddleware::class) . '] is bound to a factory that takes no parameters: it cannot be made with [greeting]', (string) $response->getBody());
+    }
+
     public function test_route_middleware_with_arguments_must_be_a_middleware(): void
     {
         $route = new Route(mode: RouteMode::Action, handler: 'X@y', middleware: [new GreetingWith(\stdClass::class, [])]);

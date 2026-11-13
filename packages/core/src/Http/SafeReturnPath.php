@@ -17,9 +17,17 @@ final class SafeReturnPath
      * $next unchanged when it is a safe path under one of $allowedPrefixes, else null.
      *
      * @param list<string> $allowedPrefixes paths such as '/employer' ('/' allows every path)
+     * @throws \InvalidArgumentException for a prefix that is no path (does not start with "/")
      */
     public static function check(?string $next, array $allowedPrefixes): ?string
     {
+        $bases = [];
+        foreach ($allowedPrefixes as $prefix) {
+            if (!is_string($prefix) || !str_starts_with($prefix, '/')) {
+                throw new \InvalidArgumentException('SafeReturnPath: an allowed prefix is a path starting with "/" ("/" allows every path), not ' . var_export($prefix, true) . '.');
+            }
+            $bases[] = preg_quote(rtrim($prefix, '/'), '#');
+        }
         if ($next === null || $next === '' || $next[0] !== '/' || $allowedPrefixes === []) {
             return null;
         }
@@ -37,11 +45,6 @@ final class SafeReturnPath
         }
         if ($seen !== rawurldecode($seen)) {
             return null;
-        }
-
-        $bases = [];
-        foreach ($allowedPrefixes as $prefix) {
-            $bases[] = preg_quote(rtrim($prefix, '/'), '#');
         }
 
         return preg_match('#^(?:' . implode('|', array_unique($bases)) . ')(/[A-Za-z0-9._~%/-]*)?(\?[\x21-\x7E]*)?$#D', $next) === 1 ? $next : null;
