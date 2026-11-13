@@ -23,6 +23,7 @@
         "preflow/core": "<0.70",
         "preflow/data": "<0.70",
         "preflow/devtools": "<0.26",
+        "preflow/folio": "<0.71",
         "preflow/validation": "<0.70"
     },
     "autoload": {

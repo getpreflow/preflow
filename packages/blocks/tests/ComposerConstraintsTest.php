@@ -11,8 +11,10 @@ use PHPUnit\Framework\TestCase;
  * Composer from pairing blocks with a release that lacks the APIs it calls: core 0.70 (boot manifest
  * catalogs, installedPackages(), CacheRegistry, PageCache::refuse()), components 0.70 (root attributes,
  * ComponentMap), data 0.70 (LocaleValue::resolveTree(), TypeFieldDefinition), view 0.70 (template functions).
- * folio 0.70 (before it Folio ships its own block classes, registry and renderer, which clash with this package's; it is not
- * required: it carries the blocks field and its editor, and registers this package itself since 0.70).
+ * folio 0.71 (before 0.70 Folio ships its own block classes, registry and renderer, which clash with this package's; 0.70
+ * still passes BlocksConfig::fromApp() a fallback and reads extra.folio.blocks, which 0.71 dropped, so a site's old
+ * block settings would silently stop counting; it is not required: it carries the blocks field and its editor, and
+ * registers this package itself since 0.70).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -24,7 +26,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/components' => '<0.70',
             'preflow/core' => '<0.70',
             'preflow/data' => '<0.70',
-            'preflow/folio' => '<0.70',
+            'preflow/folio' => '<0.71',
             'preflow/view' => '<0.70',
         ], $composer['conflict'] ?? null);
     }

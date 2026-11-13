@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing Folio with a release that lacks the APIs it calls: core 0.70 (CacheRegistry::renamedTo(), so a cache key Folio's blocks used to own still clears under its new name), routing 0.70 (Redirect\RedirectRules, RedirectRejected, RedirectUrl and the other redirect rule classes that moved out of Folio), i18n 0.70 (OverrideRules, OverrideRefused, OverrideScope: the override checks that moved out of Folio), media 0.70 (alt texts as a text source, with a compare-and-set alt write; AltTextSource), rbac 0.69.1, ai 0.66 (AiStatus::$available and
+ * Composer from pairing Folio with a release that lacks the APIs it calls: core 0.70 (CacheRegistry::renamedTo(), so a cache key Folio's blocks used to own still clears under its new name), routing 0.70 (Redirect\RedirectRules, RedirectRejected, RedirectUrl and the other redirect rule classes that moved out of Folio), i18n 0.71 (TextSources::add() with an "offered" predicate, so types with nothing to translate are not offered; since 0.70 OverrideRules, OverrideRefused, OverrideScope: the override checks that moved out of Folio), media 0.70 (alt texts as a text source, with a compare-and-set alt write; AltTextSource), rbac 0.69.1, ai 0.66 (AiStatus::$available and
  * $usesKey for Settings → AI, a provider of the app's own), i18n 0.68 (Labels::resolve() in a given locale, for
  * DisplayLabels::typeIn() naming a type in a mail's language; since 0.66 MachineTranslator::available(): Translate asks the
  * translator, not the AI connection), core 0.69.1 (Application::onProvidersBooted(), after which the console sets up the admin; since 0.68 it binds notify's Mailer with its layout and @notify templates, which StaffMailer
@@ -57,7 +57,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.70', 'preflow/data' => '<0.68', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.70', 'preflow/media' => '<0.70', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.69', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
+            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.70', 'preflow/data' => '<0.68', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.71', 'preflow/media' => '<0.70', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.69', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.65'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members, codes and rbac are suggested, not required.

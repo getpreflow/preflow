@@ -13,9 +13,8 @@ use PHPUnit\Framework\TestCase;
  * (DataManager::saveTypeIfVersion(), validateStorable(), findAs()/queryAs(), TypeRegistry::schema()
  * and keys(), RecordTables), validation 0.70 (ValidationException, ValidationResult), devtools 0.26
  * (CommandInterface, extra.preflow.commands) for the commands. Folio is not required: it binds its rules
- * and registers this package itself since 0.71. A Folio before 0.71 builds its own Publisher and LiveContent;
- * the conflict "<0.71" is added with the release, when the starters pin ^0.71 (they are tested with every
- * package at <their minor>.99, which a "<0.71" would refuse today).
+ * and registers this package itself since 0.71; folio 0.71 is the conflict, because a Folio before it builds its
+ * own Publisher and LiveContent.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -27,6 +26,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/core' => '<0.70',
             'preflow/data' => '<0.70',
             'preflow/devtools' => '<0.26',
+            'preflow/folio' => '<0.71',
             'preflow/validation' => '<0.70',
         ], $composer['conflict'] ?? null);
         foreach (['preflow/core', 'preflow/data', 'preflow/validation'] as $package) {
