@@ -548,8 +548,9 @@ final class AdminController
             }
         } else {
             // The list's own view: its status and "not checked" narrowing too, as the list shows it.
-            $states = $this->publishes($type) ? $this->publisher->states($type) : null;
-            $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $states !== null);
+            $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $this->publishes($type));
+            // The states only when a status is asked for (they read every snapshot of the type).
+            $states = $query->status !== null ? $this->publisher->states($type) : null;
             $records = $exporter->records($type, $query, $query->narrowing(
                 $typeDef->translatableFields() !== [] ? fn (DynamicRecord $record): bool => $this->hasUnchecked($typeDef, $record) : null,
                 $states === null ? null : static fn (DynamicRecord $record): string => ($states[(string) $record->getId()] ?? PublishState::Draft)->value,
@@ -1238,18 +1239,8 @@ final class AdminController
      */
     private function bulkReturn(ServerRequestInterface $request, string $type): string
     {
-        $raw = ((array) $request->getParsedBody())['_query'] ?? '';
-        $params = [];
-        parse_str(is_string($raw) ? ltrim($raw, '?') : '', $params);
-        $typeDef = $this->registry->get($type);
-        $query = ListQuery::fromRequest(
-            $request->withQueryParams($params),
-            $typeDef,
-            $this->catalog->get($type)?->list ?? [],
-            $typeDef->locales->default,
-        )->query();
-
-        return $this->prefix . '/' . $type . ($query === [] ? '' : '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986));
+        return ListQuery::fromPosted($request, $this->registry->get($type), $this->catalog->get($type)?->list ?? [], $this->publishes($type))
+            ->url($this->prefix . '/' . $type);
     }
 
     /**

@@ -72,15 +72,24 @@
                 {% if multilingual|default(false) %}<td>{{ langs.languages(row.languages, row.unchecked_url|default(null)) }}</td>{% endif %}
                 <td class="folio-actions-cell">
                     {%- set menu = row.menu|default({}) %}
-                    {%- set first_group = may.edit or menu.view_url|default(null) or (orderable and may.edit) or menu.unpublish_url|default(null) %}
-                    {%- set second_group = row_menu.duplicate or menu.share_url|default(null) or row_menu.actions is not empty or may.delete %}
-                    {% if first_group or second_group %}
+                    {#- As on the board: the record's own actions, then a divider and the danger items (Unpublish, Delete…). #}
+                    {%- set first_group = may.edit or menu.view_url|default(null) or menu.share_url|default(null) or row_menu.duplicate or (orderable and may.edit) or row_menu.actions is not empty %}
+                    {%- set danger = menu.unpublish_url|default(null) or may.delete %}
+                    {% if first_group or danger %}
                     <div class="folio-row-actions">
                         <details class="folio-row-menu" data-folio-row-menu>
                             <summary class="btn btn-ghost btn-icon btn-sm" aria-label="{{ t('folio.list.more_actions', {title: title}) }}" title="{{ t('folio.list.more_actions', {title: title}) }}" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dots"></use></svg></summary>
                             <div class="folio-menu folio-row-menu-panel" role="menu" aria-label="{{ t('folio.list.more_actions', {title: title}) }}">
                                 {% if may.edit %}<a class="folio-menu-item" role="menuitem" href="{{ edit_url }}" aria-keyshortcuts="E" data-folio-menu-edit><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-edit"></use></svg><span>{{ t('folio.common.edit') }}</span><kbd class="folio-menu-hint" aria-hidden="true">E</kbd></a>{% endif %}
                                 {% if menu.view_url|default(null) %}<a class="folio-menu-item" role="menuitem" href="{{ menu.view_url }}" target="_blank" rel="noopener"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-external"></use></svg><span>{{ t('folio.list.view_on_site') }}</span></a>{% endif %}
+                                {# Needs JS: the link is made by a POST and written to the clipboard (no link without it). #}
+                                {% if menu.share_url|default(null) %}<button type="button" class="folio-menu-item" role="menuitem" data-folio-copy-link="{{ menu.share_url }}" hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#link"></use></svg><span>{{ t('folio.form.copy_preview_link') }}</span></button>{% endif %}
+                                {% if row_menu.duplicate %}
+                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/duplicate">
+                                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                                        <button type="submit" class="folio-menu-item" role="menuitem" aria-keyshortcuts="D" data-folio-menu-duplicate><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-copy"></use></svg><span>{{ t('folio.common.duplicate') }}</span><kbd class="folio-menu-hint" aria-hidden="true">D</kbd></button>
+                                    </form>
+                                {% endif %}
                                 {% if orderable and may.edit %}
                                     {% for direction, text in {'up': t('folio.common.move_up'), 'down': t('folio.common.move_down')} %}
                                         <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/move">
@@ -91,28 +100,21 @@
                                         </form>
                                     {% endfor %}
                                 {% endif %}
-                                {% if menu.unpublish_url|default(null) %}
-                                    <form method="post" action="{{ menu.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}" data-removal-addresses="{{ menu.unpublish_addresses|default(0) }}">
-                                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                                        <input type="hidden" name="_from" value="list">
-                                        <button type="submit" class="folio-menu-item" role="menuitem"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-unpublish"></use></svg><span>{{ t('folio.publishing.unpublish') }}</span></button>
-                                    </form>
-                                {% endif %}
-                                {% if first_group and second_group %}<div class="folio-menu-sep" role="separator"></div>{% endif %}
-                                {% if row_menu.duplicate %}
-                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/duplicate">
-                                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                                        <button type="submit" class="folio-menu-item" role="menuitem" aria-keyshortcuts="D" data-folio-menu-duplicate><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-copy"></use></svg><span>{{ t('folio.common.duplicate') }}</span><kbd class="folio-menu-hint" aria-hidden="true">D</kbd></button>
-                                    </form>
-                                {% endif %}
-                                {# Needs JS: the link is made by a POST and written to the clipboard (no link without it). #}
-                                {% if menu.share_url|default(null) %}<button type="button" class="folio-menu-item" role="menuitem" data-folio-copy-link="{{ menu.share_url }}" hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#link"></use></svg><span>{{ t('folio.form.copy_preview_link') }}</span></button>{% endif %}
                                 {% for action in row_menu.actions %}
                                     <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id|url_encode }}/_action/{{ action.name }}"{% if action.confirm %} data-confirm="{{ action.confirm }}"{% endif %}>
                                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                         <button type="submit" class="folio-menu-item" role="menuitem">{% if action.icon %}<svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ action.icon }}"></use></svg>{% endif %}<span>{{ action.label }}</span></button>
                                     </form>
                                 {% endfor %}
+                                {% if first_group and danger %}<div class="folio-menu-sep" role="separator"></div>{% endif %}
+                                {% if menu.unpublish_url|default(null) %}
+                                    <form method="post" action="{{ menu.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}" data-removal-addresses="{{ menu.unpublish_addresses|default(0) }}">
+                                        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                                        <input type="hidden" name="_from" value="list">
+                                        <input type="hidden" name="_query" value="{{ list_query|default('') }}">
+                                        <button type="submit" class="folio-menu-item is-danger" role="menuitem"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-unpublish"></use></svg><span>{{ t('folio.publishing.unpublish') }}</span></button>
+                                    </form>
+                                {% endif %}
                                 {% if may.delete %}
                                     <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="{{ t('folio.list.confirm_delete') }}" data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}">
                                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">

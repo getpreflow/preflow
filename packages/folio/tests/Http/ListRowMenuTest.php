@@ -108,7 +108,9 @@ final class ListRowMenuTest extends TestCase
 
         $menu = $this->menu($this->list(), 'p2');
 
-        $this->assertSame(['Edit', 'View on site', 'Move up', 'Move down', 'Unpublish', '—', 'Duplicate', 'Copy preview link', 'Delete…'], self::items($menu));
+        // The board's order: the record's own actions, a divider, then the danger items.
+        $this->assertSame(['Edit', 'View on site', 'Copy preview link', 'Duplicate', 'Move up', 'Move down', '—', 'Unpublish', 'Delete…'], self::items($menu));
+        $this->assertStringContainsString('<button type="submit" class="folio-menu-item is-danger" role="menuitem"><svg class="folio-icon" aria-hidden="true"><use href="/folio/_assets/icons.svg', substr($menu, (int) strpos($menu, '/unpublish"')));
         $this->assertStringContainsString('<summary class="btn btn-ghost btn-icon btn-sm" aria-label="More actions for World" title="More actions for World" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="/folio/_assets/icons.svg', $menu);
         $this->assertStringContainsString('<div class="folio-menu folio-row-menu-panel" role="menu" aria-label="More actions for World">', $menu);
         $this->assertStringContainsString('<a class="folio-menu-item" role="menuitem" href="/folio/post/p2/edit" aria-keyshortcuts="E" data-folio-menu-edit>', $menu);
@@ -116,6 +118,7 @@ final class ListRowMenuTest extends TestCase
         $this->assertStringContainsString('<a class="folio-menu-item" role="menuitem" href="/world" target="_blank" rel="noopener">', $menu);
         // Unpublish: the editor's route and prompt (its address count), then back to the list.
         $this->assertMatchesRegularExpression('#<form method="post" action="/folio/post/p2/unpublish" data-confirm="[^"]+" data-removal-addresses="1">\s*<input type="hidden" name="_csrf_token" value="[^"]*">\s*<input type="hidden" name="_from" value="list">#', $menu);
+        $this->assertStringContainsString('<input type="hidden" name="_query" value="">', $menu, 'the view to come back to');
         $this->assertStringContainsString('<form method="post" action="/folio/post/p2/duplicate">', $menu);
         $this->assertStringContainsString('<kbd class="folio-menu-hint" aria-hidden="true">D</kbd>', $menu);
         $this->assertStringContainsString('data-folio-copy-link="/folio/post/p2/share" hidden>', $menu);
@@ -143,15 +146,19 @@ final class ListRowMenuTest extends TestCase
         $this->publishPost('p2', 'world');
 
         $this->signInWithout('post.publish');
-        $this->assertSame(['Edit', 'View on site', 'Move up', 'Move down', '—', 'Duplicate', 'Copy preview link', 'Delete…'], self::items($this->menu($this->list(), 'p2')));
+        $this->assertSame(['Edit', 'View on site', 'Copy preview link', 'Duplicate', 'Move up', 'Move down', '—', 'Delete…'], self::items($this->menu($this->list(), 'p2')));
 
         $this->booted = null;
         $this->signInWithout('post.edit');
-        $this->assertSame(['View on site', 'Unpublish', '—', 'Duplicate', 'Delete…'], self::items($this->menu($this->list(), 'p2')), 'no Edit, no moves, no preview link');
+        $this->assertSame(['View on site', 'Duplicate', '—', 'Unpublish', 'Delete…'], self::items($this->menu($this->list(), 'p2')), 'no Edit, no moves, no preview link');
 
         $this->booted = null;
         $this->signInWithout('post.delete', 'post.create');
-        $this->assertSame(['Edit', 'View on site', 'Move up', 'Move down', 'Unpublish', '—', 'Copy preview link'], self::items($this->menu($this->list(), 'p2')));
+        $this->assertSame(['Edit', 'View on site', 'Copy preview link', 'Move up', 'Move down', '—', 'Unpublish'], self::items($this->menu($this->list(), 'p2')));
+
+        $this->booted = null;
+        $this->signInWithout('post.delete', 'post.publish');
+        $this->assertSame(['Edit', 'View on site', 'Copy preview link', 'Duplicate', 'Move up', 'Move down'], self::items($this->menu($this->list(), 'p2')), 'no danger item: no divider');
     }
 
     public function test_duplicate_and_copy_link_items_by_permission(): void
@@ -214,6 +221,11 @@ final class ListRowMenuTest extends TestCase
 
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('/folio/post', $res->getHeaderLine('Location'));
+
+        // The view it was made in comes back, checked as a URL is: nothing raw reaches the Location header.
+        $this->publishPost('p1', 'hello');
+        $res = $this->post('/folio/post/p1/unpublish', ['_from' => 'list', '_query' => "q=hel&status=published&page=2&evil=1&sort=title\r\nX-Injected: 1"]);
+        $this->assertSame('/folio/post?q=hel&status=published&page=2', $res->getHeaderLine('Location'));
         $this->assertSame('/folio/post/p1/edit', $this->post('/folio/post/p1/unpublish')->getHeaderLine('Location'), 'from the editor: back to it');
     }
 
@@ -230,5 +242,18 @@ final class ListRowMenuTest extends TestCase
         $this->assertMatchesRegularExpression('#/hello\?folio_preview=[^&]+$#', (string) $data['url']);
         $this->assertNull($data['message']);
         $this->assertGreaterThan(0, $data['days']);
+    }
+
+    public function test_share_without_the_edit_permission_makes_no_link(): void
+    {
+        $this->publishPost('p1', 'hello');
+        $this->signInWithout('post.edit');
+
+        $res = $this->app()->handle((new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('POST', '/folio/post/p1/share')
+            ->withHeader('Sec-Fetch-Site', 'same-origin')->withHeader('Accept', 'application/json')->withParsedBody([]));
+
+        $this->assertSame(403, $res->getStatusCode());
+        $this->assertStringNotContainsString('folio_preview', (string) $res->getBody());
+        $this->assertNull($this->stored('post', 'p1')->get('_share_token'), 'no token was made either');
     }
 }

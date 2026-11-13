@@ -124,6 +124,32 @@ final readonly class ListQuery
         return new self($q, $filters, $sort, $desc, $page, $unchecked, $def, $listConfig, $locale, $status);
     }
 
+    /**
+     * The list view a form posted back as "_query" (the query string of the list it was sent from:
+     * the bulk bar, a row menu's Unpublish), read and checked as fromRequest() reads a URL, so only
+     * validated parameters come back out of query().
+     *
+     * @since 0.75
+     *
+     * @param array<string, mixed> $listConfig
+     */
+    public static function fromPosted(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, bool $statuses = false): self
+    {
+        $raw = ((array) $request->getParsedBody())['_query'] ?? '';
+        $params = [];
+        parse_str(is_string($raw) ? ltrim($raw, '?') : '', $params);
+
+        return self::fromRequest($request->withQueryParams($params), $def, $listConfig, $def->locales->default, $statuses);
+    }
+
+    /** The list's URL for this view: $base and the validated parameters of query(). */
+    public function url(string $base): string
+    {
+        $query = $this->query();
+
+        return $base . ($query === [] ? '' : '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986));
+    }
+
     /** Search, filters, order and the requested page on the query. */
     public function apply(QueryBuilder $qb): QueryBuilder
     {
@@ -210,6 +236,8 @@ final readonly class ListQuery
         if ($this->unchecked && $isUnchecked !== null) {
             $tests[] = $isUnchecked;
         }
+        // Follow-up, not built: a status could narrow in SQL (a join on the published table)
+        // instead of reading every match here; fine for admin lists of a few thousand records.
         if ($this->status !== null && $stateOf !== null) {
             $status = $this->status;
             $tests[] = static fn (\Preflow\Data\DynamicRecord $record): bool => $stateOf($record) === $status;

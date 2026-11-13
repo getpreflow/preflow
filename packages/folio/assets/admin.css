@@ -988,6 +988,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   font-size: 13px;
 }
 .folio-table thead .folio-bulk-cell input { accent-color: var(--c-accent); }
+/* admin.js marks the bar is-floating; is-overlay (its name before 0.75) stays an alias until 0.76. */
+.folio-bulk-bar:is(.is-floating, .is-overlay) { position: sticky; bottom: 16px; }
 .folio-bulk-bar[hidden] { display: none; }
 .folio-bulk-count { font-weight: 600; margin-right: 8px; white-space: nowrap; }
 .folio-bulk-bar .btn {

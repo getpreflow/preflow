@@ -105,7 +105,7 @@ test('x ticks the focused row and the bulk bar follows; x again unticks it', () 
     assert.equal(p.rows[0].box.checked, true);
     assert.equal(p.bar.hidden, false, 'the bar shows for a ticked row');
     press(p, 'x');
-    assert.equal(p.rows[0].box.checked, false);
+    assert.notEqual(p.rows[0].box.checked, true, "the focused box itself is not ticked");
     assert.equal(p.bar.hidden, true);
 });
 
@@ -146,6 +146,46 @@ test('typing guard: no shortcut fires in an input, textarea, select or editable 
     }
     assert.deepEqual(p.newClicks, []);
     assert.equal(p.doc.querySelector('dialog'), null, 'no "?" list while typing');
+});
+
+test('typing guard: a tick box is no text field: j moves on from it and x ticks the next row', () => {
+    const p = page();
+    p.rows[0].box.focus();
+    assert.equal(press(p, 'j').defaultPrevented, true);
+    assert.equal(active(p), p.rows[1].link);
+    press(p, 'x');
+    assert.equal(p.rows[1].box.checked, true);
+    assert.notEqual(p.rows[0].box.checked, true, "the focused box itself is not ticked");
+});
+
+test('typing guard: a search or text input still blocks', () => {
+    const p = page();
+    const text = p.doc.body.appendChild(p.doc.createElement('input'));
+    text.setAttribute('type', 'text');
+    for (const field of [p.search, text]) {
+        field.focus();
+        assert.equal(press(p, 'x').defaultPrevented, false);
+        assert.equal(press(p, 'j').defaultPrevented, false);
+        assert.equal(active(p), field);
+    }
+});
+
+test('j, k, x and . work from inside an open row menu: it closes first', () => {
+    const p = page();
+    press(p, 'j');
+    press(p, '.');
+    assert.equal(p.rows[0].menu.open, true);
+    assert.equal(active(p), p.rows[0].edit);
+    press(p, 'j');
+    assert.equal(p.rows[0].menu.open, false, 'the menu closes');
+    assert.equal(active(p), p.rows[1].link);
+    press(p, '.');
+    press(p, 'x');
+    assert.equal(p.rows[1].menu.open, false);
+    assert.equal(p.rows[1].box.checked, true);
+    press(p, '.');
+    assert.equal(press(p, 'Enter').defaultPrevented, false, 'Enter on a menu item keeps its meaning');
+    assert.equal(p.rows[1].menu.open, true);
 });
 
 test('typing guard: no plain shortcut fires with Ctrl, Alt or ⌘ held', () => {

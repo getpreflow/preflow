@@ -548,7 +548,7 @@ Unknown fields, malformed values and out-of-range pages are dropped, never an er
 and how many records the type has; lists use the whole content width. The toolbar holds the search,
 for a publishing type the status links All · Published · Changes not live · Drafts (each counted
 over the whole type; they keep the search, filters and sort), "+ Filter" (a popover; active
-filters are chips under the toolbar) and a row-height toggle (Compact 44px / Comfortable 60px,
+filters are chips under the toolbar; its Reset is a link to the view without filters) and a row-height toggle (Compact 44px / Comfortable 60px,
 kept per browser in `localStorage['folio.density']`). A frontend type's rows show their tile and
 their address in the default language (mono); the record its route serves at `/` (`frontend.home`)
 is marked "The home page · slug “home”". Number columns are mono and right-aligned. The language
@@ -556,9 +556,9 @@ column is the language indicator: every language of the type, complete, partial 
 a dot for outdated or not checked translations (those link to `?unchecked=1`).
 
 Each row opens its record; everything else is in its "…" menu: Edit, View on site (a live record
-with an address), Move up / down (orderable lists), Unpublish, then Duplicate, Copy preview link,
-the type's header record actions (`#[RecordAction]` without `toolbar: false`) and Delete… (the
-delete plan and "Send its old links to…" as before). Each item shows only for those who may use it.
+with an address), Copy preview link, Duplicate, Move up / down (orderable lists) and the type's
+header record actions (`#[RecordAction]` without `toolbar: false`), then after a divider the danger
+items Unpublish and Delete… (delete plan and "Send its old links to…" as before). Each item shows only for those who may use it.
 **Duplicate** posts to `{prefix}/{type}/{id}/duplicate` (the type's create permission) and opens
 the copy's editor: a draft with a free address (`RecordWriter::duplicate()`; a site that binds its
 own `RecordTypes` should implement `RecordAddressFields` too, see
@@ -569,8 +569,8 @@ sign-in). **Copy preview link** asks the share route for JSON (`Accept: applicat
 which floats under the table.
 
 Keyboard shortcuts (`?` lists them): `/` search, `n` new, `j` / `k` next and previous row, `Enter`
-or `e` open it, `x` tick it, `.` its menu, `d` duplicate it. They never fire while typing in a field
-or with Ctrl, Alt or ⌘ held. An admin script adds its own through
+or `e` open it, `x` tick it, `.` its menu, `d` duplicate it. They never fire while typing in a text
+field (a tick box or a button does not count) or with Ctrl, Alt or ⌘ held. An admin script adds its own through
 `Folio.shortcuts.add({key, label, run, mod, typing})` (`mod`: ⌘ / Ctrl + key; `typing`: also inside
 fields; `run` returns `false` when it did nothing).
 
@@ -586,7 +586,8 @@ Since 0.75 a row also carries `languages` (a list of `{code, name, state}`, `sta
 (`{view_url, unpublish_url, unpublish_addresses, share_url}`); the page has `family`, `glyph`,
 `type_total`, `column_kinds` (field => `number`, `relation` or `text`), `frontend`, `may`
 (`{create, edit, delete}`) and `row_menu` (`{duplicate, actions}`). The bulk bar now follows the
-table (`is-floating` with JS; `is-overlay` is gone). `row.extra` holds the cells of extension `#[ListColumn]`s, in their order after the type's
+table (admin.js marks it `is-floating`; `is-overlay`, its name before, stays an alias selector in
+admin.css until 0.76). `row.extra` holds the cells of extension `#[ListColumn]`s, in their order after the type's
 own columns (headings in `extra_columns`): each is plain text (escape it), a badge
 `{label, tone}` or a link `{label, href}` (see Type customizations). Extension columns are
 neither in the Excel export nor sortable. A site that overrides `_list_results.twig` must check
@@ -658,7 +659,8 @@ With `openspout/openspout` (`^4`) installed (`composer require openspout/openspo
 an **Export** button: `GET {prefix}/{type}/_export` downloads an `.xlsx` of the whole filtered
 and sorted list (not just the page), streamed in chunks of 500, or of the ticked rows when
 `ids[]` are given. Columns are the list's own; numbers and dates are typed cells, text is never
-written as a formula. Without OpenSpout there is no button and the URL is a 404.
+written as a formula. Since 0.75 the export also narrows as the list does: `status` (a publishing
+type's state) and `unchecked=1` apply to it. Without OpenSpout there is no button and the URL is a 404.
 
 #### Upgrading to 0.29 — notes for site owners
 

@@ -65,7 +65,7 @@ final class AdminCssTest extends TestCase
         $this->assertStringContainsString('.folio-table-frame { position: relative; }', $css);
         $this->assertMatchesRegularExpression('/\.folio-bulk-bar \{[^}]*position: sticky; bottom: 16px;/', $css);
         $this->assertMatchesRegularExpression('/\.folio-bulk-bar \{[^}]*width: fit-content;[^}]*margin: 12px auto 0;/', $css);
-        $this->assertStringNotContainsString('is-overlay', $css);
+        $this->assertStringContainsString('.folio-bulk-bar:is(.is-floating, .is-overlay) {', $css, 'the old class name stays an alias for one release');
         // Ghost buttons on the bar.
         $this->assertMatchesRegularExpression('/\.folio-bulk-bar \.btn \{\s*background: transparent;\s*border-color: transparent;/', $css);
         // An inverted bar (light on dark theme, dark on light theme) from one light-dark() token set.

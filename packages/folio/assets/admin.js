@@ -2243,10 +2243,17 @@
     var shortcutsReady = false;
     var shortcutsDialog = null;
 
+    // Inputs that take no text: a key on them is no typing (a row's tick box keeps j / k / x working).
+    var NOT_TEXT = ['checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'file', 'color', 'range'];
+
     function isTyping(el) {
         if (!el || !el.tagName) { return false; }
         var tag = el.tagName.toUpperCase();
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return true; }
+        if (tag === 'INPUT') {
+            var kind = String(el.getAttribute('type') || el.type || 'text').toLowerCase();
+            return NOT_TEXT.indexOf(kind) === -1;
+        }
+        if (tag === 'TEXTAREA' || tag === 'SELECT') { return true; }
         if (el.isContentEditable) { return true; }
         var editable = el.getAttribute ? el.getAttribute('contenteditable') : null;
         return editable !== null && editable !== 'false';
@@ -2278,7 +2285,8 @@
             close.type = 'button';
             close.className = 'btn btn-ghost btn-icon btn-sm';
             close.setAttribute('aria-label', folioT('close'));
-            close.textContent = '×';
+            close.setAttribute('title', folioT('close'));
+            close.appendChild(icon('ui-x'));
             close.addEventListener('click', function () { hideShortcuts(); });
             head.appendChild(title);
             head.appendChild(close);
@@ -2325,6 +2333,9 @@
             var spec = shortcutList[i];
             if (!!spec.mod !== mod || (spec.key.length === 1 ? spec.key.toLowerCase() : spec.key) !== key) { continue; }
             if ((typing && !(spec.mod && spec.typing)) || open) { return; }
+            // A row menu open with the focus in it would hold j / k / x / . back: close it first
+            // (Enter keeps its meaning there: it activates the menu item).
+            if (!spec.mod && spec.key !== 'Enter') { openRowMenus().forEach(function (m) { closeRowMenu(m, false); }); }
             if (spec.run(e) !== false) { e.preventDefault(); }
             return;
         }

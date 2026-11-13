@@ -101,6 +101,11 @@ final class PublishingController
      */
     public function share(ServerRequestInterface $request): ResponseInterface
     {
+        // The route asks {type}.edit; asked again here, so no link is made for anyone else (the JSON answer too).
+        $type = (string) $request->getAttribute('type', '');
+        if ($this->access !== null && !$this->access->can($type . '.edit')) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
+        }
         $working = $this->shareable($request);
         if ($working === null) {
             return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
@@ -162,9 +167,11 @@ final class PublishingController
         $target = \Preflow\Folio\Redirects\RemovalTarget::parse(((array) $request->getParsedBody())['_redirect_to'] ?? null, $this->resolver);
         $this->publisher->unpublish($type, $id, $target);
 
-        // From the list's row menu: back to the list.
+        // From the list's row menu: back to the same view (its posted "_query", read and checked again).
         if ((((array) $request->getParsedBody())['_from'] ?? null) === 'list' && $this->catalog->get($type)?->singleton !== true) {
-            return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+            $view = \Preflow\Folio\Content\ListQuery::fromPosted($request, $this->dm->getTypeRegistry()->get($type), $this->catalog->get($type)?->list ?? [], true);
+
+            return new Response(302, ['Location' => $view->url($this->prefix . '/' . $type)]);
         }
 
         return $this->backToEditor($type, $id);

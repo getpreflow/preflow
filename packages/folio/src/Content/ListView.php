@@ -158,6 +158,9 @@ final class ListView
         $from = $result->total === 0 ? 0 : ($page - 1) * $result->perPage + 1;
 
         $clear = array_intersect_key($params, ['sort' => true]);
+        // The filter popover's Reset: this view without any filter (search, status and sort stay).
+        $noFilters = $params;
+        unset($noFilters['f'], $noFilters['unchecked']);
 
         return [
             'q' => $query->q,
@@ -178,6 +181,7 @@ final class ListView
             'prev' => $page > 1 ? $pageHref($page - 1) : null,
             'next' => $page < $result->lastPage ? $pageHref($page + 1) : null,
             'clear' => $href($clear),
+            'filters_reset' => $href($noFilters),
         ];
     }
 
