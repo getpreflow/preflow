@@ -198,7 +198,7 @@
                 {% if publishing.unpublish_url %}
                     <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}" data-removal-addresses="{{ publishing.unpublish_addresses|default(0) }}">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                        <button type="submit" class="btn btn-danger">{{ t('folio.publishing.unpublish') }}</button>
+                        <button type="submit" class="btn btn-secondary" data-tone="danger">{{ t('folio.publishing.unpublish') }}</button>
                     </form>
                 {% endif %}
             </div>

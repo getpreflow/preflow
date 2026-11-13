@@ -315,10 +315,38 @@ The admin ships a single stylesheet served by Folio itself at
 `<link>` URL is content-hash versioned via the `folio_admin_css_url` Twig
 global, so it caches immutably and busts on change.
 
-Dark mode is built in: the stylesheet defines warm-neutral tokens with an
-emerald accent and a `[data-theme="dark"]` override. The default follows the
-operating system (`prefers-color-scheme`); a sidebar toggle lets the user
-override it, persisted in `localStorage` with a no-flash inline script.
+Dark mode is built in. Every colour is one token in the `:root` block, written
+as `light-dark(light, dark)`, with an emerald accent and the sign-in's green-black
+"ink" (since 0.73). The default follows the operating system (`prefers-color-scheme`).
+The Theme row in the user menu (the button at the foot of the sidebar) lets the
+user override it, persisted in `localStorage` and applied by a no-flash inline
+script. Extension CSS should read the tokens (`var(--c-surface)`,
+`var(--c-text-muted)`, `var(--c-accent)` and so on) instead of colour literals,
+so it follows both themes.
+
+Notices and alerts:
+
+| Markup | Tone |
+|---|---|
+| `<div class="folio-notice" role="status">` | Info (blue), the default since 0.73: something to know. |
+| `<div class="folio-notice is-warning" role="status">`, or `<div class="folio-notice" role="alert">` | Warning (amber): something that needs attention. `role="alert"` also makes screen readers announce it at once, so use it only for what has just gone wrong. |
+| `<div class="folio-alert folio-alert-error" role="alert">` | Error (red): something failed. |
+| `<div class="folio-alert folio-alert-success" role="status">` | Done (emerald). |
+
+Before 0.73 every `.folio-notice` was amber. A notice that should still look
+like a warning needs `is-warning`.
+
+Extension templates that extend `@folio/admin/_layout.twig` can use:
+
+- `{% block subtitle %}…{% endblock %}`: one muted line under the page title,
+  saying what the page is for. It replaces the help banners Folio used before 0.73.
+  An empty block prints nothing.
+- `{% set shell = 'rail' %}`: the 56px icon rail instead of the sidebar, for
+  editor-like screens that need the width. It goes before the first block. The
+  rail has the same nav items, and its expand button brings the sidebar back for
+  the session.
+- `folio_site`: a global with `name` (from `app.name`) and `env` (the
+  environment, or `null` in production). The sidebar's site switcher shows it.
 
 Every template is overridable via the `@folio` namespace (drop replacements in
 `resources/folio/`). Because the admin renders through action-mode controllers,
@@ -1472,7 +1500,7 @@ final class NoteTweaks
 | `#[RecordAction(name, label, permission, icon, confirm, toolbar: true)]` | `fn(DynamicRecord, ServerRequestInterface): ?ResponseInterface` | A POST button at `{prefix}/{type}/{id}/_action/{name}`; null redirects back to the form with "{label}: done". Needs the permission and the type's edit permission. With `toolbar: false` there is no button in the form header; the action stays routed and permission-checked, for a form inside a `FormPanel` to post to. |
 | `#[ListColumn(label, position: 100)]` | `fn(DynamicRecord): string\|Badge\|Link` | A column after the type's own, ordered by position, shown as escaped text, as a link for `new Link($label, $url)` (`$url` is `member/3/edit`, relative to the admin prefix, or a site path like `/shop/order?id=3`; anything with a scheme, host, `//`, backslash or whitespace is no link and shows the escaped label), or as a status pill for `new Badge($label, $tone)` (tone `''`, `published`, `draft`, `changed`, `scheduled`, `failed` or `incomplete`; the label is escaped, an unknown tone is shown plain). |
 | `#[NavBadge]` | `fn(): ?int` | A count badge on the type's sidebar item (e.g. waiting members); also on a `#[FolioScreen]` class (see Screens), computed only while the item is visible and at most once per request; `null`, `0` or any non-int return shows none, a callback that throws shows no badge (the admin still renders), several add up, one per class. Keep it cheap: it runs on admin page renders. |
-| `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
+| `#[ListNotice]` | `fn(): ?string` | A notice above the type's list (since 0.53), on the full page only, not on live-search refreshes. The method returns HTML that Folio prints as it is, so it escapes its own content (usually by rendering a Twig template). Use Folio's `.folio-notice` markup, e.g. `<div class="folio-notice" role="status"><p>…</p></div>`, for the spacing (a list of items inside it: `<ul class="folio-notice-list">`, no bullets). Since 0.73 that is the info tone (blue). Add `is-warning` (`<div class="folio-notice is-warning" role="status">`) for the amber warning tone; see [Admin styling](#admin-styling). `null` or `''` shows nothing, and so does a throw. Several add up, grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[DashboardNotice]` | `fn(): ?string` | A notice above the dashboard's cards (since 0.53), the same rules as `#[ListNotice]`. Only called for a user who may view the type (`{type}.view`); the notices are grouped by type (in the order the types' customizations were registered), each type's notices in extension name order. |
 | `#[FieldPlaceholder(field)]` | `fn(string $locale): ?string` | What the field means while it is empty, as its placeholder in the edit form in the locale being edited (e.g. a standard text from the lang files); it replaces the "falls back to" placeholder of a translatable field. The field must exist on the type (boot error), one per field. |
 | `#[BeforeSave]` | `fn(DynamicRecord): void`, or `fn(DynamicRecord, WriteKind $kind): void` | Before validation; may `set()` fields. Throw `Preflow\Validation\ValidationException` to refuse the save: nothing is stored, the form is shown again with its errors (422). Runs on every save through the `RecordWriter` (see [Saving records in your own code](#drafts-and-publishing)): the form, autosave, each record of the bulk bar's "Set …", both records of a list move, "still correct" of a translation, AI translation (since 0.71), "Add to role" on the new-permissions notice, the detached records of a member's own deletion (a refusal there is logged; the deletion stands), and an app's own writer calls. A method whose second parameter is typed `Preflow\Publishing\WriteKind` gets the kind of write (since 0.71): `Save` (the form, "still correct", "Add to role", an app's own `save()`), `Autosave`, `Bulk`, `Reorder` (a list move), `Translate` (AI translation) or `Detach` (a delete takes the deleted ids out of the record), so a hook can leave some alone, e.g. skip image work on autosave. |

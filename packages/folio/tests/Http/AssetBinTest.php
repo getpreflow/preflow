@@ -157,7 +157,9 @@ final class AssetBinTest extends TestCase
 
         $panel = (string) $this->get('/folio/assets/' . $asset->id)->getBody();
         $this->assertStringContainsString('<li><a href="/folio/post/p1/edit">Hello</a> (earlier revision)</li>', $panel);
-        $this->assertDoesNotMatchRegularExpression('/<button type="submit" class="btn btn-danger" disabled/', $panel);
+        // Into the bin (reversible): the outlined danger button, and not disabled.
+        $this->assertMatchesRegularExpression('/<button type="submit" class="btn btn-secondary" data-tone="danger">/', $panel);
+        $this->assertDoesNotMatchRegularExpression('/<button type="submit" class="btn [^"]*"( data-tone="danger")? disabled/', $panel);
 
         $this->assertSame('/folio/assets?done=binned', $this->post('/folio/assets/' . $asset->id . '/delete')->getHeaderLine('Location'));
         $this->assertNotNull($this->lib()->findBinned($asset->id));

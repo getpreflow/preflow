@@ -23,7 +23,7 @@
   --h-list-head: 42px;
   --w-sidebar: 248px;        /* NEW (was 240px in .folio-shell) */
   --w-rail: 56px;            /* NEW: collapsed sidebar in editors */
-  --w-side-panel: 320px;     /* NEW: editor details panel */
+  --w-side-panel: 320px;     /* NEW: editor details panel. Reserved for 0.75 (editors); nothing reads it yet. */
 
   --c-bg:             light-dark(#f5f5f2, #121816);
   --c-sidebar-bg:     light-dark(#fafaf8, #161d1a);
@@ -58,6 +58,8 @@
   --c-inverse:        light-dark(#1b2320, #e9f0ec);    /* bulk bar, toasts, save-all bar */
   --c-inverse-fg:     light-dark(#e9f0ec, #121816);
   --c-inverse-danger: light-dark(#ffb4ab, #b42318);
+  /* The toast's check and undo bar: the sign-in emerald; on the light dark-mode toast mixed toward its text so it reads. */
+  --c-inverse-accent: light-dark(#34d399, #216c51);   /* dark = ink-accent 45% into the dark inverse-fg #121816 */
 
   --c-focus-ring: light-dark(rgb(4 120 87 / .28), rgb(52 211 153 / .36));   /* soft halo (lifted block), never the only focus cue */
   /* Keyboard focus on filled controls: a surface gap, then a solid accent ring (>= 3:1 on every surface). */
@@ -65,6 +67,7 @@
   --c-overlay:    light-dark(rgb(20 24 22 / .42), rgb(6 10 8 / .6));
 
   /* NEW: type tints. The six hues of the sign-in marks; light values darkened for contrast.
+     Reserved for 0.75 (lists/editors: .folio-type-icon); nothing reads them yet.
      Only for type icons, block icons and chart segments. Never buttons, never states. */
   --c-type-page:      light-dark(#0b6a94, #7dd3fc);  --c-type-page-soft:      light-dark(#e2f2fa, #15303d);
   --c-type-reference: light-dark(#6d4fc2, #c4b5fd);  --c-type-reference-soft: light-dark(#efebfb, #2c2942);
@@ -597,6 +600,10 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .btn-danger:focus-visible { box-shadow: var(--focus-ring); }
 
 .btn[data-tone="danger"]:hover { background: var(--c-danger-soft); color: var(--c-danger); }
+/* Outlined danger (Unpublish, Move to bin): danger text and a danger-tinted border at rest; the filled
+   .btn-danger is kept for what cannot be undone. */
+.btn-secondary[data-tone="danger"] { color: var(--c-danger); border-color: color-mix(in srgb, var(--c-danger) 45%, var(--c-border-strong)); }
+.btn-secondary[data-tone="danger"]:hover { border-color: var(--c-danger); }
 
 .btn-sm { min-height: var(--h-button-sm); padding: 0 10px; border-radius: 7px; font-size: 12px; }
 .btn-icon { width: var(--h-button); min-height: var(--h-button); padding: 0; }
@@ -852,7 +859,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-bulk-menu summary::-webkit-details-marker { display: none; }
 .folio-bulk-options { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; min-width: 10rem; }
 
-/* Menu: one popover look for the bulk menu and (0.74) the row "…" menu. Items 32px with an optional
+/* Menu: one popover look for the bulk menu and (0.75) the row "…" menu. Items 32px with an optional
    icon and a shortcut hint at the right; danger items go last, after a divider. */
 .folio-menu {
   display: flex;
@@ -1807,7 +1814,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 }
 .folio-auth-hello .folio-logo-page { fill: var(--ink-accent); }
 .folio-auth-hello .folio-logo-fold { fill: var(--ink-line); }
-.folio-auth-hello .folio-logo-f { stroke: var(--c-accent-fg); }
+.folio-auth-hello .folio-logo-f { stroke: var(--ink-deep); }   /* the dark F on the emerald page, as on the brand tile, in both themes */
 .folio-auth-word {
   margin: 6px 0 0;
   font-size: 44px;
@@ -1833,7 +1840,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 @keyframes folio-blink { 50% { opacity: 0; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .folio-caret, .folio-auth-caret, .folio-auth-drift { animation: none !important; }
+  .folio-auth-caret, .folio-auth-drift { animation: none !important; }
 }
 
 .folio-auth-main {
@@ -2207,7 +2214,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   flex: none;
   width: 16px;
   height: 16px;
-  background: light-dark(var(--ink-accent), color-mix(in srgb, var(--ink-accent) 45%, var(--c-inverse-fg)));
+  background: var(--c-inverse-accent);
   -webkit-mask: var(--folio-glyph-check) center / contain no-repeat;
   mask: var(--folio-glyph-check) center / contain no-repeat;
 }
@@ -2242,7 +2249,7 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   content: "";
   display: block;
   height: 100%;
-  background: light-dark(var(--ink-accent), color-mix(in srgb, var(--ink-accent) 45%, var(--c-inverse-fg)));
+  background: var(--c-inverse-accent);
   transform-origin: left;
   animation: folio-toast-timer linear forwards;
   animation-duration: inherit;

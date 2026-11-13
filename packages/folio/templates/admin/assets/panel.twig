@@ -163,7 +163,8 @@
     {% set blocked = usage|filter(u => u.blocks) is not empty %}
     <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/delete{{ back_q }}" data-confirm="{{ t(has_bin ? 'folio.assets.confirm_bin' : 'folio.assets.confirm_delete') }}">
         <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-        <button type="submit" class="btn btn-danger"{% if blocked %} disabled title="{{ t('folio.assets.remove_first') }}"{% endif %}>{{ t('folio.common.delete') }}</button>
+        {# Into the bin (it can come back): the outlined danger button; deleted for good: the filled one. #}
+        <button type="submit" class="btn {{ has_bin ? 'btn-secondary' : 'btn-danger' }}"{% if has_bin %} data-tone="danger"{% endif %}{% if blocked %} disabled title="{{ t('folio.assets.remove_first') }}"{% endif %}>{{ t('folio.common.delete') }}</button>
     </form>
     {% endif %}
 </section>

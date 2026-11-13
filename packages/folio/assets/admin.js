@@ -1421,6 +1421,7 @@
 
     var BUSY_MAX_MS = 45000;
     var busyButtons = [];
+    var pendingPlainSubmit = false;
 
     // request: null for a plain submit (no timer); the request's token for htmx.
     function setBusy(btn, request) {
@@ -1479,7 +1480,20 @@
     function onBusySubmit(e) {
         var btn = e.submitter;
         if (!btn || !btn.hasAttribute || !btn.hasAttribute('data-busy-label')) { return; }
-        setTimeout(function () { if (!e.defaultPrevented) { setBusy(btn, null); } }, 0);
+        pendingPlainSubmit = true;
+        setTimeout(function () { pendingPlainSubmit = false; if (!e.defaultPrevented) { setBusy(btn, null); } }, 0);
+    }
+
+    // A leave prompt (an unsaved-changes guard cancelled beforeunload) can be answered "Stay": the
+    // page lives on and the plain submit's button would stay busy. The prompt blocks the page while
+    // it is open, so a second later we are either gone or staying. Without a prompt nothing is
+    // scheduled, so a slow Save or Publish is never released (and never posted twice).
+    function onBusyBeforeUnload(e) {
+        if (!e.defaultPrevented || (busyButtons.length === 0 && !pendingPlainSubmit)) { return; }
+        setTimeout(function () {
+            // Only plain submits: an htmx request on the page still ends (or times out) on its own.
+            busyButtons.slice().forEach(function (btn) { if (btn._folioBusy && !btn._folioBusy.request) { clearBusy(btn); } });
+        }, 1000);
     }
 
     // The button an htmx request belongs to: the element itself, or the submitter of the form it sends.
@@ -2084,6 +2098,9 @@
         initNavSections();
         initUserMenus();
         initShellRail();
+        // Last, after the unsaved-changes guards: when one of them asked "Leave the page?" and the
+        // person chose to stay, nothing else would release a plain submit's busy button.
+        window.addEventListener('beforeunload', onBusyBeforeUnload);
     }
 
     // The user menu (partials/_user_menu.twig): a button that opens a small non-modal dialog. Not a

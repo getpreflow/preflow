@@ -33,7 +33,7 @@
     {% elseif state == 'done' %}
         <div class="folio-alert folio-alert-success" role="status"><p>{{ t('folio.ai_run.finished') }}</p></div>
     {% elseif state == 'stopped' %}
-        <div class="folio-notice" role="status"><p>{{ t('folio.ai_run.stopped') }}{% if message %} {{ message }}{% endif %}</p></div>
+        <div class="folio-notice is-warning" role="status"><p>{{ t('folio.ai_run.stopped') }}{% if message %} {{ message }}{% endif %}</p></div>
     {% endif %}
     {% if can_continue or state == 'planned' %}
         <form method="post" action="{{ start_url }}" hx-post="{{ start_url }}" hx-target="#folio-ai-progress" hx-swap="outerHTML">

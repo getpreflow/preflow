@@ -216,6 +216,60 @@ test('a plain submit is never released by the timer: it stays busy until the pag
     }
 });
 
+/** beforeunload as the browser sends it; a guard with unsaved changes cancels it (the "Leave?" prompt). */
+function beforeunload(w, prompted) {
+    const e = { type: 'beforeunload', defaultPrevented: false, returnValue: '', preventDefault() { this.defaultPrevented = true; } };
+    if (prompted) { e.preventDefault(); }
+    (w.listeners.beforeunload || []).forEach((fn) => fn(e));
+    return e;
+}
+
+test('a leave prompt answered "Stay" releases the plain submit a second later', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const { w, doc, form, publish } = editor();
+        submit(form, publish);
+        mock.timers.tick(0);
+        assert.ok(isBusy(publish));
+
+        beforeunload(w, true); // a second, dirty form asks; the person stays
+        mock.timers.tick(999);
+        assert.ok(isBusy(publish), 'not while the prompt could still be leaving');
+        mock.timers.tick(1);
+        assert.ok(isIdle(publish, 'Publish'));
+        assert.equal(doc.activeElement, doc.body, 'a release, not a failure: focus stays where it is');
+    } finally {
+        mock.timers.reset();
+    }
+});
+
+test('without a leave prompt the plain submit stays busy (a slow POST is not sent twice)', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const { w, form, publish } = editor();
+        submit(form, publish);
+        mock.timers.tick(0);
+        beforeunload(w, false);
+        mock.timers.tick(30000);
+        assert.ok(isBusy(publish));
+    } finally {
+        mock.timers.reset();
+    }
+});
+
+test('a "Stay" leaves a running htmx request busy', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const { w, form, save } = editor();
+        htmx(form, 'htmx:beforeRequest', { requestConfig: { triggeringEvent: { submitter: save } }, xhr: {} });
+        beforeunload(w, true);
+        mock.timers.tick(1000);
+        assert.ok(isBusy(save));
+    } finally {
+        mock.timers.reset();
+    }
+});
+
 test('hx-sync="replace": the abort of the older request leaves the newer one busy', () => {
     const { form, save } = editor();
     const older = { id: 'older' };

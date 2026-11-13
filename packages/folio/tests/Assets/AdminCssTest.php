@@ -234,6 +234,22 @@ final class AdminCssTest extends TestCase
         $this->assertStringContainsString('.rbac-chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }', $rbac);
     }
 
+    public function test_the_sign_in_logo_keeps_its_dark_f_and_unpublish_is_outlined(): void
+    {
+        $css = $this->css();
+        // The sign-in's logo: the F in --ink-deep on the emerald page in both themes, as on the brand tile
+        // (--c-accent-fg is white in light mode: a white F on #34d399).
+        $this->assertMatchesRegularExpression('/\.folio-auth-hello \.folio-logo-f \{ stroke: var\(--ink-deep\); \}/', $css);
+        $this->assertStringContainsString(':where(.folio-brand-tile, .folio-rail-brand) .folio-logo-f { stroke: var(--ink-deep);', $css);
+        // Unpublish and Move to bin: outlined danger (board); the filled .btn-danger is for what cannot be undone.
+        $this->assertMatchesRegularExpression('/\.btn-secondary\[data-tone="danger"\] \{ color: var\(--c-danger\);/', $css);
+        $form = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/form.twig');
+        $this->assertStringContainsString('<button type="submit" class="btn btn-secondary" data-tone="danger">{{ t(\'folio.publishing.unpublish\') }}</button>', $form);
+        // Toast colours come from a token, not light-dark() inside the component.
+        $this->assertStringContainsString('--c-inverse-accent: light-dark(', $css);
+        $this->assertDoesNotMatchRegularExpression('/\.folio-toast[^{]*\{[^}]*light-dark\(/', $css);
+    }
+
     public function test_failures_on_the_asset_screens_are_error_alerts(): void
     {
         foreach (['index', 'panel', 'edit', 'bin'] as $template) {
