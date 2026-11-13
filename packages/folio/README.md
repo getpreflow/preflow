@@ -560,7 +560,7 @@ with an address), Copy preview link, Duplicate, Move up / down (orderable lists)
 header record actions (`#[RecordAction]` without `toolbar: false`), then after a divider the danger
 items Unpublish and Delete… (delete plan and "Send its old links to…" as before). Each item shows only for those who may use it.
 **Duplicate** posts to `{prefix}/{type}/{id}/duplicate` (the type's create permission) and opens
-the copy's editor: a draft with a free address (`RecordWriter::duplicate()`; a site that binds its
+the copy's editor: a draft whose title (the list's first column) reads “… (copy)” in each language (`folio.list.copy_title`; a copy of a copy counts on: “(copy 2)”), with a free address (`RecordWriter::duplicate()`; a site that binds its
 own `RecordTypes` should implement `RecordAddressFields` too, see
 [preflow/publishing](../publishing/README.md#your-own-rules)). It is never offered, and the route
 refuses it, for a singleton or a user type (the copy would carry the account's password and

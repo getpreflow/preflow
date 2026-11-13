@@ -514,6 +514,51 @@ final class AdminController
     }
 
     /**
+     * The copy's title (the field the list shows first, a text field): "<title> (copy)" in each
+     * language the record has a title in, with the suffix in that language (folio.list.copy_title);
+     * a title that already ends in the suffix counts on ("Home (copy)" → "Home (copy 2)"), so the
+     * list never shows two rows that read the same.
+     *
+     * @return array<string, mixed> RecordWriter::duplicate() overrides
+     */
+    private function copyOverrides(DynamicRecord $source): array
+    {
+        $def = $source->getType();
+        $name = array_key_first($this->listColumns($def, $this->catalog->get($def->key)?->list ?? []));
+        if (!is_string($name) || !in_array($def->fields[$name]->type ?? '', ['string', 'text'], true)) {
+            return [];
+        }
+        $value = $source->get($name);
+        if (in_array($name, $def->translatableFields(), true)) {
+            $titles = [];
+            foreach (LocaleValue::map($value, $def->locales) as $locale => $title) {
+                if (is_string($title) && trim($title) !== '') {
+                    $titles[$locale] = self::copyTitle($title, (string) $locale);
+                }
+            }
+
+            return $titles === [] ? [] : [$name => $titles];
+        }
+
+        return is_string($value) && trim($value) !== '' ? [$name => self::copyTitle($value, $def->locales->default)] : [];
+    }
+
+    /** "<title> (copy)" in $locale; "<title> (copy 2)", "(copy 3)"… for a title that is a copy already. */
+    private static function copyTitle(string $title, string $locale): string
+    {
+        $template = FolioText::translator()->get('folio.list.copy_title', ['title' => ':title'], $locale);
+        [$before, $after] = explode(':title', $template, 2) + [1 => ''];
+        if (str_ends_with($after, ')') && $after !== ')') {
+            $open = substr($after, 0, -1); // " (copy"
+            if (preg_match('/^(.*)' . preg_quote($open, '/') . '(?: (\d+))?\)$/su', $title, $m) === 1) {
+                return $m[1] . $open . ' ' . (($m[2] ?? '') !== '' ? (int) $m[2] + 1 : 2) . ')';
+            }
+        }
+
+        return $before . $title . $after;
+    }
+
+    /**
      * Whether "Duplicate" makes sense for the type: not for a singleton (one record only) and not
      * for a user type, whose copy would carry the account's password hash and sign-in.
      */
@@ -894,7 +939,7 @@ final class AdminController
         }
 
         try {
-            $outcome = $this->writer->duplicate($type, $id, new SaveOptions(by: self::userId($request), mayPublish: $this->can($type . '.publish')));
+            $outcome = $this->writer->duplicate($type, $id, new SaveOptions(by: self::userId($request), mayPublish: $this->can($type . '.publish')), $this->copyOverrides($source));
         } catch (ValidationException $e) {
             self::flash($request, 'error', self::errorText($e));
 

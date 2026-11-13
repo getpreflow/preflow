@@ -68,11 +68,59 @@ final class DuplicateRouteTest extends TestCase
         preg_match('#^/folio/page/([0-9a-f]{32})/edit$#', $res->getHeaderLine('Location'), $m);
         $copy = $this->stored('page', $m[1]);
         $this->assertNotNull($copy);
-        $this->assertSame('About', $copy->get('title'));
+        $this->assertSame('About (copy)', $copy->get('title'), 'the list never shows two rows that read the same');
+        $this->assertSame('About', $this->stored('page', 'p1')->get('title'));
         $this->assertNotNull($this->stored('page', 'p1'), 'the record itself stays');
 
         $editor = (string) $this->send('GET', $res->getHeaderLine('Location'))->getBody();
         $this->assertStringContainsString('This is a copy of “About”.', html_entity_decode($editor, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_copy_title_reads_copy_in_each_language_and_counts_on(): void
+    {
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
+        $this->write('config/models/page.json', (string) json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
+            'fields' => ['title' => ['type' => 'string', 'translatable' => true]],
+        ]));
+        $this->setUpStaff();
+        $this->as('admin');
+        $this->seed('page', 'p1', ['title' => ['en' => 'About', 'de' => 'Über uns'], '_locales' => ['en', 'de']]);
+
+        $copy = $this->copyOf('p1');
+
+        $this->assertSame(['en' => 'About (copy)', 'de' => 'Über uns (Kopie)'], $this->stored('page', $copy)->get('title'), 'the suffix in each language');
+        $this->assertSame(['en' => 'About', 'de' => 'Über uns'], $this->stored('page', 'p1')->get('title'), 'the record keeps its title');
+
+        // A copy of the copy counts on instead of doubling the suffix.
+        $again = $this->copyOf($copy);
+        $this->assertSame(['en' => 'About (copy 2)', 'de' => 'Über uns (Kopie 2)'], $this->stored('page', $again)->get('title'));
+        $this->assertSame(['en' => 'About (copy 3)', 'de' => 'Über uns (Kopie 3)'], $this->stored('page', $this->copyOf($again))->get('title'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_only_languages_with_a_title_get_the_suffix(): void
+    {
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
+        $this->write('config/models/page.json', (string) json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
+            'fields' => ['title' => ['type' => 'string', 'translatable' => true]],
+        ]));
+        $this->setUpStaff();
+        $this->as('admin');
+        $this->seed('page', 'p1', ['title' => ['en' => 'About'], '_locales' => ['en']]);
+
+        $this->assertSame(['en' => 'About (copy)'], $this->stored('page', $this->copyOf('p1'))->get('title'));
+    }
+
+    private function copyOf(string $id): string
+    {
+        $res = $this->send('POST', '/folio/page/' . $id . '/duplicate');
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertSame(1, preg_match('#^/folio/page/([0-9a-f]{32})/edit$#', $res->getHeaderLine('Location'), $m));
+
+        return $m[1];
     }
 
     #[RunInSeparateProcess]

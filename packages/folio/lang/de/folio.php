@@ -131,6 +131,7 @@ return [
         'filter_reset' => 'Zurücksetzen',
         'count' => ':count Eintrag|:count Einträge',
         'address' => 'Adresse',
+        'copy_title' => ':title (Kopie)',
         'duplicated' => 'Das ist eine Kopie von „:title“. Sie ist als neuer Eintrag gespeichert.',
     ],
     'form' => [

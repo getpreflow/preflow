@@ -140,6 +140,7 @@ return [
         'filter_reset' => 'Reset',
         'count' => ':count entry|:count entries',
         'address' => 'Address',
+        'copy_title' => ':title (copy)',
         'duplicated' => 'This is a copy of “:title”. It is saved as a new entry.',
     ],
     // A record's editor.

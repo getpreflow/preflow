@@ -193,7 +193,9 @@ URL. It learns those fields from `Preflow\Publishing\RecordAddressFields`
 may implement as well. Folio's binding does. **A site that binds its own `RecordTypes` should
 implement `RecordAddressFields` on it too:** without it, `duplicate()` frees only a field named
 `slug` or one with the `slug` rule, and copies every other address field unchanged, so the copy
-would claim the same address.
+would claim the same address. Its `$overrides` (field => value, or => `[locale => value]` for a translatable field)
+set values of the copy before the address is freed, e.g. a title marked as a copy; an overridden
+address field still takes a free value.
 
 **Restore and discard** replace the working copy's content: its fields, the `stateKeys()` and the
 `RecordColumns`, take the revision's or snapshot's values (a field the revision does not have

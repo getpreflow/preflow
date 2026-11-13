@@ -117,13 +117,20 @@ final class RecordWriter
      * $options->by and $options->mayPublish apply as to save(); a copy is never published or
      * scheduled with it.
      *
+     * $overrides (@since 0.75) sets values of the copy: field name => value, or for a translatable
+     * field => [locale => value] (the languages given replace the copied ones, the others stay), e.g.
+     * a title marked as a copy. They apply after the values are copied and before the address, slug
+     * and unique fields are freed, so an overridden slug still takes a free value.
+     *
      * @since 0.75
      *
-     * @throws \InvalidArgumentException when the type has no record with this id, or $options asks to publish (nothing written)
+     * @param array<string, mixed> $overrides field => value, or field => [locale => value] for a translatable field
+     *
+     * @throws \InvalidArgumentException when the type has no record with this id, $options asks to publish, or an override names no field of the type (nothing written)
      * @throws ValidationException        from SaveHooks::before(), the storage or the checks of a type that does not publish (nothing stored)
      * @throws VersionConflict
      */
-    public function duplicate(string $type, string $id, SaveOptions $options = new SaveOptions()): SaveOutcome
+    public function duplicate(string $type, string $id, SaveOptions $options = new SaveOptions(), array $overrides = []): SaveOutcome
     {
         if ($options->publish) {
             throw new \InvalidArgumentException('A copy starts as a draft: publish it with save() once it is checked.');
@@ -134,6 +141,16 @@ final class RecordWriter
         $data = array_diff_key($source->toArray(), array_flip([...Publisher::META, '_published_at', '_published_by', ...$this->timestamps($def)]));
         $data[$def->idField] = bin2hex(random_bytes(16));
         $copy = DynamicRecord::fromArray($def, $data);
+        foreach ($overrides as $name => $value) {
+            if (!is_string($name) || !isset($def->fields[$name]) || $name === $def->idField) {
+                throw new \InvalidArgumentException("Type \"{$type}\" has no field \"{$name}\" a copy can override.");
+            }
+            if (in_array($name, $def->translatableFields(), true) && is_array($value)) {
+                // Per language: the given languages replace the copied ones, the others stay.
+                $value = array_replace(LocaleValue::map($copy->get($name), $def->locales), $value);
+            }
+            $copy->set($name, $value);
+        }
         $address = $this->types instanceof RecordAddressFields ? $this->types->addressFields($def->key) : [];
         foreach ($def->fields as $name => $field) {
             if ($name !== $def->idField && $copy->get($name) !== null) {

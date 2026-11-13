@@ -134,6 +134,41 @@ final class RecordWriterDuplicateTest extends PublishingAppTestCase
         $this->assertSame(['en' => 'News', 'de' => 'Neues'], $copy->get('name'));
     }
 
+    public function test_overrides_set_a_translatable_title_per_language(): void
+    {
+        $writer = $this->writer();
+        $this->working('topic', 't1', ['name' => ['en' => 'News', 'de' => 'Neues', 'fr' => 'Actualités'], 'slug' => ['en' => 'news', 'de' => 'neues']]);
+
+        $copy = $this->stored('topic', (string) $writer->duplicate('topic', 't1', overrides: ['name' => ['en' => 'News (copy)', 'de' => 'Neues (Kopie)']])->record->getId());
+
+        $this->assertSame(['en' => 'News (copy)', 'de' => 'Neues (Kopie)', 'fr' => 'Actualités'], $copy->get('name'), 'the languages not given stay as copied');
+        $this->assertSame(['en' => 'News', 'de' => 'Neues', 'fr' => 'Actualités'], $this->stored('topic', 't1')->get('name'));
+    }
+
+    public function test_an_overridden_slug_is_still_freed(): void
+    {
+        $writer = $this->writer();
+        $this->working('page', 'p1', self::page());
+        $this->working('page', 'p2', ['title' => ['en' => 'Taken'], 'slug' => 'taken']);
+
+        $copy = $this->stored('page', (string) $writer->duplicate('page', 'p1', overrides: ['slug' => 'taken'])->record->getId());
+
+        $this->assertSame('taken-2', $copy->get('slug'), 'the override goes through the free-value rule');
+    }
+
+    public function test_an_override_of_no_field_is_refused_and_nothing_is_written(): void
+    {
+        $writer = $this->writer();
+        $this->working('page', 'p1', self::page());
+
+        try {
+            $writer->duplicate('page', 'p1', overrides: ['nope' => 'x']);
+            $this->fail('refused');
+        } catch (\InvalidArgumentException) {
+        }
+        $this->assertCount(1, $this->dm()->queryType('page')->get()->items());
+    }
+
     public function test_an_orderable_copy_goes_right_after_its_record(): void
     {
         $writer = $this->writer();
