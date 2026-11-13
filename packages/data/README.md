@@ -451,6 +451,28 @@ final class Job extends Model { … }
 - Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
   (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
 
+## Slugs
+
+`Slugs::unique()` makes a slug no other record has, from `Preflow\Validation\Rules\Slug::clean()`
+("Müller" becomes `mueller`): the cleaned text, then `-2`, `-3`... until it is free.
+
+```php
+use Preflow\Data\Slugs;
+
+$slug = Slugs::unique($data, 'job', $title);                       // a type key, or a model class
+$slug = Slugs::unique($data, Job::class, $title, exceptId: $job->uuid); // the record being renamed keeps its slug
+```
+
+The signature is `unique(DataManager $data, string $type, string $text, string $field = 'slug',
+?string $exceptId = null, int $max = 80, string $fallback = 'item')`. The result is at most `$max`
+characters, suffix included: a long text is cut at a hyphen when one is in the last half of
+`$max`, otherwise hard-cut, and a suffix shortens the base rather than the total. A text without
+letters or digits gives `$fallback`. A field the type does not have is an
+`InvalidArgumentException`.
+
+For an import that holds its slugs in memory, `Slugs::among($text, $taken)` does the same against
+`$taken` (`array<string, true>`, by reference) and adds what it returns.
+
 ## MySQL and MariaDB
 
 `preflow migrate`, `Schema` introspection and Folio's table sync run on MariaDB 10.6+ (tested;
