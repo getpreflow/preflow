@@ -604,3 +604,32 @@ test('an asset picked in the side panel names the record form at once, so autosa
     assert.equal(p.w.Folio.formOf(input), p.form);
     assert.deepEqual(p.edits, [input]);
 });
+
+test('Folio.ownControls keeps a form a control names, leaves controls outside the side panel alone, and is idempotent', () => {
+    const p = sidePanel();
+    const side = p.doc.querySelector('.folio-side-fields');
+    const box = side.appendChild(p.doc.createElement('div'));
+    const own = box.appendChild(p.doc.createElement('input'));
+    own.setAttribute('form', 'elsewhere');
+    const plain = box.appendChild(p.doc.createElement('input'));
+    const button = box.appendChild(p.doc.createElement('button'));
+    button.setAttribute('type', 'button');
+    const submit = box.appendChild(p.doc.createElement('button'));
+
+    p.w.Folio.ownControls(box);
+    assert.equal(own.getAttribute('form'), 'elsewhere', 'a form it names is kept');
+    assert.equal(plain.getAttribute('form'), 'folio-record');
+    assert.equal(button.getAttribute('form'), null, 'type=button submits nothing');
+    assert.equal(submit.getAttribute('form'), 'folio-record', 'a typeless button submits the record form');
+
+    const snapshot = [own, plain, button, submit].map((el) => el.getAttribute('form'));
+    p.w.Folio.ownControls(box);
+    assert.deepEqual([own, plain, button, submit].map((el) => el.getAttribute('form')), snapshot, 'a second call changes nothing');
+
+    const outside = p.doc.body.appendChild(p.doc.createElement('div'));
+    const loose = outside.appendChild(p.doc.createElement('input'));
+    p.w.Folio.ownControls(outside);
+    p.w.Folio.ownControls(loose);
+    assert.equal(loose.getAttribute('form'), null, 'no side panel around it: nothing changes');
+    p.w.Folio.ownControls(null);
+});

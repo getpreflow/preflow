@@ -444,12 +444,20 @@ final class FolioPermissionsTest extends TestCase
     {
         $this->as('admin');
         foreach ([null, 'not-the-token'] as $token) {
+            // Refused by the CSRF middleware before the handler, as an HTML post would be. The kernel's
+            // error handler turns the ForbiddenHttpException into the response (JSON here, as asked,
+            // with the exception in its debug part); one that escaped is checked the same way.
             try {
-                $status = $this->jsonUpload($token)->getStatusCode();
-            } catch (\Throwable) {
-                $status = 403; // refused before the handler, as an HTML post would be
+                $response = $this->jsonUpload($token);
+            } catch (\Preflow\Core\Exceptions\ForbiddenHttpException $e) {
+                $this->assertNotInstanceOf(\Preflow\Core\Http\Csrf\CsrfSessionExpiredException::class, $e);
+                $this->assertSame('CSRF check failed: token.', $e->getMessage(), var_export($token, true));
+                continue;
             }
-            $this->assertGreaterThanOrEqual(400, $status, var_export($token, true));
+            $this->assertSame(403, $response->getStatusCode(), var_export($token, true));
+            $error = json_decode((string) $response->getBody(), true);
+            $this->assertSame('CSRF check failed: token.', $error['message'] ?? null, var_export($token, true));
+            $this->assertSame(\Preflow\Core\Exceptions\ForbiddenHttpException::class, $error['debug']['exception'] ?? null, var_export($token, true));
         }
         $this->assertSame(0, $this->libraryFiles());
         $this->assertSame(200, $this->jsonUpload($this->token)->getStatusCode(), 'with the session token it uploads');
