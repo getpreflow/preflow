@@ -170,4 +170,15 @@ final class MysqlGrammarTest extends TestCase
             (new SqliteGrammar())->createRecordIndex('idx_e_company', 'e', ['company'], false, ['company' => 'text']),
         );
     }
+
+    /** The prefix is the declared length where that is shorter, never more than 191 characters. */
+    public function test_the_prefix_is_the_declared_length_at_most_191(): void
+    {
+        $types = ['code' => 'longtext', 'company' => 'longtext', 'state' => 'varchar(40)'];
+
+        $this->assertSame(
+            'CREATE INDEX `idx_e_code_company_state` ON `e` (`code`(40), `company`(191), `state`)',
+            (new MysqlGrammar())->createRecordIndex('idx_e_code_company_state', 'e', ['code', 'company', 'state'], false, $types, ['code' => 40, 'company' => 500, 'state' => 40]),
+        );
+    }
 }

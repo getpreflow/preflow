@@ -85,17 +85,15 @@ final class CompositeIndexDefinitionTest extends TestCase
         ], indexes: [['state', 'title']]);
     }
 
-    public function test_an_index_past_mysqls_key_size_is_refused(): void
+    public function test_a_long_key_is_the_syncs_to_judge(): void
     {
-        $fields = [
+        $type = new TypeDefinition('job', 'jobs', 'sqlite', [
             'a' => new TypeFieldDefinition('a', length: 500),
             'b' => new TypeFieldDefinition('b', length: 300),
             'n' => new TypeFieldDefinition('n', 'number'),
-        ];
-        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'n'], ['b', 'n']]);
+        ], indexes: [['a', 'b', 'n']]);
 
-        $this->expectExceptionMessage('Type "job" has the index (a, b, n) of up to 3208 bytes; MySQL allows 3072: give its text fields a shorter "length".');
-        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'b', 'n']]);
+        $this->assertSame([['a', 'b', 'n']], $type->indexes, 'past MySQL\'s 3072 bytes, still a valid definition');
     }
 
     public function test_a_field_twice_in_one_index_is_refused(): void
@@ -121,6 +119,39 @@ final class CompositeIndexDefinitionTest extends TestCase
 
         $this->expectExceptionMessage('Type "job" has two indexes named idx_jobs_a_b ((a_b) and another): drop one, or rename a field.');
         new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'b'], ['a_b']]);
+    }
+
+    public function test_an_index_named_like_a_unique_fields_is_refused(): void
+    {
+        $fields = [
+            'slug' => new TypeFieldDefinition('slug', unique: true),
+            'a' => new TypeFieldDefinition('a'),
+            'b' => new TypeFieldDefinition('b'),
+            'a_b' => new TypeFieldDefinition('a_b', unique: true),
+        ];
+        try {
+            new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['slug']]);
+            $this->fail('an index over a unique field was accepted');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertSame('Type "job" has the index (slug) over its unique field "slug", whose unique index serves already: drop the index.', $e->getMessage());
+        }
+
+        $this->expectExceptionMessage('Type "job" has the index (a, b), named like the index its unique field "a_b" gets in published copies: rename a field.');
+        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'b']]);
+    }
+
+    public function test_an_index_over_a_scope_field_is_allowed_one_named_like_it_is_not(): void
+    {
+        $fields = [
+            'slug' => new TypeFieldDefinition('slug', unique: ['a_b']),
+            'a' => new TypeFieldDefinition('a'),
+            'b' => new TypeFieldDefinition('b'),
+            'a_b' => new TypeFieldDefinition('a_b'),
+        ];
+        $this->assertSame([['a_b'], ['slug', 'a']], (new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a_b'], ['slug', 'a']]))->indexes);
+
+        $this->expectExceptionMessage('Type "job" has the index (a, b), named like the index its scope field "a_b" gets in published copies: rename a field.');
+        new TypeDefinition('job', 'jobs', 'sqlite', $fields, indexes: [['a', 'b']]);
     }
 
     public function test_a_class_declares_them_with_the_index_attribute(): void

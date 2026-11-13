@@ -199,6 +199,33 @@ final class DeclaredIndexesTest extends TestCase
         $this->assertNotContains('uniq_page_slug', $this->indexes('page'));
     }
 
+    /** A plain index the server refuses (here: its name is taken on another table) is a warning; the sync goes on. */
+    public function testARefusedPlainIndexIsAWarning(): void
+    {
+        $this->pdo->exec('CREATE TABLE other (x TEXT)');
+        $this->pdo->exec('CREATE INDEX idx_jobs_company ON other (x)');
+
+        $lines = $this->sync()->sync(self::jobs(indexes: [['state', 'updated_at']]));
+
+        $this->assertSame('created table jobs', $lines[0]);
+        $this->assertStringStartsWith('warning: jobs: no index over company (the server refused it: ', $lines[1]);
+        $this->assertStringEndsWith('; see the data README', $lines[1]);
+        $this->assertSame('added index idx_jobs_state_updated_at', $lines[2]);
+        $this->assertCount(3, $lines);
+    }
+
+    /** SQLite has no key size limit: an index past MySQL's 3072 bytes is made. */
+    public function testALongKeyIsMadeOnSqlite(): void
+    {
+        $def = new TypeDefinition('job', 'jobs', 'sqlite', [
+            'a' => new TypeFieldDefinition('a', length: 500),
+            'b' => new TypeFieldDefinition('b', length: 300),
+            'n' => new TypeFieldDefinition('n', 'number'),
+        ], indexes: [['a', 'b', 'n']]);
+
+        $this->assertSame(['created table jobs', 'added index idx_jobs_a_b_n'], $this->sync()->sync($def));
+    }
+
     /** @param list<list<string>> $indexes */
     private static function jobs(bool $index = true, array $indexes = []): TypeDefinition
     {
@@ -242,13 +269,13 @@ final class RacingGrammar implements \Preflow\Data\Migration\Grammar\SchemaGramm
         $this->g = new SqliteGrammar();
     }
 
-    public function createRecordIndex(string $name, string $table, array $columns, bool $unique, array $columnTypes = []): string
+    public function createRecordIndex(string $name, string $table, array $columns, bool $unique, array $columnTypes = [], array $lengths = []): string
     {
         if ($unique) {
             $this->pdo->exec($this->save);
         }
 
-        return $this->g->createRecordIndex($name, $table, $columns, $unique, $columnTypes);
+        return $this->g->createRecordIndex($name, $table, $columns, $unique, $columnTypes, $lengths);
     }
 
     public function quote(string $identifier): string { return $this->g->quote($identifier); }

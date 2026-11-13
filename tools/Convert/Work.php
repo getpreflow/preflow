@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Tools\Convert;
 
 use Preflow\Data\Schema\ColumnSpec;
+use Preflow\Data\Schema\RecordIndex;
 
 /** What one existing table still needs: columns to retype, values to check, indexes to add, '' to clear. */
 final readonly class Work
@@ -13,7 +14,7 @@ final readonly class Work
      * @param list<string> $columns the table's columns besides the id, in table order
      * @param list<string> $retype columns whose type differs from their kind's
      * @param array<string, ColumnSpec> $check columns whose values must fit their kind
-     * @param list<Index> $missing
+     * @param list<RecordIndex> $missing indexes to add (none an existing one does the work of)
      * @param list<string> $empties columns holding '' that becomes NULL
      */
     public function __construct(
@@ -32,7 +33,7 @@ final readonly class Work
             $parts[] = 'retype ' . implode(', ', $this->retype);
         }
         if ($this->missing !== []) {
-            $parts[] = 'add ' . implode(', ', array_map(static fn (Index $i): string => $i->name, $this->missing));
+            $parts[] = 'add ' . implode(', ', array_map(static fn (RecordIndex $i): string => $i->name, $this->missing));
         }
         if ($this->empties !== []) {
             $parts[] = "'' to NULL in " . implode(', ', $this->empties);

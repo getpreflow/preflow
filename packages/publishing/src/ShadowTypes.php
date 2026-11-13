@@ -49,10 +49,12 @@ final class ShadowTypes
         }
         $fields = [];
         foreach ($def->fields as $name => $f) {
-            // A translatable unique field has no index on the working table either (checked on save).
+            // A translatable unique field has no index on the working table either (checked on save);
+            // a scope field a one-field composite covers has that index (TypeDefinition refuses one over a unique field).
             $fields[$name] = $f->unique === false && !in_array($name, $indexed, true) ? $f : new TypeFieldDefinition(
                 $f->name, $f->type, $f->searchable, $f->transform, $f->validate, $f->label, $f->help, $f->config,
-                $f->translatable, $f->labels, $f->helps, unique: false, index: $f->index || !$f->translatable, length: $f->length,
+                $f->translatable, $f->labels, $f->helps, unique: false,
+                index: $f->index || (!$f->translatable && !in_array([$name], $def->indexes, true)), length: $f->length,
             );
         }
 

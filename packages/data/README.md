@@ -414,10 +414,13 @@ final class Job extends Model { … }
   index is `idx_{table}_{field1}_{field2}…` (shortened past 64 characters like every index name).
   Refused when the type is defined, with a message naming the type and the index or field: an
   index without fields, over a name that is not one of the type's fields (the id is not one),
-  over a translatable field (free text gets no index), with a field twice, with a key that may
-  pass MySQL's 3072 bytes (counted as `length` or 191 × 4 per text field, 8 per number, date or
-  yes/no), and two indexes with one name (`["company"]` beside `index: true` on `company`, or
-  `["a", "b"]` beside a field `a_b`). A class's admin file may not set `"indexes"` (it is schema).
+  over a translatable field (free text gets no index), with a field twice, and two indexes with
+  one name (`["company"]` beside `index: true` on `company`, or `["a", "b"]` beside a field `a_b`
+  that is indexed or unique). An index over just a unique field (`["slug"]` beside `unique` on
+  `slug`) is refused too: its unique index serves. A unique field and its scope fields are
+  indexed plain in `__published` tables, so a composite named like one of them is refused; one
+  over just a scope field is that field's index there. A class's admin file may not set
+  `"indexes"` (it is schema).
 - **What sync does.** `preflow migrate` makes every declared index that is missing, on new and
   existing columns alike: `idx_{table}_{field}` for `index`, the composite ones, and
   `uniq_{table}_{field}` (over the field and its scope) for `unique`. An index is found by its
@@ -429,12 +432,16 @@ final class Job extends Model { … }
   `warning: post.slug has no unique index (2 values are there more than once); remove the duplicates (tools/convert-typed-columns.php --check lists them), the next migrate adds it`
   (or the drift warning when a column has another type). If a save writes a duplicate while the
   index is being made, the database refuses it and migrate warns the same way. On MySQL a plain
-  index over an existing TEXT column (made before it was indexed) covers its first 191
-  characters. A declared plain or composite index over a free-text column (a `text` or `blocks`
+  index over an existing TEXT column (made before it was indexed) covers its first `length`
+  characters, at most 191. If the server refuses a plain index, migrate prints a warning naming
+  it and the server's reason and goes on. A declared plain or composite index over a free-text column (a `text` or `blocks`
   field, a multiple relation, a custom kind stored as text) can't be made: migrate prints
   `warning: post: no index over state, body (body is free text); see the data README` on every
-  run; take the field out of the index or make it a string. MySQL caps a key at 3072 bytes, so
-  keep unique scopes short too.
+  run; take the field out of the index or make it a string. MySQL caps a key at 3072 bytes
+  (counted as `length` or 191 × 4 per short text field, 8 per number, date or yes/no): there an
+  index whose key may be longer, plain or unique, is not made, and migrate prints
+  `warning: post: no index over a, b, n (a key of up to 3208 bytes; MySQL allows 3072); give its text fields a shorter "length"`
+  on every run. SQLite has no such limit.
 - **Upgrading to 0.72.** Before 0.72 an index came only with a new column.
   - The first `preflow migrate` after the upgrade adds every declared index an existing table
     lacks (the working and `__published` tables); on big tables that can take a while, so run it
@@ -445,9 +452,11 @@ final class Job extends Model { … }
     the drift warning until the table is converted (Converting record tables below), the index
     over a TEXT column covers its first 191 characters on MySQL, and validation limits the value
     to 191 characters (its `length`).
-  - `SchemaGrammar::createRecordIndex()` takes a fifth parameter, `array $columnTypes = []`, and
-    the interface has a new `uniqueIndexes(\PDO $pdo, string $table): array` (the names of the
-    unique indexes). A grammar of your own (`Grammars::register()`) must add both.
+  - `SchemaGrammar::createRecordIndex()` takes two more parameters, `array $columnTypes = []`
+    and `array $lengths = []` (the declared lengths of short-text columns: MySQL's prefix over a
+    TEXT column is that length, at most 191), and the interface has a new
+    `uniqueIndexes(\PDO $pdo, string $table): array` (the names of the unique indexes). A grammar
+    of your own (`Grammars::register()`) must add them.
 - Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
   (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
 

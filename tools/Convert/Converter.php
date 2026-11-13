@@ -6,6 +6,8 @@ namespace Preflow\Tools\Convert;
 
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Schema\ColumnSpec;
+use Preflow\Data\Schema\RecordIndex;
+use Preflow\Data\Schema\RecordTableSync;
 
 /**
  * Converts the tables still to convert, one at a time, so a rerun after a run killed in between
@@ -41,12 +43,16 @@ final class Converter
         $g = $this->tables->grammar;
         $table = $work->table;
         $new = $table->name . '__converting';
-        $planned = array_map(static fn (Index $i): string => $i->name, $table->indexes);
-        // Only over existing columns: a field added since gets its column and index from migrate.
-        $indexes = array_filter($table->indexes, static fn (Index $i): bool => array_diff($i->columns, $work->columns) === []);
+        $planned = array_map(static fn (RecordIndex $i): string => $i->name, $table->indexes);
         $own = $pdo->prepare("SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL");
         $own->execute([$table->name]);
         $others = array_filter($own->fetchAll(\PDO::FETCH_KEY_PAIR), static fn (string $name): bool => !in_array($name, $planned, true), ARRAY_FILTER_USE_KEY);
+        // The other indexes are made again as they were; a planned one such an index does the work of is left out.
+        $otherColumns = array_intersect_key($g->indexColumns($pdo, $table->name), $others);
+        $otherUniques = array_values(array_intersect($g->uniqueIndexes($pdo, $table->name), array_keys($others)));
+        // Only over existing columns: a field added since gets its column and index from migrate.
+        $indexes = array_filter($table->indexes, static fn (RecordIndex $i): bool => array_diff($i->columns, $work->columns) === []
+            && !RecordTableSync::found($i, $otherColumns, $otherUniques));
 
         $specs = array_map(static fn (string $c): ColumnSpec => $table->specs[$c] ?? new ColumnSpec($c), $work->columns);
         $columns = implode(', ', array_map($g->quote(...), [$table->idField, ...$work->columns]));

@@ -6,6 +6,7 @@ namespace Preflow\Tools\Convert;
 
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\RecordIndex;
 
 /**
  * Every value of the tables still to convert against its column's kind, and every unique index
@@ -93,7 +94,7 @@ final class Checker
      * @param list<array<string, mixed>> $rows sorted by id
      * @return list<Failure>
      */
-    private function duplicates(Table $table, Index $index, array $rows): array
+    private function duplicates(Table $table, RecordIndex $index, array $rows): array
     {
         [$field] = $index->columns;
         $pad = $this->tables->isMysql();

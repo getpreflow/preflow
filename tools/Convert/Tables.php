@@ -11,6 +11,7 @@ use Preflow\Data\Migration\Grammar\SchemaGrammar;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Schema\ColumnSpec;
+use Preflow\Data\Schema\RecordIndex;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeDefinition;
 
@@ -98,10 +99,12 @@ final class Tables
                 $check[$name] = $spec;
             }
         }
-        $existing = $this->schema->indexes($table->name);
+        // Found as sync finds them: by name, or by their columns (one made by hand, under another name).
+        $existing = $this->grammar->indexColumns($this->pdo, $table->name);
+        $uniques = $this->grammar->uniqueIndexes($this->pdo, $table->name);
         $missing = array_values(array_filter(
             $table->indexes,
-            static fn (Index $i): bool => !in_array($i->name, $existing, true) && array_diff($i->columns, array_keys($types)) === [],
+            static fn (RecordIndex $i): bool => !RecordTableSync::found($i, $existing, $uniques) && array_diff($i->columns, array_keys($types)) === [],
         ));
         $empties = array_values(array_filter(
             $table->emptyToNull,
@@ -167,21 +170,17 @@ final class Tables
 
     /**
      * The indexes RecordTableSync gives the table (RecordTableSync::indexes(), so the two never
-     * differ), but those over a free-text column, which sync only warns about.
+     * differ), but those it only warns about: over a free-text column, or past the server's key size.
      *
      * @param array<string, ColumnSpec> $specs
-     * @return list<Index>
+     * @return list<RecordIndex>
      */
     private static function indexes(SchemaGrammar $grammar, TypeDefinition $def, array $specs, bool $unique): array
     {
-        $indexes = [];
-        foreach (RecordTableSync::indexes($grammar, $def, $specs, $unique) as $index) {
-            if ($index->freeText === null) {
-                $indexes[] = new Index($index->name, $index->columns, $index->unique);
-            }
-        }
-
-        return $indexes;
+        return array_values(array_filter(
+            RecordTableSync::indexes($grammar, $def, $specs, $unique),
+            static fn (RecordIndex $index): bool => $index->freeText === null && !$index->tooLongFor($grammar),
+        ));
     }
 
     /** A type as the server reports it: lower case, without its collation (as RecordTableSync compares). */

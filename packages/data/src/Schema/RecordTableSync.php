@@ -6,6 +6,7 @@ namespace Preflow\Data\Schema;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\FieldKinds;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
 use Preflow\Data\Migration\Schema;
@@ -92,13 +93,22 @@ final class RecordTableSync
                 $lines[] = "warning: {$def->table}: no index over {$over} ({$index->freeText} is free text); see the data README";
                 continue;
             }
-            // Found by its name, or by an index over the same columns (one made by hand, under another name).
-            if (isset($existing[$index->name]) || self::covered($index, $existing, $uniques)) {
+            if ($index->tooLongFor($grammar)) {
+                $lines[] = "warning: {$def->table}: no index over {$over} (a key of up to {$index->bytes} bytes; MySQL allows "
+                    . RecordIndex::MYSQL_MAX_KEY_BYTES . '); give its text fields a shorter "length"';
+                continue;
+            }
+            if (self::found($index, $existing, $uniques)) {
                 continue;
             }
             if (!$index->unique) {
                 // An existing column may be TEXT (made before it was indexed): the grammar indexes a prefix where it must.
-                $pdo->exec($grammar->createRecordIndex($index->name, $def->table, $index->columns, false, $types));
+                try {
+                    $pdo->exec($grammar->createRecordIndex($index->name, $def->table, $index->columns, false, $types, self::lengths($specs)));
+                } catch (\PDOException $e) {
+                    $lines[] = "warning: {$def->table}: no index over {$over} (the server refused it: {$e->getMessage()}); see the data README";
+                    continue;
+                }
                 $lines[] = "added index {$index->name}";
                 $existing[$index->name] = $index->columns;
                 continue;
@@ -164,8 +174,10 @@ final class RecordTableSync
      * The indexes a typed sync gives a table: unique over each unique field and its scope (unless
      * $unique is false; one over a translatable or free-text column is checked on save instead and
      * not listed), then plain over each indexed field and each composite index (one over a
-     * free-text column is listed with that column as freeText: sync warns about it). Public: the
-     * conversion of existing tables makes the same ones.
+     * free-text column is listed with that column as freeText: sync warns about it). Each carries
+     * the most bytes its key takes on MySQL, from the columns' kinds: sync warns about one past the
+     * limit there (RecordIndex::tooLongFor()). Public: the conversion of existing tables makes the
+     * same ones.
      *
      * @param array<string, ColumnSpec> $specs specs()
      * @return list<RecordIndex>
@@ -177,26 +189,37 @@ final class RecordTableSync
             foreach ($def->uniqueFields() as $field => $scope) {
                 $columns = [$field, ...$scope];
                 if (self::freeText($specs, $columns) === null) {
-                    $indexes[] = new RecordIndex($grammar->indexName('uniq', $def->table, $field), $columns, true);
+                    $indexes[] = new RecordIndex($grammar->indexName('uniq', $def->table, $field), $columns, true, null, self::bytes($specs, $columns));
                 }
             }
         }
         foreach ([...array_map(static fn (string $field): array => [$field], $def->indexedFields()), ...$def->indexes] as $columns) {
-            $indexes[] = new RecordIndex($grammar->indexName('idx', $def->table, implode('_', $columns)), $columns, false, self::freeText($specs, $columns));
+            $freeText = self::freeText($specs, $columns);
+            $indexes[] = new RecordIndex(
+                $grammar->indexName('idx', $def->table, implode('_', $columns)),
+                $columns,
+                false,
+                $freeText,
+                $freeText === null ? self::bytes($specs, $columns) : 0,
+            );
         }
 
         return $indexes;
     }
 
     /**
-     * Whether an existing index already does the work: any index over the same columns in the same
-     * order for a plain one, a unique one over them for a unique one.
+     * Whether the table has the index already: by its name, or an index (one made by hand, under
+     * another name) over the same columns in the same order, for a unique one only a unique one.
+     * Public: the conversion of existing tables skips the same ones.
      *
-     * @param array<string, list<string>> $existing index name => its columns
-     * @param list<string> $uniques the names of the unique ones
+     * @param array<string, list<string>> $existing index name => its columns (SchemaGrammar::indexColumns())
+     * @param list<string> $uniques the names of the unique ones (SchemaGrammar::uniqueIndexes())
      */
-    private static function covered(RecordIndex $index, array $existing, array $uniques): bool
+    public static function found(RecordIndex $index, array $existing, array $uniques): bool
     {
+        if (isset($existing[$index->name])) {
+            return true;
+        }
         foreach ($existing as $name => $columns) {
             if ($columns === $index->columns && (!$index->unique || in_array($name, $uniques, true))) {
                 return true;
@@ -219,6 +242,42 @@ final class RecordTableSync
             . implode(', ', $quoted) . ' HAVING COUNT(*) > 1) AS held';
 
         return (int) $pdo->query($sql)->fetchColumn();
+    }
+
+    /**
+     * The most bytes a key over the columns takes on MySQL (utf8mb4): four a character of a short
+     * text, eight a number, date or yes/no.
+     *
+     * @param array<string, ColumnSpec> $specs
+     * @param list<string> $columns none of them free text
+     */
+    private static function bytes(array $specs, array $columns): int
+    {
+        $bytes = 0;
+        foreach ($columns as $column) {
+            $spec = $specs[$column];
+            $bytes += $spec->kind === ColumnKind::Short ? ($spec->length ?? FieldKinds::DEFAULT_LENGTH) * 4 : 8;
+        }
+
+        return $bytes;
+    }
+
+    /**
+     * The declared lengths of the short-text columns that have one, for a prefix index over a TEXT column.
+     *
+     * @param array<string, ColumnSpec> $specs
+     * @return array<string, int>
+     */
+    private static function lengths(array $specs): array
+    {
+        $lengths = [];
+        foreach ($specs as $name => $spec) {
+            if ($spec->kind === ColumnKind::Short && $spec->length !== null) {
+                $lengths[$name] = $spec->length;
+            }
+        }
+
+        return $lengths;
     }
 
     /**

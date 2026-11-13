@@ -215,6 +215,37 @@ trait ConvertScenarios
         $this->assertSame(['added column event.city', 'added index idx_event_city'], (new RecordTableSync($this->dm))->sync(self::event()));
     }
 
+    /** An index made by hand under another name (holz's idx_published_*) does the work: nothing to add. */
+    public function testAHandMadeIndexUnderAnotherNameIsFound(): void
+    {
+        $this->handMade('number');
+        $this->insert('item', [['uuid' => 'a', 'number' => '1', 'code' => 'x', 'seats' => '3']]);
+        $tables = $this->tables([RecordTables::entry(self::item())]);
+
+        $this->assertNull($tables->work($tables->tables[0]));
+        $this->assertSame([], (new RecordTableSync($this->dm))->sync(self::item()));
+    }
+
+    /** Converting a table with hand-made indexes: they stay, and none is made a second time under the declared name. */
+    public function testAConversionKeepsHandMadeIndexesAndAddsNoDuplicates(): void
+    {
+        $this->handMade('string');
+        $this->insert('item', [['uuid' => 'a', 'number' => '1', 'code' => 'x', 'seats' => '3']]);
+        $entries = [RecordTables::entry(self::item())];
+        $this->assertSame(['retype seats'], array_map(static fn ($w): string => substr($w->describe(), strlen('item: ')), $this->tables($entries)->pending()));
+
+        $this->assertSame(0, $this->conversion($entries)->run(false, static fn (string $line) => null));
+
+        $grammar = \Preflow\Data\Migration\Grammar\Grammars::for($this->pdo());
+        $indexes = $grammar->indexColumns($this->pdo(), 'item');
+        $over = static fn (array $columns): array => array_keys(array_filter($indexes, static fn (array $c): bool => $c === $columns));
+        $this->assertSame(['idx_published_number'], $over(['number']));
+        $this->assertSame(['own_item_code'], $over(['code']));
+        $this->assertContains('own_item_code', $grammar->uniqueIndexes($this->pdo(), 'item'), 'still unique');
+        $this->assertSame($this->expectedType('number'), (new Schema($this->pdo()))->columnTypes('item')['seats']);
+        $this->assertSame([], (new RecordTableSync($this->dm))->sync(self::item()));
+    }
+
     private static function event(?string $storage = null): TypeDefinition
     {
         return new TypeDefinition('event', 'event', $storage ?? self::STORAGE, [
@@ -233,6 +264,28 @@ trait ConvertScenarios
             'capacity' => new TypeFieldDefinition('capacity', 'number'),
             'slug' => new TypeFieldDefinition('slug', unique: true),
         ]);
+    }
+
+    private static function item(string $seats = 'number', bool $declared = true): TypeDefinition
+    {
+        return new TypeDefinition('item', 'item', self::STORAGE, [
+            'number' => new TypeFieldDefinition('number', 'number', index: $declared),
+            'code' => new TypeFieldDefinition('code', unique: $declared, index: !$declared),
+            'seats' => new TypeFieldDefinition('seats', $seats),
+        ]);
+    }
+
+    /**
+     * A typed item table (seats of the given type) whose indexes over number and code were made by
+     * hand, under other names: a plain one over number, a unique one over code.
+     */
+    private function handMade(string $seats): void
+    {
+        (new RecordTableSync($this->dm))->sync(self::item($seats, declared: false));
+        $pdo = $this->pdo();
+        $pdo->exec(\Preflow\Data\Migration\Grammar\Grammars::for($pdo)->dropIndex('item', 'idx_item_code'));
+        $pdo->exec('CREATE INDEX idx_published_number ON item (number)');
+        $pdo->exec('CREATE UNIQUE INDEX own_item_code ON item (code)');
     }
 
     /** A table as sync made it before typed columns: every column text, no indexes. */

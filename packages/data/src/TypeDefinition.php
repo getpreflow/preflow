@@ -6,16 +6,14 @@ namespace Preflow\Data;
 
 final readonly class TypeDefinition
 {
-    /** MySQL caps an index key at 3072 bytes (utf8mb4: four per character). */
-    private const int MAX_KEY_BYTES = 3072;
-
     /**
      * @param array<string, TypeFieldDefinition> $fields
      * @param string[] $searchableFields
      * @param array<string, FieldTransformer> $transformers
      * @param list<list<string>> $indexes composite indexes, each the fields it covers in order
      * @throws \InvalidArgumentException an index without fields, over a field the type does not have (or twice
-     *         over one), over a translatable field, with a key past MySQL's 3072 bytes, or the same as another
+     *         over one), over a translatable field, or named as another index (a field's own, a unique field's,
+     *         another composite's)
      */
     public function __construct(
         public string $key,
@@ -31,29 +29,41 @@ final readonly class TypeDefinition
         $this->assertIndexes();
     }
 
+    /**
+     * Structural checks only; whether a key fits a server's limit is the sync's to judge
+     * (RecordTableSync::indexes()). A composite is named idx_{table}_{its fields joined by _}, so it
+     * may not share that name with an indexed field's index, nor with the index a unique field or a
+     * scope field gets in published copies (ShadowTypes): a one-field composite over a unique field
+     * is refused (its unique index serves already), one over a scope field is the same index.
+     */
     private function assertIndexes(): void
     {
-        $declared = $this->indexedFields();
+        $unique = array_keys($this->uniqueFields());
+        $declared = [...$this->indexedFields(), ...$unique];
+        $scopes = array_values(array_diff($this->scopeFields(), $declared));
         foreach ($this->indexes as $columns) {
             $over = '(' . implode(', ', $columns) . ')';
             if ($columns === []) {
                 throw new \InvalidArgumentException("Type \"{$this->key}\" has an index without fields.");
             }
-            $bytes = 0;
             foreach ($columns as $column) {
                 $field = $this->fields[$column] ?? throw new \InvalidArgumentException("Type \"{$this->key}\" has an index over \"{$column}\", which is not one of its fields.");
                 if ($field->translatable) {
                     throw new \InvalidArgumentException("Type \"{$this->key}\" has an index over \"{$column}\", which is translatable: free text gets no index.");
                 }
-                $bytes += in_array($field->type, ['number', 'date', 'boolean'], true) ? 8 : ($field->length ?? FieldKinds::DEFAULT_LENGTH) * 4;
             }
             if (count(array_unique($columns)) !== count($columns)) {
                 throw new \InvalidArgumentException("Type \"{$this->key}\" has the index {$over} with a field twice.");
             }
-            if ($bytes > self::MAX_KEY_BYTES) {
-                throw new \InvalidArgumentException("Type \"{$this->key}\" has the index {$over} of up to {$bytes} bytes; MySQL allows " . self::MAX_KEY_BYTES . ': give its text fields a shorter "length".');
-            }
             $name = implode('_', $columns);
+            if (in_array($name, $unique, true)) {
+                throw new \InvalidArgumentException($columns === [$name]
+                    ? "Type \"{$this->key}\" has the index {$over} over its unique field \"{$name}\", whose unique index serves already: drop the index."
+                    : "Type \"{$this->key}\" has the index {$over}, named like the index its unique field \"{$name}\" gets in published copies: rename a field.");
+            }
+            if (in_array($name, $scopes, true) && $columns !== [$name]) {
+                throw new \InvalidArgumentException("Type \"{$this->key}\" has the index {$over}, named like the index its scope field \"{$name}\" gets in published copies: rename a field.");
+            }
             if (in_array($name, $declared, true)) {
                 throw new \InvalidArgumentException("Type \"{$this->key}\" has two indexes named idx_{$this->table}_{$name} ({$over} and another): drop one, or rename a field.");
             }
@@ -97,6 +107,17 @@ final readonly class TypeDefinition
     public function indexedFields(): array
     {
         return array_keys(array_filter($this->fields, static fn ($f) => $f->index));
+    }
+
+    /** @return list<string> the fields that scope a unique field's uniqueness */
+    private function scopeFields(): array
+    {
+        $names = [];
+        foreach ($this->uniqueFields() as $scope) {
+            array_push($names, ...$scope);
+        }
+
+        return array_values(array_unique($names));
     }
 
     /**

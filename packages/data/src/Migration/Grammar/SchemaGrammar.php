@@ -39,8 +39,9 @@ interface SchemaGrammar
      * @param list<string> $columns
      * @param array<string, string> $columnTypes the columns' types as columnTypes() reports them, for columns
      *        the table already has: a server that can't index a TEXT column whole indexes a prefix
+     * @param array<string, int> $lengths the declared lengths of short-text columns: such a prefix is no longer
      */
-    public function createRecordIndex(string $name, string $table, array $columns, bool $unique, array $columnTypes = []): string;
+    public function createRecordIndex(string $name, string $table, array $columns, bool $unique, array $columnTypes = [], array $lengths = []): string;
 
     public function createIndex(string $table, string $column): string;
 

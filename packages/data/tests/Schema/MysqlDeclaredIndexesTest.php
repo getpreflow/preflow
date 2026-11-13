@@ -101,6 +101,35 @@ final class MysqlDeclaredIndexesTest extends TestCase
         $this->assertSame([], $sync->sync($declared));
     }
 
+    /** MySQL caps a key at 3072 bytes: an index whose key may be longer, plain or unique, is a warning on every run. */
+    public function testAnIndexPastTheKeyLimitIsAWarning(): void
+    {
+        $def = new TypeDefinition('job', 'jobs', 'mysql', [
+            'a' => new TypeFieldDefinition('a', length: 500),
+            'b' => new TypeFieldDefinition('b', length: 300),
+            'n' => new TypeFieldDefinition('n', 'number'),
+            'code' => new TypeFieldDefinition('code', unique: ['a'], length: 400),
+        ], indexes: [['a', 'b', 'n'], ['a', 'n']]);
+
+        $warnings = [
+            'warning: jobs: no index over code, a (a key of up to 3600 bytes; MySQL allows 3072); give its text fields a shorter "length"',
+            'warning: jobs: no index over a, b, n (a key of up to 3208 bytes; MySQL allows 3072); give its text fields a shorter "length"',
+        ];
+        $this->assertSame(['created table jobs', ...$warnings, 'added index idx_jobs_a_n'], $this->sync()->sync($def));
+        $this->assertSame($warnings, $this->sync()->sync($def));
+    }
+
+    /** A TEXT column's prefix is the field's length where that is shorter than 191. */
+    public function testThePrefixIsTheDeclaredLength(): void
+    {
+        $plain = new TypeDefinition('jobs', 'jobs', 'mysql', ['code' => new TypeFieldDefinition('code')]);
+        $indexed = new TypeDefinition('jobs', 'jobs', 'mysql', ['code' => new TypeFieldDefinition('code', index: true, length: 40)]);
+        $this->sync()->sync($plain);
+
+        $this->assertContains('added index idx_jobs_code', $this->sync()->sync($indexed));
+        $this->assertSame(['code' => 40], $this->subParts('jobs', 'idx_jobs_code'));
+    }
+
     /** @return array<string, ?int> each column of the index with its prefix length (null: the whole value) */
     private function subParts(string $table, string $index): array
     {
