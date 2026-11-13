@@ -91,8 +91,19 @@ final class BlocksTemplateTest extends TestCase
         $this->assertMatchesRegularExpression('#data-block-duplicate\s+hx-post="/folio/_blocks/duplicate\?name=sections&amp;uid=' . self::A . '[^"]*" hx-include="closest \[data-block-card\], \[name=_csrf_token\]"\s+hx-target="closest \[data-block-card\]" hx-swap="afterend" hx-disabled-elt="this">#', $card);
         $this->assertMatchesRegularExpression('#<div class="folio-menu-sep" role="separator"></div>\s*<button type="button" class="folio-menu-item is-danger" role="menuitem" data-block-remove>#', $card);
         // After the menu: the collapse chevron, the card's one toggle, named by the block.
-        $this->assertMatchesRegularExpression('#</details>\s*<button type="button" class="btn btn-ghost btn-icon btn-sm folio-block-toggle" data-block-collapse aria-expanded="false"><svg class="folio-icon folio-block-chevron" aria-hidden="true">[^<]*<use[^>]*\#ui-down"></use></svg><span class="folio-sr">Hero</span></button>#', $card);
+        $this->assertMatchesRegularExpression('#</details>\s*<button type="button" class="btn btn-ghost btn-icon btn-sm folio-block-toggle" data-block-collapse aria-expanded="false"><svg class="folio-icon folio-block-chevron" aria-hidden="true">[^<]*<use[^>]*\#ui-chevron"></use></svg><span class="folio-sr">Hero</span></button>#', $card);
         $this->assertSame(1, substr_count($card, 'data-block-collapse'));
+    }
+
+    public function test_a_label_with_an_ampersand_is_escaped_once_in_the_menu(): void
+    {
+        $this->write('config/blocks.php', "<?php\nreturn ['classes' => [\\Preflow\\Folio\\Tests\\Fixtures\\Blocks\\QaBlock::class]];\n");
+
+        $card = self::card($this->render([['_uid' => self::A, '_block' => 'qa', 'question' => 'Why?']]), self::A);
+
+        $this->assertStringContainsString('aria-label="Actions for Q&amp;A" title="Actions for Q&amp;A"', $card);
+        $this->assertStringContainsString('role="menu" aria-label="Actions for Q&amp;A"', $card);
+        $this->assertStringNotContainsString('&amp;amp;', $card);
     }
 
     public function test_an_invalid_card_is_open_with_the_message_in_the_summary_slot(): void
@@ -156,8 +167,8 @@ final class BlocksTemplateTest extends TestCase
 
         $this->assertMatchesRegularExpression('#<button type="button" class="btn btn-secondary folio-blocks-open" data-blocks-picker-open aria-haspopup="dialog" aria-expanded="false" aria-controls="(folio-picker-[a-f0-9]+)" hidden>#', $html);
         preg_match('#aria-controls="(folio-picker-[a-f0-9]+)"#', $html, $m);
-        // role="dialog" comes with blocks.js, which makes it one; without script the groups are listed in place.
-        $this->assertMatchesRegularExpression('#<div class="folio-blocks-popover" id="' . $m[1] . '" aria-label="Add block" data-blocks-popover>#', $html);
+        // A named group without script (the groups listed in place); blocks.js makes it role="dialog".
+        $this->assertMatchesRegularExpression('#<div class="folio-blocks-popover" id="' . $m[1] . '" role="group" aria-label="Add block" data-blocks-popover>#', $html);
         // The search (three block types here), not a record field: no name, never an edit of the record.
         $this->assertMatchesRegularExpression('#<input type="search" class="folio-blocks-search-input" data-blocks-search data-folio-no-edit placeholder="Add a block — type to filter 3" aria-label="Add a block — type to filter 3" autocomplete="off">#', $html);
         // Each item: the type tile and its label, on the existing fragment request; searchable by label and description.

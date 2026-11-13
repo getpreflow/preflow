@@ -31,7 +31,8 @@ function preview() {
     load(w, PREVIEW_JS);
     const overlay = doc.getElementById('folio-pe-overlay');
     const box = (state) => overlay.children.find((b) => b.classList.contains(state));
-    const send = (msg) => w.receive({ source: 'folio-editor', type: 'highlight', scroll: false, ...msg });
+    // From the editor: the frame's parent window (the bridge ignores messages from anywhere else).
+    const send = (msg, from = w.parent) => w.receive({ source: 'folio-editor', type: 'highlight', scroll: false, ...msg }, w.location.origin, from);
     return { w, doc, title, hero, text, box, send };
 }
 
@@ -60,4 +61,12 @@ test('the selection stays while a field has the focus, until another block is se
     p.send({ uid: 'bbbbbbbbbbbbbbbb', field: null, sticky: true });
     assert.equal(selected.querySelector('.folio-pe-label').textContent, 'Text', 'another block takes the selection');
     assert.equal(active.hidden, true);
+});
+
+test('a message that does not come from the editor window is ignored', () => {
+    const p = preview();
+    p.send({ uid: 'aaaaaaaaaaaaaaaa', field: null, sticky: true }, { postMessage() {} });
+    assert.equal(p.box('is-selected').hidden, true);
+    p.send({ uid: 'aaaaaaaaaaaaaaaa', field: null, sticky: true });
+    assert.equal(p.box('is-selected').hidden, false);
 });

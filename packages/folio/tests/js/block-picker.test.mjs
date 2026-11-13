@@ -35,7 +35,7 @@ function picker() {
     const root = el(list, 'div', { 'data-blocks-picker': '' }, 'folio-blocks-picker has-popover');
     const button = el(root, 'button', { type: 'button', 'data-blocks-picker-open': '', 'aria-haspopup': 'dialog', 'aria-expanded': 'false', 'aria-controls': 'folio-picker-1' }, 'btn btn-secondary folio-blocks-open');
     button.hidden = true;
-    const popover = el(root, 'div', { id: 'folio-picker-1', 'aria-label': 'Add block', 'data-blocks-popover': '' }, 'folio-blocks-popover');
+    const popover = el(root, 'div', { id: 'folio-picker-1', role: 'group', 'aria-label': 'Add block', 'data-blocks-popover': '' }, 'folio-blocks-popover');
     const label = el(popover, 'span', {}, 'folio-blocks-picker-label');
     const box = el(popover, 'label', { 'data-blocks-search-box': '' }, 'folio-blocks-search');
     box.hidden = true;
@@ -72,7 +72,7 @@ test('the script turns the listed groups into a closed popover behind "Add block
     const p = picker();
     assert.equal(p.button.hidden, false, 'the button shows');
     assert.equal(p.popover.hidden, true, 'the groups wait behind it');
-    assert.equal(p.popover.getAttribute('role'), 'dialog');
+    assert.equal(p.popover.getAttribute('role'), 'dialog', 'the server\'s named group becomes a dialog');
     assert.equal(p.box.hidden, false, 'the search shows');
     assert.equal(p.label.hidden, true, 'the no-script heading goes');
 });
@@ -211,4 +211,52 @@ test('a picker that arrives with a new card (htmx) is set up too', () => {
     card.dispatchEvent(new p.w.CustomEvent('htmx:load', { bubbles: true, detail: { elt: card } }));
     assert.equal(button.hidden, false);
     assert.equal(popover.hidden, true);
+});
+
+/** htmx's answer to a pick: the new card before the picker, then htmx:load on it. */
+function arrive(p) {
+    const card = p.doc.createElement('div');
+    card.setAttribute('data-block-card', '');
+    const head = card.appendChild(p.doc.createElement('div'));
+    head.className = 'folio-block-head';
+    const toggle = head.appendChild(p.doc.createElement('button'));
+    toggle.setAttribute('data-block-collapse', '');
+    p.root.parentNode.insertBefore(card, p.root);
+    card.dispatchEvent(new p.w.CustomEvent('htmx:load', { bubbles: true, detail: { elt: card } }));
+    return toggle;
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+test('a click on an item: the focus waits on "Add block", then goes to the new card', () => {
+    const p = picker();
+    p.button.click();
+    p.items.Compare.focus();
+    p.items.Compare.click();
+    assert.equal(p.doc.activeElement, p.button, 'never the page body while the card loads');
+    const toggle = arrive(p);
+    assert.equal(p.doc.activeElement, toggle, 'the new card\'s chevron');
+});
+
+test('Enter in the search: the same, the new card gets the focus', () => {
+    const p = picker();
+    p.button.click();
+    p.type('hero');
+    p.search.keydown('Enter');
+    assert.equal(p.doc.activeElement, p.button);
+    const toggle = arrive(p);
+    assert.equal(p.doc.activeElement, toggle);
+});
+
+test('a failed pick puts the focus back on "Add block"', async () => {
+    const p = picker();
+    p.button.click();
+    p.type('hero');
+    p.search.keydown('Enter');
+    p.doc.activeElement = p.doc.body; // as when the browser drops it
+    p.items.Hero.dispatchEvent(new p.w.CustomEvent('htmx:responseError', { bubbles: true, detail: { elt: p.items.Hero } }));
+    await settle();
+    assert.equal(p.doc.activeElement, p.button);
+    arrive(p);
+    assert.equal(p.doc.activeElement, p.button, 'a card arriving later does not take the focus');
 });

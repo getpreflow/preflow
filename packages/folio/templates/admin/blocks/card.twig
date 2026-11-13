@@ -1,5 +1,6 @@
 {% import '@folio/admin/partials/_type_icon.twig' as types -%}
 {% set icons = folio_asset('icons.svg') -%}
+{# t() escapes its params and is safe; a variable loses that mark, hence |raw where it is printed. -#}
 {% set menu_label = t('folio.blocks.actions', {label: label}) -%}
 {# A block card (board PageEditor): grip · the block's tile, label and one-line summary (or its first
    error) · the "…" menu (the list rows' .folio-menu: Move up, Move down, Duplicate, Remove) · the
@@ -15,8 +16,8 @@
             {% if error|default(null) %}<span class="folio-block-summary is-error">{{ error }}</span>{% elseif summary %}<span class="folio-block-summary">{{ summary }}</span>{% endif %}
         </span>
         <details class="folio-row-menu folio-block-menu" data-folio-row-menu>
-            <summary class="btn btn-ghost btn-icon btn-sm" aria-label="{{ menu_label }}" title="{{ menu_label }}" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dots"></use></svg></summary>
-            <div class="folio-menu folio-row-menu-panel" role="menu" aria-label="{{ menu_label }}">
+            <summary class="btn btn-ghost btn-icon btn-sm" aria-label="{{ menu_label|raw }}" title="{{ menu_label|raw }}" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dots"></use></svg></summary>
+            <div class="folio-menu folio-row-menu-panel" role="menu" aria-label="{{ menu_label|raw }}">
                 <button type="button" class="folio-menu-item" role="menuitem" data-block-up><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-up"></use></svg><span>{{ t('folio.common.move_up') }}</span></button>
                 <button type="button" class="folio-menu-item" role="menuitem" data-block-down><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-down"></use></svg><span>{{ t('folio.common.move_down') }}</span></button>
                 <button type="button" class="folio-menu-item" role="menuitem" data-block-duplicate
@@ -26,7 +27,7 @@
                 <button type="button" class="folio-menu-item is-danger" role="menuitem" data-block-remove><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg><span>{{ t('folio.common.remove') }}</span></button>
             </div>
         </details>
-        <button type="button" class="btn btn-ghost btn-icon btn-sm folio-block-toggle" data-block-collapse aria-expanded="{{ open ? 'true' : 'false' }}"><svg class="folio-icon folio-block-chevron" aria-hidden="true"><use href="{{ icons }}#ui-down"></use></svg><span class="folio-sr">{{ label }}</span></button>
+        <button type="button" class="btn btn-ghost btn-icon btn-sm folio-block-toggle" data-block-collapse aria-expanded="{{ open ? 'true' : 'false' }}"><svg class="folio-icon folio-block-chevron" aria-hidden="true"><use href="{{ icons }}#ui-chevron"></use></svg><span class="folio-sr">{{ label }}</span></button>
     </div>
     <div class="folio-block-body">
         {% for field in fields %}{{ field|raw }}{% endfor %}

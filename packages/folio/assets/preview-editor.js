@@ -148,7 +148,7 @@
     }
 
     window.addEventListener('message', function (e) {
-        if (e.origin !== window.location.origin) { return; }
+        if (e.origin !== window.location.origin || e.source !== window.parent) { return; }
         var data = e.data;
         if (!data || data.source !== 'folio-editor') { return; }
         if (data.type === 'highlight') {

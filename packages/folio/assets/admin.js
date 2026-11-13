@@ -1065,7 +1065,8 @@
             notifyChange(list);
             offerUndo(card, list, next);
             // The focus stays in the list: on the next card (or the one before), else on "Add block".
-            var focusTo = stay ? stay.querySelector('[data-block-collapse]') : pickerButton(list);
+            // An unknown neighbour has no chevron: its Remove, else "Add block".
+            var focusTo = (stay && (stay.querySelector('[data-block-collapse]') || stay.querySelector('[data-block-remove]'))) || pickerButton(list);
             if (focusTo) { focusTo.focus(); }
         }
         e.preventDefault();
@@ -2320,7 +2321,7 @@
             if (summary) { summary.setAttribute('aria-expanded', menu.open ? 'true' : 'false'); }
         });
         // Copying a preview link needs a POST and the clipboard: the item shows only when both work.
-        var canCopy = typeof window.fetch === 'function' && typeof navigator !== 'undefined' && !!(navigator.clipboard && navigator.clipboard.writeText);
+        var canCopy = typeof window.fetch === 'function' && typeof navigator !== 'undefined' && !!(navigator.clipboard && (navigator.clipboard.writeText || navigator.clipboard.write));
         scope.querySelectorAll('[data-folio-copy-link]').forEach(function (b) { b.hidden = !canCopy; });
     }
 
@@ -2368,6 +2369,43 @@
         openRowMenus().forEach(placeRowMenu);
     }
 
+    // ---- Copying text that is still on its way --------------------------------------
+    // Folio.copyLater(textPromise) → Promise<boolean>. Call it inside the click: the clipboard write
+    // starts there, with the text as a promise (ClipboardItem), so browsers that allow a copy only
+    // during the user's gesture (Safari) still take a text that a request delivers later. Where that
+    // API is missing it waits for the text and uses writeText. Resolves true when the text is on the
+    // clipboard, false when there was no text or the browser refused.
+    function copyLater(textPromise) {
+        var text = Promise.resolve(textPromise).then(function (t) {
+            if (typeof t !== 'string' || t === '') { throw new Error('nothing to copy'); }
+            return t;
+        });
+        var clip = typeof navigator !== 'undefined' ? navigator.clipboard : null;
+        function viaWriteText() {
+            return text.then(function (t) {
+                if (!clip || typeof clip.writeText !== 'function') { return false; }
+                return clip.writeText(t).then(function () { return true; });
+            }).catch(function () { return false; });
+        }
+        if (clip && typeof clip.write === 'function' && typeof window.ClipboardItem === 'function' && typeof window.Blob === 'function') {
+            var started;
+            try {
+                var blob = text.then(function (t) { return new window.Blob([t], { type: 'text/plain' }); });
+                blob.catch(function () {}); // reported through the write
+                started = clip.write([new window.ClipboardItem({ 'text/plain': blob })]);
+            } catch (e) {
+                started = null;
+            }
+            if (started && typeof started.then === 'function') {
+                return started.then(function () { return true; }, function () {
+                    return text.then(function () { return viaWriteText(); }, function () { return false; });
+                });
+            }
+        }
+        return viaWriteText();
+    }
+    window.Folio.copyLater = copyLater;
+
     // "Copy preview link" in a row menu: the share route answers JSON ({url, message}) for it; the link
     // goes to the clipboard with a "Link copied" toast, or the toast says why there is none.
     function onCopyLinkClick(e) {
@@ -2379,16 +2417,19 @@
         var body = new URLSearchParams();
         var token = document.querySelector('input[name="_csrf_token"]');
         if (token) { body.append('_csrf_token', token.value); }
-        fetch(btn.getAttribute('data-folio-copy-link'), { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        var message = null;
+        var url = fetch(btn.getAttribute('data-folio-copy-link'), { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
             .then(function (res) {
                 if (!res.ok) { throw new Error('HTTP ' + res.status); }
                 return res.json();
             })
             .then(function (data) {
-                if (!data || !data.url) { showToast(data && data.message ? data.message : folioT('link_not_copied')); return null; }
-                return navigator.clipboard.writeText(data.url).then(function () { showToast(folioT('link_copied'), true); });
-            })
-            .catch(function () { showToast(folioT('link_not_copied')); });
+                if (!data || !data.url) { message = data && data.message ? data.message : null; return null; }
+                return data.url;
+            });
+        copyLater(url).then(function (copied) {
+            showToast(copied ? folioT('link_copied') : (message || folioT('link_not_copied')), copied);
+        });
     }
 
     // ---- List toolbar: the filter popover and the row height ------------------------

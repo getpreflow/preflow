@@ -31,7 +31,7 @@
             {% else %}
                 {% set search_text = t('folio.blocks.search', {count: total}) %}
                 <button type="button" class="btn btn-secondary folio-blocks-open" data-blocks-picker-open aria-haspopup="dialog" aria-expanded="false" aria-controls="{{ picker_id }}" hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-plus"></use></svg><span>{{ t('folio.blocks.add_block') }}</span></button>
-                <div class="folio-blocks-popover" id="{{ picker_id }}" aria-label="{{ t('folio.blocks.add_block') }}" data-blocks-popover>
+                <div class="folio-blocks-popover" id="{{ picker_id }}" role="group" aria-label="{{ t('folio.blocks.add_block') }}" data-blocks-popover>
                     <span class="folio-blocks-picker-label"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-plus"></use></svg>{{ t('folio.blocks.add_block') }}</span>
                     <label class="folio-blocks-search" data-blocks-search-box hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg><input type="search" class="folio-blocks-search-input" data-blocks-search data-folio-no-edit placeholder="{{ search_text }}" aria-label="{{ search_text }}" autocomplete="off"></label>
                     {% for group, items in groups %}

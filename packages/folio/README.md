@@ -958,6 +958,10 @@ of `app.url` and path; "· draft" while it differs from what is live), **Copy pr
 the share link, which lands under the bar with Revoke, and copies it: "Link copied · 7 days" from the
 link's real lifetime), **Open** (the live address in a new tab, while the record is on the site) and
 **Focus**. A record without an address in this language yet gets the device widths and Focus only.
+Both copy buttons (here and in the list's row menu) use `Folio.copyLater(textPromise)` from
+`admin.js`: called inside the click, it starts the clipboard write at once with the text still on its
+way (a `ClipboardItem`, which Safari needs), falls back to `writeText`, and resolves `true` or
+`false`. Extensions that copy what a request returns can use it too.
 
 Keys: **⌘S** / **Ctrl+S** saves the draft (also while typing; the browser's save dialog does not
 open), **⌘↵** / **Ctrl+Enter** publishes (where Publish is there), **Esc** closes the side panel on a

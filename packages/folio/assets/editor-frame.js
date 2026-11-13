@@ -291,28 +291,48 @@
     }
 
     // ---- Preview bar: Copy preview link. The button posts the share route (htmx) and its answer lands
-    // under the bar (#folio-share: the address, Copy, Revoke). Then the link goes to the clipboard and the
-    // button reads "Link copied · 7 days" (its data-text-copied, the real lifetime) for a few seconds.
-    // Without a clipboard (or when the browser refuses) the answer under the bar is the way to copy it.
+    // under the bar (#folio-share: the address, Copy, Revoke). The clipboard write starts in the click
+    // itself (Folio.copyLater, with the address still on its way) and takes the answer's address when it
+    // comes. Then the button reads "Link copied · 7 days" (its data-text-copied, the real lifetime) for a
+    // few seconds, or says the link could not be copied (the answer under the bar is then the way). A
+    // role="status" next to the button announces it.
     var COPIED_MS = 4000;
+    var shareCopy = null; // { button, resolve } while a copy waits for the answer
+
+    function onShareClick(e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-folio-share-copy]') : null;
+        if (!btn || typeof Folio.copyLater !== 'function') { return; }
+        if (shareCopy) { shareCopy.resolve(null); }
+        var pending = { button: btn, resolve: null };
+        var text = new Promise(function (resolve) { pending.resolve = resolve; });
+        shareCopy = pending;
+        Folio.copyLater(text).then(function (copied) { showCopyState(btn, copied); });
+    }
 
     function onShareAnswer(e) {
         var btn = e.detail && e.detail.elt;
-        if (!btn || !btn.hasAttribute || !btn.hasAttribute('data-folio-share-copy') || !e.detail.successful) { return; }
+        if (!shareCopy || btn !== shareCopy.button) { return; }
+        var pending = shareCopy;
+        shareCopy = null;
         var box = document.getElementById('folio-share');
         var input = box ? box.querySelector('.folio-share-url') : null;
-        var clipboard = typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard : null;
-        if (!input || !input.value || !clipboard) { return; }
-        clipboard.writeText(input.value).then(function () {
-            var status = btn.querySelector('.folio-share-status');
-            btn.classList.add('is-copied');
-            if (status) { status.textContent = btn.getAttribute('data-text-copied') || ''; }
-            clearTimeout(btn._folioCopied);
-            btn._folioCopied = setTimeout(function () {
-                btn.classList.remove('is-copied');
-                if (status) { status.textContent = ''; }
-            }, COPIED_MS);
-        }, function () {});
+        pending.resolve(e.type === 'htmx:afterRequest' && e.detail.successful && input && input.value ? input.value : null);
+    }
+
+    function showCopyState(btn, copied) {
+        var status = btn.querySelector('.folio-share-status');
+        var announce = btn.parentNode ? btn.parentNode.querySelector('[data-folio-share-announce]') : null;
+        var text = copied ? (btn.getAttribute('data-text-copied') || '') : t('link_not_copied');
+        btn.classList.toggle('is-copied', copied);
+        btn.classList.toggle('is-copy-failed', !copied);
+        if (status) { status.textContent = text; }
+        if (announce) { announce.textContent = text; }
+        clearTimeout(btn._folioCopied);
+        btn._folioCopied = setTimeout(function () {
+            btn.classList.remove('is-copied', 'is-copy-failed');
+            if (status) { status.textContent = ''; }
+            if (announce) { announce.textContent = ''; }
+        }, COPIED_MS);
     }
 
     function boot() {
@@ -337,7 +357,10 @@
         document.addEventListener('click', onTabLink);
         document.addEventListener('invalid', onInvalidInSide, true);
         initEditorShortcuts();
-        document.addEventListener('htmx:afterRequest', onShareAnswer);
+        document.addEventListener('click', onShareClick);
+        ['htmx:afterRequest', 'htmx:responseError', 'htmx:sendError', 'htmx:timeout', 'htmx:sendAbort'].forEach(function (name) {
+            document.addEventListener(name, onShareAnswer);
+        });
     }
 
     if (document.readyState === 'loading') {

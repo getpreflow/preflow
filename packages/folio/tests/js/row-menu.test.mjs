@@ -14,13 +14,24 @@ const settle = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
  * Move up (disabled on the first row), Duplicate, Copy preview link (hidden until the script shows it)
  * and the Delete form (data-confirm, data-delete-plan, data-delete-id). fetch answers the delete plan.
  */
-function list({ plan = { restricted: false, lines: [], confirm: "This can't be undone.", addresses: 0 } } = {}) {
+function list({ plan = { restricted: false, lines: [], confirm: "This can't be undone.", addresses: 0 }, clipboard = null, share = { url: 'https://site.test/hello?folio_preview=abc', message: null } } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
     const doc = w.document;
     const log = { fetched: [], confirmed: [], submitted: [] };
     w.URLSearchParams = URLSearchParams;
     w.confirm = (text) => { log.confirmed.push(text); return true; };
-    w.fetch = (url) => { log.fetched.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve(plan) }); };
+    w.fetch = (url) => { log.fetched.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve(url.endsWith('/share') ? share : plan) }); };
+    if (clipboard) {
+        log.copied = [];
+        log.writeCalls = 0;
+        w.ClipboardItem = class { constructor(data) { this.data = data; } };
+        w.Blob = Blob;
+        w.navigator = { clipboard: { write: (items) => {
+            log.writeCalls++;
+            if (clipboard === 'refuse') { return Promise.reject(new Error('NotAllowedError')); }
+            return Promise.resolve(items[0].data['text/plain']).then((b) => b.text()).then((t) => { log.copied.push(t); });
+        } } };
+    }
     w.HTMLFormElement = { prototype: { submit() { log.submitted.push(this); } } };
     const el = (parent, tag, attrs = {}, cls = '') => {
         const e = parent.appendChild(doc.createElement(tag));
@@ -47,8 +58,9 @@ function list({ plan = { restricted: false, lines: [], confirm: "This can't be u
         return { tr, link, menu, summary, panel, edit, up, duplicate, copy, del, delButton };
     });
     const elsewhere = el(doc.body, 'a', { href: '/folio' });
+    const toasts = el(doc.body, 'div', { 'data-folio-toasts': '' });
     load(w, ADMIN_JS);
-    return { w, doc, rows, elsewhere, log };
+    return { w, doc, rows, elsewhere, toasts, log };
 }
 
 const active = (l) => l.doc.activeElement;
@@ -157,6 +169,27 @@ test('a second click on the button closes it', () => {
 test('Copy preview link shows only where a POST and the clipboard work', () => {
     const l = list();
     assert.equal(l.rows[0].copy.hidden, true, 'no clipboard in this window');
+});
+
+test('Copy preview link starts the clipboard write in the click and toasts the result', async () => {
+    const l = list({ clipboard: 'item' });
+    const r = l.rows[0];
+    assert.equal(r.copy.hidden, false, 'a clipboard that takes a ClipboardItem counts');
+    r.summary.click();
+    r.copy.click();
+    assert.equal(l.log.writeCalls, 1, 'inside the user\'s gesture, before the share answer');
+    for (let i = 0; i < 10; i++) { await settle(); }
+    assert.deepEqual(l.log.copied, ['https://site.test/hello?folio_preview=abc']);
+    assert.equal(l.toasts.children.length, 1);
+    assert.equal(l.toasts.children[0].className, 'folio-toast');
+});
+
+test('a refused copy toasts that the link could not be copied', async () => {
+    const l = list({ clipboard: 'refuse' });
+    l.rows[0].copy.click();
+    for (let i = 0; i < 10; i++) { await settle(); }
+    assert.equal(l.toasts.children.length, 1);
+    assert.equal(l.toasts.children[0].className, 'folio-toast is-error');
 });
 
 test('Review Focus 4: Delete in the menu still asks for the delete plan, then confirms it', async () => {

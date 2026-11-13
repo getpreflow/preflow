@@ -125,12 +125,58 @@
             if (parts(picker).popover.hidden) { openPicker(picker); } else { closePicker(picker, false); }
             return;
         }
-        // An item sends its request (htmx, on the item itself); the popover closes with it.
+        // An item sends its request (htmx, on the item itself); the popover closes with it and the focus
+        // waits on "Add block" until the new card arrives (then it moves to that card's chevron).
         var item = t && t.closest ? t.closest('[data-blocks-item]') : null;
         var inside = t && t.closest ? t.closest('[data-blocks-picker-ready]') : null;
         openPickers().forEach(function (p) {
-            if (p !== inside || item) { closePicker(p, false); }
+            if (p !== inside || item) { closePicker(p, !!item && p === inside); }
         });
+        var add = t && t.closest ? t.closest('.folio-blocks-add') : null;
+        var picker2 = add ? add.closest('[data-blocks-picker]') : null;
+        if (picker2) { pendingPick = { picker: picker2, item: add }; }
+    }
+
+    // ---- After a pick: the focus goes to the new card, or back to "Add block" when none comes.
+    var pendingPick = null; // { picker, item }
+
+    function addButtonOf(picker) {
+        var open = picker.querySelector('[data-blocks-picker-open]');
+        if (open && !open.hidden) { return open; }
+        return picker.querySelector('.folio-blocks-add');
+    }
+
+    function onPickArrived(root) {
+        if (!pendingPick || !root.matches || !root.matches('[data-block-card]')) { return; }
+        var picker = pendingPick.picker;
+        if (root.parentNode !== picker.parentNode) { return; }
+        pendingPick = null;
+        var toggle = toggleOf(root) || root.querySelector('button');
+        if (toggle) { toggle.focus(); }
+    }
+
+    // The pick's request ended. Answered: the card comes with htmx:load after the swap settles; the focus
+    // already waits on "Add block", so a pick that brings no card leaves it there. Failed: back to
+    // "Add block" (a single type's own button is disabled during the request, hence the timer).
+    function onPickFailed(e) {
+        var elt = e.detail && e.detail.elt;
+        if (!pendingPick || elt !== pendingPick.item) { return; }
+        var pick = pendingPick;
+        if (e.type === 'htmx:afterRequest' && e.detail.successful) {
+            setTimeout(function () { if (pendingPick === pick) { pendingPick = null; } }, 1000);
+            return;
+        }
+        pendingPick = null;
+        setTimeout(function () { refocusAdd(pick.picker); }, 0);
+    }
+
+    function refocusAdd(picker) {
+        var active = document.activeElement;
+        var lost = !active || active === document.body || !active.isConnected || active.disabled
+            || (active.matches && active.matches('[data-blocks-item], .folio-blocks-add, [data-blocks-picker-open]'));
+        if (!lost) { return; }
+        var button = addButtonOf(picker);
+        if (button) { button.focus(); }
     }
 
     function onPickerInput(e) {
@@ -296,12 +342,16 @@
         if (Folio.menus) { Folio.menus.init(root.parentNode || root); }
         initPickers(root);
         updateAll();
+        onPickArrived(root);
     }
 
     function boot() {
         initPickers(document);
         updateAll();
         document.addEventListener('click', onPickerClick);
+        ['htmx:afterRequest', 'htmx:responseError', 'htmx:sendError', 'htmx:timeout', 'htmx:sendAbort'].forEach(function (name) {
+            document.addEventListener(name, onPickFailed);
+        });
         document.addEventListener('input', onPickerInput);
         document.addEventListener('keydown', onPickerKeydown, true);
         document.addEventListener('focusin', onPickerFocusIn);

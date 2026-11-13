@@ -183,3 +183,23 @@ test('opening a card by its chevron selects it in the preview', () => {
     assert.equal(last.uid, 'b3');
     assert.equal(last.sticky, true);
 });
+
+test('Remove next to an unknown block moves the focus to its Remove, then to "Add block"', () => {
+    const e = editor();
+    const picker = e.list.children.find((c) => c.hasAttribute('data-blocks-picker'));
+    const unknown = e.doc.createElement('div');
+    unknown.setAttribute('data-block-card', '');
+    unknown.setAttribute('data-block-uid', 'b9');
+    unknown.className = 'folio-block-card is-unknown';
+    const head = unknown.appendChild(e.doc.createElement('div'));
+    head.className = 'folio-block-head';
+    const remove = head.appendChild(e.doc.createElement('button'));
+    remove.setAttribute('data-block-remove', '');
+    e.list.insertBefore(unknown, picker);
+    e.cards[0].remove.click();
+    e.cards[1].remove.click();
+    e.cards[2].remove.click();
+    assert.equal(e.doc.activeElement, remove, 'the unknown card has no chevron: its Remove');
+    remove.click();
+    assert.equal(e.doc.activeElement, e.add);
+});

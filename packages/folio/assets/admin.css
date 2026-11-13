@@ -1557,8 +1557,8 @@ a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
 .folio-block-toggle { width: 28px; min-height: 28px; padding: 0; color: var(--c-text-subtle); }
 .folio-block-menu > summary .folio-icon { width: 16px; height: 16px; }
 .folio-block-toggle { flex: none; color: var(--c-text-muted); }
-.folio-block-toggle .folio-block-chevron { width: 16px; height: 16px; transition: transform .15s; }
-.folio-block-card.is-open > .folio-block-head .folio-block-chevron { transform: rotate(180deg); }
+.folio-block-toggle .folio-block-chevron { width: 16px; height: 16px; transform: rotate(90deg); transition: transform .15s; }
+.folio-block-card.is-open > .folio-block-head .folio-block-chevron { transform: rotate(-90deg); }
 .folio-block-menu .folio-menu-item[disabled] { color: var(--c-text-subtle); cursor: default; }
 .folio-block-menu .folio-menu-item[disabled] .folio-icon { opacity: .5; }
 
@@ -2284,7 +2284,8 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-preview-bar .btn-icon .folio-icon { width: 16px; height: 16px; }
 /* "Link copied · 7 days": the copy button widens to say so, accent-soft, for a few seconds. */
 .folio-share-status:empty { display: none; }
-.folio-preview-bar .folio-share-button.is-copied { width: auto; gap: 6px; padding: 0 10px; border-color: transparent; background: var(--c-accent-soft); color: var(--c-accent-text); font-size: 12px; }
+.folio-preview-bar .folio-share-button:is(.is-copied, .is-copy-failed) { width: auto; gap: 6px; padding: 0 10px; border-color: transparent; background: var(--c-accent-soft); color: var(--c-accent-text); font-size: 12px; }
+.folio-preview-bar .folio-share-button.is-copy-failed { background: var(--c-warning-soft); color: var(--c-warning); }
 .folio-focus-toggle[aria-pressed="true"] { background: var(--c-accent-soft); color: var(--c-accent-text); }
 
 .folio-segmented {
