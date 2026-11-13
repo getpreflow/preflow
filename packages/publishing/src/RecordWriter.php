@@ -93,8 +93,9 @@ final class RecordWriter
      * part of its values, so the copy owns its own), and the same references to assets and other
      * records. What makes a record one of a kind is new:
      * - a new id (32 hex characters);
-     * - the address takes a free one, unique or not: the fields of the type's address
-     *   (RecordAddressFields, when the RecordTypes binding implements it: a route's "{handle}"),
+     * - the address fields are re-slugified to a free value, unique or not: the fields of the
+     *   type's address (RecordAddressFields, when the RecordTypes binding implements it: a route's
+     *   "{handle}"; a binding without it leaves those fields as they are, only the slug below is freed),
      *   a field named "slug" and a field with the "slug" rule. A slug takes the first free one by
      *   Slugs::unique() ("about" → "about-2"); a catch-all ("{...path}", or the "slug:path" rule)
      *   takes the "-2", "-3"... suffix on the whole path ("docs/ueber-uns" → "docs/ueber-uns-2");

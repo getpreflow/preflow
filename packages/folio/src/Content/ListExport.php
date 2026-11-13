@@ -43,14 +43,16 @@ final class ListExport
     /**
      * Every record the list query matches (search, filters, order; not its page), read in chunks.
      *
+     * @param (\Closure(DynamicRecord): bool)|null $keep what the list narrows to besides the query
+     *                                               (ListQuery::narrowing(): "status", "unchecked"; @since 0.75)
      * @return \Generator<int, DynamicRecord>
      */
-    public function records(string $type, ListQuery $query): \Generator
+    public function records(string $type, ListQuery $query, ?\Closure $keep = null): \Generator
     {
         for ($offset = 0;; $offset += self::CHUNK) {
             $qb = $query->apply($this->dm->queryType($type));
             $items = array_values($qb->limit(self::CHUNK)->offset($offset)->get()->items());
-            yield from $items;
+            yield from $keep === null ? $items : array_values(array_filter($items, $keep));
             if (count($items) < self::CHUNK) {
                 return;
             }

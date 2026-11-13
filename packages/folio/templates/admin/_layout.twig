@@ -20,6 +20,13 @@
                 root.setAttribute('data-theme', t);
             }
         } catch (e) {}
+        // The lists' row height (admin.js, data-folio-density): compact or the comfortable default.
+        try {
+            var d = localStorage.getItem('folio.density');
+            if (d === 'compact' || d === 'comfortable') {
+                root.setAttribute('data-folio-density', d);
+            }
+        } catch (e) {}
         // An editor's rail expanded to the sidebar earlier in this session (admin.js, data-shell-expand).
         try {
             if (sessionStorage.getItem('folio-shell') === 'sidebar') {
@@ -122,14 +129,22 @@
         <header class="folio-topbar">
             <div class="folio-topbar-title">
                 {% block breadcrumb %}{% endblock %}
+                {# A page may put something before and after its title in one row (a list: its type tile and count). #}
+                {% set title_lead = block('title_lead') is defined ? block('title_lead')|trim : '' %}
+                {% set title_after = block('title_after') is defined ? block('title_after')|trim : '' %}
+                {% if title_lead != '' or title_after != '' %}
+                <div class="folio-title-row">{{ title_lead|raw }}<h1>{{ block('page_title') }}</h1>{{ title_after|raw }}</div>
+                {% else %}
                 <h1>{% block page_title %}{% endblock %}</h1>
+                {% endif %}
                 {# One muted line under the title: what the page is for (it replaces the help banners). #}
                 {% set subtitle = block('subtitle') is defined ? block('subtitle')|trim : '' %}
                 {% if subtitle != '' %}<p class="folio-subtitle">{{ subtitle|raw }}</p>{% endif %}
             </div>
             <div class="folio-actions">{% block actions %}{% endblock %}</div>
         </header>
-        <main class="folio-content">
+        {# A template asks for the full width with {% set content_width = 'wide' %} (lists); others stop at 1120px. #}
+        <main class="folio-content{{ content_width|default('') == 'wide' ? ' is-wide' }}">
             {%- for type, message in folio_flashes() %}<div class="folio-alert folio-alert-{{ type }}" role="{{ type == 'error' ? 'alert' : 'status' }}">{{ message }}{% set flash_link = folio_flash_link(type) %}{% if flash_link %} <a href="{{ flash_link.url }}">{{ flash_link.label }}</a>{% endif %}</div>{% endfor -%}
             {% block content %}{% endblock %}</main>
     </div>

@@ -254,7 +254,7 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('[data-folio-bulk-all]', $js);               // select all on the page
         $this->assertStringContainsString("' selected'", $js);                         // "3 selected"
         $this->assertStringContainsString('bar.hidden = n === 0', $js);                // the bar shows with a tick
-        $this->assertStringContainsString("bar.classList.add('is-overlay')", $js);       // with JS it lies over the header row
+        $this->assertStringContainsString("bar.classList.add('is-floating')", $js);      // with JS it floats under the table
         $this->assertStringContainsString('initBulk(results)', $js);                   // a swapped region starts unticked
         $this->assertStringContainsString("document.addEventListener('change', onBulkChange)", $js);
         $this->assertStringContainsString("document.addEventListener('reset', onBulkReset)", $js); // Clear
@@ -262,7 +262,8 @@ final class AdminJsTest extends TestCase
         $this->assertStringContainsString('e.submitter', $js);
         $this->assertStringContainsString('f.requestSubmit(src)', $js);
         $this->assertStringContainsString("el.name === 'ids[]' && el.checked", $js);
-        $this->assertStringNotContainsString('.style.', substr($js, (int) strpos($js, 'function bulkUpdate')), 'no inline styles (CSP)');
+        $bulk = (int) strpos($js, 'function bulkUpdate');
+        $this->assertStringNotContainsString('.style.', substr($js, $bulk, (int) strpos($js, 'function onEnablesChange') - $bulk), 'the bar shows and hides by [hidden], no inline styles');
     }
 
     public function test_translations_save_all_posts_changed_rows_and_guards_them(): void

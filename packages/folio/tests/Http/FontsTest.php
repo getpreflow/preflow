@@ -8,9 +8,12 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Http\AdminAssets;
 use Preflow\Folio\Http\AssetController;
+use Preflow\Folio\Tests\Support\PublishingScaffold;
 
 final class FontsTest extends TestCase
 {
+    use PublishingScaffold;
+
     private const FONTS = ['InterVariable.woff2', 'JetBrainsMono-Regular.woff2', 'JetBrainsMono-Medium.woff2'];
 
     private function assets(): string
@@ -79,6 +82,13 @@ final class FontsTest extends TestCase
         $this->assertContains($mono[1], $f[1]);
     }
 
+    public function test_mono_places_never_draw_a_faux_bold(): void
+    {
+        // JetBrains Mono ships 400 and 500 only: a <kbd> hint in a bold label must not be smeared bold.
+        $css = (string) file_get_contents($this->assets() . '/admin.css');
+        $this->assertStringContainsString(':where(code, kbd, samp, pre, .folio-mono) { font-family: var(--font-mono); font-synthesis-weight: none; }', $css);
+    }
+
     public function test_licences_ship_with_the_fonts(): void
     {
         $this->assertFileExists($this->assets() . '/fonts/Inter-OFL.txt');
@@ -92,5 +102,27 @@ final class FontsTest extends TestCase
             $this->assertStringContainsString("folio_asset('InterVariable.woff2')", $tpl, $t);
             $this->assertStringContainsString('as="font" type="font/woff2" crossorigin', $tpl, $t);
         }
+    }
+
+    /**
+     * The rendered page preloads exactly the font URL the stylesheet asks for: the preload's
+     * {prefix}/_assets/InterVariable.woff2?v=… equals admin.css's url() resolved against the
+     * stylesheet's own URL. A mismatch would load the font twice.
+     */
+    public function test_rendered_preload_is_the_url_the_css_loads(): void
+    {
+        $this->scaffoldPublishing();
+        try {
+            $html = (string) $this->get('/folio')->getBody();
+        } finally {
+            $this->removeScaffold();
+        }
+
+        $this->assertSame(1, preg_match('#<link rel="preload" href="([^"]+)" as="font" type="font/woff2" crossorigin>#', $html, $preload), 'the dashboard preloads Inter');
+        $this->assertSame(1, preg_match('#<link rel="stylesheet" href="([^"?]+/)admin\.css\?v=[^"]+">#', $html, $sheet));
+        $css = (string) file_get_contents($this->assets() . '/admin.css');
+        $this->assertSame(1, preg_match('/url\("(InterVariable\.woff2\?v=[0-9a-f]{12})"\)/', $css, $url));
+
+        $this->assertSame($sheet[1] . $url[1], $preload[1]);
     }
 }

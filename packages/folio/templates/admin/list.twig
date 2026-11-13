@@ -1,14 +1,20 @@
 {% extends "@folio/admin/_layout.twig" %}
+{% import '@folio/admin/partials/_type_icon.twig' as types %}
+{# Lists use the whole content width (the table has many columns). #}
+{% set content_width = 'wide' %}
 {% block title %}Folio — {{ label }}{% endblock %}
+{% block title_lead %}{{ types.type_icon(family|default(null), glyph|default('ui-file'), 28) }}{% endblock %}
 {% block page_title %}{{ label }}{% endblock %}
+{% block title_after %}{% if has_records %}<span class="folio-title-count">{{ t('folio.list.count', {count: folio_number(type_total|default(0))}, type_total|default(0)) }}</span>{% endif %}{% endblock %}
 {% block actions %}
     {# The whole filtered and sorted list (not just this page); the bulk bar exports the ticked rows.
        The live search keeps the view in the URL (admin.js), so a click takes the query from there. #}
-    {% if ai_run_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ ai_run_url }}">{{ t('folio.ai_run.translate_all') }}</a>{% endif %}
-    {% if export_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ export_url }}{{ list_query ? '?' ~ list_query }}" data-folio-export-all="{{ export_url }}">{{ t('folio.common.export') }}</a>{% endif %}
-    {% if can(type ~ '.create') %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.common.new') }}</a>{% endif %}
+    {% if ai_run_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ ai_run_url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-spark"></use></svg>{{ t('folio.ai_run.translate_all') }}</a>{% endif %}
+    {% if export_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ export_url }}{{ list_query ? '?' ~ list_query }}" data-folio-export-all="{{ export_url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-download"></use></svg>{{ t('folio.common.export') }}</a>{% endif %}
+    {% if can(type ~ '.create') %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new" data-folio-new aria-keyshortcuts="N"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.common.new') }}</a>{% endif %}
 {% endblock %}
 {% block content %}
+    {% set icons = folio_asset('icons.svg') %}
     {# Extensions' #[ListNotice] HTML: built and escaped by the extension, so printed raw. #}
     {% if list_notices|default([]) is not empty %}<div class="folio-page-notices">{% for notice in list_notices %}{{ notice|raw }}{% endfor %}</div>{% endif %}
     {% if has_records %}
@@ -16,22 +22,32 @@
         <form class="folio-list-toolbar" method="get" action="{{ list.base }}" role="search" data-folio-list-form>
             <label class="folio-list-search">
                 <span class="folio-sr">{{ t('folio.list.search_label', {label: folio_noun(label)}) }}</span>
-                <svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-search"></use></svg>
-                <input type="search" name="q" value="{{ list.q }}" placeholder="{{ t('folio.common.search_placeholder') }}" autocomplete="off" data-folio-list-search>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>
+                <input type="search" name="q" value="{{ list.q }}" placeholder="{{ t('folio.common.search_placeholder') }}" autocomplete="off" data-folio-list-search aria-keyshortcuts="/">
             </label>
             {% for input in list.hidden %}<input type="hidden" name="{{ input.name }}" value="{{ input.value }}">{% endfor %}
+            {# A publishing type's states, counted over the whole type; the links keep the search, filters and sort. #}
+            {% if list.statuses|default([]) is not empty %}
+                <div class="folio-segmented folio-status-switch" role="group" aria-label="{{ t('folio.common.status') }}" data-folio-list-status>
+                    {%- for status in list.statuses %}
+                        <a href="{{ status.href }}"{% if status.current %} aria-current="page"{% endif %}>{{ status.label }}{% if status.count > 0 %} <span class="folio-segmented-count{% if status.status == 'changed' %} is-attention{% endif %}">{{ folio_number(status.count) }}</span>{% endif %}</a>
+                    {%- endfor %}
+                </div>
+            {% endif %}
             {% if list.filters is not empty %}
-                <details class="folio-filter-menu">
-                    <summary class="btn btn-secondary btn-sm">{{ t('folio.list.add_filter') }}</summary>
+                {# "+ Filter": a popover, still a <details> that opens without JS (admin.js closes it on Escape or a click outside). #}
+                <details class="folio-filter-menu" data-folio-filter-menu>
+                    <summary class="folio-filter-add">{{ t('folio.list.add_filter') }}</summary>
                     <div class="folio-filter-panel">
+                        <div class="folio-filter-fields">
                         {% for filter in list.filters %}
                             <div class="folio-filter-field">
                                 {% if filter.kind == 'date' %}
                                     <span class="folio-filter-label">{{ filter.label }}</span>
                                     <span class="folio-filter-range">
-                                        <input type="date" name="f[{{ filter.name }}][from]" aria-label="{{ t('folio.list.from', {label: filter.label}) }}">
+                                        <input type="date" class="folio-mono" name="f[{{ filter.name }}][from]" aria-label="{{ t('folio.list.from', {label: filter.label}) }}">
                                         <span aria-hidden="true">–</span>
-                                        <input type="date" name="f[{{ filter.name }}][to]" aria-label="{{ t('folio.list.until', {label: filter.label}) }}">
+                                        <input type="date" class="folio-mono" name="f[{{ filter.name }}][to]" aria-label="{{ t('folio.list.until', {label: filter.label}) }}">
                                     </span>
                                 {% elseif filter.kind == 'relation-search' %}
                                     <label class="folio-filter-label" for="folio-filter-{{ filter.name }}">{{ filter.label }}</label>
@@ -46,11 +62,21 @@
                                 {% endif %}
                             </div>
                         {% endfor %}
-                        <button type="submit" class="btn btn-primary btn-sm">{{ t('folio.common.apply') }}</button>
+                        </div>
+                        <div class="folio-filter-foot">
+                            <button type="reset" class="btn btn-ghost btn-sm">{{ t('folio.list.filter_reset') }}</button>
+                            <button type="submit" class="btn btn-primary btn-sm">{{ t('folio.common.apply') }}</button>
+                        </div>
                     </div>
                 </details>
             {% endif %}
             <button type="submit" class="btn btn-secondary btn-sm folio-list-submit" data-folio-list-submit>{{ t('folio.common.search') }}</button>
+            {# Row height: a convenience kept in this browser (localStorage), so it shows only with script. #}
+            <div class="folio-segmented folio-density" role="group" aria-label="{{ t('folio.list.density') }}" data-folio-density hidden>
+                {%- for density, icon in {'compact': 'ui-rows-compact', 'comfortable': 'ui-rows'} %}
+                    <button type="button" data-folio-density-choice="{{ density }}" aria-pressed="false" title="{{ t('folio.list.density_' ~ density) }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ icon }}"></use></svg><span class="folio-sr">{{ t('folio.list.density_' ~ density) }}</span></button>
+                {%- endfor %}
+            </div>
         </form>
     {% endif %}
     <div class="folio-list-results" data-folio-list-results>

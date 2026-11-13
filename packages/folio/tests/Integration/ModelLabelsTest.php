@@ -116,7 +116,7 @@ final class ModelLabelsTest extends TestCase
         $this->assertMatchesRegularExpression('~folio-filter-label[^>]*>Art<~', $list);
         $this->assertStringContainsString('>Netz</option>', $list);
         $this->assertStringContainsString('Kommandozeile', $list);
-        $this->assertMatchesRegularExpression('~<summary[^>]*>[^<]*Art[^<]*</summary>~', $list, 'the bulk "set" menu');
+        $this->assertMatchesRegularExpression('~<summary class="btn btn-sm">[^<]*Art[^<]*<svg~', $list, 'the bulk "set" menu');
         $this->assertDoesNotMatchRegularExpression('~>(Kind|Web|CLI)<~', $list);
         // A chip of an active filter.
         $this->assertStringContainsString('Art: Netz', $this->html('/folio/app?f%5Bkind%5D=web'));

@@ -50,12 +50,12 @@ Each row carries exactly one label.
 | "N changes · Compare" in the revision list and the publishing panel is missing. | 0.75 | It belongs to the editor side panel and needs diff data. |
 | The drawer has no accent-soft "Saved" line. | Adaptation | `drawer_saved.twig` posts a message and closes the drawer at once, so there is no saved state to show. |
 | Danger buttons are filled, as on the board. Unpublish and the asset's Move to bin are outlined danger buttons (`btn btn-secondary` with `data-tone="danger"`, red text and a red-tinted border); a delete for good keeps the filled `.btn-danger`. | Fixed in 0.73 | The board's Unpublish is outlined. The board's text-only "Move to bin" link comes with the asset detail redesign (0.76). |
-| `.folio-filter-add` ("+ Filter", dashed) exists in CSS only. The list toolbar still uses the `details` Filter button. | 0.75 | It comes with the list toolbar and the filter popover. |
+| `.folio-filter-add` ("+ Filter", dashed) exists in CSS only. The list toolbar still uses the `details` Filter button. | Fixed in 0.75 | "+ Filter" is the dashed summary of a 300px popover (fields in groups, mono date range, Reset · Apply). |
 | The review-queue card has no type icon. | Fixed in 0.75 | Each type's group heading shows its tile (`type_icon` macro: the type's icon on its family's tint, from `TypeListing::$family`). |
 | The review-queue card shows the translated progress sentence in mono, not a bare "6 / 17". | Adaptation | The sentence keeps the translation keys. |
 | Alert, notice, field-error, chip and toast glyphs are CSS masks (copies of the icons.md paths), not `<use>` icons. | Adaptation | Field-type PHP and flash markup stay unchanged. |
 | The `is-failed` badge exists, but the AI run item status "failed" still renders `is-incomplete`. | 0.76 | It is a markup change in the AI run screen. |
-| On a ticked list row, the accent-soft row fill hides the published badge's fill. The text and dot stay readable. | 0.75 | Part of the table restyle. |
+| On a ticked list row, the accent-soft row fill hides the published badge's fill. The text and dot stay readable. | Fixed in 0.75 | On a ticked row, accent-soft badges and complete language items take the surface fill. |
 | The asset screens' failure messages now use `folio-alert-error`; before, they used the warning tone. | Fixed in 0.73 | Uploads, moves to the bin, panel and edit errors. |
 | The Redirects and AI settings tab bars are now `.folio-tabs` (underline tabs, `aria-current`); before, they were rows of small buttons. | Fixed in 0.73 | Same links, same keys. |
 
@@ -76,7 +76,7 @@ Each row carries exactly one label.
 | Long subtitles wrap; for example, the not-found intro is four lines at 1440. The board's subtitle is one short line. | Adaptation | Cutting them would hide the explanation. |
 | Shorter subtitle copy, so every subtitle fits one line as on the boards. | Proposal | A copy change the owner decides on. The keys stay. |
 | The editor topbar has a breadcrumb over the title. The board has a back button, the content-language and layout segmented controls, the save state, Save draft and the Publish split button. | 0.75 | Editor action bar. The rail shell's topbar is already compact (17px title). |
-| The content column stops at 1120px while the topbar runs full width, so on wide screens the header's "New" sits to the right of the table edge. The List board fills the width; the Dashboard and settings boards are capped like Folio. | 0.75 | It changes with the list layout (full-width lists). |
+| The content column stops at 1120px while the topbar runs full width, so on wide screens the header's "New" sits to the right of the table edge. The List board fills the width; the Dashboard and settings boards are capped like Folio. | Fixed in 0.75 | Lists set `content_width = 'wide'` (`.folio-content.is-wide`); other screens keep 1120px. |
 | There are no phone variants on the boards. At 375 the sidebar stacks into a site row, an avatar and one scrolling nav row (section headings as chips), and the rail becomes a top strip. | Adaptation | Task 3's phone layout. No page scrolls sideways at 375; tables scroll in their box. |
 | There is no skip link to the main content. | 0.76 | It comes with the ink layer's shell touches. The rail and sidebar add up to 20+ tab stops before the content. |
 | Checkbox and radio chips draw the tick as a CSS mask, which forced-colors mode (Windows High Contrast) may not paint. The chip's border and fill still change. | Proposal | A `@media (forced-colors: active)` fallback (the native box shown again). |
@@ -87,7 +87,7 @@ Each row carries exactly one label.
 
 | Screen | Board | Label |
 |---|---|---|
-| Lists: the toolbar (search with icon, status segmented with counts, chips, density), the table (12px head on surface-2 instead of uppercase, title plus meta line, mono numbers, one "…" menu instead of Edit and trash), the language indicator, the floating bulk bar with Translate, the pager ("1–8 of 17"), and the home marker on the pages list | List, PagesList | 0.75 |
+| Lists: the toolbar (search with icon, status segmented with counts, chips, density), the table (12px head on surface-2 instead of uppercase, title plus meta line, mono numbers, one "…" menu instead of Edit and trash), the language indicator, the floating bulk bar with Translate, the pager ("1–8 of 17"), and the home marker on the pages list | List, PagesList | Fixed in 0.75 |
 | Editors: the action bar, removing the floating publish box, the 320px side panel (publishing, address with copy, languages, search preview, revisions, system fields, Unpublish/Delete), Content / SEO & sharing tabs instead of the disclosure, block cards with type icons, the grouped searchable block picker, the preview bar (device toggle, URL pill), the ownership card and relation rows | PageEditor, RecordEditor, ReferenceEdit | 0.75 |
 | Fields: affix and copy on slug and path, the counter on text, the Trix toolbar, the number stepper, the date with relative hint, the switch variant, segmented and radio cards for selects, relation rows, the asset field drop zone, matrix rows, env set/not set | LibFields | 0.75 (editor fields) |
 | Dashboard: the subtitle and header actions (View site, New page split), the ink band with the mono stats line, "Needs you" cards, and the Content list with type icons and quick create | Dashboard, HolzDashboard | 0.76 (ink band, dashboard) |
@@ -104,3 +104,21 @@ Each row carries exactly one label.
 | The removal dialog restyle (radio cards, "Now: …") | LibOverlays | 0.76 (with redirects) |
 | Styled confirm dialog, AI "Write a draft" in rich text, the "+" insert line and `/` block picker, ⌘K palette | LibOverlays, PageEditor, RecordEditor | Proposal |
 | The share link's "Link copied · 7 days" state | LibOverlays | 0.75 (editor preview bar) |
+
+## Lists (0.75, Task 3)
+
+Captured on a scratch starter-folio (pages 2 rows after a Duplicate, news 3, jobs 40, companies 7; a filter applied, rows ticked, a menu open, the `?` list, compact rows) at 1440 and 375, light and dark, beside the List and PagesList boards. No page scrolls sideways at 375; the table scrolls in its box (min-width 720px).
+
+| Difference | Label | Why / what |
+|---|---|---|
+| Active filter chips sit in a row under the toolbar; the List board shows them inline after the search. | Adaptation | The chips belong to the region the live search swaps, so they stay current while typing; the toolbar is outside it. |
+| The row menu's order is Edit, View on site, Move up / down, Unpublish, divider, Duplicate, Copy preview link, extension actions, Delete…; Unpublish is not red. The board puts Unpublish red after the divider, beside Delete. | Adaptation | The 0.75 brief's order; a red item before the divider would split the danger group. One template move if the owner prefers the board. |
+| Shortcut hints show only on Edit (E) and Duplicate (D). The board also shows V (View on site), L (Copy preview link) and ⌫ (Delete). | Adaptation | Only keys that exist get a hint; V, L and ⌫ were not in the shortcut set (a destructive one-key Delete especially). |
+| The density toggle (Compact / Comfortable) sits where the List board has a list / grid view toggle. | Adaptation | There is no grid view of records; the brief asks for density. |
+| The status column says "Changed" (the publishing state text), the board "+2 changes" next to "Published". | 0.75 | `Publisher::changes()` counts come with the editor side panel (Task 4); a per-row count would read every snapshot on the list. |
+| Row tiles are 24px (board 26px). | Adaptation | The type tile macro has two sizes (24, 28); 26 would be a third for 2px. |
+| The List board's "Changed" relative date column ("vor 3 Wochen") is not added. | Proposal | A column a type lists if it wants it (`list.columns`); a default updated-at column needs the owner's yes. |
+| "Fehlende Sprachen übersetzen" header action shows as "Translate all…" whenever AI translation applies, not only when the type has gaps. | Adaptation | Knowing whether a type has gaps means reading every record's texts on each list view. |
+| The bulk bar's actions follow the type: no "Set …", Translate or Export where the type has no bulk field, no AI or no OpenSpout. | Adaptation | Same rules as before; the board shows a type that has them. |
+| On a phone the row menu opens next to its button clamped into the viewport, even when the button is scrolled out of the table's box. | Adaptation | The panel floats (position: fixed) so the scroll box cannot cut it off. |
+

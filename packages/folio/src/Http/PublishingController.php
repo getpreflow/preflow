@@ -94,7 +94,11 @@ final class PublishingController
         return $this->backToEditor($type, $id, '?restored=1');
     }
 
-    /** A signed link to the working copy on its real URL, for people who are not logged in. */
+    /**
+     * A signed link to the working copy on its real URL, for people who are not logged in. The
+     * editor gets the share fragment; a request that accepts JSON (the list's "Copy preview link")
+     * gets {url, message, days} to write to the clipboard.
+     */
     public function share(ServerRequestInterface $request): ResponseInterface
     {
         $working = $this->shareable($request);
@@ -115,7 +119,15 @@ final class PublishingController
             ? self::origin($request) . $path . '?folio_preview=' . $this->links?->create($typeDef->key, (string) $working->getId(), $nonce)
             : null;
 
-        return $this->shareFragment($working, $url, $url === null ? \Preflow\Folio\FolioText::get('folio.publishing.no_url') : null);
+        $message = $url === null ? \Preflow\Folio\FolioText::get('folio.publishing.no_url') : null;
+        if (str_contains($request->getHeaderLine('Accept'), 'application/json')) {
+            return new Response(200, ['Content-Type' => 'application/json', 'Cache-Control' => 'no-store'], (string) json_encode(
+                ['url' => $url, 'message' => $message, 'days' => intdiv($this->links?->ttl() ?? 0, 86400)],
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+            ));
+        }
+
+        return $this->shareFragment($working, $url, $message);
     }
 
     /** Rotate the record's share token: every earlier preview link stops working. */
@@ -149,6 +161,11 @@ final class PublishingController
         // "Send its old links to…": none chosen leaves them answering 404.
         $target = \Preflow\Folio\Redirects\RemovalTarget::parse(((array) $request->getParsedBody())['_redirect_to'] ?? null, $this->resolver);
         $this->publisher->unpublish($type, $id, $target);
+
+        // From the list's row menu: back to the list.
+        if ((((array) $request->getParsedBody())['_from'] ?? null) === 'list' && $this->catalog->get($type)?->singleton !== true) {
+            return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+        }
 
         return $this->backToEditor($type, $id);
     }

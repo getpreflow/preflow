@@ -186,6 +186,15 @@ service provider's `register()`; the package binds a plain default for each one 
 
 `complete_languages` only takes effect with a `LanguageChecks` that finds something.
 
+**Copies and addresses.** `RecordWriter::duplicate()` gives a copy free values in the fields that make
+up the record's public address (its route parameters), so the copy never takes over the original's
+URL. It learns those fields from `Preflow\Publishing\RecordAddressFields`
+(`addressFields($type)`: field name => whether it is a catch-all path), which the bound `RecordTypes`
+may implement as well. Folio's binding does. **A site that binds its own `RecordTypes` should
+implement `RecordAddressFields` on it too:** without it, `duplicate()` frees only a field named
+`slug` or one with the `slug` rule, and copies every other address field unchanged, so the copy
+would claim the same address.
+
 **Restore and discard** replace the working copy's content: its fields, the `stateKeys()` and the
 `RecordColumns`, take the revision's or snapshot's values (a field the revision does not have
 becomes empty). The schedule, list position and share token stay, and so do other columns of your

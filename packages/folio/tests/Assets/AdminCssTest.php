@@ -58,16 +58,16 @@ final class AdminCssTest extends TestCase
         }
     }
 
-    public function test_list_bulk_bar_overlays_the_header_on_an_inverse_surface(): void
+    public function test_list_bulk_bar_floats_under_the_table_on_an_inverse_surface(): void
     {
         $css = $this->css();
-        // With JS the bar lies over the header row of the frame, so nothing below moves.
+        // Board List: centred under the table, sticking to the bottom of the window while rows are ticked.
         $this->assertStringContainsString('.folio-table-frame { position: relative; }', $css);
-        $this->assertMatchesRegularExpression('/\.folio-bulk-bar\.is-overlay \{[^}]*position: absolute;/', $css);
-        $this->assertStringContainsString('min-height: calc(var(--h-list-head) + 1px);', $css);
-        $this->assertStringContainsString('.folio-table thead tr { height: var(--h-list-head); }', $css);
-        // The header's select-all box stays clickable above the bar.
-        $this->assertMatchesRegularExpression('/\.folio-table thead \.folio-bulk-cell input \{[^}]*z-index: 3;/', $css);
+        $this->assertMatchesRegularExpression('/\.folio-bulk-bar \{[^}]*position: sticky; bottom: 16px;/', $css);
+        $this->assertMatchesRegularExpression('/\.folio-bulk-bar \{[^}]*width: fit-content;[^}]*margin: 12px auto 0;/', $css);
+        $this->assertStringNotContainsString('is-overlay', $css);
+        // Ghost buttons on the bar.
+        $this->assertMatchesRegularExpression('/\.folio-bulk-bar \.btn \{\s*background: transparent;\s*border-color: transparent;/', $css);
         // An inverted bar (light on dark theme, dark on light theme) from one light-dark() token set.
         $this->assertMatchesRegularExpression('/--c-inverse:\s+light-dark\(/', $css);
         $this->assertStringContainsString('background: var(--c-inverse); color: var(--c-inverse-fg);', $css);

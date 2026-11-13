@@ -289,27 +289,42 @@ final class AdminController
         }
 
         $typeDef = $this->registry->get($type);
-        $listConfig = $this->catalog->get($type)?->list ?? [];
+        $listing = $this->catalog->get($type);
+        $listConfig = $listing?->list ?? [];
         $orderable = ($listConfig['orderable'] ?? false) === true;
         $columns = $this->listColumns($typeDef, $listConfig);
         $extraColumns = $this->customized($type)['columns'];
 
         $multilingual = $typeDef->translatableFields() !== [];
         $states = $this->publishes($type) ? $this->publisher->states($type) : null;
+        // Records per state over the whole type: the status links' counts (ListQuery::STATUSES).
+        $statusCounts = null;
+        if ($states !== null) {
+            $statusCounts = array_fill_keys(ListQuery::STATUSES, 0);
+            foreach ($states as $state) {
+                $statusCounts[$state->value] = ($statusCounts[$state->value] ?? 0) + 1;
+            }
+        }
+        $stateOf = $states === null ? null : static fn (DynamicRecord $record): PublishState => $states[(string) $record->getId()] ?? PublishState::Draft;
 
-        $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default);
+        $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $states !== null);
         $result = $query->fetch(
             $this->dm->queryType($type),
             $multilingual ? fn (DynamicRecord $record): bool => $this->hasUnchecked($typeDef, $record) : null,
+            $stateOf === null ? null : static fn (DynamicRecord $record): string => $stateOf($record)->value,
         );
         $records = array_values($result->items);
         $relations = new RelationLabels($this->dm, $this->labeler);
         // Relation columns (only when "list.columns" names them): the page's labels in one query per target.
         $relationColumns = array_values(array_filter(array_keys($columns), static fn (string $name) => $typeDef->fields[$name]->type === 'relation'));
         $relationLabels = $relationColumns === [] ? [] : $relations->forRecords($typeDef, $relationColumns, $records);
+        $menu = $this->rowMenu($type, $typeDef, $records, $states);
+        $route = $this->frontend->routeFor($type);
+        $uncheckedUrl = $this->prefix . '/' . $type . '?unchecked=1';
 
         $rows = [];
         foreach ($records as $record) {
+            $id = (string) $record->getId();
             $cells = [];
             $marked = [];
             foreach ($columns as $name => $label) {
@@ -318,6 +333,7 @@ final class AdminController
                 $cells[$name] = $text;
                 $marked[$name] = $text === '' ? '' : Highlighter::html($text, $query->q);
             }
+            $home = $route !== null ? $this->homeValue($route, $record) : null;
             $rows[] = [
                 'id' => $record->getId(),
                 'cells' => $cells,
@@ -337,8 +353,14 @@ final class AdminController
 
                     return (string) $value;
                 }, $extraColumns),
-                'languages' => $multilingual ? $this->languageBadges($typeDef, $record, $this->prefix . '/' . $type . '?unchecked=1') : [],
-                'state' => $states !== null ? ($states[(string) $record->getId()] ?? PublishState::Draft) : null,
+                'languages' => $multilingual ? $this->languageStates($typeDef, $record) : [],
+                'unchecked_url' => $uncheckedUrl,
+                'state' => $stateOf !== null ? $stateOf($record) : null,
+                // The frontend route's home record: "The home page · slug “home”" under its title.
+                'home' => $home !== null ? FolioText::get('folio.list.home_page', ['field' => $route->paramNames[0], 'value' => $home]) : null,
+                // Its address in the default language, as the router sees it ("/", "/about").
+                'address' => $route !== null ? $this->frontend->pathFor($record, $typeDef->locales->default) : null,
+                'menu' => $menu[$id] ?? [],
             ];
         }
 
@@ -354,9 +376,14 @@ final class AdminController
             fn (string $target): bool => $this->can($target . '.view'),
             withFilterMenu: !$partial, // the partial (each keystroke) never shows the menu: skip its option queries
             labels: $this->labels,
+            statusCounts: $statusCounts,
         );
+        // Every record of the type, whatever the view narrows to: the header's count.
+        $typeTotal = $statusCounts !== null
+            ? array_sum($statusCounts)
+            : ($list['filtered'] ? $this->dm->queryType($type)->paginate(1, 1)->total : $list['total']);
         // "No … yet" only when the type has no records at all; a search without hits says so instead.
-        $hasRecords = $rows !== [] || ($list['filtered'] && $this->dm->queryType($type)->limit(1)->get()->items() !== []);
+        $hasRecords = $rows !== [] || $typeTotal > 0;
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
 
@@ -364,9 +391,15 @@ final class AdminController
             'prefix' => $this->prefix,
             'type' => $type,
             'label' => $this->labelFor($type),
+            // The header's type tile: the type's family tint and icon.
+            'family' => $listing?->family,
+            'glyph' => $listing?->glyph() ?? 'ui-file',
+            'type_total' => $typeTotal,
             'empty_text' => $this->labels->emptyState($type),
             'types' => $this->catalog->all(),
             'columns' => $columns,
+            // field => ListCells::kind(): number cells are mono and right-aligned.
+            'column_kinds' => array_combine(array_keys($columns), array_map(static fn (string $name): string => ListCells::kind($typeDef, $name), array_keys($columns))),
             'extra_columns' => array_column($extraColumns, 'label'),
             'rows' => $rows,
             'list' => $list,
@@ -375,17 +408,120 @@ final class AdminController
             'orderable' => $orderable && !$list['sorted'] && !$list['filtered'],
             'multilingual' => $multilingual,
             'publishing' => $states !== null,
+            // A frontend type: each row's address (mono) and its type tile.
+            'frontend' => $route !== null,
             'csrf' => $csrf,
             'bulk' => $this->bulkBar($type, $typeDef, $listConfig),
+            // What this user may do with the rows (the row menu's Edit, moves and Delete).
+            'may' => ['create' => $this->can($type . '.create'), 'edit' => $this->can($type . '.edit'), 'delete' => $this->can($type . '.delete')],
+            // The row "…" menu's items that do not depend on the row.
+            'row_menu' => [
+                'duplicate' => $this->duplicable($type) && $this->can($type . '.create'),
+                'actions' => $this->menuActions($type),
+            ],
             // "Translate all…" (header) and "Translate…" (bulk bar): the AI run screen.
             'ai_run_url' => $this->aiRunUrl($type, $typeDef),
             // The Export button (header: the whole filtered list; bulk bar: the ticked rows), only with OpenSpout installed.
             'export_url' => $this->exporter()->available() ? $this->prefix . '/' . $type . '/_export' : null,
-            // The view to return to after a bulk action (search, filters, sort, page).
+            // The view to return to after a bulk action (search, filters, status, sort, page).
             'list_query' => http_build_query($query->query(), '', '&', PHP_QUERY_RFC3986),
             // #[ListNotice] HTML, printed raw above the list; the full page only, not each live-search refresh.
             'list_notices' => $partial ? [] : ($this->customizations?->listNotices($type) ?? []),
         ]));
+    }
+
+    /**
+     * The row "…" menu's items that depend on the row, per record id: "View on site" (a record the
+     * site shows: a publishing type's live snapshot, another frontend type's record, at its address
+     * in the default language), "Unpublish" (live records, for those who may publish; with the count
+     * of addresses it takes off the site, for the "Send its old links to…" prompt) and "Copy preview
+     * link" (publishing types with a frontend, for those who may edit, as the editor offers it).
+     *
+     * @param list<DynamicRecord>                 $records
+     * @param array<string, PublishState>|null    $states
+     * @return array<string, array{view_url: ?string, unpublish_url: ?string, unpublish_addresses: int, share_url: ?string}>
+     */
+    private function rowMenu(string $type, TypeDefinition $typeDef, array $records, ?array $states): array
+    {
+        $route = $this->frontend->routeFor($type);
+        $ids = array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records);
+        $default = $typeDef->locales->default;
+        $live = [];
+        if ($states !== null && $route !== null && $ids !== []) {
+            foreach ($this->publisher->query($type)->byIds($ids)->get()->items() as $snapshot) {
+                // The snapshot as a record of the type itself, so its address is the type's route.
+                $live[(string) $snapshot->getId()] = DynamicRecord::fromArray($typeDef, $snapshot->toArray());
+            }
+        }
+        $mayPublish = $states !== null && $this->can($type . '.publish');
+        $addresses = $mayPublish ? ($this->addresses?->counts($type, $ids) ?? []) : [];
+        $share = $states !== null && $route !== null && $this->previewLinks?->enabled() === true && $this->can($type . '.edit');
+
+        $menu = [];
+        foreach ($records as $record) {
+            $id = (string) $record->getId();
+            $base = $this->prefix . '/' . $type . '/' . rawurlencode($id);
+            $isLive = $states !== null && ($states[$id] ?? PublishState::Draft) !== PublishState::Draft;
+            $shown = $states === null ? $record : ($live[$id] ?? null);
+            $menu[$id] = [
+                'view_url' => $route !== null && $shown !== null ? $this->frontend->urlFor($shown, $default) : null,
+                'unpublish_url' => $mayPublish && $isLive ? $base . '/unpublish' : null,
+                'unpublish_addresses' => $addresses[$id] ?? 0,
+                'share_url' => $share ? $base . '/share' : null,
+            ];
+        }
+
+        return $menu;
+    }
+
+    /**
+     * Extension record actions shown in the editor's header (toolbar: true) that this user may run:
+     * the row menu offers them too. Those with toolbar: false stay editor actions.
+     *
+     * @return list<array{name: string, label: string, icon: ?string, confirm: ?string}>
+     */
+    private function menuActions(string $type): array
+    {
+        if (!$this->can($type . '.edit')) {
+            return [];
+        }
+        $actions = [];
+        foreach ($this->customized($type)['actions'] as $action) {
+            if ($action['toolbar'] && $this->can($action['permission'])) {
+                $actions[] = ['name' => $action['name'], 'label' => $action['label'], 'icon' => $action['icon'], 'confirm' => $action['confirm']];
+            }
+        }
+
+        return $actions;
+    }
+
+    /**
+     * The home record's value of the route's first parameter (its default-language value equals
+     * the route's "home"), else null.
+     */
+    private function homeValue(\Preflow\Folio\Content\FrontendRoute $route, DynamicRecord $record): ?string
+    {
+        if ($route->home === null || $route->paramNames === []) {
+            return null;
+        }
+        $first = $route->paramNames[0];
+        $locales = $record->getType()->locales;
+        $value = in_array($first, $record->getType()->translatableFields(), true)
+            ? LocaleValue::pick($record->get($first), $locales, $locales->default)
+            : LocaleValue::default($record->get($first), $locales);
+
+        return $value === $route->home ? $route->home : null;
+    }
+
+    /**
+     * Whether "Duplicate" makes sense for the type: not for a singleton (one record only) and not
+     * for a user type, whose copy would carry the account's password hash and sign-in.
+     */
+    private function duplicable(string $type): bool
+    {
+        $listing = $this->catalog->get($type);
+
+        return $listing !== null && !$listing->singleton && $listing->users === null;
     }
 
     /**
@@ -411,7 +547,13 @@ final class AdminController
                 return $records;
             }
         } else {
-            $records = $exporter->records($type, ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default));
+            // The list's own view: its status and "not checked" narrowing too, as the list shows it.
+            $states = $this->publishes($type) ? $this->publisher->states($type) : null;
+            $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $states !== null);
+            $records = $exporter->records($type, $query, $query->narrowing(
+                $typeDef->translatableFields() !== [] ? fn (DynamicRecord $record): bool => $this->hasUnchecked($typeDef, $record) : null,
+                $states === null ? null : static fn (DynamicRecord $record): string => ($states[(string) $record->getId()] ?? PublishState::Draft)->value,
+            ));
         }
 
         $path = tempnam(sys_get_temp_dir(), 'folio-export-');
@@ -727,6 +869,45 @@ final class AdminController
         $page = (int) (((array) $request->getParsedBody())['page'] ?? 1);
 
         return new Response(302, ['Location' => $this->prefix . '/' . $type . ($page > 1 ? '?page=' . $page : '')]);
+    }
+
+    /**
+     * "Duplicate" (POST {type}/{id}/duplicate): a copy of the record through
+     * RecordWriter::duplicate(), a draft with a free address, then the copy's editor with a
+     * "This is a copy of …" note. Needs the type's create permission; never for a singleton or a
+     * user type (duplicable()). A refusal (a hook, the rules) goes back to the list with its reason.
+     */
+    public function duplicate(ServerRequestInterface $request): ResponseInterface
+    {
+        $type = (string) $request->getAttribute('type', '');
+        $id = (string) $request->getAttribute('id', '');
+        if (!$this->catalog->has($type) || !$this->duplicable($type)) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
+        if (!$this->can($type . '.create')) {
+            return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
+        }
+        $source = $this->dm->findType($type, $id);
+        if ($source === null) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
+
+        try {
+            $outcome = $this->writer->duplicate($type, $id, new SaveOptions(by: self::userId($request), mayPublish: $this->can($type . '.publish')));
+        } catch (ValidationException $e) {
+            self::flash($request, 'error', self::errorText($e));
+
+            return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+        } catch (Refused $e) {
+            self::flash($request, 'error', $e->getMessage());
+
+            return new Response(302, ['Location' => $this->prefix . '/' . $type]);
+        } catch (\InvalidArgumentException) {
+            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+        }
+        self::flash($request, 'success', FolioText::get('folio.list.duplicated', ['title' => $this->labeler->label($source)]));
+
+        return new Response(302, ['Location' => $this->prefix . '/' . $type . '/' . rawurlencode((string) $outcome->record->getId()) . '/edit']);
     }
 
     public function destroy(ServerRequestInterface $request): ResponseInterface
@@ -1528,35 +1709,20 @@ final class AdminController
     }
 
     /**
-     * Badges per locale the record is visible in: the locale alone when finished, "de · 2 missing"
-     * for texts the default language has and the locale has not, "de · 1 outdated" for translations
-     * made from a default text that has changed since, "de · 2 not checked" for machine
-     * translations nobody has checked yet (linking to the list narrowed to such records).
+     * The language indicator of a list row: every language of the type, in its order, with how far
+     * the record is in it (TranslationStatus::state(): complete, partial or missing, and its
+     * outdated and not checked translations). A language the record is not visible in is missing.
      *
-     * @return list<array{text: string, state: 'missing'|'outdated'|'unchecked'|'ok', href?: string}>
+     * @return list<array{code: string, name: string, state: \Preflow\Folio\Content\LocaleState}>
      */
-    private function languageBadges(TypeDefinition $typeDef, DynamicRecord $record, string $uncheckedUrl): array
+    private function languageStates(TypeDefinition $typeDef, DynamicRecord $record): array
     {
-        $badges = [];
-        foreach ($record->availableLocales() as $locale) {
-            $missing = count($this->translations->missing($typeDef, $record, $locale));
-            $outdated = count($this->translations->outdated($typeDef, $record, $locale));
-            $unchecked = count($this->translations->unchecked($typeDef, $record, $locale));
-            if ($missing > 0) {
-                $badges[] = ['text' => FolioText::get('folio.list.missing', ['locale' => $locale, 'count' => $missing]), 'state' => 'missing'];
-            }
-            if ($outdated > 0) {
-                $badges[] = ['text' => FolioText::get('folio.list.outdated', ['locale' => $locale, 'count' => $outdated]), 'state' => 'outdated'];
-            }
-            if ($unchecked > 0) {
-                $badges[] = ['text' => $locale . ' · ' . FolioText::get('folio.list.unchecked', ['count' => $unchecked]), 'state' => 'unchecked', 'href' => $uncheckedUrl];
-            }
-            if ($missing === 0 && $outdated === 0 && $unchecked === 0) {
-                $badges[] = ['text' => $locale, 'state' => 'ok'];
-            }
+        $states = [];
+        foreach ($typeDef->locales->available as $locale) {
+            $states[] = ['code' => $locale, 'name' => self::languageName($locale), 'state' => $this->translations->state($typeDef, $record, $locale)];
         }
 
-        return $badges;
+        return $states;
     }
 
     /**

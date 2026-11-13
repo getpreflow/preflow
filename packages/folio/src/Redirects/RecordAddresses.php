@@ -178,6 +178,41 @@ final class RecordAddresses
         }
     }
 
+    /**
+     * How many addresses each of these records holds (of() for a whole list page, in one read): the
+     * count unpublishing or deleting it takes off the site. Records without any are left out.
+     *
+     * @since 0.75
+     *
+     * @param list<string> $ids
+     * @return array<string, int> record id => addresses
+     */
+    public function counts(string $type, array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        try {
+            $wanted = array_flip(array_map('strval', $ids));
+            $counts = [];
+            $query = $this->dm->queryIn(AddressTable::definition())->where('type', $type)
+                ->whereAny([['field' => 'record_id', 'operator' => 'IN', 'value' => array_values(array_map('strval', $ids))]]);
+            foreach ($query->get()->items() as $row) {
+                $id = (string) $row->get('record_id');
+                // An IN on a text column compares case-insensitively on MySQL: exact ids only.
+                if ((string) $row->get('type') === $type && isset($wanted[$id])) {
+                    $counts[$id] = ($counts[$id] ?? 0) + 1;
+                }
+            }
+
+            return $counts;
+        } catch (\Throwable $e) {
+            $this->warn("Addresses of {$type} not read: " . $e->getMessage());
+
+            return [];
+        }
+    }
+
     /** @return array<string, string> locale => path, as stored */
     public function of(string $type, string $id): array
     {

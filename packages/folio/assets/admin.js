@@ -1558,11 +1558,12 @@
     }
 
     // A short message in the toast region; the server sends it as HX-Trigger "folio:error" (e.g. a 403).
-    function showToast(message) {
+    // ok: a confirmation ("Link copied", the check glyph) instead of an error.
+    function showToast(message, ok) {
         var region = document.querySelector('[data-folio-toasts]');
         if (!region || !message) { return; }
         var toast = document.createElement('div');
-        toast.className = 'folio-toast is-error';
+        toast.className = ok ? 'folio-toast' : 'folio-toast is-error';
         toast.setAttribute('role', 'status');
         toast.textContent = message;
         region.appendChild(toast);
@@ -1939,6 +1940,8 @@
                 .then(function (html) {
                     results.innerHTML = html;
                     initBulk(results);
+                    initRowMenus(results);
+                    keepStatusLinks(form, params.get('q') || '');
                     history.replaceState(history.state, '', url);
                 })
                 .catch(function (e) {
@@ -1955,7 +1958,20 @@
         });
     }
 
-    // Bulk bar (<form data-folio-bulk>, over the table's header row): the rows' tick boxes
+    // The status links (All · Published · …) sit outside the swapped region: they take the new search along.
+    function keepStatusLinks(form, q) {
+        form.querySelectorAll('[data-folio-list-status] a[href]').forEach(function (a) {
+            var href = a.getAttribute('href');
+            var at = href.indexOf('?');
+            var params = new URLSearchParams(at < 0 ? '' : href.slice(at + 1));
+            if (q) { params.set('q', q); } else { params.delete('q'); }
+            params.delete('page');
+            var query = params.toString();
+            a.setAttribute('href', (at < 0 ? href : href.slice(0, at)) + (query ? '?' + query : ''));
+        });
+    }
+
+    // Bulk bar (<form data-folio-bulk>, under the table): the rows' tick boxes
     // ([data-folio-bulk-item], form="{bar id}") show it with "N selected"; [data-folio-bulk-all]
     // ticks the page. Without JS the bar simply stays visible above the table. The boxes live in the swapped
     // region, so a new search, filter or page starts with nothing ticked.
@@ -1982,8 +1998,8 @@
         scope.querySelectorAll('[data-folio-bulk]').forEach(function (bar) {
             var all = document.querySelector('[data-folio-bulk-all]');
             if (all) { all.hidden = false; }
-            // With JS the bar lies over the table's header row (admin.css): ticking a row moves nothing.
-            bar.classList.add('is-overlay');
+            // With JS the bar floats at the bottom of the window while rows are ticked (admin.css).
+            bar.classList.add('is-floating');
             bar.querySelectorAll('[data-folio-export]').forEach(function (b) { b.hidden = false; });
             bulkUpdate(bar);
         });
@@ -2037,12 +2053,393 @@
         setTimeout(function () { bulkUpdate(bar); }, 0);
     }
 
+    // ---- List rows: the "…" menu ------------------------------------------------
+    // Each row ends in <details class="folio-row-menu" data-folio-row-menu> with a role="menu" panel.
+    // Without this script it opens in place. With it (data-folio-row-menu-ready) the panel floats next to
+    // its button (position: fixed, so the table's scroll box does not cut it off), one menu is open at a
+    // time, and the keyboard works as for a menu button: Enter or Space (the summary's click) or ArrowDown
+    // opens it on the first item, ArrowUp on the last; ArrowUp / ArrowDown / Home / End move between the
+    // items; Escape closes it and returns the focus to its button; Tab or a click elsewhere closes it.
+    function rowMenuItems(menu) {
+        return Array.prototype.filter.call(menu.querySelectorAll('[role="menuitem"]'), function (item) {
+            return !item.hidden && !item.disabled;
+        });
+    }
+
+    function openRowMenus() {
+        return Array.prototype.filter.call(document.querySelectorAll('[data-folio-row-menu]'), function (m) { return !!m.open; });
+    }
+
+    function placeRowMenu(menu) {
+        var summary = menu.querySelector('summary');
+        var panel = menu.querySelector('[role="menu"]');
+        if (!summary || !panel || typeof summary.getBoundingClientRect !== 'function') { return; }
+        var at = summary.getBoundingClientRect();
+        var width = panel.offsetWidth || 0;
+        var height = panel.offsetHeight || 0;
+        var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+        var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+        var x = Math.max(8, Math.min(at.right - width, vw - width - 8));
+        var y = at.bottom + 4;
+        if (vh && y + height > vh - 8 && at.top - height - 4 >= 8) { y = at.top - height - 4; }
+        if (panel.style) {
+            panel.style.left = Math.round(x) + 'px';
+            panel.style.top = Math.round(y) + 'px';
+        }
+    }
+
+    function openRowMenu(menu, last) {
+        openRowMenus().forEach(function (m) { if (m !== menu) { closeRowMenu(m, false); } });
+        menu.open = true;
+        var summary = menu.querySelector('summary');
+        if (summary) { summary.setAttribute('aria-expanded', 'true'); }
+        placeRowMenu(menu);
+        var items = rowMenuItems(menu);
+        if (items.length) { items[last ? items.length - 1 : 0].focus(); }
+    }
+
+    function closeRowMenu(menu, refocus) {
+        if (!menu.open) { return; }
+        menu.open = false;
+        var summary = menu.querySelector('summary');
+        if (summary) {
+            summary.setAttribute('aria-expanded', 'false');
+            if (refocus) { summary.focus(); }
+        }
+    }
+
+    function initRowMenus(scope) {
+        scope.querySelectorAll('[data-folio-row-menu]').forEach(function (menu) {
+            menu.setAttribute('data-folio-row-menu-ready', '');
+            var summary = menu.querySelector('summary');
+            if (summary) { summary.setAttribute('aria-expanded', menu.open ? 'true' : 'false'); }
+        });
+        // Copying a preview link needs a POST and the clipboard: the item shows only when both work.
+        var canCopy = typeof window.fetch === 'function' && typeof navigator !== 'undefined' && !!(navigator.clipboard && navigator.clipboard.writeText);
+        scope.querySelectorAll('[data-folio-copy-link]').forEach(function (b) { b.hidden = !canCopy; });
+    }
+
+    function onRowMenuClick(e) {
+        var t = e.target;
+        var summary = t && t.closest ? t.closest('summary') : null;
+        var menu = summary && summary.parentNode && summary.parentNode.hasAttribute && summary.parentNode.hasAttribute('data-folio-row-menu') ? summary.parentNode : null;
+        if (menu) {
+            e.preventDefault(); // the script opens and closes it (one at a time, placed, focus moved)
+            if (menu.open) { closeRowMenu(menu, false); } else { openRowMenu(menu, false); }
+            return;
+        }
+        var inside = t && t.closest ? t.closest('[data-folio-row-menu]') : null;
+        openRowMenus().forEach(function (m) { if (m !== inside) { closeRowMenu(m, false); } });
+    }
+
+    function onRowMenuKeydown(e) {
+        var t = e.target;
+        var menu = t && t.closest ? t.closest('[data-folio-row-menu]') : null;
+        if (!menu) { return; }
+        var onSummary = t.matches && t.matches('summary');
+        if (!menu.open) {
+            if (onSummary && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); openRowMenu(menu, e.key === 'ArrowUp'); }
+            return;
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeRowMenu(menu, true);
+            return;
+        }
+        if (e.key === 'Tab') { closeRowMenu(menu, false); return; }
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') { return; }
+        e.preventDefault();
+        var items = rowMenuItems(menu);
+        if (!items.length) { return; }
+        var at = items.indexOf(t);
+        var next = e.key === 'Home' ? 0
+            : e.key === 'End' ? items.length - 1
+            : e.key === 'ArrowDown' ? (at + 1) % items.length
+            : (at <= 0 ? items.length - 1 : at - 1);
+        items[next].focus();
+    }
+
+    function onRowMenuScroll() {
+        openRowMenus().forEach(placeRowMenu);
+    }
+
+    // "Copy preview link" in a row menu: the share route answers JSON ({url, message}) for it; the link
+    // goes to the clipboard with a "Link copied" toast, or the toast says why there is none.
+    function onCopyLinkClick(e) {
+        var btn = e.target && e.target.closest ? e.target.closest('[data-folio-copy-link]') : null;
+        if (!btn) { return; }
+        e.preventDefault();
+        var menu = btn.closest('[data-folio-row-menu]');
+        if (menu) { closeRowMenu(menu, true); }
+        var body = new URLSearchParams();
+        var token = document.querySelector('input[name="_csrf_token"]');
+        if (token) { body.append('_csrf_token', token.value); }
+        fetch(btn.getAttribute('data-folio-copy-link'), { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+            .then(function (res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+            })
+            .then(function (data) {
+                if (!data || !data.url) { showToast(data && data.message ? data.message : folioT('link_not_copied')); return null; }
+                return navigator.clipboard.writeText(data.url).then(function () { showToast(folioT('link_copied'), true); });
+            })
+            .catch(function () { showToast(folioT('link_not_copied')); });
+    }
+
+    // ---- List toolbar: the filter popover and the row height ------------------------
+    // "+ Filter" is a <details> (it opens without script); Escape inside it or a click outside closes it,
+    // and Escape returns the focus to its button.
+    function onFilterMenuKeydown(e) {
+        if (e.key !== 'Escape') { return; }
+        var menu = e.target && e.target.closest ? e.target.closest('[data-folio-filter-menu]') : null;
+        if (!menu || !menu.open) { return; }
+        e.preventDefault();
+        menu.open = false;
+        var summary = menu.querySelector('summary');
+        if (summary) { summary.focus(); }
+    }
+
+    function onFilterMenuClick(e) {
+        document.querySelectorAll('[data-folio-filter-menu]').forEach(function (menu) {
+            if (menu.open && !(e.target && e.target.closest && e.target.closest('[data-folio-filter-menu]') === menu)) { menu.open = false; }
+        });
+    }
+
+    // Compact (44px rows) or comfortable (60px, the default), kept in localStorage 'folio.density'; the
+    // layout's head script puts it on <html> as data-folio-density before the first paint.
+    function currentDensity() {
+        return document.documentElement.getAttribute('data-folio-density') === 'compact' ? 'compact' : 'comfortable';
+    }
+
+    function markDensity() {
+        var d = currentDensity();
+        document.querySelectorAll('[data-folio-density-choice]').forEach(function (b) {
+            b.setAttribute('aria-pressed', b.getAttribute('data-folio-density-choice') === d ? 'true' : 'false');
+        });
+    }
+
+    function initDensity() {
+        var groups = document.querySelectorAll('[data-folio-density]');
+        if (!groups.length) { return; }
+        groups.forEach(function (g) { g.hidden = false; });
+        markDensity();
+        document.addEventListener('click', function (e) {
+            var b = e.target && e.target.closest ? e.target.closest('[data-folio-density-choice]') : null;
+            if (!b) { return; }
+            var d = b.getAttribute('data-folio-density-choice') === 'compact' ? 'compact' : 'comfortable';
+            document.documentElement.setAttribute('data-folio-density', d);
+            try { window.localStorage.setItem('folio.density', d); } catch (err) { /* this page only */ }
+            markDensity();
+        });
+    }
+
+    // ---- Keyboard shortcuts -----------------------------------------------------
+    // One registry: a screen adds its keys with Folio.shortcuts.add({key, label, run, mod, typing, hint}).
+    // key is e.key ("j", "/", "?"); mod: true for ⌘ (Ctrl elsewhere) + key; run(e) returns false when it
+    // did nothing (the key then keeps its usual effect). Plain keys never fire while the focus is in an
+    // input, textarea, select or editable text, or with Ctrl, Alt or ⌘ held, or while a dialog is open; a
+    // mod entry fires inside fields only with typing: true (the editor's ⌘S). "?" lists them all.
+    var shortcutList = [];
+    var shortcutsReady = false;
+    var shortcutsDialog = null;
+
+    function isTyping(el) {
+        if (!el || !el.tagName) { return false; }
+        var tag = el.tagName.toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return true; }
+        if (el.isContentEditable) { return true; }
+        var editable = el.getAttribute ? el.getAttribute('contenteditable') : null;
+        return editable !== null && editable !== 'false';
+    }
+
+    function addShortcut(spec) {
+        if (!spec || typeof spec.key !== 'string' || typeof spec.run !== 'function') { return; }
+        shortcutList = shortcutList.filter(function (s) { return !(s.key === spec.key && !!s.mod === !!spec.mod); });
+        shortcutList.push(spec);
+    }
+
+    function shortcutHint(spec) {
+        if (spec.hint) { return spec.hint; }
+        var key = spec.key === 'Enter' ? '↵' : spec.key.length === 1 ? spec.key.toUpperCase() : spec.key;
+        return spec.mod ? '⌘' + key : key;
+    }
+
+    function showShortcuts() {
+        if (!shortcutsDialog) {
+            shortcutsDialog = document.createElement('dialog');
+            shortcutsDialog.className = 'folio-shortcuts';
+            shortcutsDialog.setAttribute('aria-labelledby', 'folio-shortcuts-title');
+            var head = document.createElement('div');
+            head.className = 'folio-shortcuts-head';
+            var title = document.createElement('h2');
+            title.id = 'folio-shortcuts-title';
+            title.textContent = folioT('shortcuts');
+            var close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'btn btn-ghost btn-icon btn-sm';
+            close.setAttribute('aria-label', folioT('close'));
+            close.textContent = '×';
+            close.addEventListener('click', function () { hideShortcuts(); });
+            head.appendChild(title);
+            head.appendChild(close);
+            shortcutsDialog.appendChild(head);
+            var list = document.createElement('dl');
+            list.className = 'folio-shortcuts-list';
+            shortcutsDialog.appendChild(list);
+            shortcutsDialog.addEventListener('close', function () { shortcutsDialog.removeAttribute('open'); });
+            document.body.appendChild(shortcutsDialog);
+        }
+        var dl = shortcutsDialog.querySelector('dl');
+        dl.innerHTML = '';
+        shortcutList.forEach(function (spec) {
+            if (!spec.label) { return; } // an alias (Enter for e) is listed with its twin
+            var dt = document.createElement('dt');
+            var kbd = document.createElement('kbd');
+            kbd.textContent = shortcutHint(spec);
+            dt.appendChild(kbd);
+            var dd = document.createElement('dd');
+            dd.textContent = spec.label || '';
+            dl.appendChild(dt);
+            dl.appendChild(dd);
+        });
+        if (typeof shortcutsDialog.showModal === 'function') { shortcutsDialog.showModal(); }
+        shortcutsDialog.setAttribute('open', ''); // showModal() sets it too; without it the dialog shows in place
+        return shortcutsDialog;
+    }
+
+    function hideShortcuts() {
+        if (!shortcutsDialog) { return; }
+        if (typeof shortcutsDialog.close === 'function') { shortcutsDialog.close(); }
+        shortcutsDialog.removeAttribute('open');
+    }
+
+    function onShortcutKeydown(e) {
+        if (e.defaultPrevented || e.isComposing || !e.key) { return; }
+        var mod = !!(e.metaKey || e.ctrlKey);
+        if (e.altKey || (e.metaKey && e.ctrlKey)) { return; }
+        var typing = isTyping(e.target) || isTyping(document.activeElement);
+        var open = document.querySelector('dialog[open]');
+        var key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+        if (e.key === '?') { key = '?'; }
+        for (var i = 0; i < shortcutList.length; i++) {
+            var spec = shortcutList[i];
+            if (!!spec.mod !== mod || (spec.key.length === 1 ? spec.key.toLowerCase() : spec.key) !== key) { continue; }
+            if ((typing && !(spec.mod && spec.typing)) || open) { return; }
+            if (spec.run(e) !== false) { e.preventDefault(); }
+            return;
+        }
+    }
+
+    function initShortcuts() {
+        if (shortcutsReady) { return; }
+        shortcutsReady = true;
+        addShortcut({ key: '?', label: folioT('shortcut_help'), run: function () { showShortcuts(); } });
+        document.addEventListener('keydown', onShortcutKeydown);
+    }
+
+    window.Folio = window.Folio || {};
+    window.Folio.shortcuts = { add: addShortcut, show: showShortcuts, isTyping: isTyping };
+
+    // A list's keys: / search, n new, j / k move the row focus, Enter or e open the row, x tick it,
+    // . open its "…" menu, d duplicate it (its menu's Duplicate, so only where that item is there).
+    function listRows() {
+        return Array.prototype.slice.call(document.querySelectorAll('[data-folio-list-table] [data-folio-row]'));
+    }
+
+    function currentRow() {
+        var active = document.activeElement;
+        return active && active.closest ? active.closest('[data-folio-row]') : null;
+    }
+
+    function focusRow(row) {
+        var link = row ? row.querySelector('.folio-row-link') : null;
+        if (!link) { return false; }
+        link.focus();
+        if (typeof link.scrollIntoView === 'function') { link.scrollIntoView({ block: 'nearest' }); }
+        return true;
+    }
+
+    function moveRow(step) {
+        var rows = listRows();
+        if (!rows.length) { return false; }
+        var at = rows.indexOf(currentRow());
+        var next = at < 0 ? (step > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, at + step));
+        return focusRow(rows[next]);
+    }
+
+    function openRow(e) {
+        var row = currentRow();
+        var link = row ? row.querySelector('.folio-row-link') : null;
+        // Enter only for the row's own link (Enter on a button or a menu item keeps its own meaning).
+        if (!link || (e.key === 'Enter' && document.activeElement !== link)) { return false; }
+        window.location.href = link.getAttribute('href');
+        return true;
+    }
+
+    function tickRow() {
+        var row = currentRow();
+        var box = row ? row.querySelector('[data-folio-bulk-item]') : null;
+        if (!box) { return false; }
+        box.checked = !box.checked;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+    }
+
+    function rowMenuOf() {
+        var row = currentRow();
+        return row ? row.querySelector('[data-folio-row-menu]') : null;
+    }
+
+    function initListShortcuts() {
+        if (!document.querySelector('[data-folio-list-form], [data-folio-list-table]')) { return; }
+        addShortcut({ key: '/', label: folioT('shortcut_search'), run: function () {
+            var input = document.querySelector('[data-folio-list-search]');
+            if (!input) { return false; }
+            input.focus();
+            if (typeof input.select === 'function') { input.select(); }
+            return true;
+        } });
+        addShortcut({ key: 'n', label: folioT('shortcut_new'), run: function () {
+            var link = document.querySelector('[data-folio-new]');
+            if (!link) { return false; }
+            link.click();
+            return true;
+        } });
+        addShortcut({ key: 'j', label: folioT('shortcut_next'), run: function () { return moveRow(1); } });
+        addShortcut({ key: 'k', label: folioT('shortcut_previous'), run: function () { return moveRow(-1); } });
+        addShortcut({ key: 'e', label: folioT('shortcut_open'), hint: 'E / ↵', run: openRow });
+        addShortcut({ key: 'Enter', label: '', run: openRow });
+        addShortcut({ key: 'x', label: folioT('shortcut_tick'), run: tickRow });
+        addShortcut({ key: '.', label: folioT('shortcut_menu'), run: function () {
+            var menu = rowMenuOf();
+            if (!menu) { return false; }
+            openRowMenu(menu, false);
+            return true;
+        } });
+        addShortcut({ key: 'd', label: folioT('shortcut_duplicate'), run: function () {
+            var menu = rowMenuOf();
+            var item = menu ? menu.querySelector('[data-folio-menu-duplicate]') : null;
+            if (!item || item.disabled) { return false; }
+            item.click();
+            return true;
+        } });
+    }
+
     function boot() {
         document.querySelectorAll('[data-folio-list-form]').forEach(initList);
         document.addEventListener('submit', onSubmitConfirm);
         document.addEventListener('submit', onDeletePlanSubmit);
         document.addEventListener('submit', onRemovalSubmit);
         initBulk(document);
+        initRowMenus(document);
+        document.addEventListener('click', onRowMenuClick);
+        document.addEventListener('keydown', onRowMenuKeydown);
+        document.addEventListener('click', onCopyLinkClick);
+        document.addEventListener('keydown', onFilterMenuKeydown);
+        document.addEventListener('click', onFilterMenuClick);
+        window.addEventListener('scroll', onRowMenuScroll, true);
+        window.addEventListener('resize', onRowMenuScroll);
+        initDensity();
         document.addEventListener('change', onBulkChange);
         document.addEventListener('reset', onBulkReset);
         document.addEventListener('click', onBulkExport);
@@ -2100,6 +2497,9 @@
         initNavSections();
         initUserMenus();
         initShellRail();
+        // After the menus' own keys (Escape, arrows), which mark their events handled.
+        initShortcuts();
+        initListShortcuts();
         // Last, after the unsaved-changes guards: when one of them asked "Leave the page?" and the
         // person chose to stay, nothing else would release a plain submit's busy button.
         window.addEventListener('beforeunload', onBusyBeforeUnload);

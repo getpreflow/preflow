@@ -10,8 +10,9 @@ use Preflow\Data\TypeDefinition;
 /**
  * What the admin list's toolbar, chips, headers and pager show for one request: the search
  * term, the hidden inputs that keep the active filters and sort when the search form is sent,
- * the "+ Filter" menu (filters not in use), a removable chip per active filter, sort links per
- * column and the page links. Every link is built from ListQuery::query(), so it carries only
+ * the "+ Filter" menu (filters not in use), a removable chip per active filter, the status links
+ * of a publishing type (All · Published · Changes not live · Drafts), sort links per column and
+ * the page links. Every link is built from ListQuery::query(), so it carries only
  * validated parameters (never "_partial").
  */
 final class ListView
@@ -26,6 +27,8 @@ final class ListView
      * @param bool                   $withFilterMenu false: leave the "+ Filter" entries out (and their option queries),
      *                                               for renders that never show the menu (the results partial)
      * @param DisplayLabels|null     $labels filter labels and select options in the interface language (null: the model file's default texts)
+     * @param array<string, int>|null $statusCounts records per publish state over the whole type (ListQuery::STATUSES
+     *                                              keys); null: the type does not publish, so no status links (@since 0.75)
      * @return array<string, mixed>
      */
     public static function build(
@@ -39,6 +42,7 @@ final class ListView
         \Closure $canView,
         bool $withFilterMenu = true,
         ?DisplayLabels $labels = null,
+        ?array $statusCounts = null,
     ): array {
         $params = $query->query();
         unset($params['page']);
@@ -116,6 +120,28 @@ final class ListView
             $headers[$name] = ['label' => $label, 'dir' => $dir, 'href' => $sortable ? $href($next) : null];
         }
 
+        // The status links keep the search, filters and sort, and start at page 1.
+        $statuses = [];
+        if ($statusCounts !== null) {
+            $without = $params;
+            unset($without['status']);
+            $keys = ['all' => 'status_all', 'published' => 'status_published', 'changed' => 'status_changed', 'draft' => 'status_drafts'];
+            foreach ($keys as $status => $key) {
+                $count = $status === 'all' ? array_sum($statusCounts) : (int) ($statusCounts[$status] ?? 0);
+                $statuses[] = [
+                    'status' => $status,
+                    'label' => \Preflow\Folio\FolioText::get('folio.list.' . $key),
+                    'count' => $count,
+                    // In the order ListQuery::query() writes them (status before sort).
+                    'href' => $href($status === 'all' ? $without : array_filter(
+                        array_merge(['q' => null, 'f' => null, 'unchecked' => null, 'status' => null], $without, ['status' => $status]),
+                        static fn (mixed $v): bool => $v !== null,
+                    )),
+                    'current' => ($query->status ?? 'all') === $status,
+                ];
+            }
+        }
+
         $page = $result->currentPage;
         $pageHref = static fn (int $n): string => $href($n > 1 ? $params + ['page' => (string) $n] : $params);
         $pages = [];
@@ -141,7 +167,8 @@ final class ListView
             'chips' => $chips,
             'headers' => $headers,
             'sorted' => $query->sort !== null,
-            'filtered' => $query->q !== '' || $query->filters !== [] || $query->unchecked,
+            'filtered' => $query->q !== '' || $query->filters !== [] || $query->unchecked || $query->status !== null,
+            'statuses' => $statuses,
             'total' => $result->total,
             'from' => $from,
             'to' => $from === 0 ? 0 : $from + count($result->items) - 1,

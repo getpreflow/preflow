@@ -41,6 +41,26 @@ final class ListCells
         return self::plain(self::display($type, $type->fromStorage($localized->get($name)), $config));
     }
 
+    /** Field types whose cells are numbers: the list sets them in mono, right-aligned. */
+    private const array NUMBER_TYPES = ['number', 'int', 'integer', 'float'];
+
+    /**
+     * What kind of value a column shows: "number" (a number field: mono, right-aligned), "relation"
+     * (linked records' labels) or "text" (everything else).
+     *
+     * @since 0.75
+     */
+    public static function kind(TypeDefinition $def, string $name): string
+    {
+        $type = $def->fields[$name]->type ?? '';
+
+        return match (true) {
+            in_array($type, self::NUMBER_TYPES, true) => 'number',
+            $type === 'relation' => 'relation',
+            default => 'text',
+        };
+    }
+
     /** The field type's admin display (list cells, read-only fields): renderAdmin() when it has one, else renderFrontend(). */
     public static function display(FieldType $type, mixed $value, array $config): string
     {

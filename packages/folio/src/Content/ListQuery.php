@@ -12,9 +12,10 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * What an admin list request asks for, read from the URL: "q" (search), "f[field]" (filters),
- * "sort" ("field" / "-field") and "page". Every field name is checked against the type and the
- * list's allow-lists ("list.filters", the list columns) before it can reach a query; values are
- * only ever bound. Anything unknown or malformed is dropped, never an error.
+ * "status" (published, changed or draft; publishing types only), "sort" ("field" / "-field") and
+ * "page". Every field name is checked against the type and the list's allow-lists
+ * ("list.filters", the list columns) before it can reach a query; values are only ever bound.
+ * Anything unknown or malformed is dropped, never an error.
  */
 final readonly class ListQuery
 {
@@ -27,6 +28,9 @@ final readonly class ListQuery
     private const int MAX_PAGE = 1_000_000;
 
     private const array NUMERIC_TYPES = ['number', 'int', 'integer', 'float'];
+
+    /** The publish states "status" can narrow a list to (Preflow\Publishing\PublishState values). */
+    public const array STATUSES = ['published', 'changed', 'draft'];
 
     /**
      * @param array<string, string|list<string>|array{from?: string, to?: string}> $filters field => value (date: from / to; relation: ids)
@@ -42,6 +46,8 @@ final readonly class ListQuery
         private TypeDefinition $def,
         private array $listConfig,
         private string $locale,
+        /** "status": only records in this publish state (@since 0.75); null: every state. */
+        public ?string $status = null,
     ) {}
 
     /**
@@ -72,8 +78,11 @@ final readonly class ListQuery
         return $names;
     }
 
-    /** @param array<string, mixed> $listConfig */
-    public static function fromRequest(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, string $locale): self
+    /**
+     * @param array<string, mixed> $listConfig
+     * @param bool                 $statuses   whether the type publishes, so "status" may narrow it (@since 0.75)
+     */
+    public static function fromRequest(ServerRequestInterface $request, TypeDefinition $def, array $listConfig, string $locale, bool $statuses = false): self
     {
         $params = $request->getQueryParams();
 
@@ -110,7 +119,9 @@ final readonly class ListQuery
         // "unchecked=1": only records holding machine translations nobody has checked yet.
         $unchecked = ($params['unchecked'] ?? null) === '1' && $def->translatableFields() !== [];
 
-        return new self($q, $filters, $sort, $desc, $page, $unchecked, $def, $listConfig, $locale);
+        $status = $statuses && in_array($params['status'] ?? null, self::STATUSES, true) ? (string) $params['status'] : null;
+
+        return new self($q, $filters, $sort, $desc, $page, $unchecked, $def, $listConfig, $locale, $status);
     }
 
     /** Search, filters, order and the requested page on the query. */
@@ -164,11 +175,15 @@ final readonly class ListQuery
     /**
      * Runs the query for the requested page; a page past the end gives the last page instead.
      * The returned result's currentPage is the page actually shown.
+     *
+     * @param (\Closure(\Preflow\Data\DynamicRecord): bool)|null    $isUnchecked whether a record holds machine translations nobody checked ("unchecked=1")
+     * @param (\Closure(\Preflow\Data\DynamicRecord): string)|null  $stateOf     a record's publish state value ("status"; @since 0.75)
      */
-    public function fetch(QueryBuilder $qb, ?\Closure $isUnchecked = null): PaginatedResult
+    public function fetch(QueryBuilder $qb, ?\Closure $isUnchecked = null, ?\Closure $stateOf = null): PaginatedResult
     {
-        if ($this->unchecked && $isUnchecked !== null) {
-            return $this->fetchUnchecked($qb, $isUnchecked);
+        $keep = $this->narrowing($isUnchecked, $stateOf);
+        if ($keep !== null) {
+            return $this->fetchNarrowed($qb, $keep);
         }
         $this->apply($qb);
         $result = $qb->paginate(self::PER_PAGE, $this->page);
@@ -180,17 +195,52 @@ final readonly class ListQuery
     }
 
     /**
-     * The "unchecked" filter: whether a record holds machine translations nobody has checked yet
-     * lives in a JSON value no storage driver can query, so the matches of the other filters are
-     * read and narrowed here, then paged.
+     * What "unchecked" and "status" keep, as one predicate (both when both are asked); null when
+     * neither narrows this request. The export reads the same records through it.
      *
-     * @param \Closure(\Preflow\Data\DynamicRecord): bool $isUnchecked
+     * @since 0.75
+     *
+     * @param (\Closure(\Preflow\Data\DynamicRecord): bool)|null   $isUnchecked
+     * @param (\Closure(\Preflow\Data\DynamicRecord): string)|null $stateOf
+     * @return (\Closure(\Preflow\Data\DynamicRecord): bool)|null
      */
-    private function fetchUnchecked(QueryBuilder $qb, \Closure $isUnchecked): PaginatedResult
+    public function narrowing(?\Closure $isUnchecked = null, ?\Closure $stateOf = null): ?\Closure
+    {
+        $tests = [];
+        if ($this->unchecked && $isUnchecked !== null) {
+            $tests[] = $isUnchecked;
+        }
+        if ($this->status !== null && $stateOf !== null) {
+            $status = $this->status;
+            $tests[] = static fn (\Preflow\Data\DynamicRecord $record): bool => $stateOf($record) === $status;
+        }
+        if ($tests === []) {
+            return null;
+        }
+
+        return static function (\Preflow\Data\DynamicRecord $record) use ($tests): bool {
+            foreach ($tests as $test) {
+                if (!$test($record)) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+    }
+
+    /**
+     * A narrowing no storage driver can query (whether a record holds unchecked machine
+     * translations lives in a JSON value; its publish state needs its snapshot): the matches of
+     * the other filters are read and narrowed here, then paged.
+     *
+     * @param \Closure(\Preflow\Data\DynamicRecord): bool $keep
+     */
+    private function fetchNarrowed(QueryBuilder $qb, \Closure $keep): PaginatedResult
     {
         $this->apply($qb);
         $qb->limit(self::MAX_PAGE * self::PER_PAGE)->offset(0);
-        $items = array_values(array_filter($qb->get()->items(), $isUnchecked));
+        $items = array_values(array_filter($qb->get()->items(), $keep));
 
         $total = count($items);
         $last = max(1, (int) ceil($total / self::PER_PAGE));
@@ -215,6 +265,9 @@ final readonly class ListQuery
         }
         if ($this->unchecked) {
             $query['unchecked'] = '1';
+        }
+        if ($this->status !== null) {
+            $query['status'] = $this->status;
         }
         if ($this->sort !== null) {
             $query['sort'] = ($this->desc ? '-' : '') . $this->sort;

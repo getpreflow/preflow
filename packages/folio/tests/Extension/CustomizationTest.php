@@ -800,21 +800,21 @@ final class CustomizationTest extends TestCase
         $this->crm();
         $this->seedAs('admin');
         $body = (string) $this->send('GET', '/folio/contact?q=ad')->getBody();
-        $bar = substr($body, (int) strpos($body, 'data-folio-bulk'));
-        $this->assertStringContainsString('<form class="folio-bulk-bar" id="folio-bulk" method="post" data-folio-bulk>', $body);
+        $bar = substr($body, (int) strpos($body, 'data-folio-bulk>'));
+        $this->assertStringContainsString('<form class="folio-bulk-bar" id="folio-bulk" method="post" role="toolbar" aria-label="Selected rows" data-folio-bulk>', $body);
         $this->assertStringContainsString('<input type="hidden" name="_query" value="q=ad">', $bar);
         $this->assertStringContainsString('<span class="folio-bulk-count" data-folio-bulk-count>With selected:</span>', $bar);
-        $this->assertMatchesRegularExpression('#<summary class="btn btn-sm">Set Stage ▾</summary>#', $bar);
+        $this->assertMatchesRegularExpression('#<summary class="btn btn-sm">Set Stage<svg class="folio-icon folio-bulk-caret" aria-hidden="true">#', $bar);
         $this->assertStringContainsString('<button type="submit" class="folio-menu-item" formaction="/folio/contact/_bulk/set-stage" name="value" value="customer">Customer</button>', $bar);
         $this->assertStringContainsString('formaction="/folio/contact/_bulk/set-vip" name="value" value="0">No</button>', $bar);
         $this->assertStringNotContainsString('set-name', $bar);
         $this->assertStringContainsString('<button type="submit" class="btn btn-sm" formaction="/folio/contact/_bulk/tag" data-confirm="Tag these contacts?">Tag</button>', $bar);
-        $this->assertStringContainsString('formaction="/folio/contact/_bulk/delete" data-delete-plan="/folio/contact/_delete-plan" data-confirm="Delete the selected records?">Delete</button>', $bar);
-        $this->assertStringContainsString('<button type="reset" class="btn btn-sm folio-bulk-clear" data-folio-bulk-clear>Clear</button>', $bar);
+        $this->assertStringContainsString('formaction="/folio/contact/_bulk/delete" data-delete-plan="/folio/contact/_delete-plan" data-confirm="Delete the selected records?"><svg class="folio-icon" aria-hidden="true"><use href="/folio/_assets/icons.svg', $bar);
+        $this->assertStringContainsString('<button type="reset" class="btn btn-sm btn-icon folio-bulk-clear" data-folio-bulk-clear aria-label="Clear" title="Clear">', $bar);
         $this->assertStringContainsString('<input type="checkbox" data-folio-bulk-all aria-label="Select all on this page" hidden>', $body);
         // Export: the header link takes the whole filtered list, the bar's button the ticked rows (JS adds the ids).
-        $this->assertStringContainsString('<a class="btn btn-secondary" href="/folio/contact/_export?q=ad" data-folio-export-all="/folio/contact/_export">Export</a>', $body);
-        $this->assertStringContainsString('<button type="button" class="btn btn-sm" data-folio-export="/folio/contact/_export?q=ad" hidden>Export</button>', $bar);
+        $this->assertMatchesRegularExpression('#<a class="btn btn-secondary" href="/folio/contact/_export\?q=ad" data-folio-export-all="/folio/contact/_export"><svg[^>]*><use[^>]*></use></svg>Export</a>#', $body);
+        $this->assertMatchesRegularExpression('#<button type="button" class="btn btn-sm" data-folio-export="/folio/contact/_export\?q=ad" hidden><svg[^>]*><use[^>]*></use></svg>Export</button>#', $bar);
         $this->assertStringContainsString('<input type="checkbox" name="ids[]" value="c1" form="folio-bulk" data-folio-bulk-item aria-label="Select Ada">', $body);
 
         // The partial (search as you type) carries the bar too, so a swap starts a fresh selection.

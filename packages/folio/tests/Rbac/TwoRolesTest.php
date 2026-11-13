@@ -137,7 +137,7 @@ final class TwoRolesTest extends TestCase
         $types = [
             'content' => ['page', 'p1', ['title' => 'New page'], ['title' => 'One'], 'p-del', []],
             'staff' => ['staff', 's-plain', ['email' => 'new@site.test', 'name' => 'New', 'roles' => [''], 'active' => '1'],
-                ['email' => 'plain@site.test', 'name' => 'Plain', 'roles' => [''], 'active' => '1'], 's-spare', $none],
+                ['email' => 'plain@site.test', 'name' => 'Plain', 'roles' => [''], 'active' => '1'], 's-spare', $none + ['POST /folio/{type}/{id}/duplicate' => 404]],
             'roles' => ['rbac_role', 'r-spare', ['name' => 'helper', 'label' => 'Helper', 'population' => 'staff', 'permissions' => ['page.view']],
                 ['name' => 'spare', 'label' => 'Spare', 'population' => 'staff', 'permissions' => ['page.view']], 'r-spare', $none],
             'settings' => ['moderation_settings', 'moderation_settings', ['welcome' => 'Hi'], ['welcome' => 'Hi'], null, $none + [
@@ -146,6 +146,7 @@ final class TwoRolesTest extends TestCase
                 'GET /folio/{type}/_export' => 404,
                 'POST /folio/{type}/_delete-plan' => 404,
                 'POST /folio/{type}/_bulk/delete' => 404, 'POST /folio/{type}/_bulk/{name}' => 404,
+                'POST /folio/{type}/{id}/duplicate' => 404,
             ]],
         ];
         foreach ($types as $kind => [$type, $id, $new, $update, $deletable, $differs]) {
@@ -186,6 +187,8 @@ final class TwoRolesTest extends TestCase
             $row('POST /folio/{type}/{id}/share/revoke', "/folio/{$type}/{$id}/share/revoke", [], 404);
             $row('POST /folio/{type}/{id}', "/folio/{$type}/{$id}", $update, 302);
             $row('POST /folio/{type}/{id}/move', "/folio/{$type}/{$id}/move", [], 404);
+            // A copy for those who may create; never of a user type (it would carry the password) or a singleton (404).
+            $row('POST /folio/{type}/{id}/duplicate', "/folio/{$type}/{$id}/duplicate", [], 302);
             $row('POST /folio/{type}/{id}/_action/{name}', "/folio/{$type}/{$id}/_action/nothing", [], 404);
             if ($deletable !== null) {
                 $row('POST /folio/{type}/{id}/delete', "/folio/{$type}/{$deletable}/delete", [], 302);

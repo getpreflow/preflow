@@ -940,8 +940,9 @@ final class FolioAppTest extends TestCase
         $body = (string) $this->get('/folio/page')->getBody();
 
         $this->assertStringContainsString('<th>Languages</th>', $body);
-        $this->assertStringContainsString('de · 3 missing', $body); // every text the default language has: title, slug and body
-        $this->assertStringContainsString('folio-badge is-incomplete', $body);
+        // Every text the default language has (title, slug and body) is missing: the language indicator's missing state.
+        $this->assertStringContainsString('<span class="folio-languages-item is-missing" title="German: missing">', $body);
+        $this->assertStringContainsString('<span class="folio-languages-item is-complete" title="English: complete">', $body);
     }
 
     public function test_list_shows_outdated_badge(): void
@@ -950,9 +951,8 @@ final class FolioAppTest extends TestCase
 
         $body = (string) $this->get('/folio/page')->getBody();
 
-        $this->assertStringContainsString('de · 1 outdated', $body);
-        $this->assertStringContainsString('folio-badge is-outdated', $body);
-        $this->assertStringNotContainsString('missing', $body);
+        $this->assertStringContainsString('<span class="folio-languages-item is-complete is-stale" title="German: complete; de · 1 outdated">', $body);
+        $this->assertStringNotContainsString('is-missing', $body);
     }
 
     public function test_list_marks_a_finished_translation_ok(): void
@@ -963,7 +963,7 @@ final class FolioAppTest extends TestCase
 
         $body = (string) $this->get('/folio/page')->getBody();
 
-        $this->assertMatchesRegularExpression('/<span class="folio-badge is-ok">de<\/span>/', $body);
+        $this->assertMatchesRegularExpression('#<span class="folio-languages-item is-complete" title="German: complete"><span aria-hidden="true">DE</span>#', $body);
     }
 
     public function test_form_marks_outdated_field_and_offers_still_correct(): void
@@ -1033,9 +1033,7 @@ final class FolioAppTest extends TestCase
         $this->enableGermanPage('Plain');
 
         $all = (string) $this->get('/folio/page')->getBody();
-        $this->assertStringContainsString('de · 1 not checked', $all);
-        $this->assertStringContainsString('folio-badge is-unchecked', $all);
-        $this->assertStringContainsString('href="/folio/page?unchecked=1"', $all);
+        $this->assertStringContainsString('<a class="folio-languages-item is-complete is-stale" title="German: complete; de · 1 not checked" href="/folio/page?unchecked=1">', $all);
         $this->assertStringContainsString('Plain', $all);
 
         $filtered = (string) $this->get('/folio/page?unchecked=1')->getBody();
@@ -1908,11 +1906,11 @@ final class FolioAppTest extends TestCase
         $asc = (string) $this->get('/folio/game?sort=title')->getBody();
         $this->assertLessThan(strpos($asc, 'Beta'), strpos($asc, 'Alpha'));
         $this->assertMatchesRegularExpression('#<th aria-sort="ascending"><a class="folio-sort" href="/folio/game\?sort=-title">Title#', $asc);
-        $this->assertStringContainsString('Title <span class="folio-sort-mark" aria-hidden="true">▲</span></a>', $asc);
+        $this->assertStringContainsString('Title <span class="folio-sort-mark" aria-hidden="true">↑</span></a>', $asc);
         // Every other sortable header shows a faint ↕; a relation column is no link and has no mark.
         $this->assertStringContainsString('<a class="folio-sort" href="/folio/game?sort=status">Status <span class="folio-sort-mark is-idle" aria-hidden="true"></span></a>', $asc);
         $this->assertMatchesRegularExpression('#<th>Designer</th>#', $asc);
-        // The bar and the table share a frame, so the bar can lie over the header row.
+        // The bar and the table share a frame: the bar floats under the table.
         $this->assertStringContainsString('<div class="folio-table-frame">', $asc);
 
         $desc = (string) $this->get('/folio/game?sort=-title')->getBody();
@@ -1963,9 +1961,10 @@ final class FolioAppTest extends TestCase
         $this->postItem(['title' => 'A item']);
         $this->postItem(['title' => 'B item']);
 
-        $this->assertStringContainsString('aria-label="Move up"', (string) $this->get('/folio/item')->getBody());
-        $this->assertStringNotContainsString('aria-label="Move up"', (string) $this->get('/folio/item?sort=title')->getBody());
-        $this->assertStringNotContainsString('aria-label="Move up"', (string) $this->get('/folio/item?q=item')->getBody());
+        $move = '<input type="hidden" name="direction" value="up">';
+        $this->assertStringContainsString($move, (string) $this->get('/folio/item')->getBody());
+        $this->assertStringNotContainsString($move, (string) $this->get('/folio/item?sort=title')->getBody());
+        $this->assertStringNotContainsString($move, (string) $this->get('/folio/item?q=item')->getBody());
     }
 
     public function test_move_returns_to_the_page_it_was_made_on(): void

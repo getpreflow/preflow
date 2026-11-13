@@ -50,7 +50,8 @@ final class JobsExtensionTest extends TestCase
     /** The pattern of Lumen Harbor's row: its name, its place, then the "Open jobs" cell. */
     private function openJobsCell(int $open): string
     {
-        return '#>Lumen Harbor</a></td><td>[^<]*</td><td>' . $open . '</td>#';
+        // The title cell (link, then since 0.75 its meta wrapper), the other cells, then the extension's column.
+        return '#>Lumen Harbor</a></span>\s*</div></td>(?:<td[^>]*>[^<]*</td>)*<td>' . $open . '</td>#';
     }
 
     public function test_company_list_shows_open_jobs(): void

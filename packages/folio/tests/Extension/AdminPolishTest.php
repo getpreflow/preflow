@@ -95,6 +95,18 @@ final class AdminPolishTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_row_menu_offers_header_actions_but_not_toolbar_false_ones(): void
+    {
+        $this->polish();
+        $this->as('admin');
+        $this->seed('m1', ['name' => 'Ada', 'state' => 'waiting']);
+
+        $list = (string) $this->send('GET', '/folio/member')->getBody();
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/member/m1/_action/toolbar-on">\s*<input type="hidden" name="_csrf_token" value="[^"]*">\s*<button type="submit" class="folio-menu-item" role="menuitem"><span>In header</span></button>#', $list);
+        $this->assertStringNotContainsString('/_action/panel-only', $list, 'a toolbar: false action stays in the editor');
+    }
+
+    #[RunInSeparateProcess]
     public function test_list_column_badge_renders_with_tone_and_escapes(): void
     {
         $this->polish();
