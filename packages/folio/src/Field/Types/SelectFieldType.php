@@ -14,7 +14,8 @@ use Preflow\Folio\Field\FieldContext;
  * How it shows (board LibFields, 0.75): up to SEGMENTED_MAX options of a choice that is required or
  * has a "default" are a segmented radiogroup; "display": "cards" shows radio cards with a
  * description each ("options" as {value: {"label": …, "help": …}}); "display": "radio" radio chips;
- * "display": "select", or anything else, a select (an optional one keeps "—", for no choice).
+ * "display": "select" a select (an optional one keeps "—", for no choice). Any other "display"
+ * value is a boot error (TypeCatalog, through display()).
  */
 final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\Folio\Field\SearchableText, \Preflow\Folio\Field\HasColumnKind
 {
@@ -161,7 +162,7 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
     /** An option given as {label, help}, not as a label (or a label per language). */
     private static function isCard(mixed $option): bool
     {
-        return is_array($option) && array_key_exists('label', $option) && array_diff(array_keys($option), ['label', 'help']) === [];
+        return \Preflow\Data\ModelLabelKeys::isDescribedOption($option);
     }
 
     /** A label: a text, or a map per language (the interface language's entry; English outside the admin). */

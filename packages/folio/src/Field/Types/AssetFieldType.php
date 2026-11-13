@@ -85,12 +85,15 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
 
         $attrs = ' data-folio-asset-field data-selection-name="' . $e($selection) . '" data-multiple="' . ($cfg['multiple'] ? '1' : '0') . '"';
         if ($this->library !== null) {
-            $attrs .= ' data-picker-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets?picker=1&multiple=' . ($cfg['multiple'] ? '1' : '0') . '&private=' . ($cfg['private'] ? '1' : '0')) . '"';
+            // The record's language travels along: the cards judge alt text in it (AssetCard).
+            $locale = $ctx->locale !== null && $ctx->locale !== ($ctx->locales?->default ?? $ctx->locale) ? '&locale=' . rawurlencode($ctx->locale) : '';
+            $attrs .= ' data-picker-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets?picker=1&multiple=' . ($cfg['multiple'] ? '1' : '0') . '&private=' . ($cfg['private'] ? '1' : '0') . $locale) . '"';
         }
         if ($droppable) {
             $attrs .= ' data-upload-url="' . $e(rtrim($this->adminPrefix, '/') . '/assets') . '" data-accept="' . $e($cfg['accept']) . '"'
-                . ' data-private="' . ($cfg['private'] ? '1' : '0') . '"'
-                . ' data-text-refused="' . $e($t('folio.fields.drop_refused')) . '" data-text-uploading="' . $e($t('folio.fields.uploading')) . '"';
+                . ' data-private="' . ($cfg['private'] ? '1' : '0') . '"' . ($ctx->locale !== null ? ' data-locale="' . $e($ctx->locale) . '"' : '')
+                . ' data-text-refused="' . $e($t('folio.fields.drop_refused')) . '" data-text-uploading="' . $e($t('folio.fields.uploading')) . '"'
+                . ' data-text-failed="' . $e($t('folio.fields.upload_failed')) . '"';
         }
         // A group named by its label: the cards, Choose and Upload belong to it.
         $labelId = preg_replace('/[^A-Za-z0-9_-]/', '-', $name) . '-label';
@@ -110,7 +113,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         }
         $html .= '</ul>' . "\n";
         if ($droppable) {
-            $html .= '  <p class="folio-asset-empty">' . \Preflow\Folio\View\InlineIcon::svg('ui-upload') . '<strong>' . $e($t($images ? 'folio.fields.drop_image' : 'folio.fields.drop_here')) . '</strong></p>' . "\n";
+            $html .= '  <p class="folio-asset-empty">' . \Preflow\Folio\View\InlineIcon::svg('ui-upload') . '<strong>' . $e($t($images ? 'folio.fields.drop_image_or_choose' : 'folio.fields.drop_here')) . '</strong></p>' . "\n";
         }
 
         $html .= '  <div class="folio-asset-actions">';
@@ -121,7 +124,14 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
             $inputName = $cfg['multiple'] ? $name . '[]' : $name;
             $acceptAttr = $cfg['accept'] !== '' ? ' accept="' . $e($cfg['accept']) . '"' : '';
             $multipleAttr = $cfg['multiple'] ? ' multiple' : '';
-            $html .= '<label class="folio-asset-upload">' . $e($t('folio.fields.upload')) . ' <input type="file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>';
+            // The real file input inside a button-styled label: without script it uploads on save; with
+            // script (folio-js) it is hidden only visually (still focusable, the label shows its focus)
+            // and fields.js sends a chosen file through the same upload as a drop. A filled single field
+            // reads "Replace" (CSS, by whether a card is there). The live region names the chosen file.
+            $html .= '<label class="btn btn-secondary btn-sm folio-asset-upload"><span class="folio-upload-label">' . $e($t('folio.fields.upload')) . '</span>'
+                . (!$cfg['multiple'] ? '<span class="folio-upload-label is-replace">' . $e($t('folio.fields.replace')) . '</span>' : '')
+                . '<input type="file" class="folio-asset-file" name="' . $e($inputName) . '"' . $acceptAttr . $multipleAttr . '></label>'
+                . '<span class="folio-asset-upload-name" data-folio-upload-name aria-live="polite"></span>';
         }
         $html .= '</div>' . "\n";
         $html .= '  </div>' . "\n";
@@ -158,8 +168,12 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
             $html .= '<span class="folio-asset-preview"><img src="' . $e((string) ($card['thumb'] ?? '')) . '" alt="" class="folio-asset-thumb">'
                 // Placed by script (fields.js) from data-focal: no style attribute under a strict CSP.
                 . '<span class="folio-asset-focal"' . ($card['focal'] !== null ? ' data-focal="' . $card['focal'][0] . ',' . $card['focal'][1] . '"' : '') . ' aria-hidden="true" hidden></span></span>';
-        } else {
+        }
+        if (!$template && ($card['thumb'] ?? null) === null) {
             $html .= '<span class="folio-asset-preview is-file" aria-hidden="true">' . \Preflow\Folio\View\InlineIcon::svg('ui-file') . '</span>';
+        } elseif ($template) {
+            // A file without a thumbnail (a PDF): admin.js keeps this one instead of the image.
+            $html .= '<span class="folio-asset-preview is-file" aria-hidden="true" hidden>' . \Preflow\Folio\View\InlineIcon::svg('ui-file') . '</span>';
         }
         $html .= ''
             . '<span class="folio-asset-info"><span class="folio-asset-name">'
@@ -186,19 +200,17 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
     {
         $asset = $this->library?->find($value);
         if ($asset !== null) {
-            $kind = $asset->kind();
-            $meta = \Preflow\Folio\FolioText::get('folio.assets.kind_names.' . $kind)
-                . ($asset->width !== null && $asset->height !== null ? ' · ' . $asset->width . ' × ' . $asset->height : '');
-            $default = $ctx?->locales?->default ?? $ctx?->locale ?? 'en';
-            $thumb = $this->library->thumbnailUrl($asset);
+            // The same card the picker and the upload's JSON answer give (AssetCard).
+            [$locale, $default] = $this->cardLocales($ctx);
+            $card = \Preflow\Folio\Media\AssetCard::of($asset, $this->library, $locale, $default);
 
             return [
-                'thumb' => $thumb,
-                'name' => $asset->label(),
+                'thumb' => $card['thumb'] !== '' ? $card['thumb'] : null,
+                'name' => $card['label'],
                 'href' => null,
-                'meta' => $meta,
-                'warn' => $kind === 'image' && $asset->altFor($ctx?->locale ?? $default, $default) === '',
-                'focal' => $thumb !== null && $kind === 'image' ? [$asset->focalX, $asset->focalY] : null,
+                'meta' => $card['meta'],
+                'warn' => $card['warn'],
+                'focal' => $card['focal'] !== '' ? array_map('intval', explode(',', $card['focal'])) : null,
             ];
         }
         $binned = $this->library?->findBinned($value);
@@ -208,6 +220,14 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         $url = $this->urlFor($value);
 
         return ['thumb' => $this->isImage($value) ? $url : null, 'name' => basename($value), 'href' => $this->isImage($value) ? null : $url, 'meta' => '', 'warn' => false, 'focal' => null];
+    }
+
+    /** @return array{string, string} the record's language and the default, for the alt-text warning */
+    private function cardLocales(?FieldContext $ctx): array
+    {
+        $default = $ctx?->locales?->default ?? $ctx?->locale ?? 'en';
+
+        return [$ctx?->locale ?? $default, $default];
     }
 
     private static function inBin(\Preflow\Media\Asset $asset): string

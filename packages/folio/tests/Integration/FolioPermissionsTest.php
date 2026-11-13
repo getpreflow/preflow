@@ -419,6 +419,43 @@ final class FolioPermissionsTest extends TestCase
             : 0;
     }
 
+    /** The asset field's drop: the JSON upload is the same route, with the same permission and CSRF check. */
+    private function jsonUpload(?string $token): ResponseInterface
+    {
+        $f = new Psr17Factory();
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
+        $file = $f->createUploadedFile($f->createStream($png), strlen($png), UPLOAD_ERR_OK, 'drop.png', 'image/png');
+        $req = $f->createServerRequest('POST', '/folio/assets')->withHeader('Sec-Fetch-Site', 'same-origin')->withHeader('Accept', 'application/json')
+            ->withParsedBody(['picker' => '1'] + ($token !== null ? ['_csrf_token' => $token] : []))->withUploadedFiles(['files' => [$file]]);
+
+        return $this->session->handle($req);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_json_upload_needs_assets_upload_and_the_token(): void
+    {
+        $this->as('editor'); // assets.view only
+        $this->assertSame(403, $this->jsonUpload($this->token)->getStatusCode());
+        $this->assertSame(0, $this->libraryFiles());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_json_upload_without_the_right_token_is_refused(): void
+    {
+        $this->as('admin');
+        foreach ([null, 'not-the-token'] as $token) {
+            try {
+                $status = $this->jsonUpload($token)->getStatusCode();
+            } catch (\Throwable) {
+                $status = 403; // refused before the handler, as an HTML post would be
+            }
+            $this->assertGreaterThanOrEqual(400, $status, var_export($token, true));
+        }
+        $this->assertSame(0, $this->libraryFiles());
+        $this->assertSame(200, $this->jsonUpload($this->token)->getStatusCode(), 'with the session token it uploads');
+        $this->assertGreaterThan(0, $this->libraryFiles());
+    }
+
     #[RunInSeparateProcess]
     public function test_record_form_upload_needs_assets_upload(): void
     {

@@ -50,6 +50,54 @@ final class AssetLibraryAppTest extends TestCase
         $this->assertSame(1, count($this->lib()->all()));
     }
 
+    /** The asset field's drop (0.75): with the JSON Accept the upload route answers the chosen cards. */
+    public function test_a_json_upload_answers_the_card_of_each_file(): void
+    {
+        $res = $this->uploadFiles([$this->file($this->png(), 'logo.png')], ['picker' => '1', 'multiple' => '0', 'private' => '0'], json: true);
+
+        $this->assertSame(200, $res->getStatusCode());
+        $this->assertSame('application/json; charset=UTF-8', $res->getHeaderLine('Content-Type'));
+        $this->assertSame('no-store', $res->getHeaderLine('Cache-Control'));
+        $data = json_decode((string) $res->getBody(), true);
+        $this->assertSame([], $data['errors']);
+        $this->assertCount(1, $data['items']);
+        $item = $data['items'][0];
+        $this->assertSame(['id', 'thumb', 'label', 'meta', 'warn', 'focal'], array_keys($item));
+        $this->assertSame($this->lib()->all()[0]->id, $item['id']);
+        $this->assertSame('logo.png', $item['label']);
+        $this->assertSame('image · 200 × 100', $item['meta']);
+        $this->assertTrue($item['warn'], 'no alt text yet');
+        $this->assertSame('50,50', $item['focal']);
+        $this->assertNotSame('', $item['thumb']);
+    }
+
+    public function test_a_json_upload_with_a_refused_file_answers_422_with_the_created_ones(): void
+    {
+        $res = $this->uploadFiles([$this->file('<?php echo 1;', 'evil.php'), $this->file($this->png(), 'ok.png')], ['picker' => '1'], json: true);
+
+        $this->assertSame(422, $res->getStatusCode());
+        $data = json_decode((string) $res->getBody(), true);
+        $this->assertSame(['evil.php: files of type text/x-php are not allowed.'], $data['errors']);
+        $this->assertSame(['ok.png'], array_column($data['items'], 'label'));
+    }
+
+    public function test_without_the_json_accept_the_upload_still_redirects_to_the_picker(): void
+    {
+        $res = $this->uploadFiles([$this->file($this->png(), 'one.png')], ['picker' => '1', 'multiple' => '0']);
+
+        $this->assertSame(302, $res->getStatusCode());
+        $this->assertStringContainsString('&selected=' . $this->lib()->all()[0]->id, $res->getHeaderLine('Location'));
+    }
+
+    public function test_the_picker_carries_the_same_card(): void
+    {
+        $asset = $this->lib()->upload($this->file($this->png(), 'pick.png'), null);
+        $this->lib()->update($asset->id, ['alt' => ['en' => 'A logo'], 'focal_x' => 20, 'focal_y' => 80]);
+
+        $page = (string) $this->get('/folio/assets?picker=1&multiple=0')->getBody();
+        $this->assertStringContainsString('data-label="pick.png" data-meta="image · 200 × 100" data-warn="0" data-focal="20,80"', $page);
+    }
+
     public function test_search_and_kind_filter(): void
     {
         $sea = $this->lib()->upload($this->file($this->png(), 'IMG_001.png'), null);
@@ -169,11 +217,13 @@ final class AssetLibraryAppTest extends TestCase
      * @param list<UploadedFileInterface> $files
      * @param array<string, string>       $body
      */
-    private function uploadFiles(array $files, array $body = []): ResponseInterface
+    private function uploadFiles(array $files, array $body = [], bool $json = false): ResponseInterface
     {
-        return $this->app()->handle((new Psr17Factory())->createServerRequest('POST', '/folio/assets')->withHeader('Sec-Fetch-Site', 'same-origin')
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/assets')->withHeader('Sec-Fetch-Site', 'same-origin')
             ->withParsedBody($body)
-            ->withUploadedFiles(['files' => $files]));
+            ->withUploadedFiles(['files' => $files]);
+
+        return $this->app()->handle($json ? $request->withHeader('Accept', 'application/json') : $request);
     }
 
     private function file(string $bytes, string $name): UploadedFileInterface

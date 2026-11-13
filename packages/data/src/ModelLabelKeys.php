@@ -13,6 +13,8 @@ namespace Preflow\Data;
  *     {group}.fields.{type}.{field}.label
  *     {group}.fields.{type}.{field}.help
  *     {group}.options.{type}.{field}.{value}        a select option
+ *     {group}.option_helps.{type}.{field}.{value}   its description, for an option given as
+ *                                                   {"label": …, "help": …} (since 0.75)
  *     {group}.sections.{section}                    a sidebar section a type names
  *
  * A key wins over the model file's text, which is a plain string or a map per language
@@ -64,6 +66,17 @@ final class ModelLabelKeys
         return "{$group}.option_helps.{$type}.{$field}.{$value}";
     }
 
+    /**
+     * A select option given as {"label": …, "help": …} (only those keys; each a text or a map per
+     * language), as opposed to a label (a text or a map per language).
+     *
+     * @since 0.75
+     */
+    public static function isDescribedOption(mixed $option): bool
+    {
+        return is_array($option) && array_key_exists('label', $option) && array_diff(array_keys($option), ['label', 'help']) === [];
+    }
+
     public static function section(string $group, string $section): string
     {
         return "{$group}.sections.{$section}";
@@ -101,8 +114,9 @@ final class ModelLabelKeys
                 $options = $field['options'];
                 foreach ($options as $value => $label) {
                     // An option with a description ({label, help}, 0.75): a key for each.
-                    $help = is_array($label) && array_key_exists('label', $label) ? ($label['help'] ?? null) : null;
-                    $label = is_array($label) && array_key_exists('label', $label) ? $label['label'] : $label;
+                    $described = self::isDescribedOption($label);
+                    $help = $described ? ($label['help'] ?? null) : null;
+                    $label = $described ? $label['label'] : $label;
                     $value = array_is_list($options) ? (is_scalar($label) ? (string) $label : '') : (string) $value;
                     $key = self::option($group, $type, $name, $value);
                     if ($key !== null) {

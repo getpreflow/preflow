@@ -220,6 +220,14 @@ test('the stepper stays within min and max and disables the button at a bound', 
     assert.equal(low.down.disabled, true, 'at min from the start');
     assert.equal(low.up.disabled, false);
 
+    // A bound off the step grid: the nearest on-step value inside it (the server's step rule counts from 0).
+    const grid = stepper({ value: '1', min: 0.5, max: 2.5, step: 1 });
+    grid.down.click();
+    assert.equal(grid.input.value, '1', 'not 0.5, which step 1 refuses');
+    grid.up.click();
+    grid.up.click();
+    assert.equal(grid.input.value, '2', 'not 2.5');
+
     const empty = stepper({ value: '', min: 5 });
     empty.up.click();
     assert.equal(empty.input.value, '5', 'an empty value starts at min');
@@ -384,30 +392,40 @@ test('the arrow keys on a grip move the row and say where it is', async () => {
 
 // ---- Asset: drop ------------------------------------------------------------------------------
 
+const CARD = { id: ID, thumb: '/media/t.webp', label: 'Logo & Co', meta: 'image · 160 × 100', warn: true, focal: '50,50' };
+
+/** A JSON answer as fetch gives it. */
+const answer = (status, data, type = 'application/json; charset=UTF-8') => Promise.resolve({
+    ok: status >= 200 && status < 300, status, headers: { get: (h) => (h.toLowerCase() === 'content-type' ? type : null) },
+    json: () => (typeof data === 'string' ? Promise.reject(new Error('not json')) : Promise.resolve(data)),
+});
+
 function assetField({ accept = 'image/*', multiple = false } = {}) {
     const filled = [];
     const p = page(({ el, form }) => {
         el(form, 'input', { type: 'hidden', name: '_csrf_token', value: 'tok' });
-        const field = el(form, 'div', { 'data-folio-asset-field': '', 'data-multiple': multiple ? '1' : '0', 'data-upload-url': '/folio/assets', 'data-accept': accept, 'data-private': '0', 'data-text-refused': ':file can’t go here.', 'data-text-uploading': 'Uploading…' }, 'folio-asset-field');
+        const field = el(form, 'div', { 'data-folio-asset-field': '', 'data-multiple': multiple ? '1' : '0', 'data-upload-url': '/folio/assets', 'data-accept': accept, 'data-private': '0', 'data-locale': 'de', 'data-text-refused': ':file can’t go here.', 'data-text-uploading': 'Uploading…', 'data-text-failed': 'The upload failed.' }, 'folio-asset-field');
         const zone = el(field, 'div', { 'data-folio-asset-drop': '' });
+        const label = el(zone, 'label', {}, 'folio-asset-upload');
+        const file = el(label, 'input', { type: 'file', name: 'cover' }, 'folio-asset-file');
+        const name = el(zone, 'span', { 'data-folio-upload-name': '', 'aria-live': 'polite' });
         const error = el(field, 'div', { 'data-folio-asset-error': '' }, 'form-error');
         error.hidden = true;
-        return { field, zone, error };
+        return { field, zone, error, file, name };
     }, { folio: { fillAssetField: (field, items) => filled.push(items) } });
     const sent = [];
     p.w.FormData = class { constructor() { this.entries = []; } append(k, v) { this.entries.push([k, typeof v === 'string' ? v : v.name]); } };
     p.w.fetch = (url, init) => {
-        sent.push({ url, body: init.body.entries });
-        const html = `<button type="button" class="btn btn-secondary folio-asset-pick" data-folio-pick data-id="${ID}" data-thumb="/media/t.webp" data-label="Logo &amp; Co" data-meta="image · 160 × 100" data-warn="1" data-focal="50,50" data-multiple="0">Select</button>`;
-        return Promise.resolve({ ok: true, url: '/folio/assets?picker=1&multiple=0&private=0&selected=' + ID, text: () => Promise.resolve(html) });
+        sent.push({ url, body: init.body.entries, accept: init.headers.Accept });
+        return answer(200, { items: [CARD], errors: [] });
     };
     return { ...p, filled, sent };
 }
 
-function drop(p, files) {
+function drop(p, files, target = p.zone) {
     const event = new p.w.Event('drop', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'dataTransfer', { value: { types: ['Files'], files } });
-    p.zone.dispatchEvent(event);
+    target.dispatchEvent(event);
     return event;
 }
 
@@ -422,18 +440,42 @@ test('a dragged file shows the drop state', () => {
     assert.ok(!p.field.classList.contains('is-dragover'));
 });
 
-test('a dropped image goes to the upload route (CSRF, picker) and is chosen', async () => {
+test('a file dropped beside a field inside the editor does not open in its place', () => {
+    const p = assetField();
+    const editor = p.form.appendChild(p.doc.createElement('div'));
+    editor.className = 'folio-form';
+    const beside = editor.appendChild(p.doc.createElement('p'));
+    const event = drop(p, [{ name: 'x.png', type: 'image/png' }], beside);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(p.sent.length, 0, 'and nothing is uploaded');
+});
+
+test('a dropped image goes to the upload route as JSON (CSRF, picker, language) and its card is chosen', async () => {
     const p = assetField();
     const event = drop(p, [{ name: 'logo.png', type: 'image/png' }]);
     assert.equal(event.defaultPrevented, true, 'the browser does not open the file');
     assert.ok(p.field.classList.contains('is-uploading'));
+    assert.equal(p.name.textContent, 'logo.png', 'the live region names the file');
     await tick(20);
     assert.equal(p.sent.length, 1);
-    assert.equal(p.sent[0].url, '/folio/assets?picker=1&multiple=0&private=0');
-    assert.deepEqual(p.sent[0].body, [['files[]', 'logo.png'], ['picker', '1'], ['multiple', '0'], ['private', '0'], ['_csrf_token', 'tok']]);
-    assert.deepEqual(JSON.parse(JSON.stringify(p.filled)), [[{ id: ID, thumb: '/media/t.webp', label: 'Logo & Co', meta: 'image · 160 × 100', warn: true, focal: '50,50' }]]);
+    assert.equal(p.sent[0].url, '/folio/assets');
+    assert.equal(p.sent[0].accept, 'application/json');
+    assert.deepEqual(p.sent[0].body, [['files[]', 'logo.png'], ['picker', '1'], ['multiple', '0'], ['private', '0'], ['locale', 'de'], ['_csrf_token', 'tok']]);
+    assert.deepEqual(JSON.parse(JSON.stringify(p.filled)), [[CARD]]);
     assert.ok(!p.field.classList.contains('is-uploading'));
     assert.equal(p.error.hidden, true);
+    assert.equal(p.name.textContent, '');
+});
+
+test('a file chosen in the Upload button goes the same way, and the input is cleared', async () => {
+    const p = assetField();
+    p.file.files = [{ name: 'chosen.png', type: 'image/png' }];
+    p.file.value = 'C:\\fakepath\\chosen.png';
+    p.file.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.file.value, '', 'the save does not upload it again');
+    await tick(20);
+    assert.deepEqual(p.sent[0].body[0], ['files[]', 'chosen.png']);
+    assert.deepEqual(JSON.parse(JSON.stringify(p.filled)), [[CARD]]);
 });
 
 test('a file the field does not take shows a field error, not an upload', async () => {
@@ -458,12 +500,107 @@ test('a single field takes the first of several dropped files', async () => {
     assert.deepEqual(p.sent[0].body.filter(([k]) => k === 'files[]'), [['files[]', 'a.png']]);
 });
 
-test('a refused upload reports the server’s message', async () => {
-    const p = assetField();
-    p.w.fetch = () => Promise.resolve({ ok: false, url: '/folio/assets', text: () => Promise.resolve('<div class="folio-alert folio-alert-error" role="alert"><p>Some files were not uploaded:</p><ul><li>big.png is larger than the 10 MB limit.</li></ul></div>') });
-    drop(p, [{ name: 'big.png', type: 'image/png' }]);
+test('a 422 chooses what was stored and shows the refusals', async () => {
+    const p = assetField({ multiple: true });
+    p.w.fetch = () => answer(422, { items: [CARD], errors: ['big.png is larger than the 10 MB limit.'] });
+    drop(p, [{ name: 'logo.png', type: 'image/png' }, { name: 'big.png', type: 'image/png' }]);
     await tick(20);
     assert.equal(p.error.textContent, 'big.png is larger than the 10 MB limit.');
     assert.equal(p.error.hidden, false);
-    assert.equal(p.filled.length, 0);
+    assert.deepEqual(JSON.parse(JSON.stringify(p.filled)), [[CARD]]);
+});
+
+test('a refusal that is no JSON (403, an expired session) or no answer at all says the upload failed', async () => {
+    for (const fetch of [
+        () => answer(403, 'Forbidden', 'text/html; charset=UTF-8'),
+        () => answer(200, '<html>login</html>', 'text/html'),
+        () => Promise.reject(new TypeError('Failed to fetch')),
+    ]) {
+        const p = assetField();
+        p.w.fetch = fetch;
+        drop(p, [{ name: 'logo.png', type: 'image/png' }]);
+        await tick(20);
+        assert.equal(p.error.textContent, 'The upload failed.');
+        assert.equal(p.error.hidden, false);
+        assert.equal(p.filled.length, 0);
+        assert.ok(!p.field.classList.contains('is-uploading'));
+    }
+});
+
+// ---- Side panel: scripted controls name the record form at once ---------------------------------
+
+const ADMIN_JS = fileURLToPath(new URL('../../assets/admin.js', import.meta.url));
+
+/** admin.js and fields.js on an editor whose relation and asset fields sit in the side panel. */
+function sidePanel() {
+    const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
+    const doc = w.document;
+    doc.documentElement.setAttribute('lang', 'en');
+    const el = (parent, tag, attrs = {}, cls = '') => {
+        const e = parent.appendChild(doc.createElement(tag));
+        Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+        if (cls) { e.className = cls; }
+        if (attrs.type) { e.type = attrs.type; }
+        if (attrs.name) { e.name = attrs.name; }
+        if (attrs.value !== undefined) { e.value = attrs.value; }
+        return e;
+    };
+    const form = el(doc.body, 'form', { id: 'folio-record', 'hx-post': '/folio/post/p1/autosave' });
+    const side = el(doc.body, 'fieldset', { form: 'folio-record' }, 'folio-side-fields');
+    // relation (single, small target)
+    const rel = el(side, 'fieldset', { form: 'folio-record', 'data-folio-relation': '', 'data-folio-relation-name': 'company' }, 'folio-relation');
+    const rows = el(rel, 'ul', { 'data-folio-relation-selected': '' });
+    const holder = el(rows, 'li');
+    holder.hidden = true;
+    el(holder, 'input', { type: 'hidden', name: 'company', value: '', form: 'folio-record' });
+    const find = el(el(rel, 'label', { 'data-folio-no-edit': '' }), 'input', { type: 'search', 'data-folio-relation-find': '' });
+    el(rel, 'script', { 'data-folio-relation-options': '' }).textContent = JSON.stringify([{ id: 'c1', label: 'Acme', meta: null }]);
+    const results = el(rel, 'ul', { 'data-folio-relation-results': '' });
+    results.hidden = true;
+    const tpl = el(rel, 'template', { 'data-folio-relation-template': '' });
+    const row = el(tpl, 'li', { 'data-folio-relation-item': '' }, 'folio-relation-row');
+    el(row, 'span', {}, 'folio-relation-label');
+    el(row, 'button', { type: 'button', 'data-folio-relation-remove': '' });
+    el(row, 'input', { type: 'hidden', name: 'company', value: '' });
+    // asset field
+    const asset = el(side, 'div', { 'data-folio-asset-field': '', 'data-selection-name': 'logo_ids[]', 'data-multiple': '0' });
+    el(asset, 'input', { type: 'hidden', name: 'logo_ids[]', value: '', form: 'folio-record' });
+    el(asset, 'ul', {}, 'folio-asset-selection');
+    const card = el(el(asset, 'template', { 'data-folio-asset-template': '' }), 'li', { 'data-asset-item': '' }, 'folio-asset-item');
+    el(card, 'span', {}, 'folio-asset-name');
+    el(card, 'input', { type: 'hidden', name: 'logo_ids[]', value: '' });
+    el(card, 'button', { type: 'button', 'data-folio-asset-remove': '' });
+    load(w, ADMIN_JS);
+    load(w, FIELDS_JS);
+    const edits = [];
+    form.addEventListener('folio:edit', (e) => edits.push(e.detail.source));
+    return { w, doc, form, rows, find, results, asset, edits };
+}
+
+test('a relation picked in the side panel names the record form at once, so autosave hears it', async () => {
+    const p = sidePanel();
+    type(p.w, p.find, 'acme');
+    await tick();
+    assert.equal(p.edits.length, 0, 'typing in the search is no edit');
+    p.results.querySelector('[data-folio-relation-pick]').click();
+    const input = p.rows.querySelector('[data-folio-relation-item] input');
+    assert.equal(input.getAttribute('form'), 'folio-record');
+    assert.equal(p.w.Folio.formOf(input), p.form);
+    assert.deepEqual(p.edits, [input], 'folio:edit (the autosave trigger) for the new row');
+    assert.equal(p.rows.querySelector('[data-folio-relation-remove]').getAttribute('form'), null, 'a type=button stays without one');
+
+    p.rows.querySelector('[data-folio-relation-remove]').click();
+    const blank = p.rows.querySelector('input');
+    assert.equal(blank.getAttribute('form'), 'folio-record');
+    assert.equal(p.edits.length, 2, 'removing it is announced too');
+    assert.equal(p.edits[1], blank);
+});
+
+test('an asset picked in the side panel names the record form at once, so autosave hears it', () => {
+    const p = sidePanel();
+    p.w.Folio.fillAssetField(p.asset, [{ id: ID, thumb: '', label: 'Logo', meta: '', warn: false, focal: '' }]);
+    const input = p.asset.querySelector('.folio-asset-selection input');
+    assert.equal(input.getAttribute('form'), 'folio-record');
+    assert.equal(p.w.Folio.formOf(input), p.form);
+    assert.deepEqual(p.edits, [input]);
 });

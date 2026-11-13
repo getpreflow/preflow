@@ -169,7 +169,7 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertStringContainsString('data-selection-name="cover_ids[]"', $html);
         $this->assertStringContainsString('src="' . $this->lib->thumbnailUrl($this->lib->find($a)) . '"', $html);
         $this->assertStringContainsString('data-folio-asset-remove', $html);
-        $this->assertStringContainsString('type="file" name="cover" accept="image/*"', $html);
+        $this->assertStringContainsString('type="file" class="folio-asset-file" name="cover" accept="image/*"', $html);
     }
 
     /** Board LibFields: filled = 16:10 thumb with the focal dot, mono name, kind, the alt-text warning. */
@@ -200,13 +200,15 @@ final class AssetFieldLibraryTest extends TestCase
     {
         $html = $this->field()->renderEditor(new FieldContext(name: 'cover', label: 'Cover', value: null, config: self::SINGLE));
 
-        $this->assertMatchesRegularExpression('~<div class="folio-asset-box" data-folio-asset-drop>\s*<ul class="folio-asset-selection"></ul>\s*<p class="folio-asset-empty"><svg[^>]*>.*?</svg><strong>Drop an image here</strong></p>~s', $html);
+        $this->assertMatchesRegularExpression('~<div class="folio-asset-box" data-folio-asset-drop>\s*<ul class="folio-asset-selection"></ul>\s*<p class="folio-asset-empty"><svg[^>]*>.*?</svg><strong>Drop an image or choose</strong></p>~s', $html);
         $this->assertStringContainsString('data-folio-asset-choose', $html);
-        $this->assertStringContainsString('type="file" name="cover" accept="image/*"', $html);
+        // The real file input stays (without script it uploads on save), inside a button-styled label.
+        $this->assertStringContainsString('<label class="btn btn-secondary btn-sm folio-asset-upload"><span class="folio-upload-label">Upload</span><span class="folio-upload-label is-replace">Replace</span><input type="file" class="folio-asset-file" name="cover" accept="image/*"></label><span class="folio-asset-upload-name" data-folio-upload-name aria-live="polite"></span>', $html);
         $this->assertStringContainsString('<div class="form-error" data-folio-asset-error hidden></div>', $html, 'where a refused drop is said');
 
         $any = $this->field()->renderEditor(new FieldContext(name: 'files', value: null, config: self::MULTIPLE));
-        $this->assertStringContainsString('<strong>Drop a file here</strong>', $any);
+        $this->assertStringContainsString('<strong>Drop a file or choose</strong>', $any);
+        $this->assertStringNotContainsString('is-replace', $any, 'a multiple field keeps Upload: it adds files');
     }
 
     public function test_without_upload_permission_nothing_can_be_dropped(): void

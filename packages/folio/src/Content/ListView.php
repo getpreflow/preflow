@@ -253,7 +253,7 @@ final class ListView
         $raw = (array) ($config['options'] ?? []);
         $out = [];
         foreach ($raw as $key => $label) {
-            $label = is_array($label) && array_key_exists('label', $label) && array_diff(array_keys($label), ['label', 'help']) === [] ? $label['label'] : $label;
+            $label = \Preflow\Data\ModelLabelKeys::isDescribedOption($label) ? $label['label'] : $label; // radio cards' {label, help}
             $text = is_array($label) ? (DisplayLabels::pick($label) ?? '') : (is_scalar($label) ? (string) $label : '');
             $out[array_is_list($raw) ? $text : (string) $key] = $text;
         }

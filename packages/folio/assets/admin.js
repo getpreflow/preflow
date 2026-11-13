@@ -139,7 +139,9 @@
                 }
             });
             rowsEl.appendChild(row);
-            notifyChange(root);
+            ownControls(row);
+            var announceOn = row.querySelector('input[type="hidden"]');
+            if (announceOn) { announceOn.dispatchEvent(new Event('change', { bubbles: true })); } else { notifyChange(root); }
         }
 
         // Expose for the cross-frame message handler (keyed off activeMatrix).
@@ -256,9 +258,20 @@
     function assetItem(field, item) {
         var card = fromTemplate(field.querySelector('template[data-folio-asset-template]'));
         if (card) {
-            var preview = card.querySelector('.folio-asset-preview');
+            var previews = card.querySelectorAll('.folio-asset-preview');
+            var preview = null;
+            var fileIcon = null;
+            Array.prototype.forEach.call(previews, function (p) { if (p.classList.contains('is-file')) { fileIcon = p; } else { preview = p; } });
             var img = card.querySelector('img');
-            if (item.thumb && img) { img.src = item.thumb; img.setAttribute('src', item.thumb); } else if (preview) { preview.parentNode.removeChild(preview); }
+            if (item.thumb && img) {
+                img.src = item.thumb;
+                img.setAttribute('src', item.thumb);
+                if (fileIcon) { fileIcon.parentNode.removeChild(fileIcon); }
+            } else {
+                // No thumbnail (a PDF): the file icon, as the server's card shows it.
+                if (preview) { preview.parentNode.removeChild(preview); }
+                if (fileIcon) { fileIcon.hidden = false; }
+            }
             var focal = card.querySelector('.folio-asset-focal');
             if (focal && item.thumb && /^\d{1,3},\d{1,3}$/.test(String(item.focal || ''))) {
                 focal.setAttribute('data-focal', String(item.focal));
@@ -322,6 +335,7 @@
             if (!dupe) {
                 var card = assetItem(field, item);
                 list.appendChild(card);
+                ownControls(card);
                 last = card.querySelector('input[type="hidden"]');
             }
         });
@@ -1338,6 +1352,27 @@
     }
 
     // The form a control belongs to: its form owner (form="…" included), else the form around it.
+    // Folio.ownControls(node): a control a script adds inside the side panel's record fieldset
+    // (.folio-side-fields[form]) names that form at once, before its change is announced, as the
+    // server's FormOwner does for rendered ones. <button type="button"> is left alone (it submits
+    // nothing); a control naming a form keeps it. editor-frame.js's observer uses it for the rest.
+    function ownControls(node) {
+        if (!node || node.nodeType !== 1 || !node.closest) { return; }
+        var fieldset = node.closest('.folio-side-fields[form]');
+        var formId = fieldset ? fieldset.getAttribute('form') : null;
+        if (!formId) { return; }
+        var controls = [];
+        if (node.matches && node.matches('input, select, textarea, button')) { controls.push(node); }
+        if (node.querySelectorAll) { controls = controls.concat(Array.prototype.slice.call(node.querySelectorAll('input, select, textarea, button'))); }
+        controls.forEach(function (control) {
+            if (control.hasAttribute('form')) { return; }
+            if (control.tagName === 'BUTTON' && String(control.getAttribute('type') || '').toLowerCase() === 'button') { return; }
+            control.setAttribute('form', formId);
+        });
+    }
+    window.Folio = window.Folio || {};
+    window.Folio.ownControls = ownControls;
+
     function formOf(el) {
         if (!el) { return null; }
         if (el.form && el.form.tagName === 'FORM') { return el.form; }

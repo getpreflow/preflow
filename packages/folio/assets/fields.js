@@ -25,6 +25,12 @@
         return key;
     }
 
+    // A control a script inserted names the record form at once (admin.js's Folio.ownControls), so its
+    // change reaches autosave and the guard even in the side panel.
+    function own(node) {
+        if (typeof Folio.ownControls === 'function') { Folio.ownControls(node); }
+    }
+
     function changed(el) {
         if (el && el.dispatchEvent) { el.dispatchEvent(new Event('change', { bubbles: true })); }
     }
@@ -261,10 +267,19 @@
         } else {
             next = value + direction * size;
         }
-        var places = Math.max(decimals(size), isNaN(value) ? 0 : decimals(value));
-        next = Number(next.toFixed(Math.min(places, 15)));
-        if (min !== null && next < min) { next = min; }
-        if (max !== null && next > max) { next = max; }
+        var places = Math.min(Math.max(decimals(size), isNaN(value) ? 0 : decimals(value), min !== null ? decimals(min) : 0, max !== null ? decimals(max) : 0), 15);
+        next = Number(next.toFixed(places));
+        // Past a bound: the nearest value inside it that is still on the step's grid (multiples of
+        // "step" from 0, as the server's step rule counts), else the bound itself.
+        var stepped = !isNaN(parseFloat(input.getAttribute('step')));
+        if (min !== null && next < min) {
+            var up = stepped ? Number((Math.ceil(Number((min / size).toFixed(10))) * size).toFixed(places)) : min;
+            next = max === null || up <= max ? up : min;
+        }
+        if (max !== null && next > max) {
+            var down = stepped ? Number((Math.floor(Number((max / size).toFixed(10))) * size).toFixed(places)) : max;
+            next = min === null || down >= min ? down : max;
+        }
         input.value = String(next);
         edited(input);
         syncStepper(stepper);
@@ -390,7 +405,6 @@
     function hideResults(field) {
         var parts = relationParts(field);
         if (parts.results) { parts.results.hidden = true; }
-        if (parts.find) { parts.find.setAttribute('aria-expanded', 'false'); }
     }
 
     function resultItem(item) {
@@ -442,7 +456,6 @@
             list.appendChild(li);
         }
         list.hidden = false;
-        if (parts.find) { parts.find.setAttribute('aria-expanded', 'true'); }
     }
 
     var searchSeq = 0;
@@ -519,6 +532,7 @@
             Array.prototype.slice.call(parts.rows.children).forEach(function (child) { child.parentNode.removeChild(child); });
         }
         parts.rows.appendChild(row);
+        own(row);
         if (parts.find) { parts.find.value = ''; }
         hideResults(field);
         changed(row.querySelector('input[type="hidden"]'));
@@ -543,6 +557,7 @@
             blank.value = '';
             holder.appendChild(blank);
             parts.rows.appendChild(holder);
+            own(holder);
             announceOn = blank;
         }
         changed(announceOn);
@@ -636,29 +651,6 @@
         });
     }
 
-    function decode(text) {
-        return String(text).replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-    }
-
-    // The picker page the upload route answers with: its Select buttons, by id.
-    function pickButtons(html) {
-        var out = {};
-        (String(html).match(/<button[^>]*data-folio-pick[^>]*>/g) || []).forEach(function (tag) {
-            var attrs = {};
-            tag.replace(/([\w-]+)="([^"]*)"/g, function (all, name, value) { attrs[name] = decode(value); return all; });
-            if (attrs['data-id']) {
-                out[attrs['data-id']] = { id: attrs['data-id'], thumb: attrs['data-thumb'] || '', label: attrs['data-label'] || '', meta: attrs['data-meta'] || '', warn: attrs['data-warn'] === '1', focal: attrs['data-focal'] || '' };
-            }
-        });
-        return out;
-    }
-
-    function uploadErrors(html) {
-        var block = /folio-alert-error[\s\S]*?<\/div>/.exec(String(html));
-        var items = block ? block[0].match(/<li>([\s\S]*?)<\/li>/g) || [] : [];
-        return items.map(function (li) { return decode(li.replace(/<\/?li>/g, '').replace(/<[^>]+>/g, '')); });
-    }
-
     function assetError(field, text) {
         var slot = field.querySelector('[data-folio-asset-error]');
         if (!slot) { return; }
@@ -667,6 +659,15 @@
         field.classList.toggle('has-drop-error', text !== '');
     }
 
+    function uploadName(field, text) {
+        var slot = field.querySelector('[data-folio-upload-name]');
+        if (slot) { slot.textContent = text; }
+    }
+
+    // Files dropped on an asset field, or chosen in its Upload button, go to the media library through
+    // its upload route (POST {prefix}/assets: its permission, the page's CSRF token) asking for JSON:
+    // {items: [cards], errors: [...]} (200, or 422 with the files it refused). The cards are chosen
+    // (Folio.fillAssetField). Anything else (a 403, an expired session, no network) is a field error.
     function dropOn(field, files) {
         var accept = field.getAttribute('data-accept') || '';
         var multiple = field.getAttribute('data-multiple') === '1';
@@ -679,38 +680,51 @@
 
         var body = new FormData();
         taken.forEach(function (f) { body.append('files[]', f, f.name); });
-        var privacy = field.getAttribute('data-private') === '1' ? '1' : '0';
         body.append('picker', '1');
         body.append('multiple', multiple ? '1' : '0');
-        body.append('private', privacy);
+        body.append('private', field.getAttribute('data-private') === '1' ? '1' : '0');
+        if (field.getAttribute('data-locale')) { body.append('locale', field.getAttribute('data-locale')); }
         var token = document.querySelector('input[name="_csrf_token"]');
         if (token) { body.append('_csrf_token', token.value); }
-        var url = (field.getAttribute('data-upload-url') || '') + '?picker=1&multiple=' + (multiple ? '1' : '0') + '&private=' + privacy;
         field.classList.add('is-uploading');
         field.setAttribute('aria-busy', 'true');
+        uploadName(field, taken.map(function (f) { return f.name; }).join(', '));
         announce(field.getAttribute('data-text-uploading') || t('fields.uploading'));
-        var finish = function () {
+        var failed = field.getAttribute('data-text-failed') || t('fields.upload_failed');
+        var finish = function (items, errors) {
             field.classList.remove('is-uploading');
             field.removeAttribute('aria-busy');
+            uploadName(field, '');
+            if (items.length && typeof Folio.fillAssetField === 'function') { Folio.fillAssetField(field, items); }
+            if (errors.length) { assetError(field, errors.join(' ')); }
+            return items;
         };
-        return window.fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'text/html' } })
+        return window.fetch(field.getAttribute('data-upload-url') || '', { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
             .then(function (res) {
-                return res.text().then(function (html) {
-                    var found = pickButtons(html);
-                    var selected = /[?&]selected=([^&#]*)/.exec(res.url || '');
-                    var ids = selected ? decodeURIComponent(selected[1]).split(',').filter(Boolean) : [];
-                    if (!res.ok) {
-                        ids = (String(html).match(/is-selected" data-asset-id="([a-f0-9]{32})"/g) || []).map(function (m) { return m.slice(-33, -1); });
-                        var errors = uploadErrors(html);
-                        if (errors.length) { assetError(field, errors.join(' ')); }
-                    }
-                    var items = ids.map(function (id) { return found[id] || { id: id, thumb: '', label: id, meta: '', warn: false, focal: '' }; });
-                    if (items.length && typeof Folio.fillAssetField === 'function') { Folio.fillAssetField(field, items); }
-                    finish();
-                    return items;
-                });
-            })
-            .catch(function () { finish(); return []; });
+                var json = String((res.headers && res.headers.get && res.headers.get('Content-Type')) || '').indexOf('application/json') >= 0;
+                if (!json || (res.status !== 200 && res.status !== 422)) { return finish([], [failed]); }
+                return res.json().then(function (data) {
+                    var items = data && Array.isArray(data.items) ? data.items.filter(function (i) { return i && /^[a-f0-9]{32}$/.test(String(i.id)); }) : [];
+                    var errors = data && Array.isArray(data.errors) ? data.errors.map(String) : [];
+                    return finish(items, res.status === 422 && !errors.length ? [failed] : errors);
+                }, function () { return finish([], [failed]); });
+            }, function () { return finish([], [failed]); });
+    }
+
+    // Upload chosen in the browser's file dialog: with the upload route, sent at once like a drop (the
+    // input is cleared, so the save does not upload it again); without it, the chosen name is said.
+    function onAssetFileChange(e) {
+        var input = e.target;
+        if (!input || !input.classList || !input.classList.contains('folio-asset-file')) { return; }
+        var field = closest(input, '[data-folio-asset-field]');
+        if (!field) { return; }
+        var files = Array.prototype.slice.call(input.files || []);
+        if (field.hasAttribute('data-upload-url') && typeof window.fetch === 'function' && typeof window.FormData === 'function' && files.length) {
+            dropOn(field, files);
+            input.value = '';
+            return;
+        }
+        uploadName(field, files.map(function (f) { return f.name; }).join(', '));
     }
 
     function hasFiles(e) {
@@ -725,6 +739,11 @@
 
     function onAssetDragOver(e) {
         var field = dropField(e);
+        if (!field && hasFiles(e) && closest(e.target, '.folio-form')) {
+            e.preventDefault();
+            if (e.dataTransfer) { e.dataTransfer.dropEffect = 'none'; }
+            return;
+        }
         if (!field || !hasFiles(e)) { return; }
         e.preventDefault();
         if (e.dataTransfer) { e.dataTransfer.dropEffect = 'copy'; }
@@ -740,6 +759,10 @@
 
     function onAssetDrop(e) {
         var field = dropField(e);
+        if (!field && hasFiles(e) && closest(e.target, '.folio-form')) {
+            e.preventDefault(); // a file dropped beside a field must not open in place of the editor
+            return;
+        }
         if (!field || !hasFiles(e)) { return; }
         e.preventDefault();
         field.classList.remove('is-dragover');
@@ -780,7 +803,10 @@
     }
 
     function boot() {
+        // Script runs: the controls that have a scripted form show it (the drawer page sets no folio-js itself).
+        if (document.documentElement && document.documentElement.classList) { document.documentElement.classList.add('folio-js'); }
         init(document);
+        document.addEventListener('change', onAssetFileChange);
         document.addEventListener('input', onInput);
         document.addEventListener('change', onInput);
         document.addEventListener('click', onDateClear);

@@ -51,20 +51,12 @@
         if (button) { setTimeout(function () { Folio.submitWith(button); }, 0); }
     }
 
-    // ---- Side panel record controls: a control added later inside a side fieldset (a relation chip, a
+    // ---- Side panel record controls: a control added later inside a side fieldset (a relation row, a
     // picked asset, a cloned template row) gets the fieldset's form, like those rendered on the server
-    // (FormOwner). <button type="button"> stays without one.
-    function own(fieldset, node) {
-        var formId = fieldset.getAttribute('form');
-        if (!formId || !node || node.nodeType !== 1) { return; }
-        var controls = [];
-        if (node.matches && node.matches('input, select, textarea, button')) { controls.push(node); }
-        if (node.querySelectorAll) { controls = controls.concat(Array.prototype.slice.call(node.querySelectorAll('input, select, textarea, button'))); }
-        controls.forEach(function (control) {
-            if (control.hasAttribute('form')) { return; }
-            if (control.tagName === 'BUTTON' && String(control.getAttribute('type') || '').toLowerCase() === 'button') { return; }
-            control.setAttribute('form', formId);
-        });
+    // (FormOwner): Folio.ownControls (admin.js), which the scripts that insert controls also call at
+    // once, before they announce the change. <button type="button"> stays without one.
+    function own(node) {
+        if (typeof Folio.ownControls === 'function') { Folio.ownControls(node); }
     }
 
     function initSideFields() {
@@ -72,7 +64,7 @@
         document.querySelectorAll('.folio-side-fields[form]').forEach(function (fieldset) {
             new window.MutationObserver(function (records) {
                 records.forEach(function (record) {
-                    Array.prototype.forEach.call(record.addedNodes || [], function (node) { own(fieldset, node); });
+                    Array.prototype.forEach.call(record.addedNodes || [], own);
                 });
             }).observe(fieldset, { childList: true, subtree: true });
         });

@@ -80,5 +80,21 @@ final class EditorFieldsTest extends TestCase
         $this->assertNotFalse($fields, 'every editor: the date hint and the clear button of "Publish at…"');
         $this->assertLessThan($frame, $fields);
         $this->assertLessThan($fields, strpos($page, '/_assets/admin.js?v='));
+        $this->assertSame(1, substr_count($page, '/_assets/admin.js?v='), 'once');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_drawer_editor_loads_admin_js_before_fields_js(): void
+    {
+        $this->working('note', 'n1', ['name' => 'A note']);
+        foreach (['/folio/note/n1/edit?_drawer=1', '/folio/note/new?_drawer=1'] as $uri) {
+            $page = (string) $this->get($uri)->getBody();
+            $admin = strpos($page, '/_assets/admin.js?v=');
+            $fields = strpos($page, '/_assets/fields.js?v=');
+            $this->assertNotFalse($admin, $uri . ': folioT, copyLater and fillAssetField come from admin.js');
+            $this->assertNotFalse($fields, $uri);
+            $this->assertLessThan($fields, $admin, $uri);
+            $this->assertLessThan(strpos($page, '/_assets/editor-frame.js?v='), $fields, $uri);
+        }
     }
 }

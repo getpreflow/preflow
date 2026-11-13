@@ -228,10 +228,10 @@ final class DisplayLabels
         return $out;
     }
 
-    /** An option given as {label, help}. */
+    /** An option given as {label, help} (ModelLabelKeys::isDescribedOption). */
     private static function isDescribed(mixed $option): bool
     {
-        return is_array($option) && array_key_exists('label', $option) && array_diff(array_keys($option), ['label', 'help']) === [];
+        return ModelLabelKeys::isDescribedOption($option);
     }
 
     /**

@@ -1250,6 +1250,10 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 
 /* ---- Field controls (board LibFields, COMPONENTS §2; 0.75) ------------------------------------- */
 
+/* Scripts show and hide parts of the field controls with [hidden]; a class that sets display must not
+   win over it (one rule for the whole field area, plus the specific ones next to each class). */
+:where(.form-group) [hidden] { display: none !important; }
+
 /* A label with something beside it (the text counter). */
 .folio-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .folio-label-row > label { margin: 0; font-size: 13px; font-weight: 500; color: var(--c-text); min-width: 0; }
@@ -2433,13 +2437,37 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-asset-name { font-family: var(--font-mono); font-size: 12px; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folio-asset-meta { font-size: 12px; color: var(--c-text-subtle); }
 .folio-asset-warn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: var(--c-warning); }
+.folio-asset-warn[hidden],
+.folio-asset-preview[hidden],
+.folio-asset-meta[hidden] { display: none; }
 .folio-asset-warn::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid currentColor; }
 .folio-asset-item .btn { flex: none; }
 .folio-asset-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: center; }
 .folio-asset-box:has(.folio-asset-item) > .folio-asset-actions { justify-content: flex-start; padding-top: 10px; border-top: 1px solid var(--c-border); }
-.folio-asset-upload { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 560; color: var(--c-text-muted); }
+/* Upload: a button-styled label around the real file input. Without script the input shows (it uploads
+   on save); with script it is hidden only visually, still focusable, and the label shows its focus.
+   A filled single field reads "Replace". */
+.folio-asset-upload { position: relative; flex-wrap: wrap; margin: 0; }
+.folio-asset-upload .is-replace { display: none; }
+.folio-asset-box:has(.folio-asset-item) .folio-asset-upload:has(.is-replace) > .folio-upload-label:not(.is-replace) { display: none; }
+.folio-asset-box:has(.folio-asset-item) .folio-asset-upload > .is-replace { display: inline; }
+:root:not(.folio-js) .folio-asset-upload { height: auto; padding-block: 4px; }
+:root:not(.folio-js) .folio-asset-upload input[type="file"] { flex: 1 1 12rem; min-width: 0; width: 100%; }
+.folio-js .folio-asset-upload > input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.folio-asset-upload:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.folio-asset-upload-name { font-size: 12px; color: var(--c-text-subtle); overflow-wrap: anywhere; }
+.folio-asset-upload-name:empty { display: none; }
 .folio-asset-actions > * { min-width: 0; max-width: 100%; }
-.folio-asset-upload input[type="file"] { flex: 1 1 12rem; min-width: 0; width: 100%; }
 
 /* ---- login ---- */
 .folio-auth {

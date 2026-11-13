@@ -1541,8 +1541,10 @@ final class AdminController
             'csrf' => $csrf,
             'fields' => $fields,
             // editor-frame.js: the save state, the Publish split button, the side panel, the editor's keys.
-            // fields.js before it: Folio.relativeTime() (the publish-at hint) and the date's clear button.
-            'editor_assets' => array_keys($editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : []) + ['fields.js' => true, 'editor-frame.js' => true]),
+            // The order is admin.js, then fields.js, then editor-frame.js: fields.js uses what admin.js shares
+            // (folioT, Folio.copyLater, fillAssetField, ownControls), editor-frame.js uses Folio.relativeTime.
+            // The full layout loads admin.js itself and skips it here; the drawer layout loads only this list.
+            'editor_assets' => array_keys(['admin.js' => true] + $editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : []) + ['fields.js' => true, 'editor-frame.js' => true]),
             'multipart' => $multipart,
             'layout' => $layout,
             // No preview in the create drawer: its form posts to the save route.
@@ -2278,12 +2280,6 @@ final class AdminController
     }
 
     /**
-     * A field's config for its editor and display: a select's options with their labels in
-     * the interface language (DisplayLabels::options()); other fields' as they are.
-     *
-     * @return array<string, mixed>
-     */
-    /**
      * The address affix of a route parameter field: the static path before it ("/jobs/", with "/de"
      * in another language) and, when the route has no other parameter, what the copy button puts
      * around the typed value (app.url's address, else the path alone). The route's home value copies
@@ -2313,6 +2309,13 @@ final class AdminController
         return new \Preflow\Folio\Field\AddressAffix($mode, $before, $base . $before, $after, $home, $home !== null ? $base . ($language !== '' ? $language : '/') : null);
     }
 
+    /**
+     * A field's config for its editor and display: a select's options with their labels in
+     * the interface language (DisplayLabels::options()); radio cards keep their
+     * {label, help} shape; other fields' as they are.
+     *
+     * @return array<string, mixed>
+     */
     private function fieldConfig(string $type, string $name, \Preflow\Data\TypeFieldDefinition $fieldDef): array
     {
         $config = $fieldDef->config;

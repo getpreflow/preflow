@@ -101,6 +101,24 @@ final class AssetLibraryController
             }
         }
 
+        // The asset field's drop (fields.js) asks for JSON: the cards of the created assets and the
+        // refusals, on the same route with the same permission and CSRF check (0.75).
+        if (str_contains($request->getHeaderLine('Accept'), 'application/json')) {
+            $locale = $this->cardLocale($request);
+            $items = [];
+            foreach ($created as $id) {
+                $asset = $this->library->find($id);
+                if ($asset !== null) {
+                    $items[] = \Preflow\Folio\Media\AssetCard::of($asset, $this->library, $locale, $this->locales->default);
+                }
+            }
+
+            return new Response($errors === [] ? 200 : 422, ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-store'], json_encode(
+                ['items' => $items, 'errors' => $errors],
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
+            ));
+        }
+
         if ($errors !== []) {
             return $this->renderIndex($request, $errors, 422, $created);
         }
@@ -624,7 +642,7 @@ final class AssetLibraryController
             'section' => 'assets',
             'layout' => $picker ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
             'editor_assets' => array_values(array_unique($editorAssets)),
-            'items' => array_map(fn (Asset $a) => ['copies' => $counts[$a->id] ?? 0] + $this->item($a), $result->items),
+            'items' => array_map(fn (Asset $a) => ['copies' => $counts[$a->id] ?? 0] + $this->item($a, $this->cardLocale($request)), $result->items),
             'total' => $total,
             'page' => $page,
             'pages' => $pages,
@@ -994,8 +1012,20 @@ final class AssetLibraryController
         return $user instanceof \Preflow\Auth\Authenticatable ? $user->getAuthId() : null;
     }
 
+    /**
+     * The language a card's alt-text warning is judged in: the record's ("locale", which the asset
+     * field passes to its picker and upload), else the default.
+     */
+    private function cardLocale(ServerRequestInterface $request): string
+    {
+        $params = array_merge($request->getQueryParams(), (array) $request->getParsedBody());
+        $locale = is_string($params['locale'] ?? null) ? $params['locale'] : '';
+
+        return $this->locales->has($locale) ? $locale : $this->locales->default;
+    }
+
     /** @return array<string, mixed> */
-    private function item(Asset $asset): array
+    private function item(Asset $asset, ?string $locale = null): array
     {
         return [
             'id' => $asset->id,
@@ -1009,7 +1039,8 @@ final class AssetLibraryController
             'url' => $this->library->url($asset),
             'thumb' => $this->library->thumbnailUrl($asset),
             'alt' => $asset->alt,
-            'has_alt' => array_filter($asset->alt, static fn (mixed $text): bool => is_string($text) && trim($text) !== '') !== [],
+            // The asset field's card (picker Select buttons): the same shape the field and the upload's JSON use.
+            'card' => \Preflow\Folio\Media\AssetCard::of($asset, $this->library, $locale ?? $this->locales->default, $this->locales->default),
             'title' => $asset->title,
             'focal_x' => $asset->focalX,
             'focal_y' => $asset->focalY,

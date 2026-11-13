@@ -739,9 +739,12 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
 - `relation`: see [Blocks, matrix or relation?](#blocks-matrix-or-relation).
 - `asset`: each chosen file is a card (a 16:10 thumbnail with the focal point, the name, kind and
   size, "No alt text yet" for an image without one); an empty field is a dashed drop zone. A file
-  dropped anywhere on the field is uploaded to the media library (its upload route, its
-  `assets.upload` permission and CSRF token) and chosen; a file the field's `"accept"` refuses
-  is named in a field error instead.
+  dropped anywhere on the field, or chosen with its Upload button, is uploaded to the media library
+  (its upload route, its `assets.upload` permission and CSRF token) and chosen; a file the field's
+  `"accept"` refuses is named in a field error instead. Without script, Upload is the plain file
+  input and the file is stored on save. With `Accept: application/json` the upload route
+  (`POST {prefix}/assets`) answers `{items, errors}` (200, or 422 with what it refused): each item is
+  a card `{id, thumb, label, meta, warn, focal}` (`Preflow\Folio\Media\AssetCard`).
 - `matrix`: a table with a header row, rows with a grip (drag, or focus it and press ↑ / ↓) and
   a trash button, and "+ Add row".
 - `env`: the variable's name and "set" or "not set"; never its value.
@@ -1028,6 +1031,9 @@ card's "…" menu (same `data-block-*` attributes), `.folio-block-actions` is go
 asset field is cards in a `.folio-asset-box` (its label a `.form-label` span), a matrix row has a
 grip and a trash button instead of Up / Down / Remove, the env field is `.folio-env`. The asset
 picker's pick message carries `meta`, `warn` and `focal` too (`Folio.chooseAssets` passes them on).
+A script that adds controls inside the side panel calls `Folio.ownControls(node)` (admin.js) before
+it announces the change, so they name the record form at once. Editors load `admin.js`, then
+`fields.js`, then `editor-frame.js` (the create drawer too).
 `FieldRenderer` writes a newline after `<textarea>` (the one the HTML parser drops), so a value that
 starts with a newline keeps it.
 

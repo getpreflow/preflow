@@ -114,6 +114,10 @@ final class TypeRegistryLabelsTest extends TestCase
     {
         $this->assertSame('site.option_helps.app.code.301', ModelLabelKeys::optionHelp('site', 'app', 'code', '301'));
         $this->assertNull(ModelLabelKeys::optionHelp('site', 'app', 'code', 'odd.value'));
+        $this->assertTrue(ModelLabelKeys::isDescribedOption(['label' => 'A', 'help' => 'x']));
+        $this->assertTrue(ModelLabelKeys::isDescribedOption(['label' => ['en' => 'A']]));
+        $this->assertFalse(ModelLabelKeys::isDescribedOption(['label' => 'A', 'de' => 'B']), 'a language map that has a "label" locale key is a label');
+        $this->assertFalse(ModelLabelKeys::isDescribedOption('A'));
 
         $schema = ['key' => 'app', 'fields' => ['code' => ['type' => 'select', 'label' => 'Answer', 'display' => 'cards', 'options' => [
             '301' => ['label' => ['en' => 'Moved', 'de' => 'Umgezogen'], 'help' => 'For good.'],
