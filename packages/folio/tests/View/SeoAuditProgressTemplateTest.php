@@ -11,7 +11,8 @@ use Preflow\Folio\View\FolioEngine;
 /**
  * Settings → SEO audit's run partial (seo-audit/_progress.twig) in each state: which buttons it
  * offers (all plain POSTs to run, fresh=1 to start over), whether it polls the step route, the
- * notices, and the step's error escaped.
+ * notices, the generic failure line (never the step's message) and the command, named except
+ * while the run steps.
  */
 final class SeoAuditProgressTemplateTest extends TestCase
 {
@@ -31,7 +32,7 @@ final class SeoAuditProgressTemplateTest extends TestCase
     private function render(array $audit): string
     {
         return $this->app()->container()->get(FolioEngine::class)->render('@folio/admin/seo-audit/_progress.twig', ['prefix' => '/folio', 'audit' => $audit + [
-            'state' => 'idle', 'error' => null, 'started' => false, 'complete' => false, 'done' => 0, 'total' => 0,
+            'state' => 'idle', 'started' => false, 'complete' => false, 'done' => 0, 'total' => 0,
             'run_url' => '/folio/seo-audit/run', 'step_url' => '/folio/seo-audit/step', 'csrf' => 'tok',
         ]]);
     }
@@ -101,20 +102,38 @@ final class SeoAuditProgressTemplateTest extends TestCase
         $this->assertStringNotContainsString('hx-post', $html);
     }
 
-    public function test_a_failed_step_shows_its_message_escaped_with_continue(): void
+    public function test_a_failed_step_shows_a_generic_line_with_continue(): void
     {
-        $html = $this->render(['state' => 'failed', 'error' => 'Disk <full>', 'started' => true, 'done' => 2, 'total' => 4]);
+        // Even a message in the view (as before 0.74's fix) is never printed.
+        $html = $this->render(['state' => 'failed', 'error' => 'Disk <full> at /srv/site', 'started' => true, 'done' => 2, 'total' => 4]);
 
-        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert"><p>The last step failed: Disk &lt;full&gt;</p>', $html);
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert"><p>The last step failed. The details are in the server log.</p>', $html);
+        $this->assertStringNotContainsString('Disk', $html);
+        $this->assertStringNotContainsString('/srv/site', $html);
         $this->assertSame([['label' => 'Continue', 'fresh' => false], ['label' => 'Start over', 'fresh' => true]], self::buttons($html));
         $this->assertStringNotContainsString('hx-post', $html);
     }
 
     public function test_a_failed_first_step_offers_run(): void
     {
-        $html = $this->render(['state' => 'failed', 'error' => 'Boom']);
+        $html = $this->render(['state' => 'failed']);
 
-        $this->assertStringContainsString('The last step failed: Boom', $html);
+        $this->assertStringContainsString('The last step failed. The details are in the server log.', $html);
         $this->assertSame([['label' => 'Run audit', 'fresh' => false]], self::buttons($html));
+    }
+
+    public function test_the_command_is_named_in_every_state_but_stepping(): void
+    {
+        $line = 'On the server it runs with <code>preflow seo:audit</code>';
+        foreach ([
+            [],
+            ['started' => true, 'done' => 3, 'total' => 10],
+            ['started' => true, 'complete' => true, 'done' => 10, 'total' => 10],
+            ['state' => 'elsewhere', 'started' => true, 'done' => 2, 'total' => 4],
+            ['state' => 'failed', 'started' => true, 'done' => 2, 'total' => 4],
+        ] as $audit) {
+            $this->assertStringContainsString($line, $this->render($audit), json_encode($audit) ?: '');
+        }
+        $this->assertStringNotContainsString('preflow seo:audit', $this->render(['state' => 'stepping', 'started' => true, 'done' => 1, 'total' => 4]));
     }
 }

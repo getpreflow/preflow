@@ -1808,7 +1808,7 @@ check, most serious first. Each finding links to its page and, for content findi
 asset to fix, for users who may open them (`{type}.view` / `assets.view`). The texts come in en, de and fr.
 
 Since 0.74 a user who also has `seo.audit.run` runs the audit on this screen, through preflow/view's `Audits`
-(the same steps and report as `preflow seo:audit`, which still works and is named on the screen):
+(the same steps and report as `preflow seo:audit`, which still works and is named under the buttons):
 
 - **Run audit** (no report yet), **Continue** and **Start over** (an incomplete report), **Run again** (a
   complete one, from the start) are plain POSTs to `{prefix}/seo-audit/run` (`fresh=1` starts over). Each
@@ -1818,7 +1818,8 @@ Since 0.74 a user who also has `seo.audit.run` runs the audit on this screen, th
   report is complete, then goes to the finished report. Leaving the page stops it; Continue picks it up
   where it stopped. A step whose request fails shows Continue.
 - Another run of the same site (the command, another browser) holds the audit's lock: the screen says so
-  and offers Try again. A step that throws shows its message (and logs it) with Continue.
+  and offers Try again; it does not retry by itself. A step that throws is logged with its message; the
+  screen says only that it failed (the details are in the server log) and offers Continue.
 - A step closes the session first, keeps running when the tab closes, and raises a PHP time limit below
   60 seconds to 60 where it may. The audited pages render as a visitor, and the mail they queue is dropped
   (core's internal render scope).

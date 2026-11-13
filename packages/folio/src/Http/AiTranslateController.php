@@ -8,7 +8,6 @@ use Nyholm\Psr7\Response;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
-use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\TypeCatalog;
@@ -203,7 +202,7 @@ final class AiTranslateController
             return $job;
         }
         if (self::inProgress($job)) {
-            self::allowLongRequest($request);
+            LongRequest::allow($request, self::TIME_LIMIT);
             try {
                 $job = $this->runner->step($job->id, 1);
             } catch (AiUnavailable) {
@@ -393,7 +392,7 @@ final class AiTranslateController
         if ($units === []) {
             return self::json(200, ['texts' => new \stdClass(), 'failed' => new \stdClass(), 'costUsd' => 0.0]);
         }
-        self::allowLongRequest($request);
+        LongRequest::allow($request, self::TIME_LIMIT);
         $cost = 0.0;
         $unpriced = false;
         if ($this->translator instanceof ReportsCost) {
@@ -728,28 +727,5 @@ final class AiTranslateController
             ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-store'],
             json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE),
         );
-    }
-
-    /**
-     * A translation request can take minutes. A closed tab must not cut it off halfway (the
-     * provider bills it anyway, and a step half-written is worse than one finished), and a host's
-     * short PHP time limit is raised to TIME_LIMIT where it may be. A limit that is already longer
-     * (or none, 0) is left alone; where set_time_limit is disabled, nothing changes.
-     *
-     * The session is closed first: a file session stays locked while it is open, and every other
-     * request of the same browser (pages, assets, autosave) would wait until the translation ends.
-     * Nothing after this point writes to the session.
-     */
-    private static function allowLongRequest(ServerRequestInterface $request): void
-    {
-        $session = $request->getAttribute(SessionInterface::class);
-        if ($session instanceof SessionInterface) {
-            $session->close();
-        }
-        ignore_user_abort(true);
-        $limit = (int) ini_get('max_execution_time');
-        if ($limit !== 0 && $limit < self::TIME_LIMIT) {
-            @set_time_limit(self::TIME_LIMIT);
-        }
     }
 }

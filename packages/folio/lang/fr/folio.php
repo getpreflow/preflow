@@ -622,7 +622,7 @@ return [
         'step_hint' => 'Chaque Continuer audite des pages pendant environ :seconds secondes.',
         'elsewhere' => 'Un autre audit est en cours sur ce site (sur le serveur ou dans un autre navigateur). Réessayez quand il sera terminé.',
         'retry' => 'Réessayer',
-        'failed' => 'La dernière étape a échoué :',
+        'failed' => 'La dernière étape a échoué. Les détails figurent dans le journal du serveur.',
         'failed_help' => 'Les pages déjà auditées sont conservées ; Continuer tente l’étape suivante.',
         'stalled' => 'Une étape n’a pas abouti, l’audit s’est donc arrêté. Continuer le reprend là où il s’est arrêté.',
         'checks' => [

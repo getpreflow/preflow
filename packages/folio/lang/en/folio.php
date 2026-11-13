@@ -644,7 +644,7 @@ return [
         'step_hint' => 'Each Continue audits pages for about :seconds seconds.',
         'elsewhere' => 'Another audit is running on this site (on the server or in another browser). Try again once it has finished.',
         'retry' => 'Try again',
-        'failed' => 'The last step failed:',
+        'failed' => 'The last step failed. The details are in the server log.',
         'failed_help' => 'The pages audited so far are kept; Continue tries the next step.',
         'stalled' => 'A step did not come back, so the audit stopped. Continue picks it up where it stopped.',
         // The checks by id ("." written "_"); a site's own checks show their id.

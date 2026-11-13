@@ -622,7 +622,7 @@ return [
         'step_hint' => 'Jedes Weiter prüft etwa :seconds Sekunden lang Seiten.',
         'elsewhere' => 'Auf dieser Website läuft gerade eine andere Prüfung (auf dem Server oder in einem anderen Browser). Versuche es noch einmal, wenn sie fertig ist.',
         'retry' => 'Erneut versuchen',
-        'failed' => 'Der letzte Schritt ist fehlgeschlagen:',
+        'failed' => 'Der letzte Schritt ist fehlgeschlagen. Die Einzelheiten stehen im Server-Log.',
         'failed_help' => 'Die bereits geprüften Seiten bleiben erhalten; Weiter versucht den nächsten Schritt.',
         'stalled' => 'Ein Schritt kam nicht zurück, deshalb hat die Prüfung angehalten. Weiter macht dort weiter, wo sie aufgehört hat.',
         'checks' => [

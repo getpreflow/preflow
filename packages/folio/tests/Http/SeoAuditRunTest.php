@@ -110,7 +110,8 @@ final class SeoAuditRunTest extends TestCase
         preg_match('#1 of (\d+) pages audited#', $body, $m);
         $total = (int) $m[1];
         $this->assertGreaterThanOrEqual(4, $total, 'two posts in two languages, and the rest of the site');
-        $this->assertStringContainsString('Incomplete: 1 of ' . $total . ' pages', $body, 'the report so far below');
+        $this->assertStringNotContainsString('Incomplete: 1 of', $body, 'no status badge to go stale while htmx steps: the progress counts');
+        $this->assertStringContainsString('class="folio-audit-counts"', $body, 'the report so far below');
         $this->assertStringContainsString('<noscript>', $body);
 
         // Step (htmx): the partial only, one page further, still polling, in the admin's language.
@@ -180,6 +181,21 @@ final class SeoAuditRunTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_incomplete_report_offers_continue_not_the_command_again(): void
+    {
+        $this->signIn();
+        $this->slowAudits();
+        $this->send('POST', '/folio/seo-audit/run');
+
+        $body = (string) $this->send('GET', '/folio/seo-audit')->getBody();
+
+        $this->assertStringContainsString('Incomplete: 1 of', $body);
+        $this->assertStringContainsString('>Continue</button>', $body);
+        $this->assertStringNotContainsString('Run the command again to continue', $body);
+        $this->assertStringContainsString('On the server it runs with <code>preflow seo:audit</code>', $body);
+    }
+
+    #[RunInSeparateProcess]
     public function test_fresh_starts_over(): void
     {
         $this->signIn();
@@ -228,7 +244,7 @@ final class SeoAuditRunTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_a_failed_step_shows_its_message_and_continue(): void
+    public function test_a_failed_step_shows_a_generic_line_and_logs_the_message(): void
     {
         $this->signIn();
         // The report can't be written: a directory where the file goes. The failure is logged.
@@ -240,13 +256,16 @@ final class SeoAuditRunTest extends TestCase
         $body = (string) $res->getBody();
 
         $this->assertSame(200, $res->getStatusCode());
-        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert"><p>The last step failed: ', $body);
+        $this->assertStringContainsString('<div class="folio-alert folio-alert-error" role="alert"><p>The last step failed. The details are in the server log.</p>', $body);
+        $this->assertStringNotContainsString("Can't write the SEO audit report", $body, 'the message (with its server path) stays in the log');
+        $this->assertStringNotContainsString($this->dir, $body);
         $this->assertStringContainsString('>Run audit</button>', $body, 'nothing saved: run again');
         $this->assertStringNotContainsString('hx-post="/folio/seo-audit/step"', $body);
 
         $res = $this->send('POST', '/folio/seo-audit/step', [], htmx: true);
         $this->assertSame(200, $res->getStatusCode());
-        $this->assertStringContainsString('The last step failed: ', (string) $res->getBody());
+        $this->assertStringContainsString('The last step failed. The details are in the server log.', (string) $res->getBody());
+        $this->assertStringNotContainsString("Can't write", (string) $res->getBody());
         $this->assertStringContainsString("SEO audit: a step run from Folio failed: RuntimeException: Can't write the SEO audit report", (string) file_get_contents($log));
     }
 
@@ -254,6 +273,9 @@ final class SeoAuditRunTest extends TestCase
     public function test_without_seo_audit_run_no_buttons_and_403(): void
     {
         $this->signIn(['folio.dashboard', 'seo.audit']);
+        $incomplete = new AuditReport('2026-11-05T09:30:00+00:00', 'https://site.test');
+        $incomplete->total = 10;
+        $incomplete->cursor = 3;
 
         $res = $this->send('GET', '/folio/seo-audit');
         $body = (string) $res->getBody();
@@ -265,6 +287,13 @@ final class SeoAuditRunTest extends TestCase
         $this->assertSame(403, $this->send('POST', '/folio/seo-audit/run')->getStatusCode());
         $this->assertSame(403, $this->send('POST', '/folio/seo-audit/step', [], htmx: true)->getStatusCode());
         $this->assertFileDoesNotExist($this->file());
+
+        // Read only: an incomplete report says how to continue on the server.
+        $incomplete->save($this->file());
+        $body = (string) $this->send('GET', '/folio/seo-audit')->getBody();
+        $this->assertStringContainsString('Incomplete: 3 of 10 pages', $body);
+        $this->assertStringContainsString('Run the command again to continue: <code>preflow seo:audit</code>', $body);
+        $this->assertStringNotContainsString('/folio/seo-audit/run', $body);
     }
 
     #[RunInSeparateProcess]

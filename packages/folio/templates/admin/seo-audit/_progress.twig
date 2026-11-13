@@ -2,8 +2,9 @@
    Every button is a plain POST to run (one step, then the page again), so it works without
    JavaScript. While a run is stepping the partial posts itself to step (htmx) and swaps in the
    answer, until the report is complete and the answer redirects to it. States: idle (no report,
-   incomplete or complete), stepping, elsewhere (another run holds the lock) and failed (the
-   step's message, escaped). #}
+   incomplete or complete), stepping, elsewhere (another run holds the lock) and failed (a
+   generic line: the step's message goes to the server log only). The command is named under
+   the buttons, except while stepping. #}
 {% set seconds = constant('Preflow\\Folio\\Http\\SeoAuditController::STEP_SECONDS') %}
 {% macro run_form(audit, label, fresh, primary) %}
     <form method="post" action="{{ audit.run_url }}">
@@ -18,7 +19,7 @@
     {% if audit.state == 'elsewhere' %}
         <div class="folio-notice is-warning" role="status"><p>{{ t('folio.audit.elsewhere') }}</p></div>
     {% elseif audit.state == 'failed' %}
-        <div class="folio-alert folio-alert-error" role="alert"><p>{{ t('folio.audit.failed') }} {{ audit.error }}</p><p>{{ t('folio.audit.failed_help') }}</p></div>
+        <div class="folio-alert folio-alert-error" role="alert"><p>{{ t('folio.audit.failed') }}</p><p>{{ t('folio.audit.failed_help') }}</p></div>
     {% elseif not audit.started %}
         <div class="folio-notice" role="status"><p>{{ t('folio.audit.not_yet') }}</p></div>
     {% endif %}
@@ -53,7 +54,7 @@
             {% endif %}
         </div>
     {% endif %}
-    {% if not audit.started %}
+    {% if audit.state != 'stepping' %}
         <p class="folio-help">{{ t('folio.audit.cli') }} <code>preflow seo:audit</code></p>
     {% endif %}
 </div>

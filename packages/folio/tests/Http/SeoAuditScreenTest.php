@@ -189,7 +189,9 @@ final class SeoAuditScreenTest extends TestCase
         $body = (string) $this->fetch('/folio/seo-audit')->getBody();
 
         $this->assertStringContainsString('Incomplete: 3 of 10 pages', $body);
-        $this->assertStringContainsString('Run the command again to continue', $body);
+        // Without auth everyone may run it here: Continue, not "run the command again" (read only: SeoAuditRunTest).
+        $this->assertStringContainsString('>Continue</button>', $body);
+        $this->assertStringNotContainsString('Run the command again to continue', $body);
     }
 
     public function test_a_report_without_findings_says_so(): void

@@ -6,7 +6,6 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Http\Csrf\CsrfToken;
-use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\FolioText;
 use Preflow\View\Audit\AuditReport;
@@ -30,7 +29,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * incomplete the progress partial posts itself to step until the report is complete, then
  * redirects to the finished report (HX-Redirect). Without JavaScript each Continue is a plain
  * POST that runs one step. A run held elsewhere (the command, another browser) shows a notice
- * with Try again; a step that throws shows its message with Continue. Without Audits (an app
+ * with Try again; a step that throws is logged and shows a generic line with Continue. Without Audits (an app
  * that does not set up the audit) the screen stays read only.
  *
  * @since 0.54
@@ -115,9 +114,8 @@ final class SeoAuditController
 
     private function advance(ServerRequestInterface $request, Audits $audits, bool $fresh): ResponseInterface
     {
-        self::allowLongRequest($request);
+        LongRequest::allow($request, self::TIME_LIMIT);
         $state = 'stepping';
-        $error = null;
         try {
             $report = $audits->step(self::STEP_SECONDS, $fresh);
         } catch (AuditRunning) {
@@ -125,8 +123,8 @@ final class SeoAuditController
             $report = $audits->report();
         } catch (\Throwable $e) {
             $state = 'failed';
-            $error = $e->getMessage();
-            $message = 'SEO audit: a step run from Folio failed: ' . $e::class . ': ' . $error;
+            // The message may name server paths or SQL: the log has it, the screen a generic line.
+            $message = 'SEO audit: a step run from Folio failed: ' . $e::class . ': ' . $e->getMessage();
             $this->log !== null ? ($this->log)($message) : error_log($message);
             $report = $audits->report();
         }
@@ -141,22 +139,22 @@ final class SeoAuditController
         if ($htmx) {
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render(
                 '@folio/admin/seo-audit/_progress.twig',
-                ['audit' => $this->runView($request, $report, $state, $error), 'prefix' => $this->prefix],
+                ['audit' => $this->runView($request, $report, $state), 'prefix' => $this->prefix],
             ));
         }
 
-        return $this->page($request, $report, $state, $error);
+        return $this->page($request, $report, $state);
     }
 
     /**
      * The screen. $state is null where the user can't run the audit here (read only), else idle,
      * stepping (the partial polls step), elsewhere (another run holds the lock) or failed.
      */
-    private function page(ServerRequestInterface $request, ?AuditReport $report, ?string $state, ?string $error = null): ResponseInterface
+    private function page(ServerRequestInterface $request, ?AuditReport $report, ?string $state): ResponseInterface
     {
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/seo-audit/index.twig', [
             'prefix' => $this->prefix,
-            'audit' => $state === null ? null : $this->runView($request, $report, $state, $error),
+            'audit' => $state === null ? null : $this->runView($request, $report, $state),
             'editor_assets' => $state === 'stepping' ? ['htmx.js'] : [],
             'report' => $report === null ? null : [
                 'started_at' => $report->startedAt,
@@ -172,11 +170,10 @@ final class SeoAuditController
     }
 
     /** @return array<string, mixed> what _progress.twig shows */
-    private function runView(ServerRequestInterface $request, ?AuditReport $report, string $state, ?string $error): array
+    private function runView(ServerRequestInterface $request, ?AuditReport $report, string $state): array
     {
         return [
             'state' => $state,
-            'error' => $error,
             'started' => $report !== null,
             'complete' => $report?->complete() ?? false,
             'done' => $report?->done() ?? 0,
@@ -185,26 +182,6 @@ final class SeoAuditController
             'step_url' => $this->prefix . '/seo-audit/step',
             'csrf' => $request->getAttribute(CsrfToken::class)?->getValue() ?? '',
         ];
-    }
-
-    /**
-     * A step renders pages for up to STEP_SECONDS. A closed tab must not cut it off before the
-     * report is saved, and a host's PHP time limit below TIME_LIMIT is raised to it where it may
-     * be (as AI translation does); a longer limit (or none, 0) is left alone. The session is
-     * closed first, so the browser's other requests don't wait for the step; nothing after this
-     * point writes to it.
-     */
-    private static function allowLongRequest(ServerRequestInterface $request): void
-    {
-        $session = $request->getAttribute(SessionInterface::class);
-        if ($session instanceof SessionInterface) {
-            $session->close();
-        }
-        ignore_user_abort(true);
-        $limit = (int) ini_get('max_execution_time');
-        if ($limit !== 0 && $limit < self::TIME_LIMIT) {
-            @set_time_limit(self::TIME_LIMIT);
-        }
     }
 
     /**

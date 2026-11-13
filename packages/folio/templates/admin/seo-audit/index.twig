@@ -19,14 +19,18 @@
             {% if report.complete %}
                 <div><dt>{{ t('folio.audit.finished') }}</dt><dd>{{ folio_date(report.finished_at, 'datetime') }}</dd></div>
             {% endif %}
+            {# While htmx steps the run, the progress above counts the pages: a badge here would go stale. #}
+            {% if report.complete or (audit.state|default(null)) != 'stepping' %}
             <div><dt>{{ t('folio.audit.status') }}</dt><dd>
                 {% if report.complete %}
                     <span class="folio-badge is-ok">{{ t('folio.audit.complete', {count: folio_number(report.total)}, report.total) }}</span>
                 {% else %}
                     <span class="folio-badge is-incomplete">{{ t('folio.audit.incomplete', {done: folio_number(report.done), total: folio_number(report.total)}) }}</span>
-                    {{ t('folio.audit.continue') }} <code>preflow seo:audit</code>
+                    {# Who may run it here has Continue (and the command named under the buttons). #}
+                    {% if not audit %}{{ t('folio.audit.continue') }} <code>preflow seo:audit</code>{% endif %}
                 {% endif %}
             </dd></div>
+            {% endif %}
         </dl>
         <ul class="folio-audit-counts">
             {% for severity in ['critical', 'warning', 'notice'] %}
