@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Seeds;
 
-use App\Jobs\Slugs;
 use App\Models\Company;
 use App\Models\Job;
 use App\Models\User;
@@ -12,6 +11,7 @@ use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Slugs;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Publisher;
 use Preflow\Media\Image\ImageBackends;
@@ -69,7 +69,7 @@ final class DemoSeeder
             $company = $data->find(Company::class, $uuid) ?? new Company();
             $company->uuid = $uuid;
             $company->name = $row['name'];
-            $company->slug = Slugs::unique($data, Company::class, $row['name'], $uuid);
+            $company->slug = Slugs::unique($data, Company::class, $row['name'], exceptId: $uuid);
             $company->place = $row['place'];
             $company->website = $row['website'];
             $company->summary = $row['summary'];
@@ -85,7 +85,7 @@ final class DemoSeeder
             $job = new Job();
             $job->uuid = md5('starter-job-' . ($n + 1));
             $job->title = $row['title'];
-            $job->slug = Slugs::unique($data, Job::class, $row['title'], $job->uuid);
+            $job->slug = Slugs::unique($data, Job::class, $row['title'], exceptId: $job->uuid);
             $job->company = $companyIds[$row['company']];
             $job->place = $row['place'];
             $job->employmentType = $row['employmentType'];

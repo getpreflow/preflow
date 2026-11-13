@@ -143,11 +143,15 @@ final class PublicPagesTest extends TestCase
         $response->assertSee('<strong>bold</strong>');
     }
 
-    public function test_job_page_has_a_meta_description(): void
+    public function test_job_page_has_exactly_one_meta_description(): void
     {
         $job = $this->jobTitled('Frontend Developer');
 
-        $this->get('/jobs/' . $job->slug)->assertSee('<meta name="description"');
+        $response = $this->get('/jobs/' . $job->slug);
+
+        // SEO prints the tag; the layout adds none of its own.
+        $this->assertSame(1, substr_count($response->body(), '<meta name="description"'));
+        $response->assertSee('<meta name="description" content="Frontend Developer at ');
     }
 
     public function test_company_website_is_linked_only_when_it_is_http(): void

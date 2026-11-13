@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\Job;
 use App\Models\User;
 use Preflow\Data\DataManager;
+use Preflow\Data\Slugs;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 

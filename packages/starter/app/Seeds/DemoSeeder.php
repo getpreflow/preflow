@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Seeds;
 
-use App\Jobs\Slugs;
 use App\Models\Company;
 use App\Models\Job;
 use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;
+use Preflow\Data\Slugs;
 
 /**
  * Seven fictional companies, forty jobs and one demo employer, so a fresh install has something
@@ -39,7 +39,7 @@ final class DemoSeeder
             $company = new Company();
             $company->uuid = $companyIds[$n] = md5('starter-company-' . ($n + 1));
             $company->name = $row['name'];
-            $company->slug = Slugs::unique($data, Company::class, $row['name'], $company->uuid);
+            $company->slug = Slugs::unique($data, Company::class, $row['name'], exceptId: $company->uuid);
             $company->place = $row['place'];
             $company->website = $row['website'];
             $company->summary = $row['summary'];
@@ -50,7 +50,7 @@ final class DemoSeeder
             $job = new Job();
             $job->uuid = md5('starter-job-' . ($n + 1));
             $job->title = $row['title'];
-            $job->slug = Slugs::unique($data, Job::class, $row['title'], $job->uuid);
+            $job->slug = Slugs::unique($data, Job::class, $row['title'], exceptId: $job->uuid);
             $job->company = $companyIds[$row['company']];
             $job->place = $row['place'];
             $job->employmentType = $row['employmentType'];

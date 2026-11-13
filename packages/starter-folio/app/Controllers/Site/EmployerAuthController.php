@@ -9,6 +9,7 @@ use App\Seeds\DemoSeeder;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Container\Attributes\Config;
+use Preflow\Core\Http\SafeReturnPath;
 use Preflow\Data\DataManager;
 use Preflow\Routing\Attributes\Get;
 use Preflow\Routing\Attributes\Post;
@@ -33,7 +34,7 @@ final class EmployerAuthController
     public function form(ServerRequestInterface $request): ResponseInterface
     {
         return $this->pages->render('_views/employer/login.twig', [
-            'next' => self::safeNext($request->getQueryParams()['next'] ?? null),
+            'next' => SafeReturnPath::check(self::text($request->getQueryParams()['next'] ?? null), ['/employer']),
             'email' => '',
             'failed' => false,
             'demo' => $this->demo(),
@@ -47,7 +48,7 @@ final class EmployerAuthController
         // Stored in lower case (employer:create), and SQLite compares text case-sensitively.
         $email = is_string($body['email'] ?? null) ? strtolower(trim($body['email'])) : '';
         $password = is_string($body['password'] ?? null) ? $body['password'] : '';
-        $next = self::safeNext($body['next'] ?? null);
+        $next = SafeReturnPath::check(self::text($body['next'] ?? null), ['/employer']);
 
         $guard = $this->auth->guard(self::GUARD);
         $user = $email === '' || $password === '' || !$guard->validate(['email' => $email, 'password' => $password])
@@ -88,13 +89,9 @@ final class EmployerAuthController
         return $user instanceof User ? ['email' => DemoSeeder::EMPLOYER_EMAIL, 'password' => DemoSeeder::EMPLOYER_PASSWORD] : null;
     }
 
-    /** Only a path inside the employer area: never another site, never a protocol-relative URL. */
-    private static function safeNext(mixed $next): ?string
+    /** A request value that may be an array or missing: only a string goes on to the path check. */
+    private static function text(mixed $value): ?string
     {
-        if (!is_string($next) || preg_match('#^/employer(?:[/?\#][^\\\\\x00-\x1f]*)?\z#', $next) !== 1) {
-            return null;
-        }
-
-        return $next;
+        return is_string($value) ? $value : null;
     }
 }

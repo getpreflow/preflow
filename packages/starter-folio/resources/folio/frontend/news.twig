@@ -2,7 +2,6 @@
     data-folio-field marks let staff click a part to jump to its field. -#}
 {% extends "_layout.twig" %}
 
-{% set description = page_description() %}
 {% set preview = preview|default(false) %}
 
 {% block title %}{{ record.title }} · {{ t('app.name') }}{% endblock %}

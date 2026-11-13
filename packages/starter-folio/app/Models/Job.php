@@ -36,6 +36,7 @@ final class Job extends Model
     public ?string $slug = null;
 
     /** The uuid of the company that posted the job; Folio shows it as a pick from the companies. */
+    #[Field(index: true)]
     #[Relation(to: 'company', onDelete: 'restrict', labelField: 'name')]
     #[Validate('required')]
     public ?string $company = null;

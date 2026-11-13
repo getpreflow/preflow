@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Console;
 
-use App\Jobs\Slugs;
 use App\Models\Company;
 use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
+use Preflow\Data\Slugs;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\Validation\ValidationException;
 

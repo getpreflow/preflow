@@ -254,7 +254,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role.
 | Blocks | `app/Components/Blocks/{Hero,Text,LatestJobsBlock,LatestNews}` |
 | Folio templates | `resources/folio/frontend/page.twig` and `news.twig`, `app/pages/news/index.twig` |
 | Demo images | `resources/seed/logos/`, `resources/seed/news/` |
-| Other | `app/pages/about-error-boundaries.twig` (the error demo moved off the home page), the `app.indexes` after-migrate step in `AppServiceProvider` (SQLite only) |
+| Other | `app/pages/about-error-boundaries.twig` (the error demo moved off the home page) |
 
 ### Changed, same interface
 
@@ -274,7 +274,7 @@ Ask an admin when you need more. Admins are the staff with the `admin` role.
 
 - The fields of the models: `title`, `place`, `employmentType`, `remote`, `salaryFrom`, `salaryTo`, `description` (Markdown) and the rest.
 - The signatures of `JobSearch` and `JobWriter`, apart from the two additions above.
-- The routes of the controllers, the employer area, the components (`JobSearch`, `JobCard`, `JobResults`, `FilterChips`, `Pager`, `ViewToggle`), `JobFilters`, `Slugs`, `Markdown`.
+- The routes of the controllers, the employer area, the components (`JobSearch`, `JobCard`, `JobResults`, `FilterChips`, `Pager`, `ViewToggle`), `JobFilters`, `Markdown`.
 - The API: routes, keys, paging, tokens, errors, CORS (`config/api.php`).
 
 ### Gone
@@ -317,7 +317,7 @@ Publishing in Folio, or an employer publishing a job, refreshes the pages that s
 8. Point the document root at `public/`. Keep `public/media` (the uploads) and `storage/` writable, and back them up together with the SQLite file in `storage/data`.
 9. Run `php preflow optimize`. Run it again after every deploy.
 
-The database is a SQLite file in `storage/data`. The `app.indexes` step adds its indexes on SQLite only. If you move to MySQL, change `config/data.php` and add the index on the `company` column by hand (the note in `AppServiceProvider` says why).
+The database is a SQLite file in `storage/data`. The index on `jobs.company` (and on the published copies) comes from `#[Field(index: true)]` on `Job::$company`: `preflow migrate` creates it, on SQLite and on MySQL alike. If you move to MySQL, change `config/data.php`.
 
 ## Upgrading Preflow
 

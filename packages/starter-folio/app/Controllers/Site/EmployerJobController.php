@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Controllers\Site;
 
 use App\Jobs\JobWriter;
-use App\Middleware\EmployerAuth;
 use App\Models\Company;
 use App\Models\Job;
 use App\Models\User;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
+use Preflow\Auth\Http\AuthMiddleware;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
@@ -20,6 +20,7 @@ use Preflow\Routing\Attributes\Get;
 use Preflow\Routing\Attributes\Middleware;
 use Preflow\Routing\Attributes\Post;
 use Preflow\Routing\Attributes\Route;
+use Preflow\Routing\MiddlewareWith;
 use Preflow\Validation\ValidationException;
 use Preflow\View\PageResponder;
 use Psr\Http\Message\ResponseInterface;
@@ -27,7 +28,7 @@ use Psr\Http\Message\ServerRequestInterface;
 
 /** The signed-in employer's jobs: list, post, edit, publish. Every job is looked up through its owner. */
 #[Route('/employer')]
-#[Middleware(EmployerAuth::class)]
+#[Middleware(new MiddlewareWith(AuthMiddleware::class, guard: 'employers'))]
 final class EmployerJobController
 {
     public function __construct(

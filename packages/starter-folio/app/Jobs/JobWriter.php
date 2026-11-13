@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Models\User;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Slugs;
 use Preflow\Publishing\PublishFailed;
 use Preflow\Publishing\Publisher;
 use Preflow\Publishing\RecordDeleter;

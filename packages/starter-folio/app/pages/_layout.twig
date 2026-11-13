@@ -4,10 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}{{ t('app.name') }}{% endblock %}</title>
-    {# SEO adds the share cards, but the description is the layout's job: a page sets it with
-       {% set description = '…' %} next to its seo({…}) call. Folio's page and news templates set
-       it from page_description(), the one SEO chose for the record. #}
-    {% if description is defined and description %}<meta name="description" content="{{ description }}">{% endif %}
+    {# SEO adds <meta name="description"> and the share cards: a page sets the text with {% do seo({description: '…'}) %}. #}
 </head>
 <body>
     <header class="site-header">

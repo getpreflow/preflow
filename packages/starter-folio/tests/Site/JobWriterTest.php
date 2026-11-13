@@ -230,6 +230,6 @@ final class JobWriterTest extends TestCase
     {
         $job = $this->writer->create($this->input(['title' => 'Köchin / Koch (m/w/d) – Zürich']), $this->owner);
 
-        $this->assertSame('kochin-koch-m-w-d-zurich', $job->slug);
+        $this->assertSame('koechin-koch-m-w-d-zuerich', $job->slug);
     }
 }
