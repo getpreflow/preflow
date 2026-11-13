@@ -331,6 +331,10 @@ final class Customizations
         if ($type instanceof \ReflectionNamedType && $type->getName() === WriteKind::class) {
             return static fn (DynamicRecord $record, WriteKind $kind): mixed => $call($record, $kind);
         }
+        if ($method->getNumberOfRequiredParameters() > 1) {
+            $where = $method->getDeclaringClass()->getName() . '::' . $method->getName() . '()';
+            throw new ExtensionException("{$where}: a save hook takes the record and, optionally, a " . WriteKind::class . ' as its second parameter.');
+        }
 
         return static fn (DynamicRecord $record, WriteKind $kind): mixed => $call($record);
     }

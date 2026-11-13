@@ -88,12 +88,12 @@ class RecordDeleter extends \Preflow\Publishing\RecordDeleter
 
             public function before(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
             {
-                ($this->run)(BeforeSave::class, $record);
+                ($this->run)(BeforeSave::class, $record, $kind);
             }
 
             public function after(DynamicRecord $record, WriteKind $kind = WriteKind::Save): void
             {
-                ($this->run)(AfterSave::class, $record);
+                ($this->run)(AfterSave::class, $record, $kind);
             }
 
             public function beforeDelete(DynamicRecord $record): void

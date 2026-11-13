@@ -295,6 +295,26 @@ final class CustomizationTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_save_hook_with_a_second_parameter_that_is_no_write_kind_throws(): void
+    {
+        $this->crm();
+        $this->write('app/Folio/Crm/Types/NoteAdmin.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Crm\Types;
+            #[\Preflow\Folio\Extension\Attributes\FolioType('note')]
+            final class NoteAdmin
+            {
+                #[\Preflow\Folio\Extension\BeforeSave]
+                public function check(\Preflow\Data\DynamicRecord $record, string $kind): void {}
+            }
+            PHP);
+
+        $this->expectException(ExtensionException::class);
+        $this->expectExceptionMessage('App\\Folio\\Crm\\Types\\NoteAdmin::check(): a save hook takes the record and, optionally, a Preflow\\Publishing\\WriteKind as its second parameter.');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
     public function test_field_placeholder_for_an_unknown_field_throws(): void
     {
         $this->crm();

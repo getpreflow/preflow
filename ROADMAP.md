@@ -1,6 +1,6 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-12 (v0.70.0)
+> Last updated: 2026-11-13 (v0.71.0)
 
 ## Current State
 
@@ -98,8 +98,8 @@ the project; note breaking changes for the consumers. Status (checked 2026-11-11
 for codes, Folio, media, rbac, i18n, auth, data, notify, validation or devtools.
 **Done 2026-11-12:** all 25 packages audited (`.superpowers/audit-2026-11-12/`, local); the owner decided to fix
 all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md`, releases 0.67 (clean-ups, done)
-→ 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio; done) → 0.70 (done: preflow/blocks and rules out of Folio; 0.71 publishing,
-preflow/publishing, one record write path) → 0.72 (gaps the starters fill).
+→ 0.68 (mail in notify, members neutral, codes mailer to BG; done) → 0.69 (rbac without Folio; done) → 0.70 (done: preflow/blocks and rules out of Folio) → 0.71 (done: preflow/publishing, one record
+write path) → 0.72 (gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
 Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
@@ -524,6 +524,46 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **preflow/publishing and one record write path (v0.71.0, released 2026-11-13):** fifth release of the package
+  audit's fixes (spec D2, D3; plan `docs/superpowers/plans/2026-11-13-release-0.71-publishing.md`).
+  - **New package `preflow/publishing`** (`Preflow\Publishing\*`): Publisher, LiveContent, PublishedModels,
+    PublishedCopies, ShadowTypes, Revision, Scheduler, VersionConflict, PreviewLinks, PreviewTarget, PublishState;
+    `config/publishing.php` (`revisions`, `complete_languages`, `preview_ttl`); commands `publish` and
+    `publish:scheduled`; the migrate step `publishing.tables` (working, `__published` and `__revisions` tables of
+    publishing types). What it needs from outside is an interface with a plain default: `PublishingTypes` (default: the
+    type's `"publishing": true`), `RecordChecks`, `LanguageChecks`, `RecordIndex`, `RecordAddresses`, `RemovalTarget`,
+    `RecordColumns`, `PublishSkips`. Folio binds its own (catalog default, validator, translation status, review index,
+    redirects and page cache, `frontend.published` gate).
+  - **One record write path:** `RecordWriter` (`create`, `save`, `setField`, `reorder`, `restore`, `discard`;
+    `SaveOptions(by, mayPublish, publish, loadedVersion, publishAt, kind)`, `SaveOutcome`, `PublishFailed` carrying the
+    stored draft) and `RecordDeleter` (`plan`, `delete`, `DeleteRefused`), with `SaveHooks` and `RecordTypes`. Hooks
+    learn the kind of write (`WriteKind`: Save, Autosave, Bulk, Reorder, Translate, Detach); a Folio `#[BeforeSave]`/
+    `#[AfterSave]` method may take it as a second parameter. The rule "a save by someone who may not publish cancels a
+    pending schedule" exists once. Folio's form, autosave, restore, discard, bulk set, reorder, delete, the
+    translation confirm, AI translation, "Add to role" and member deletion all write through them; starter-folio's
+    JobWriter too.
+  - **Also:** `RedirectRules::leadingTo()`; i18n `TextSources::add()` takes an "offered" predicate (types with nothing
+    translatable are not offered; a planned job whose collection is gone stops with a message); `Extension::seed():
+    array` is typed.
+  - **Removed (0.70 aliases):** `Preflow\Folio\Block\*`, `folio_blocks()`, `extra.folio.blocks`, `config/folio.php`
+    `blocks` (Folio's `cache_path` no longer places `blocks.cache`: set `config/blocks.php` `cache_path`), the cache key
+    rename `folio.blocks`; `BlocksConfig::fromApp()` lost `$fallback`, `BlocksServiceProvider::packageClasses()` lost
+    `$key`; `PublishState::label()`.
+  - **Behaviour changes:** save hooks (`#[BeforeSave]`/`#[AfterSave]`, and `#[SaveRecord]` for types that do not
+    publish) now also run on autosave, reorder, bulk set, the translation confirm's API branch, AI translation, "Add to
+    role" and the records detached by a delete (a refusal during a member's own deletion is logged, the deletion
+    continues). AI translation and the confirm API branch validate live types fully (a refusal is Skipped / 422).
+    Restore and discard clear the type's fields, translation keys and `RecordColumns` the revision lacks; restore and
+    discard apply the schedule rule and run no hooks. Reorder writes nothing at the edge; unknown ids answer 404.
+  - **Upgrading:** raise all `preflow/*` to `^0.71` and add `preflow/publishing`; `composer update "preflow/*"`;
+    `preflow migrate`. Until 0.72 the old names keep working: `Preflow\Folio\Publishing\*` and
+    `Preflow\Folio\Content\LiveContent` → `Preflow\Publishing\*` (the old Publisher still takes `(DataManager,
+    TypeCatalog, RecordValidator)`), `Preflow\Folio\Content\RecordDeleter` → `Preflow\Publishing\RecordDeleter`
+    (texts in Folio's `DeleteSummary`), `folio:publish`/`folio:publish-scheduled` → `publish`/`publish:scheduled` (move
+    the cron line), `config/folio.php` `publishing` → `config/publishing.php` (logged as deprecated on every boot until
+    moved). Breaking now: `new LiveContent($dm, $catalog)` and `new Scheduler($p, $catalog, $dm)` take
+    `PublishingTypes`; a class implementing `SaveHooks` adds the `WriteKind` parameter; an AfterSave hook that must not
+    act on autosave checks `WriteKind::Autosave`. The scheduler lock is `storage/locks/publish-scheduled.lock`.
 - **preflow/blocks, and the remaining rules out of Folio (v0.70.0, released 2026-11-12):** fourth release of the package
   audit's fixes (spec D1, D7; plan `docs/superpowers/plans/2026-11-12-release-0.70-blocks.md`).
   - **New package `preflow/blocks`** (`Preflow\Blocks\*`): Block, BlockComponent, BlockField, BlockDefinition,
