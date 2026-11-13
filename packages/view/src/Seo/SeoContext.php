@@ -15,6 +15,9 @@ final class SeoContext
     /** @var array<string, ?PageMeta> the site's defaults per locale, when known before the middleware asks (a cached page carries them) */
     private array $defaults = [];
 
+    /** @var ?\Closure(): ?PageMeta the site's defaults for the request being served, set by the SEO middleware */
+    private ?\Closure $siteDefaults = null;
+
     /** @param ?\Closure(list<string>): void $reportUnknown gets the keys a template's `seo({…})` gave that page meta doesn't have */
     public function __construct(private readonly ?\Closure $reportUnknown = null) {}
 
@@ -77,6 +80,36 @@ final class SeoContext
     {
         $this->meta = null;
         $this->defaults = [];
+        $this->siteDefaults = null;
+    }
+
+    /** Where a template's `seo_description()` finds the site's default description while the page renders. */
+    public function resolveDefaultsWith(\Closure $siteDefaults): void
+    {
+        $this->siteDefaults = $siteDefaults;
+    }
+
+    /**
+     * The description the page gets: its own, else the site's ($defaults, or those the SEO
+     * middleware resolves for the request). The text as it was set, not yet cleaned.
+     */
+    public function mergedDescription(?PageMeta $defaults = null): string
+    {
+        $own = $this->meta?->description ?? '';
+        if ($own !== '') {
+            return $own;
+        }
+
+        return ($defaults ?? ($this->siteDefaults?->__invoke()))?->description ?? '';
+    }
+
+    /**
+     * Plain text of the description the page gets (what `seo_description()` returns): no tags,
+     * collapsed whitespace, not cut. '' when neither the page nor the site has one.
+     */
+    public function description(): string
+    {
+        return HeadTags::description($this->mergedDescription(), PHP_INT_MAX);
     }
 
     /**
@@ -105,13 +138,14 @@ final class SeoContext
      */
     public function scoped(\Closure $next): mixed
     {
-        [$saved, $savedDefaults] = [$this->meta, $this->defaults];
+        [$saved, $savedDefaults, $savedSite] = [$this->meta, $this->defaults, $this->siteDefaults];
         $this->meta = null;
         $this->defaults = [];
+        $this->siteDefaults = null;
         try {
             return $next();
         } finally {
-            [$this->meta, $this->defaults] = [$saved, $savedDefaults];
+            [$this->meta, $this->defaults, $this->siteDefaults] = [$saved, $savedDefaults, $savedSite];
         }
     }
 }

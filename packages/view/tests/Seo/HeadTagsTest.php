@@ -108,6 +108,31 @@ final class HeadTagsTest extends TestCase
         $this->assertOnce('<meta property="og:description" content="Who we are.">', $html);
     }
 
+    public function test_the_description_is_a_meta_tag_cleaned_like_og_description(): void
+    {
+        $html = HeadTags::inject(self::PAGE, $this->meta(['description' => "<p>Who  we\nare &amp; more.</p>"]), 'Example', [], []);
+
+        $this->assertOnce('<meta name="description" content="Who we are &amp; more.">', $html);
+        $this->assertOnce('<meta property="og:description" content="Who we are &amp; more.">', $html);
+    }
+
+    public function test_a_description_the_layout_prints_is_not_doubled(): void
+    {
+        $page = "<html><head>\n<meta name=\"Description\" content=\"Mine\">\n</head><body></body></html>";
+        $html = HeadTags::inject($page, $this->meta(), 'Example', [], []);
+
+        $this->assertSame(1, substr_count(strtolower($html), 'name="description"'));
+        $this->assertStringContainsString('content="Mine"', $html);
+        $this->assertStringNotContainsString('<meta name="description" content="Who we are.">', $html);
+    }
+
+    public function test_no_description_prints_no_description_tag(): void
+    {
+        $html = HeadTags::inject(self::PAGE, $this->meta(['description' => '']), 'Example', [], []);
+
+        $this->assertStringNotContainsString('name="description"', $html);
+    }
+
     public function test_tags_outside_the_head_do_not_count(): void
     {
         $page = "<html><head><title>T</title></head><body><meta property=\"og:title\" content=\"Body\"></body></html>";

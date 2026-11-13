@@ -80,6 +80,7 @@ final class SeoMiddleware implements MiddlewareInterface
         }
 
         $this->context->reset();
+        $this->context->resolveDefaultsWith(fn (): ?PageMeta => $this->siteDefaults($this->pageLocale($request->getUri()->getPath())));
         $response = $handler->handle($request);
         if ($response->getStatusCode() !== 200 || !self::isHtml($response)) {
             return $response;
@@ -150,10 +151,10 @@ final class SeoMiddleware implements MiddlewareInterface
         $origin = PageSignals::origin($this->appUrl, $request);
         $path = $request->getUri()->getPath();
         $locale = $this->pageLocale($path);
-        $defaults = $this->context->hasDefaults($locale) ? $this->context->defaults($locale) : $this->site->defaultsFor($locale);
+        $defaults = $this->siteDefaults($locale);
         $page = $this->context->get() ?? new PageMeta();
         // From the site only what describes the site: description and share image. Its title is the site's name.
-        $description = $page->description !== '' ? $page->description : ($defaults?->description ?? '');
+        $description = $this->context->mergedDescription($defaults);
         $image = $page->image ?? $defaults?->image;
         $meta = $page->with([
             'title' => $page->title !== '' ? $page->title : self::documentTitle($html),
@@ -182,6 +183,11 @@ final class SeoMiddleware implements MiddlewareInterface
         }
 
         return $response->withoutHeader('Content-Length')->withBody(Stream::create($tagged));
+    }
+
+    private function siteDefaults(string $locale): ?PageMeta
+    {
+        return $this->context->hasDefaults($locale) ? $this->context->defaults($locale) : $this->site->defaultsFor($locale);
     }
 
     /** The text of the page's own `<title>`, or '' when it has none. */

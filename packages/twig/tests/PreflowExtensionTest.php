@@ -12,6 +12,7 @@ use Preflow\View\JsPosition;
 use Preflow\View\NonceGenerator;
 use Preflow\Twig\PreflowExtension;
 use Preflow\View\Geo\GeoCollector;
+use Preflow\View\Seo\PageMeta;
 use Preflow\View\Seo\SeoContext;
 
 final class PreflowExtensionTest extends TestCase
@@ -222,5 +223,23 @@ final class PreflowExtensionTest extends TestCase
     public function test_seo_function_without_context_is_a_no_op(): void
     {
         $this->assertSame('<p>Page</p>', $this->render("<p>Page</p>{% do seo({title: 'X'}) %}"));
+    }
+
+    public function test_seo_description_function_gives_the_merged_description_as_text(): void
+    {
+        $seo = new SeoContext();
+        $seo->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'The <b>site</b> default'));
+        $twig = new Environment(new ArrayLoader([]), ['autoescape' => 'html']);
+        $twig->addExtension(new PreflowExtension($this->assets, seoContext: $seo));
+
+        $this->assertSame('The site default', $twig->createTemplate('{{ seo_description() }}')->render());
+
+        $twig->createTemplate("{% do seo({description: 'Fish & <i>chips</i>'}) %}")->render();
+        $this->assertSame('Fish &amp; chips', $twig->createTemplate('{{ seo_description() }}')->render());
+    }
+
+    public function test_seo_description_function_without_context_is_empty(): void
+    {
+        $this->assertSame('', $this->render('{{ seo_description() }}'));
     }
 }

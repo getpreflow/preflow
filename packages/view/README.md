@@ -490,6 +490,26 @@ In Blade: `@seo(['title' => $job->title, 'description' => $job->teaser])`. In PH
 `Preflow\View\Seo\SeoContext` (`set(new PageMeta(...))`, `merge([...])`). An unknown key in a template's `seo()` is
 ignored (debug mode logs it); `PageMeta::with()` and `merge()` in PHP reject one.
 
+### The description: `<meta name="description">` and `seo_description()`
+
+With SEO on, a page's `<head>` gets `<meta name="description">` next to `og:description`, from the same text: the
+page's own description (a Folio record's share text, `seo({description: …})`), else the site's default. It is cleaned the
+same way (no tags, collapsed whitespace) and cut at a word to 200 characters. A layout that prints its own
+`<meta name="description">` keeps it; none is added, as with every other tag. A `noindex` or private page gets
+none, like its other cards (since 0.72).
+
+A template that needs the text itself (a visible lead, a `<title>` suffix) calls `seo_description()`: the same merged
+description, as plain text (cleaned like the tags, but **not** cut at 200 characters), `''` when neither the page nor the
+site has one or SEO is off. Both engines escape it. Call it after the page's own `seo({…})`, as a layout does when it
+renders after its child template.
+
+```twig
+{% do seo({description: job.teaser}) %}
+<p class="lead">{{ seo_description() }}</p>
+```
+
+In Blade: `@seo(['description' => $job->teaser])` then `<p class="lead">@seo_description</p>`.
+
 ### The public pages: sitemap and llms.txt
 
 `/sitemap.xml` and GEO's `/llms.txt` list the same pages, from `Preflow\View\Seo\PublicPages`. With Folio, the

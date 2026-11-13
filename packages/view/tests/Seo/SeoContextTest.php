@@ -109,4 +109,25 @@ final class SeoContextTest extends TestCase
         $silent->mergeTemplate(['titel' => 'B']);
         $this->assertSame('', $silent->get()?->title);
     }
+
+    public function test_description_is_the_pages_own_else_the_sites_as_plain_text(): void
+    {
+        $context = new SeoContext();
+        $context->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: "<b>Site</b>  default\n" . str_repeat('x', 300)));
+
+        $this->assertSame('Site default ' . str_repeat('x', 300), $context->description());
+
+        $context->merge(['description' => '<p>Own   text</p>']);
+        $this->assertSame('Own text', $context->description());
+        $this->assertSame('<p>Own   text</p>', $context->mergedDescription());
+    }
+
+    public function test_description_is_empty_without_page_or_site_description(): void
+    {
+        $context = new SeoContext();
+        $this->assertSame('', $context->description());
+
+        $context->resolveDefaultsWith(static fn (): ?PageMeta => null);
+        $this->assertSame('', $context->description());
+    }
 }

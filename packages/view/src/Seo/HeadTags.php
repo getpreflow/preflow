@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\View\Seo;
 
 /**
- * Adds robots, theme-color, Open Graph, Twitter card and JSON-LD tags to a
+ * Adds robots, theme-color, the description, Open Graph, Twitter card and JSON-LD tags to a
  * page's <head>. A tag the page already has (same `name`/`property` inside
  * <head>; JSON-LD anywhere in the page) is left alone, so layouts and
  * components can always override.
@@ -43,10 +43,14 @@ final class HeadTags
 
         // A page kept out of search, or a private one, gets no preview cards or structured data.
         if (!$meta->noindex && $cards) {
+            $description = self::description($meta->description);
+            if ($description !== '' && $missing('description')) {
+                $tags[] = self::meta('name', 'description', $description);
+            }
             $og = [
                 'og:site_name' => $siteName,
                 'og:title' => $meta->title,
-                'og:description' => self::description($meta->description),
+                'og:description' => $description,
                 'og:type' => $meta->ogType,
                 'og:url' => $meta->url,
                 'og:locale' => self::ogLocale($meta->locale),

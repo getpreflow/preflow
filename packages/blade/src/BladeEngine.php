@@ -405,5 +405,10 @@ final class BladeEngine implements TemplateEngineInterface
         $this->compiler->directive('seo', function (string $expression) {
             return "<?php if (\$__seoContext ?? null) { \$__seoContext->mergeTemplate({$expression}); } ?>";
         });
+
+        // @seo_description: the description the page gets as plain text, escaped; nothing without a context (SEO off)
+        $this->compiler->directive('seo_description', function () {
+            return "<?php echo e((\$__seoContext ?? null) ? \$__seoContext->description() : ''); ?>";
+        });
     }
 }

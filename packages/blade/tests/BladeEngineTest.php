@@ -9,6 +9,7 @@ use Preflow\Blade\BladeEngine;
 use Preflow\View\AssetCollector;
 use Preflow\View\Geo\GeoCollector;
 use Preflow\View\NonceGenerator;
+use Preflow\View\Seo\PageMeta;
 use Preflow\View\Seo\SeoContext;
 use Preflow\View\TemplateFunctionDefinition;
 
@@ -257,6 +258,23 @@ final class BladeEngineTest extends TestCase
         file_put_contents($this->tmpDir . '/seo-none.blade.php', "<p>Page</p>@seo(['title' => 'X'])");
 
         $this->assertSame('<p>Page</p>', trim($this->engine->render('seo-none')));
+    }
+
+    public function test_seo_description_directive_prints_the_merged_description_as_text(): void
+    {
+        $seo = new SeoContext();
+        $seo->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'The <b>site</b> default'));
+        $engine = new BladeEngine([$this->tmpDir], $this->assets, cachePath: $this->tmpDir . '/cache', seoContext: $seo);
+        file_put_contents($this->tmpDir . '/seo-desc.blade.php', "<p>@seo_description</p>@seo(['description' => 'Fish & <i>chips</i>'])<p>@seo_description</p>");
+
+        $this->assertSame('<p>The site default</p><p>Fish &amp; chips</p>', trim($engine->render('seo-desc')));
+    }
+
+    public function test_seo_description_directive_without_context_prints_nothing(): void
+    {
+        file_put_contents($this->tmpDir . '/seo-desc-none.blade.php', '<p>@seo_description</p>');
+
+        $this->assertSame('<p></p>', trim($this->engine->render('seo-desc-none')));
     }
 
     public function test_an_http_exception_thrown_while_rendering_comes_out_as_itself(): void

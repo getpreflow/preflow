@@ -36,6 +36,7 @@ final class PreflowExtension extends AbstractExtension
             new TwigFunction('assets', $this->renderAssets(...), ['is_safe' => ['html']]),
             new TwigFunction('asset_url', $this->assetUrl(...), ['is_safe' => ['html']]),
             new TwigFunction('seo', $this->registerSeo(...), ['is_safe' => ['html']]),
+            new TwigFunction('seo_description', $this->seoDescription(...)),
         ];
     }
 
@@ -88,6 +89,16 @@ final class PreflowExtension extends AbstractExtension
     {
         $this->seoContext?->mergeTemplate($meta);
         return '';
+    }
+
+    /**
+     * Function: {{ seo_description() }}
+     * The description the page gets as plain text (its own, else the site's); '' without one
+     * or without a context (SEO off). Escaped by Twig's autoescape.
+     */
+    public function seoDescription(): string
+    {
+        return $this->seoContext?->description() ?? '';
     }
 
     /**
