@@ -134,8 +134,27 @@ final class SearchRouteTest extends TestCase
         $this->assertSame(['groups' => []], $this->search('spring'), 'no permission: an empty answer, not a 403');
     }
 
+    #[RunInSeparateProcess]
+    public function test_signed_out_is_refused_like_other_staff_routes(): void
+    {
+        $this->seed();
+        $this->writeAuth(['post.view', 'assets.view']);
+        $res = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/_search?q=spring')->withHeader('Accept', 'application/json'));
+
+        $this->assertNotSame(200, $res->getStatusCode());
+        $this->assertContains($res->getStatusCode(), [302, 401, 403], 'to the login, or refused');
+        $this->assertStringNotContainsString('Spring launch', (string) $res->getBody());
+    }
+
     /** @param list<string> $permissions the one role's permissions */
     private function signIn(array $permissions): void
+    {
+        $this->writeAuth($permissions);
+        $this->login();
+    }
+
+    /** @param list<string> $permissions */
+    private function writeAuth(array $permissions): void
     {
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -148,7 +167,10 @@ final class SearchRouteTest extends TestCase
         ], true) . ";\n");
         $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => ['admin' => $permissions]], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
+    }
 
+    private function login(): void
+    {
         $this->session = $this->app();
         $f = new Psr17Factory();
         $page = (string) $this->session->handle($f->createServerRequest('GET', '/folio/login'))->getBody();

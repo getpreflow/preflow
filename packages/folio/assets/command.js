@@ -97,7 +97,7 @@
         input.setAttribute('aria-label', t('command_title'));
         input.setAttribute('placeholder', t('command_title') + '…');
         input.setAttribute('role', 'combobox');
-        input.setAttribute('aria-expanded', 'true');
+        input.setAttribute('aria-expanded', 'false');
         input.setAttribute('aria-autocomplete', 'list');
         input.setAttribute('aria-controls', 'folio-command-list');
         input.setAttribute('autocomplete', 'off');
@@ -107,7 +107,7 @@
         var esc = document.createElement('button');
         esc.type = 'button';
         esc.className = 'folio-command-esc';
-        esc.setAttribute('aria-label', t('close'));
+        esc.setAttribute('aria-label', 'esc, ' + t('close')); // the name starts with the visible text (WCAG 2.5.3)
         esc.textContent = 'esc';
         esc.addEventListener('click', close);
         field.appendChild(esc);
@@ -121,7 +121,7 @@
         dialog.appendChild(list);
 
         status = document.createElement('p');
-        status.className = 'folio-command-status';
+        status.className = 'folio-command-status folio-sr'; // announced, not shown (the board has no count line)
         status.setAttribute('role', 'status');
         status.setAttribute('aria-live', 'polite');
         dialog.appendChild(status);
@@ -178,9 +178,9 @@
 
     function onInput() {
         var term = input.value.trim();
-        if (timer !== null) { clearTimeout(timer); timer = null; }
+        // A new term: whatever was asked for the old one is dropped, even inside the debounce window.
+        stop();
         if (term.length < MIN_TERM) {
-            stop();
             records = [];
         } else {
             timer = setTimeout(function () { timer = null; fetchRecords(term); }, DEBOUNCE_MS);
@@ -257,6 +257,7 @@
             });
         }
         status.textContent = rows.length === 0 ? t('command_none') : rows.length === 1 ? t('command_one') : t('command_many', { count: rows.length });
+        input.setAttribute('aria-expanded', rows.length ? 'true' : 'false');
         select(rows.length ? 0 : -1);
     }
 

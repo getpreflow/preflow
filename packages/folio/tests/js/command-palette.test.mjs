@@ -258,3 +258,42 @@ test('no ⌘K behind another open dialog; the g-chords come from the data', () =
     press(p, 'a');
     assert.equal(p.w.location.href, '/folio/x', 'no g a without assets.view');
 });
+
+test('a term change inside the 150 ms window drops the answer in flight', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const p = page();
+        press(p, 'k', { meta: true });
+        type(p, 'du');
+        mock.timers.tick(150);
+        assert.equal(p.requests.length, 1);
+        type(p, 'dub');
+        assert.equal(p.requests[0].options.signal.aborted, true, 'the term changed: the request in flight is aborted at once');
+        p.answer(p.requests[0], { groups: [{ type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [{ id: 'old', title: 'Old du', url: '/folio/page/old/edit' }] }] });
+        await flush();
+        assert.equal(titles(p).includes('Old du'), false, 'an answer to the old term never shows, even before the new request');
+        mock.timers.tick(150);
+        assert.equal(p.requests.length, 2);
+        p.answer(p.requests[1], ANSWER);
+        await flush();
+        assert.deepEqual(titles(p), ['Werkhalle Dubach', 'dub.png']);
+    } finally {
+        mock.timers.reset();
+    }
+});
+
+test('accessible names and states: the esc chip, the count line, aria-expanded', () => {
+    const p = page();
+    press(p, 'k', { meta: true });
+    const d = palette(p);
+    const esc = d.querySelector('.folio-command-esc');
+    assert.equal(esc.textContent, 'esc');
+    assert.ok(esc.getAttribute('aria-label').startsWith('esc'), 'the name contains the visible text (WCAG 2.5.3)');
+    assert.ok(esc.getAttribute('aria-label').includes('Close'));
+    const status = d.querySelector('[aria-live="polite"]');
+    assert.ok(status.classList.contains('folio-sr'), 'the count is for screen readers only, as on the board');
+    const input = d.querySelector('input');
+    assert.equal(input.getAttribute('aria-expanded'), 'true', 'rows listed');
+    type(p, 'zz');
+    assert.equal(input.getAttribute('aria-expanded'), 'false', 'no rows');
+});
