@@ -155,7 +155,9 @@ visits, counts hits or queues side effects should skip them for such a request. 
 
 Every internal render (GEO's Markdown views and `llms-full.txt`, the SEO audit's pages, page cache rebuilds)
 runs in core's anonymous render scope: the request context names the rendered page, nobody is signed in,
-the session is hidden, and the translator locale and users are put back afterwards. Since 0.74 mail the page
+the session is hidden, the translator starts in the site's default locale with overrides off (since 0.75: an
+audit step run from a German admin interface rendered the pages in German on a site without a locale
+middleware), and the translator state and users are put back afterwards. Since 0.74 mail the page
 queues with `Notifier::sendLater()` during it is dropped (`Notifier::discardingQueued()`), so the request
 that flushes the queue afterwards sends only its own mail; `send()` still sends at once. Since 0.75 the
 request's queued cookies are set aside for the render (`CookieQueue::isolated()`), so a remember-me token

@@ -2473,8 +2473,9 @@ final class Application
      * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
      * is signed in during it, mail it queues is dropped (Notifier::discardingQueued(),
      * since 0.74), the request's queued cookies are set aside for it (CookieQueue::isolated(),
-     * since 0.75), and the translator locale and signed-in users are put back
-     * afterwards, so nothing passes between the request and its renders.
+     * since 0.75), the translator starts in the site's default locale with overrides off (since
+     * 0.75), and the translator state and signed-in users are put back afterwards, so nothing
+     * passes between the request and its renders.
      *
      * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
      */
@@ -2482,8 +2483,9 @@ final class Application
     {
         $container = $this->container;
         $sessionData = new \Preflow\Core\Http\Session\SessionDataGuard();
+        [, $siteLocale] = $this->siteLocales();
 
-        return static function (ServerRequestInterface $sub, \Closure $next) use ($container, $sessionData): ResponseInterface {
+        return static function (ServerRequestInterface $sub, \Closure $next) use ($container, $sessionData, $siteLocale): ResponseInterface {
             $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
             $container->instance(RequestContext::class, new RequestContext($sub->getUri()->getPath(), 'GET'));
 
@@ -2491,6 +2493,7 @@ final class Application
                 ? $container->get(\Preflow\I18n\Translator::class)
                 : null;
             $locale = $translator?->getLocale();
+            $overrides = $translator?->usesOverrides() ?? false;
 
             $auth = $container->bound(\Preflow\Auth\AuthManager::class)
                 ? $container->get(\Preflow\Auth\AuthManager::class)
@@ -2504,6 +2507,11 @@ final class Application
             $sessionData->hide();
             // Nobody is signed in for the render, even when it is called from inside the pipeline.
             $auth?->setUser(null);
+            // The texts visitors get: the site's default locale (a locale middleware sets the page's
+            // own on a multilingual site; without one nothing else would, and an admin request's
+            // interface locale stayed) and no admin overrides (since 0.75).
+            $translator?->setLocale($siteLocale);
+            $translator?->useOverrides(false);
 
             try {
                 return $next();
@@ -2519,6 +2527,7 @@ final class Application
                 }
                 if ($translator !== null && $locale !== null) {
                     $translator->setLocale($locale);
+                    $translator->useOverrides($overrides);
                 }
                 if ($context !== null) {
                     $container->instance(RequestContext::class, $context);
