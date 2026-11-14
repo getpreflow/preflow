@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-13 (v0.74.0)
+> Last updated: 2026-11-14 (v0.75.0)
 
 ## Current State
 
-**v0.74.0** — 7480 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.75.0** — 7729 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,60 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Folio redesign, part 2: lists and editors (v0.75.0, released 2026-11-14):** lists, the record editor, blocks,
+  the preview and every field type get the redesign; native confirm and alert boxes are gone (plan
+  `docs/superpowers/plans/2026-11-13-release-0.75-folio-redesign-lists-editors.md`, differences from the boards in
+  `docs/superpowers/notes/2026-11-13-folio-redesign-deviations.md`). Inter and JetBrains Mono ship with Folio (OFL).
+  - **Lists:** family-tinted type tiles, language state per row (complete, partial, missing), a "…" row menu (Edit,
+    Duplicate, Copy preview link, Unpublish, Delete), bulk bar, phone filter sheet, keyboard (`/` search, `n` new,
+    `j`/`k`, `e`/Enter, `x` select, `.` menu, `d` duplicate, `?` help). Copies read "Title (copy)".
+  - **Editor:** topbar with save state, Save draft and Publish (Schedule when a date is set; ⌘S, ⌘↵), language switch
+    with completeness, Content / SEO & sharing tabs, a side panel (status and "N changes", address, languages, search
+    result preview, revisions, system fields, Unpublish/Delete; a sheet on phones), fields with `"panel": "side"` and
+    `"width": "half"`.
+  - **Blocks and preview:** block cards with family icon, summary, menu and collapse; "Add block" with search and
+    keyboard; preview bar (devices, address with draft dot, copy preview link, open live); the selected block stays
+    outlined in the preview.
+  - **Fields:** address prefix and copy, counters, steppers with `"unit"`, date hint ("In 2 days · Europe/Zurich"),
+    switch (`"display": "switch"`), segmented (≤ 4 required options) and radio cards (`"display": "cards"`), relation
+    rows with search and meta line, asset cards with drop upload and an alt-text warning, matrix rows, env set/not set.
+  - **Dialogs:** one styled `<dialog>` for every confirm and alert; leaving an autosaving editor saves first and asks
+    only when that fails; other dirty forms get Leave / Stay / Save and leave. The native prompt stays only for tab
+    close, reload and typed addresses.
+  - **Framework APIs (usable without Folio):** data `TypeFamily` and `"family"`, `Relation::metaField`,
+    `ModelLabelKeys::optionHelp()`/`isDescribedOption()`, `Schema::convertColumn()`; blocks `#[Block(family:)]`; i18n
+    `Completeness`; publishing `Publisher::changes()`, `RecordWriter::duplicate()` (with overrides) and
+    `isSystemKey()`, `RecordAddressFields`; core `Version` (installed package versions; Folio shows it in the user
+    menu).
+  - **Internal renders (core):** an internal render (SEO audit, GEO, page-cache rebuild and verify) keeps the request's
+    queued cookies, starts in the site's locale with translation overrides off, and the page cache's verify render no
+    longer sends mail. First steps of the render-context work (`docs/superpowers/research/` inventory).
+  - **Upgrading:**
+    - Upgrade core, data, blocks, form, i18n, publishing and folio together (`composer update "preflow/*" -W`); the
+      constraints refuse mixes.
+    - An overridden `form.twig` must keep `id="{{ record_form }}"` (`folio-record`) on the record form and render the
+      new `topbar_lead` and `actions` blocks and `partials/_side_panel.twig`. Address fields (the slug) and side fields
+      now carry `form="folio-record"`: an old override that renders them inside another form silently stops posting
+      them.
+    - An overridden `_list_results.twig`: row Edit/trash become the "…" menu (`row.menu`); `row.languages[]` gain
+      `state`; the bulk form is `#folio-bulk` with `form="folio-bulk"` tick boxes.
+    - Removed classes: `.folio-form-actions`, `.folio-publish-at`, `.folio-block-actions`; the markup of block cards and
+      of the relation, asset, matrix, env, boolean, select, number and address field editors changed. Site CSS or JS
+      aimed at them needs a look.
+    - Scripts: `fields.js`, `blocks.js` and `editor-frame.js` load after `admin.js`. Extensions that add side-panel
+      controls call `Folio.ownControls(node)`; helper inputs inside the editor carry `data-folio-no-edit`; use
+      `folioConfirm()`/`folioAlert()` instead of `confirm()`/`alert()`.
+    - Required selects with up to 4 options show as segmented controls; force a select with `"display": "select"`.
+    - A custom `RecordTypes` binding should implement `RecordAddressFields`, or copies keep the original's address.
+    - Model schemas: a top-level `"family"` and the field options `"panel"`, `"width"`, `"unit"`, `"display"` are
+      validated at boot (an unknown value is a boot error).
+    - form's `FieldRenderer` writes a newline after `<textarea>`: tests asserting `>value</textarea>` need it.
+    - The asset upload and share routes answer JSON on `Accept: application/json`.
+    - data: `SchemaGrammar` has a new method `convertColumn()` (third-party grammars implement it).
+    - Duplicate needs view and create on the type. New `folio.*` keys: check translation overrides.
+  - **Next:** 0.76 settings and library screens, the dashboard and the ink layer; then the approved proposals (⌘K,
+    `/` block picker, crop previews, missing-alt filter, AI "Write a draft", recent changes) and the tag field; then the
+    render context release.
 - **Run the SEO audit from Folio (v0.74.0, released 2026-11-13):** Settings → SEO audit runs the audit itself: Run
   audit, Continue and Start over, in steps of about 20 s while the page is open, with progress ("3 of 4 pages") until the
   report is complete (plan `docs/superpowers/plans/2026-11-13-release-0.74-seo-audit-from-folio.md`).
