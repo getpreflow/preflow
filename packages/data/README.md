@@ -866,7 +866,7 @@ RecordTitle::of($record, 'de');  // a translatable title in German (with the loc
 `string` that is not hidden (`"hidden": true`), read as a string only. A declared `titleField` may
 also be a number field (its value is cast to text). An empty title (or none) falls back to the
 record id. A `titleField` the type does not have is an error naming the type when the type
-registry is built (at boot). A model class sets it on `#[Entity(titleField: …)]` or in its admin
+registry is built (at boot; with a boot manifest, when `preflow optimize` builds it). A model class sets it on `#[Entity(titleField: …)]` or in its admin
 file; both may name it only when they name the same field, else boot fails naming the type and
 both values. `searchLoose()` matches a relation without its own `labelField` against its target's
 `titleField` (then the first string field, as before).

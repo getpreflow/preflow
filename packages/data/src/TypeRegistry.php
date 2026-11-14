@@ -23,17 +23,42 @@ final class TypeRegistry
         private readonly string $modelsPath,
         private readonly ?Locales $locales = null,
         private readonly array $classes = [],
+        private readonly ?\Preflow\Core\Boot\BootManifest $manifest = null,
     ) {
         $this->assertOneDefinitionPerKey();
-        $this->assertTitleFields();
+        if ($this->manifest === null) {
+            $this->assertTitleFields();
+        } else {
+            // Checked when the manifest is built (and live while none is loaded); a loaded one skips the scan.
+            $this->manifest->remember('data.title_fields', function (): bool {
+                $this->assertTitleFields();
+
+                return true;
+            }, $this->manifest->isRecording() ? $this->titleFieldSources() : []);
+        }
+    }
+
+    /** @return list<string> what the titleField check reads: the model files and the model classes' files */
+    private function titleFieldSources(): array
+    {
+        $sources = [$this->modelsPath];
+        foreach ($this->classes as $class) {
+            $file = (new \ReflectionClass($class))->getFileName();
+            if (is_string($file)) {
+                $sources[] = $file;
+            }
+        }
+
+        return array_values(array_unique($sources));
     }
 
     /**
      * A titleField the type does not have, or a class and its admin file naming different ones, is
-     * an error when the registry is built (at boot), not when a request first uses the type. A model
-     * file is decoded here (once per process; the type's first use reads the same decode); a class
-     * is reflected only for its #[Entity], and its fields only when a titleField is set. A file
-     * with "extends": true patches a runtime type, which define() checks.
+     * an error when the registry is built (at boot), not when a request first uses the type. With a
+     * boot manifest the check runs when the manifest is built (preflow optimize), so a loaded one
+     * decodes no model file for it. A class is reflected only for its #[Entity], and its fields
+     * only when a titleField is set. A file with "extends": true patches a runtime type, which
+     * define() checks.
      */
     private function assertTitleFields(): void
     {

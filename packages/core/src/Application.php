@@ -827,7 +827,7 @@ final class Application
             ? (new \Preflow\Data\ModelClasses($modelPaths, $this->manifest))->all()
             : [];
         if (is_dir($modelsPath) || $classes !== []) {
-            $typeRegistry = new \Preflow\Data\TypeRegistry($modelsPath, $locales, $classes);
+            $typeRegistry = new \Preflow\Data\TypeRegistry($modelsPath, $locales, $classes, $this->manifest);
             $this->container->instance(\Preflow\Data\TypeRegistry::class, $typeRegistry);
         }
 

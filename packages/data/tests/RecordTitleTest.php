@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Boot\BootManifest;
+use Preflow\Core\Config\ParsedJsonFiles;
 use Preflow\Data\Attributes\Entity;
 use Preflow\Data\Attributes\Field;
 use Preflow\Data\Attributes\Id;
@@ -215,5 +217,40 @@ final class RecordTitleTest extends TestCase
         $type = (new TypeRegistry($this->dir, null, ['titled_book' => TitledBook::class]))->get('titled_book');
         $this->assertSame('name', $type->titleField);
         $this->assertSame('Dune', RecordTitle::of(DynamicRecord::fromArray($type, ['uuid' => 'b1', 'code' => 'X1', 'name' => 'Dune'])));
+    }
+
+    public function test_with_a_manifest_a_later_boot_decodes_no_model_file_for_the_check(): void
+    {
+        file_put_contents($this->dir . '/thing.json', json_encode([
+            'key' => 'thing', 'table' => 'thing', 'fields' => ['name' => ['type' => 'string']], 'titleField' => 'name',
+        ]));
+        file_put_contents($this->dir . '/untitled_book.json', json_encode(['titleField' => 'code']));
+        $classes = ['untitled_book' => UntitledBook::class];
+
+        $recording = BootManifest::recording();
+        new TypeRegistry($this->dir, null, $classes, $recording);
+        $recorded = $recording->recorded();
+        $this->assertTrue($recorded['catalogs']['data.title_fields']);
+        $this->assertContains($this->dir, $recorded['sources']);
+
+        ParsedJsonFiles::reset();
+        $loaded = BootManifest::fromData(['catalogs' => $recorded['catalogs']]);
+        // The class key's admin file is still read by the one-definition check; the plain model file is not.
+        new TypeRegistry($this->dir, null, [], $loaded);
+        $this->assertSame(0, ParsedJsonFiles::decodeCount());
+        new TypeRegistry($this->dir, null, $classes, $loaded);
+        $this->assertSame(1, ParsedJsonFiles::decodeCount(), 'only assertOneDefinitionPerKey reads the class key file');
+    }
+
+    public function test_a_bad_title_field_fails_when_the_manifest_is_built(): void
+    {
+        file_put_contents($this->dir . '/thing.json', json_encode([
+            'key' => 'thing', 'table' => 'thing', 'fields' => ['name' => ['type' => 'string']], 'titleField' => 'missing',
+        ]));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Type "thing" has the titleField "missing", which is not one of its fields.');
+
+        new TypeRegistry($this->dir, null, [], BootManifest::recording());
     }
 }
