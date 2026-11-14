@@ -1049,6 +1049,8 @@ return [
         'shortcuts' => 'Keyboard shortcuts',
         'shortcut_help' => 'Show these shortcuts',
         'shortcut_search' => 'Search the list',
+        'shortcut_add_block' => 'Add a block',
+        'insert_block_here' => 'Insert block here',
         // The ⌘K palette (command.js) and the g-chords.
         'command_title' => 'Search or jump to',
         'command_screens' => 'Screens and actions',

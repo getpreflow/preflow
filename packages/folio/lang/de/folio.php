@@ -1023,6 +1023,8 @@ return [
         'shortcuts' => 'Tastenkürzel',
         'shortcut_help' => 'Diese Kürzel zeigen',
         'shortcut_search' => 'Die Liste durchsuchen',
+        'shortcut_add_block' => 'Einen Block hinzufügen',
+        'insert_block_here' => 'Block hier einfügen',
         // The ⌘K palette (command.js) and the g-chords.
         'command_title' => 'Suchen oder springen zu',
         'command_screens' => 'Seiten und Aktionen',

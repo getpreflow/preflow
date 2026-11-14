@@ -1023,6 +1023,8 @@ return [
         'shortcuts' => 'Raccourcis clavier',
         'shortcut_help' => 'Afficher ces raccourcis',
         'shortcut_search' => 'Rechercher dans la liste',
+        'shortcut_add_block' => 'Ajouter un bloc',
+        'insert_block_here' => 'Insérer un bloc ici',
         // The ⌘K palette (command.js) and the g-chords.
         'command_title' => 'Rechercher ou aller à',
         'command_screens' => 'Écrans et actions',

@@ -14,7 +14,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
 /**
  * The blocks editor's markup (0.75, board PageEditor): block cards with the family tile, the "…"
  * menu and the collapse chevron, the error and unknown states, the "Sections · N blocks" heading
- * with Collapse all, and the "Add block" picker with its search.
+ * with Collapse all, and the "Add block" picker with its search. The "+" insert lines (0.77) are
+ * added by blocks.js, so they are not in this markup.
  */
 final class BlocksTemplateTest extends TestCase
 {
@@ -175,6 +176,26 @@ final class BlocksTemplateTest extends TestCase
         $this->assertMatchesRegularExpression('#<button type="button" class="folio-blocks-add" data-blocks-item data-search="hero big opening section"\s+hx-get="/folio/_blocks/hero/new\?name=sections&amp;locale=en&amp;depth=0" hx-target="closest \[data-blocks-picker\]" hx-swap="beforebegin" hx-disabled-elt="this"\s+title="Big opening section">\s*<span class="folio-type-icon" data-family="page" aria-hidden="true">#', $html);
         $this->assertMatchesRegularExpression('#<span class="folio-blocks-group-label" id="[^"]+">Sections</span>\s*<div class="folio-blocks-items" role="group" aria-labelledby="#', $html);
         $this->assertMatchesRegularExpression('#<p class="folio-blocks-empty" data-blocks-empty data-text="No block matches “:query”." hidden></p>#', $html);
+    }
+
+    /**
+     * The "+" insert lines (0.77) are blocks.js's: without script the page has no dead buttons, the
+     * cards follow one another with their [_order][] inputs (the saved order is their DOM order), and
+     * the end picker stays listed in place after the last card.
+     */
+    public function test_insert_lines_are_script_only_and_the_end_picker_stays_last(): void
+    {
+        $html = $this->render([
+            ['_uid' => self::A, '_block' => 'hero', 'headline' => 'One'],
+            ['_uid' => self::B, '_block' => 'link', 'label' => 'Docs', 'url' => '/docs'],
+        ]);
+
+        $this->assertStringNotContainsString('data-blocks-insert', $html);
+        $this->assertStringNotContainsString('folio-blocks-insert', $html);
+        preg_match_all('#name="sections\[_order\]\[\]" value="([a-z]+)"#', $html, $m);
+        $this->assertSame([self::A, self::B], $m[1]);
+        $this->assertGreaterThan(strpos($html, 'id="block-' . self::B . '"'), strrpos($html, '<div class="folio-blocks-picker'), 'the field\'s own picker comes after its last card');
+        $this->assertMatchesRegularExpression('#hx-target="closest \[data-blocks-picker\]" hx-swap="beforebegin"#', $html);
     }
 
     public function test_a_field_with_one_block_type_keeps_its_single_button(): void

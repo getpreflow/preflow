@@ -1,5 +1,5 @@
 /* Folio blocks editor (blocks/field.twig, blocks/card.twig; 0.75): the "Add block" picker, the cards'
- * "…" menus, Collapse all and the block count. Vanilla, no build step; loaded after admin.js where a
+ * "…" menus, Collapse all and the block count; the "+" insert lines between cards and "/" (0.77). Vanilla, no build step; loaded after admin.js where a
  * blocks field is on the page, and uses what admin.js shares on window.Folio (menus, preview). Moving,
  * removing, duplicating and dragging cards stay in admin.js; so does announcing a card that htmx adds
  * as an edit of the record form (folio:edit, the unsaved-changes guard).
@@ -24,12 +24,26 @@
     // and returns the focus to the button, a click or the focus elsewhere closes it. The search is no
     // record data (data-folio-no-edit): typing in it marks nothing unsaved and saves nothing.
 
+    // The popover can stand at an insert line while it is open there (picker._folioAt), so a picker
+    // keeps its own reference to it, and the popover to its picker.
     function parts(picker) {
+        var popover = picker._folioPopover || picker.querySelector('[data-blocks-popover]');
         return {
             button: picker.querySelector('[data-blocks-picker-open]'),
-            popover: picker.querySelector('[data-blocks-popover]'),
-            search: picker.querySelector('[data-blocks-search]'),
+            popover: popover,
+            search: popover ? popover.querySelector('[data-blocks-search]') : null,
         };
+    }
+
+    // The picker el belongs to: its popover (wherever it stands), the picker itself, or the insert line
+    // its popover is open at.
+    function pickerFrom(el) {
+        if (!el || !el.closest) { return null; }
+        var popover = el.closest('[data-blocks-popover]');
+        if (popover && popover._folioPicker) { return popover._folioPicker; }
+        var line = el.closest('[data-blocks-insert]');
+        if (line) { return line._folioPicker && line._folioPicker._folioAt === line ? line._folioPicker : null; }
+        return el.closest('[data-blocks-picker-ready]');
     }
 
     function initPicker(picker) {
@@ -37,6 +51,9 @@
         var p = parts(picker);
         if (!p.button || !p.popover) { return; } // one block type: its single button
         picker.setAttribute('data-blocks-picker-ready', '');
+        picker._folioPopover = p.popover;
+        picker._folioAt = null;
+        p.popover._folioPicker = picker;
         p.button.hidden = false;
         p.button.setAttribute('aria-expanded', 'false');
         p.popover.hidden = true;
@@ -58,11 +75,21 @@
         });
     }
 
-    function openPicker(picker) {
+    // At the end ("Add block", "/") or at an insert line: there the popover moves into the line, below
+    // its "+", and a pick goes in at that place (onLinePick).
+    function openPicker(picker, line) {
         openPickers().forEach(function (other) { if (other !== picker) { closePicker(other, false); } });
         var p = parts(picker);
+        var at = line || null;
+        if (picker._folioAt && picker._folioAt !== at) { leaveLine(picker); }
+        if (at) {
+            at.appendChild(p.popover);
+            at.classList.add('is-open');
+        }
+        picker._folioAt = at;
         p.popover.hidden = false;
-        p.button.setAttribute('aria-expanded', 'true');
+        p.button.setAttribute('aria-expanded', at ? 'false' : 'true');
+        if (at) { lineButton(at).setAttribute('aria-expanded', 'true'); }
         if (p.search) {
             p.search.value = '';
             filter(picker, '');
@@ -75,7 +102,21 @@
         if (!p.popover || p.popover.hidden) { return; }
         p.popover.hidden = true;
         p.button.setAttribute('aria-expanded', 'false');
-        if (refocus) { p.button.focus(); }
+        var at = picker._folioAt;
+        leaveLine(picker);
+        if (refocus) { (at && at.isConnected ? lineButton(at) : p.button).focus(); }
+    }
+
+    // The popover goes back to the end of the list from the line it was open at.
+    function leaveLine(picker) {
+        var at = picker._folioAt;
+        if (!at) { return; }
+        picker._folioAt = null;
+        at.classList.remove('is-open');
+        var button = lineButton(at);
+        if (button) { button.setAttribute('aria-expanded', 'false'); }
+        var popover = parts(picker).popover;
+        if (popover && popover.parentNode !== picker) { picker.appendChild(popover); }
     }
 
     // Lower case without accents: "Ecole" finds "École".
@@ -112,12 +153,18 @@
     }
 
     function pickerOf(el) {
-        var picker = el && el.closest ? el.closest('[data-blocks-picker-ready]') : null;
-        return picker && !parts(picker).popover.hidden ? picker : null;
+        var picker = pickerFrom(el);
+        return picker && picker.hasAttribute('data-blocks-picker-ready') && !parts(picker).popover.hidden ? picker : null;
     }
 
     function onPickerClick(e) {
         var t = e.target;
+        var plus = t && t.closest ? t.closest('[data-blocks-insert-open]') : null;
+        if (plus) {
+            e.preventDefault();
+            onLineClick(plus);
+            return;
+        }
         var button = t && t.closest ? t.closest('[data-blocks-picker-open]') : null;
         var picker = button ? button.closest('[data-blocks-picker-ready]') : null;
         if (picker) {
@@ -128,17 +175,18 @@
         // An item sends its request (htmx, on the item itself); the popover closes with it and the focus
         // waits on "Add block" until the new card arrives (then it moves to that card's chevron).
         var item = t && t.closest ? t.closest('[data-blocks-item]') : null;
-        var inside = t && t.closest ? t.closest('[data-blocks-picker-ready]') : null;
+        var inside = pickerFrom(t);
         openPickers().forEach(function (p) {
             if (p !== inside || item) { closePicker(p, !!item && p === inside); }
         });
         var add = t && t.closest ? t.closest('.folio-blocks-add') : null;
         var picker2 = add ? add.closest('[data-blocks-picker]') : null;
-        if (picker2) { pendingPick = { picker: picker2, item: add }; }
+        if (picker2) { pendingPick = { picker: picker2, list: picker2.parentNode, item: add, back: null }; }
     }
 
-    // ---- After a pick: the focus goes to the new card, or back to "Add block" when none comes.
-    var pendingPick = null; // { picker, item }
+    // ---- After a pick: the focus goes to the new card, or back to where the pick was made ("Add block"
+    // or the insert line) when none comes.
+    var pendingPick = null; // { picker, list, item, back }
 
     function addButtonOf(picker) {
         var open = picker.querySelector('[data-blocks-picker-open]');
@@ -148,8 +196,7 @@
 
     function onPickArrived(root) {
         if (!pendingPick || !root.matches || !root.matches('[data-block-card]')) { return; }
-        var picker = pendingPick.picker;
-        if (root.parentNode !== picker.parentNode) { return; }
+        if (root.parentNode !== pendingPick.list) { return; }
         pendingPick = null;
         var toggle = toggleOf(root) || root.querySelector('button');
         if (toggle) { toggle.focus(); }
@@ -167,16 +214,133 @@
             return;
         }
         pendingPick = null;
-        setTimeout(function () { refocusAdd(pick.picker); }, 0);
+        setTimeout(function () { refocusAdd(pick); }, 0);
     }
 
-    function refocusAdd(picker) {
+    function refocusAdd(pick) {
         var active = document.activeElement;
         var lost = !active || active === document.body || !active.isConnected || active.disabled
-            || (active.matches && active.matches('[data-blocks-item], .folio-blocks-add, [data-blocks-picker-open]'));
+            || (active.matches && active.matches('[data-blocks-item], .folio-blocks-add, [data-blocks-picker-open], [data-blocks-insert-open]'));
         if (!lost) { return; }
-        var button = addButtonOf(picker);
+        var button = pick.back && pick.back.isConnected ? pick.back : addButtonOf(pick.picker);
         if (button) { button.focus(); }
+    }
+
+    // ---- Insert lines -----------------------------------------------------------------------------
+    // A "+" line before every card of a list (so before the first and between two; after the last is
+    // the end picker): a real button, shown on hover and focus, that the Tab key reaches after the card
+    // above it. Script only (without it the end picker is listed in place), and outside the cards, so
+    // the [_order][] inputs, the saved order, stay the cards' DOM order. It opens the field's picker at
+    // the line; a field with one block type adds that block there directly. A pick loads the item's
+    // fragment URL (the end picker's request) with htmx.ajax, after the card above the line, or before
+    // the first card for the top line. Each list keeps its lines (syncLines) as cards come, go and move.
+
+    function lineButton(line) { return own(line, '[data-blocks-insert-open]')[0] || null; }
+
+    function folioText(key) { return typeof window.folioT === 'function' ? window.folioT(key) : ''; }
+
+    function makeLine(picker) {
+        var line = document.createElement('div');
+        line.className = 'folio-blocks-insert';
+        line.setAttribute('data-blocks-insert', '');
+        line._folioPicker = picker;
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('type', 'button');
+        button.className = 'folio-blocks-insert-btn';
+        button.setAttribute('data-blocks-insert-open', '');
+        var label = folioText('insert_block_here');
+        button.setAttribute('aria-label', label);
+        button.setAttribute('title', label);
+        var p = parts(picker);
+        if (p.button && p.popover) {
+            button.setAttribute('aria-haspopup', 'dialog');
+            button.setAttribute('aria-expanded', 'false');
+            if (p.popover.id) { button.setAttribute('aria-controls', p.popover.id); }
+        }
+        var plus = document.createElement('span');
+        plus.className = 'folio-blocks-insert-plus';
+        var icon = picker.querySelector('svg');
+        if (icon) { plus.appendChild(icon.cloneNode(true)); }
+        button.appendChild(plus);
+        line.appendChild(button);
+        return line;
+    }
+
+    function syncLines(list) {
+        var picker = own(list, '[data-blocks-picker]')[0];
+        if (!picker) { return; }
+        own(list, '[data-blocks-insert]').forEach(function (line) {
+            var next = line.nextElementSibling;
+            if (next && next.matches && next.matches('[data-block-card]')) { return; }
+            if (line._folioPicker && line._folioPicker._folioAt === line) { closePicker(line._folioPicker, false); }
+            line.remove();
+        });
+        cardsOf(list).forEach(function (card) {
+            var prev = card.previousElementSibling;
+            if (prev && prev.matches && prev.matches('[data-blocks-insert]')) { return; }
+            list.insertBefore(makeLine(picker), card);
+        });
+    }
+
+    function neighbour(line, dir) {
+        var el = dir < 0 ? line.previousElementSibling : line.nextElementSibling;
+        while (el && !(el.matches && el.matches('[data-block-card]'))) { el = dir < 0 ? el.previousElementSibling : el.nextElementSibling; }
+        return el;
+    }
+
+    function insertAt(line, url, source) {
+        var picker = line._folioPicker;
+        var above = neighbour(line, -1);
+        var below = above ? null : neighbour(line, 1);
+        if (!url || !(above || below) || !window.htmx || typeof window.htmx.ajax !== 'function') { return; }
+        pendingPick = { picker: picker, list: line.parentNode, item: source, back: lineButton(line) };
+        window.htmx.ajax('GET', url, { source: source, target: above || below, swap: above ? 'afterend' : 'beforebegin' });
+    }
+
+    function onLineClick(button) {
+        var line = button.closest('[data-blocks-insert]');
+        var picker = line ? line._folioPicker : null;
+        if (!picker || !picker.isConnected) { return; }
+        if (picker.hasAttribute('data-blocks-picker-ready')) {
+            if (picker._folioAt === line && !parts(picker).popover.hidden) { closePicker(picker, false); } else { openPicker(picker, line); }
+            return;
+        }
+        openPickers().forEach(function (p) { closePicker(p, false); });
+        var add = picker.querySelector('.folio-blocks-add');
+        if (add) { insertAt(line, add.getAttribute('hx-get'), button); }
+    }
+
+    // Capture phase: a pick in a popover open at a line is this script's request (htmx.ajax at the
+    // line), not the item's own hx-get to the end of the list.
+    function onLinePick(e) {
+        var item = e.target && e.target.closest ? e.target.closest('[data-blocks-item]') : null;
+        var picker = item ? pickerFrom(item) : null;
+        var line = picker ? picker._folioAt : null;
+        if (!line) { return; }
+        e.preventDefault();
+        e.stopPropagation();
+        closePicker(picker, true); // the focus waits on the line until the card comes
+        insertAt(line, item.getAttribute('hx-get'), item);
+    }
+
+    // "/" (no modifier, not typing, no dialog or picker open): the picker of the blocks field holding
+    // the focus, else of the first one on the page, at the end.
+    function onSlash() {
+        if (openPickers().length) { return false; }
+        var field = fieldOf(document.activeElement) || document.querySelector('[data-blocks-field]');
+        var list = field ? fieldParts(field).list : null;
+        var picker = list ? own(list, '[data-blocks-picker]')[0] : null;
+        if (!picker) { return false; }
+        if (picker.hasAttribute('data-blocks-picker-ready')) {
+            openPicker(picker, null);
+            if (typeof picker.scrollIntoView === 'function') { picker.scrollIntoView({ block: 'nearest' }); }
+            return true;
+        }
+        var add = picker.querySelector('.folio-blocks-add');
+        if (!add) { return false; }
+        add.click();
+        return true;
     }
 
     function onPickerInput(e) {
@@ -223,7 +387,7 @@
 
     // The focus moving out of an open picker closes it (not a click inside, which moves no focus in Safari).
     function onPickerFocusIn(e) {
-        var inside = e.target && e.target.closest ? e.target.closest('[data-blocks-picker-ready]') : null;
+        var inside = pickerFrom(e.target);
         openPickers().forEach(function (p) { if (p !== inside) { closePicker(p, false); } });
     }
 
@@ -263,6 +427,7 @@
     function updateField(field) {
         var f = fieldParts(field);
         if (!f.list) { return; }
+        syncLines(f.list);
         var cards = cardsOf(f.list);
         syncMenus(cards);
         if (f.count) {
@@ -348,7 +513,11 @@
     function boot() {
         initPickers(document);
         updateAll();
+        document.addEventListener('click', onLinePick, true);
         document.addEventListener('click', onPickerClick);
+        if (document.querySelector('[data-blocks-field]') && Folio.shortcuts) {
+            Folio.shortcuts.add({ key: '/', label: folioText('shortcut_add_block'), run: onSlash });
+        }
         ['htmx:afterRequest', 'htmx:responseError', 'htmx:sendError', 'htmx:timeout', 'htmx:sendAbort'].forEach(function (name) {
             document.addEventListener(name, onPickFailed);
         });

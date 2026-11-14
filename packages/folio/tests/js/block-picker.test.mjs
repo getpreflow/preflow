@@ -260,3 +260,18 @@ test('a failed pick puts the focus back on "Add block"', async () => {
     arrive(p);
     assert.equal(p.doc.activeElement, p.button, 'a card arriving later does not take the focus');
 });
+
+test('a card that arrives in another list does not take the focus from a pick here', () => {
+    const p = picker();
+    p.button.click();
+    p.items.Hero.click();
+    const elsewhere = p.doc.body.appendChild(p.doc.createElement('div'));
+    const stray = elsewhere.appendChild(p.doc.createElement('div'));
+    stray.setAttribute('data-block-card', '');
+    const strayToggle = stray.appendChild(p.doc.createElement('button'));
+    strayToggle.setAttribute('data-block-collapse', '');
+    stray.dispatchEvent(new p.w.CustomEvent('htmx:load', { bubbles: true, detail: { elt: stray } }));
+    assert.equal(p.doc.activeElement, p.button, 'still waiting on "Add block"');
+    const toggle = arrive(p);
+    assert.equal(p.doc.activeElement, toggle, 'the card of this list gets it');
+});

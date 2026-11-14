@@ -1001,6 +1001,10 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
   the arrows move, Escape closes. Without script the groups are listed in place. A field that allows
   one block type has its one "Add …" button. Each loads a server-rendered card (htmx, served from
   the admin itself).
+- **Insert line** (since 0.77): a "+" line before each card (hover or Tab to it) opens the same
+  picker at that place, or adds a field's one block type there; the new card goes in exactly where
+  the line is and gets the focus. `/` (outside text fields) opens the picker of the blocks field
+  that holds the focus, else the first one, at the end.
 - In the live preview the card that is open or has the focus stays outlined with its label until
   another card is selected.
 - Inputs are named by block id (`sections[<uid>][headline]`), and each card carries its
