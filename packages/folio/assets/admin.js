@@ -3733,6 +3733,8 @@
     // did nothing (the key then keeps its usual effect). Keys never fire while the focus is in an input,
     // textarea, select or editable text unless the entry says typing: true (the editor's ⌘S, ⌘↵ and Esc),
     // never while a dialog is open, and plain keys never with Ctrl, Alt or ⌘ held. "?" lists them all.
+    // A plain key closes an open row menu before it runs (j / k / x would be held back by it), unless the
+    // entry says quietInMenus: true: then it does nothing while a row menu is open (the blocks' "/").
     // A chord is {keys: 'g d', label, run}: two plain keys, the second within CHORD_MS of the first.
     // Typing, an open dialog, a held modifier or any other key ends a started chord.
     var shortcutList = [];
@@ -3890,6 +3892,7 @@
             if (chordKeys(spec)) { continue; }
             if (!!spec.mod !== mod || (spec.key.length === 1 ? spec.key.toLowerCase() : spec.key) !== key) { continue; }
             if ((typing && !spec.typing) || open) { return; }
+            if (spec.quietInMenus && openRowMenus().length) { return; }
             // A row menu open with the focus in it would hold j / k / x / . back: close it first
             // (Enter keeps its meaning there: it activates the menu item).
             if (!spec.mod && spec.key !== 'Enter') { openRowMenus().forEach(function (m) { closeRowMenu(m, false); }); }

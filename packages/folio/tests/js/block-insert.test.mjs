@@ -46,9 +46,14 @@ function editor({ single = false, nested = false, autosave = true } = {}) {
         const h = el(c, 'div', {}, 'folio-block-head');
         el(h, 'button', { type: 'button', 'data-block-handle': '' }, 'folio-block-handle');
         el(h, 'span', { 'data-block-title': '' }, 'folio-block-title');
+        const menu = el(h, 'details', { 'data-folio-row-menu': '' }, 'folio-row-menu folio-block-menu');
+        const summary = el(menu, 'summary', { 'aria-haspopup': 'menu' });
+        const panel = el(menu, 'div', { role: 'menu' }, 'folio-menu folio-row-menu-panel');
+        el(panel, 'button', { type: 'button', role: 'menuitem', 'data-block-up': '' }, 'folio-menu-item');
+        el(panel, 'button', { type: 'button', role: 'menuitem', 'data-block-down': '' }, 'folio-menu-item');
         const toggle = el(h, 'button', { type: 'button', 'data-block-collapse': '', 'aria-expanded': 'false' }, 'folio-block-toggle');
         const body = el(c, 'div', {}, 'folio-block-body');
-        return { c, toggle, body };
+        return { c, toggle, body, menu, summary };
     };
 
     /** A blocks field with its cards and its picker in parent. */
@@ -88,7 +93,7 @@ function editor({ single = false, nested = false, autosave = true } = {}) {
     const outer = makeField(form, 'sections', ['b1', 'b2', 'b3'], single, 'folio-picker-1');
     const inner = nested ? makeField(outer.cards.b2.body, 'sections[b2][items]', ['n1'], false, 'folio-picker-2') : null;
     const dialog = el(doc.body, 'dialog');
-    el(doc.body, 'div', { 'data-folio-toasts': '' });
+    const toasts = el(doc.body, 'div', { 'data-folio-toasts': '' });
     load(w, ADMIN_JS);
     load(w, BLOCKS_JS);
 
@@ -103,7 +108,13 @@ function editor({ single = false, nested = false, autosave = true } = {}) {
         made.c.dispatchEvent(new w.CustomEvent('htmx:load', { bubbles: true, detail: { elt: made.c } }));
         return made;
     };
-    return { w, doc, form, title, outer, inner, dialog, log, respond };
+    /** htmx's failure event for a pick (the item or the line's button): name, and the server's HX-Trigger if any. */
+    const fail = (elt, name = 'htmx:responseError', trigger = null) => {
+        const xhr = { status: name === 'htmx:responseError' ? 500 : 0, getResponseHeader: (h) => (h === 'HX-Trigger' ? trigger : null) };
+        elt.dispatchEvent(new w.CustomEvent(name, { bubbles: true, detail: { elt, xhr } }));
+    };
+    const toastTexts = () => toasts.children.map((t) => t.textContent);
+    return { w, doc, form, title, outer, inner, dialog, log, respond, fail, toastTexts };
 }
 
 const own = (list, attr) => list.children.filter((c) => c.hasAttribute(attr));
@@ -338,4 +349,88 @@ test('"/" is listed under "?"', () => {
     const dialog = e.doc.querySelector('dialog.folio-shortcuts');
     assert.ok(dialog);
     assert.ok(dialog.textContent.includes('Add a block'));
+});
+
+test('"/" with a card\'s "…" menu open does nothing: the menu stays, no picker opens', () => {
+    const e = editor();
+    const card = e.outer.cards.b2;
+    card.summary.click();
+    assert.equal(card.menu.open, true);
+    const event = e.doc.activeElement.keydown('/');
+    assert.equal(event.defaultPrevented, false);
+    assert.equal(card.menu.open, true, 'the menu is not closed');
+    assert.equal(e.outer.popover.hidden, true, 'no picker');
+});
+
+test('a failed insert at a line is announced; a refusal with the server\'s own message is not doubled', async () => {
+    const e = editor();
+    lineButton(lines(e.outer)[1]).click();
+    e.outer.items.Hero.click();
+    e.fail(e.outer.items.Hero, 'htmx:sendError');
+    await settle();
+    assert.deepEqual(e.toastTexts(), ['The block could not be added. Try again.']);
+    lineButton(lines(e.outer)[1]).click();
+    e.outer.items.Hero.click();
+    e.fail(e.outer.items.Hero, 'htmx:responseError', '{"folio:error":{"message":"No access"}}');
+    await settle();
+    assert.equal(e.toastTexts().length, 1, 'the server\'s folio:error says it');
+});
+
+test('a failed insert from the end picker is announced too; an aborted one is not', async () => {
+    const e = editor();
+    e.outer.button.click();
+    e.outer.items.Quote.click();
+    e.fail(e.outer.items.Quote, 'htmx:timeout');
+    await settle();
+    assert.deepEqual(e.toastTexts(), ['The block could not be added. Try again.']);
+    e.outer.button.click();
+    e.outer.items.Quote.click();
+    e.fail(e.outer.items.Quote, 'htmx:sendAbort');
+    await settle();
+    assert.equal(e.toastTexts().length, 1);
+});
+
+test('no double insert: the line ignores clicks while its pick is pending', async () => {
+    const e = editor({ single: true });
+    const b = lineButton(lines(e.outer)[1]);
+    b.click();
+    assert.equal(b.getAttribute('aria-disabled'), 'true');
+    b.click();
+    assert.equal(e.log.ajax.length, 1, 'one request');
+    e.fail(b, 'htmx:responseError');
+    await settle();
+    assert.equal(b.getAttribute('aria-disabled'), null, 'free again after a failure');
+    b.click();
+    assert.equal(e.log.ajax.length, 2);
+    e.respond(e.log.ajax[1], 'x1');
+    await settle();
+    assert.equal(b.getAttribute('aria-disabled'), null, 'and after the card arrived');
+});
+
+test('no double insert at a line with a picker: it does not reopen while the pick is pending', () => {
+    const e = editor();
+    const b = lineButton(lines(e.outer)[1]);
+    b.click();
+    e.outer.items.Hero.click();
+    b.click();
+    assert.equal(e.outer.popover.hidden, true);
+    assert.equal(e.log.ajax.length, 1);
+});
+
+test('in htmx\'s order (a failed afterRequest first): an error is announced once, an abort not at all', async () => {
+    const e = editor();
+    const failedAfter = (item) => item.dispatchEvent(new e.w.CustomEvent('htmx:afterRequest', { bubbles: true, detail: { elt: item, successful: false, failed: true } }));
+    e.outer.button.click();
+    e.outer.items.Quote.click();
+    failedAfter(e.outer.items.Quote);
+    e.fail(e.outer.items.Quote, 'htmx:sendAbort');
+    await settle();
+    assert.equal(e.toastTexts().length, 0, 'aborted: nothing to say');
+    e.outer.button.click();
+    e.outer.items.Quote.click();
+    failedAfter(e.outer.items.Quote);
+    e.fail(e.outer.items.Quote, 'htmx:sendError');
+    await settle();
+    assert.deepEqual(e.toastTexts(), ['The block could not be added. Try again.']);
+    assert.equal(e.doc.activeElement, e.outer.button, 'and the focus is back on "Add block"');
 });

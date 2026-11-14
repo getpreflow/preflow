@@ -1051,6 +1051,7 @@ return [
         'shortcut_search' => 'Search the list',
         'shortcut_add_block' => 'Add a block',
         'insert_block_here' => 'Insert block here',
+        'block_not_added' => 'The block could not be added. Try again.',
         // The ⌘K palette (command.js) and the g-chords.
         'command_title' => 'Search or jump to',
         'command_screens' => 'Screens and actions',

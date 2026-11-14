@@ -1025,6 +1025,7 @@ return [
         'shortcut_search' => 'Rechercher dans la liste',
         'shortcut_add_block' => 'Ajouter un bloc',
         'insert_block_here' => 'Insérer un bloc ici',
+        'block_not_added' => 'Le bloc n’a pas pu être ajouté. Réessayez.',
         // The ⌘K palette (command.js) and the g-chords.
         'command_title' => 'Rechercher ou aller à',
         'command_screens' => 'Écrans et actions',

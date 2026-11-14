@@ -646,8 +646,9 @@ which floats under the table.
 Keyboard shortcuts (`?` lists them): `/` search, `n` new, `j` / `k` next and previous row, `Enter`
 or `e` open it, `x` tick it, `.` its menu, `d` duplicate it. They never fire while typing in a text
 field (a tick box or a button does not count) or with Ctrl, Alt or ⌘ held. An admin script adds its own through
-`Folio.shortcuts.add({key, label, run, mod, typing})` (`mod`: ⌘ / Ctrl + key; `typing`: also inside
-fields; `run` returns `false` when it did nothing).
+`Folio.shortcuts.add({key, label, run, mod, typing, quietInMenus})` (`mod`: ⌘ / Ctrl + key; `typing`: also inside
+fields; `quietInMenus`: do nothing while a row's "…" menu is open, instead of closing it; `run` returns
+`false` when it did nothing).
 
 **Overriding `@folio/admin/list.twig`:** the page extends the layout and includes
 `@folio/admin/_list_results.twig` for the swappable region. In a row, `row.cells[column]` is

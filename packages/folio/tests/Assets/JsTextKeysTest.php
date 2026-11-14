@@ -28,6 +28,9 @@ final class JsTextKeysTest extends TestCase
         $this->assertGreaterThan(60, count($keys), 'the scan finds the scripts\' keys');
         $this->assertArrayHasKey('fields.upload_failed', $keys);
         $this->assertArrayHasKey('redirects.prompt.send_to', $keys); // through the removal prompt's t()
+        foreach (['insert_block_here', 'shortcut_add_block', 'block_not_added'] as $key) {
+            $this->assertArrayHasKey($key, $keys, 'blocks.js: ' . $key);
+        }
 
         foreach (['en', 'de', 'fr'] as $lang) {
             $texts = self::flatten(require dirname(__DIR__, 2) . "/lang/{$lang}/folio.php");

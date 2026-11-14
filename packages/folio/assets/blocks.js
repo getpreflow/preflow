@@ -197,24 +197,51 @@
     function onPickArrived(root) {
         if (!pendingPick || !root.matches || !root.matches('[data-block-card]')) { return; }
         if (root.parentNode !== pendingPick.list) { return; }
+        busy(pendingPick.back, false);
         pendingPick = null;
         var toggle = toggleOf(root) || root.querySelector('button');
         if (toggle) { toggle.focus(); }
     }
 
     // The pick's request ended. Answered: the card comes with htmx:load after the swap settles; the focus
-    // already waits on "Add block", so a pick that brings no card leaves it there. Failed: back to
-    // "Add block" (a single type's own button is disabled during the request, hence the timer).
+    // already waits on "Add block" (or the line), so a pick that brings no card leaves it there. Failed:
+    // back there (a single type's own button is disabled during the request, hence the timer), and the
+    // toast says the block was not added, unless the request was aborted or the server sent its own
+    // message. htmx sends a failed afterRequest before sendError, timeout or sendAbort (responseError
+    // comes first), so a failed afterRequest waits a tick for the specific event.
     function onPickFailed(e) {
         var elt = e.detail && e.detail.elt;
         if (!pendingPick || elt !== pendingPick.item) { return; }
         var pick = pendingPick;
-        if (e.type === 'htmx:afterRequest' && e.detail.successful) {
-            setTimeout(function () { if (pendingPick === pick) { pendingPick = null; } }, 1000);
+        busy(pick.back, false);
+        if (e.type === 'htmx:afterRequest') {
+            if (e.detail.successful) {
+                setTimeout(function () { if (pendingPick === pick) { pendingPick = null; } }, 1000);
+            } else {
+                setTimeout(function () { if (pendingPick === pick) { pickFailed(pick, e); } }, 0);
+            }
             return;
         }
+        pickFailed(pick, e);
+    }
+
+    function pickFailed(pick, e) {
         pendingPick = null;
+        if (e.type !== 'htmx:sendAbort' && !serverSaid(e)) { announceFailure(pick.item); }
         setTimeout(function () { refocusAdd(pick); }, 0);
+    }
+
+    // A refusal the server explains itself (HX-Trigger "folio:error", shown as a toast by admin.js).
+    function serverSaid(e) {
+        var xhr = e.detail && e.detail.xhr;
+        var trigger = xhr && typeof xhr.getResponseHeader === 'function' ? xhr.getResponseHeader('HX-Trigger') : null;
+        return !!trigger && String(trigger).indexOf('folio:error') >= 0;
+    }
+
+    // Otherwise (offline, a timeout, a server error) the toast says so, through the same folio:error.
+    function announceFailure(from) {
+        var target = from && from.isConnected ? from : document.body;
+        target.dispatchEvent(new CustomEvent('folio:error', { bubbles: true, detail: { message: t('block_not_added') } }));
     }
 
     function refocusAdd(pick) {
@@ -237,7 +264,8 @@
 
     function lineButton(line) { return own(line, '[data-blocks-insert-open]')[0] || null; }
 
-    function folioText(key) { return typeof window.folioT === 'function' ? window.folioT(key) : ''; }
+    // The admin's words (admin.js's folioT); JsTextKeysTest finds the keys this is called with.
+    function t(key) { return typeof window.folioT === 'function' ? window.folioT(key) : ''; }
 
     function makeLine(picker) {
         var line = document.createElement('div');
@@ -245,11 +273,10 @@
         line.setAttribute('data-blocks-insert', '');
         line._folioPicker = picker;
         var button = document.createElement('button');
-        button.type = 'button';
         button.setAttribute('type', 'button');
         button.className = 'folio-blocks-insert-btn';
         button.setAttribute('data-blocks-insert-open', '');
-        var label = folioText('insert_block_here');
+        var label = t('insert_block_here');
         button.setAttribute('aria-label', label);
         button.setAttribute('title', label);
         var p = parts(picker);
@@ -295,10 +322,19 @@
         var below = above ? null : neighbour(line, 1);
         if (!url || !(above || below) || !window.htmx || typeof window.htmx.ajax !== 'function') { return; }
         pendingPick = { picker: picker, list: line.parentNode, item: source, back: lineButton(line) };
+        busy(pendingPick.back, true);
         window.htmx.ajax('GET', url, { source: source, target: above || below, swap: above ? 'afterend' : 'beforebegin' });
     }
 
+    // While its pick is under way a line takes no clicks (no second insert); it keeps the focus, so it
+    // is marked aria-disabled rather than disabled.
+    function busy(button, on) {
+        if (!button) { return; }
+        if (on) { button.setAttribute('aria-disabled', 'true'); } else { button.removeAttribute('aria-disabled'); }
+    }
+
     function onLineClick(button) {
+        if (button.getAttribute('aria-disabled') === 'true') { return; }
         var line = button.closest('[data-blocks-insert]');
         var picker = line ? line._folioPicker : null;
         if (!picker || !picker.isConnected) { return; }
@@ -516,7 +552,7 @@
         document.addEventListener('click', onLinePick, true);
         document.addEventListener('click', onPickerClick);
         if (document.querySelector('[data-blocks-field]') && Folio.shortcuts) {
-            Folio.shortcuts.add({ key: '/', label: folioText('shortcut_add_block'), run: onSlash });
+            Folio.shortcuts.add({ key: '/', label: t('shortcut_add_block'), run: onSlash, quietInMenus: true });
         }
         ['htmx:afterRequest', 'htmx:responseError', 'htmx:sendError', 'htmx:timeout', 'htmx:sendAbort'].forEach(function (name) {
             document.addEventListener(name, onPickFailed);

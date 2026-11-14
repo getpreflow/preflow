@@ -221,6 +221,21 @@ final class AdminCssTest extends TestCase
         $this->assertMatchesRegularExpression('/(?<![\w-])\.folio-assets-toolbar \{[^}]*display: flex;/', $plain);
         $this->assertDoesNotMatchRegularExpression('/(?<![\w-])\.folio-assets-toolbar \{[^}]*border:/', $plain, 'no surface around the library toolbar');
     }
+    /**
+     * The insert line (0.77) sits over the list's gap and its hit strip reaches a little over the
+     * cards; the top line must not reach above the list into the field's head (Collapse all, help,
+     * the error summary): it takes its own room at the top and its strip starts at the list's edge.
+     */
+    public function test_the_top_insert_line_stays_inside_the_list(): void
+    {
+        $plain = (string) preg_replace('#/\*.*?\*/#s', '', $this->css());
+        $this->assertMatchesRegularExpression('/\.folio-blocks-insert \{[^}]*height: 6px;[^}]*margin: -6px 0;/', $plain);
+        $this->assertMatchesRegularExpression('/\.folio-blocks-insert-btn \{[^}]*top: -7px;[^}]*height: 20px;/', $plain);
+        // The first line: no negative top margin (its box starts at the list's top) and the strip from 0.
+        $this->assertMatchesRegularExpression('/\.folio-blocks-insert:first-child \{[^}]*margin-top: 0;[^}]*height: 8px;/', $plain);
+        $this->assertMatchesRegularExpression('/\.folio-blocks-insert:first-child \.folio-blocks-insert-btn \{[^}]*top: 0;/', $plain);
+    }
+
     public function test_keyboard_focus_is_a_solid_ring_on_every_filled_control(): void
     {
         $css = $this->css();

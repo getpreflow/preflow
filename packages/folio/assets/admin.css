@@ -2370,6 +2370,11 @@ a.folio-languages-item:hover { box-shadow: inset 0 0 0 1px currentColor; }
 .folio-blocks-insert-btn[aria-expanded="true"] .folio-blocks-insert-plus { opacity: 1; transform: none; }
 .folio-blocks-insert-btn:focus-visible { outline: none; }
 .folio-blocks-insert-btn:focus-visible .folio-blocks-insert-plus { box-shadow: var(--focus-ring); }
+/* The top line takes its own 8px at the list's top and its strip starts there, so it never reaches
+   up into the field's head (Collapse all, help, the error summary). */
+.folio-blocks-insert:first-child { margin-top: 0; height: 8px; }
+.folio-blocks-insert:first-child .folio-blocks-insert-btn { top: 0; height: 14px; }
+.folio-blocks-insert-btn[aria-disabled="true"] { cursor: progress; }
 .folio-blocks-insert.is-open { height: auto; margin: 4px 0 0; padding-top: 14px; }
 .folio-blocks-insert.is-open .folio-blocks-insert-btn { top: 0; }
 .folio-blocks-insert .folio-blocks-popover { margin-top: 0; }
