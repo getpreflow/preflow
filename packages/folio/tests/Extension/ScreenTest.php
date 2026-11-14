@@ -305,7 +305,7 @@ final class ScreenTest extends TestCase
         $this->assertStringNotContainsString('folio-extension-assets', $head);
         $this->assertStringNotContainsString('type="module"', $head);
         $this->assertSame(1, preg_match_all('#<script[^>]*\bnonce=#', $head), 'only the theme script carries a nonce');
-        $this->assertMatchesRegularExpression('#<link rel="stylesheet" href="/folio/_assets/admin\.css\?v=[0-9a-f]{12}">\s*<script src="/folio/_assets/admin\.js\?v=[0-9a-f]{12}" defer></script>\s*</head>#', $body = $head . '</head>');
+        $this->assertMatchesRegularExpression('#<link rel="stylesheet" href="/folio/_assets/admin\.css\?v=[0-9a-f]{12}">\s*<script src="/folio/_assets/admin\.js\?v=[0-9a-f]{12}" defer></script>\s*<script src="/folio/_assets/command\.js\?v=[0-9a-f]{12}" defer></script>\s*</head>#', $body = $head . '</head>');
     }
 
     #[RunInSeparateProcess]

@@ -77,6 +77,14 @@ final class ShellTest extends TestCase
         $this->assertSame('Folio', trim($this->one($x, '//*[' . self::cls('folio-brand-env') . ']', 'environment')->textContent));
         $this->assertSame(0, $x->query('//*[' . self::cls('folio-site') . ']//*[local-name()="use" and contains(@href, "ui-updown")]')->length, 'one site: no chevron');
 
+        // The search entry under the switcher (0.77): a link to the dashboard without script, the ⌘K palette with it.
+        $command = $this->one($x, '//aside[@class="folio-sidebar"]/div[' . self::cls('folio-site') . ']/following-sibling::*[1][self::a and ' . self::cls('folio-command') . ']', 'the search entry right under the switcher');
+        $this->assertSame('/folio', $command->getAttribute('href'));
+        $this->assertTrue($command->hasAttribute('data-folio-command'));
+        $this->assertSame('Search or jump to…', trim($this->one($x, '//a[' . self::cls('folio-command') . ']/span[' . self::cls('folio-command-label') . ']', 'its label')->textContent));
+        $this->one($x, '//a[' . self::cls('folio-command') . ']/kbd[@data-folio-command-key and @aria-hidden="true"]', 'the key chip');
+        $this->one($x, '//script[@type="application/json" and @id="folio-commands" and @nonce]', 'the palette data, with the nonce');
+
         // Nav: the dashboard item is current; sections keep data-nav-save.
         $this->one($x, '//nav[@class="folio-nav" and @data-nav-save="/folio/_prefs/nav"]', 'the nav, saving its sections');
         $current = $this->one($x, '//nav[@class="folio-nav"]//a[@aria-current="page"]', 'one current item');
@@ -155,6 +163,10 @@ final class ShellTest extends TestCase
         $current = $this->one($x, '//nav[' . self::cls('folio-rail-nav') . ']/a[@aria-current="page"]', 'the current type');
         $this->assertSame('/folio/page', $current->getAttribute('href'));
         $this->assertSame('Pages', $current->getAttribute('aria-label'));
+
+        $search = $this->one($x, '//aside[' . self::cls('folio-rail') . ']/a[' . self::cls('folio-rail-command') . ' and @data-folio-command and @href="/folio"]', 'the rail\'s search entry');
+        $this->assertSame('Search or jump to…', $search->getAttribute('aria-label'));
+        $this->assertSame($search->getAttribute('title'), $search->getAttribute('aria-label'));
 
         $expand = $this->one($x, '//aside[' . self::cls('folio-rail') . ']/button[@data-shell-expand]', 'the expand button');
         $this->assertNotSame('', $expand->getAttribute('aria-label'));

@@ -3733,9 +3733,23 @@
     // did nothing (the key then keeps its usual effect). Keys never fire while the focus is in an input,
     // textarea, select or editable text unless the entry says typing: true (the editor's ⌘S, ⌘↵ and Esc),
     // never while a dialog is open, and plain keys never with Ctrl, Alt or ⌘ held. "?" lists them all.
+    // A chord is {keys: 'g d', label, run}: two plain keys, the second within CHORD_MS of the first.
+    // Typing, an open dialog, a held modifier or any other key ends a started chord.
     var shortcutList = [];
     var shortcutsReady = false;
     var shortcutsDialog = null;
+    var CHORD_MS = 1200;
+    var chordFirst = null;   // the first key of a started chord
+    var chordTimer = null;
+
+    function chordKeys(spec) {
+        return typeof spec.keys === 'string' ? spec.keys.trim().toLowerCase().split(/\s+/) : null;
+    }
+
+    function endChord() {
+        chordFirst = null;
+        if (chordTimer !== null) { clearTimeout(chordTimer); chordTimer = null; }
+    }
 
     // Inputs that take no text: a key on them is no typing (a row's tick box keeps j / k / x working).
     var NOT_TEXT = ['checkbox', 'radio', 'button', 'submit', 'reset', 'image', 'file', 'color', 'range'];
@@ -3754,7 +3768,16 @@
     }
 
     function addShortcut(spec) {
-        if (!spec || typeof spec.key !== 'string' || typeof spec.run !== 'function') { return; }
+        if (!spec || typeof spec.run !== 'function') { return; }
+        var chord = chordKeys(spec);
+        if (chord !== null) {
+            if (chord.length !== 2) { return; }
+            var joined = chord.join(' ');
+            shortcutList = shortcutList.filter(function (s) { return !(chordKeys(s) && chordKeys(s).join(' ') === joined); });
+            shortcutList.push(spec);
+            return;
+        }
+        if (typeof spec.key !== 'string') { return; }
         shortcutList = shortcutList.filter(function (s) { return !(s.key === spec.key && !!s.mod === !!spec.mod); });
         shortcutList.push(spec);
     }
@@ -3773,6 +3796,7 @@
 
     function shortcutHint(spec) {
         if (spec.hint) { return spec.hint; }
+        if (chordKeys(spec)) { return chordKeys(spec).map(function (k) { return k.toUpperCase(); }).join(' '); }
         var key = spec.key === 'Enter' ? '↵' : spec.key.length === 1 ? spec.key.toUpperCase() : spec.key;
         return spec.mod ? modHint(key) : key;
     }
@@ -3808,9 +3832,25 @@
         shortcutList.forEach(function (spec) {
             if (!spec.label) { return; } // an alias (Enter for e) is listed with its twin
             var dt = document.createElement('dt');
-            var kbd = document.createElement('kbd');
-            kbd.textContent = shortcutHint(spec);
-            dt.appendChild(kbd);
+            var chord = spec.hint ? null : chordKeys(spec);
+            if (chord) {
+                // G then D: each key its own chip.
+                chord.forEach(function (k, i) {
+                    if (i > 0) {
+                        var then = document.createElement('span');
+                        then.className = 'folio-shortcuts-then';
+                        then.textContent = folioT('shortcut_then');
+                        dt.appendChild(then);
+                    }
+                    var key = document.createElement('kbd');
+                    key.textContent = k.toUpperCase();
+                    dt.appendChild(key);
+                });
+            } else {
+                var kbd = document.createElement('kbd');
+                kbd.textContent = shortcutHint(spec);
+                dt.appendChild(kbd);
+            }
             var dd = document.createElement('dd');
             dd.textContent = spec.label || '';
             dl.appendChild(dt);
@@ -3828,6 +3868,8 @@
     }
 
     function onShortcutKeydown(e) {
+        var first = chordFirst;
+        endChord(); // whatever comes next ends a started chord
         if (e.defaultPrevented || e.isComposing || !e.key) { return; }
         var mod = !!(e.metaKey || e.ctrlKey);
         if (e.altKey || (e.metaKey && e.ctrlKey)) { return; }
@@ -3835,8 +3877,17 @@
         var open = document.querySelector('dialog[open]');
         var key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
         if (e.key === '?') { key = '?'; }
+        var plain = !mod && !typing && !open;
+        if (first !== null && plain) {
+            var second = chordEntry(first, key);
+            if (second) {
+                if (second.run(e) !== false) { e.preventDefault(); }
+                return;
+            }
+        }
         for (var i = 0; i < shortcutList.length; i++) {
             var spec = shortcutList[i];
+            if (chordKeys(spec)) { continue; }
             if (!!spec.mod !== mod || (spec.key.length === 1 ? spec.key.toLowerCase() : spec.key) !== key) { continue; }
             if ((typing && !spec.typing) || open) { return; }
             // A row menu open with the focus in it would hold j / k / x / . back: close it first
@@ -3845,6 +3896,20 @@
             if (spec.run(e) !== false) { e.preventDefault(); }
             return;
         }
+        // The first key of a chord (g): wait CHORD_MS for the second.
+        if (plain && !e.shiftKey && shortcutList.some(function (s) { var c = chordKeys(s); return c && c[0] === key; })) {
+            chordFirst = key;
+            chordTimer = setTimeout(endChord, CHORD_MS);
+            e.preventDefault();
+        }
+    }
+
+    function chordEntry(first, second) {
+        for (var i = 0; i < shortcutList.length; i++) {
+            var c = chordKeys(shortcutList[i]);
+            if (c && c[0] === first && c[1] === second) { return shortcutList[i]; }
+        }
+        return null;
     }
 
     function initShortcuts() {

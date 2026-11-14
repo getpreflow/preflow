@@ -31,6 +31,7 @@ final class FolioRoutes
     private const NAV_PREFS = 'Preflow\\Folio\\Http\\NavPreferenceController';
     private const AI = 'Preflow\\Folio\\Http\\AiTranslateController';
     private const AI_SETTINGS = 'Preflow\\Folio\\Http\\AiSettingsController';
+    private const SEARCH = 'Preflow\\Folio\\Http\\SearchController';
 
     /**
      * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the staff guard)
@@ -111,6 +112,7 @@ final class FolioRoutes
             // Enabled extensions' assets/ files (public, like _assets/{file}); before the generic {type} routes.
             ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes
+            ['GET',  $prefix . '/_search',             'search', self::SEARCH], // the ⌘K palette's records; before the generic {type} routes
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['GET',  $prefix . '/{type}/_export',      'export'],

@@ -1,0 +1,4 @@
+{# The ⌘K palette's screens, actions and g-chord targets (CommandPalette::data(), filtered by the person's
+   permissions), read by command.js. JSON, not a script: it needs no execution; the nonce keeps strict CSP
+   setups that also gate non-executing blocks happy. Records come from {prefix}/_search as the person types. #}
+<script type="application/json" id="folio-commands" nonce="{{ csp_nonce() }}">{{ folio_commands(nav_sections)|raw }}</script>

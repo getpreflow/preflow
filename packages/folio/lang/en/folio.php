@@ -53,6 +53,7 @@ return [
         'log_out' => 'Log out',
         'waiting' => ':count waiting',
         'environment' => 'Folio · :env',
+        'command' => 'Search or jump to…',
         'account_and_password' => 'Account & password',
         'expand_nav' => 'Show the full menu',
         'collapse_nav' => 'Show icons only',
@@ -99,6 +100,7 @@ return [
         'cache_line' => 'Caches hold :size, mostly :largest.',
         'open_cache' => 'Open cache',
         'shortcuts' => 'Press ? for shortcuts',
+        'shortcuts_pages' => 'Press G then P to jump to :label · ? for all shortcuts',
         // The "Needs you" cards: Folio's own (#[DashboardItem] adds an extension's).
         'needs' => [
             'title' => 'Needs you',
@@ -1037,6 +1039,16 @@ return [
         'shortcuts' => 'Keyboard shortcuts',
         'shortcut_help' => 'Show these shortcuts',
         'shortcut_search' => 'Search the list',
+        // The ⌘K palette (command.js) and the g-chords.
+        'command_title' => 'Search or jump to',
+        'command_screens' => 'Screens and actions',
+        'command_none' => 'No results',
+        'command_one' => '1 result',
+        'command_many' => ':count results',
+        'command_failed' => 'The search did not answer. Try again.',
+        'shortcut_command' => 'Search or jump to',
+        'shortcut_then' => 'then',
+        'jump_to' => 'Go to :label',
         'shortcut_new' => 'New entry',
         'shortcut_next' => 'Next row',
         'shortcut_previous' => 'Previous row',

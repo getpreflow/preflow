@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
  */
 final class JsTextKeysTest extends TestCase
 {
-    private const array SCRIPTS = ['admin.js', 'fields.js', 'blocks.js', 'editor-frame.js'];
+    private const array SCRIPTS = ['admin.js', 'fields.js', 'blocks.js', 'editor-frame.js', 'command.js'];
 
     public function test_every_js_text_key_exists_in_every_language(): void
     {

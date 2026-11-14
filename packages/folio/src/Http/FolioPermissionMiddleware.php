@@ -20,7 +20,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * type; "*.edit|create" means edit or create on any type (block editor
  * fragments have no type). Extension screens ask the permission their
  * #[FolioScreen] declares; SIGNED_IN asks none (the own account page, the language switch,
- * the redirect page picker);
+ * the redirect page picker, the ⌘K search, which filters by permission itself);
  * any other handler is refused.
  * Runs after AdminAuthMiddleware, so the user is known.
  */
@@ -119,6 +119,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AccountController@password' => self::SIGNED_IN,
         'LocaleController@update' => self::SIGNED_IN,
         'NavPreferenceController@update' => self::SIGNED_IN,
+        'SearchController@search' => self::SIGNED_IN, // the ⌘K palette: the controller keeps to {type}.view and assets.view
     ];
 
     public function __construct(

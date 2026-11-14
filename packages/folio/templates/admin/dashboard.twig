@@ -51,6 +51,8 @@
     <div class="folio-dash-foot">
         {# The caches' size walks their directories: loaded after the page (?part=cache), for folio.cache only. #}
         {% if can('folio.cache') %}<p class="folio-dash-cache" hx-get="{{ prefix }}?part=cache" hx-trigger="load" hx-swap="outerHTML"></p>{% endif %}
-        <p class="folio-dash-tip">{{ t('folio.dashboard.shortcuts') }}</p>
+        {# The g p chord (command.js) exists only with a page type the person may view: then the tip names it. #}
+        {% set pages_jump = folio_pages_jump() %}
+        <p class="folio-dash-tip">{{ pages_jump ? t('folio.dashboard.shortcuts_pages', {label: pages_jump.label}) : t('folio.dashboard.shortcuts') }}</p>
     </div>
 {% endblock %}

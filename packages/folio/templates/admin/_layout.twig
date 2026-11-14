@@ -50,6 +50,8 @@
     {% endif %}
     {# admin.js on every admin page: confirm dialogs, toasts, the unsaved-changes guard. #}
     <script src="{{ folio_asset('admin.js') }}" defer></script>
+    {# command.js on every admin page, after admin.js: the ⌘K palette and the g-chords. #}
+    <script src="{{ folio_asset('command.js') }}" defer></script>
     {% for a in editor_assets|default([]) %}
         {%- if a ends with '.css' %}<link rel="stylesheet" href="{{ folio_asset(a) }}">
         {%- elseif a ends with '.js' and a != 'admin.js' %}<script src="{{ folio_asset(a) }}" defer></script>
@@ -95,6 +97,11 @@
             </button>
             {% endif %}
         </div>
+        {# The search entry: opens the ⌘K palette (command.js); without script a link to the dashboard. The key
+           chip shows only with script (⌘K on a Mac, Ctrl K elsewhere). #}
+        <a class="folio-command" href="{{ prefix }}" data-folio-command>
+            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg><span class="folio-command-label">{{ t('folio.layout.command') }}</span><kbd class="folio-command-key" data-folio-command-key aria-hidden="true">⌘K</kbd>
+        </a>
         {# Each section with a heading opens and closes (<details>, open from the person's saved state);
            admin.js saves a toggle to data-nav-save. A closed section shows its items' badges summed. #}
         {%- macro nav_item(item, icons) %}
@@ -156,6 +163,7 @@
 </div>
 <div class="folio-toasts" aria-live="polite" data-folio-toasts></div>
 {% include '@folio/admin/partials/_dialog.twig' %}
+{% include '@folio/admin/partials/_commands.twig' %}
 {% include '@folio/admin/_i18n.twig' %}
 <script nonce="{{ csp_nonce() }}">
 (function () {

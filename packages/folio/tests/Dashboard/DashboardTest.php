@@ -234,7 +234,7 @@ final class DashboardTest extends TestCase
         $body = $this->dashboard();
         $this->assertStringContainsString('<p class="folio-dash-cache" hx-get="/folio?part=cache" hx-trigger="load" hx-swap="outerHTML"></p>', $body, 'loaded after the page');
         $this->assertStringNotContainsString('Caches hold', $body);
-        $this->assertStringContainsString('<p class="folio-dash-tip">Press ? for shortcuts</p>', $body);
+        $this->assertStringContainsString('<p class="folio-dash-tip">Press G then P to jump to Posts · ? for all shortcuts</p>', $body, 'g p exists: the tip names it (0.77)');
         $body = $this->part('cache');
         $this->assertMatchesRegularExpression('#<p class="folio-dash-cache">.*?<span>Caches hold [0-9.]+ [KMG]?B, mostly [^<]+\.</span> <a href="/folio/cache">Open cache</a></p>#s', $body);
     }
@@ -245,7 +245,7 @@ final class DashboardTest extends TestCase
         $this->as('editor'); // no folio.cache, which the Cache screen asks
         $body = $this->dashboard();
         $this->assertStringNotContainsString('folio-dash-cache', $body);
-        $this->assertStringContainsString('Press ? for shortcuts', $body);
+        $this->assertStringContainsString('Press G then P to jump to Posts', $body);
         $this->assertSame('', $this->part('cache'), 'the part asks the permission too');
     }
 

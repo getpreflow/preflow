@@ -48,6 +48,7 @@ return [
         'log_out' => 'Se déconnecter',
         'waiting' => ':count en attente',
         'environment' => 'Folio · :env',
+        'command' => 'Rechercher ou aller à…',
         'account_and_password' => 'Compte et mot de passe',
         'expand_nav' => 'Afficher tout le menu',
         'collapse_nav' => 'Afficher seulement les icônes',
@@ -91,6 +92,7 @@ return [
         'cache_line' => 'Les caches occupent :size, surtout :largest.',
         'open_cache' => 'Ouvrir le cache',
         'shortcuts' => 'Appuyez sur ? pour les raccourcis',
+        'shortcuts_pages' => 'Appuyez sur G puis P pour aller à :label · ? pour tous les raccourcis',
         // The "Needs you" cards: Folio's own (#[DashboardItem] adds an extension's).
         'needs' => [
             'title' => 'À faire',
@@ -1011,6 +1013,16 @@ return [
         'shortcuts' => 'Raccourcis clavier',
         'shortcut_help' => 'Afficher ces raccourcis',
         'shortcut_search' => 'Rechercher dans la liste',
+        // The ⌘K palette (command.js) and the g-chords.
+        'command_title' => 'Rechercher ou aller à',
+        'command_screens' => 'Écrans et actions',
+        'command_none' => 'Aucun résultat',
+        'command_one' => '1 résultat',
+        'command_many' => ':count résultats',
+        'command_failed' => 'La recherche n’a pas répondu. Réessayez.',
+        'shortcut_command' => 'Rechercher ou aller à',
+        'shortcut_then' => 'puis',
+        'jump_to' => 'Aller à :label',
         'shortcut_new' => 'Nouvelle entrée',
         'shortcut_next' => 'Ligne suivante',
         'shortcut_previous' => 'Ligne précédente',

@@ -48,6 +48,7 @@ return [
         'log_out' => 'Abmelden',
         'waiting' => ':count offen',
         'environment' => 'Folio · :env',
+        'command' => 'Suchen oder springen zu…',
         'account_and_password' => 'Konto & Passwort',
         'expand_nav' => 'Ganzes Menü zeigen',
         'collapse_nav' => 'Nur Symbole zeigen',
@@ -91,6 +92,7 @@ return [
         'cache_line' => 'Die Caches belegen :size, vor allem :largest.',
         'open_cache' => 'Cache öffnen',
         'shortcuts' => 'Drück ? für die Tastenkürzel',
+        'shortcuts_pages' => 'Drück G, dann P, um zu :label zu springen · ? für alle Tastenkürzel',
         // The "Needs you" cards: Folio's own (#[DashboardItem] adds an extension's).
         'needs' => [
             'title' => 'Zu erledigen',
@@ -1011,6 +1013,16 @@ return [
         'shortcuts' => 'Tastenkürzel',
         'shortcut_help' => 'Diese Kürzel zeigen',
         'shortcut_search' => 'Die Liste durchsuchen',
+        // The ⌘K palette (command.js) and the g-chords.
+        'command_title' => 'Suchen oder springen zu',
+        'command_screens' => 'Seiten und Aktionen',
+        'command_none' => 'Keine Treffer',
+        'command_one' => '1 Treffer',
+        'command_many' => ':count Treffer',
+        'command_failed' => 'Die Suche hat nicht geantwortet. Versuch es noch einmal.',
+        'shortcut_command' => 'Suchen oder springen zu',
+        'shortcut_then' => 'dann',
+        'jump_to' => 'Zu :label',
         'shortcut_new' => 'Neuer Eintrag',
         'shortcut_next' => 'Nächste Zeile',
         'shortcut_previous' => 'Vorherige Zeile',

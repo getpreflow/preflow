@@ -935,6 +935,21 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
             $prefix,
         ));
+        // The ⌘K palette: its screens, actions and g-chords (folio_commands()) and its record search ({prefix}/_search).
+        $container->bind(\Preflow\Folio\Http\CommandPalette::class, fn (Container $c) => new \Preflow\Folio\Http\CommandPalette(
+            $c->get(TypeCatalog::class),
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            $prefix,
+        ));
+        $container->bind(\Preflow\Folio\Http\SearchController::class, fn (Container $c) => new \Preflow\Folio\Http\SearchController(
+            $c->get(\Preflow\Folio\Http\CommandPalette::class),
+            $c->get(\Preflow\Data\Search\RecordSearch::class),
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            static fn (): \Preflow\Media\MediaLibrary => $c->get(\Preflow\Media\MediaLibrary::class),
+            $prefix,
+        ));
         $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(TypeCatalog::class),
@@ -1558,6 +1573,17 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_nav',
                 callable: fn (): array => $container->get(\Preflow\Folio\Http\AdminNav::class)->sections(),
+            ));
+
+            // The ⌘K palette's screens, actions and g-chords as JSON for partials/_commands.twig (the sidebar's sections passed in),
+            // and the g p target for the dashboard tip (null: no page type the person may view).
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_commands',
+                callable: fn (array $sections): string => $container->get(\Preflow\Folio\Http\CommandPalette::class)->json($sections),
+            ));
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_pages_jump',
+                callable: fn (): ?array => $container->get(\Preflow\Folio\Http\CommandPalette::class)->pagesJump(),
             ));
 
             // Session flashes for the admin layout (a record action's "done", a refused delete).
@@ -2195,6 +2221,8 @@ final class FolioServiceProvider extends ServiceProvider
             'blocks.js' => 'blocks.js',
             // The field controls (0.75): copy, counter, stepper, date hint, relation rows, asset drop.
             'fields.js' => 'fields.js',
+            // The ⌘K palette and the g-chords (every admin page, after admin.js).
+            'command.js' => 'command.js',
             'icons.svg' => 'icons.svg',
             // Self-hosted fonts (SIL OFL 1.1, licences beside them), referenced by admin.css.
             'InterVariable.woff2' => 'fonts/InterVariable.woff2',

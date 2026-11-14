@@ -73,6 +73,7 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/_account/password', '/folio/_account/password', ['current' => 'wrong', 'password' => 'a new password', 'repeat' => 'a new password'], [422, 422, 422]],
             ['POST /folio/_locale', '/folio/_locale', ['locale' => 'en'], [302, 302, 302]], // signed in, no permission
             ['POST /folio/_prefs/nav', '/folio/_prefs/nav', ['section' => 'settings', 'open' => '0'], [204, 204, 204]], // signed in, no permission
+            ['GET /folio/_search', '/folio/_search?q=nothing', [], [200, 200, 200]], // signed in, no permission: the ⌘K search filters by {type}.view itself
             ['GET /folio/_blocks/{key}/new', '/folio/_blocks/nothing/new?name=body', [], [404, 404, 403]],
             ['POST /folio/_blocks/duplicate', '/folio/_blocks/duplicate', [], [400, 400, 403]],
             ['GET /folio/assets', '/folio/assets', [], [200, 200, 403]],

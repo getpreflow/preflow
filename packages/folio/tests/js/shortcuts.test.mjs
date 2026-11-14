@@ -2,7 +2,7 @@
 // (Folio.shortcuts.add), a "?" list of them, and the list's keys: / search, n new, j / k row focus,
 // Enter or e open, x tick, . menu, d duplicate. Never while typing or with Ctrl, Alt or ⌘ held (a ⌘
 // entry may opt in: the editor's ⌘S). Run: node --test packages/folio/tests/js/*.test.mjs
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createWindow, load } from './fake-dom.mjs';
@@ -227,4 +227,80 @@ test('? lists every registered shortcut with its key; nothing else fires while i
     assert.equal(labels[3], 'Next row');
     press(p, 'j');
     assert.equal(active(p), p.doc.body, 'j does nothing behind the open list');
+});
+
+// Chords (0.77): Folio.shortcuts.add({keys: 'g d', …}) runs on g, then d within 1.2 s. Typing or an open
+// dialog cancels a started chord; so does a key that is no chord's second key.
+function chordPage() {
+    const p = page();
+    const runs = [];
+    p.w.Folio.shortcuts.add({ keys: 'g d', label: 'Go to Dashboard', run: () => { runs.push('d'); } });
+    p.w.Folio.shortcuts.add({ keys: 'g p', label: 'Go to Pages', run: () => { runs.push('p'); } });
+    return { ...p, runs };
+}
+
+test('chords: g then d runs the entry; both keys are taken', () => {
+    const p = chordPage();
+    assert.equal(press(p, 'g').defaultPrevented, true, 'g starts a chord');
+    assert.equal(press(p, 'd').defaultPrevented, true);
+    assert.deepEqual(p.runs, ['d']);
+    press(p, 'p');
+    assert.deepEqual(p.runs, ['d'], 'p alone is no chord');
+    press(p, 'g');
+    press(p, 'p');
+    assert.deepEqual(p.runs, ['d', 'p']);
+});
+
+test('chords: the second key after 1.2 s runs nothing', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const p = chordPage();
+        press(p, 'g');
+        mock.timers.tick(1150);
+        press(p, 'd');
+        assert.deepEqual(p.runs, ['d'], 'in time');
+        press(p, 'g');
+        mock.timers.tick(1201);
+        press(p, 'd');
+        assert.deepEqual(p.runs, ['d'], 'too late: nothing');
+    } finally {
+        mock.timers.reset();
+    }
+});
+
+test('chords: typing or an open dialog cancels; another key ends the chord', () => {
+    const p = chordPage();
+    p.search.focus();
+    assert.equal(press(p, 'g').defaultPrevented, false, 'g in a field is typed');
+    press(p, 'd');
+    assert.deepEqual(p.runs, []);
+    p.doc.body.focus();
+    press(p, 'g');
+    press(p, 'd', { from: p.search });
+    assert.deepEqual(p.runs, [], 'the second key typed into a field');
+    press(p, 'g');
+    const dialog = p.doc.body.appendChild(p.doc.createElement('dialog'));
+    dialog.showModal();
+    press(p, 'd');
+    assert.deepEqual(p.runs, [], 'behind an open dialog');
+    dialog.close();
+    press(p, 'g');
+    press(p, 'x');
+    press(p, 'd');
+    assert.deepEqual(p.runs, [], 'x ended the chord');
+    press(p, 'g');
+    press(p, 'd', { meta: true });
+    assert.deepEqual(p.runs, [], 'a held ⌘ ends it too');
+});
+
+test('chords: ? lists them as G then D', () => {
+    const p = chordPage();
+    press(p, '?', { shift: true });
+    const dialog = p.doc.querySelector('dialog');
+    const dts = dialog.querySelectorAll('dt');
+    const chord = dts.find((dt) => dt.querySelectorAll('kbd').length === 2);
+    assert.ok(chord, 'a chord has two keys');
+    assert.deepEqual(chord.querySelectorAll('kbd').map((k) => k.textContent), ['G', 'D']);
+    assert.equal(chord.querySelector('span').textContent, 'then');
+    assert.ok(dialog.querySelectorAll('dd').map((dd) => dd.textContent).includes('Go to Pages'));
 });
