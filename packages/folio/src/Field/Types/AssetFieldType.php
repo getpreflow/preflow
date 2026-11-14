@@ -165,15 +165,15 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         $template = $value === '';
         $html = '<li class="folio-asset-item" data-asset-item>';
         if ($template || ($card['thumb'] ?? null) !== null) {
-            $html .= '<span class="folio-asset-preview"><img src="' . $e((string) ($card['thumb'] ?? '')) . '" alt="" class="folio-asset-thumb">'
+            $html .= '<span class="folio-asset-card-preview"><img src="' . $e((string) ($card['thumb'] ?? '')) . '" alt="" class="folio-asset-thumb">'
                 // Placed by script (fields.js) from data-focal: no style attribute under a strict CSP.
                 . '<span class="folio-asset-focal"' . ($card['focal'] !== null ? ' data-focal="' . $card['focal'][0] . ',' . $card['focal'][1] . '"' : '') . ' aria-hidden="true" hidden></span></span>';
         }
         if (!$template && ($card['thumb'] ?? null) === null) {
-            $html .= '<span class="folio-asset-preview is-file" aria-hidden="true">' . \Preflow\Folio\View\InlineIcon::svg('ui-file') . '</span>';
+            $html .= '<span class="folio-asset-card-preview is-file" aria-hidden="true">' . \Preflow\Folio\View\InlineIcon::svg('ui-file') . '</span>';
         } elseif ($template) {
             // A file without a thumbnail (a PDF): admin.js keeps this one instead of the image.
-            $html .= '<span class="folio-asset-preview is-file" aria-hidden="true" hidden>' . \Preflow\Folio\View\InlineIcon::svg('ui-file') . '</span>';
+            $html .= '<span class="folio-asset-card-preview is-file" aria-hidden="true" hidden>' . \Preflow\Folio\View\InlineIcon::svg('ui-file') . '</span>';
         }
         $html .= ''
             . '<span class="folio-asset-info"><span class="folio-asset-name">'

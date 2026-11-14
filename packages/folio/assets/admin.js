@@ -258,7 +258,7 @@
     function assetItem(field, item) {
         var card = fromTemplate(field.querySelector('template[data-folio-asset-template]'));
         if (card) {
-            var previews = card.querySelectorAll('.folio-asset-preview');
+            var previews = card.querySelectorAll('.folio-asset-card-preview');
             var preview = null;
             var fileIcon = null;
             Array.prototype.forEach.call(previews, function (p) { if (p.classList.contains('is-file')) { fileIcon = p; } else { preview = p; } });

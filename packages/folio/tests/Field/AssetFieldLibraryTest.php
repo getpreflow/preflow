@@ -183,7 +183,7 @@ final class AssetFieldLibraryTest extends TestCase
         $this->assertStringContainsString('<div class="form-group folio-asset-field" data-folio-asset-field', $html);
         $this->assertStringContainsString('data-upload-url="/folio/assets" data-accept="image/*"', $html);
         $this->assertMatchesRegularExpression(
-            '~<li class="folio-asset-item" data-asset-item><span class="folio-asset-preview"><img src="[^"]+" alt="" class="folio-asset-thumb">'
+            '~<li class="folio-asset-item" data-asset-item><span class="folio-asset-card-preview"><img src="[^"]+" alt="" class="folio-asset-thumb">'
             . '<span class="folio-asset-focal" data-focal="30,70" aria-hidden="true" hidden></span></span>'
             . '<span class="folio-asset-info"><span class="folio-asset-name">preflow.png</span><span class="folio-asset-meta">image · 160 × 100</span>'
             . '<span class="folio-asset-warn">No alt text yet</span></span>~',

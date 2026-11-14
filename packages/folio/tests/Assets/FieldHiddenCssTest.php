@@ -15,7 +15,7 @@ final class FieldHiddenCssTest extends TestCase
 {
     /** Classes the field scripts toggle with hidden. */
     private const array TOGGLED = [
-        'folio-asset-warn', 'folio-asset-meta', 'folio-asset-preview', 'folio-asset-focal', 'folio-relation-meta',
+        'folio-asset-warn', 'folio-asset-meta', 'folio-asset-card-preview', 'folio-asset-focal', 'folio-relation-meta',
         'folio-relation-results', 'folio-input-action', 'form-error', 'folio-date-hint',
     ];
 
