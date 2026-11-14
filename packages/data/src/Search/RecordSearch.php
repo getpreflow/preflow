@@ -11,7 +11,8 @@ use Preflow\Data\RecordTitle;
 /**
  * Searches records of several types at once: a loose search per type (every word in some text
  * field, QueryBuilder::searchLoose()), at most $perType records each, hits grouped by type in
- * the order the types are given and named by RecordTitle.
+ * the order the types are given and named by RecordTitle. Within a type, hits come in storage
+ * order (not ranked by relevance).
  *
  * It reads working copies and checks no permission: the caller passes only the types the
  * person may read.

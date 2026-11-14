@@ -28,6 +28,26 @@ final class TitledBook extends Model
     public string $name = '';
 }
 
+#[Entity(table: 'untitled_books', type: 'untitled_book')]
+final class UntitledBook extends Model
+{
+    #[Id]
+    public string $uuid = '';
+    #[Field]
+    public string $name = '';
+    #[Field]
+    public string $code = '';
+}
+
+#[Entity(table: 'bad_books', type: 'bad_book', titleField: 'missing')]
+final class BadTitleBook extends Model
+{
+    #[Id]
+    public string $uuid = '';
+    #[Field]
+    public string $name = '';
+}
+
 final class RecordTitleTest extends TestCase
 {
     private string $dir;
@@ -110,12 +130,82 @@ final class RecordTitleTest extends TestCase
         );
     }
 
-    public function test_an_unknown_title_field_in_a_model_file_fails_loading_the_type(): void
+    public function test_an_unknown_title_field_in_a_model_file_fails_building_the_registry(): void
+    {
+        file_put_contents($this->dir . '/thing.json', json_encode([
+            'key' => 'thing', 'table' => 'thing', 'fields' => ['name' => ['type' => 'string']], 'titleField' => 'missing',
+        ]));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Type "thing" has the titleField "missing", which is not one of its fields.');
+
+        new TypeRegistry($this->dir); // at boot, not when the type is first used
+    }
+
+    public function test_an_unknown_title_field_on_a_class_fails_building_the_registry(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('"thing"');
+        $this->expectExceptionMessage('Type "bad_book" has the titleField "missing", which is not one of its fields.');
 
-        $this->type(['name' => ['type' => 'string']], 'missing');
+        new TypeRegistry($this->dir, null, ['bad_book' => BadTitleBook::class]);
+    }
+
+    public function test_an_unknown_title_field_in_an_admin_file_fails_building_the_registry(): void
+    {
+        file_put_contents($this->dir . '/untitled_book.json', json_encode(['titleField' => 'missing']));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Type "untitled_book" has the titleField "missing", which is not one of its fields.');
+
+        new TypeRegistry($this->dir, null, ['untitled_book' => UntitledBook::class]);
+    }
+
+    public function test_an_admin_file_may_set_the_title_field_of_a_class(): void
+    {
+        file_put_contents($this->dir . '/untitled_book.json', json_encode(['titleField' => 'code']));
+
+        $this->assertSame('code', (new TypeRegistry($this->dir, null, ['untitled_book' => UntitledBook::class]))->get('untitled_book')->titleField);
+    }
+
+    public function test_class_and_admin_file_disagreeing_on_the_title_field_fails_building_the_registry(): void
+    {
+        file_put_contents($this->dir . '/titled_book.json', json_encode(['titleField' => 'code']));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('titled_book');
+        $this->expectExceptionMessage('"name"');
+        $this->expectExceptionMessage('"code"');
+
+        new TypeRegistry($this->dir, null, ['titled_book' => TitledBook::class]);
+    }
+
+    public function test_overlay_refuses_a_second_title_field(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('titleField');
+
+        ModelSchema::overlay(ModelSchema::of(TitledBook::class), ['titleField' => 'code'], '/x/titled_book.json', TitledBook::class);
+    }
+
+    public function test_class_and_admin_file_may_name_the_same_title_field(): void
+    {
+        file_put_contents($this->dir . '/titled_book.json', json_encode(['titleField' => 'name']));
+
+        $this->assertSame('name', (new TypeRegistry($this->dir, null, ['titled_book' => TitledBook::class]))->get('titled_book')->titleField);
+    }
+
+    public function test_the_default_rule_reads_only_strings(): void
+    {
+        // A number held in a string field (as JSON storage may give it) is no title by the default rule, as before.
+        $type = $this->type(['name' => ['type' => 'string']]);
+        $this->assertSame('t1', RecordTitle::of(DynamicRecord::fromArray($type, ['uuid' => 't1', 'name' => 42])));
+    }
+
+    public function test_an_explicit_numeric_title_field_is_cast(): void
+    {
+        $type = $this->type(['name' => ['type' => 'string'], 'number' => ['type' => 'integer']], 'number');
+        $this->assertSame('42', RecordTitle::of(DynamicRecord::fromArray($type, ['uuid' => 't1', 'name' => 'n', 'number' => 42])));
+        $this->assertSame('1.5', RecordTitle::of(DynamicRecord::fromArray($type, ['uuid' => 't2', 'name' => 'n', 'number' => 1.5])));
     }
 
     public function test_a_model_class_sets_it_on_its_entity_attribute(): void

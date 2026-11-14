@@ -110,6 +110,29 @@ final class ModelSchema
     }
 
     /**
+     * The titleField of a class-backed type: the class's (#[Entity(titleField: …)]) or its admin
+     * file's. Both may name it only when they name the same field: never a silent override.
+     *
+     * @param array<string, mixed> $classSchema ModelSchema::of()
+     * @param array<string, mixed> $adminFile   the model JSON file of the same key
+     * @throws \RuntimeException the class and the file name different fields
+     * @since 0.77
+     */
+    public static function titleField(array $classSchema, array $adminFile, string $file, string $modelClass = ''): mixed
+    {
+        $class = $classSchema['titleField'] ?? null;
+        $admin = $adminFile['titleField'] ?? null;
+        if ($class !== null && $admin !== null && $class !== $admin) {
+            $key = (string) ($classSchema['key'] ?? '');
+            throw new \RuntimeException('Type "' . $key . '" has the titleField "' . $class . '" on '
+                . ($modelClass !== '' ? $modelClass : 'its model class') . ' and "' . (is_scalar($admin) ? $admin : get_debug_type($admin))
+                . '" in ' . basename($file) . ': name it in one place (or the same field in both).');
+        }
+
+        return $class ?? $admin;
+    }
+
+    /**
      * A class-backed type with its admin file's presentation laid over it: the file's type-level
      * keys (label, list, section, ...) are added, its per-field keys merged into the class's
      * fields (the file wins for label and help). The file may not define data: one definition
@@ -132,7 +155,11 @@ final class ModelSchema
             }
         }
 
+        $titleField = self::titleField($classSchema, $adminFile, $file, $modelClass);
         $schema = $classSchema + array_diff_key($adminFile, array_flip(self::SCHEMA_TYPE_KEYS));
+        if ($titleField !== null) {
+            $schema['titleField'] = $titleField;
+        }
         foreach ($fields as $name => $entry) {
             $schema['fields'][$name] = array_merge($classSchema['fields'][$name], (array) $entry);
         }

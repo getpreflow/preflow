@@ -832,7 +832,7 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
   and so are `searchable: false` fields and hidden fields without `searchable: true` — naming a
   field never makes it searchable. A type with nothing searchable matches no record.
 - A relation field is searched one level deep: the word is matched against the target's
-  `labelField` (or its first `string` field that is not hidden) and its text fields, by the
+  `labelField` (else the target type's `titleField`, else its first `string` field that is not hidden) and its text fields, by the
   same rules (hidden fields left out), and the records pointing at a matching target match.
   Relations are not followed further.
 - A word matching more than `QueryBuilder::RELATION_MATCH_LIMIT` (1000) records of a related
@@ -863,9 +863,13 @@ RecordTitle::of($record, 'de');  // a translatable title in German (with the loc
 ```
 
 `TypeDefinition::$titleField` is the field. Without one, the title is the first field of type
-`string` that is not hidden (`"hidden": true`). An empty title (or none) falls back to the
-record id. A `titleField` the type does not have is an error naming the type when the type is
-loaded. A model class sets it on `#[Entity(titleField: …)]` (its admin file may set it too).
+`string` that is not hidden (`"hidden": true`), read as a string only. A declared `titleField` may
+also be a number field (its value is cast to text). An empty title (or none) falls back to the
+record id. A `titleField` the type does not have is an error naming the type when the type
+registry is built (at boot). A model class sets it on `#[Entity(titleField: …)]` or in its admin
+file; both may name it only when they name the same field, else boot fails naming the type and
+both values. `searchLoose()` matches a relation without its own `labelField` against its target's
+`titleField` (then the first string field, as before).
 
 **Cross-type search** (`Preflow\Data\Search\RecordSearch`, bound in the container):
 
@@ -877,7 +881,8 @@ foreach ($hits as $hit) {
 ```
 
 Each type gets `queryType($type)->searchLoose($term)->limit($perType)` (working copies), and
-hits are grouped by type in the order the types are given. A term shorter than 2 characters
+hits are grouped by type in the order the types are given. Within a type, hits come in storage
+order (not ranked by relevance). A term shorter than 2 characters
 after trimming finds nothing, and an unknown type is skipped. The search checks no
 permission: pass only the types the person may read.
 

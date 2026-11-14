@@ -20,7 +20,8 @@ final class RecordTitle
         $field = $type->titleField ?? self::defaultField($type);
         if ($field !== null) {
             $value = $record->localized($locale ?? $type->locales->default)->get($field);
-            if (is_int($value) || is_float($value)) {
+            // A declared titleField may be a number field; the default rule reads strings only.
+            if ($type->titleField !== null && (is_int($value) || is_float($value))) {
                 $value = (string) $value;
             }
             if (is_string($value) && $value !== '') {

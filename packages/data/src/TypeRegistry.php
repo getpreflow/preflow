@@ -25,6 +25,51 @@ final class TypeRegistry
         private readonly array $classes = [],
     ) {
         $this->assertOneDefinitionPerKey();
+        $this->assertTitleFields();
+    }
+
+    /**
+     * A titleField the type does not have, or a class and its admin file naming different ones, is
+     * an error when the registry is built (at boot), not when a request first uses the type. A model
+     * file is decoded here (once per process; the type's first use reads the same decode); a class
+     * is reflected only for its #[Entity], and its fields only when a titleField is set. A file
+     * with "extends": true patches a runtime type, which define() checks.
+     */
+    private function assertTitleFields(): void
+    {
+        foreach ($this->classes as $key => $class) {
+            $path = $this->modelsPath . '/' . $key . '.json';
+            $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
+            $file = is_array($file) && ($file['extends'] ?? false) !== true ? $file : [];
+            $entity = (new \ReflectionClass($class))->getAttributes(Attributes\Entity::class);
+            $attribute = $entity === [] ? null : $entity[0]->newInstance()->titleField;
+            if ($attribute === null && !array_key_exists('titleField', $file)) {
+                continue;
+            }
+            $schema = ModelSchema::of($class);
+            $titleField = ModelSchema::titleField($schema, $file, $path, $class);
+            self::assertTitleField((string) $key, self::titleField($titleField, (string) $key), $schema['fields']);
+        }
+        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
+            $key = basename($path, '.json');
+            if (isset($this->classes[$key])) {
+                continue;
+            }
+            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
+            if (!is_array($file) || ($file['extends'] ?? false) === true || !array_key_exists('titleField', $file)) {
+                continue;
+            }
+            $type = is_string($file['key'] ?? null) ? $file['key'] : $key;
+            self::assertTitleField($type, self::titleField($file['titleField'], $type), is_array($file['fields'] ?? null) ? $file['fields'] : []);
+        }
+    }
+
+    /** @param array<string, mixed> $fields */
+    private static function assertTitleField(string $key, ?string $titleField, array $fields): void
+    {
+        if ($titleField !== null && !array_key_exists($titleField, $fields)) {
+            throw new \InvalidArgumentException("Type \"{$key}\" has the titleField \"{$titleField}\", which is not one of its fields.");
+        }
     }
 
     /**

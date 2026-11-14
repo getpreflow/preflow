@@ -322,10 +322,11 @@ final class QueryBuilder
         $target = $registry->get($relation->target);
         $kinds = $dm->fieldKinds();
 
-        // The label field (declared, else the first string field) and the text fields; hidden
-        // ones only where they say "searchable": true.
+        // The label field (the relation's, else the target's titleField, else its first string
+        // field) and the text fields; hidden ones only where they say "searchable": true.
         $names = [];
-        $label = $relation->labelField !== null ? ($target->fields[$relation->labelField] ?? null) : null;
+        $labelField = $relation->labelField ?? $target->titleField;
+        $label = $labelField !== null ? ($target->fields[$labelField] ?? null) : null;
         if ($label !== null) {
             if ($label->searchable === true || ($label->config['hidden'] ?? false) !== true) {
                 $names[] = $label->name;
