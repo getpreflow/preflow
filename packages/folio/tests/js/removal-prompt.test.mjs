@@ -361,6 +361,7 @@ test('test_dialog_title_names_the_record', async () => {
     submit(named.w, off);
     d = dialog(named.w);
     assert.equal(title(d).textContent, 'Unpublish “About”?');
+    assert.deepEqual(d.querySelectorAll('.folio-removal-line').map((p) => p.textContent), ['Take this page off the site?'], 'the form\'s warning stays, under the title');
     assert.equal(d.querySelector('button[data-removal-confirm]').textContent, 'Unpublish');
     assert.equal(d.querySelector('button[data-removal-confirm]').className, 'btn btn-danger');
 });

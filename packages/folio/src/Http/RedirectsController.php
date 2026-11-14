@@ -96,7 +96,8 @@ final class RedirectsController
     public function create(ServerRequestInterface $request): ResponseInterface
     {
         return $this->guarded(function () use ($request): ResponseInterface {
-            $values = self::blank();
+            // A blank form starts in the default language (as an address without a prefix always was); "Any language" is an option.
+            $values = ['language' => $this->languages() !== [] ? $this->locales->default : ''] + self::blank();
             $query = $request->getQueryParams();
             $id = $query['not_found'] ?? null;
             $row = is_string($id) ? $this->notFound->find($id) : null;
@@ -260,9 +261,9 @@ final class RedirectsController
     {
         $body = (array) $request->getParsedBody();
         $text = static fn (string $name): string => is_string($body[$name] ?? null) ? trim($body[$name]) : '';
-        // The form's language select (sites with locale prefixes): '' any language, else one of the site's.
-        $language = $this->prefixed && is_string($body['language'] ?? null)
-            && ($body['language'] === '' || $this->locales->has($body['language'])) ? $body['language'] : null;
+        // The form's language select, only where the form shows it (languages()): '' any language, else one of the site's.
+        $languages = $this->languages();
+        $language = is_string($body['language'] ?? null) && array_key_exists($body['language'], $languages) ? $body['language'] : null;
         $values = [
             'address' => $text('address'),
             'language' => $language ?? '',
@@ -386,7 +387,9 @@ final class RedirectsController
             return ['', null, FolioText::get('folio.redirects.errors.address_required')];
         }
         $bare = (string) preg_replace('/[?#].*$/s', '', $address);
-        if ($bare !== '' && !str_starts_with($bare, '/') && !str_starts_with($bare, '\\') && preg_match('/^[a-z][a-z0-9+.-]*:/i', $bare) !== 1) {
+        // Not a URL ("scheme://…", or one of the schemes that go without slashes): "news:2024" is the path /news:2024.
+        if ($bare !== '' && !str_starts_with($bare, '/') && !str_starts_with($bare, '\\')
+            && preg_match('~^([a-z][a-z0-9+.-]*://|(mailto|tel|http|https|javascript|data):)~i', $bare) !== 1) {
             $bare = '/' . $bare;
         }
         $full = RedirectPath::normalize($bare);
@@ -462,7 +465,7 @@ final class RedirectsController
 
     /**
      * The form's address and language for a typed path (the 404 page's prefill): a locale prefix
-     * goes into the select; without one it is any language.
+     * goes into the select; without one the default language.
      *
      * @return array{address: string, language: string}
      */
@@ -474,7 +477,7 @@ final class RedirectsController
         }
         [$locale, $path] = $this->site->split($full);
 
-        return $path === $full ? ['address' => $typed, 'language' => ''] : $this->addressValues($locale, $path);
+        return $path === $full ? ['address' => $typed, 'language' => $this->locales->default] : $this->addressValues($locale, $path);
     }
 
     /**
@@ -598,12 +601,20 @@ final class RedirectsController
             'languages' => $this->languages(),
             'target_kind' => $kind,
             'picked' => $picked !== null ? (new RecordLabeler())->label($picked) : null,
+            // The pick row; a page that is gone shows its "type:id" with the Broken badge.
             'picked_item' => $picked !== null ? [
                 'value' => $values['target'],
                 'label' => (new RecordLabeler())->label($picked),
                 'type' => $this->typeLabel((string) $target?->type),
                 'url' => $this->resolver->urlFor($picked, $picked->getType()->locales->default) ?? '',
-            ] : null,
+                'broken' => false,
+            ] : ($page ? [
+                'value' => $values['target'],
+                'label' => $values['target'],
+                'type' => $this->typeLabel((string) $target?->type),
+                'url' => '',
+                'broken' => true,
+            ] : null),
             'manual' => ($entry['kind'] ?? 'manual') === 'manual',
             'csrf' => self::csrf($request),
         ], $errors === [] ? 200 : 422);

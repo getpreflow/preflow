@@ -61,6 +61,7 @@
                         <span class="folio-redirect-picked-icon" aria-hidden="true"><svg class="folio-icon"><use href="{{ icons }}#ui-file"></use></svg></span>
                         <span class="folio-redirect-picked-text">
                             <span class="folio-redirect-picked-label" data-redirect-picked-label>{{ picked_item.label|default('') }}</span>
+                            {% if picked_item.broken|default(false) %}<span class="folio-badge is-incomplete" title="{{ t('folio.redirects.broken_help') }}" data-redirect-picked-broken>{{ t('folio.redirects.broken') }}</span>{% endif %}
                             <span class="folio-redirect-picked-meta" data-redirect-picked-meta>{{ picked_item ? [picked_item.type, picked_item.url]|filter(v => v)|join(' · ') : '' }}</span>
                         </span>
                         <svg class="folio-icon folio-redirect-picked-check" aria-hidden="true"><use href="{{ icons }}#ui-check"></use></svg>

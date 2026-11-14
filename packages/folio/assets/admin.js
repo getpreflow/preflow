@@ -266,6 +266,16 @@
         openDrawer(href + (href.indexOf('?') === -1 ? '?' : '&') + '_drawer=1');
     }
 
+    // Inside a drawer (its own document in the drawer's iframe): Escape closes the drawer, as it does on the page
+    // behind it, unless something in the drawer used it first (a listbox, a menu, an open dialog).
+    function onDrawerEscape(e) {
+        if (e.key !== 'Escape' || e.defaultPrevented || !window.parent || window.parent === window) { return; }
+        if (!document.body || !document.body.classList.contains('folio-drawer-body')) { return; }
+        if (document.querySelector('dialog[open]')) { return; }
+        e.preventDefault();
+        window.parent.postMessage({ source: 'folio-drawer-cancel' }, window.location.origin);
+    }
+
     // A saved redirect drawer: the list behind it shows the saved state (and the flash) again.
     function onRedirectDrawerSaved(e) {
         if (e && e.detail && e.detail.type === 'redirect') { window.location.reload(); }
@@ -1187,8 +1197,9 @@
         if (!f || !f.hasAttribute || e.defaultPrevented || f._folioConfirmed || f.hasAttribute('data-delete-plan') || removalAddresses(f) <= 0) { return; }
         e.preventDefault();
         var submitter = e.submitter || null;
+        // Named: "Unpublish “About”?" with the form's warning as the line under it; else that warning is the title.
         var named = f.getAttribute('data-removal-label');
-        removalPrompt(named ? [] : [f.getAttribute('data-confirm') || ''], folioT('redirects.prompt.unpublish'), function (target) {
+        removalPrompt([f.getAttribute('data-confirm') || ''], folioT('redirects.prompt.unpublish'), function (target) {
             setRemovalTarget(f, target);
             resubmit(f, submitter);
         }, named ? folioT('redirects.prompt.unpublish_title', { label: named }) : '');
@@ -2246,6 +2257,8 @@
                 var meta = picked.querySelector('[data-redirect-picked-meta]');
                 if (label) { label.textContent = String(item.label || item.value); }
                 if (meta) { meta.textContent = [item.type, item.url].filter(Boolean).join(' · '); }
+                var broken = picked.querySelector('[data-redirect-picked-broken]');
+                if (broken) { broken.remove(); }
                 picked.hidden = false;
                 search.value = '';
                 close();
@@ -3902,6 +3915,7 @@
         document.addEventListener('folio:drawer-saved', onAssetsDrawerSaved);
         document.addEventListener('folio:drawer-saved', onRedirectDrawerSaved);
         document.addEventListener('click', onDrawerLinkClick);
+        document.addEventListener('keydown', onDrawerEscape);
         document.addEventListener('change', onEnablesChange);
         // Back/forward may restore ticked boxes: show the bar for them.
         window.addEventListener('pageshow', function () { initBulk(document); });

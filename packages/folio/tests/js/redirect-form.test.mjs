@@ -45,6 +45,7 @@ function redirectForm(doc, { kind = 'page', target = '', pageValue = '' } = {}) 
     picked.hidden = pageValue === '';
     const pickedLabel = el('span', { 'data-redirect-picked-label': true }, picked);
     const pickedMeta = el('span', { 'data-redirect-picked-meta': true }, picked);
+    if (pageValue !== '') { el('span', { 'data-redirect-picked-broken': true }, picked).textContent = 'Broken'; }
     const addressPane = el('div', { 'data-redirect-address': true }, form);
     const address = el('input', { type: 'text', name: 'target', 'data-redirect-address-input': true }, addressPane);
     address.value = target;
@@ -216,4 +217,60 @@ test('test_delete_confirm_names_the_address', async () => {
     part('confirm').click();
     await settle();
     assert.deepEqual(form.sent, [null]);
+});
+
+test('test_a_new_pick_drops_the_broken_badge', async () => {
+    const { parts: f } = admin((doc) => redirectForm(doc, { pageValue: 'page:gone' }));
+    assert.ok(f.picked.querySelector('[data-redirect-picked-broken]'));
+    type(f.search, 'ab');
+    await settle(260);
+    f.search.keydown('ArrowDown');
+    f.search.keydown('Enter');
+    assert.equal(f.value.value, 'page:p1');
+    assert.equal(f.picked.querySelector('[data-redirect-picked-broken]'), null);
+});
+
+/** A drawer's own document (the iframe): body.folio-drawer-body, a parent window that records its messages. */
+function inDrawer(build) {
+    const sent = [];
+    const r = admin((doc) => { doc.body.classList.add('folio-drawer-body'); return build ? build(doc) : null; });
+    r.w.parent = { postMessage: (data) => sent.push(JSON.stringify(data)) };
+    return { ...r, sent };
+}
+
+function escape(w, target) {
+    return (target || w.document.body).keydown('Escape');
+}
+
+test('test_escape_in_the_drawer_closes_it', async () => {
+    const { w, sent } = inDrawer();
+    assert.equal(escape(w).defaultPrevented, true);
+    assert.deepEqual(sent, [JSON.stringify({ source: 'folio-drawer-cancel' })]);
+
+    // Not on a page of its own (no drawer body), nor when the page is not in a frame.
+    const page = admin();
+    page.w.parent = { postMessage: () => { throw new Error('posted'); } };
+    assert.equal(escape(page.w).defaultPrevented, false);
+    const top = admin((doc) => { doc.body.classList.add('folio-drawer-body'); });
+    assert.equal(escape(top.w).defaultPrevented, false, 'window.parent is the window itself');
+});
+
+test('test_escape_used_inside_the_drawer_keeps_it_open', async () => {
+    // The page search's open list takes the first Escape, the search text the second; the third closes the drawer.
+    const { w, sent, parts: f } = inDrawer((doc) => redirectForm(doc));
+    type(f.search, 'ab');
+    await settle(260);
+    escape(w, f.search);
+    assert.equal(f.list.hidden, true);
+    assert.deepEqual(sent, []);
+    escape(w, f.search);
+    assert.equal(f.search.value, '');
+    assert.deepEqual(sent, []);
+    escape(w, f.search);
+    assert.equal(sent.length, 1);
+
+    // An open dialog (a confirm in the drawer) closes on its own Escape, not the drawer.
+    const d = inDrawer((doc) => { doc.body.appendChild(doc.createElement('dialog')).setAttribute('open', ''); });
+    escape(d.w);
+    assert.deepEqual(d.sent, []);
 });

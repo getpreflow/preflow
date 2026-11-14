@@ -218,7 +218,7 @@ final class RedirectsControllerTest extends TestCase
         // The field shows the path after its "/"; a language prefix goes into the language select.
         $old = (string) $this->fetch('/folio/redirects/new?address=%2Fold')->getBody();
         $this->assertStringContainsString('name="address" value="old"', $old);
-        $this->assertStringContainsString('<option value="" selected>Any language</option>', $old);
+        $this->assertStringContainsString('<option value="en" selected>', $old, 'no prefix: the default language, as before');
         $german = (string) $this->fetch('/folio/redirects/new?address=/de/alte-seite')->getBody();
         $this->assertStringContainsString('name="address" value="alte-seite"', $german);
         $this->assertStringContainsString('<option value="de" selected>', $german);
@@ -685,7 +685,7 @@ final class RedirectsControllerTest extends TestCase
 
         $this->assertStringContainsString('<span class="folio-input-prefix" aria-hidden="true">/</span>', $form);
         $this->assertStringContainsString('A path such as /old-page. Queries are ignored.', $form);
-        $this->assertMatchesRegularExpression('#<select id="folio-redirect-language" name="language">\s*<option value="" selected>Any language</option><option value="en">English</option><option value="de">Deutsch</option>#', $form);
+        $this->assertMatchesRegularExpression('#<select id="folio-redirect-language" name="language">\s*<option value="">Any language</option><option value="en" selected>English</option><option value="de">Deutsch</option>#', $form, 'a blank form starts in the default language');
         // "Send visitors to": the segmented (shown by script), the page search (a combobox over _targets) and the
         // address input; both post "target", the page's only once script enables it. No datalist any more.
         $this->assertStringContainsString('<legend class="form-label">Send visitors to', $form);
@@ -763,6 +763,41 @@ final class RedirectsControllerTest extends TestCase
         $edit = (string) $this->fetch('/folio/redirects/' . $this->entries()->at('', '/anywhere')['id'])->getBody();
         $this->assertStringContainsString('name="address" value="anywhere"', $edit);
         $this->assertStringContainsString('<option value="" selected>Any language</option>', $edit);
+    }
+
+    public function test_language_is_read_only_where_the_select_is_shown(): void
+    {
+        // A prefixed site with one language: no select, so a posted language is ignored (the default language).
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
+        $this->assertStringNotContainsString('name="language"', (string) $this->fetch('/folio/redirects/new')->getBody());
+
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => 'old', 'language' => '', 'target' => '/x', 'status' => '301'])->getStatusCode());
+        $this->assertNotNull($this->entries()->at('en', '/old'));
+        $this->assertNull($this->entries()->at('', '/old'));
+    }
+
+    public function test_a_colon_in_a_path_is_no_scheme(): void
+    {
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => 'news:2024', 'target' => '/x', 'status' => '301'])->getStatusCode());
+        $this->assertNotNull($this->entries()->at('en', (string) \Preflow\Routing\Redirect\RedirectPath::normalize('/news:2024')));
+        foreach (['mailto:x@example.org', 'tel:+41', 'javascript:alert(1)', 'data:text/html,x', 'ftp://example.org/x', 'HTTPS:example.org'] as $scheme) {
+            $this->assertSame(422, $this->send('/folio/redirects', ['address' => $scheme, 'target' => '/x', 'status' => '301'])->getStatusCode(), $scheme);
+        }
+    }
+
+    public function test_a_broken_page_target_shows_its_pick_with_the_badge(): void
+    {
+        $this->entries()->storeUnchecked(['path' => '/gone', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'nope']);
+        $edit = (string) $this->fetch('/folio/redirects/' . $this->entries()->at('en', '/gone')['id'])->getBody();
+
+        $this->assertStringContainsString('name="target_kind" value="page" checked', $edit);
+        $this->assertStringContainsString('<input type="hidden" name="target" value="page:nope" data-redirect-page-value disabled>', $edit);
+        $this->assertMatchesRegularExpression('#<div class="folio-redirect-picked" data-redirect-picked aria-live="polite">.*?<span class="folio-redirect-picked-label" data-redirect-picked-label>page:nope</span>\s*<span class="folio-badge is-incomplete"[^>]*data-redirect-picked-broken>Broken</span>#s', $edit);
+    }
+
+    public function test_empty_list_action_opens_the_drawer(): void
+    {
+        $this->assertStringContainsString('<a class="btn folio-ink-action" href="/folio/redirects/new" data-folio-drawer>New redirect</a>', (string) $this->fetch('/folio/redirects')->getBody());
     }
 
     /** Signed in with auth and roles: "manager" may manage redirects, "editor" may not. */

@@ -69,7 +69,7 @@ final class EmptyStateTest extends TestCase
         $this->assertStringContainsString('app/Folio/*/Extension.php', $extensions);
         $redirects = $this->card($this->body('/folio/redirects'), 'redirects');
         $this->assertStringContainsString('<p class="folio-ink-title">No redirects yet.</p>', $redirects);
-        $this->assertStringContainsString('<a class="btn folio-ink-action" href="/folio/redirects/new">New redirect</a>', $redirects);
+        $this->assertStringContainsString('<a class="btn folio-ink-action" href="/folio/redirects/new" data-folio-drawer>New redirect</a>', $redirects);
         $this->assertStringContainsString('<p class="folio-ink-title">No address was asked for twice without being found.</p>', $this->card($this->body('/folio/redirects?tab=not-found'), 'redirects-not-found'));
     }
 

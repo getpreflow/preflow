@@ -2037,9 +2037,9 @@ from publishing). Two tabs:
 
 The form opens in the drawer (`?_drawer=1`; the list reloads after a save) and is a page of its
 own without script. A hand-made entry has an old address, typed after the form's `/` (a query or
-fragment is left out), with its language: on a site with locale prefixes a select offers "Any
-language" or one of the site's languages, and a language prefix typed in front (`/de/werkstatt`)
-still wins; without prefixes entries are language-neutral. Posted without the select, the prefix
+fragment is left out), with its language: on a site with locale prefixes a select offers one of the site's
+languages (a new entry starts in the default one) or "Any language", and a language prefix typed
+in front (`/de/werkstatt`) still wins; without prefixes entries are language-neutral. Posted without the select, the prefix
 or else the default language decides, as before. "Send visitors to" is **A page** (a search over
 `_targets`, the pick shown with its type and URL) or **An address** (a URL or path); both post
 the one field `target`, and without script the address input takes `type:id` too. It can cover *everything under it*
