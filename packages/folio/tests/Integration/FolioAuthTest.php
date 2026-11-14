@@ -80,11 +80,12 @@ final class FolioAuthTest extends TestCase
     {
         $body = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/login'))->getBody();
         $body = (string) preg_replace(
-            ['~name="_csrf_token" value="[^"]*"~', '~nonce="[^"]*"~', '~(admin\.css|InterVariable\.woff2)\?v=[^"]*~', '~<div id="preflow-debug-toolbar">.*(?=</body>)~s'],
+            ['~name="_csrf_token" value="[^"]*"~', '~nonce="[^"]*"~', '~(admin\.css|InterVariable\.woff2|icons\.svg)\?v=[^"#]*~', '~<div id="preflow-debug-toolbar">.*(?=</body>)~s'],
             ['name="_csrf_token" value=""', 'nonce=""', '$1?v=', ''],
             $body,
         );
-        // Recorded from the login page before the staff accounts (v0.26).
+        // Recorded from the login page before the staff accounts (v0.26); since 0.76 the scene's marks are
+        // icons.svg's mark-* symbols (the same marks and transforms, .mc-N for .pc-N).
         $this->assertSame((string) file_get_contents(dirname(__DIR__) . '/Fixtures/login-config-site.html'), $body);
     }
 

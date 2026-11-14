@@ -306,4 +306,41 @@ final class AdminCssTest extends TestCase
         $this->assertNotFalse($base);
         $this->assertDoesNotMatchRegularExpression('/\.folio-blocks-items \{ grid-template-columns: minmax\(0, 1fr\); \}/', substr($css, 0, $base));
     }
+
+    public function test_the_ink_layer_classes_and_the_sign_in_aliases(): void
+    {
+        $css = $this->css();
+        // Marks: a layer that never takes a click, 2.2 strokes at .78, coloured by the six mark hues.
+        $this->assertMatchesRegularExpression('/\.folio-ink-marks,\s*\.folio-auth-pattern \{ position: absolute; pointer-events: none; \}/', $css);
+        $this->assertMatchesRegularExpression('/:is\(\.folio-ink-marks, \.folio-auth-pattern\) use \{[^}]*stroke-width: 2\.2;[^}]*opacity: \.78;/', $css);
+        for ($i = 1; $i <= 6; $i++) {
+            $this->assertStringContainsString(".mc-{$i} { color: var(--mark-{$i}); }", $css);
+        }
+        $this->assertStringNotContainsString('.pc-1', $css, 'the sign-in uses .mc-N too');
+        // The line, the caret on ink and the drift, each with its sign-in alias.
+        $this->assertMatchesRegularExpression('/\.folio-ink-line,\s*\.folio-auth-line \{ font-family: var\(--font-mono\); color: var\(--ink-line\); \}/', $css);
+        $this->assertMatchesRegularExpression('/\.folio-ink \.folio-caret,\s*\.folio-auth-caret \{ background: var\(--ink-accent\); \}/', $css);
+        $this->assertMatchesRegularExpression('/\.folio-ink-drift,\s*\.folio-auth-drift \{ animation: folio-drift /', $css);
+        // Reduced motion stops the drift and the caret.
+        $this->assertMatchesRegularExpression('/@media \(prefers-reduced-motion: reduce\) \{\s*\.folio-ink-drift, \.folio-auth-drift, \.folio-caret, \.folio-auth-caret \{ animation: none !important; \}/', $css);
+
+        // The marks are symbols of icons.svg: 2.2 stroke in currentColor, so the <use> class colours them.
+        $svg = (string) file_get_contents(dirname(__DIR__, 2) . '/assets/icons.svg');
+        foreach (\Preflow\Folio\View\InkMarks::MARKS as $mark) {
+            $this->assertMatchesRegularExpression('/<symbol id="mark-' . $mark . '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2\.2"/', $svg);
+        }
+        foreach (['ui-undo', 'ui-refresh', 'ui-arrow', 'ui-filter', 'ui-clock', 'ui-globe', 'ui-desktop', 'ui-shield'] as $icon) {
+            $this->assertStringContainsString('<symbol id="' . $icon . '" viewBox="0 0 24 24"', $svg);
+        }
+        $pattern = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/_auth_pattern.twig');
+        $this->assertStringNotContainsString('<symbol', $pattern, 'no second copy of the marks');
+        $this->assertSame(47, preg_match_all('/<use href="\{\{ icons \}\}#mark-[a-z]+" class="mc-[1-6]"/', $pattern));
+    }
+
+    public function test_the_skip_link_shows_on_focus_only(): void
+    {
+        $css = $this->css();
+        $this->assertMatchesRegularExpression('/\.folio-skip \{[^}]*position: fixed;[^}]*transform: translateY\(calc\(-100% - 16px\)\);/', $css);
+        $this->assertStringContainsString('.folio-skip:focus { transform: none; }', $css);
+    }
 }

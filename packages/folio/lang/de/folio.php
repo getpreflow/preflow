@@ -36,6 +36,7 @@ return [
         'done_count' => ':label: erledigt (:count)',
     ],
     'layout' => [
+        'skip' => 'Zum Inhalt springen',
         'version' => 'Folio :version',
         'version_core' => 'Preflow Core :version',
         'language' => 'Sprache',

@@ -109,8 +109,8 @@ final class ListScreenTest extends TestCase
     {
         $this->draft('p1', 'Alpha');
 
-        $this->assertStringContainsString('<main class="folio-content is-wide">', $this->html('/folio/post'));
-        $this->assertStringContainsString('<main class="folio-content">', $this->html('/folio/post/p1/edit'), 'editors keep their measure');
+        $this->assertStringContainsString('<main class="folio-content is-wide" id="folio-main" tabindex="-1">', $this->html('/folio/post'));
+        $this->assertStringContainsString('<main class="folio-content" id="folio-main" tabindex="-1">', $this->html('/folio/post/p1/edit'), 'editors keep their measure');
     }
 
     public function test_status_links_count_each_state_over_the_whole_type(): void

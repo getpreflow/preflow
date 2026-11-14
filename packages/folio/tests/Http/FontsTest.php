@@ -97,10 +97,15 @@ final class FontsTest extends TestCase
 
     public function test_layouts_preload_inter(): void
     {
-        foreach (['_layout', '_auth_layout', '_drawer_layout', 'login'] as $t) {
+        foreach (['_layout', '_auth_layout', '_drawer_layout'] as $t) {
             $tpl = (string) file_get_contents(dirname(__DIR__, 2) . "/templates/admin/$t.twig");
             $this->assertStringContainsString("folio_asset('InterVariable.woff2')", $tpl, $t);
             $this->assertStringContainsString('as="font" type="font/woff2" crossorigin', $tpl, $t);
+        }
+        // The login, forgot and set-password pages get the preload from the auth layout's head.
+        foreach (['login', 'forgot', 'password'] as $t) {
+            $tpl = (string) file_get_contents(dirname(__DIR__, 2) . "/templates/admin/$t.twig");
+            $this->assertStringStartsWith("{% extends '@folio/admin/_auth_layout.twig' %}", $tpl, $t);
         }
     }
 

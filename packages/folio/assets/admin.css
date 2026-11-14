@@ -205,6 +205,25 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 }
 
 /* ---- app shell ---- */
+/* The skip link: the first tab stop of every admin page, out of sight until it has focus; it jumps
+   past the sidebar or the rail to main#folio-main (tabindex -1, so it takes focus without a ring). */
+.folio-skip {
+  position: fixed;
+  z-index: 1300;
+  top: 8px;
+  left: 8px;
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(calc(-100% - 16px));
+}
+.folio-skip:focus { transform: none; }
+.folio-content:focus { outline: none; }
 /* Two shells: the 248px sidebar (dashboard, lists, settings) and the 56px icon rail of the editors
    ({% set shell = 'rail' %}). The rail's expand button shows the sidebar instead for the session
    (data-folio-shell="sidebar" on the root, set before the first paint). */
@@ -258,6 +277,44 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 :where(.folio-brand-tile, .folio-rail-brand) .folio-logo-page { fill: var(--ink-accent); }
 :where(.folio-brand-tile, .folio-rail-brand) .folio-logo-fold { fill: var(--ink-line); }
 :where(.folio-brand-tile, .folio-rail-brand) .folio-logo-f { stroke: var(--ink-deep); stroke-width: 2.4; }
+
+/* The ink layer's parts (INK.md). The sign-in's .folio-auth-* names are aliases of these.
+   Marks: an aria-hidden <svg class="folio-ink-marks"> (folio_ink_marks()) of mark-* symbols from
+   icons.svg at stroke 2.2 and opacity .78, each coloured by .mc-1 … .mc-6 (the six mark hues). */
+.folio-ink-marks,
+.folio-auth-pattern { position: absolute; pointer-events: none; }
+.folio-ink-marks { inset: 0; width: 100%; height: 100%; overflow: hidden; }
+:is(.folio-ink-marks, .folio-auth-pattern) use {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .78;
+}
+.mc-1 { color: var(--mark-1); }
+.mc-2 { color: var(--mark-2); }
+.mc-3 { color: var(--mark-3); }
+.mc-4 { color: var(--mark-4); }
+.mc-5 { color: var(--mark-5); }
+.mc-6 { color: var(--mark-6); }
+/* The living line: mono text in the light green of ink, ending in a caret (.folio-caret). */
+.folio-ink-line,
+.folio-auth-line { font-family: var(--font-mono); color: var(--ink-line); }
+.folio-ink .folio-caret,
+.folio-auth-caret { background: var(--ink-accent); }
+.folio-ink .folio-caret { margin-left: 3px; vertical-align: -3px; }   /* after text, as on the sign-in (the save state's caret sits closer) */
+/* The marks drift slowly; reduced motion stops the drift and the caret (the global rule at the end). */
+.folio-ink-drift,
+.folio-auth-drift { animation: folio-drift 48s ease-in-out infinite alternate; }
+@keyframes folio-drift {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-28px, -40px); }
+}
+@keyframes folio-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .folio-ink-drift, .folio-auth-drift, .folio-caret, .folio-auth-caret { animation: none !important; }
+}
 
 /* The site switcher: tile, site name, environment line ("Folio · development"; "Folio" in production). */
 .folio-site { display: flex; align-items: center; gap: 4px; }
@@ -2488,31 +2545,11 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
     var(--ink);
   color: var(--ink-fg);
 }
+/* The sign-in's marks (.folio-ink-marks, .mc-N): a fixed 640×960 scene a little larger than the art side. */
 .folio-auth-pattern {
-  position: absolute;
   inset: -40px;
   width: calc(100% + 80px);
   height: calc(100% + 80px);
-}
-.folio-auth-pattern use {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: .78;
-}
-.folio-auth-pattern .fg-fill { fill: currentColor; stroke: none; }
-.folio-auth-pattern .pc-1 { color: var(--mark-1); }
-.folio-auth-pattern .pc-2 { color: var(--mark-2); }
-.folio-auth-pattern .pc-3 { color: var(--mark-3); }
-.folio-auth-pattern .pc-4 { color: var(--mark-4); }
-.folio-auth-pattern .pc-5 { color: var(--mark-5); }
-.folio-auth-pattern .pc-6 { color: var(--mark-6); }
-.folio-auth-drift { animation: folio-drift 48s ease-in-out infinite alternate; }
-@keyframes folio-drift {
-  from { transform: translate(0, 0); }
-  to { transform: translate(-28px, -40px); }
 }
 
 .folio-auth-hello {
@@ -2537,25 +2574,14 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
   letter-spacing: -.035em;
   line-height: 1;
 }
-.folio-auth-line {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  color: var(--ink-line);
-}
-.folio-auth-caret {
+.folio-auth-line { margin: 0; font-size: 14px; }   /* + .folio-ink-line */
+.folio-auth-caret {   /* + .folio-ink .folio-caret */
   display: inline-block;
   width: 2px;
   height: 1.15em;
   margin-left: 3px;
   vertical-align: -3px;
-  background: var(--ink-accent);
   animation: folio-blink 1.1s steps(1) infinite;
-}
-@keyframes folio-blink { 50% { opacity: 0; } }
-
-@media (prefers-reduced-motion: reduce) {
-  .folio-auth-caret, .folio-auth-drift { animation: none !important; }
 }
 
 .folio-auth-main {

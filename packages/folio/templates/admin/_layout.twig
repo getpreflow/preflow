@@ -70,6 +70,8 @@
     {% endif %}
 </head>
 <body data-folio-prefix="{{ prefix }}">
+{# The first tab stop: past the sidebar or the rail to the content (visible on focus only). #}
+<a class="folio-skip" href="#folio-main">{{ t('folio.layout.skip') }}</a>
 {% set icons = folio_asset('icons.svg') %}
 {% set nav_sections = folio_nav() %}
 {% set signed_in = folio_auth_enabled|default(false) and auth_check() %}
@@ -147,7 +149,7 @@
             <div class="folio-actions">{% block actions %}{% endblock %}</div>
         </header>
         {# A template asks for the full width with {% set content_width = 'wide' %} (lists); others stop at 1120px. #}
-        <main class="folio-content{{ content_width|default('') == 'wide' ? ' is-wide' }}">
+        <main class="folio-content{{ content_width|default('') == 'wide' ? ' is-wide' }}" id="folio-main" tabindex="-1">
             {%- for type, message in folio_flashes() %}<div class="folio-alert folio-alert-{{ type }}" role="{{ type == 'error' ? 'alert' : 'status' }}">{{ message }}{% set flash_link = folio_flash_link(type) %}{% if flash_link %} <a href="{{ flash_link.url }}">{{ flash_link.label }}</a>{% endif %}</div>{% endfor -%}
             {% block content %}{% endblock %}</main>
     </div>

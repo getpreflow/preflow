@@ -1,35 +1,6 @@
-<!DOCTYPE html>
-<html lang="{{ interface_locale|default('en') }}">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex">
-    <title>Folio — {{ t('folio.auth.sign_in') }}</title>
-    <script nonce="{{ csp_nonce() }}">
-    (function () {
-        try {
-            var t = localStorage.getItem('folio-theme');
-            if (t === 'light' || t === 'dark') {
-                document.documentElement.setAttribute('data-theme', t);
-            }
-        } catch (e) {}
-    })();
-    </script>
-    <link rel="preload" href="{{ folio_asset('InterVariable.woff2') }}" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="{{ folio_asset('admin.css') }}">
-</head>
-<body>
-<div class="folio-auth">
-    <aside class="folio-auth-art" aria-hidden="true">
-        {% include '@folio/admin/_auth_pattern.twig' %}
-        <div class="folio-auth-hello">
-            {% include '@folio/admin/_logo.twig' with {size: 'xl'} %}
-            <p class="folio-auth-word">Folio</p>
-            <p class="folio-auth-line">{{ t('folio.auth.tagline') }}<span class="folio-auth-caret"></span></p>
-        </div>
-    </aside>
-    <main class="folio-auth-main">
-        <form class="folio-auth-card" method="post" action="{{ login_action|default('') }}">
+{% extends '@folio/admin/_auth_layout.twig' %}
+{% block title %}{{ t('folio.auth.sign_in') }}{% endblock %}
+{% block card %}<form class="folio-auth-card" method="post" action="{{ login_action|default('') }}">
             {{ csrf_field()|raw }}
             <div class="folio-brand folio-auth-brand">{% include '@folio/admin/_logo.twig' %}<span class="folio-brand-name">Folio</span></div>
             <h1 class="folio-auth-title">{{ t('folio.auth.sign_in') }}</h1>
@@ -57,8 +28,4 @@
 {% endif %}
             <button type="submit" class="btn btn-primary">{{ t('folio.auth.sign_in') }}</button>
         </form>
-        <p class="folio-auth-foot">{{ t('folio.auth.powered_by') }} <a href="https://preflow.dev" rel="noopener">Preflow</a></p>
-    </main>
-</div>
-</body>
-</html>
+{% endblock %}
