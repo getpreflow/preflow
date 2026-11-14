@@ -77,27 +77,127 @@
 .rbac-rest { transition: opacity .15s; }
 .rbac-rest.is-locked { opacity: .45; }
 
-/* The matrix of content types */
-.rbac-matrix thead th:not(:first-child),
-.rbac-matrix .rbac-cell { text-align: center; width: 72px; padding-inline: 8px; }
-.rbac-matrix tbody th[scope="row"] { text-align: left; padding: 10px 16px; font-weight: 560; color: var(--c-text); border-bottom: 1px solid var(--c-border); }
-.rbac-matrix tbody tr:last-child th { border-bottom: 0; }
-.rbac-matrix .rbac-cell input { display: block; margin: 0 auto; cursor: pointer; }
-.rbac-matrix .rbac-cell input:disabled { cursor: default; }
-.rbac-matrix .rbac-cell-all { border-left: 1px solid var(--c-border); }
-.rbac-none { color: var(--c-text-subtle); }
+/* The unsaved count and Cancel: rbac.js moves them next to the editor's Save (topbar). */
+.rbac-changes { display: inline-flex; align-items: center; gap: 4px; }
+.rbac-changes[hidden] { display: none; }
+.rbac-changes-count { font-size: 12px; color: var(--c-warning); white-space: nowrap; }
+
+/* The key (granted, n/a) and the "Only new (N)" filter above the matrix */
+.rbac-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 0 0 12px; }
+.rbac-key { display: flex; flex-wrap: wrap; gap: 6px 16px; flex: 1 1 auto; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--c-text-muted); }
+.rbac-key li { display: inline-flex; align-items: center; gap: 8px; }
+.rbac-key-box {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--c-accent);
+}
+.rbac-key-box::after,
+.rbac-matrix .rbac-box:checked::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 5px;
+  height: 9px;
+  border: solid var(--c-accent-fg);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.rbac-key .rbac-none { width: 18px; text-align: center; }
+.rbac-fresh-filter {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--c-warning);
+  border-radius: 999px;
+  background: var(--c-warning-soft);
+  color: var(--c-warning);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rbac-fresh-filter[aria-pressed="true"] { background: var(--c-warning); color: var(--c-surface); }
+.rbac-fresh-filter:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* The matrix: one block per sidebar section; its header row names the section with its sum and
+   holds the column toggles. A type tile per row, a box per verb, the row's switch last. */
+.rbac-matrix { min-width: 700px; }
 .rbac-matrix tbody tr.rbac-section:hover { background: none; }
 .rbac-section th {
-  padding: 16px 16px 6px;
+  padding: 8px 4px;
+  background: var(--c-surface-2);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-text-subtle);
+  text-align: center;
+}
+.rbac-matrix tbody:not(:first-child) .rbac-section th { border-top: 1px solid var(--c-border); }
+.rbac-section th[scope="colgroup"] {
+  padding: 8px 16px;
   text-align: left;
   font-size: 11px;
   font-weight: 650;
   letter-spacing: .06em;
   text-transform: uppercase;
-  color: var(--c-text-subtle);
-  border-bottom: 1px solid var(--c-border);
 }
-.rbac-matrix tbody tr.rbac-section:first-child th { padding-top: 10px; }
+.rbac-section-sum { letter-spacing: 0; text-transform: none; font-weight: 400; }
+.rbac-section .rbac-cell-all { width: 72px; padding-right: 16px; text-align: right; }
+.rbac-column {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-text-muted);
+  cursor: pointer;
+}
+.rbac-column:hover { background: var(--c-row-hover); color: var(--c-text); }
+.rbac-column:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.rbac-matrix .rbac-cell { width: 88px; padding: 0 4px; text-align: center; border-bottom: 1px solid var(--c-border); }
+.rbac-matrix .rbac-cell-all { width: 72px; padding-right: 16px; text-align: right; }
+.rbac-matrix tbody th[scope="row"] { min-width: 180px; height: 48px; padding: 0 16px; text-align: left; font-weight: 500; color: var(--c-text); border-bottom: 1px solid var(--c-border); }
+.rbac-matrix tbody:last-child tr:last-child :is(th, td) { border-bottom: 0; }
+.rbac-type { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.rbac-type-label { min-width: 0; }
+.rbac-row.is-new { background: var(--c-warning-soft); }
+.rbac-fresh-badge.folio-badge { min-height: 20px; padding: 0 7px; font-size: 11px; font-weight: 700; }
+.rbac-fresh-badge.folio-badge::before { display: none; }
+
+/* A verb's box: 22px, accent with a tick when granted. A locked box (Everything or the row's switch
+   grants it) shows granted but quieter; one the editor can't grant is dimmed. */
+.rbac-matrix .rbac-box {
+  position: relative;
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  vertical-align: middle;
+  border: 1.5px solid var(--c-border-strong);
+  border-radius: 6px;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: background-color .1s, border-color .1s;
+}
+.rbac-matrix .rbac-box:hover:not(:disabled) { border-color: var(--c-text-subtle); }
+.rbac-matrix .rbac-box:checked { border-color: var(--c-accent); background: var(--c-accent); }
+.rbac-matrix .rbac-box:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.rbac-matrix .rbac-box:disabled { cursor: default; opacity: .55; }
+.rbac-matrix .rbac-box[data-rbac-denied] { cursor: not-allowed; opacity: .4; }
+.rbac-row-switch.folio-switch { width: 30px !important; height: 18px !important; vertical-align: middle; }
+.rbac-row-switch.folio-switch::after { top: 2px; left: 2px; width: 14px; height: 14px; }
+.rbac-row-switch.folio-switch:checked::after { transform: translateX(12px); }
+.rbac-none { color: var(--c-text-subtle); }
+.rbac-footnote { margin: 10px 0 0; font-size: 12px; color: var(--c-text-subtle); }
+@media (prefers-reduced-motion: reduce) { .rbac-matrix .rbac-box { transition: none; } }
 
 /* Other permissions: chips by group */
 .rbac-others { margin-top: 22px; }
@@ -138,3 +238,5 @@
 }
 .rbac-chip:has(input:disabled) { cursor: default; }
 .rbac-chip:has(input:focus-visible) { box-shadow: var(--focus-ring); }
+.rbac-chip.is-new { border-color: var(--c-warning); }
+.rbac-chip .rbac-fresh-badge, .rbac-fresh-mark .rbac-fresh-badge { margin-left: 2px; }

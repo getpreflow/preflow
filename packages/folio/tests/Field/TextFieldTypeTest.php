@@ -53,4 +53,11 @@ final class TextFieldTypeTest extends TestCase
         $this->assertStringContainsString('class="folio-input-mono"', $html);
         $this->assertStringContainsString('>0 / 20</span>', $html);
     }
+
+    public function test_a_string_field_takes_monospace_too(): void
+    {
+        $html = (new \Preflow\Folio\Field\Types\StringFieldType())->renderEditor(new FieldContext(name: 'name', value: 'editor', config: ['monospace' => true]));
+        $this->assertMatchesRegularExpression('#<input type="text" name="name" value="editor" id="name" class="folio-input-mono">#', $html);
+        $this->assertStringNotContainsString('folio-input-mono', (new \Preflow\Folio\Field\Types\StringFieldType())->renderEditor(new FieldContext(name: 'name', value: 'editor')));
+    }
 }

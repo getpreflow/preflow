@@ -104,11 +104,12 @@ final class NewPermissions
 
     /**
      * The fresh permissions when the signed-in user may edit roles; [] for anyone else, and when
-     * they can't be read (no known list, a site not migrated).
+     * they can't be read (no known list, a site not migrated). The role editor's "New" marks use it
+     * too (public since 0.76).
      *
      * @return list<string>
      */
-    private function forManager(): array
+    public function forManager(): array
     {
         try {
             return $this->container->get(Access::class)->can(self::AUDIENCE) ? $this->fresh() : [];

@@ -35,11 +35,13 @@ return [
         'disable' => 'Disable',
         'enable' => 'Enable',
     ],
-    // The permissions of a role (the rbac_permissions field). :pattern is "*"; :verb a column's
-    // verb, :type a content type's label; :names the unknown permissions.
+    // The permissions of a role (the rbac_permissions field). :verb a column's verb, :type a content
+    // type's label, :section a sidebar section's; :names the unknown permissions; :count a number
+    // (changes: "one|more", the unsaved count beside Save). The key shows granted and n/a only: the
+    // engine checks exact names, so no permission implies another.
     'matrix' => [
-        'everything' => 'Everything',
-        'everything_hint' => 'Grants every permission, now and in future extensions (:pattern)',
+        'everything' => 'Allow everything',
+        'everything_hint' => 'Every permission, including those of future extensions. Admins only.',
         'unknown' => 'Unknown, removed on save: :names',
         'type' => 'Type',
         'all' => 'All',
@@ -47,6 +49,16 @@ return [
         'other' => 'Other permissions',
         'other_group' => 'Other',
         'denied' => "You can't grant this",
+        'changes' => ':count unsaved change|:count unsaved changes',
+        'cancel' => 'Cancel',
+        'legend' => 'Legend',
+        'granted' => 'Granted',
+        'na' => 'Not available for this type',
+        'sum' => ':count granted',
+        'column' => 'Toggle “:verb” for every type in :section',
+        'footnote' => 'Column headers toggle the whole column.',
+        'new' => 'New',
+        'only_new' => 'Only new (:count)',
     ],
     // A user's roles (the rbac_roles field). :role is a role's name.
     'roles_field' => [
@@ -88,7 +100,7 @@ return [
             'created_at' => ['label' => 'Created'],
         ],
         'rbac_role' => [
-            'name' => ['label' => 'Name'],
+            'name' => ['label' => 'Key', 'help' => 'For code and imports; rarely change it.'],
             'label' => ['label' => 'Label'],
             'population' => ['label' => 'Population'],
             'permissions' => ['label' => 'Permissions'],

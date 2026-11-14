@@ -59,12 +59,16 @@ final class RolesInFolioTest extends TestCase
         $form = (string) $this->send('GET', '/folio/rbac_role/r-editor/edit')->getBody();
         $this->assertMatchesRegularExpression('#<input type="hidden" name="permissions\[\]" value="">#', $form);
         $this->assertMatchesRegularExpression('#<input type="checkbox" class="rbac-switch-input" role="switch" name="permissions\[\]" value="\*" data-rbac-everything><span class="rbac-switch" aria-hidden="true"></span>#', $form);
-        // The "Pages" row: its verbs and its whole-type pattern (checked) as "All".
+        // The "Pages" row: its type tile and label, its verbs, and its whole-type pattern (checked) as the row's switch.
         $this->assertMatchesRegularExpression(
-            '#<tr class="rbac-row" data-rbac-row><th scope="row" title="page\.\*">Pages</th><td class="rbac-cell"><input type="checkbox" name="permissions\[\]" value="page\.view"[^>]*></td>.*value="page\.\*" title="page\.\*" aria-label="Pages: All" data-rbac-all checked>#',
+            '#<tr class="rbac-row" data-rbac-row><th scope="row" title="page\.\*"><span class="rbac-type"><span class="folio-type-icon" data-family="[a-z]*" aria-hidden="true">.*?<span class="rbac-type-label">Pages</span></span></th><td class="rbac-cell"><input type="checkbox" name="permissions\[\]" value="page\.view"[^>]*></td>.*value="page\.\*" title="page\.\*" class="folio-switch rbac-row-switch" role="switch" aria-label="Pages: All" data-rbac-all checked>#',
             $form,
         );
-        $this->assertMatchesRegularExpression('#scope="colgroup">Settings</th></tr>\s*<tr class="rbac-row" data-rbac-row><th scope="row" title="rbac_role\.\*">Roles</th>.*value="rbac_role\.edit"#s', $form);
+        $this->assertMatchesRegularExpression('#scope="colgroup">Settings <span class="rbac-section-sum">.*?</tr>\s*<tr class="rbac-row" data-rbac-row><th scope="row" title="rbac_role\.\*">.*?<span class="rbac-type-label">Roles</span>.*value="rbac_role\.edit"#s', $form);
+        // The role's own fields sit in the side panel (form="folio-record"); its key in mono, with its help.
+        $this->assertMatchesRegularExpression('#<aside class="folio-side".*<input type="text" name="name" value="editor"[^>]* class="folio-input-mono" form="folio-record"#s', $form);
+        $this->assertStringContainsString('For code and imports; rarely change it.', $form);
+        $this->assertMatchesRegularExpression('#<aside class="folio-side".*name="label"[^>]*form="folio-record".*name="population"[^>]*form="folio-record"#s', $form);
         $this->assertMatchesRegularExpression('#<span class="rbac-group-label">Assets</span><label class="rbac-group-all" title="assets\.\*"><input type="checkbox" name="permissions\[\]" value="assets\.\*" data-rbac-all> All</label>#', $form);
         // An undeclared stored name: shown as unknown, not as a checkbox.
         $this->assertStringContainsString('Unknown, removed on save: <code>ghost.view</code>', $form);

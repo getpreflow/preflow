@@ -30,6 +30,12 @@ final class StringFieldType extends AbstractScalarFieldType implements \Preflow\
         return 'text';
     }
 
+    /** "monospace": true renders a code-style input, as for text (a key, an identifier; editor only). @since 0.76 */
+    protected function editorAttrs(FieldContext $ctx): array
+    {
+        return ($ctx->config['monospace'] ?? false) === true ? ['class' => 'folio-input-mono'] : [];
+    }
+
     public function renderEditor(FieldContext $ctx): string
     {
         $address = $ctx->address;

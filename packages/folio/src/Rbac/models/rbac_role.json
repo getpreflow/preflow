@@ -5,9 +5,9 @@
     "order": 20,
     "icon": "ui-users",
     "fields": {
-        "name": { "label": "Name" },
-        "label": { "label": "Label" },
-        "population": { "label": "Population" },
+        "name": { "label": "Name", "panel": "side", "monospace": true },
+        "label": { "label": "Label", "panel": "side" },
+        "population": { "label": "Population", "panel": "side" },
         "permissions": { "type": "rbac_permissions", "label": "Permissions" },
         "seeded_permissions": { "label": "Seeded permissions" }
     }

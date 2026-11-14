@@ -1386,6 +1386,8 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 
 .form-group textarea { min-height: 120px; }
 .form-group textarea.folio-input-mono { font-family: var(--font-mono); font-size: 13px; tab-size: 4; }
+/* A key or identifier ("monospace" on a string field, e.g. a role's key): mono and muted, as the Roles board. */
+.form-group input.folio-input-mono { font-family: var(--font-mono); font-size: 13px; color: var(--c-text-muted); }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--c-accent); width: 16px; height: 16px; }
 
 input[type="file"] { font: inherit; font-size: 13px; color: var(--c-text-muted); max-width: 100%; }

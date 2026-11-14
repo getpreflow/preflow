@@ -2035,6 +2035,8 @@ final class FolioServiceProvider extends ServiceProvider
             $container->get(TypeCatalog::class),
             $coverage,
             $container->bound(\Preflow\Folio\Content\DisplayLabels::class) ? $container->get(\Preflow\Folio\Content\DisplayLabels::class) : null,
+            // The "New" marks: what an update brought, for a user who may edit roles (read when the editor renders).
+            static fn (): array => $container->get(\Preflow\Folio\Rbac\NewPermissions::class)->forManager(),
         ));
         $assets = $container->get(\Preflow\Folio\Http\AdminAssets::class);
         $assets->add('rbac.css', dirname(__DIR__) . '/assets/rbac/rbac.css');

@@ -60,12 +60,14 @@ final class RbacTranslationTest extends TestCase
         $this->as('admin');
 
         $form = html_entity_decode((string) $this->send('GET', '/folio/rbac_role/new')->getBody(), ENT_QUOTES);
-        foreach (['>Typ</th>', '>Ansehen</th>', '>Erstellen</th>', '>Bearbeiten</th>', '>Veröffentlichen</th>', '>Löschen</th>', '>Alle</th>',
-            '>Alles<', 'Weitere Berechtigungen', '>Rollen</th>', '>Team</th>',
+        foreach (['>Ansehen</button>', '>Erstellen</button>', '>Bearbeiten</button>', '>Veröffentlichen</button>', '>Löschen</button>', '>Alle</th>',
+            '>Alles erlauben<', 'Jede Berechtigung, auch die künftiger Erweiterungen. Nur für Admins.', 'Weitere Berechtigungen', '>Rollen</span>', ' erteilt</span>',
+            'Erteilt</li>', 'Gibt es für diesen Typ nicht', 'Spaltenköpfe schalten die ganze Spalte.', 'Änderungen ungespeichert', '>Abbrechen</button>',
+            'Schlüssel', 'Für Code und Importe; selten ändern.', '>Team<',
             '<span>Übersicht</span>', '<span>Erweiterungen</span>', '<span>Übersetzungen</span>', '<span>Hochladen</span>', 'rbac-group-label">Medien<'] as $text) {
             $this->assertStringContainsString($text, $form);
         }
-        foreach (['>Type</th>', '>View</th>', '>Everything<', 'Other permissions', '<span>Dashboard</span>', '<span>Extensions</span>', '<span>Upload</span>', 'rbac-group-label">Assets<', 'Grants every permission'] as $english) {
+        foreach (['>View</button>', '>Allow everything<', '>Cancel</button>', 'Other permissions', '<span>Dashboard</span>', '<span>Extensions</span>', '<span>Upload</span>', 'rbac-group-label">Assets<', 'Grants every permission'] as $english) {
             $this->assertStringNotContainsString($english, $form);
         }
     }

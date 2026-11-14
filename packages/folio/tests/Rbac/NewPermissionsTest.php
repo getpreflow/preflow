@@ -107,6 +107,35 @@ final class NewPermissionsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_role_editor_marks_fresh_permissions_new_only_for_a_role_manager(): void
+    {
+        $this->managerSetup();
+        $this->forget(['assets.upload']);
+        $this->as('editor');
+
+        $form = (string) $this->send('GET', '/folio/rbac_role/r-helper/edit')->getBody();
+        // redirects.manage (fresh since the first look) and assets.upload: two chips with "New", one filter.
+        $this->assertMatchesRegularExpression('#data-rbac-fresh-filter data-folio-no-edit>Only new \(2\)</button>#', $form);
+        $this->assertMatchesRegularExpression('#<label class="rbac-chip is-new" title="assets\.upload" data-rbac-new>#', $form);
+        $this->assertMatchesRegularExpression('#<label class="rbac-chip is-new" title="redirects\.manage" data-rbac-new>#', $form);
+        $this->assertSame(['assets.upload', 'redirects.manage'], $this->known()->fresh(), 'showing them marks nothing known');
+
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_role_editor_shows_no_new_marks_without_rbac_role_edit(): void
+    {
+        $this->managerSetup();
+        $this->forget(['assets.upload']);
+        // keeper may see roles but not edit them: the same form without marks (as without a badge or notice).
+        $this->as('keeper');
+        $readOnly = (string) $this->send('GET', '/folio/rbac_role/r-helper/edit')->getBody();
+        $this->assertStringContainsString('data-rbac-permissions', $readOnly);
+        $this->assertStringNotContainsString('data-rbac-new', $readOnly);
+        $this->assertStringNotContainsString('rbac-fresh-filter', $readOnly);
+    }
+
+    #[RunInSeparateProcess]
     public function test_notice_lists_one_line_per_group_with_the_roles_covering_it(): void
     {
         $this->managerSetup();
