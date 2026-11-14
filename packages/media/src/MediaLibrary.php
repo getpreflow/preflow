@@ -681,6 +681,8 @@ final class MediaLibrary
      * missingAltCount() counts the same set.
      *
      * @param array<string, mixed> $filters field name => value
+     *
+     * @since 0.76 the $missingAlt parameter
      */
     public function query(?string $kind = null, string $search = '', array $filters = [], int $page = 1, int $perPage = 50, ?bool $copies = null, ?bool $missingAlt = null): AssetPage
     {

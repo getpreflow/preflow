@@ -338,6 +338,28 @@ final class StaffLifecycleTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_account_deleted_meanwhile_answers_not_found_in_the_interface_language(): void
+    {
+        $this->lifecycleSite();
+        $admin = $this->container()->get(\Preflow\Folio\Rbac\Types\StaffAdmin::class);
+        $request = (new Psr17Factory())->createServerRequest('POST', '/folio/staff/s-help/_action/disable')->withHeader('Sec-Fetch-Site', 'same-origin');
+        $stale = $this->stored('staff', 's-help');
+        $this->container()->get(DataManager::class)->deleteType('staff', 's-help');
+        $german = new \Preflow\I18n\Translator('/no/such/lang', 'de', 'en');
+        $german->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
+        $previous = \Preflow\Folio\FolioText::use($german);
+        try {
+            foreach (['disable', 'enable'] as $action) {
+                $res = $admin->{$action}($stale, $request);
+                $this->assertSame(404, $res->getStatusCode(), $action);
+                $this->assertStringContainsString('Nicht gefunden', (string) $res->getBody(), $action);
+            }
+        } finally {
+            \Preflow\Folio\FolioText::use($previous);
+        }
+    }
+
+    #[RunInSeparateProcess]
     public function test_disable_and_enable_change_only_active_and_the_epoch_of_the_record_as_stored_now(): void
     {
         $this->lifecycleSite();

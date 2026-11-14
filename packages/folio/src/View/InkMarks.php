@@ -14,6 +14,8 @@ namespace Preflow\Folio\View;
  * Each mark is drawn inside the area with its whole size whenever the area is at least that wide
  * (box() is the geometry svg() draws with). Every glyph fits a circle of radius 12 in its 24×24
  * symbol, so a rotated mark stays inside its square too.
+ *
+ * @since 0.76
  */
 final class InkMarks
 {

@@ -17,6 +17,7 @@ use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\FormPanel;
 use Preflow\Folio\Extension\RecordAction;
 use Preflow\Folio\Extension\Screen\ScreenView;
+use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\NotFound;
 use Preflow\I18n\Translator;
 use Preflow\Rbac\Messages;
@@ -162,7 +163,7 @@ final class StaffAdmin
     {
         $staff = $this->fresh($staff);
         if ($staff === null) {
-            return NotFound::response($request, 'Not found'); // deleted meanwhile
+            return NotFound::response($request, FolioText::get('folio.errors.not_found')); // deleted meanwhile
         }
         try {
             $this->accounts->disable($staff, $this->coverage->actor());
@@ -178,7 +179,7 @@ final class StaffAdmin
     {
         $staff = $this->fresh($staff);
         if ($staff === null) {
-            return NotFound::response($request, 'Not found'); // deleted meanwhile
+            return NotFound::response($request, FolioText::get('folio.errors.not_found')); // deleted meanwhile
         }
         try {
             $this->accounts->enable($staff, $this->coverage->actor());

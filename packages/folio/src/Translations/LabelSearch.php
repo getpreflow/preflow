@@ -34,6 +34,8 @@ final class LabelSearch
      * @param iterable<string, array{key: string, delivered: ?string, site: ?string}> $rows EditableTexts::rows()
      * @param array<string, string> $overrides the language's overrides, key => text
      * @return array{rows: list<array{key: string, delivered: ?string, site: ?string, override: ?string}>, changed: int}
+     *
+     * @since 0.76
      */
     public static function filter(iterable $rows, array $overrides, string $q, bool $changedOnly): array
     {

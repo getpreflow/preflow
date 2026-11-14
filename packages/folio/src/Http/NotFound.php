@@ -23,6 +23,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * the admin's renderer: AdminLocaleMiddleware, which every admin route runs, puts it on the request
  * (attribute NotFound::class). A request without it (a static file, the site's own pages) never gets
  * the admin page.
+ *
+ * @since 0.76
  */
 final class NotFound
 {

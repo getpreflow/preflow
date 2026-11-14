@@ -10,6 +10,8 @@ namespace Preflow\Media\Usage;
  * can show that kind's icon and name; null when the source has none.
  * An entry that does not block a delete (an earlier revision) still keeps the asset from being deleted for good: a manual
  * delete moves it into the bin, from where it can be restored; cleanup and emptying the bin leave it alone.
+ *
+ * @since 0.76 the $type property
  */
 final readonly class AssetUsageEntry
 {

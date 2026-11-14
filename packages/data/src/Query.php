@@ -189,6 +189,8 @@ final class Query
      *
      * @param list<string> $fields
      * @param list<string> $available
+     *
+     * @since 0.76 the $available parameter
      */
     public function localize(array $fields, string $locale, string $default, array $available = []): void
     {

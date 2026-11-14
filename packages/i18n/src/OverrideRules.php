@@ -109,6 +109,8 @@ final class OverrideRules
      * screen can show the placeholders apart. Empty parts are left out.
      *
      * @return list<array{text: string, placeholder: bool}>
+     *
+     * @since 0.76
      */
     public static function placeholderParts(string $text): array
     {

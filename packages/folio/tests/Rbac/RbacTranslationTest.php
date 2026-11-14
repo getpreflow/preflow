@@ -34,6 +34,8 @@ final class RbacTranslationTest extends TestCase
             foreach (['de', 'fr'] as $locale) {
                 $this->assertEqualsCanonicalizing($keys, array_keys($translator->entries($group, $locale)), "{$group} {$locale}");
             }
+            // A section's sum stays a number the matrix updates: its words read right for 1 and for many.
+            $this->assertStringNotContainsString('accordées', $translator->get('rbac-admin.matrix.sum', ['count' => 1], 'fr'));
             foreach ($translator->entries($group, 'de') as $key => $text) {
                 $this->assertDoesNotMatchRegularExpression('/\b(Sie|Ihr|Ihre|Ihren|Ihnen)\b/u', $text, $key);
             }

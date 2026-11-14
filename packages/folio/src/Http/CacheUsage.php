@@ -11,6 +11,8 @@ use Preflow\Core\Cache\CacheSource;
  * What the registered caches hold right now, as the Cache screen and the dashboard's cache line both
  * read it: one row per cache with its raw files and bytes, and the totals. A cache that fails to
  * report is skipped, so one broken source never takes the screen down.
+ *
+ * @since 0.76
  */
 final class CacheUsage
 {

@@ -47,7 +47,7 @@ return [
         'legend' => 'Légende',
         'granted' => 'Accordée',
         'na' => 'N’existe pas pour ce type',
-        'sum' => ':count accordées',
+        'sum' => 'total accordé : :count',
         'column' => 'Basculer « :verb » pour tous les types de :section',
         'footnote' => 'Les en-têtes de colonne basculent toute la colonne.',
         'new' => 'Nouveau',
