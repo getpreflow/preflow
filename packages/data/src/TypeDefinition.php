@@ -11,9 +11,11 @@ final readonly class TypeDefinition
      * @param string[] $searchableFields
      * @param array<string, FieldTransformer> $transformers
      * @param list<list<string>> $indexes composite indexes, each the fields it covers in order
+     * @param ?string $titleField the field that names a record (RecordTitle); null: the first string field
+     *        that is not hidden. @since 0.77
      * @throws \InvalidArgumentException an index without fields, over a field the type does not have (or twice
      *         over one), over a translatable field, or named as another index (a field's own, a unique field's,
-     *         another composite's)
+     *         another composite's); a titleField the type does not have
      */
     public function __construct(
         public string $key,
@@ -25,8 +27,12 @@ final readonly class TypeDefinition
         public array $transformers = [],
         public Locales $locales = new Locales(['en'], 'en'),
         public array $indexes = [],
+        public ?string $titleField = null,
     ) {
         $this->assertIndexes();
+        if ($titleField !== null && !isset($fields[$titleField])) {
+            throw new \InvalidArgumentException("Type \"{$key}\" has the titleField \"{$titleField}\", which is not one of its fields.");
+        }
     }
 
     /**

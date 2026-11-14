@@ -75,6 +75,9 @@ final class ModelSchema
         if ($indexes !== []) {
             $schema['indexes'] = $indexes;
         }
+        if ($entity->titleField !== null) {
+            $schema['titleField'] = $entity->titleField;
+        }
 
         return $schema;
     }

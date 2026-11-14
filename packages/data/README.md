@@ -846,6 +846,41 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
   both sides. They need a `DataManager`; a builder made without one searches the type's own
   fields only.
 
+## Record titles and cross-type search (0.77)
+
+**A record's title** is the text that names it in lists, search hits and activity rows:
+
+```json
+{ "key": "game", "table": "games", "titleField": "title", "fields": { … } }
+```
+
+```php
+#[Entity(table: 'games', type: 'game', titleField: 'title')]
+
+use Preflow\Data\RecordTitle;
+RecordTitle::of($record);        // in the type's default locale
+RecordTitle::of($record, 'de');  // a translatable title in German (with the locale fallback)
+```
+
+`TypeDefinition::$titleField` is the field. Without one, the title is the first field of type
+`string` that is not hidden (`"hidden": true`). An empty title (or none) falls back to the
+record id. A `titleField` the type does not have is an error naming the type when the type is
+loaded. A model class sets it on `#[Entity(titleField: …)]` (its admin file may set it too).
+
+**Cross-type search** (`Preflow\Data\Search\RecordSearch`, bound in the container):
+
+```php
+$hits = $container->get(RecordSearch::class)->search('lisboa', ['game', 'designer'], perType: 5);
+foreach ($hits as $hit) {
+    echo "{$hit->type} {$hit->id} {$hit->title}";  // RecordHit, the title from RecordTitle
+}
+```
+
+Each type gets `queryType($type)->searchLoose($term)->limit($perType)` (working copies), and
+hits are grouped by type in the order the types are given. A term shorter than 2 characters
+after trimming finds nothing, and an unknown type is skipped. The search checks no
+permission: pass only the types the person may read.
+
 ## JSON storage cache
 
 `JsonFileDriver` takes an optional second argument, a cache directory. With it, a query

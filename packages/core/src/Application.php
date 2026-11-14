@@ -838,6 +838,11 @@ final class Application
 
         $dataManager = new \Preflow\Data\DataManager($drivers, 'default', $typeRegistry, $validatorFactory);
         $this->container->instance(\Preflow\Data\DataManager::class, $dataManager);
+        // Cross-type record search (the admin's palette, a site's own search box); built on first use.
+        $this->container->singleton(
+            \Preflow\Data\Search\RecordSearch::class,
+            static fn (): \Preflow\Data\Search\RecordSearch => new \Preflow\Data\Search\RecordSearch($dataManager),
+        );
         if ($this->pageChanges !== null) {
             $dataManager->observe(new \Preflow\Core\PageCache\DataLayerObserver(
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),

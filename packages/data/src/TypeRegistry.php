@@ -234,6 +234,19 @@ final class TypeRegistry
         return $indexes;
     }
 
+    /** The field that names a record ("titleField": "name"); null when the model file sets none. */
+    private static function titleField(mixed $value, string $key): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if (!is_string($value) || $value === '') {
+            throw new \InvalidArgumentException("Type \"{$key}\": \"titleField\" is the name of one of its fields.");
+        }
+
+        return $value;
+    }
+
     private function parse(array $schema): TypeDefinition
     {
         $fields = [];
@@ -290,6 +303,7 @@ final class TypeRegistry
             transformers: $transformers,
             locales: $this->locales ?? Locales::single('en'),
             indexes: self::indexes($schema['indexes'] ?? null, (string) $schema['key']),
+            titleField: self::titleField($schema['titleField'] ?? null, (string) $schema['key']),
         );
     }
 }

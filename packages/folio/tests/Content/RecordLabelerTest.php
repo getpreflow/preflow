@@ -26,12 +26,12 @@ final class RecordLabelerTest extends TestCase
     }
 
     /** @param array<string,array<string,mixed>> $fields */
-    private function reg(array $fields): TypeRegistry
+    private function reg(array $fields, ?string $titleField = null): TypeRegistry
     {
         file_put_contents($this->dir . '/thing.json', json_encode([
             'key' => 'thing', 'table' => 'thing', 'storage' => 'json', 'id_field' => 'uuid',
             'fields' => $fields,
-        ]));
+        ] + ($titleField === null ? [] : ['titleField' => $titleField])));
         return new TypeRegistry($this->dir);
     }
 
@@ -73,5 +73,12 @@ final class RecordLabelerTest extends TestCase
         $reg = $this->reg(['pin' => ['type' => 'string', 'hidden' => true], 'count' => ['type' => 'number']]);
         $rec = DynamicRecord::fromArray($reg->get('thing'), ['uuid' => 't6', 'pin' => 'secret-pin']);
         $this->assertSame('t6', (new RecordLabeler())->label($rec));
+    }
+
+    public function test_uses_the_types_title_field(): void
+    {
+        $reg = $this->reg(['name' => ['type' => 'string'], 'headline' => ['type' => 'string']], 'headline');
+        $rec = DynamicRecord::fromArray($reg->get('thing'), ['uuid' => 't7', 'name' => 'Name', 'headline' => 'Headline']);
+        $this->assertSame('Headline', (new RecordLabeler())->label($rec));
     }
 }

@@ -66,6 +66,15 @@ final class DataAliasesTest extends TestCase
         $this->assertSame($dm->driver('json'), $dm->driver('default'));
     }
 
+    public function test_record_search_is_bound_over_the_data_manager(): void
+    {
+        $app = $this->boot($this->config('json', '[]'));
+
+        $search = $app->container()->get(\Preflow\Data\Search\RecordSearch::class);
+        $this->assertInstanceOf(\Preflow\Data\Search\RecordSearch::class, $search);
+        $this->assertSame($search, $app->container()->get(\Preflow\Data\Search\RecordSearch::class));
+    }
+
     public function test_alias_to_default_is_allowed(): void
     {
         $app = $this->boot($this->config('json', "['codes' => 'default']"));

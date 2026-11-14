@@ -5,27 +5,17 @@ declare(strict_types=1);
 namespace Preflow\Folio\Content;
 
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\RecordTitle;
 
 /**
- * Resolves a human label for a record: the value of its first string field that is
- * not hidden, falling back to the record id. Single source of truth shared by the matrix
- * editor and the record-label API.
+ * Resolves a human label for a record: RecordTitle in the type's default locale (its
+ * titleField, else its first string field that is not hidden, falling back to the record
+ * id). Shared by the matrix editor and the record-label API.
  */
 final class RecordLabeler
 {
     public function label(DynamicRecord $record): string
     {
-        $localized = $record->localized($record->getType()->locales->default);
-        foreach ($record->getType()->fields as $name => $def) {
-            if ($def->type === 'string' && ($def->config['hidden'] ?? false) !== true) {
-                $value = $localized->get($name);
-                if (is_string($value) && $value !== '') {
-                    return $value;
-                }
-                break;
-            }
-        }
-
-        return (string) $record->getId();
+        return RecordTitle::of($record);
     }
 }

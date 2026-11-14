@@ -68,6 +68,7 @@ final class ShadowTypes
             transformers: $def->transformers,
             locales: $def->locales,
             indexes: $def->indexes,
+            titleField: $def->titleField,
         );
     }
 
