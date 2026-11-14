@@ -219,6 +219,37 @@ test('⌘S during an autosave waits for it and then saves once', async () => {
     assert.deepEqual(p.form.sent, [p.save], 'one save, after the autosave');
 });
 
+test('⌘↵ during an autosave waits for it and then publishes once', async () => {
+    const p = editor({ autosave: true });
+    htmx(p.form, 'htmx:beforeRequest', { requestConfig: { triggeringEvent: { type: 'folio:edit' } }, xhr: {} });
+    p.save.disabled = true; // hx-disabled-elt while the request runs
+    p.pub.disabled = true;
+    const e = press(p, 'Enter', { meta: true, from: p.title });
+    press(p, 'Enter', { meta: true, from: p.title });
+    assert.equal(e.defaultPrevented, true, 'taken: the key press is not lost');
+    assert.equal(p.form.sent, undefined, 'nothing sent while autosave runs');
+
+    p.save.disabled = false;
+    p.pub.disabled = false;
+    htmx(p.form, 'htmx:afterRequest', { xhr: {} });
+    await tick();
+    assert.deepEqual(p.form.sent, [p.pub], 'one publish, after the autosave');
+});
+
+test('⌘S then ⌘↵ during an autosave: the later key wins (one submit)', async () => {
+    const p = editor({ autosave: true });
+    htmx(p.form, 'htmx:beforeRequest', { requestConfig: { triggeringEvent: { type: 'folio:edit' } }, xhr: {} });
+    p.save.disabled = true;
+    p.pub.disabled = true;
+    press(p, 's', { meta: true, from: p.title });
+    press(p, 'Enter', { meta: true, from: p.title });
+    p.save.disabled = false;
+    p.pub.disabled = false;
+    htmx(p.form, 'htmx:afterRequest', { xhr: {} });
+    await tick();
+    assert.deepEqual(p.form.sent, [p.pub]);
+});
+
 test('busy: a plain submit through the topbar button makes that button busy (e.submitter)', async () => {
     const p = editor();
     p.form.requestSubmit(p.pub);

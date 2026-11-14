@@ -22,7 +22,7 @@
     // ---- Save state: the first edit after a save says "Unsaved changes"; autosave then shows "Saving…",
     // and its answer replaces the element ("Draft saved 19:37").
     var autosaving = null; // the form whose autosave request runs
-    var queuedSave = null; // a ⌘S that came while it ran
+    var queuedSave = null; // the button of a ⌘S or ⌘↵ that came while it ran (the later one wins)
 
     function onRecordEdit(e) {
         var form = e.target;
@@ -40,8 +40,8 @@
         Folio.saveState.set(stateEl, 'saving', stateEl.getAttribute('data-text-saving') || '');
     }
 
-    // The autosave ended (saved, refused or failed): a ⌘S that waited for it saves now, once htmx has
-    // given the buttons back.
+    // The autosave ended (saved, refused or failed): a ⌘S or ⌘↵ that waited for it saves or publishes
+    // now, once htmx has given the buttons back.
     function onAutosaveEnd(e) {
         var elt = e.detail && e.detail.elt;
         if (!elt || elt !== autosaving) { return; }
@@ -235,21 +235,29 @@
 
     // ---- Editor shortcuts: ⌘S / Ctrl+S saves (the Save draft or Save button, also while typing; the
     // browser's save dialog never opens in the editor; during an autosave it waits for it and saves
-    // then), ⌘↵ / Ctrl+Enter publishes (only while Publish is there and enabled), Esc closes the side
-    // panel sheet (phone width).
+    // then), ⌘↵ / Ctrl+Enter publishes (while Publish is there and enabled; during an autosave it waits
+    // for it likewise), Esc closes the side panel sheet (phone width).
+    // Submits button now; while the record's autosave runs (hx-disabled-elt has disabled it) it is sent
+    // right after the autosave instead. False when neither happens (Publish disabled for another reason).
+    function submitOrQueue(button) {
+        if (Folio.submitWith(button)) { return true; }
+        if (button && autosaving && Folio.formOf(button) === autosaving) {
+            queuedSave = button;
+            return true;
+        }
+        return false;
+    }
+
     function initEditorShortcuts() {
         if (document.querySelector('[data-folio-save]')) {
             Folio.shortcuts.add({ key: 's', mod: true, typing: true, label: t('shortcut_save'), run: function () {
-                var save = document.querySelector('[data-folio-save]');
-                if (!Folio.submitWith(save) && save && autosaving && Folio.formOf(save) === autosaving) {
-                    queuedSave = save; // disabled by the running autosave: save right after it
-                }
+                submitOrQueue(document.querySelector('[data-folio-save]'));
                 return true;
             } });
         }
         if (document.querySelector('[data-folio-publish]')) {
             Folio.shortcuts.add({ key: 'Enter', mod: true, typing: true, label: t('shortcut_publish'), run: function () {
-                return Folio.submitWith(document.querySelector('[data-folio-publish]'));
+                return submitOrQueue(document.querySelector('[data-folio-publish]'));
             } });
         }
         if (sidePanel && document.querySelector('[data-folio-side-toggle]')) {
