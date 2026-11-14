@@ -195,12 +195,6 @@ final class RecordWriter
     }
 
     /**
-     * The created and updated fields of a model class with #[Timestamps] (Timestamps::CREATED_NAMES,
-     * UPDATED_NAMES), which a copy does not take over.
-     *
-     * @return list<string>
-     */
-    /**
      * Whether $name is a key the record's system owns (its id, the publishing keys, its position
      * and timestamps): duplicate() refuses it as an override, and a caller building overrides skips it.
      *
@@ -211,6 +205,12 @@ final class RecordWriter
         return in_array($name, [$def->idField, ...Publisher::META, ...$this->timestamps($def)], true);
     }
 
+    /**
+     * The created and updated fields of a model class with #[Timestamps] (Timestamps::CREATED_NAMES,
+     * UPDATED_NAMES), which a copy does not take over.
+     *
+     * @return list<string>
+     */
     private function timestamps(TypeDefinition $def): array
     {
         $class = $this->dm->getTypeRegistry()?->classFor($def->key);
