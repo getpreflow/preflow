@@ -67,7 +67,7 @@ final class CacheController
                 'label' => self::label($row['source']),
                 'entries' => $row['entries'],
                 'size' => Bytes::human($row['bytes']),
-                'empty' => $row['entries'] <= 0,
+                'empty' => $row['entries'] <= 0 && $row['bytes'] <= 0, // bytes without files (empty directories) can still be cleared
                 'note' => $row['note'] !== '' ? $row['note'] : null,
                 'width' => $row['bytes'] > 0 ? self::percent(max($row['bytes'] / $largest * 100, 1.5)) : '0.0',
                 'stack' => $place[$row['source']->key()] ?? 0,

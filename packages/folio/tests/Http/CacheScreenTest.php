@@ -203,6 +203,25 @@ final class CacheScreenTest extends TestCase
         }
     }
 
+    /** A cache that reports bytes but no files (a page cache of empty directories) can still be cleared. */
+    #[RunInSeparateProcess]
+    public function test_a_cache_with_bytes_but_no_files_can_be_cleared(): void
+    {
+        $app = $this->app();
+        $app->container()->get(CacheRegistry::class)->register(new class implements \Preflow\Core\Cache\CacheSource {
+            public function key(): string { return 'dirs-only'; }
+            public function label(): string { return 'Dirs only'; }
+            public function stats(): \Preflow\Core\Cache\CacheStats { return new \Preflow\Core\Cache\CacheStats(0, 120 * 1024); }
+            public function clear(): \Preflow\Core\Cache\CacheCleared { throw new \LogicException('not cleared in this test'); }
+        });
+
+        $app->container()->instance(OpcacheStatus::class, $this->opcache(true));
+        $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio/cache'))->getBody();
+
+        $this->assertStringContainsString('Dirs only', $body);
+        $this->assertMatchesRegularExpression('#<input type="hidden" name="key" value="dirs-only">.*?<button type="submit" class="btn btn-ghost btn-sm" aria-label="Clear cache Dirs only">#s', $body);
+    }
+
     #[RunInSeparateProcess]
     public function test_flashes_after_clearing_and_resetting(): void
     {
