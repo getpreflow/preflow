@@ -192,6 +192,8 @@ final class AssetBulkTest extends TestCase
         $this->assertStringNotContainsString('alt[' . $doc->id . ']', $form, 'only images get an alt text');
         $this->assertStringContainsString('1 selected file is not an image and is left out.', $form);
         $this->assertStringContainsString('<input type="hidden" name="_drawer" value="1">', $form);
+        // Guarded (Folio.unsaved): Escape or Close asks before typed alt texts are thrown away.
+        $this->assertStringContainsString('class="folio-assets-alt-form" data-folio-guard>', $form);
 
         $saved = $this->post('/folio/assets/alt', ['_drawer' => '1', 'alt' => [$barn->id => ' A red barn ', $field->id => 'A green field', $doc->id => 'nope']]);
         $this->assertSame(200, $saved->getStatusCode());

@@ -57,7 +57,7 @@
         close.type = 'button';
         close.className = 'btn btn-secondary btn-sm folio-drawer-close';
         close.textContent = folioT('close');
-        close.addEventListener('click', closeDrawer);
+        close.addEventListener('click', requestCloseDrawer);
         var frame = document.createElement('iframe');
         frame.className = 'folio-drawer-frame';
         frame.src = url;
@@ -65,10 +65,26 @@
         panel.appendChild(frame);
         overlay.appendChild(panel);
         overlay.addEventListener('click', function (e) {
-            if (e.target === overlay) { closeDrawer(); }
+            if (e.target === overlay) { requestCloseDrawer(); }
         });
         document.body.appendChild(overlay);
         drawerEl = overlay;
+    }
+
+    // Close, Escape and a click beside the drawer ask the drawer's own page first: while a form in it holds
+    // unsaved changes (Folio.unsaved there), its leave dialog asks, and the drawer closes only on "Leave
+    // without saving" (a removed frame sends no beforeunload, so nothing else would ask).
+    function requestCloseDrawer() {
+        var frame = drawerEl ? drawerEl.querySelector('iframe') : null;
+        var inside = null;
+        try { inside = frame ? frame.contentWindow : null; } catch (err) { inside = null; }
+        try {
+            if (inside && inside.Folio && inside.Folio.unsaved && typeof inside.Folio.leaveDrawer === 'function' && inside.Folio.unsaved.isDirty()) {
+                inside.Folio.leaveDrawer();
+                return;
+            }
+        } catch (err) { /* another origin: nothing to ask */ }
+        closeDrawer();
     }
 
     function initMatrix(root) {
@@ -254,7 +270,7 @@
         if (a.hasAttribute('data-folio-drawer-cancel')) {
             if (window.parent && window.parent !== window) {
                 e.preventDefault();
-                window.parent.postMessage({ source: 'folio-drawer-cancel' }, window.location.origin);
+                leaveDrawer();
             }
             return;
         }
@@ -273,8 +289,35 @@
         if (!document.body || !document.body.classList.contains('folio-drawer-body')) { return; }
         if (document.querySelector('dialog[open]')) { return; }
         e.preventDefault();
-        window.parent.postMessage({ source: 'folio-drawer-cancel' }, window.location.origin);
+        leaveDrawer();
     }
+
+    // Folio.leaveDrawer(), in the drawer's page: the drawer closes (a message to the page behind), but while a
+    // guarded form here holds unsaved changes the styled leave dialog asks first, and only "Leave without
+    // saving" closes it. The page behind calls it for its Close button, Escape and a click beside the drawer.
+    var drawerAsking = false;
+    function leaveDrawer() {
+        if (!window.parent || window.parent === window) { return; }
+        var close = function () { window.parent.postMessage({ source: 'folio-drawer-cancel' }, window.location.origin); };
+        var dirty = unsaved.dirty.filter(function (f) { return f.isConnected !== false; });
+        if (dirty.length === 0) { close(); return; }
+        if (drawerAsking) { return; }
+        drawerAsking = true;
+        folioConfirm({
+            title: folioT('leave_title'),
+            message: folioT('leave_message'),
+            confirm: folioT('leave_confirm'),
+            cancel: folioT('leave_stay'),
+            tone: 'danger'
+        }).then(function (answer) {
+            drawerAsking = false;
+            if (answer === 'confirm') {
+                clearDirty(null);
+                close();
+            }
+        });
+    }
+    window.Folio.leaveDrawer = leaveDrawer;
 
     // A saved redirect drawer: the list behind it shows the saved state (and the flash) again.
     function onRedirectDrawerSaved(e) {
@@ -413,7 +456,7 @@
         if (e.key === 'Escape' && drawerEl) {
             e.preventDefault();
             e.stopPropagation();
-            closeDrawer();
+            requestCloseDrawer();
         }
     }
 
@@ -1750,7 +1793,8 @@
 
     function initUnsavedGuard() {
         // The record editor's forms, and an asset's Details form (its Save is in the topbar: data-folio-save).
-        unsaved.guarded = Array.prototype.slice.call(document.querySelectorAll('.folio-form form, .folio-side form, form.folio-asset-form'))
+        // A form elsewhere opts in with data-folio-guard (the redirect form, the drawer's alt texts).
+        unsaved.guarded = Array.prototype.slice.call(document.querySelectorAll('.folio-form form, .folio-side form, form.folio-asset-form, form[data-folio-guard]'))
             .filter(function (form) { return !form.hasAttribute('hx-post'); });
         if (unsaved.guarded.length === 0) { return; }
         listenUnsaved();

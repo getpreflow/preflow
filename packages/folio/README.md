@@ -1717,6 +1717,13 @@ same guard; `Folio.unsaved.isDirty()`, `.dirtyForms()`, `.clear(form)`, `.onLeav
 `.pending()` are the hooks behind it. Leaving without saving a side panel form still saves the
 record's own pending edits first (since 0.75).
 
+The guarded forms are the editor's (`.folio-form form`, the side panel's, an asset's Details) and
+any form that carries **`data-folio-guard`** (the redirect form, the drawer's alt texts). **A
+drawer** is a page of its own in a frame, and removing the frame asks nothing: so Escape in the
+drawer, and the page behind's Close button, Escape and a click beside the drawer, go through
+`Folio.leaveDrawer()` in the drawer's page. While a guarded form there holds unsaved changes, its
+leave dialog asks, and only **Leave without saving** closes the drawer (since 0.76).
+
 A confirmed action in an autosaving editor (a `data-confirm` form such as Unpublish) saves the
 pending edits first, then goes; if that save fails, the dialog's go-ahead names the action
 ("Unpublish without saving"). A form that throws the edits away carries **`data-folio-discards`**

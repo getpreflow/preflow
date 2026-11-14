@@ -22,7 +22,7 @@ function redirectForm(doc, { kind = 'page', target = '', pageValue = '' } = {}) 
         if (parent) { parent.appendChild(node); }
         return node;
     };
-    const form = el('form', { method: 'post', action: '/folio/redirects', 'data-redirect-form': true }, doc.body);
+    const form = el('form', { method: 'post', action: '/folio/redirects', 'data-redirect-form': true, 'data-folio-guard': true }, doc.body);
     const kinds = el('div', { 'data-redirect-kinds': true }, form);
     kinds.hidden = true;
     const radios = ['page', 'address'].map((value) => {
@@ -38,7 +38,7 @@ function redirectForm(doc, { kind = 'page', target = '', pageValue = '' } = {}) 
     const value = el('input', { type: 'hidden', name: 'target', 'data-redirect-page-value': true }, pagePane);
     value.value = pageValue;
     value.disabled = true;
-    const search = el('input', { type: 'text', role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'folio-redirect-results', 'data-redirect-search': true, 'data-redirect-targets': '/folio/redirects/_targets' }, pagePane);
+    const search = el('input', { type: 'text', role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'folio-redirect-results', 'data-folio-no-edit': true, 'data-redirect-search': true, 'data-redirect-targets': '/folio/redirects/_targets' }, pagePane);
     const list = el('ul', { id: 'folio-redirect-results', role: 'listbox', 'data-redirect-results': true }, pagePane);
     list.hidden = true;
     const picked = el('div', { 'data-redirect-picked': true }, pagePane);

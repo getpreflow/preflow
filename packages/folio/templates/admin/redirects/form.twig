@@ -11,7 +11,7 @@
 {% block page_title %}{{ entry ? t('folio.redirects.edit') : t('folio.redirects.new') }}{% endblock %}
 {% block content %}
     {% set address = values.address starts with '/' ? values.address|slice(1) : values.address %}
-    <form class="folio-form folio-redirect-form" method="post" action="{{ action }}" novalidate data-redirect-form>
+    <form class="folio-form folio-redirect-form" method="post" action="{{ action }}" novalidate data-redirect-form data-folio-guard>
         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
         {% if in_drawer %}<input type="hidden" name="_drawer" value="1">{% endif %}
         {% if values.not_found %}<input type="hidden" name="not_found" value="{{ values.not_found }}">{% endif %}
@@ -54,7 +54,7 @@
                     <label class="folio-redirect-search">
                         <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>
                         <span class="folio-sr">{{ t('folio.redirects.target_search') }}</span>
-                        <input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="folio-redirect-results" placeholder="{{ t('folio.redirects.target_search') }}" autocomplete="off" spellcheck="false" data-redirect-search data-redirect-targets="{{ prefix }}/redirects/_targets"{% if errors.target is defined %} aria-invalid="true"{% endif %}>
+                        <input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="folio-redirect-results" placeholder="{{ t('folio.redirects.target_search') }}" autocomplete="off" spellcheck="false" data-folio-no-edit data-redirect-search data-redirect-targets="{{ prefix }}/redirects/_targets"{% if errors.target is defined %} aria-invalid="true"{% endif %}>
                     </label>
                     <ul class="folio-redirect-results" id="folio-redirect-results" role="listbox" aria-label="{{ t('folio.redirects.target_search') }}" data-redirect-results hidden></ul>
                     <div class="folio-redirect-picked" data-redirect-picked aria-live="polite"{% if not picked_item %} hidden{% endif %}>

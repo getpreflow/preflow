@@ -9,7 +9,7 @@
     {% if items is empty %}
         <p class="folio-help">{{ t('folio.assets.alt_no_images') }}</p>
     {% else %}
-        <form method="post" action="{{ prefix }}/assets/alt" class="folio-assets-alt-form">
+        <form method="post" action="{{ prefix }}/assets/alt" class="folio-assets-alt-form" data-folio-guard>
             <input type="hidden" name="_csrf_token" value="{{ csrf }}">
             {% if drawer %}<input type="hidden" name="_drawer" value="1">{% else %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
             <p class="folio-help">{{ multilingual ? t('folio.assets.alt_help_locale', {locale: locale|upper}) : t('folio.assets.alt_help') }}{% if skipped > 0 %} {{ t('folio.assets.alt_skipped', {}, skipped) }}{% endif %}</p>

@@ -724,6 +724,9 @@ final class RedirectsControllerTest extends TestCase
         $this->assertStringNotContainsString('class="folio-shell', $form);
         $this->assertStringContainsString('<input type="hidden" name="_drawer" value="1">', $form);
         $this->assertStringContainsString('name="address" value="gone"', $form);
+        // Guarded (Folio.unsaved): Escape or Close asks before a changed drawer closes; its page search is no edit.
+        $this->assertMatchesRegularExpression('#<form class="folio-form folio-redirect-form"[^>]* data-redirect-form data-folio-guard>#', $form);
+        $this->assertMatchesRegularExpression('#<input [^>]*data-folio-no-edit data-redirect-search#', $form);
         $this->assertMatchesRegularExpression('#<div class="folio-drawer-actions">\s*<a class="btn btn-ghost" href="/folio/redirects" data-folio-drawer-cancel>Cancel</a>#', $form);
 
         // A refused form stays in the drawer.
