@@ -13,10 +13,13 @@ use Preflow\Media\MediaLibrary;
  * MediaServiceProvider, so every site gets it. The entry has no URL; a UI that
  * links copies does so itself.
  */
-final class CopyReferences implements AssetReferenceSource
+final class CopyReferences implements AssetReferenceSource, CountsAssetUsage
 {
     public const string NAME = 'copies';
     public const string NOTE = 'copy';
+
+    /** AssetUsageEntry::$type of a copy: another asset uses it. */
+    public const string TYPE = 'asset';
 
     /** @param \Closure(): MediaLibrary $library resolved on first use (the library itself asks this source) */
     public function __construct(
@@ -33,9 +36,20 @@ final class CopyReferences implements AssetReferenceSource
     {
         $usages = [];
         foreach (($this->library)()->copies($assetId) as $copy) {
-            $usages[] = new AssetUsageEntry($copy->label(), null, self::NAME, self::NOTE);
+            $usages[] = new AssetUsageEntry($copy->label(), null, self::NAME, self::NOTE, type: self::TYPE);
         }
 
         return $usages;
+    }
+
+    /**
+     * The live copies of each id, in one query (MediaLibrary::copyCounts()).
+     *
+     * @param list<string> $assetIds
+     * @return array<string, int>
+     */
+    public function usageCounts(array $assetIds): array
+    {
+        return ($this->library)()->copyCounts($assetIds);
     }
 }

@@ -676,19 +676,29 @@ final class MediaLibrary
      * looks for something (then a copy can be found and picked directly), true lists them,
      * false hides them. The condition is in the query, so totals and pages count what is shown.
      *
+     * $missingAlt true keeps only images whose alt text in the default locale is null or empty
+     * (what the SEO audit flags; only images are asked for one); null or false adds no condition.
+     * missingAltCount() counts the same set.
+     *
      * @param array<string, mixed> $filters field name => value
      */
-    public function query(?string $kind = null, string $search = '', array $filters = [], int $page = 1, int $perPage = 50, ?bool $copies = null): AssetPage
+    public function query(?string $kind = null, string $search = '', array $filters = [], int $page = 1, int $perPage = 50, ?bool $copies = null, ?bool $missingAlt = null): AssetPage
     {
         $def = $this->definition();
         $qb = $this->live($this->dm->queryIn($def)->locale($this->locales->default));
 
         if ($kind !== null && $kind !== '') {
-            $qb->whereAny([['field' => 'mime', 'operator' => 'IN', 'value' => array_keys(array_filter(
-                self::EXTENSIONS,
-                static fn (string $ext, string $mime) => Asset::kindOf($mime) === $kind,
-                ARRAY_FILTER_USE_BOTH,
-            ))]]);
+            $qb->whereAny([['field' => 'mime', 'operator' => 'IN', 'value' => self::mimesOf($kind)]]);
+        }
+        if ($missingAlt === true) {
+            $qb->whereAny([['field' => 'mime', 'operator' => 'IN', 'value' => self::mimesOf('image')]]);
+            // The query reads alt in the default locale. Not set: NULL or '' (also an empty map stored
+            // as "[]" on SQL storage, which is not an object and so reads as the plain column).
+            $qb->whereAny([
+                ['field' => 'alt', 'operator' => '=', 'value' => null],
+                ['field' => 'alt', 'operator' => '=', 'value' => ''],
+                ['field' => 'alt', 'operator' => '=', 'value' => '[]'],
+            ]);
         }
         $this->applySearch($qb, $search);
         foreach ((array) ($this->config['filters'] ?? []) as $name) {
@@ -714,6 +724,16 @@ final class MediaLibrary
         $qb->orderBy('created_at', SortDirection::Desc)->orderBy($def->idField, SortDirection::Desc);
 
         return self::page($qb, $page, $perPage);
+    }
+
+    /** @return list<string> the allowed MIME types of one kind (image, video, document) */
+    private static function mimesOf(string $kind): array
+    {
+        return array_keys(array_filter(
+            self::EXTENSIONS,
+            static fn (string $ext, string $mime) => Asset::kindOf($mime) === $kind,
+            ARRAY_FILTER_USE_BOTH,
+        ));
     }
 
     /** One page of the assets in the bin, the most recently binned first. A page past the end gives the last page. */
@@ -743,6 +763,40 @@ final class MediaLibrary
             ->get();
 
         return array_map(Asset::fromRecord(...), array_values($records->items()));
+    }
+
+    /**
+     * How many assets, live and binned, use each of the ids as their poster (0 for none), in one
+     * query: count(assetsWithPoster($id)) for each.
+     *
+     * @param list<string> $ids
+     * @return array<string, int>
+     */
+    public function posterCounts(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter($ids, static fn ($id) => is_string($id) && preg_match(self::ID_PATTERN, $id) === 1)));
+        if ($ids === []) {
+            return [];
+        }
+        $counts = array_fill_keys($ids, 0);
+        $records = $this->dm->queryIn($this->definition())->whereAny([['field' => 'poster', 'operator' => 'IN', 'value' => $ids]])->get();
+        foreach ($records->items() as $record) {
+            $poster = (string) ($record->toArray()['poster'] ?? '');
+            if (isset($counts[$poster])) {
+                $counts[$poster]++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * How many images lack an alt text in the default locale (null or empty): the set
+     * query(missingAlt: true) lists without a search or filter (live originals, private ones too).
+     */
+    public function missingAltCount(): int
+    {
+        return $this->query(perPage: 1, missingAlt: true)->total;
     }
 
     /** A page of the query's assets; a page past the end gives the last page. */

@@ -214,16 +214,19 @@ final class AdminCssTest extends TestCase
     public function test_in_page_surfaces_share_one_radius_and_soft_shadow(): void
     {
         $plain = (string) preg_replace('#/\*.*?\*/#s', '', $this->css());
-        foreach (['.folio-card', '.folio-table-wrap', '.folio-panel', '.folio-asset-panel', '.folio-assets-toolbar', '.folio-revisions', '.folio-share'] as $surface) {
+        // The library's toolbar left the list in 0.76: a row of controls on the page, as the list toolbar (board Assets).
+        foreach (['.folio-card', '.folio-table-wrap', '.folio-panel', '.folio-asset-panel', '.folio-revisions', '.folio-share'] as $surface) {
             $this->assertMatchesRegularExpression('/(?<![\w-])' . preg_quote($surface, '/') . ' \{[^}]*border: 1px solid var\(--c-border\);[^}]*border-radius: var\(--r\);[^}]*box-shadow: var\(--shadow-sm\);/', $plain, $surface);
         }
+        $this->assertMatchesRegularExpression('/(?<![\w-])\.folio-assets-toolbar \{[^}]*display: flex;/', $plain);
+        $this->assertDoesNotMatchRegularExpression('/(?<![\w-])\.folio-assets-toolbar \{[^}]*border:/', $plain, 'no surface around the library toolbar');
     }
     public function test_keyboard_focus_is_a_solid_ring_on_every_filled_control(): void
     {
         $css = $this->css();
         // A surface gap, then the solid accent (>= 3:1 on every surface); the soft --c-focus-ring alone was ~1.5:1.
         $this->assertStringContainsString('--focus-ring: 0 0 0 2px var(--c-surface), 0 0 0 4px var(--c-accent);', $css);
-        foreach (['.btn:focus-visible', '.btn-danger:focus-visible', '.folio-chip:has(input:focus-visible)', '.folio-assets-views .btn.is-active:focus-visible'] as $rule) {
+        foreach (['.btn:focus-visible', '.btn-danger:focus-visible', '.folio-chip:has(input:focus-visible)', '.folio-assets-views > a:focus-visible', '.folio-asset-check:has(input:focus-visible)'] as $rule) {
             $this->assertMatchesRegularExpression('/' . preg_quote($rule, '/') . ' \{[^}]*box-shadow: var\(--focus-ring\);/', $css, $rule);
         }
         $this->assertDoesNotMatchRegularExpression('/:focus-visible[^{]*\{[^}]*box-shadow: 0 0 0 3px var\(--c-focus-ring\)/', $css, 'no faint halo as the only focus cue');

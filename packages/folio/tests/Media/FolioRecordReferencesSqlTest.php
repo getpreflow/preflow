@@ -100,10 +100,10 @@ class FolioRecordReferencesSqlTest extends TestCase
         $usage = $this->references()->usagesOf(self::ID);
 
         $this->assertEquals([
-            new AssetUsageEntry('Cover', '/folio/page/p1/edit', 'folio'),
-            new AssetUsageEntry('Gallery', '/folio/page/p3/edit', 'folio'),
-            new AssetUsageEntry('Blocks', '/folio/page/p4/edit', 'folio'),
-            new AssetUsageEntry('Draft dropped it', '/folio/page/p7/edit', 'folio', 'published version'),
+            new AssetUsageEntry('Cover', '/folio/page/p1/edit', 'folio', type: 'page'),
+            new AssetUsageEntry('Gallery', '/folio/page/p3/edit', 'folio', type: 'page'),
+            new AssetUsageEntry('Blocks', '/folio/page/p4/edit', 'folio', type: 'page'),
+            new AssetUsageEntry('Draft dropped it', '/folio/page/p7/edit', 'folio', 'published version', type: 'page'),
         ], $usage);
         $this->assertSame([], $this->references()->usagesOf(str_repeat('9', 32)));
     }
@@ -129,6 +129,31 @@ class FolioRecordReferencesSqlTest extends TestCase
         foreach ($collector->getQueries() as $q) {
             $this->assertContains('%' . self::ID . '%', $q['bindings']);
         }
+    }
+
+    public function test_usage_counts_for_a_page_equal_each_assets_usages_in_one_query_per_table(): void
+    {
+        $third = str_repeat('a', 32);
+        $page = $this->registry->get('page');
+        $revisions = ShadowTypes::revisions($page);
+        $this->save($page, 'p1', ['title' => 'Cover', 'cover' => self::ID, 'gallery' => json_encode([self::OTHER])]);
+        $this->save($page, 'p2', ['title' => 'Gallery', 'gallery' => json_encode([self::OTHER, self::ID])]);
+        $this->save($page, 'p3', ['title' => 'Draft dropped it', 'cover' => '']);
+        $this->save(ShadowTypes::published($page), 'p3', ['title' => 'Draft dropped it', 'cover' => self::OTHER]);
+        $this->save($revisions, 'r1', ['record_id' => 'p3', 'seq' => 1, 'data' => json_encode(['uuid' => 'p3', 'title' => 'Then', 'cover' => self::ID]), 'changed' => '[]', 'created_at' => '2026-01-01T00:00:00+00:00']);
+        $this->save($this->registry->get('tag'), 't1', ['title' => $third]);
+        $collector = new DebugCollector();
+        $dm = new DataManager(drivers: ['sql' => $this->driverOn($collector)], defaultDriver: 'sql', typeRegistry: $this->registry);
+        $references = new FolioRecordReferences($this->walker(), $dm, new TypeCatalog($this->dir . '/models'), $this->registry, '/folio');
+
+        $counts = $references->usageCounts([self::ID, self::OTHER, $third]);
+
+        $this->assertSame([self::ID => 3, self::OTHER => 3, $third => 0], $counts);
+        $this->assertCount(3, $collector->getQueries(), 'the working table, its published shadow and its revisions, once for all ids');
+        foreach ([self::ID, self::OTHER, $third] as $id) {
+            $this->assertSame(count($this->references()->usagesOf($id)), $counts[$id], $id);
+        }
+        $this->assertSame(['page', 'page', 'page'], array_map(static fn (AssetUsageEntry $e): ?string => $e->type, $this->references()->usagesOf(self::ID)));
     }
 
     public function test_revision_reference_on_sql(): void
@@ -184,8 +209,8 @@ class FolioRecordReferencesSqlTest extends TestCase
         $usage = (new FolioRecordReferences($this->walker(), $logged, new TypeCatalog($this->dir . '/models'), $registry, '/folio'))->usagesOf(self::ID);
 
         $this->assertEquals([
-            new AssetUsageEntry('Game night', '/folio/event/e1/edit', 'folio'),
-            new AssetUsageEntry('Draft dropped it', '/folio/event/e2/edit', 'folio', 'published version'),
+            new AssetUsageEntry('Game night', '/folio/event/e1/edit', 'folio', type: 'event'),
+            new AssetUsageEntry('Draft dropped it', '/folio/event/e2/edit', 'folio', 'published version', type: 'event'),
         ], $usage);
         $sql = array_map(static fn (array $q): string => (string) $q['sql'], $collector->getQueries());
         foreach ($sql as $statement) {

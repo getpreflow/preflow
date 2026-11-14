@@ -344,6 +344,13 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         createElementNS: (ns, tag) => new Element(tag, document),
         addEventListener: (name, fn, options) => addListener(document, name, fn, options),
         removeEventListener: (name, fn, options) => removeListener(document, name, fn, options),
+        /** An event sent to the document itself (a CustomEvent a script announces): its listeners, then the window's when it bubbles. */
+        dispatchEvent: (event) => {
+            if (!event.target) { Object.defineProperty(event, 'target', { value: document, configurable: true }); }
+            (document.listeners[event.type] || []).slice().forEach((fn) => fn(event));
+            if (event.bubbles && document.defaultView) { (document.defaultView.listeners[event.type] || []).slice().forEach((fn) => fn(event)); }
+            return !event.defaultPrevented;
+        },
         getElementById: (id) => document.documentElement.querySelector('#' + id),
         querySelector: (s) => document.documentElement.querySelector(s),
         querySelectorAll: (s) => document.documentElement.querySelectorAll(s),

@@ -510,7 +510,7 @@ final class QueryBuilder
         $translatable = $this->typeDef?->translatableFields() ?? [];
         if ($translatable !== []) {
             $default = $this->typeDef->locales->default;
-            $this->query->localize($translatable, $this->locale ?? $default, $default);
+            $this->query->localize($translatable, $this->locale ?? $default, $default, $this->typeDef->locales->available);
         }
 
         return $this->query;

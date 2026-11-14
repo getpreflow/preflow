@@ -206,7 +206,11 @@
 
         var matrix = activeMatrix;
         closeDrawer();
-        if (!matrix || !matrix._folioMatrix) { return; }
+        if (!matrix || !matrix._folioMatrix) {
+            // A drawer opened by something else (the library's "Edit alt text"): it hears it as folio:drawer-saved.
+            document.dispatchEvent(new CustomEvent('folio:drawer-saved', { detail: { type: String(data.type || ''), id: String(data.id || '') } }));
+            return;
+        }
 
         var ctrl = matrix._folioMatrix;
         var type = String(data.type || '');
@@ -972,7 +976,7 @@
     // form.requestSubmit(submitter), so its name and value (_action), its busy state and the form's CSRF
     // token go along as on the first click. Without script the form simply submits. In a form with
     // several buttons (the list's bulk bar) the clicked button may carry its own data-confirm or
-    // data-delete-plan. The confirm button says what the submitter says ("Delete", "Restore"), or
+    // data-delete-plan; with data-confirm-selected the dialog lists the ticked boxes' names (data-label). The confirm button says what the submitter says ("Delete", "Restore"), or
     // data-confirm-label; data-confirm-tone="danger" (or a danger submitter: .btn-danger, .is-danger,
     // data-tone="danger") makes it a danger dialog.
     function confirmSource(e) {
@@ -1028,7 +1032,7 @@
         if (!src.hasAttribute('data-confirm')) { return; }
         e.preventDefault();
         var submitter = e.submitter || null;
-        folioConfirm({ title: src.getAttribute('data-confirm'), confirm: confirmLabel(src, submitter), tone: confirmTone(src, submitter) })
+        folioConfirm({ title: src.getAttribute('data-confirm'), items: selectedLabels(src), confirm: confirmLabel(src, submitter), tone: confirmTone(src, submitter) })
             .then(function (answer) { if (answer === 'confirm') { resubmit(f, submitter); } });
     }
 
@@ -2724,8 +2728,20 @@
 
     function bulkUpdate(bar) {
         var items = bulkItems(bar);
-        var n = items.filter(function (c) { return c.checked; }).length;
+        var ticked = items.filter(function (c) { return c.checked; });
+        var n = ticked.length;
         bar.hidden = n === 0;
+        // [data-folio-bulk-one="attr"]: a link for exactly one ticked box, to that box's attr (the library's Download).
+        bar.querySelectorAll('[data-folio-bulk-one]').forEach(function (el) {
+            var url = n === 1 ? (ticked[0].getAttribute(el.getAttribute('data-folio-bulk-one')) || '') : '';
+            el.hidden = url === '';
+            el.setAttribute('href', url || '#');
+        });
+        // [data-folio-bulk-when="selector"]: shown while a ticked box matches (Edit alt text: an image is ticked).
+        bar.querySelectorAll('[data-folio-bulk-when]').forEach(function (el) {
+            var when = el.getAttribute('data-folio-bulk-when');
+            el.hidden = !ticked.some(function (c) { return c.matches(when); });
+        });
         var count = bar.querySelector('[data-folio-bulk-count]');
         if (count) { count.textContent = folioT('selected_count', { count: n }); }
         var all = document.querySelector('[data-folio-bulk-all]');
@@ -2776,6 +2792,30 @@
         if (ids.length === 0) { return; }
         var url = t.getAttribute('data-folio-export');
         window.location.href = url + (url.indexOf('?') === -1 ? '?' : '&') + ids.join('&');
+    }
+
+    // [data-folio-bulk-drawer="url"] in the bar: opens url in the drawer with the ticked ids[] (only those matching
+    // its data-folio-bulk-when) and _drawer=1, e.g. the library's "Edit alt text".
+    function onBulkDrawer(e) {
+        var t = e.target && e.target.closest ? e.target.closest('[data-folio-bulk-drawer]') : null;
+        var bar = t ? t.closest('[data-folio-bulk]') : null;
+        if (!t || !bar) { return; }
+        var when = t.getAttribute('data-folio-bulk-when');
+        var ids = bulkItems(bar).filter(function (c) { return c.checked && (!when || c.matches(when)); }).map(function (c) {
+            return 'ids%5B%5D=' + encodeURIComponent(c.value);
+        });
+        if (ids.length === 0) { return; }
+        var url = t.getAttribute('data-folio-bulk-drawer');
+        openDrawer(url + (url.indexOf('?') === -1 ? '?' : '&') + ids.join('&') + '&_drawer=1');
+    }
+
+    // The names a data-confirm-selected button asks about: the data-label of each ticked box of its form.
+    function selectedLabels(src) {
+        var form = src && src.hasAttribute && src.hasAttribute('data-confirm-selected') ? formOf(src) : null;
+        if (!form || !form.id) { return []; }
+        return Array.prototype.filter.call(document.querySelectorAll('[data-folio-bulk-item]'), function (c) {
+            return c.checked && c.getAttribute('form') === form.id;
+        }).map(function (c) { return c.getAttribute('data-label') || c.value; });
     }
 
     // A confirmation checkbox (data-folio-enables="<button id>") enables its button only while ticked,
@@ -3229,6 +3269,188 @@
         } });
     }
 
+    // ---- The asset library (assets/index.twig, 0.76) -----------------------------------------
+    // The page works without this script: a GET toolbar, the upload form, the drop zone as a label for its
+    // file input, and the selection bar (Move to bin). With it, on [data-folio-assets][data-folio-assets-upload-url]:
+    // the upload form hides and the header's Upload ([data-folio-assets-choose]) opens its file input; files chosen
+    // there or dropped on the library go one by one to the upload route asking for JSON (as an asset field's drop),
+    // then the library is fetched again and swapped in place ([data-folio-assets] and the title's count), or
+    // reloaded where that cannot be done. What the route refused is listed in [data-folio-assets-errors]. A changed
+    // filter or "Unused only" submits the toolbar, so its Filter button hides unless a filter has its own editor.
+    // A saved "Edit alt text" drawer (folio:drawer-saved, type asset-alt) refreshes the library too.
+    function assetsRoot() {
+        return document.querySelector('[data-folio-assets]');
+    }
+
+    function initAssetLibrary() {
+        var root = assetsRoot();
+        if (!root || root.hasAttribute('data-folio-assets-ready')) { return; }
+        root.setAttribute('data-folio-assets-ready', '');
+        var toolbar = root.querySelector('[data-folio-assets-toolbar]');
+        var submit = toolbar ? toolbar.querySelector('[data-folio-assets-submit]') : null;
+        if (submit && !toolbar.querySelector('.folio-assets-filter')) { submit.hidden = true; }
+        if (!root.hasAttribute('data-folio-assets-upload-url') || typeof window.fetch !== 'function' || typeof window.FormData !== 'function') { return; }
+        var form = root.querySelector('[data-folio-assets-upload]');
+        if (form) { form.hidden = true; }
+        root.setAttribute('data-folio-assets-live', ''); // uploads go through uploadAssets() now
+        document.querySelectorAll('[data-folio-assets-choose]').forEach(function (b) { b.hidden = false; });
+    }
+
+    function onAssetsToolbarChange(e) {
+        var t = e.target;
+        // The toolbar's own selects and boxes ("Unused only"); a filter with its own editor (.folio-assets-filter) waits for Filter.
+        if (!t || !t.matches || !t.matches('select, input[type="checkbox"]') || t.closest('.folio-assets-filter')) { return; }
+        var form = t.closest('[data-folio-assets-toolbar]');
+        if (!form) { return; }
+        if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); }
+    }
+
+    function assetsInput(root) {
+        return root ? root.querySelector('[data-folio-assets-files]') : null;
+    }
+
+    // The header's Upload, and the drop zone (a label for the input, which sits in the hidden form now): the file dialog.
+    function onAssetsChooseClick(e) {
+        var t = e.target && e.target.closest ? e.target.closest('[data-folio-assets-choose], [data-folio-assets-live] [data-folio-assets-drop]') : null;
+        var root = assetsRoot();
+        var input = t && root && root.hasAttribute('data-folio-assets-live') ? assetsInput(root) : null;
+        if (!input || root.classList.contains('is-uploading')) { return; }
+        e.preventDefault();
+        input.click();
+    }
+
+    function onAssetsFileChange(e) {
+        var input = e.target;
+        if (!input || !input.matches || !input.matches('[data-folio-assets-files]')) { return; }
+        var root = input.closest('[data-folio-assets]');
+        if (!root || !root.hasAttribute('data-folio-assets-live')) { return; }
+        var files = Array.prototype.slice.call(input.files || []);
+        input.value = '';
+        uploadAssets(root, files);
+    }
+
+    function draggedFiles(e) {
+        var types = e.dataTransfer && e.dataTransfer.types;
+        return !!types && Array.prototype.indexOf.call(types, 'Files') >= 0;
+    }
+
+    function assetsDropRoot(e) {
+        var root = e.target && e.target.closest ? e.target.closest('[data-folio-assets][data-folio-assets-live]') : null;
+        return root && draggedFiles(e) ? root : null;
+    }
+
+    function onAssetsDragOver(e) {
+        var root = assetsDropRoot(e);
+        if (!root) { return; }
+        e.preventDefault();
+        if (e.dataTransfer) { e.dataTransfer.dropEffect = 'copy'; }
+        root.classList.add('is-dragover');
+    }
+
+    function onAssetsDragLeave(e) {
+        var root = assetsDropRoot(e);
+        if (root && (!e.relatedTarget || !root.contains(e.relatedTarget))) { root.classList.remove('is-dragover'); }
+    }
+
+    function onAssetsDrop(e) {
+        var root = assetsDropRoot(e);
+        if (!root) { return; }
+        e.preventDefault();
+        root.classList.remove('is-dragover');
+        uploadAssets(root, Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []));
+    }
+
+    /** Posts each file to the upload route (JSON), then refreshes the library; resolves with the refusals. */
+    function uploadAssets(root, files) {
+        if (!files.length || root.classList.contains('is-uploading')) { return Promise.resolve([]); }
+        var url = root.getAttribute('data-folio-assets-upload-url');
+        var token = document.querySelector('input[name="_csrf_token"]');
+        var status = root.querySelector('[data-folio-assets-drop-status]');
+        var idle = status ? status.textContent : '';
+        var failed = root.getAttribute('data-text-failed') || folioT('fields.upload_failed');
+        var errors = [];
+        var done = 0;
+        root.classList.add('is-uploading');
+        root.setAttribute('aria-busy', 'true');
+        var say = function () {
+            if (!status) { return; }
+            status.textContent = (root.getAttribute('data-text-uploading') || '').split(':done').join(String(done + 1)).split(':total').join(String(files.length));
+        };
+        var next = function (i) {
+            if (i >= files.length) { return Promise.resolve(); }
+            done = i;
+            say();
+            var body = new FormData();
+            body.append('files[]', files[i], files[i].name);
+            if (token) { body.append('_csrf_token', token.value); }
+            return window.fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function (res) {
+                    var json = String((res.headers && res.headers.get && res.headers.get('Content-Type')) || '').indexOf('application/json') >= 0;
+                    if (!json || (res.status !== 200 && res.status !== 422)) { errors.push(files[i].name + ': ' + failed); return; }
+                    return res.json().then(function (data) {
+                        var list = data && Array.isArray(data.errors) ? data.errors.map(String) : [];
+                        if (res.status === 422 && !list.length) { list = [files[i].name + ': ' + failed]; }
+                        errors.push.apply(errors, list);
+                    }, function () { errors.push(files[i].name + ': ' + failed); });
+                }, function () { errors.push(files[i].name + ': ' + failed); })
+                .then(function () { return next(i + 1); });
+        };
+        return next(0).then(function () {
+            root.classList.remove('is-uploading');
+            root.removeAttribute('aria-busy');
+            if (status) { status.textContent = idle; }
+            showAssetErrors(errors);
+            return refreshAssets().then(function () { return errors; });
+        });
+    }
+
+    function showAssetErrors(errors) {
+        var box = document.querySelector('[data-folio-assets-errors]');
+        if (!box) { return; }
+        var list = box.querySelector('ul');
+        if (list) {
+            list.innerHTML = '';
+            errors.forEach(function (text) {
+                var li = document.createElement('li');
+                li.textContent = text;
+                list.appendChild(li);
+            });
+        }
+        box.hidden = errors.length === 0;
+    }
+
+    /** Fetches the library page again and swaps it in (the grid, the toolbar's counts, the title's count). */
+    function refreshAssets() {
+        var root = assetsRoot();
+        var reload = function () { if (window.location && typeof window.location.reload === 'function') { window.location.reload(); } };
+        if (!root || typeof window.DOMParser !== 'function' || typeof window.fetch !== 'function') { reload(); return Promise.resolve(); }
+        return window.fetch(window.location.href, { credentials: 'same-origin' })
+            .then(function (res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.text();
+            })
+            .then(function (html) {
+                var page = new window.DOMParser().parseFromString(html, 'text/html');
+                var fresh = page.querySelector('[data-folio-assets]');
+                if (!fresh) { throw new Error('no library'); }
+                var current = assetsRoot();
+                current.parentNode.replaceChild(document.importNode(fresh, true), current);
+                var count = document.querySelector('[data-folio-assets-count]');
+                var freshCount = page.querySelector('[data-folio-assets-count]');
+                if (count && freshCount) { count.textContent = freshCount.textContent; }
+                initAssetLibrary();
+                initBulk(document);
+            })
+            .catch(reload);
+    }
+
+    function onAssetsDrawerSaved(e) {
+        if (e && e.detail && e.detail.type === 'asset-alt' && assetsRoot()) { refreshAssets(); }
+    }
+
+    window.Folio = window.Folio || {};
+    window.Folio.uploadAssets = function (files) { var root = assetsRoot(); return root ? uploadAssets(root, Array.prototype.slice.call(files || [])) : Promise.resolve([]); };
+
     function boot() {
         document.querySelectorAll('[data-folio-list-form]').forEach(initList);
         document.addEventListener('submit', onSubmitConfirm);
@@ -3251,6 +3473,15 @@
         document.addEventListener('change', onBulkChange);
         document.addEventListener('reset', onBulkReset);
         document.addEventListener('click', onBulkExport);
+        document.addEventListener('click', onBulkDrawer);
+        initAssetLibrary();
+        document.addEventListener('change', onAssetsToolbarChange);
+        document.addEventListener('change', onAssetsFileChange);
+        document.addEventListener('click', onAssetsChooseClick);
+        document.addEventListener('dragover', onAssetsDragOver);
+        document.addEventListener('dragleave', onAssetsDragLeave);
+        document.addEventListener('drop', onAssetsDrop);
+        document.addEventListener('folio:drawer-saved', onAssetsDrawerSaved);
         document.addEventListener('change', onEnablesChange);
         // Back/forward may restore ticked boxes: show the bar for them.
         window.addEventListener('pageshow', function () { initBulk(document); });

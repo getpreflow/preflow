@@ -177,28 +177,37 @@ final class Query
     }
 
     /** @return array<int, array{field: string, operator: string, value: mixed, boolean: string}> */
-    /** @var array{fields: array<string, true>, locale: string, default: string}|null */
+    /** @var array{fields: array<string, true>, locale: string, default: string, available: list<string>}|null */
     private ?array $localization = null;
 
     /**
      * Compare these (translatable) fields by their value in one locale. A
-     * stored plain value counts as the default locale's value.
+     * stored plain value counts as the default locale's value. $available are
+     * the type's locales: a stored map that holds only other locales than the
+     * two compared (e.g. only "de" when comparing "en") is still read as a map,
+     * so its value in the locale is null, as on SQL storage.
      *
      * @param list<string> $fields
+     * @param list<string> $available
      */
-    public function localize(array $fields, string $locale, string $default): void
+    public function localize(array $fields, string $locale, string $default, array $available = []): void
     {
-        $this->localization = ['fields' => array_fill_keys($fields, true), 'locale' => $locale, 'default' => $default];
+        $this->localization = [
+            'fields' => array_fill_keys($fields, true),
+            'locale' => $locale,
+            'default' => $default,
+            'available' => array_values(array_unique([$default, $locale, ...array_map('strval', $available)])),
+        ];
     }
 
-    /** @return array{locale: string, default: string}|null */
+    /** @return array{locale: string, default: string, available: list<string>}|null */
     public function localizationFor(string $field): ?array
     {
         if ($this->localization === null || !isset($this->localization['fields'][$field])) {
             return null;
         }
 
-        return ['locale' => $this->localization['locale'], 'default' => $this->localization['default']];
+        return ['locale' => $this->localization['locale'], 'default' => $this->localization['default'], 'available' => $this->localization['available']];
     }
 
     public function getWheres(): array { return $this->wheres; }

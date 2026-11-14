@@ -78,6 +78,17 @@ final class LocalizedQueryTest extends TestCase
     }
 
     #[DataProvider('drivers')]
+    public function test_a_map_without_the_locale_reads_as_null_there(string $driver): void
+    {
+        $dm = $this->seeded($driver);
+        $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('page'), ['uuid' => 'D', 'title' => ['de' => 'Nur deutsch'], 'slug' => ['de' => 'nur']]), validate: false);
+
+        // Only "de" is stored: in "en" the title is missing (NULL), not the whole map.
+        $this->assertSame(['D'], array_map(fn ($r) => $r->getId(), $dm->queryType('page')->locale('en')->where('title', '=', null)->get()->items()));
+        $this->assertSame('D', $dm->queryType('page')->locale('de')->where('title', 'Nur deutsch')->first()?->getId());
+    }
+
+    #[DataProvider('drivers')]
     public function test_search_uses_locale(string $driver): void
     {
         $ids = array_map(

@@ -677,7 +677,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
         return LocaleValue::pick(
             $raw,
-            Locales::fromPair($localization['locale'], $localization['default']),
+            new Locales($localization['available'], $localization['default']),
             $localization['locale'],
         );
     }

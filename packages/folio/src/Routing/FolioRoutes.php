@@ -69,6 +69,9 @@ final class FolioRoutes
             ['GET',  $prefix . '/assets',              'index', self::ASSETS],
             ['POST', $prefix . '/assets',              'upload', self::ASSETS],
             ['GET',  $prefix . '/assets/bin',          'bin', self::ASSETS], // before assets/{id}
+            ['POST', $prefix . '/assets/bulk',         'bulk', self::ASSETS], // the selection bar; before assets/{id}
+            ['GET',  $prefix . '/assets/alt',          'altForm', self::ASSETS], // "Edit alt text" for the selection
+            ['POST', $prefix . '/assets/alt',          'altSave', self::ASSETS],
             ['POST', $prefix . '/assets/bin/{id}/restore', 'restoreFromBin', self::ASSETS],
             ['GET',  $prefix . '/assets/{id}',         'panel', self::ASSETS],
             ['POST', $prefix . '/assets/{id}',         'save', self::ASSETS],

@@ -81,6 +81,9 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AssetLibraryController@deleteVersion' => 'assets.delete',
         'AssetLibraryController@bin' => 'assets.delete',
         'AssetLibraryController@restoreFromBin' => 'assets.delete',
+        'AssetLibraryController@bulk' => 'assets.delete', // _action=bin, the only bulk action
+        'AssetLibraryController@altForm' => 'assets.edit',
+        'AssetLibraryController@altSave' => 'assets.edit',
         'ExtensionsController@index' => 'folio.extensions',
         'ExtensionsController@toggle' => 'folio.extensions',
         'CacheController@index' => 'folio.cache',

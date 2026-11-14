@@ -284,20 +284,12 @@ final class FolioServiceProvider extends ServiceProvider
             static fn (): \Preflow\Media\MediaLibrary => $c->get(\Preflow\Media\MediaLibrary::class),
             static fn (\Preflow\Media\Asset $asset): string => $prefix . '/assets/' . $asset->id,
         ));
-        // Built on first use: the block registry and the library are not needed at boot.
-        $container->get(\Preflow\Media\Usage\AssetUsage::class)->register(new class ($container) implements \Preflow\Media\Usage\AssetReferenceSource {
-            public function __construct(private readonly Container $container) {}
-
-            public function name(): string
-            {
-                return \Preflow\Folio\Media\FolioRecordReferences::NAME;
-            }
-
-            public function usagesOf(string $assetId): array
-            {
-                return $this->container->get(\Preflow\Folio\Media\FolioRecordReferences::class)->usagesOf($assetId);
-            }
-        });
+        // Built on first use: the block registry and the library are not needed at boot. Lazy, so a
+        // library page's usage counts reach its batch (FolioRecordReferences::usageCounts()).
+        $container->get(\Preflow\Media\Usage\AssetUsage::class)->register(new \Preflow\Media\Usage\LazyReferenceSource(
+            \Preflow\Folio\Media\FolioRecordReferences::NAME,
+            static fn (): \Preflow\Folio\Media\FolioRecordReferences => $container->get(\Preflow\Folio\Media\FolioRecordReferences::class),
+        ));
 
         // `preflow migrate` creates the tables of SQL-stored types from their model JSON
         // (the asset table is the media package's own media.table step).

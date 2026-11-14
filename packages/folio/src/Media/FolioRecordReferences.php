@@ -19,6 +19,7 @@ use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Seo\SeoSection;
 use Preflow\Media\Usage\AssetReferenceSource;
 use Preflow\Media\Usage\AssetUsageEntry;
+use Preflow\Media\Usage\CountsAssetUsage;
 
 /**
  * Folio's records as a usage source: working copies of every type, published
@@ -34,9 +35,11 @@ use Preflow\Media\Usage\AssetUsageEntry;
  * Runs on every delete, so it reads only what can hold a reference: types
  * without an asset or blocks field or a share image are skipped, and on SQL
  * storage only rows whose asset, blocks or `_seo` columns (a revision's "data")
- * contain the id (LIKE) are walked.
+ * contain the id (LIKE) are walked. A library page counts the usages of all its
+ * assets at once (usageCounts(): one query per type and source for the page's ids).
+ * Each entry's type is the record's type key.
  */
-final class FolioRecordReferences implements AssetReferenceSource
+final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUsage
 {
     public const string NAME = 'folio';
     public const string PUBLISHED = 'published version';
@@ -58,7 +61,35 @@ final class FolioRecordReferences implements AssetReferenceSource
     /** @return list<AssetUsageEntry> */
     public function usagesOf(string $assetId): array
     {
-        $usage = [];
+        return array_values($this->collect([$assetId])[$assetId] ?? []);
+    }
+
+    /**
+     * The usages of a whole page of assets: the same walk as usagesOf(), with one query per
+     * type and source for all the ids (OR-ed LIKEs), counted here.
+     *
+     * @param list<string> $assetIds
+     * @return array<string, int>
+     */
+    public function usageCounts(array $assetIds): array
+    {
+        return array_map('count', $this->collect($assetIds));
+    }
+
+    /**
+     * Each asset's usages, keyed "{type}/{record id}" so a record is listed once per asset: its
+     * working copy first, then its published version, then an earlier revision.
+     *
+     * @param list<string> $assetIds
+     * @return array<string, array<string, AssetUsageEntry>>
+     */
+    private function collect(array $assetIds): array
+    {
+        $ids = array_values(array_unique(array_filter($assetIds, static fn ($id): bool => is_string($id) && $id !== '')));
+        $usage = array_fill_keys($ids, []);
+        if ($ids === []) {
+            return $usage;
+        }
         $labeler = new RecordLabeler();
         $shared = $this->sharedTypes();
         foreach ($this->catalog->all() as $listing) {
@@ -73,46 +104,66 @@ final class FolioRecordReferences implements AssetReferenceSource
                 $sources['published'] = ShadowTypes::published($def);
             }
             foreach ($sources as $where => $source) {
-                foreach ($this->candidates($source, $columns, $assetId, $seo) as $record) {
+                foreach ($this->candidates($source, $columns, $ids, $seo) as $record) {
                     $key = $listing->key . '/' . $record->getId();
-                    if (isset($usage[$key]) || !$this->uses($def, $record->toArray(), $assetId, $seo)) {
-                        continue;
+                    $label = null;
+                    foreach ($this->used($def, $record->toArray(), $usage, $seo) as $assetId) {
+                        if (isset($usage[$assetId][$key])) {
+                            continue;
+                        }
+                        $usage[$assetId][$key] = new AssetUsageEntry(
+                            $label ??= $labeler->label($record),
+                            $this->editUrl($listing, (string) $record->getId()),
+                            self::NAME,
+                            $where === 'published' ? self::PUBLISHED : null,
+                            type: $listing->key,
+                        );
                     }
-                    $usage[$key] = new AssetUsageEntry(
-                        $labeler->label($record),
-                        $this->editUrl($listing, (string) $record->getId()),
-                        self::NAME,
-                        $where === 'published' ? self::PUBLISHED : null,
-                    );
                 }
             }
             if ($listing->publishing) {
-                foreach ($this->candidates(ShadowTypes::revisions($def), ['data'], $assetId) as $row) {
+                foreach ($this->candidates(ShadowTypes::revisions($def), ['data'], $ids) as $row) {
                     $key = $listing->key . '/' . (string) $row->get('record_id');
                     $data = json_decode((string) $row->get('data'), true);
-                    if (isset($usage[$key]) || !is_array($data) || !$this->uses($def, $data, $assetId, $seo)) {
+                    if (!is_array($data)) {
                         continue;
                     }
-                    $record = DynamicRecord::fromArray($def, $data);
-                    $usage[$key] = new AssetUsageEntry(
-                        $labeler->label($record),
-                        $this->editUrl($listing, (string) $row->get('record_id')),
-                        self::NAME,
-                        self::REVISION,
-                        blocksDelete: false,
-                    );
+                    $label = null;
+                    foreach ($this->used($def, $data, $usage, $seo) as $assetId) {
+                        if (isset($usage[$assetId][$key])) {
+                            continue;
+                        }
+                        $usage[$assetId][$key] = new AssetUsageEntry(
+                            $label ??= $labeler->label(DynamicRecord::fromArray($def, $data)),
+                            $this->editUrl($listing, (string) $row->get('record_id')),
+                            self::NAME,
+                            self::REVISION,
+                            blocksDelete: false,
+                            type: $listing->key,
+                        );
+                    }
                 }
             }
         }
 
-        return array_values($usage);
+        return $usage;
     }
 
-    /** @param array<string, mixed> $data */
-    private function uses(TypeDefinition $def, array $data, string $assetId, bool $seo): bool
+    /**
+     * The asked-for assets this record's data uses: in its asset and blocks fields, or (with $seo) as its share image.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $asked asset id => anything
+     * @return list<string>
+     */
+    private function used(TypeDefinition $def, array $data, array $asked, bool $seo): array
     {
-        return in_array($assetId, $this->references->collect($def, $data), true)
-            || ($seo && SeoSection::fromValue($data[SeoSection::KEY] ?? null)->image() === $assetId);
+        $found = $this->references->collect($def, $data);
+        if ($seo) {
+            $found[] = (string) SeoSection::fromValue($data[SeoSection::KEY] ?? null)->image();
+        }
+
+        return array_values(array_unique(array_filter($found, static fn (string $id): bool => isset($asked[$id]))));
     }
 
     /**
@@ -151,24 +202,25 @@ final class FolioRecordReferences implements AssetReferenceSource
     }
 
     /**
-     * The rows that may reference the asset. On SQL storage those whose asset or
-     * blocks columns (and `_seo` with $seo) contain the id (a reference always holds it
+     * The rows that may reference one of the assets. On SQL storage those whose asset or
+     * blocks columns (and `_seo` with $seo) contain one of the ids (a reference always holds it
      * verbatim, in a list or block JSON too); elsewhere every row. A table without a
      * `_seo` column (not migrated yet) holds no share image; one that cannot be
      * filtered otherwise (a column missing) is read whole, as before.
      *
      * @param list<string> $columns
+     * @param list<string> $assetIds
      * @return list<DynamicRecord>
      */
-    private function candidates(TypeDefinition $def, array $columns, string $assetId, bool $seo = false): array
+    private function candidates(TypeDefinition $def, array $columns, array $assetIds, bool $seo = false): array
     {
         $driver = $this->dm->driver($def->storage);
-        if (!$driver instanceof PdoDriver || $assetId === '') {
+        if (!$driver instanceof PdoDriver || $assetIds === []) {
             return $this->dm->queryIn($def)->get()->items();
         }
         if ($seo) {
             try {
-                return $this->matching($driver, $def, [...$columns, SeoSection::KEY], $assetId);
+                return $this->matching($driver, $def, [...$columns, SeoSection::KEY], $assetIds);
             } catch (\PDOException) {
                 if ($columns === []) {
                     return [];
@@ -176,29 +228,41 @@ final class FolioRecordReferences implements AssetReferenceSource
             }
         }
         try {
-            return $this->matching($driver, $def, $columns, $assetId);
+            return $this->matching($driver, $def, $columns, $assetIds);
         } catch (\PDOException) {
             return $this->dm->queryIn($def)->get()->items();
         }
     }
 
     /**
-     * The rows whose $columns contain the id (LIKE).
+     * The rows whose $columns contain one of the ids (LIKE), each row once. The ids go in
+     * chunks, so a page of assets stays within every database's bound-parameter limit.
      *
      * @param list<string> $columns
+     * @param list<string> $assetIds
      * @return list<DynamicRecord>
      * @throws \PDOException when a column is missing
      */
-    private function matching(PdoDriver $driver, TypeDefinition $def, array $columns, string $assetId): array
+    private function matching(PdoDriver $driver, TypeDefinition $def, array $columns, array $assetIds): array
     {
         $dialect = $driver->dialect();
         $like = static fn (string $column): string => $dialect->quoteIdentifier($column) . " LIKE ? ESCAPE '!'";
-        $pattern = '%' . strtr($assetId, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
-        $rows = $driver->rawQuery(
-            'SELECT * FROM ' . $dialect->quoteIdentifier($def->table) . ' WHERE ' . implode(' OR ', array_map($like, $columns)),
-            array_fill(0, count($columns), $pattern),
-        );
+        $rows = [];
+        foreach (array_chunk($assetIds, max(1, intdiv(500, max(1, count($columns))))) as $chunk) {
+            $conditions = [];
+            $params = [];
+            foreach ($chunk as $assetId) {
+                $pattern = '%' . strtr($assetId, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
+                foreach ($columns as $column) {
+                    $conditions[] = $like($column);
+                    $params[] = $pattern;
+                }
+            }
+            foreach ($driver->rawQuery('SELECT * FROM ' . $dialect->quoteIdentifier($def->table) . ' WHERE ' . implode(' OR ', $conditions), $params) as $row) {
+                $rows[(string) ($row[$def->idField] ?? serialize($row))] = $row; // a row found by two chunks is walked once
+            }
+        }
 
-        return array_map(static fn (array $row): DynamicRecord => DynamicRecord::fromArray($def, $row), $rows);
+        return array_values(array_map(static fn (array $row): DynamicRecord => DynamicRecord::fromArray($def, $row), $rows));
     }
 }

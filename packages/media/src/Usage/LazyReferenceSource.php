@@ -7,9 +7,10 @@ namespace Preflow\Media\Usage;
 /**
  * A usage source registered by name now and resolved when an asset is checked,
  * e.g. from the container: what it needs is not built at boot, and a binding
- * replaced later (Folio re-binds PosterReferences) is the one asked.
+ * replaced later (Folio re-binds PosterReferences) is the one asked. Counts go to the
+ * source's own batch (CountsAssetUsage) when it has one, else to usagesOf() per asset.
  */
-final class LazyReferenceSource implements AssetReferenceSource
+final class LazyReferenceSource implements AssetReferenceSource, CountsAssetUsage
 {
     /** @param \Closure(): AssetReferenceSource $source called on every check */
     public function __construct(
@@ -26,5 +27,23 @@ final class LazyReferenceSource implements AssetReferenceSource
     public function usagesOf(string $assetId): array
     {
         return ($this->source)()->usagesOf($assetId);
+    }
+
+    /**
+     * @param list<string> $assetIds
+     * @return array<string, int>
+     */
+    public function usageCounts(array $assetIds): array
+    {
+        $source = ($this->source)();
+        if ($source instanceof CountsAssetUsage) {
+            return $source->usageCounts($assetIds);
+        }
+        $counts = [];
+        foreach ($assetIds as $id) {
+            $counts[$id] = count($source->usagesOf($id));
+        }
+
+        return $counts;
     }
 }

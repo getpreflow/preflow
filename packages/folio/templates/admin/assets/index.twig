@@ -1,8 +1,26 @@
 {% extends layout|default('@folio/admin/_layout.twig') %}
+{% import '@folio/admin/partials/_type_icon.twig' as types %}
+{# The library uses the whole content width (board Assets: the grid fills it). The selection bar and the
+   drop zone are the library's own: the picker (picker=1) has neither (0.76). #}
+{% set content_width = 'wide' %}
 {% block title %}Folio — {{ t('folio.nav.assets') }}{% endblock %}
+{% block title_lead %}{% if not picker %}{{ types.type_icon(family|default(null), 'ui-library', 28) }}{% endif %}{% endblock %}
 {% block page_title %}{{ picker ? t(multiple ? 'folio.assets.choose_many' : 'folio.assets.choose_one') : t('folio.nav.assets') }}{% endblock %}
+{% block title_after %}{% if not picker and items is not empty %}<span class="folio-title-count folio-assets-count" data-folio-assets-count>{{ t('folio.assets.count', {}, total) }}</span>{% endif %}{% endblock %}
+{% block actions %}
+    {% set icons = folio_asset('icons.svg') %}
+    {% if not picker %}
+        {% if has_bin and can('assets.delete') %}<a class="btn btn-secondary folio-assets-bin" href="{{ prefix }}/assets/bin"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg>{{ t('folio.assets.bin') }}</a>{% endif %}
+        {# Opens the file input (admin.js); without script it stays hidden and the upload form below does the job. #}
+        {% if can('assets.upload') %}<button type="button" class="btn btn-primary folio-assets-choose" data-folio-assets-choose hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-upload"></use></svg>{{ t('folio.fields.upload') }}</button>{% endif %}
+    {% endif %}
+{% endblock %}
 {% block content %}
-<div class="folio-assets{% if picker %} is-picker{% endif %}">
+{% set icons = folio_asset('icons.svg') %}
+{% set may_upload = not picker and can('assets.upload') %}
+{# What a drop or the header's Upload could not store: filled by admin.js, outside the part it refreshes. #}
+{% if may_upload %}<div class="folio-alert folio-alert-error" role="alert" data-folio-assets-errors hidden><p>{{ t('folio.assets.not_uploaded') }}</p><ul></ul></div>{% endif %}
+<div class="folio-assets{% if picker %} is-picker{% endif %}" data-folio-assets{% if may_upload %} data-folio-assets-upload-url="{{ prefix }}/assets" data-text-uploading="{{ t('folio.assets.uploading') }}" data-text-failed="{{ t('folio.fields.upload_failed') }}"{% endif %}>
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}{% if can('assets.delete') %} <a href="{{ prefix }}/assets/bin">{{ t('folio.assets.bin') }}</a>{% endif %}</p>{% endif %}
     {% if no_bin %}<p class="folio-help folio-assets-no-bin" role="note">{{ t('folio.assets.no_bin') }}</p>{% endif %}
     {% if errors is not empty %}
@@ -12,76 +30,89 @@
         </div>
     {% endif %}
 
-    <div class="folio-assets-toolbar">
-        <form method="get" action="{{ prefix }}/assets" class="folio-assets-search">
-            {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
+    {# One GET form (works without script): the search, the kind and view links, the filters. With script a
+       changed filter or checkbox submits at once and the Filter button hides (admin.js). #}
+    <form method="get" action="{{ prefix }}/assets" class="folio-assets-toolbar" role="search" data-folio-assets-toolbar>
+        {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
+        {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+        {% if missing_alt %}<input type="hidden" name="missing_alt" value="1">{% endif %}
+        {% if view == 'list' %}<input type="hidden" name="view" value="list">{% endif %}
+        <label class="folio-list-search folio-assets-search">
+            <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>
             <input type="search" name="q" value="{{ q }}" placeholder="{{ t('folio.assets.search_placeholder') }}" aria-label="{{ t('folio.assets.search_label') }}">
-            <select name="kind" aria-label="{{ t('folio.assets.kind') }}">
-                <option value="">{{ t('folio.assets.all_kinds') }}</option>
-                {% for k, label in {'image': t('folio.assets.kinds.image'), 'video': t('folio.assets.kinds.video'), 'document': t('folio.assets.kinds.document')} %}
-                    <option value="{{ k }}"{% if kind == k %} selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
-            {% for f in filters %}
-                {% if f.html %}
-                    <div class="folio-assets-filter">{{ f.html|raw }}</div>
-                {% else %}
-                    <select name="f[{{ f.name }}]" aria-label="{{ f.label }}">
-                        <option value="">{{ t('folio.assets.filter_any', {label: f.label}) }}</option>
-                        {% for value, text in f.options %}
-                            <option value="{{ value }}"{% if f.value == value ~ '' %} selected{% endif %}>{{ text }}</option>
-                        {% endfor %}
-                    </select>
-                {% endif %}
-            {% endfor %}
-            {% if cleanup %}
-                <label class="folio-assets-unused"><input type="checkbox" name="unused" value="1"{% if unused %} checked{% endif %}> {{ t('folio.assets.unused_only') }}</label>
+        </label>
+        <div class="folio-segmented folio-assets-kinds" role="group" aria-label="{{ t('folio.assets.kind') }}">
+            {%- for k in kinds %}<a href="{{ k.href }}"{% if k.current %} aria-current="page"{% endif %}>{{ k.label }}</a>{% endfor -%}
+        </div>
+        {% for f in filters %}
+            {% if f.html %}
+                <div class="folio-assets-filter">{{ f.html|raw }}</div>
+            {% else %}
+                <select name="f[{{ f.name }}]" aria-label="{{ f.label }}">
+                    <option value="">{{ t('folio.assets.filter_any', {label: f.label}) }}</option>
+                    {% for value, text in f.options %}
+                        <option value="{{ value }}"{% if f.value == value ~ '' %} selected{% endif %}>{{ text }}</option>
+                    {% endfor %}
+                </select>
             {% endif %}
-            <input type="hidden" name="view" value="{{ view }}">
-            <button type="submit" class="btn btn-secondary">{{ t('folio.common.filter') }}</button>
-        </form>
-        <nav class="folio-assets-views" aria-label="{{ t('folio.assets.view') }}">
-            {% for v, label in {'grid': t('folio.assets.grid'), 'list': t('folio.assets.list')} %}
-                <a class="btn btn-ghost{% if view == v %} is-active{% endif %}" href="{{ prefix }}/assets?{{ (query|merge({'view': v}))|url_encode }}"{% if view == v %} aria-current="true"{% endif %}>{{ label }}</a>
-            {% endfor %}
-        </nav>
-        {% if has_bin and not picker and can('assets.delete') %}
-            <a class="btn btn-ghost folio-assets-bin" href="{{ prefix }}/assets/bin">{{ t('folio.assets.bin') }}</a>
+        {% endfor %}
+        {% if cleanup %}
+            <label class="folio-assets-chip folio-assets-unused"><input type="checkbox" name="unused" value="1"{% if unused %} checked{% endif %}> {{ t('folio.assets.unused_only') }}</label>
         {% endif %}
-        {% if can('assets.upload') %}
-        <form method="post" action="{{ prefix }}/assets" enctype="multipart/form-data" class="folio-assets-upload">
-            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-            {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
-            <input type="file" name="files[]" multiple aria-label="{{ t('folio.assets.files_to_upload') }}">
-            <button type="submit" class="btn btn-primary">{{ t('folio.fields.upload') }}</button>
-        </form>
+        {# Images without an alt text in the default language (what the SEO audit flags): shown while there are any, or while it filters. #}
+        {% if not picker and (missing_alt_count > 0 or missing_alt) %}
+            <a class="folio-assets-chip folio-assets-missing-alt{% if missing_alt %} is-on{% endif %}" href="{{ missing_alt_href }}"{% if missing_alt %} aria-current="page"{% endif %}>{{ t('folio.assets.missing_alt', {count: folio_number(missing_alt_count)}) }}</a>
         {% endif %}
-    </div>
+        <button type="submit" class="btn btn-secondary btn-sm folio-assets-submit" data-folio-assets-submit>{{ t('folio.common.filter') }}</button>
+        <div class="folio-segmented folio-assets-views" role="group" aria-label="{{ t('folio.assets.view') }}">
+            {%- for v in views %}<a href="{{ v.href }}" aria-label="{{ v.label }}" title="{{ v.label }}"{% if v.current %} aria-current="page"{% endif %}><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ v.icon }}"></use></svg></a>{% endfor -%}
+        </div>
+    </form>
+    {# The upload form: without script the library's way to upload (the header's Upload and the drop zone take over
+       with it, admin.js hides it). The picker keeps it as it is. #}
+    {% if can('assets.upload') %}
+    <form method="post" action="{{ prefix }}/assets" enctype="multipart/form-data" class="folio-assets-upload"{% if not picker %} data-folio-assets-upload{% endif %}>
+        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+        {% if picker %}<input type="hidden" name="picker" value="1"><input type="hidden" name="multiple" value="{{ multiple ? '1' : '0' }}">{% if private is not null %}<input type="hidden" name="private" value="{{ private ? '1' : '0' }}">{% endif %}{% endif %}
+        <input type="file" name="files[]" multiple id="folio-assets-files" aria-label="{{ t('folio.assets.files_to_upload') }}"{% if not picker %} data-folio-assets-files{% endif %}>
+        <button type="submit" class="btn btn-primary">{{ t('folio.fields.upload') }}</button>
+    </form>
+    {% endif %}
 
     {% if stack %}
         <p class="folio-assets-stack-heading">{{ t('folio.assets.stack_heading', {label: stack.label}) }} <a class="btn btn-ghost" href="{{ prefix }}/assets?{{ unstacked|url_encode }}">{{ t('folio.assets.all_files') }}</a></p>
     {% endif %}
     {% if items is empty %}
-        {% if unused or q or kind or filtered %}
-            <div class="folio-empty folio-no-matches"><p>{% if unused %}{{ t('folio.assets.no_unused', {days: min_age_days}) }}{% else %}{{ t('folio.assets.no_match') }}{% endif %}</p></div>
+        {% if unused or missing_alt or q or kind or filtered %}
+            <div class="folio-empty folio-no-matches"><p>{% if unused %}{{ t('folio.assets.no_unused', {days: min_age_days}) }}{% elseif missing_alt %}{{ t('folio.assets.no_missing_alt') }}{% else %}{{ t('folio.assets.no_match') }}{% endif %}</p></div>
         {% else %}
             {# The upload form above is the action; the line invites to it only those who may upload. #}
             {% include '@folio/admin/partials/_empty.twig' with {screen: 'assets', title: t('folio.assets.empty'), line: can('assets.upload') ? t('folio.assets.empty_line') : ''} only %}
         {% endif %}
     {% else %}
-        <p class="folio-help folio-assets-count">{{ t('folio.assets.count', {}, total) }}</p>
-        {% if view == 'list' %}
-            {% include '@folio/admin/assets/_list.twig' %}
-        {% else %}
-            {% include '@folio/admin/assets/_grid.twig' %}
-        {% endif %}
-        {% if pages > 1 %}
-            <nav class="folio-pagination" aria-label="{{ t('folio.list.pages') }}">
-                {% for p in 1..pages %}
-                    <a class="btn btn-ghost{% if p == page %} is-active{% endif %}" href="{{ prefix }}/assets?{{ (query|merge({'view': view, 'page': p}))|url_encode }}">{{ p }}</a>
-                {% endfor %}
-            </nav>
-        {% endif %}
+        {% if picker %}<p class="folio-help folio-assets-count">{{ t('folio.assets.count', {}, total) }}</p>{% endif %}
+        {# The frame holds the grid or table and the selection bar, which floats at the bottom while assets are ticked. #}
+        <div class="folio-table-frame folio-assets-results">
+            {% if view == 'list' %}
+                {% include '@folio/admin/assets/_list.twig' %}
+            {% else %}
+                {% include '@folio/admin/assets/_grid.twig' %}
+            {% endif %}
+            {% if not picker %}
+                {# The ticked boxes belong to this form (form="folio-bulk"). Without script it stays visible with Move to bin;
+                   Edit alt text and Download need script (the drawer; exactly one ticked file). #}
+                <form class="folio-bulk-bar folio-assets-bulk" id="folio-bulk" method="post" action="{{ prefix }}/assets/bulk" role="toolbar" aria-label="{{ t('folio.assets.selection') }}" data-folio-bulk>
+                    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                    <input type="hidden" name="back" value="{{ back }}">
+                    <span class="folio-bulk-count" data-folio-bulk-count>{{ t('folio.list.with_selected') }}</span>
+                    {% if can('assets.edit') %}<button type="button" class="btn btn-sm" data-folio-bulk-drawer="{{ prefix }}/assets/alt" data-folio-bulk-when='[data-kind="image"]' hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-edit"></use></svg>{{ t('folio.assets.edit_alt') }}</button>{% endif %}
+                    <a class="btn btn-sm" href="#" download data-folio-bulk-one="data-download" hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-download"></use></svg>{{ t('folio.assets.download') }}</a>
+                    {% if can('assets.delete') %}<button type="submit" class="btn btn-sm" data-tone="danger" name="_action" value="bin" data-confirm="{{ has_bin ? t('folio.assets.confirm_bulk_bin') : t('folio.assets.confirm_bulk_delete') }}" data-confirm-selected><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg>{{ has_bin ? t('folio.assets.move_to_bin') : t('folio.common.delete') }}</button>{% endif %}
+                    <button type="reset" class="btn btn-sm btn-icon folio-bulk-clear" data-folio-bulk-clear aria-label="{{ t('folio.common.clear') }}" title="{{ t('folio.common.clear') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-x"></use></svg></button>
+                </form>
+            {% endif %}
+        </div>
+        {% if pages > 1 or not picker %}{% include '@folio/admin/assets/_pager.twig' %}{% endif %}
     {% endif %}
 </div>
 {% endblock %}

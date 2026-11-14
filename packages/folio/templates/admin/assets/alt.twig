@@ -1,0 +1,31 @@
+{% extends layout|default('@folio/admin/_layout.twig') %}
+{# "Edit alt text" for the selection bar's images: in the drawer (_drawer=1), else as a page. One field each, in the
+   default language; the other languages stay on each asset's own page. #}
+{% block title %}Folio — {{ t('folio.assets.edit_alt') }}{% endblock %}
+{% block page_title %}{{ t('folio.assets.edit_alt') }}{% endblock %}
+{% block actions %}{% if not drawer %}<a class="btn btn-secondary" href="{{ back }}">{{ t('folio.assets.back') }}</a>{% endif %}{% endblock %}
+{% block content %}
+<div class="folio-assets folio-assets-alt">
+    {% if items is empty %}
+        <p class="folio-help">{{ t('folio.assets.alt_no_images') }}</p>
+    {% else %}
+        <form method="post" action="{{ prefix }}/assets/alt" class="folio-assets-alt-form">
+            <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+            {% if drawer %}<input type="hidden" name="_drawer" value="1">{% else %}<input type="hidden" name="back" value="{{ back }}">{% endif %}
+            <p class="folio-help">{{ multilingual ? t('folio.assets.alt_help_locale', {locale: locale|upper}) : t('folio.assets.alt_help') }}{% if skipped > 0 %} {{ t('folio.assets.alt_skipped', {}, skipped) }}{% endif %}</p>
+            <ul class="folio-assets-alt-list">
+                {% for item in items %}
+                    <li class="folio-assets-alt-item">
+                        <span class="folio-asset-thumb">{% if item.thumb %}<img src="{{ item.thumb }}" alt="" loading="lazy">{% endif %}</span>
+                        <span class="folio-assets-alt-field">
+                            <label class="folio-asset-filename" for="folio-alt-{{ item.id }}">{{ item.name }}</label>
+                            <input type="text" id="folio-alt-{{ item.id }}" name="alt[{{ item.id }}]" value="{{ item.alt_text }}" maxlength="500"{% if loop.first %} autofocus{% endif %}>
+                        </span>
+                    </li>
+                {% endfor %}
+            </ul>
+            <div class="folio-assets-alt-actions"><button type="submit" class="btn btn-primary">{{ t('folio.common.save') }}</button></div>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

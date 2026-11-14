@@ -113,7 +113,7 @@ final class FolioRecordReferencesTest extends TestCase
 
         $usage = $this->usage()->usagesOf($asset->id);
 
-        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'published version')], $usage);
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'published version', type: 'page')], $usage);
     }
 
     public function test_asset_used_only_in_a_published_version_cannot_be_deleted(): void
@@ -130,7 +130,7 @@ final class FolioRecordReferencesTest extends TestCase
             $library->delete($asset->id);
             $this->fail('delete() should refuse an asset a published version uses');
         } catch (AssetInUseException $e) {
-            $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'published version')], $e->usages);
+            $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'published version', type: 'page')], $e->usages);
         }
         $this->assertNotNull($library->find($asset->id));
     }
@@ -161,7 +161,7 @@ final class FolioRecordReferencesTest extends TestCase
 
         $usage = $this->usage()->usagesOf($asset->id);
 
-        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'earlier revision', blocksDelete: false)], $usage);
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', 'earlier revision', blocksDelete: false, type: 'page')], $usage);
         $this->assertFalse($usage[0]->blocksDelete);
     }
 
@@ -194,7 +194,7 @@ final class FolioRecordReferencesTest extends TestCase
         $publisher->publish(DynamicRecord::fromArray($def, ['uuid' => 'p1', 'title' => 'About us', 'slug' => 'about', 'cover' => $asset->id]), null);
 
         // The working copy wins over its revisions: one entry, blocking.
-        $this->assertEquals([new AssetUsageEntry('About us', '/folio/page/p1/edit', 'folio')], $this->usage()->usagesOf($asset->id));
+        $this->assertEquals([new AssetUsageEntry('About us', '/folio/page/p1/edit', 'folio', type: 'page')], $this->usage()->usagesOf($asset->id));
         try {
             $library->delete($asset->id);
             $this->fail('delete() should refuse an asset a working copy uses');
@@ -243,7 +243,7 @@ final class FolioRecordReferencesTest extends TestCase
 
         $usage = (new FolioRecordReferences($this->references(), $dm, new TypeCatalog($this->assetRoot . '/models'), $registry, '/folio'))->usagesOf('a1');
 
-        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio')], $usage);
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', type: 'page')], $usage);
         $this->assertContains('page', $reads);
         $this->assertNotContains('tag', $reads);
     }
@@ -264,7 +264,7 @@ final class FolioRecordReferencesTest extends TestCase
         // A type without a route has no "SEO & sharing" section: whatever it stores is no share image.
         $this->dm->saveType(DynamicRecord::fromArray($this->registry->get('tag'), ['uuid' => 't1', 'title' => 'Tag', '_seo' => ['image' => $asset->id]]), false);
 
-        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio')], $this->usage()->usagesOf($asset->id));
+        $this->assertEquals([new AssetUsageEntry('About', '/folio/page/p1/edit', 'folio', type: 'page')], $this->usage()->usagesOf($asset->id));
         try {
             $library->delete($asset->id);
             $this->fail('delete() should refuse an asset a page shares with');

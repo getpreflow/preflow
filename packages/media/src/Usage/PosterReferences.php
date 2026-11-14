@@ -17,7 +17,7 @@ use Preflow\Media\MediaLibrary;
  * the poster can be binned by hand, but emptying the bin and cleanup leave it
  * alone while its asset can still be restored.
  */
-final class PosterReferences implements AssetReferenceSource
+final class PosterReferences implements AssetReferenceSource, CountsAssetUsage
 {
     public const string NAME = 'media';
     public const string NOTE = 'as poster';
@@ -51,5 +51,16 @@ final class PosterReferences implements AssetReferenceSource
         }
 
         return [...$live, ...$binned];
+    }
+
+    /**
+     * The assets, live and binned, that use each id as their poster, in one query (MediaLibrary::posterCounts()).
+     *
+     * @param list<string> $assetIds
+     * @return array<string, int>
+     */
+    public function usageCounts(array $assetIds): array
+    {
+        return ($this->library)()->posterCounts($assetIds);
     }
 }

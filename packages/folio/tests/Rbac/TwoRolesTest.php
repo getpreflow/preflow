@@ -87,6 +87,9 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/assets/{id}/versions/{n}/delete', '/folio/assets/missing/versions/1/delete', [], [404, 404, 403]],
             ['GET /folio/assets/bin', '/folio/assets/bin', [], [200, 200, 403]],
             ['POST /folio/assets/bin/{id}/restore', '/folio/assets/bin/missing/restore', [], [404, 404, 403]],
+            ['POST /folio/assets/bulk', '/folio/assets/bulk', ['_action' => 'nothing'], [404, 404, 403]], // the selection bar (0.76)
+            ['GET /folio/assets/alt', '/folio/assets/alt', [], [200, 200, 403]],
+            ['POST /folio/assets/alt', '/folio/assets/alt', [], [302, 302, 403]], // nothing to save: back to the library
             ['POST /folio/assets/{id}/copy', '/folio/assets/missing/copy', [], [404, 404, 403]],
             ['POST /folio/assets/{id}/remake', '/folio/assets/missing/remake', [], [404, 404, 403]],
             ['GET /folio/extensions', '/folio/extensions', [], [200, 403, 403]],

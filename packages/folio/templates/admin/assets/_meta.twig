@@ -1,0 +1,3 @@
+{# An asset's facts: size in pixels, file size and (outside the picker) how often it is used, "unused" muted. #}
+{%- if item.width %}{{ item.width }}×{{ item.height }} · {% endif %}{{ t('folio.assets.size_kb', {size: folio_number((item.size / 1024)|round(0, 'ceil'))}) }}
+{%- if item.used is defined and item.used is not null %} · {% if item.used > 0 %}{{ t('folio.assets.used_times', {count: folio_number(item.used)}, item.used) }}{% else %}<span class="folio-asset-unused">{{ t('folio.assets.unused_short') }}</span>{% endif %}{% endif -%}

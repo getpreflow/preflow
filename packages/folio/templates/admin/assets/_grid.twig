@@ -1,14 +1,33 @@
+{# The library's cards (board Assets): a 16:10 thumbnail with the copy marks and the alt-text warning, the file
+   name in mono and "1280×800 · 48 KB · used 1×". Outside the picker each card has a tick box for the
+   selection bar (form="folio-bulk"), and the last cell is the drop zone for those who may upload. #}
+{% set icons = folio_asset('icons.svg') %}
 <ul class="folio-asset-grid">
     {% for item in items %}
         <li class="folio-asset{% if item.id in selected %} is-selected{% endif %}" data-asset-id="{{ item.id }}">
             {% set thumb %}{% if item.thumb %}<img src="{{ item.thumb }}" alt="" loading="lazy">{% else %}<span class="folio-asset-kind">{{ item.mime|split('/')|last|upper }}</span>{% endif %}{% endset %}
+            {% set warn %}{% if item.card.warn %}<span class="folio-asset-alt-warn" title="{{ t('folio.assets.no_alt') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-warn"></use></svg><span class="folio-sr">{{ t('folio.assets.no_alt') }}</span></span>{% endif %}{% endset %}
             {% if picker %}
-                <span class="folio-asset-thumb">{{ thumb }}{% include '@folio/admin/assets/_stack.twig' %}</span>
+                <span class="folio-asset-thumb">{{ thumb }}{{ warn }}{% include '@folio/admin/assets/_stack.twig' %}</span>
             {% else %}
-                <a class="folio-asset-thumb" href="{{ prefix }}/assets/{{ item.id }}{{ detail_q }}">{{ thumb }}{% include '@folio/admin/assets/_stack.twig' %}</a>
+                <a class="folio-asset-thumb" href="{{ prefix }}/assets/{{ item.id }}{{ detail_q }}" aria-label="{{ item.label }}">{{ thumb }}{{ warn }}{% include '@folio/admin/assets/_stack.twig' %}</a>
+                <label class="folio-asset-check"><input type="checkbox" name="ids[]" value="{{ item.id }}" form="folio-bulk" data-folio-bulk-item data-label="{{ item.label }}" data-kind="{{ item.kind }}" data-download="{{ item.original }}" aria-label="{{ t('folio.list.select_row', {label: item.label}) }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-check"></use></svg></label>
             {% endif %}
-            <span class="folio-asset-label">{{ item.label }}</span>
+            <span class="folio-asset-body">
+                <span class="folio-asset-filename" title="{{ item.label }}">{{ item.name }}</span>
+                <span class="folio-asset-meta">{% include '@folio/admin/assets/_meta.twig' %}</span>
+            </span>
             {% include '@folio/admin/assets/_pick.twig' %}
         </li>
     {% endfor %}
+    {% if not picker and can('assets.upload') %}
+        {# Without script a label for the upload form's file input; with it files dropped here (or chosen) are uploaded one by one. #}
+        <li class="folio-asset-drop">
+            <label class="folio-asset-dropzone" for="folio-assets-files" data-folio-assets-drop>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-upload"></use></svg>
+                <span class="folio-asset-drop-title">{{ t('folio.assets.drop_title') }}</span>
+                <span class="folio-asset-drop-line" data-folio-assets-drop-status>{{ t('folio.assets.drop_line') }}</span>
+            </label>
+        </li>
+    {% endif %}
 </ul>

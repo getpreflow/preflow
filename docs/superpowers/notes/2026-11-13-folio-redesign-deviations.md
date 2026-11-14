@@ -101,8 +101,8 @@ Each row carries exactly one label.
 | Redirects: the "from → to" mono table, the not-found count badge on the tab, the drawer form with "Send visitors to" segmented and the 301/302 radio cards | Redirects | 0.76 |
 | Cache: the total with a stacked bar, size bars and per-row Clear, "Clear all…" in the header, page cache and OPcache as cards | Cache | 0.76 |
 | Roles: the left card with the key in mono, the matrix grouped by section with type icons, row switches instead of "All", dashed implied ticks, "Neu" badges and the "Nur neue" filter, the unsaved count in the header | Roles | 0.76 |
-| Assets: the header with Bin and Upload, the toolbar (kind segmented, grid/list toggle), 16:10 cards with mono names and meta, the drop zone as the last card, the selection bar | Assets | 0.76 |
-| Assets: the "Missing alt text · N" filter | Assets | Proposal |
+| Assets: the header with Bin and Upload, the toolbar (kind segmented, grid/list toggle), 16:10 cards with mono names and meta, the drop zone as the last card, the selection bar | Assets | Fixed in 0.76 (`AssetUsage::counts()` / `CountsAssetUsage` for "used N×"; selection bar Edit alt text (drawer) · Download (one file only, no archive) · Move to bin (`assets/bulk`, same refusals as a single delete); the picker has no bar or drop zone; two cards a row on a phone) |
+| Assets: the "Missing alt text · N" filter | Assets | Fixed in 0.76 (`MediaLibrary::query(missingAlt: true)` and `missingAltCount()`: images without an alt text in the default language) |
 | Asset detail: the large preview on surface-2, the right panel (alt warning, file facts, swatches, Used in with type icons, Replace drop zone), the Versions tab | AssetDetail | 0.76 |
 | Asset detail: crop previews (16:9, 4:3, 1:1, 9:16) | AssetDetail | Proposal |
 | Ink layer: marks in `icons.svg` (`mark-*`), `.folio-ink-marks` with `.mc-1…6`, `.folio-ink-line`, `.folio-ink-drift`, the caret on ink, `folio_ink_marks(seed, count, area)` (`InkMarks`), and the sign-in drawn from the shared marks and classes (its `.folio-auth-*` names stay as aliases; `.folio-caret` and the save status with caret came with the editor in 0.75) | Ink | Fixed in 0.76 |

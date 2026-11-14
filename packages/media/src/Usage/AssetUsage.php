@@ -52,6 +52,37 @@ final class AssetUsage
         return array_values(array_filter($this->of($assetId), static fn (AssetUsageEntry $e): bool => $e->blocksDelete));
     }
 
+    /**
+     * How many usages each asset has (count(of($id)) for each), for a whole page of assets at once:
+     * a source that implements CountsAssetUsage is asked once, any other per asset. Every given id
+     * is a key; an unused one counts 0.
+     *
+     * @param list<string> $assetIds
+     * @return array<string, int>
+     */
+    public function counts(array $assetIds): array
+    {
+        $ids = array_values(array_unique(array_filter($assetIds, 'is_string')));
+        $counts = array_fill_keys($ids, 0);
+        if ($ids === []) {
+            return $counts;
+        }
+        foreach ($this->ordered() as $source) {
+            if ($source instanceof CountsAssetUsage) {
+                $batch = $source->usageCounts($ids);
+                foreach ($ids as $id) {
+                    $counts[$id] += max(0, (int) ($batch[$id] ?? 0));
+                }
+                continue;
+            }
+            foreach ($ids as $id) {
+                $counts[$id] += count($source->usagesOf($id));
+            }
+        }
+
+        return $counts;
+    }
+
     public function isUsed(string $assetId): bool
     {
         return $this->of($assetId) !== [];

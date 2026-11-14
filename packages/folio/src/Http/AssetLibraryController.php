@@ -246,6 +246,140 @@ final class AssetLibraryController
         return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '?done=unbinned']);
     }
 
+    /**
+     * The selection bar's bulk action (POST {prefix}/assets/bulk, ids[] and _action; the route asks
+     * assets.delete). "bin": each asset goes through the same delete as its own page (the library
+     * refuses one still in use; with bin_dir it goes into the bin). Ids that are not live assets of
+     * this library (unknown, already binned) are skipped. Back to the library page with a flash:
+     * how many went, and the names of those that were refused.
+     */
+    public function bulk(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = (array) $request->getParsedBody();
+        if (($body['_action'] ?? null) !== 'bin') {
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
+        }
+        $binned = 0;
+        $refused = [];
+        $failed = [];
+        foreach (self::ids($body['ids'] ?? null) as $id) {
+            $asset = $this->library->find($id);
+            if ($asset === null) {
+                continue;
+            }
+            try {
+                $this->library->delete($asset->id);
+                $binned++;
+            } catch (AssetInUseException) {
+                $refused[] = $asset->label();
+            } catch (\RuntimeException $e) {
+                if ($this->library->binDir() === null) {
+                    throw $e;
+                }
+                error_log('folio: could not move asset ' . $asset->id . ' into the bin: ' . $e::class . ': ' . $e->getMessage());
+                $failed[] = $asset->label();
+            }
+        }
+        $bin = $this->library->binDir() !== null;
+        if ($binned > 0) {
+            self::flash($request, 'success', FolioText::choice($bin ? 'folio.assets.bulk_binned' : 'folio.assets.bulk_deleted', $binned));
+        }
+        if ($refused !== []) {
+            self::flash($request, 'error', FolioText::choice('folio.assets.bulk_in_use', count($refused), ['names' => implode(', ', $refused)]));
+        }
+        if ($failed !== []) {
+            self::flash($request, 'error', FolioText::get('folio.assets.bin_failed', ['label' => implode(', ', $failed)]));
+        }
+
+        return new Response(302, ['Location' => $this->back($request) ?? $this->prefix . '/assets']);
+    }
+
+    /**
+     * "Edit alt text" for the selection (GET {prefix}/assets/alt?ids[]=…; assets.edit): each selected
+     * live image with its thumbnail, name and an alt input in the default language. Other kinds
+     * are left out (only images are asked for an alt text). With _drawer=1 in the drawer layout.
+     */
+    public function altForm(ServerRequestInterface $request): ResponseInterface
+    {
+        $query = $request->getQueryParams();
+
+        return $this->renderAlt($request, self::ids($query['ids'] ?? null), ($query['_drawer'] ?? '') === '1');
+    }
+
+    /**
+     * Saves the alt texts of the selection (POST {prefix}/assets/alt, alt[{id}]; assets.edit), each
+     * through the library's update, as an asset's own page saves it. Ids that are not live images
+     * are skipped. The drawer answers with drawer_saved.twig (the library page refreshes its
+     * grid); without it, back to the library page.
+     */
+    public function altSave(ServerRequestInterface $request): ResponseInterface
+    {
+        $body = (array) $request->getParsedBody();
+        $default = $this->locales->default;
+        $saved = 0;
+        foreach (is_array($body['alt'] ?? null) ? $body['alt'] : [] as $id => $text) {
+            $asset = is_string($id) && is_string($text) ? $this->library->find($id) : null;
+            if ($asset === null || $asset->kind() !== 'image') {
+                continue;
+            }
+            $this->library->update($asset->id, ['alt' => [$default => $text]]);
+            $saved++;
+        }
+        if (($body['_drawer'] ?? '') === '1') {
+            return $this->html($this->engine->render('@folio/admin/drawer_saved.twig', ['type' => 'asset-alt', 'id' => '']));
+        }
+        self::flash($request, 'success', FolioText::choice('folio.assets.alt_saved', $saved));
+
+        return new Response(302, ['Location' => $this->back($request) ?? $this->prefix . '/assets']);
+    }
+
+    /** @param list<string> $ids */
+    private function renderAlt(ServerRequestInterface $request, array $ids, bool $drawer): ResponseInterface
+    {
+        $default = $this->locales->default;
+        $items = [];
+        foreach ($ids as $id) {
+            $asset = $this->library->find($id);
+            if ($asset !== null && $asset->kind() === 'image') {
+                $items[] = $this->item($asset) + ['alt_text' => $asset->alt[$default] ?? ''];
+            }
+        }
+
+        return $this->html($this->engine->render('@folio/admin/assets/alt.twig', [
+            'prefix' => $this->prefix,
+            'types' => $this->catalog->all(),
+            'section' => 'assets',
+            'layout' => $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
+            'editor_assets' => ['admin.js'],
+            'items' => $items,
+            'skipped' => count($ids) - count($items),
+            'drawer' => $drawer,
+            'locale' => $default,
+            'multilingual' => count($this->locales->available) > 1,
+            'csrf' => self::csrf($request),
+        ] + $this->backContext($request)));
+    }
+
+    /**
+     * Asset ids from ids[] (or one id), each once, only those shaped like an id.
+     *
+     * @return list<string>
+     */
+    private static function ids(mixed $raw): array
+    {
+        $ids = array_filter(is_array($raw) ? $raw : [$raw], static fn ($id): bool => is_string($id) && preg_match(MediaLibrary::ID_PATTERN, $id) === 1);
+
+        return array_values(array_unique($ids));
+    }
+
+    private static function flash(ServerRequestInterface $request, string $type, string $message): void
+    {
+        $session = $request->getAttribute(\Preflow\Core\Http\Session\SessionInterface::class);
+        if ($session instanceof \Preflow\Core\Http\Session\SessionInterface) {
+            $session->flash($type, $message);
+        }
+    }
+
     private function renderBin(ServerRequestInterface $request, int $page, ?string $error = null, int $status = 200): ResponseInterface
     {
         $result = $this->library->binned($page, self::PER_PAGE);
@@ -259,6 +393,8 @@ final class AssetLibraryController
             'total' => $result->total,
             'page' => $result->page,
             'pages' => max(1, (int) ceil($result->total / self::PER_PAGE)),
+            'pager' => self::pager($result, fn (int $p): string => $this->prefix . '/assets/bin' . ($p > 1 ? '?page=' . $p : '')),
+            'family' => \Preflow\Data\TypeFamily::Asset,
             'has_bin' => $this->library->binDir() !== null,
             'bin_days' => $this->media->cleanup['bin_days'],
             'error' => $error,
@@ -622,37 +758,62 @@ final class AssetLibraryController
         }
 
         $unused = !$picker && $this->cleanup->isEnabled() && ($params['unused'] ?? '') === '1';
+        // "Missing alt text": images without one in the default language (not in the picker, 0.76).
+        $missingAlt = !$picker && ($params['missing_alt'] ?? '') === '1';
         $stack = $picker && is_string($params['stack'] ?? null) ? $this->library->find($params['stack']) : null;
         $stack = $stack !== null && !$stack->isCopy() ? $stack : null;
         $result = match (true) {
             $stack !== null => $this->stack($stack, $private),
-            $unused => $this->unused($kind, $q, $page),
-            default => $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE),
+            $unused => $this->unused($kind, $q, $page, $missingAlt),
+            default => $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE, missingAlt: $missingAlt ?: null),
         };
         $total = $result->total;
         $pages = $stack !== null ? 1 : max(1, (int) ceil($total / self::PER_PAGE));
         $page = $result->page;
+        $ids = array_map(static fn (Asset $a) => $a->id, $result->items);
         // An opened stack shows no bubbles: its original's copies are the tiles.
-        $counts = $stack === null ? $this->library->copyCounts(array_map(static fn (Asset $a) => $a->id, $result->items)) : [];
-        $query = array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== '');
+        $counts = $stack === null ? $this->library->copyCounts($ids) : [];
+        // "used N×" on each card: every usage source asked once for the whole page (not in the picker).
+        $used = $picker ? [] : $this->usage->counts($ids);
+        $query = array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'missing_alt' => $missingAlt ? '1' : '', 'picker' => $picker ? '1' : '', 'multiple' => $picker ? ($multiple ? '1' : '0') : '', 'private' => $private === null ? '' : ($private ? '1' : '0')], static fn ($v) => $v !== '');
+        // Links keep every other choice: the view (grid is the default), the search and filters.
+        $href = fn (array $params): string => $this->prefix . '/assets' . (($built = http_build_query(array_filter($params, static fn ($v) => $v !== '' && $v !== null && $v !== []))) !== '' ? '?' . $built : '');
+        $here = $query + ($view === 'list' ? ['view' => 'list'] : []);
+        $kinds = [];
+        foreach (['' => 'folio.assets.all', 'image' => 'folio.assets.kinds.image', 'video' => 'folio.assets.kinds.video', 'document' => 'folio.assets.kinds.document'] as $k => $label) {
+            $kinds[] = ['label' => FolioText::get($label), 'href' => $href(['kind' => $k] + $here), 'current' => $kind === $k];
+        }
+        $views = [];
+        foreach (['grid' => ['folio.assets.grid', 'ui-grid'], 'list' => ['folio.assets.list', 'ui-list']] as $v => [$label, $icon]) {
+            $views[] = ['label' => FolioText::get($label), 'icon' => $icon, 'href' => $href(['view' => $v === 'list' ? 'list' : ''] + $here), 'current' => $view === $v];
+        }
+        $missingCount = $picker ? 0 : $this->library->missingAltCount();
+        $back = $this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'missing_alt' => $missingAlt ? '1' : '', 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []));
 
         return $this->html($this->engine->render('@folio/admin/assets/index.twig', [
             'prefix' => $this->prefix,
             'types' => $this->catalog->all(),
             'section' => 'assets',
+            'family' => \Preflow\Data\TypeFamily::Asset,
             'layout' => $picker ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
             'editor_assets' => array_values(array_unique($editorAssets)),
-            'items' => array_map(fn (Asset $a) => ['copies' => $counts[$a->id] ?? 0] + $this->item($a, $this->cardLocale($request)), $result->items),
+            'items' => array_map(fn (Asset $a) => ['copies' => $counts[$a->id] ?? 0, 'used' => $used[$a->id] ?? null] + $this->item($a, $this->cardLocale($request)), $result->items),
             'total' => $total,
             'page' => $page,
             'pages' => $pages,
+            'pager' => self::pager($result, fn (int $p): string => $href(['page' => $p > 1 ? (string) $p : ''] + $here + ($stack !== null ? ['stack' => $stack->id] : []))),
             'stack' => $stack !== null ? $this->item($stack) : null,
             'unstacked' => $query,
             'q' => $q,
             'kind' => $kind,
+            'kinds' => $kinds,
+            'views' => $views,
             'filters' => $controls,
             'filtered' => $filters !== [],
             'unused' => $unused,
+            'missing_alt' => $missingAlt,
+            'missing_alt_count' => $missingCount,
+            'missing_alt_href' => $href(['missing_alt' => $missingAlt ? '' : '1'] + $here),
             'cleanup' => !$picker && $this->cleanup->isEnabled(),
             'min_age_days' => $this->media->cleanup['min_age_days'],
             'no_bin' => !$picker && $this->library->binDir() === null,
@@ -665,9 +826,45 @@ final class AssetLibraryController
             'selected' => $selected,
             'errors' => $errors,
             'csrf' => self::csrf($request),
-            'detail_q' => '?back=' . rawurlencode($this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []))),
+            'back' => $back,
+            'detail_q' => '?back=' . rawurlencode($back),
             'query' => $query + ($stack !== null ? ['stack' => $stack->id] : []),
         ]), $status);
+    }
+
+    /**
+     * The pager under the grid, the list and the bin (.folio-pager, as the admin lists): "from–to of
+     * total", the first, last and nearby pages with gaps, previous and next.
+     *
+     * @param \Closure(int): string $href
+     * @return array{from: int, to: int, total: int, last_page: int, pages: list<array{n: ?int, href: ?string, current: bool}>, prev: ?string, next: ?string}
+     */
+    private static function pager(AssetPage $result, \Closure $href): array
+    {
+        $last = max(1, (int) ceil($result->total / max(1, $result->perPage)));
+        $page = min(max(1, $result->page), $last);
+        $pages = [];
+        $previous = 0;
+        for ($n = 1; $n <= $last; $n++) {
+            if ($n === 1 || $n === $last || abs($n - $page) <= 2) {
+                if ($previous > 0 && $n - $previous > 1) {
+                    $pages[] = ['n' => null, 'href' => null, 'current' => false];
+                }
+                $pages[] = ['n' => $n, 'href' => $href($n), 'current' => $n === $page];
+                $previous = $n;
+            }
+        }
+        $from = $result->total === 0 ? 0 : ($page - 1) * $result->perPage + 1;
+
+        return [
+            'from' => $from,
+            'to' => $from === 0 ? 0 : $from + count($result->items) - 1,
+            'total' => $result->total,
+            'last_page' => $last,
+            'pages' => $pages,
+            'prev' => $page > 1 ? $href($page - 1) : null,
+            'next' => $page < $last ? $href($page + 1) : null,
+        ];
     }
 
     /**
@@ -678,12 +875,15 @@ final class AssetLibraryController
      * result is paged here, so pages are exact (cleanup's own chunks count checked assets,
      * not candidates); on a very large library this page is slow, like media:cleanup.
      */
-    private function unused(string $kind, string $q, int $page): AssetPage
+    private function unused(string $kind, string $q, int $page, bool $missingAlt = false): AssetPage
     {
         $words = preg_split('/\s+/', mb_strtolower($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $assets = [];
         foreach ($this->cleanup->candidates($kind === '' ? [] : ['kind' => $kind]) as $candidate) {
             $asset = $candidate->asset;
+            if ($missingAlt && ($asset->kind() !== 'image' || trim($asset->alt[$this->locales->default] ?? '') !== '')) {
+                continue; // as MediaLibrary::query(missingAlt: true)
+            }
             $text = mb_strtolower($asset->originalName . ' ' . $asset->title . ' ' . implode(' ', $asset->alt));
             if (array_filter($words, static fn (string $w): bool => !str_contains($text, $w)) === []) {
                 $assets[] = $asset;
@@ -1047,6 +1247,8 @@ final class AssetLibraryController
             'poster' => $asset->posterId,
             'created_at' => $asset->createdAt,
             'copy' => $asset->isCopy(),
+            // The selection bar's Download (one asset): the file as uploaded.
+            'original' => $this->library->originalUrl($asset),
         ];
     }
 

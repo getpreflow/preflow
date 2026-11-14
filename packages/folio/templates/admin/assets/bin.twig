@@ -1,6 +1,11 @@
 {% extends '@folio/admin/_layout.twig' %}
+{% import '@folio/admin/partials/_type_icon.twig' as types %}
+{# The library's header pattern: its tile, the title and the count; the table and Restore as before. #}
+{% set content_width = 'wide' %}
 {% block title %}Folio — {{ t('folio.assets.bin') }}{% endblock %}
+{% block title_lead %}{{ types.type_icon(family|default(null), 'ui-trash', 28) }}{% endblock %}
 {% block page_title %}{{ t('folio.assets.bin') }}{% endblock %}
+{% block title_after %}{% if items is not empty %}<span class="folio-title-count folio-assets-count">{{ t('folio.assets.bin_count', {}, total) }}</span>{% endif %}{% endblock %}
 {% block actions %}<a class="btn btn-secondary" href="{{ prefix }}/assets">{{ t('folio.assets.back') }}</a>{% endblock %}
 {% block content %}
 <div class="folio-assets folio-asset-bin">
@@ -13,7 +18,6 @@
     {% if items is empty %}
         {% include '@folio/admin/partials/_empty.twig' with {screen: 'assets-bin', title: t('folio.assets.bin_empty'), line: t('folio.assets.bin_empty_line')} only %}
     {% else %}
-        <p class="folio-help folio-assets-count">{{ t('folio.assets.bin_count', {}, total) }}</p>
         <div class="folio-table-wrap">
         <table class="folio-table folio-asset-list">
             <thead><tr><th>{{ t('folio.assets.name') }}</th><th>{{ t('folio.assets.kind') }}</th><th>{{ t('folio.assets.size') }}</th><th>{{ t('folio.assets.binned_at') }}</th><th></th></tr></thead>
@@ -35,13 +39,7 @@
             </tbody>
         </table>
         </div>
-        {% if pages > 1 %}
-            <nav class="folio-pagination" aria-label="{{ t('folio.list.pages') }}">
-                {% for p in 1..pages %}
-                    <a class="btn btn-ghost{% if p == page %} is-active{% endif %}" href="{{ prefix }}/assets/bin?page={{ p }}">{{ p }}</a>
-                {% endfor %}
-            </nav>
-        {% endif %}
+        {% include '@folio/admin/assets/_pager.twig' %}
     {% endif %}
 </div>
 {% endblock %}

@@ -1,0 +1,16 @@
+{# The library's and the bin's pager (.folio-pager, as the admin lists): "from–to of total", the pages with gaps, previous and next. #}
+{% set icons = folio_asset('icons.svg') %}
+<nav class="folio-pager" aria-label="{{ t('folio.list.pages') }}">
+    <span class="folio-pager-count">{{ t('folio.list.pager', {start: folio_number(pager.from), end: folio_number(pager.to), total: folio_number(pager.total)}) }}</span>
+    {% if pager.last_page > 1 %}
+        <span class="folio-pager-links">
+            {% if pager.prev %}<a class="btn btn-ghost btn-icon btn-sm" href="{{ pager.prev }}" rel="prev" aria-label="{{ t('folio.list.previous_page') }}" title="{{ t('folio.list.previous_page') }}"><svg class="folio-icon is-mirrored" aria-hidden="true"><use href="{{ icons }}#ui-chevron"></use></svg></a>{% endif %}
+            {% for p in pager.pages %}
+                {% if p.n is null %}<span class="folio-pager-gap">…</span>
+                {% elseif p.current %}<span class="btn btn-ghost btn-sm is-active" aria-current="page">{{ p.n }}</span>
+                {% else %}<a class="btn btn-ghost btn-sm" href="{{ p.href }}">{{ p.n }}</a>{% endif %}
+            {% endfor %}
+            {% if pager.next %}<a class="btn btn-ghost btn-icon btn-sm" href="{{ pager.next }}" rel="next" aria-label="{{ t('folio.list.next_page') }}" title="{{ t('folio.list.next_page') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-chevron"></use></svg></a>{% endif %}
+        </span>
+    {% endif %}
+</nav>
