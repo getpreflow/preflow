@@ -53,6 +53,15 @@ final class TagsFieldTypeTest extends TestCase
         $this->assertSame(['Folio', 'Über'], $this->type->normalizeInput(['Folio', 'folio', 'Über', 'ÜBER', 'FOLIO'], []));
     }
 
+    public function test_tags_are_nfc_so_a_decomposed_umlaut_is_the_same_tag(): void
+    {
+        if (!class_exists(\Normalizer::class)) {
+            $this->markTestSkipped('needs the intl extension');
+        }
+        $decomposed = "U\u{0308}bersetzung";
+        $this->assertSame(['Übersetzung'], $this->type->normalizeInput([$decomposed, 'übersetzung'], []));
+    }
+
     public function test_strips_control_characters(): void
     {
         $this->assertSame(['ab', 'cd'], $this->type->normalizeInput(["a\x00b", "c\td\n", "\x7F"], []));
@@ -90,7 +99,7 @@ final class TagsFieldTypeTest extends TestCase
     public function test_storage_is_a_json_list_with_readable_umlauts(): void
     {
         $this->assertSame('["Folio","Übersetzung","a/b"]', $this->type->toStorage(['Folio', 'Übersetzung', 'a/b']));
-        $this->assertSame('[]', $this->type->toStorage([]));
+        $this->assertNull($this->type->toStorage([]), 'no tags is no value, so "required" refuses it');
         $this->assertSame(['Folio', 'Übersetzung'], $this->type->fromStorage('["Folio","Übersetzung"]'));
         $this->assertSame(['Folio'], $this->type->fromStorage(['Folio']), 'a list as the JSON storage or a class model holds it');
         $this->assertSame([], $this->type->fromStorage(null));
@@ -153,6 +162,31 @@ final class TagsFieldTypeTest extends TestCase
     public function test_a_translatable_tags_field_is_a_boot_error(): void
     {
         $this->assertBootError(['type' => 'tags', 'translatable' => true], 'Type "thing": field "uses": A tags field cannot be translatable; keep one list for every language.');
+    }
+
+    public function test_translatable_is_read_as_the_type_registry_reads_it(): void
+    {
+        $this->assertBootError(['type' => 'tags', 'translatable' => 1], 'Type "thing": field "uses": A tags field cannot be translatable; keep one list for every language.');
+        $this->assertBootError(['type' => 'tags', 'translatable' => 'yes'], 'Type "thing": field "uses": A tags field cannot be translatable; keep one list for every language.');
+    }
+
+    public function test_a_translatable_tags_field_in_a_block_is_refused(): void
+    {
+        $fields = new \Preflow\Folio\Field\FieldTypeRegistry();
+        $fields->register(new \Preflow\Folio\Field\Types\StringFieldType());
+        $fields->register($this->type);
+        $blocks = new \Preflow\Folio\Field\Types\BlocksFieldType(
+            new \Preflow\Blocks\BlockRegistry([\Preflow\Folio\Tests\Fixtures\Blocks\TranslatedTagsBlock::class]),
+            $fields,
+            4,
+            new \Preflow\Validation\ValidatorFactory(new \Preflow\Validation\RuleFactory()),
+        );
+        $fields->register($blocks);
+        $uid = str_repeat('a', 16);
+
+        $this->expectException(FrontendConfigException::class);
+        $this->expectExceptionMessage('Block "translated_tags": field "topics": A tags field cannot be translatable; keep one list for every language.');
+        $blocks->buildValue(['_order' => [$uid], $uid => ['_block' => 'translated_tags', 'topics' => ['a']]], null, [], new \Preflow\Folio\Field\BuildContext(new \Preflow\Data\Locales(['en', 'de'], 'en'), 'en', false));
     }
 
     public function test_invalid_limits_and_options_are_boot_errors(): void

@@ -205,6 +205,7 @@ final class RelationFieldTypeTest extends TestCase
         $this->assertSame('a1', $t->fromStorage('a1'));
         $json = $t->toStorage(['a1', 'a2']);
         $this->assertSame(['a1', 'a2'], $t->fromStorage($json));
+        $this->assertNull($t->toStorage([]), 'an empty list is no value, so "required" refuses it (0.77)');
     }
 
     public function test_render_frontend_resolves_labels(): void

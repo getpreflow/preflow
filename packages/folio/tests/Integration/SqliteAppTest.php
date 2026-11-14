@@ -203,6 +203,31 @@ final class SqliteAppTest extends TestCase
         $this->assertNull($this->dm()->queryType('reference')->where('name', 'Many')->first());
     }
 
+    /**
+     * An emptied list field (tags, a multiple relation, multiple assets) stores no value (null, not
+     * "[]"), so "required" refuses it like an empty text (0.77).
+     */
+    public function test_required_list_fields_refuse_an_empty_list(): void
+    {
+        $this->writeModel('maker', ['label' => 'Makers', 'fields' => ['name' => ['type' => 'string']]]);
+        $this->writeModel('reference', [
+            'label' => 'References',
+            'fields' => [
+                'name' => ['type' => 'string'],
+                'uses' => ['type' => 'tags', 'validate' => ['required']],
+                'makers' => ['type' => 'relation', 'relation' => ['to' => 'maker', 'multiple' => true], 'validate' => ['required']],
+                'images' => ['type' => 'asset', 'asset' => ['multiple' => true], 'validate' => ['required']],
+            ],
+        ]);
+        $this->migrateStep();
+
+        $res = $this->post('/folio/reference', ['name' => 'Empty', 'uses' => '']);
+        $body = (string) $res->getBody();
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertSame(3, substr_count($body, 'This field is required.'), 'tags, relation and assets each say "required"');
+        $this->assertNull($this->dm()->queryType('reference')->where('name', 'Empty')->first());
+    }
+
     /** @return list<string> */
     /** The English title as stored (SQL columns hold a translatable field as JSON text). */
     private function storedTitle(string $id): ?string

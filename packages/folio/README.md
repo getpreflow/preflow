@@ -824,21 +824,27 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   a trash button, and "+ Add row".
 - `env`: the variable's name and "set" or "not set"; never its value.
 - `tags` (0.77): a list of short texts ("Folio", "members"), shown as chips with ✕ and an inline
-  "Add…" input. Enter or a comma adds what was typed (so does leaving the input), a pasted
-  "a, b, c" adds three, Backspace on the empty input removes the last chip; each change is announced
-  to screen readers and counts as an edit (autosave, the unsaved count). Without script it is one
-  comma-separated text input. Saving trims each tag, strips control characters, drops empty ones
-  and keeps each once (case ignored, the first spelling wins). `"max"` (tags per record, default 20)
-  and `"maxLength"` (characters per tag, default 40) are checked on save ("At most 20 tags."), and
-  `"options"` (a list of texts) are suggested while typing. The value is stored as a JSON list
-  (`["Folio","Übersetzung"]`, readable umlauts) in a text column, so the list's search finds a
-  tag on every storage; a comma string stored before (`"Folio, members"`) is read as its parts.
-  The frontend gets `<ul class="tags"><li>Folio</li>…</ul>`, a list cell "Folio, members, AI +2". A
-  `tags` field cannot be `"translatable"` (one list serves every language): that, or an invalid
-  `"max"`, `"maxLength"` or `"options"`, stops the boot with a `FrontendConfigException`. On a model
-  class, declare it as `#[Field(type: 'tags')] public ?array $uses = null;`: the data package reads
-  the JSON list into the array (no `transform`: a `JsonTransformer` would encode the stored JSON a
-  second time).
+  "Add…" input. Enter or a comma adds what was typed (so does leaving the input, and a save or
+  ⌘S while text is still in it), a pasted "a, b, c" adds three at the caret, Backspace on the
+  empty input removes the last chip; each change is announced to screen readers and counts as an
+  edit (autosave, the unsaved count). Without script it is one comma-separated text input. A tag
+  cannot contain a comma: the comma separates tags. Saving trims each tag, strips control
+  characters, writes it in Unicode NFC (with the intl extension) and keeps each once (case
+  ignored, the first spelling wins). `"max"` (tags per record, default 20) and `"maxLength"`
+  (characters per tag, default 40) are checked on save ("At most 20 tags."); what the editor
+  cannot add for them stays in the input. `"options"` (a list of texts) are suggested while
+  typing. The value is stored as a JSON list (`["Folio","Übersetzung"]`, readable umlauts) in a
+  text column, so the list's search finds a tag on every storage; no tags is stored as `null`, so
+  `"validate": ["required"]` refuses an empty field (as for a multiple relation or multiple
+  assets, since 0.77). A comma string stored before (`"Folio, members"`) is read as its parts.
+  The frontend gets `<ul class="tags"><li>Folio</li>…</ul>`, a list cell "Folio, members, AI +2".
+  A `tags` field cannot be `"translatable"` (one list serves every language), on a type or in a
+  block: that, or an invalid `"max"`, `"maxLength"` or `"options"`, is a `FrontendConfigException`
+  (at boot for a type, when the block is edited for a block). On a model class, declare it as
+  `#[Field(type: 'tags')] public ?array $uses = null;` without a `transform` (a `JsonTransformer`
+  would encode the stored JSON a second time): the data package reads the JSON list into the
+  array. Convert legacy comma rows to JSON lists (a migration) before declaring the property:
+  reading text that is no JSON list into an array property throws `Preflow\Data\UnreadableValue`.
 
 An invalid `"unit"` or `"display"` (or `"display": "cards"` without `{label, help}` options) stops
 the boot with a `FrontendConfigException` naming the type and the field.

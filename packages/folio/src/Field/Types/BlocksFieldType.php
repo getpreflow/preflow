@@ -100,6 +100,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
             $blockFiles = is_array($files[$uid] ?? null) ? $files[$uid] : [];
             foreach ($definition->fields as $name => $field) {
                 $type = $this->fieldTypes->get($field->type);
+                self::assertLeaf($definition, $name, $field, $type);
 
                 if ($type instanceof StructuredFieldType) {
                     $block[$name] = $ctx->depth + 1 >= $this->maxDepth
@@ -499,6 +500,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
 
         foreach ($definition->fields as $field => $def) {
             $type = $this->fieldTypes->get($def->type);
+            self::assertLeaf($definition, $field, $def, $type);
             $raw = $block[$field] ?? null;
 
             if ($type instanceof self) {
@@ -604,6 +606,23 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
     }
 
     /** @param array<string, mixed> $context */
+    /**
+     * A block field the editor cannot hold: a translatable tags field (one list serves every
+     * language, as on a type; TypeCatalog refuses it there at boot). @since 0.77
+     *
+     * @throws \Preflow\Folio\Content\FrontendConfigException
+     */
+    private static function assertLeaf(\Preflow\Blocks\BlockDefinition $definition, string $name, \Preflow\Data\TypeFieldDefinition $field, \Preflow\Folio\Field\FieldType $type): void
+    {
+        if ($type instanceof TagsFieldType && $field->translatable) {
+            throw new \Preflow\Folio\Content\FrontendConfigException(sprintf(
+                'Block "%s": field "%s": A tags field cannot be translatable; keep one list for every language.',
+                $definition->key,
+                $name,
+            ));
+        }
+    }
+
     private function render(string $template, array $context): string
     {
         if ($this->engine === null) {

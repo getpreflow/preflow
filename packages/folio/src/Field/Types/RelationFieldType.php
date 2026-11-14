@@ -307,7 +307,8 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
     public function toStorage(mixed $value): mixed
     {
         if (is_array($value)) {
-            return json_encode(array_values($value), JSON_UNESCAPED_SLASHES);
+            // An empty list is no value: stored as null, so "required" refuses it (0.77).
+            return $value === [] ? null : json_encode(array_values($value), JSON_UNESCAPED_SLASHES);
         }
         return (string) ($value ?? '');
     }

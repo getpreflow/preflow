@@ -120,7 +120,8 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
 
     /**
      * A posted list (name[]) or a comma string (the input without script) as the tags: trimmed,
-     * without control characters and empty ones, each once (case ignored, the first spelling kept).
+     * without control characters and empty ones, in NFC, each once (case ignored, the first
+     * spelling kept). A tag cannot hold a comma: the comma separates tags.
      * Nothing is cut: a list over the limits stays so, and the field's rule refuses it.
      *
      * @return list<string>
@@ -139,7 +140,7 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
             if (!is_string($item) && !is_int($item) && !is_float($item)) {
                 continue;
             }
-            $tag = trim((string) preg_replace('/\p{Cc}+/u', '', (string) $item));
+            $tag = self::nfc(trim((string) preg_replace('/\p{Cc}+/u', '', (string) $item)));
             if ($tag === '') {
                 continue;
             }
@@ -154,10 +155,15 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
         return $out;
     }
 
-    /** The JSON list, as the relation field stores its ids; umlauts stay readable for search. */
+    /**
+     * The JSON list, as the relation field stores its ids; umlauts stay readable for search. No
+     * tags is null (no value), so "required" refuses an empty field.
+     */
     public function toStorage(mixed $value): mixed
     {
-        return json_encode(array_values($this->fromStorage($value)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $tags = $this->fromStorage($value);
+
+        return $tags === [] ? null : json_encode($tags, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -240,7 +246,8 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
      */
     public static function checkConfig(array $config): void
     {
-        if (($config['translatable'] ?? false) === true) {
+        // The same truthiness as TypeRegistry's, which makes the field translatable.
+        if ((bool) ($config['translatable'] ?? false)) {
             throw new \LogicException('A tags field cannot be translatable; keep one list for every language.');
         }
         foreach (['max', 'maxLength'] as $option) {
@@ -254,6 +261,20 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
                 throw new \LogicException('Tags field option "options" must be a list of texts.');
             }
         }
+    }
+
+    /**
+     * A tag in Unicode NFC ("Ü" as one character, as fields.js writes it), so the same word typed
+     * on another system is the same tag; as it is without the intl extension.
+     */
+    private static function nfc(string $tag): string
+    {
+        if ($tag === '' || !class_exists(\Normalizer::class)) {
+            return $tag;
+        }
+        $normal = \Normalizer::normalize($tag, \Normalizer::FORM_C);
+
+        return is_string($normal) ? $normal : $tag;
     }
 
     /** @param array<string, mixed> $config */

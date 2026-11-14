@@ -121,6 +121,7 @@ final class AssetFieldTypeTest extends TestCase
         $this->assertSame('a/b.png', $t->fromStorage('a/b.png'));
         $json = $t->toStorage(['x.png', 'y.png']);
         $this->assertSame(['x.png', 'y.png'], $t->fromStorage($json));
+        $this->assertNull($t->toStorage([]), 'an empty list is no value, so "required" refuses it (0.77)');
     }
 
     public function test_render_editor_emits_file_input_and_existing_remove(): void

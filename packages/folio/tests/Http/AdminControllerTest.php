@@ -620,7 +620,7 @@ final class AdminControllerTest extends TestCase
         $this->assertSame('/folio/page', $res->getHeaderLine('Location'));
         $this->assertNull($this->dm->findType('page', 'p1'));
         $this->assertSame('["p2"]', $this->dm->findType('tag', 't1')?->get('pages'));
-        $this->assertSame('[]', $this->dm->findType('tag', 't2')?->get('pages'));
+        $this->assertNull($this->dm->findType('tag', 't2')?->get('pages'));
         $this->assertSame([], $session->flashes);
     }
 
@@ -717,7 +717,7 @@ final class AdminControllerTest extends TestCase
         $this->assertSame('/folio/page?q=one&page=3', $res->getHeaderLine('Location'));
         $this->assertNull($this->dm->findType('page', 'p1'));
         $this->assertNull($this->dm->findType('page', 'p2'));
-        $this->assertSame('[]', $this->dm->findType('tag', 't1')?->get('pages'));
+        $this->assertNull($this->dm->findType('tag', 't1')?->get('pages'));
         $this->assertSame('Delete: done (2)', $session->flashes['success'] ?? null);
     }
 

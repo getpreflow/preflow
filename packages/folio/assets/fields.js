@@ -685,8 +685,10 @@
         return input ? input.value : '';
     }
 
+    // Trimmed, without control characters, in Unicode NFC (as TagsFieldType normalises it).
     function cleanTag(text) {
-        return String(text == null ? '' : text).replace(/[\u0000-\u001F\u007F-\u009F]+/g, '').trim();
+        var tag = String(text == null ? '' : text).replace(/[\u0000-\u001F\u007F-\u009F]+/g, '').trim();
+        return typeof tag.normalize === 'function' ? tag.normalize('NFC') : tag;
     }
 
     function initTags(field) {
@@ -707,23 +709,26 @@
         changed(tagParts(field).plain);
     }
 
-    /** Adds each of $texts; true when all were taken (or were there already). */
+    /**
+     * Adds each of $texts (a duplicate, case ignored, is dropped quietly); returns the ones refused
+     * (over the count or the length), the reason announced.
+     */
     function addTags(field, texts) {
         var parts = tagParts(field);
-        if (!parts.list || !parts.template) { return false; }
+        if (!parts.list || !parts.template) { return texts.map(cleanTag).filter(Boolean); }
         var max = parseInt(field.getAttribute('data-max'), 10) || 20;
         var maxLength = parseInt(field.getAttribute('data-max-length'), 10) || 40;
-        var all = true;
+        var refused = [];
         texts.forEach(function (raw) {
             var tag = cleanTag(raw);
             if (tag === '') { return; }
-            var fold = tag.toLocaleLowerCase();
+            var fold = tag.toLowerCase();
             var chips = tagChips(field);
-            if (chips.some(function (c) { return chipText(c).toLocaleLowerCase() === fold; })) { return; }
-            if (chips.length >= max) { announce(tagText(field, 'too-many', { max: max })); all = false; return; }
-            if (Array.from(tag).length > maxLength) { announce(tagText(field, 'too-long', { max: maxLength })); all = false; return; }
+            if (chips.some(function (c) { return chipText(c).toLowerCase() === fold; })) { return; }
+            if (chips.length >= max) { announce(tagText(field, 'too-many', { max: max })); refused.push(tag); return; }
+            if (Array.from(tag).length > maxLength) { announce(tagText(field, 'too-long', { max: maxLength })); refused.push(tag); return; }
             var source = parts.template.content ? parts.template.content.firstElementChild : parts.template.children[0];
-            if (!source) { all = false; return; }
+            if (!source) { refused.push(tag); return; }
             var chip = source.cloneNode(true);
             var text = chip.querySelector('.folio-tag-text');
             if (text) { text.textContent = tag; }
@@ -740,14 +745,26 @@
             tagEdited(field);
             announce(tagText(field, 'added', { tag: tag }));
         });
-        return all;
+        return refused;
     }
 
-    /** Adds what the input holds; the text stays when a tag was refused. */
+    /** Adds what the input holds; what was refused stays in it to edit. */
     function commitTags(field) {
         var input = tagParts(field).input;
-        if (!input || cleanTag(input.value) === '') { if (input) { input.value = ''; } return; }
-        if (addTags(field, input.value.split(','))) { input.value = ''; }
+        if (!input) { return; }
+        input.value = cleanTag(input.value) === '' ? '' : addTags(field, input.value.split(',')).join(', ');
+    }
+
+    // Saving (a submit, ⌘S, leaving with autosave's "folio:save-now") adds the text still being typed
+    // in the form's tags fields first, so it is saved with them.
+    function onTagsSave(e) {
+        var form = e.target;
+        if (!form || form.tagName !== 'FORM') { return; }
+        document.querySelectorAll('[data-folio-tags]').forEach(function (field) {
+            var plain = tagParts(field).plain;
+            var owner = plain ? (plain.form || closest(plain, 'form')) : closest(field, 'form');
+            if (owner === form) { commitTags(field); }
+        });
     }
 
     function removeTag(field, chip, focusNext) {
@@ -767,7 +784,7 @@
     function onTagsKeydown(e) {
         var input = closest(e.target, '[data-folio-tags-input]');
         var field = tagsOf(input);
-        if (!input || !field) { return; }
+        if (!input || !field || e.isComposing || e.keyCode === 229) { return; } // an IME is composing: its keys are its own
         if (e.key === 'Enter' || e.key === ',') {
             e.preventDefault(); // never the record form's implicit submit, nor the comma in the text
             commitTags(field);
@@ -780,16 +797,19 @@
         }
     }
 
-    // A comma that arrives without its key (a phone keyboard, autocomplete): what stands before it is added.
+    // A comma that arrives without its key (a phone keyboard, autocomplete): what stands before it is
+    // added; the input keeps what was refused and the text after the last comma.
     function onTagsInput(e) {
         var input = closest(e.target, '[data-folio-tags-input]');
         var field = tagsOf(input);
-        if (!input || !field || input.value.indexOf(',') < 0) { return; }
+        if (!input || !field || e.isComposing || input.value.indexOf(',') < 0) { return; }
         var pieces = input.value.split(',');
-        var rest = pieces.pop();
-        input.value = addTags(field, pieces) ? rest.replace(/^\s+/, '') : input.value;
+        var rest = pieces.pop().replace(/^\s+/, '');
+        input.value = addTags(field, pieces).concat(rest === '' ? [] : [rest]).join(', ');
     }
 
+    // A paste with commas or line breaks: the input's text with the paste in place of the selection
+    // (at the caret) is added part by part; what was refused stays in the input.
     function onTagsPaste(e) {
         var input = closest(e.target, '[data-folio-tags-input]');
         var field = tagsOf(input);
@@ -797,8 +817,11 @@
         var text = field && data && typeof data.getData === 'function' ? String(data.getData('text') || '') : '';
         if (!/[,\n]/.test(text)) { return; }
         e.preventDefault();
-        addTags(field, (input.value + text).split(/[,\n]/));
-        input.value = '';
+        var value = String(input.value || '');
+        var start = typeof input.selectionStart === 'number' ? input.selectionStart : value.length;
+        var end = typeof input.selectionEnd === 'number' ? input.selectionEnd : start;
+        var combined = value.slice(0, start) + text + value.slice(end);
+        input.value = addTags(field, combined.split(/[,\n]/)).join(', ');
     }
 
     // Leaving the input with text in it adds that text.
@@ -1021,6 +1044,9 @@
         document.addEventListener('paste', onTagsPaste);
         document.addEventListener('change', onTagsChange);
         document.addEventListener('click', onTagsClick);
+        // Capture: before htmx (or the browser) sends the form.
+        document.addEventListener('submit', onTagsSave, true);
+        document.addEventListener('folio:save-now', onTagsSave, true);
         // Capture phase: Escape in a relation search closes its results before the editor's own Escape
         // (the side sheet) sees it, and marks it handled: one Esc closes one layer.
         document.addEventListener('keydown', onRelationKeydown, true);

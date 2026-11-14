@@ -191,3 +191,79 @@ test('a second init (Cancel, htmx) changes nothing', () => {
     p.w.Folio.initFields(p.doc);
     assert.deepEqual(posted(p), ['uses[]=Folio']);
 });
+
+test('a submit adds the text still in the input before the form goes', () => {
+    const p = page(['Folio']);
+    p.add.value = 'late';
+    p.form.requestSubmit();
+    assert.deepEqual(chips(p), ['Folio', 'late']);
+    assert.equal(p.add.value, '');
+    assert.equal(p.form.sent.length, 1, 'the form is still sent');
+    assert.deepEqual(posted(p), ['uses[]=Folio', 'uses[]=late']);
+});
+
+test('autosave\'s save-now (⌘S, leaving) adds the typed text first', () => {
+    const p = page([]);
+    p.add.value = 'pending';
+    p.form.dispatchEvent(new p.w.CustomEvent('folio:save-now'));
+    assert.deepEqual(chips(p), ['pending']);
+});
+
+test('keys while an IME composes add nothing', () => {
+    const p = page([]);
+    p.add.value = 'にほん';
+    for (const init of [{ isComposing: true }, { keyCode: 229 }]) {
+        const e = new p.w.Event('keydown', { bubbles: true, cancelable: true });
+        Object.defineProperty(e, 'key', { value: 'Enter' });
+        Object.entries(init).forEach(([k, v]) => Object.defineProperty(e, k, { value: v }));
+        p.add.dispatchEvent(e);
+        assert.equal(e.defaultPrevented, false);
+    }
+    assert.deepEqual(chips(p), []);
+    assert.equal(p.add.value, 'にほん');
+});
+
+test('a paste goes where the caret is, in place of the selection', () => {
+    const p = page([]);
+    p.add.value = 'ab';
+    p.add.selectionStart = 1;
+    p.add.selectionEnd = 1;
+    const e = new p.w.Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'clipboardData', { value: { getData: () => 'X, Y' } });
+    p.add.dispatchEvent(e);
+    assert.deepEqual(chips(p), ['aX', 'Yb']);
+
+    const q = page([]);
+    q.add.value = 'gone';
+    q.add.selectionStart = 0;
+    q.add.selectionEnd = 4;
+    const f = new q.w.Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(f, 'clipboardData', { value: { getData: () => 'c, d' } });
+    q.add.dispatchEvent(f);
+    assert.deepEqual(chips(q), ['c', 'd']);
+});
+
+test('what a paste or a typed comma could not add stays in the input', () => {
+    const p = page([], { max: 2 });
+    const e = new p.w.Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'clipboardData', { value: { getData: () => 'a, b, c' } });
+    p.add.dispatchEvent(e);
+    assert.deepEqual(chips(p), ['a', 'b']);
+    assert.equal(p.add.value, 'c');
+
+    const q = page([], { maxLength: 5 });
+    q.add.value = 'toolongtag, ok, ne';
+    q.add.dispatchEvent(new q.w.Event('input', { bubbles: true }));
+    assert.deepEqual(chips(q), ['ok']);
+    assert.equal(q.add.value, 'toolongtag, ne');
+});
+
+test('a decomposed umlaut is the same tag (NFC), whatever its case', () => {
+    const p = page(['Übersetzung']);
+    p.add.value = 'übersetzung';
+    key(p, 'Enter');
+    assert.deepEqual(chips(p), ['Übersetzung']);
+    p.add.value = 'März';
+    key(p, 'Enter');
+    assert.equal(chips(p)[1], 'März', 'stored composed');
+});
