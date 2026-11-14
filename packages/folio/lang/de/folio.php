@@ -825,6 +825,11 @@ return [
     ],
     'cache' => [
         'intro' => 'Jeder Cache baut sich bei der nächsten Anfrage neu auf. Leeren ist unbedenklich; die erste Seite danach lädt langsamer.',
+        'in_files' => 'in :count Datei|in :count Dateien',
+        'everything_else' => 'Alles andere',
+        'confirm_all' => 'Alle Caches leeren?',
+        'confirm_all_message' => ':size :files. Jeder Cache baut sich bei der nächsten Anfrage neu auf; die erste Seite danach lädt langsamer.',
+        'opcache_intro' => 'Der kompilierte Code von PHP. Setze ihn zurück, wenn du Dateien von Hand ausgeliefert hast; der Server baut ihn bei der nächsten Anfrage neu auf.',
         'clear_all' => 'Alle leeren',
         'cache' => 'Cache',
         'files' => 'Dateien',

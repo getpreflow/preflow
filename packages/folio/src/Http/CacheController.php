@@ -50,22 +50,49 @@ final class CacheController
 
     public function index(ServerRequestInterface $request): ResponseInterface
     {
+        $usage = CacheUsage::of($this->caches) ?? ['rows' => [], 'entries' => 0, 'bytes' => 0];
+        $total = $usage['bytes'];
+        $parts = CacheUsage::segments($usage['rows'], $total);
+
+        // Each cache's colour in the bar and in its row: its place among the largest (1 = biggest).
+        $place = [];
+        foreach ($parts['segments'] as $i => $segment) {
+            $place[$segment['source']->key()] = $i + 1;
+        }
+        $largest = max([0, ...array_column($usage['rows'], 'bytes')]);
         $caches = [];
-        foreach ($this->caches->all() as $source) {
-            $stats = $source->stats();
+        foreach ($usage['rows'] as $row) {
             $caches[] = [
-                'key' => $source->key(),
-                'label' => self::label($source),
-                'entries' => $stats->entries,
-                'size' => Bytes::human($stats->bytes),
-                'note' => $stats->note,
+                'key' => $row['source']->key(),
+                'label' => self::label($row['source']),
+                'entries' => $row['entries'],
+                'size' => Bytes::human($row['bytes']),
+                'empty' => $row['bytes'] <= 0,
+                'note' => $row['note'] !== '' ? $row['note'] : null,
+                'width' => $row['bytes'] > 0 ? self::percent(max($row['bytes'] / $largest * 100, 1.5)) : '0.0',
+                'stack' => $place[$row['source']->key()] ?? 0,
             ];
+        }
+        $files = FolioText::choice('folio.cache.in_files', $usage['entries'], ['count' => (new AdminFormat())->number($usage['entries'])]);
+        $stack = [];
+        $names = [];
+        foreach ($parts['segments'] as $i => $segment) {
+            $label = self::label($segment['source']);
+            $stack[] = ['label' => $label, 'size' => Bytes::human($segment['bytes']), 'width' => self::percent($segment['percent']), 'n' => $i + 1];
+            $names[] = $label . ' ' . Bytes::human($segment['bytes']);
+        }
+        if ($parts['restBytes'] > 0) {
+            $stack[] = ['label' => FolioText::get('folio.cache.everything_else'), 'size' => Bytes::human($parts['restBytes']), 'width' => self::percent($parts['rest']), 'n' => 0];
+            $names[] = FolioText::get('folio.cache.everything_else') . ' ' . Bytes::human($parts['restBytes']);
         }
         $opcache = $this->opcache->stats();
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/cache.twig', [
             'prefix' => $this->prefix,
             'caches' => $caches,
+            'total' => ['size' => Bytes::human($total), 'files' => $files, 'empty' => $total <= 0],
+            'stack' => $stack,
+            'stack_label' => implode(', ', $names),
             'opcache' => $opcache === null ? null : [
                 'memory_used' => Bytes::human($opcache['memory_used']),
                 'memory_free' => Bytes::human($opcache['memory_free']),
@@ -77,6 +104,12 @@ final class CacheController
         ]));
     }
 
+    /** A share in percent with one decimal and a dot, whatever the interface language (admin.js turns it into the bar's width). */
+    private static function percent(float $value): string
+    {
+        return number_format(min(100.0, max(0.0, $value)), 1, '.', '');
+    }
+
     /** POST {prefix}/cache/pages/refresh: url=<a path or an address of the site>. */
     public function refreshPage(ServerRequestInterface $request): ResponseInterface
     {
@@ -85,6 +118,10 @@ final class CacheController
         }
         $body = (array) $request->getParsedBody();
         $url = is_string($body['url'] ?? null) ? trim($body['url']) : '';
+        // The field shows the leading "/" as its prefix, so a path arrives without it (or with it, typed anyway).
+        if ($url !== '' && preg_match('#^[a-z][a-z0-9+.-]*://#i', $url) !== 1) {
+            $url = '/' . ltrim($url, '/');
+        }
         try {
             $forgotten = $this->pages->refresh($url);
             self::flash($request, 'success', FolioText::get('folio.cache.refreshed', ['url' => $url, 'count' => $forgotten]));

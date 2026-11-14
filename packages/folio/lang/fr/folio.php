@@ -825,6 +825,11 @@ return [
     ],
     'cache' => [
         'intro' => 'Chaque cache se reconstruit à la requête suivante. En vider un est sans risque ; la première page ensuite est plus lente.',
+        'in_files' => '{0} dans :count fichier|{1} dans :count fichier|[2,*] dans :count fichiers',
+        'everything_else' => 'Tout le reste',
+        'confirm_all' => 'Vider tous les caches ?',
+        'confirm_all_message' => ':size :files. Chaque cache se reconstruit à la requête suivante ; la première page ensuite est plus lente.',
+        'opcache_intro' => 'Le code compilé de PHP. Réinitialisez-le après avoir déployé des fichiers à la main ; le serveur le reconstruit à la requête suivante.',
         'clear_all' => 'Tout vider',
         'cache' => 'Cache',
         'files' => 'Fichiers',

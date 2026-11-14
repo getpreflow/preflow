@@ -15,6 +15,7 @@ use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Http\AdminNav;
 use Preflow\Folio\Http\CacheController;
+use Preflow\Folio\Http\CacheUsage;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Publisher;
 
@@ -296,27 +297,20 @@ final class Dashboard
         if ($this->caches === null || !$can('folio.cache')) {
             return null;
         }
-        $total = 0;
-        $largest = null;
-        $largestBytes = -1;
-        try {
-            $sources = $this->caches->all();
-        } catch (\Throwable) {
+        $usage = CacheUsage::of($this->caches);
+        if ($usage === null || $usage['bytes'] <= 0) {
             return null;
         }
-        foreach ($sources as $source) {
-            try {
-                $bytes = $source->stats()->bytes;
-            } catch (\Throwable) {
-                continue;
-            }
-            $total += max(0, $bytes);
-            if ($bytes > $largestBytes) {
-                $largestBytes = $bytes;
-                $largest = $source;
+        $total = $usage['bytes'];
+        $largest = null;
+        $largestBytes = -1;
+        foreach ($usage['rows'] as $row) {
+            if ($row['bytes'] > $largestBytes) {
+                $largestBytes = $row['bytes'];
+                $largest = $row['source'];
             }
         }
-        if ($largest === null || $total <= 0) {
+        if ($largest === null) {
             return null;
         }
 

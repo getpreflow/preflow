@@ -1071,11 +1071,12 @@
         if (!src.hasAttribute('data-confirm')) { return; }
         e.preventDefault();
         var submitter = e.submitter || null;
-        // data-confirm-item: the one thing it is about (a redirect's address, in mono); data-confirm-cancel and
+        // data-confirm-item: the one thing it is about (a redirect's address, in mono); data-confirm-message: a line under the title; data-confirm-cancel and
         // data-confirm-icon name the safe button ("Keep") and the icon.
         var item = src.getAttribute('data-confirm-item');
         folioConfirm({
             title: src.getAttribute('data-confirm'),
+            message: src.getAttribute('data-confirm-message') || '',
             items: item ? [item] : selectedLabels(src),
             mono: !!item,
             confirm: confirmLabel(src, submitter),
@@ -2515,6 +2516,18 @@
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
         initNeedsChange(root);
+        applyShares(root);
+    }
+
+    // Bars and bar segments (Settings → Cache): data-folio-share="71.2" is a share in percent, set as --w
+    // here because the strict CSP refuses style attributes.
+    function applyShares(root) {
+        var items = root.querySelectorAll ? Array.prototype.slice.call(root.querySelectorAll('[data-folio-share]')) : [];
+        if (root.hasAttribute && root.hasAttribute('data-folio-share')) { items.push(root); }
+        items.forEach(function (el) {
+            var n = parseFloat(el.getAttribute('data-folio-share'));
+            if (isFinite(n)) { el.style.setProperty('--w', Math.min(100, Math.max(0, n)) + '%'); }
+        });
     }
 
     // Share-preview link: copy the URL (select it when the clipboard is unavailable).
@@ -3976,6 +3989,7 @@
         initNavSections();
         initUserMenus();
         initShellRail();
+        applyShares(document);
         // After the menus' own keys (Escape, arrows), which mark their events handled.
         initShortcuts();
         initListShortcuts();

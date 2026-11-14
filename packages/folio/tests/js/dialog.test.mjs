@@ -285,6 +285,38 @@ test('data-confirm holds the submit and resubmits the same submitter once confir
     assert.deepEqual(f.sent, [del]);
 });
 
+test('data-confirm-message puts a line under the title', async () => {
+    const { w } = admin();
+    const f = form(w, { action: '/folio/cache/clear', 'data-confirm': 'Clear every cache?', 'data-confirm-message': '9.0 MB in 489 files.', 'data-confirm-label': 'Clear all', 'data-confirm-tone': 'danger' });
+    const go = button(w, f, 'Clear all…', {});
+
+    submitBy(w, f, go);
+    assert.equal(part(w, 'title').textContent, 'Clear every cache?');
+    assert.equal(part(w, 'message').textContent, '9.0 MB in 489 files.');
+    assert.equal(part(w, 'confirm').textContent, 'Clear all');
+    part(w, 'cancel').click();
+    await settle();
+    assert.equal(f.sent, undefined, 'cancelled: nothing sent');
+});
+
+test('data-folio-share becomes --w (the CSP refuses style attributes), clamped to 0-100', () => {
+    const { w } = admin();
+    const box = w.document.body.appendChild(w.document.createElement('div'));
+    const mk = (share) => {
+        const s = box.appendChild(w.document.createElement('span'));
+        s.setAttribute('data-folio-share', share);
+        s.style = { props: {}, setProperty(k, v) { this.props[k] = v; } };
+        return s;
+    };
+    const a = mk('71.2');
+    const b = mk('140');
+    const c = mk('nope');
+    w.document.dispatchEvent(new w.CustomEvent('htmx:load', { detail: { elt: box } }));
+    assert.equal(a.style.props['--w'], '71.2%');
+    assert.equal(b.style.props['--w'], '100%');
+    assert.equal(c.style.props['--w'], undefined, 'not a number: left alone');
+});
+
 test('data-confirm on a bulk button wins over the form; data-confirm-tone and -label', async () => {
     const { w } = admin();
     const f = form(w, { action: '/folio/news/_bulk', 'data-confirm': 'Form question' });

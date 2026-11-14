@@ -237,8 +237,8 @@ final class PageCacheAppTest extends TestCase
         $screen = (string) $this->get('/folio/cache')->getBody();
         $this->assertStringContainsString('Page cache (finished pages for visitors)', $screen);
         $this->assertStringContainsString('<form method="post" action="/folio/cache/pages/refresh"', $screen);
-        $this->assertStringContainsString('<form method="post" action="/folio/cache/pages/refresh-all">', $screen);
-        $this->assertStringContainsString('Refresh a page', $screen);
+        $this->assertStringContainsString('<form method="post" action="/folio/cache/pages/refresh-all" class="folio-cache-refresh-all">', $screen);
+        $this->assertStringContainsString('Refresh page', $screen);
         $this->assertStringContainsString('Refresh everything', $screen);
 
         // One page, by its path: forgotten, and rebuilt behind the response.

@@ -3417,13 +3417,51 @@ a.folio-asset-use-row:hover { background: var(--c-row-hover); color: var(--c-tex
 .folio-panel-body { font-size: 13.5px; }
 
 /* ---- Settings → Cache ---- */
-.folio-cache-opcache { margin-top: 28px; }
-.folio-cache-opcache h2 { margin: 0; }
-.folio-cache-pages { margin-top: 28px; }
-.folio-cache-pages h2 { margin: 0; }
+.folio-cache-total { display: flex; flex-direction: column; gap: 10px; padding: 18px; margin-bottom: 20px; }
+.folio-cache-total .folio-help { margin: 0; }
+.folio-cache-total-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; }
+.folio-cache-total-size { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.folio-cache-total-files { font-size: 13px; color: var(--c-text-subtle); }
+/* The bar: one segment per larger cache, widths from --w; the places 1..5 take the five hues in order of size,
+   the rest is neutral. The same classes colour a row's size bar and the legend's swatches. */
+.folio-stack { display: flex; gap: 2px; height: 10px; border-radius: 999px; overflow: hidden; background: var(--c-row-hover); }
+.folio-stack > span { --w: 0%; flex: 0 1 var(--w); min-width: 3px; } /* --w: the inline style's share; 0 until it is set */
+.folio-stack-1 { background: var(--c-type-page); }
+.folio-stack-2 { background: var(--c-type-reference); }
+.folio-stack-3 { background: var(--c-type-asset); }
+.folio-stack-4 { background: var(--c-type-member); }
+.folio-stack-5 { background: var(--c-type-shop); }
+.folio-stack-rest { background: var(--c-text-subtle); }
+.folio-stack-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--c-text-muted); }
+.folio-stack-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.folio-stack-swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.folio-cache-table { min-width: 640px; }
+.folio-cache-table td strong { font-weight: 500; }
+.folio-cache-table td code { display: block; font-size: 11px; color: var(--c-text-subtle); background: transparent; padding: 0; }
+.folio-cache-table .folio-cache-note { display: block; margin-top: 2px; }
+.folio-cache-table .folio-cache-sizecol { width: 220px; }
+.folio-cache-num { width: 80px; text-align: right; font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+th.folio-cache-num { font-family: inherit; font-size: inherit; }
+.folio-cache-size { display: flex; align-items: center; gap: 10px; }
+.folio-cache-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--c-row-hover); overflow: hidden; }
+.folio-cache-bar > span { --w: 0%; display: block; height: 100%; width: var(--w); border-radius: 999px; }
+.folio-cache-bytes { width: 64px; text-align: right; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.folio-cache-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 16px; margin-top: 24px; }
+.folio-cache-card { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px; }
+.folio-cache-card h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.folio-cache-card .folio-help { margin: 0; }
+.folio-cache-card > form { width: 100%; margin: 0; }
 .folio-cache-refresh { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.folio-cache-refresh input[type="text"] { flex: 1 1 16rem; min-width: 0; }
-.folio-cache-refresh .folio-help { flex-basis: 100%; margin: 0; }
+.folio-cache-refresh .folio-cache-affix { flex: 1 1 12rem; min-width: 0; }
+.folio-cache-affix > input { flex: 1; min-width: 0; width: auto; min-height: 0; border: 0 !important; border-radius: 0; background: transparent; box-shadow: none !important; padding-left: 0; font-family: var(--font-mono); font-size: 13px; }
+.folio-cache-refresh .folio-help { flex-basis: 100%; }
+.folio-cache-refresh-all { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.folio-cache-link { padding-left: 0; color: var(--c-accent-text); }
+.folio-cache-link:hover { color: var(--c-accent-text); background: transparent; text-decoration: underline; }
+.folio-cache-facts { display: grid; gap: 6px; width: 100%; margin: 0; }
+.folio-cache-facts > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.folio-cache-facts dt { color: var(--c-text-muted); }
+.folio-cache-facts dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Settings → SEO audit */
 .folio-audit-summary { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 16px 0; }

@@ -76,7 +76,8 @@ final class CacheScreenTest extends TestCase
         $this->assertSame(200, $res->getStatusCode());
         $this->assertMatchesRegularExpression('#<h1>\s*Cache\s*</h1>#', $body);
         $this->assertStringContainsString('Folio extensions', $body);
-        $this->assertMatchesRegularExpression('#Blocks.*?<td>1</td>\s*<td>' . preg_quote(Bytes::human(2000), '#') . '</td>#s', $body);
+        // A row: its files cell, then its size cell (the bar, then the human size).
+        $this->assertMatchesRegularExpression('#Blocks.*?<td class="folio-cache-num">1</td>\s*<td class="folio-cache-sizecell">.*?<span class="folio-cache-bytes">' . preg_quote(Bytes::human(2000), '#') . '</span>#s', $body);
         $this->assertStringContainsString('<form method="post" action="/folio/cache/clear">', $body);
         $this->assertStringContainsString('<input type="hidden" name="key" value="blocks">', $body);
         $this->assertStringContainsString('<input type="hidden" name="key" value="folio.extensions">', $body);
@@ -86,14 +87,67 @@ final class CacheScreenTest extends TestCase
         // OPcache: memory, scripts, hit rate and the reset form.
         $this->assertStringContainsString(Bytes::human(3 * 1024 * 1024), $body);
         $this->assertStringContainsString(Bytes::human(5 * 1024 * 1024), $body);
-        $this->assertStringContainsString('<td>42</td>', $body);
-        $this->assertStringContainsString('97.5%', $body);
+        $this->assertMatchesRegularExpression('#<dt>Scripts</dt><dd>42</dd>#', $body);
+        $this->assertMatchesRegularExpression('#<dt>Hit rate</dt><dd>97\.5%</dd>#', $body);
         $this->assertStringContainsString('<form method="post" action="/folio/cache/opcache-reset">', $body);
         $this->assertStringContainsString('Reset OPcache', $body);
         $this->assertStringNotContainsString('OPcache is off', $body);
         // The sidebar item under Settings, always there.
         $this->assertMatchesRegularExpression('#<span class="folio-nav-label">Settings</span>.*?<a href="/folio/cache" class="active"#s', $body);
         $this->assertStringContainsString('href="/folio/cache"', (string) $this->get('/folio')->getBody());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_total_bar_and_row_bars_follow_the_bytes(): void
+    {
+        $this->write('storage/cache/blocks.cache', str_repeat('b', 9000));
+        $this->write('storage/cache/folio-extensions.cache', str_repeat('e', 1000));
+
+        $body = (string) $this->request('GET', '/folio/cache', opcache: $this->opcache(true))->getBody();
+
+        $total = 10000;
+        $this->assertMatchesRegularExpression('#<strong id="folio-cache-total" class="folio-cache-total-size">' . preg_quote(Bytes::human($total), '#') . '</strong>\s*<span class="folio-cache-total-files">in 2 files</span>#', $body);
+        // The biggest cache is segment 1 of the bar; widths as data-folio-share (CSP: no style attribute), the colour by class.
+        preg_match('#<div class="folio-stack" role="img" aria-label="([^"]*)">(.*?)</div>#s', $body, $bar);
+        $this->assertStringContainsString('Blocks ' . Bytes::human(9000), $bar[1]);
+        $this->assertMatchesRegularExpression('#\s*<span class="folio-stack-1" data-folio-share="[0-9.]+"></span>#', $bar[2]);
+        $this->assertStringNotContainsString('style=', $body, 'the strict CSP refuses style attributes: widths go through data-folio-share');
+        $this->assertMatchesRegularExpression('#<span class="folio-stack-swatch folio-stack-1" aria-hidden="true"></span>Blocks#', $body);
+        // The row's bar: the largest cache is full width, in its segment's colour.
+        $this->assertMatchesRegularExpression('#Blocks.*?<span class="folio-cache-bar" aria-hidden="true"><span class="folio-stack-1" data-folio-share="100\.0"></span>#s', $body);
+        // Clear all asks first, with the total as its message.
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/cache/clear" data-confirm="Clear every cache\?" data-confirm-message="' . preg_quote(Bytes::human($total), '#') . ' in \d+ files?\.[^"]*" data-confirm-label="Clear all" data-confirm-tone="danger">#', $body);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_empty_cache_has_a_disabled_clear_button(): void
+    {
+        $this->write('storage/cache/blocks.cache', str_repeat('b', 2000));
+
+        $body = (string) $this->request('GET', '/folio/cache', opcache: $this->opcache(true))->getBody();
+
+        preg_match_all('#<tr>.*?</tr>#s', $body, $rows);
+        $byKey = [];
+        foreach ($rows[0] as $row) {
+            if (preg_match('#name="key" value="([^"]+)"#', $row, $m) === 1) {
+                $byKey[$m[1]] = $row;
+            }
+        }
+        $this->assertArrayHasKey('blocks', $byKey);
+        $this->assertDoesNotMatchRegularExpression('#<button[^>]*\sdisabled#', $byKey['blocks']);
+        $this->assertMatchesRegularExpression('#<button type="submit" class="btn btn-ghost btn-sm" aria-label="Clear cache Folio extensions" disabled>#', $byKey['folio.extensions']);
+        $this->assertStringContainsString('<span class="folio-cache-bytes">0 B</span>', $byKey['folio.extensions']);
+        $this->assertStringContainsString('<span class="folio-stack-rest" data-folio-share="0.0"></span>', $byKey['folio.extensions']);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_nothing_cached_shows_zero_without_a_bar(): void
+    {
+        $body = (string) $this->request('GET', '/folio/cache', opcache: $this->opcache(true))->getBody();
+
+        $this->assertStringContainsString('0 B</strong>', $body);
+        $this->assertStringContainsString('in 0 files', $body);
+        $this->assertStringNotContainsString('class="folio-stack"', $body);
     }
 
     #[RunInSeparateProcess]
@@ -227,9 +281,15 @@ final class CacheScreenTest extends TestCase
         $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true];\n");
         $this->signIn();
 
-        $this->assertStringContainsString('<section class="folio-cache-pages">', (string) $this->send('GET', '/folio/cache')->getBody(), 'shown with the cache on');
+        $this->assertStringContainsString('<section class="folio-panel folio-cache-card folio-cache-pages" aria-labelledby="folio-cache-pages-title">', (string) $this->send('GET', '/folio/cache')->getBody(), 'shown with the cache on');
         $this->send('POST', '/folio/cache/pages/refresh', ['url' => '/about']);
         $this->assertStringContainsString('/about refreshed (0 cached copies forgotten); it is rebuilt now.', (string) $this->send('GET', '/folio/cache')->getBody());
+        // The field shows the "/" as its prefix: a path typed without it is the same page.
+        $this->send('POST', '/folio/cache/pages/refresh', ['url' => 'about']);
+        $this->assertStringContainsString('/about refreshed (0 cached copies forgotten)', (string) $this->send('GET', '/folio/cache')->getBody());
+        $screen = (string) $this->send('GET', '/folio/cache')->getBody();
+        $this->assertMatchesRegularExpression('#<span class="folio-input-prefix" aria-hidden="true">/</span><input type="text" id="folio-cache-refresh-url" name="url" placeholder="about"#', $screen);
+        $this->assertStringContainsString('Refresh everything in the background', $screen);
         $this->send('POST', '/folio/cache/pages/refresh', ['url' => 'https://elsewhere.test/about']);
         $this->assertStringContainsString('Not an address of this site: https://elsewhere.test/about', (string) $this->send('GET', '/folio/cache')->getBody());
         $this->send('POST', '/folio/cache/pages/refresh-all');

@@ -1,30 +1,45 @@
 {% extends "@folio/admin/_layout.twig" %}
+{# Settings → Cache (CacheController::index()): the total with a stacked bar by cache, the table with
+   size bars, and the page cache and OPcache as two cards. Every value is data: the controller sends
+   each bar segment's share (data-folio-share, in percent: admin.js sets it as --w, since the CSP refuses style attributes) and its place among the largest (stack 1..5, 0 = everything else); admin.css
+   gives the places their colours, so no type key, hue or token is named here. #}
 {% block title %}Folio — {{ t('folio.nav.cache') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.cache') }}{% endblock %}
 {% block subtitle %}{{ t('folio.cache.intro') }}{% endblock %}
+{% block actions %}
+    <form method="post" action="{{ prefix }}/cache/clear" data-confirm="{{ t('folio.cache.confirm_all') }}" data-confirm-message="{{ t('folio.cache.confirm_all_message', {size: total.size, files: total.files}) }}" data-confirm-label="{{ t('folio.cache.clear_all') }}" data-confirm-tone="danger">
+        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+        <input type="hidden" name="all" value="1">
+        <button type="submit" class="btn btn-secondary"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-trash"></use></svg>{{ t('folio.cache.clear_all') }}…</button>
+    </form>
+{% endblock %}
 {% block content %}
-    <div class="folio-list-toolbar">
-        <form method="post" action="{{ prefix }}/cache/clear">
-            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-            <input type="hidden" name="all" value="1">
-            <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.cache.clear_all') }}</button>
-        </form>
-    </div>
-    <p class="folio-help">{{ t('folio.cache.clear_all_note') }}</p>
+    <section class="folio-panel folio-cache-total" aria-labelledby="folio-cache-total">
+        <p class="folio-cache-total-line"><strong id="folio-cache-total" class="folio-cache-total-size">{{ total.size }}</strong> <span class="folio-cache-total-files">{{ total.files }}</span></p>
+        {% if not total.empty %}
+        <div class="folio-stack" role="img" aria-label="{{ stack_label }}">
+            {% for part in stack %}<span class="{{ part.n ? 'folio-stack-' ~ part.n : 'folio-stack-rest' }}" data-folio-share="{{ part.width }}"></span>{% endfor %}
+        </div>
+        <ul class="folio-stack-legend">
+            {% for part in stack %}<li><span class="folio-stack-swatch {{ part.n ? 'folio-stack-' ~ part.n : 'folio-stack-rest' }}" aria-hidden="true"></span>{{ part.label }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        <p class="folio-help">{{ t('folio.cache.clear_all_note') }}</p>
+    </section>
     <div class="folio-table-wrap">
-    <table class="folio-table">
-        <thead><tr><th>{{ t('folio.cache.cache') }}</th><th>{{ t('folio.cache.files') }}</th><th>{{ t('folio.cache.size') }}</th><th><span class="folio-sr">{{ t('folio.common.actions') }}</span></th></tr></thead>
+    <table class="folio-table folio-cache-table">
+        <thead><tr><th>{{ t('folio.cache.cache') }}</th><th class="folio-cache-num">{{ t('folio.cache.files') }}</th><th class="folio-cache-sizecol">{{ t('folio.cache.size') }}</th><th><span class="folio-sr">{{ t('folio.common.actions') }}</span></th></tr></thead>
         <tbody>
         {% for cache in caches %}
             <tr>
-                <td><strong>{{ cache.label }}</strong> <code>{{ cache.key }}</code>{% if cache.note %}<br>{{ cache.note }}{% endif %}</td>
-                <td>{{ folio_number(cache.entries) }}</td>
-                <td>{{ cache.size }}</td>
+                <td><strong>{{ cache.label }}</strong><code>{{ cache.key }}</code>{% if cache.note %}<span class="folio-help folio-cache-note">{{ cache.note }}</span>{% endif %}</td>
+                <td class="folio-cache-num">{{ folio_number(cache.entries) }}</td>
+                <td class="folio-cache-sizecell"><span class="folio-cache-size"><span class="folio-cache-bar" aria-hidden="true"><span class="{{ cache.stack ? 'folio-stack-' ~ cache.stack : 'folio-stack-rest' }}" data-folio-share="{{ cache.width }}"></span></span><span class="folio-cache-bytes">{{ cache.size }}</span></span></td>
                 <td><div class="folio-row-actions">
                     <form method="post" action="{{ prefix }}/cache/clear">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                         <input type="hidden" name="key" value="{{ cache.key }}">
-                        <button type="submit" class="btn btn-ghost btn-sm" aria-label="{{ t('folio.cache.clear_named', {label: cache.label}) }}">{{ t('folio.cache.clear') }}</button>
+                        <button type="submit" class="btn btn-ghost btn-sm" aria-label="{{ t('folio.cache.clear_named', {label: cache.label}) }}"{% if cache.empty %} disabled{% endif %}>{{ t('folio.cache.clear') }}</button>
                     </form>
                 </div></td>
             </tr>
@@ -32,45 +47,42 @@
         </tbody>
     </table>
     </div>
+    <div class="folio-cache-cards">
     {% if pages %}
-    <section class="folio-cache-pages">
-        <div class="folio-list-toolbar">
-            <h2>{{ t('folio.cache.pages_title') }}</h2>
-            <form method="post" action="{{ prefix }}/cache/pages/refresh-all">
-                <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.cache.refresh_all') }}</button>
-            </form>
-        </div>
-        <p class="folio-help">{{ t('folio.cache.pages_intro') }} {{ t('folio.cache.refresh_all_note') }}</p>
+    <section class="folio-panel folio-cache-card folio-cache-pages" aria-labelledby="folio-cache-pages-title">
+        <h2 id="folio-cache-pages-title">{{ t('folio.cache.pages_title') }}</h2>
+        <p class="folio-help">{{ t('folio.cache.pages_intro') }}</p>
         <form method="post" action="{{ prefix }}/cache/pages/refresh" class="folio-cache-refresh">
             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-            <label for="folio-cache-refresh-url">{{ t('folio.cache.refresh_url') }}</label>
-            <input type="text" id="folio-cache-refresh-url" name="url" placeholder="/about" required aria-describedby="folio-cache-refresh-help">
-            <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.cache.refresh_page') }}</button>
+            <label class="folio-input-affix folio-cache-affix" for="folio-cache-refresh-url"><span class="folio-input-prefix" aria-hidden="true">/</span><input type="text" id="folio-cache-refresh-url" name="url" placeholder="about" aria-label="{{ t('folio.cache.refresh_url') }}" required aria-describedby="folio-cache-refresh-help"></label>
+            <button type="submit" class="btn btn-secondary">{{ t('folio.cache.refresh_page') }}</button>
             <p class="folio-help" id="folio-cache-refresh-help">{{ t('folio.cache.refresh_url_help') }}</p>
+        </form>
+        <form method="post" action="{{ prefix }}/cache/pages/refresh-all" class="folio-cache-refresh-all">
+            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+            <button type="submit" class="btn btn-ghost folio-cache-link"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-refresh"></use></svg>{{ t('folio.cache.refresh_all') }}</button>
+            <p class="folio-help">{{ t('folio.cache.refresh_all_note') }}</p>
         </form>
         {% if pages.queued > 0 %}<p class="folio-help">{{ t('folio.cache.pages_queued', {count: folio_number(pages.queued)}) }}</p>{% endif %}
     </section>
     {% endif %}
-    <section class="folio-cache-opcache">
-        <div class="folio-list-toolbar">
-            <h2>{{ t('folio.cache.opcache') }}</h2>
-            {% if opcache %}
+    <section class="folio-panel folio-cache-card folio-cache-opcache" aria-labelledby="folio-cache-opcache-title">
+        <h2 id="folio-cache-opcache-title">{{ t('folio.cache.opcache') }}</h2>
+        <p class="folio-help">{{ t('folio.cache.opcache_intro') }}</p>
+        {% if opcache %}
+            <dl class="folio-cache-facts">
+                <div><dt>{{ t('folio.cache.memory_used') }}</dt><dd>{{ opcache.memory_used }}</dd></div>
+                <div><dt>{{ t('folio.cache.memory_free') }}</dt><dd>{{ opcache.memory_free }}</dd></div>
+                <div><dt>{{ t('folio.cache.scripts') }}</dt><dd>{{ folio_number(opcache.scripts) }}</dd></div>
+                <div><dt>{{ t('folio.cache.hit_rate') }}</dt><dd>{{ folio_number(opcache.hit_rate) }}%</dd></div>
+            </dl>
             <form method="post" action="{{ prefix }}/cache/opcache-reset">
                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.cache.reset_opcache') }}</button>
+                <button type="submit" class="btn btn-secondary">{{ t('folio.cache.reset_opcache') }}</button>
             </form>
-            {% endif %}
-        </div>
-        {% if opcache %}
-            <div class="folio-table-wrap">
-            <table class="folio-table">
-                <thead><tr><th>{{ t('folio.cache.memory_used') }}</th><th>{{ t('folio.cache.memory_free') }}</th><th>{{ t('folio.cache.scripts') }}</th><th>{{ t('folio.cache.hit_rate') }}</th></tr></thead>
-                <tbody><tr><td>{{ opcache.memory_used }}</td><td>{{ opcache.memory_free }}</td><td>{{ folio_number(opcache.scripts) }}</td><td>{{ folio_number(opcache.hit_rate) }}%</td></tr></tbody>
-            </table>
-            </div>
         {% else %}
             <div class="folio-notice" role="status"><p>{{ t('folio.cache.opcache_off_web') }}</p></div>
         {% endif %}
     </section>
+    </div>
 {% endblock %}
