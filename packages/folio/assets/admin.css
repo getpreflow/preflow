@@ -1040,11 +1040,10 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   background: var(--c-surface-2); color: var(--c-text); font-size: 11px; font-weight: 500;
 }
 /* A row of small actions (buttons, a checkbox, a hint): in a table cell right-aligned, elsewhere
-   (AI run's unfinished jobs, the Translations "Save all filled" bar) left-aligned. */
+   (AI run's unfinished jobs) left-aligned. */
 .folio-row-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin: 0; }
 .folio-row-actions[hidden] { display: none; }
 .folio-row-actions > .form-error { flex-basis: 100%; margin-top: 0; }
-.folio-translations-save-all { margin-bottom: 12px; }
 .folio-table .folio-row-actions { gap: 4px; justify-content: flex-end; }
 .folio-table .folio-row-actions form { display: inline-flex; margin: 0; }
 
@@ -3463,15 +3462,72 @@ a.folio-asset-use-row:hover { background: var(--c-row-hover); color: var(--c-tex
 .folio-table-form th.folio-cell-check, .folio-table-form td.folio-cell-check { min-width: 0; width: 1%; text-align: center; white-space: nowrap; }
 .folio-table-form td.folio-cell-check .form-radio { justify-content: center; min-height: var(--h-control); margin: 0; }
 
-/* ---- Settings → Translations ---- */
-.folio-translations td { vertical-align: top; }
-.folio-translations code { word-break: break-all; }
-/* Phone width: the key and the delivered text keep a readable width and the table scrolls in its box,
-   instead of breaking the key into two-letter lines. */
-.folio-translations td:first-child { min-width: 12rem; }
-.folio-translations td:nth-child(2) { min-width: 10rem; }
-.folio-table.folio-translations .folio-row-actions { justify-content: flex-start; flex-wrap: wrap; min-width: 16rem; }
-.folio-translations .folio-row-actions :is(input[type="text"], textarea) { flex: 1 1 14rem; }
+/* ---- Settings → Translations (board Translations) ----
+   Toolbar: the group select with its label inside, the language as segmented links (codes), search,
+   "Changed only · N". The table has a fixed layout (Key 26%, Delivered 34%, Your text the rest) and a
+   minimum width: at phone width it scrolls in its box and the page stays put. A changed row (an override,
+   is-changed) or one with an unsaved edit (is-edited, admin.js) is warning-soft; the reset button sits in
+   the field. The save-all bar is the inverse .folio-bulk-bar. */
+.folio-select-inline {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: var(--h-button); padding: 0 4px 0 10px;
+  border: 1px solid var(--c-border-strong); border-radius: var(--r-sm);
+  background: var(--c-surface); color: var(--c-text-muted); font-size: 13px; white-space: nowrap;
+}
+.folio-select-inline:focus-within { box-shadow: var(--focus-ring); }
+.folio-select-inline select {
+  width: auto; min-width: 0; height: 28px; min-height: 0; padding-block: 0; padding-left: 4px; border: 0; background-color: transparent;
+  color: var(--c-text); font-size: 13px; font-weight: 500; box-shadow: none; outline: none;
+}
+/* Script hides the rows' Save buttons (the bar saves) and the toolbar's Search button (the select applies itself). */
+:is([data-translations-row-save], [data-translations-apply], [data-translations-discard])[hidden] { display: none; }
+.folio-translations-locales { flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.folio-translations-locales > a { font-family: var(--font-mono); }
+.folio-translations-locales > a:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.folio-translations-toolbar .folio-list-search input { min-height: var(--h-button); height: var(--h-button); font-size: 13px; }
+.folio-filter-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 12px;
+  border: 1px dashed var(--c-border-strong); border-radius: 999px;
+  background: transparent; color: var(--c-text-muted);
+  font-size: 12px; font-weight: 500; white-space: nowrap; text-decoration: none;
+}
+.folio-filter-chip:hover { color: var(--c-text); border-color: var(--c-text-subtle); }
+.folio-filter-chip:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.folio-filter-chip.is-on { border-style: solid; border-color: var(--c-accent); background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-translations-refused { margin: 0 0 12px; color: var(--c-danger); }
+
+.folio-table.folio-translations { table-layout: fixed; min-width: 820px; }
+.folio-translations-col-key { width: 26%; }
+.folio-translations-col-delivered { width: 34%; }
+.folio-table.folio-translations tbody td { vertical-align: top; padding-block: 12px; }
+.folio-table.folio-translations tbody td:last-child { padding-block: 8px; padding-left: 12px; }
+.folio-table.folio-translations :is(th, td):nth-child(2) { padding-inline: 12px; }
+.folio-translations-key { font-size: 12px; color: var(--c-text); overflow-wrap: anywhere; }
+.folio-translations-prefix { color: var(--c-text-subtle); }
+.folio-translations-delivered { color: var(--c-text-muted); overflow-wrap: anywhere; }
+.folio-translations-site { display: block; margin-top: 4px; }
+/* A :placeholder in the delivered text: filled in by the code, kept by every override. */
+.folio-token {
+  padding: 0 5px; border-radius: 4px;
+  background: var(--c-type-reference-soft); color: var(--c-type-reference);
+  font-size: 12px; white-space: nowrap;
+}
+.folio-translations-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0; }
+.folio-translations-row > .form-error { flex-basis: 100%; margin-top: 0; }
+.folio-translations-field { display: flex; flex: 1 1 14rem; align-items: center; gap: 6px; min-width: 0; }
+.folio-translations .folio-translations-field :is(input[type="text"], textarea) { flex: 1 1 auto; min-width: 0; }
+.folio-translations-reset { flex: none; color: var(--c-text-muted); }
+.folio-table.folio-translations tbody tr:is(.is-changed, .is-edited),
+.folio-table.folio-translations tbody tr:is(.is-changed, .is-edited):hover { background: var(--c-warning-soft); }
+.folio-translations tr:is(.is-changed, .is-edited) :is(input[type="text"], textarea) { border-color: var(--c-warning); }
+.folio-translations-save-all .btn.btn-primary,
+.folio-translations-save-all .btn.btn-primary:hover { background: var(--c-inverse-accent); color: var(--c-inverse); font-weight: 600; }
+.folio-translations-save-all strong { font-weight: 600; }
+.folio-translations-save-all .folio-bulk-count { font-weight: 450; }
+@media (max-width: 560px) {
+  .folio-translations-toolbar .folio-toolbar-fields > :is(.folio-select-inline, .folio-translations-locales, .folio-filter-chip) { flex: 0 1 auto; width: auto; }
+}
 
 /* ---- editor frame (form.twig, 0.75): back · title · languages · layout · save state · Save draft · Publish
    in the topbar; the main column (the form, or form | preview) and the side panel (_side_panel.twig). ---- */

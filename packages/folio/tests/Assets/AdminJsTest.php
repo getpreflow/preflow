@@ -271,14 +271,20 @@ final class AdminJsTest extends TestCase
         $this->assertStringNotContainsString('.style.', substr($js, $bulk, (int) strpos($js, 'function onEnablesChange') - $bulk), 'the bar shows and hides by [hidden], no inline styles');
     }
 
-    public function test_translations_save_all_posts_changed_rows_and_guards_them(): void
+    /**
+     * The translations screen's behaviour (save all posts every changed field, hidden rows included;
+     * Discard; the styled leave dialog through Folio.unsaved; Enter; the group select) is tested in
+     * tests/js/translations.test.mjs (Review Focus 5). Here: it boots, and its private beforeunload is gone.
+     */
+    public function test_translations_boot_through_the_unsaved_guard(): void
     {
         $js = $this->js();
-        $this->assertStringContainsString('function initTranslationsSaveAll()', $js);
-        $this->assertStringContainsString("[['keys[]', el.getAttribute('data-ai-path')], ['texts[]', el.value]]", $js);
-        $this->assertStringContainsString("el.value !== el.defaultValue || el.hasAttribute('data-unsaved')", $js, 'filled, typed or refused rows count');
-        $this->assertStringContainsString("if (submitted === saveAll) { return; }", $js, 'saving all leaves without asking');
-        $this->assertStringContainsString('initTranslationsSaveAll();', $js);
+        $this->assertStringContainsString('        initTranslations();', $js);
+        $this->assertStringNotContainsString('initTranslationsSaveAll', $js);
+        $start = (int) strpos($js, 'function initTranslations()');
+        $body = substr($js, $start, (int) strpos($js, 'function plural(', $start) - $start);
+        $this->assertStringContainsString('unsaved.guarded.push(bar);', $body);
+        $this->assertStringNotContainsString("addEventListener('beforeunload'", $body, 'the guard\'s beforeunload, suppressed once after a confirmed leave');
     }
 
     public function test_a_failed_run_step_shows_continue(): void

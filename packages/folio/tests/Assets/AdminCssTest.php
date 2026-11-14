@@ -265,7 +265,12 @@ final class AdminCssTest extends TestCase
     public function test_translation_keys_stay_readable_at_phone_width(): void
     {
         $css = $this->css();
-        $this->assertStringContainsString('.folio-translations td:first-child { min-width: 12rem; }', $css);
+        // A fixed layout with a minimum width: at phone width the table scrolls in its box (.folio-table-wrap)
+        // and the key column keeps its 26%, instead of breaking the key into two-letter lines.
+        $this->assertStringContainsString('.folio-table.folio-translations { table-layout: fixed; min-width: 820px; }', $css);
+        $this->assertStringContainsString('.folio-translations-col-key { width: 26%; }', $css);
+        // The :placeholder tokens take the reference type's violet through the class, never in the template.
+        $this->assertMatchesRegularExpression('/\.folio-token \{[^}]*background: var\(--c-type-reference-soft\); color: var\(--c-type-reference\);/', $css);
     }
 
     public function test_redesigned_primitives(): void

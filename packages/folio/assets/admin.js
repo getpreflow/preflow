@@ -1610,7 +1610,7 @@
         return el.closest ? el.closest('form') : null;
     }
 
-    var unsaved = { dirty: [], guarded: [], leaveChecks: [] };
+    var unsaved = { dirty: [], guarded: [], leaveChecks: [], listening: false };
 
     function guards(form) {
         return !!form && unsaved.guarded.indexOf(form) >= 0;
@@ -1648,6 +1648,14 @@
         unsaved.guarded = Array.prototype.slice.call(document.querySelectorAll('.folio-form form, .folio-side form, form.folio-asset-form'))
             .filter(function (form) { return !form.hasAttribute('hx-post'); });
         if (unsaved.guarded.length === 0) { return; }
+        listenUnsaved();
+    }
+
+    // Once per page: the guard's listeners (the editor's forms, or a screen that guards a form of its own,
+    // such as initTranslations' save-all form).
+    function listenUnsaved() {
+        if (unsaved.listening) { return; }
+        unsaved.listening = true;
         document.addEventListener('input', onGuardEdit);
         document.addEventListener('change', onGuardEdit);
         // Registered after onSubmitConfirm (boot order), so a cancelled data-confirm
@@ -2136,21 +2144,58 @@
         controls.forEach(cleanAddressInput);
     }
 
-    function initTranslationsSaveAll() {
-        var saveAll = document.querySelector('[data-translations-save-all]');
+    // ---- Settings → Translations ------------------------------------------------------------
+    // Without script every row form saves its own text (its Save button) and Reset posts the row's reset
+    // form. With script the row Save buttons hide and the sticky bar ([data-translations-save-all], the
+    // save-all form) counts the changed fields: "N unsaved changes · in English · Discard · Save all".
+    // Save all posts every changed field (keys[] / texts[] pairs), rows hidden from view included, so
+    // nothing typed is lost; Enter in a field does the same. Discard puts every field back: its saved
+    // text (data-saved after a refused save, else its defaultValue). A field counts as changed when it
+    // differs from its default or holds a refused text (data-unsaved).
+    // Leaving: the bar's form is guarded by Folio.unsaved (dirty while a field is changed), so in-admin
+    // links, the language links, "Changed only" and the toolbar's search ask through the styled dialog,
+    // whose "Save and leave" is Save all with _folio_next; the browser's own question stays for a tab
+    // close. A row's Reset is no leave when that row holds the only change (its edit goes with it).
+    // The group select sends the toolbar form itself (its Search button hides; Enter sends the search).
+    function initTranslations() {
+        var bar = document.querySelector('[data-translations-save-all]');
         var table = document.querySelector('.folio-translations');
-        if (!saveAll || !table) { return; }
+        if (!bar || !table) { return; }
+        var count = bar.querySelector('[data-translations-count]');
+        var save = bar.querySelector('[data-folio-save]');
+        var filter = document.querySelector('[data-translations-filter]');
         var submitted = null;
-        var changed = function () {
-            return Array.prototype.filter.call(table.querySelectorAll('input[data-ai-path], textarea[data-ai-path]'), function (el) {
-                return el.value !== el.defaultValue || el.hasAttribute('data-unsaved');
-            });
+        var fields = function () {
+            return Array.prototype.slice.call(table.querySelectorAll('input[data-ai-path], textarea[data-ai-path]'));
         };
-        var refresh = function () { saveAll.hidden = changed().length === 0; };
+        var isChanged = function (el) { return el.value !== el.defaultValue || el.hasAttribute('data-unsaved'); };
+        var changed = function () { return fields().filter(isChanged); };
+        var refresh = function () {
+            fields().forEach(function (el) {
+                var row = el.closest('tr');
+                if (row) { row.classList.toggle('is-edited', isChanged(el)); }
+            });
+            var n = changed().length;
+            bar.hidden = n === 0;
+            if (count && n > 0) { count.textContent = plural(folioT('translations_unsaved', { count: n }), n); }
+            if (n > 0) { markDirty(bar); } else { clearDirty(bar); }
+        };
+
+        table.querySelectorAll('[data-translations-row-save]').forEach(function (b) { b.hidden = true; });
+        bar.querySelectorAll('[data-translations-discard]').forEach(function (b) { b.hidden = false; });
+        unsaved.guarded.push(bar);
+        listenUnsaved();
+
         table.addEventListener('input', refresh);
         table.addEventListener('change', refresh);
-        saveAll.addEventListener('submit', function () {
-            saveAll.querySelectorAll('[data-save-all-row]').forEach(function (el) { el.remove(); });
+        table.addEventListener('keydown', function (e) {
+            var t = e.target;
+            if (e.key !== 'Enter' || e.isComposing || !t || t.tagName !== 'INPUT' || !t.hasAttribute('data-ai-path')) { return; }
+            e.preventDefault();
+            if (changed().length > 0 && save) { submitWith(save); }
+        });
+        bar.addEventListener('submit', function () {
+            bar.querySelectorAll('[data-save-all-row]').forEach(function (el) { el.remove(); });
             changed().forEach(function (el) {
                 [['keys[]', el.getAttribute('data-ai-path')], ['texts[]', el.value]].forEach(function (pair) {
                     var input = document.createElement('input');
@@ -2158,21 +2203,50 @@
                     input.name = pair[0];
                     input.value = pair[1];
                     input.setAttribute('data-save-all-row', '');
-                    saveAll.appendChild(input);
+                    bar.appendChild(input);
                 });
             });
         });
-        // As initUnsavedGuard: a cancelled data-confirm is defaultPrevented and keeps the guard.
+        bar.addEventListener('click', function (e) {
+            if (!e.target || !e.target.closest || !e.target.closest('[data-translations-discard]')) { return; }
+            changed().forEach(function (el) {
+                var saved = el.getAttribute('data-saved');
+                if (saved !== null) { el.defaultValue = saved; }
+                el.value = el.defaultValue;
+                el.removeAttribute('data-unsaved');
+                var form = formOf(el);
+                var error = form ? form.querySelector('.form-error') : null;
+                if (error) { error.remove(); }
+            });
+            refresh();
+        });
+
+        if (filter) {
+            filter.querySelectorAll('[data-translations-apply]').forEach(function (b) { b.hidden = true; });
+            filter.addEventListener('change', function (e) {
+                if (!e.target || e.target.tagName !== 'SELECT') { return; }
+                if (typeof filter.requestSubmit === 'function') { filter.requestSubmit(); } else { filter.submit(); }
+            });
+        }
+
+        // A row's own form (its Reset, or its Save without script) takes only that row's edit with it.
         document.addEventListener('submit', function (e) {
             if (!e.defaultPrevented) { submitted = e.target; }
         });
-        window.addEventListener('beforeunload', function (e) {
-            if (submitted === saveAll) { return; }
-            var unsaved = changed().filter(function (el) { return el.form !== submitted; });
-            if (unsaved.length === 0) { return; }
-            e.preventDefault();
-            e.returnValue = '';
+        window.Folio.unsaved.onLeave(function (e) {
+            var f = e && e.type === 'submit' ? e.target : (e && e.type === 'beforeunload' ? submitted : null);
+            var key = f && f.querySelector ? f.querySelector('input[name="key"]') : null;
+            if (!key || f === bar) { return false; }
+            var list = changed();
+            return list.length > 0 && list.every(function (el) { return el.getAttribute('data-ai-path') === key.value; });
         });
+        refresh();
+    }
+
+    // "one|other" (lang files' two forms, PluralResolver's simple case): the first for 1, else the second.
+    function plural(text, n) {
+        var forms = String(text).split('|');
+        return n === 1 || forms.length < 2 ? forms[0] : forms[1];
     }
 
     // ---- Stepped runs: a step that did not come back ---------------------------
@@ -3651,7 +3725,7 @@
         initSplit();
         initUnsavedGuard();
         initFormEdits();
-        initTranslationsSaveAll();
+        initTranslations();
         initRedirectTargets();
         initNavSections();
         initUserMenus();

@@ -186,12 +186,79 @@ final class TranslationOverridesTest extends TestCase
         $this->assertStringNotContainsString('data-translations-save-all hidden', $body, 'the button is there to try again');
     }
 
+    /** "Save and leave" (the unsaved-changes dialog) posts _folio_next: saved, then on to that page (only a path here). */
+    #[RunInSeparateProcess]
+    public function test_save_all_then_leave_goes_to_the_link_it_left_for(): void
+    {
+        $this->people();
+        $this->signIn('ada@site.test');
+
+        $next = $this->post('/folio/translations/save-all', ['locale' => 'de', 'group' => 'folio', 'keys' => ['folio.common.save'], 'texts' => ['Sichern'], '_folio_next' => '/folio/translations?group=folio&locale=de&changed=1']);
+        $this->assertSame('/folio/translations?group=folio&locale=de&changed=1', $next->getHeaderLine('Location'));
+        $this->assertSame(['folio.common.save' => 'Sichern'], $this->overrides()->all('de'));
+
+        $elsewhere = $this->post('/folio/translations/save-all', ['locale' => 'de', 'group' => 'folio', 'keys' => ['folio.common.search'], 'texts' => ['Finden'], '_folio_next' => 'https://evil.test/']);
+        $this->assertSame('/folio/translations?group=folio&locale=de', $elsewhere->getHeaderLine('Location'), 'another site is ignored');
+    }
+
+    /** "Changed only · N" (GET changed=1): only the rows with an override; N counts them within the search. */
+    #[RunInSeparateProcess]
+    public function test_changed_only_lists_the_overridden_rows_and_counts_them(): void
+    {
+        $this->people();
+        $this->signIn('ada@site.test');
+        $this->overrides()->set('de', 'folio.common.save', 'Sichern', null);
+        $this->overrides()->set('de', 'folio.common.search', 'Finden', null);
+        $this->overrides()->set('de', 'folio.nav.dashboard', 'Start', null);
+
+        $all = $this->html('/folio/translations?group=folio&locale=de&q=common.s');
+        $this->assertMatchesRegularExpression('~<a class="folio-filter-chip" href="/folio/translations\?group=folio&amp;locale=de&amp;q=common.s&amp;changed=1">Nur geänderte · 2</a>~', $all, 'the count within the search');
+        $this->assertGreaterThan(2, count(explode(',', $this->listed('/folio/translations?group=folio&locale=de&q=common.s'))));
+
+        $changed = '/folio/translations?group=folio&locale=de&q=common.s&changed=1';
+        $this->assertSame('folio.common.save,folio.common.search', $this->listed($changed));
+        $screen = $this->html($changed);
+        $this->assertStringContainsString('<a class="folio-filter-chip is-on" href="/folio/translations?group=folio&amp;locale=de&amp;q=common.s" aria-current="page">Nur geänderte · 2</a>', $screen, 'turned on: equals the total; the link turns it off');
+        $this->assertStringContainsString('<input type="hidden" name="changed" value="1">', $screen, 'the search keeps it, and so do the saves');
+        $this->assertMatchesRegularExpression('~<a href="/folio/translations\?group=folio&amp;locale=fr&amp;q=common.s&amp;changed=1" hreflang="fr" title="Français">~', $screen, 'the language switch keeps group, search and filter');
+
+        $back = $this->post('/folio/translations/reset', ['locale' => 'de', 'group' => 'folio', 'q' => 'common.s', 'changed' => '1', 'key' => 'folio.common.save']);
+        $this->assertSame('/folio/translations?group=folio&locale=de&q=common.s&changed=1', $back->getHeaderLine('Location'));
+        $this->assertStringContainsString('Hier gibt es keine geänderten Texte.', $this->html('/folio/translations?group=folio&locale=de&q=common.save&changed=1'));
+    }
+
+    /**
+     * The table: a changed row is marked (is-changed) with its reset in the field, a form of its own so Enter
+     * never resets; the row keeps its Save button for a browser without script; the delivered text's
+     * placeholders are tokens; the bar names the language and has Discard (shown by script) and Save all.
+     */
+    #[RunInSeparateProcess]
+    public function test_the_table_marks_changed_rows_and_offers_reset_in_the_field(): void
+    {
+        $this->people();
+        $this->signIn('ada@site.test');
+        $this->overrides()->set('de', 'folio.common.save', 'Sichern', null);
+
+        $screen = $this->html('/folio/translations?group=folio&locale=de&q=common.save');
+        $this->assertMatchesRegularExpression('~<tr class="is-changed">\s*<td><code class="folio-translations-key" id="folio-translation-key-1"><span class="folio-translations-prefix">folio.common.</span>save</code>~', $screen);
+        $this->assertMatchesRegularExpression('~<button type="submit" form="folio-translation-reset-1" class="[^"]*folio-translations-reset" aria-label="Auf den mitgelieferten Text zurücksetzen" aria-describedby="folio-translation-key-1"~', $screen);
+        $this->assertMatchesRegularExpression('~<form method="post" action="/folio/translations/reset" id="folio-translation-reset-1" hidden>.*?<input type="hidden" name="key" value="folio.common.save">\s*</form>~s', $screen);
+        $this->assertStringContainsString('<button type="submit" class="btn btn-secondary btn-sm" data-translations-row-save>Sichern</button>', $screen, 'without script the row saves itself');
+        $this->assertStringContainsString('placeholder="Wie mitgeliefert"', $screen);
+        $this->assertMatchesRegularExpression('~<strong data-translations-count></strong> für Deutsch</span>\s*<button type="button" class="btn btn-sm" data-translations-discard hidden>Verwerfen</button>\s*<button type="submit" class="btn btn-sm btn-primary" data-folio-save[^>]*>Alle speichern</button>~', $screen);
+        $this->assertStringNotContainsString('form="folio-translation-reset-2"', $screen, 'no reset where nothing changed');
+
+        $tokens = $this->html('/folio/translations?group=folio&locale=en&q=dashboard.records');
+        $this->assertMatchesRegularExpression('~<code class="folio-token" title="Platzhalter: wird beim Verwenden des Textes ausgefüllt">:count</code> record~', $tokens);
+        $this->assertStringNotContainsString('--c-type-', $tokens, 'the token colour is the stylesheet\'s');
+    }
+
     /** The keys of the listed rows, comma-separated. */
     private function listed(string $uri): string
     {
         preg_match_all('~<input type="hidden" name="key" value="([^"]+)"~', $this->html($uri), $m);
 
-        return implode(',', $m[1]);
+        return implode(',', array_unique($m[1])); // a changed row's reset form names its key too
     }
 
     #[RunInSeparateProcess]
@@ -430,11 +497,11 @@ final class TranslationOverridesTest extends TestCase
         $this->flow = $this->app();
     }
 
-    /** The values the language select offers. @return list<string> */
+    /** The languages the language switch (segmented links) offers. @return list<string> */
     private function offeredLocales(string $uri): array
     {
-        preg_match('~<select id="folio-translations-locale"[^>]*>(.*?)</select>~s', $this->html($uri), $select);
-        preg_match_all('~<option value="([^"]+)"~', $select[1] ?? '', $m);
+        preg_match('~<nav class="folio-segmented folio-translations-locales" id="folio-translations-locale"[^>]*>(.*?)</nav>~s', $this->html($uri), $select);
+        preg_match_all('~<a href="[^"]*locale=([^"&]+)[^"]*" hreflang="\1"~', $select[1] ?? '', $m);
 
         return $m[1];
     }
@@ -491,8 +558,8 @@ final class TranslationOverridesTest extends TestCase
         $this->signIn('ada@site.test');
 
         $screen = $this->html('/folio/translations?group=review-mail&locale=it&q=reminder');
-        $this->assertStringContainsString('review-mail.reminder', $screen);
-        $this->assertStringContainsString('Bitte prüfen: :link', $screen, 'the German text is what Italian visitors get today');
+        $this->assertStringContainsString('<span class="folio-translations-prefix">review-mail.</span>reminder</code>', $screen, 'the key, its group prefix subtle');
+        $this->assertMatchesRegularExpression('~Bitte prüfen: <code class="folio-token"[^>]*>:link</code>~', $screen, 'the German text is what Italian visitors get today; its placeholder a token');
 
         $missing = $this->post('/folio/translations', ['locale' => 'it', 'key' => 'review-mail.reminder', 'text' => 'Controlla per favore']);
         $this->assertSame(422, $missing->getStatusCode());

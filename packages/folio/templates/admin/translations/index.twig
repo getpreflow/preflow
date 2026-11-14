@@ -3,30 +3,34 @@
 {% block page_title %}{{ t('folio.nav.translations') }}{% endblock %}
 {% block subtitle %}{{ t('folio.translations.intro') }}{% endblock %}
 {% block content %}
-    <div class="folio-toolbar">
-        {# One GET form: group, language and search stay in the URL. #}
-        <form class="folio-toolbar-fields" method="get" action="{{ prefix }}/translations" role="search">
-            <span class="folio-toolbar-field">
-                <label for="folio-translations-group">{{ t('folio.translations.group') }}</label>
+    {% set icons = folio_asset('icons.svg') %}
+    <div class="folio-toolbar folio-translations-toolbar">
+        {# One GET form: group, search and "Changed only" stay in the URL; the language links keep them too.
+           With script the group select sends the form itself and the Search button hides (admin.js initTranslations). #}
+        <form class="folio-toolbar-fields" method="get" action="{{ prefix }}/translations" role="search" data-translations-filter>
+            <input type="hidden" name="locale" value="{{ view.locale }}">
+            {% if changed_only %}<input type="hidden" name="changed" value="1">{% endif %}
+            <label class="folio-select-inline" for="folio-translations-group">{{ t('folio.translations.group') }}
                 <select id="folio-translations-group" name="group">
                     {% for g in groups %}
                         <option value="{{ g }}"{% if g == view.group %} selected{% endif %}>{{ g == site_group ? t('folio.translations.group_site') : g }}</option>
                     {% endfor %}
                 </select>
-            </span>
-            <span class="folio-toolbar-field">
-                <label for="folio-translations-locale">{{ t('folio.layout.language') }}</label>
-                <select id="folio-translations-locale" name="locale">
-                    {% for code, name in locales %}
-                        <option value="{{ code }}"{% if code == view.locale %} selected{% endif %}>{{ name }}</option>
-                    {% endfor %}
-                </select>
-            </span>
+            </label>
+            <nav class="folio-segmented folio-translations-locales" id="folio-translations-locale" aria-label="{{ t('folio.layout.language') }}">
+                {% for code, name in locales %}
+                    <a href="{{ locale_links[code] }}" hreflang="{{ code }}" title="{{ name }}"{% if code == view.locale %} aria-current="page"{% endif %}><span aria-hidden="true">{{ code|upper }}</span><span class="folio-sr">{{ name }}</span></a>
+                {% endfor %}
+            </nav>
             <label class="folio-list-search">
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>
                 <span class="folio-sr">{{ t('folio.translations.search_label') }}</span>
                 <input type="search" name="q" value="{{ view.q }}" placeholder="{{ t('folio.common.search_placeholder') }}" autocomplete="off">
             </label>
-            <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.search') }}</button>
+            <button type="submit" class="btn btn-secondary btn-sm" data-translations-apply>{{ t('folio.common.search') }}</button>
+            {% if changed_count > 0 or changed_only %}
+                <a class="folio-filter-chip{% if changed_only %} is-on{% endif %}" href="{{ changed_href }}"{% if changed_only %} aria-current="page"{% endif %}>{{ t('folio.translations.changed_only', {count: folio_number(changed_count)}) }}</a>
+            {% endif %}
         </form>
         {% if ai_translate|default(null) and rows is not empty %}
             {% include '@folio/admin/partials/ai-translate-dialog.twig' %}
@@ -38,58 +42,81 @@
     {% if site_texts %}
         <p class="folio-help">{{ t('folio.translations.site_texts') }}</p>
     {% endif %}
-    {% if rows is empty and view.q != '' %}
-        <div class="folio-empty folio-no-matches"><p>{{ t('folio.translations.empty') }}</p></div>
+    {% if rows is empty and (view.q != '' or changed_only) %}
+        <div class="folio-empty folio-no-matches"><p>{{ changed_only ? t('folio.translations.no_changed') : t('folio.translations.empty') }}</p></div>
     {% elseif rows is empty %}
         {% include '@folio/admin/partials/_empty.twig' with {screen: 'translations', title: t('folio.translations.empty_title'), line: t('folio.translations.empty_line')} only %}
     {% else %}
-    {# "Save all filled" (admin.js): posts every row whose text differs from the saved one, in one request.
-       Shown once a row changes (an AI fill or typing), or right away after some texts were refused. #}
-    <form method="post" action="{{ prefix }}/translations/save-all" class="folio-row-actions folio-translations-save-all" data-translations-save-all{% if errors|default([]) is empty %} hidden{% endif %}>
-        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-        <input type="hidden" name="locale" value="{{ view.locale }}">
-        <input type="hidden" name="group" value="{{ view.group }}">
-        <input type="hidden" name="q" value="{{ view.q }}">
-        <input type="hidden" name="page" value="{{ page }}">
-        <button type="submit" class="btn btn-primary btn-sm">{{ t('folio.translations.save_all') }}</button>
-        <span class="folio-help">{{ errors|default([]) is empty ? t('folio.translations.save_all_help') : t('folio.translations.save_all_refused', {count: errors|length}) }}</span>
-    </form>
+    {% if errors|default([]) is not empty %}
+        <p class="folio-help folio-translations-refused" role="alert">{{ t('folio.translations.save_all_refused', {count: errors|length}) }}</p>
+    {% endif %}
+    {# Each row is a form of its own: without script its Save button saves that row. Reset is the row's
+       reset form (its button sits in the field, form="…"), so Enter in a field never resets. #}
     <div class="folio-table-wrap">
     <table class="folio-table folio-translations">
-        <thead><tr><th>{{ t('folio.translations.key') }}</th><th>{{ t('folio.translations.delivered') }}</th><th>{{ t('folio.translations.override') }}</th></tr></thead>
+        <colgroup><col class="folio-translations-col-key"><col class="folio-translations-col-delivered"><col></colgroup>
+        <thead><tr><th scope="col">{{ t('folio.translations.key') }}</th><th scope="col">{{ t('folio.translations.delivered') }}</th><th scope="col">{{ t('folio.translations.override') }}</th></tr></thead>
         <tbody>
         {% for row in rows %}
-            <tr>
-                <td><code>{{ row.key }}</code>{% if row.override is not null %}<br><span class="folio-help">{{ t('folio.translations.changed') }}</span>{% endif %}</td>
-                <td>{{ row.delivered ?? '—' }}{% if row.site is not null %}<br><span class="folio-help">{{ t('folio.translations.site_file') }}: {{ row.site }}</span>{% endif %}</td>
+            {% set refused = values[row.key] is defined %}
+            <tr{% if row.override is not null %} class="is-changed"{% endif %}>
+                <td><code class="folio-translations-key" id="folio-translation-key-{{ loop.index }}">{% if row.prefix != '' %}<span class="folio-translations-prefix">{{ row.prefix }}</span>{% endif %}{{ row.name }}</code>{% if row.override is not null %}<span class="folio-sr"> ({{ t('folio.translations.changed') }})</span>{% endif %}</td>
+                <td class="folio-translations-delivered">{% if row.delivered is null %}—{% else %}{% for part in row.parts %}{% if part.token %}<code class="folio-token" title="{{ t('folio.translations.placeholder_title') }}">{{ part.text }}</code>{% else %}{{ part.text }}{% endif %}{% endfor %}{% endif %}{% if row.site is not null %}<span class="folio-help folio-translations-site">{{ t('folio.translations.site_file') }}: {{ row.site }}</span>{% endif %}</td>
                 <td>
-                    <form method="post" action="{{ prefix }}/translations" class="folio-row-actions">
+                    <form method="post" action="{{ prefix }}/translations" class="folio-translations-row">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                         <input type="hidden" name="locale" value="{{ view.locale }}">
                         <input type="hidden" name="group" value="{{ view.group }}">
                         <input type="hidden" name="q" value="{{ view.q }}">
+                        <input type="hidden" name="changed" value="{{ view.changed }}">
                         <input type="hidden" name="page" value="{{ page }}">
                         <input type="hidden" name="key" value="{{ row.key }}">
                         <label class="folio-sr" for="folio-translation-{{ loop.index }}">{{ t('folio.translations.override_label', {key: row.key}) }}</label>
-                        {% set refused = values[row.key] is defined %}
                         {% set text = refused ? values[row.key] : (row.override ?? '') %}
+                        <span class="folio-translations-field">
                         {% if text matches '/\\n/' or (row.delivered ?? '')|length > 80 %}
-                            <textarea id="folio-translation-{{ loop.index }}" name="text" rows="3" data-ai-path="{{ row.key }}"{% if refused %} data-unsaved{% endif %}>{{ text }}</textarea>
+                            <textarea id="folio-translation-{{ loop.index }}" placeholder="{{ t('folio.translations.same_as_delivered') }}"{% if refused %} data-saved="{{ row.override ?? '' }}"{% endif %} name="text" rows="3" data-ai-path="{{ row.key }}"{% if refused %} data-unsaved{% endif %}>{{ text }}</textarea>
                         {% else %}
-                            <input type="text" id="folio-translation-{{ loop.index }}" name="text" data-ai-path="{{ row.key }}"{% if refused %} data-unsaved{% endif %} value="{{ text }}">
+                            <input type="text" id="folio-translation-{{ loop.index }}" placeholder="{{ t('folio.translations.same_as_delivered') }}"{% if refused %} data-saved="{{ row.override ?? '' }}"{% endif %} name="text" data-ai-path="{{ row.key }}"{% if refused %} data-unsaved{% endif %} value="{{ text }}">
                         {% endif %}
-                        <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.save') }}</button>
                         {% if row.override is not null %}
-                            <button type="submit" class="btn btn-ghost btn-sm" formaction="{{ prefix }}/translations/reset">{{ t('folio.translations.reset') }}</button>
+                            <button type="submit" form="folio-translation-reset-{{ loop.index }}" class="btn btn-ghost btn-sm btn-icon folio-translations-reset" aria-label="{{ t('folio.translations.reset_label') }}" aria-describedby="folio-translation-key-{{ loop.index }}" title="{{ t('folio.translations.reset_label') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-undo"></use></svg></button>
                         {% endif %}
+                        </span>
+                        <button type="submit" class="btn btn-secondary btn-sm" data-translations-row-save>{{ t('folio.common.save') }}</button>
                         {% if errors[row.key] is defined %}<div class="form-error">{{ errors[row.key] }}</div>{% endif %}
                     </form>
+                    {% if row.override is not null %}
+                        <form method="post" action="{{ prefix }}/translations/reset" id="folio-translation-reset-{{ loop.index }}" hidden>
+                            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                            <input type="hidden" name="locale" value="{{ view.locale }}">
+                            <input type="hidden" name="group" value="{{ view.group }}">
+                            <input type="hidden" name="q" value="{{ view.q }}">
+                            <input type="hidden" name="changed" value="{{ view.changed }}">
+                            <input type="hidden" name="page" value="{{ page }}">
+                            <input type="hidden" name="key" value="{{ row.key }}">
+                        </form>
+                    {% endif %}
                 </td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
     </div>
+    {# The save-all bar (admin.js): hidden until a field changes, then "N unsaved changes · in English ·
+       Discard · Save all", sticky at the bottom of the window. Save all posts every changed field,
+       including rows out of view; shown at once after some texts were refused. #}
+    <form method="post" action="{{ prefix }}/translations/save-all" class="folio-bulk-bar folio-translations-save-all" aria-label="{{ t('folio.translations.save_all') }}" data-translations-save-all{% if errors|default([]) is empty %} hidden{% endif %}>
+        <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+        <input type="hidden" name="locale" value="{{ view.locale }}">
+        <input type="hidden" name="group" value="{{ view.group }}">
+        <input type="hidden" name="q" value="{{ view.q }}">
+        <input type="hidden" name="changed" value="{{ view.changed }}">
+        <input type="hidden" name="page" value="{{ page }}">
+        <span class="folio-bulk-count" role="status"><strong data-translations-count>{% if errors|default([]) is not empty %}{{ t('folio.translations.unsaved', {count: errors|length}, errors|length) }}{% endif %}</strong> {{ t('folio.translations.unsaved_in', {language: language}) }}</span>
+        <button type="button" class="btn btn-sm" data-translations-discard hidden>{{ t('folio.translations.discard') }}</button>
+        <button type="submit" class="btn btn-sm btn-primary" data-folio-save title="{{ t('folio.translations.save_all_help') }}">{{ t('folio.translations.save_all') }}</button>
+    </form>
     <nav class="folio-pager" aria-label="{{ t('folio.list.pages') }}">
         <span class="folio-pager-count">{{ t('folio.list.pager', {start: folio_number(pager.from), end: folio_number(pager.to), total: folio_number(pager.total)}) }}</span>
         {% if pager.last_page > 1 %}

@@ -39,7 +39,7 @@ final class TranslationsController
         private readonly ?Access $access = null,
     ) {}
 
-    /** GET {prefix}/translations?group=…&locale=…&q=…&page=… */
+    /** GET {prefix}/translations?group=…&locale=…&q=…&changed=1&page=… */
     public function index(ServerRequestInterface $request): ResponseInterface
     {
         return $this->screen($request, $request->getQueryParams());
@@ -64,19 +64,29 @@ final class TranslationsController
             ? $query['locale']
             : (in_array($this->locales->current(), $offered, true) ? $this->locales->current() : ($offered[0] ?? $this->locales->current()));
         $q = is_string($query['q'] ?? null) ? trim($query['q']) : '';
+        $changedOnly = ($query['changed'] ?? '') === '1';
 
+        // "Changed only · N": N counts the rows the search finds that have an override, so turned on it
+        // equals the list's total.
         $overrides = $this->overrides->all($locale);
         $rows = [];
+        $changedCount = 0;
         foreach ($this->texts->rows($group, $locale) as $key => $row) {
             $row['override'] = $overrides[$key] ?? null;
-            if ($q === '' || LabelSearch::matches($q, $row)) {
-                $rows[] = $row;
+            if ($q !== '' && !LabelSearch::matches($q, $row)) {
+                continue;
             }
+            if ($row['override'] !== null) {
+                $changedCount++;
+            } elseif ($changedOnly) {
+                continue;
+            }
+            $rows[] = $row;
         }
         $total = count($rows);
         $lastPage = max(1, (int) ceil($total / LabelSearch::PER_PAGE));
         $page = min($lastPage, max(1, (int) ($query['page'] ?? 1)));
-        $view = ['group' => $group, 'locale' => $locale, 'q' => $q];
+        $view = ['group' => $group, 'locale' => $locale, 'q' => $q, 'changed' => $changedOnly ? '1' : ''];
 
         $pages = [];
         for ($n = 1; $n <= $lastPage; $n++) {
@@ -88,10 +98,16 @@ final class TranslationsController
             'groups' => $groups,
             'site_group' => EditableTexts::SITE,
             'locales' => array_combine($offered, array_map(LocaleNames::native(...), $offered)),
+            // The language switch's links: the same group, search and filter in another language.
+            'locale_links' => array_combine($offered, array_map(fn (string $code): string => $this->url(array_merge($view, ['locale' => $code])), $offered)),
+            'language' => LocaleNames::native($locale),
+            'changed_only' => $changedOnly,
+            'changed_count' => $changedCount,
+            'changed_href' => $this->url(array_merge($view, ['changed' => $changedOnly ? '' : '1'])),
             'site_texts' => $this->texts->isEditableGroup($group),
             'view' => $view,
             'page' => $page,
-            'rows' => array_slice($rows, ($page - 1) * LabelSearch::PER_PAGE, LabelSearch::PER_PAGE),
+            'rows' => array_map(self::shown(...), array_slice($rows, ($page - 1) * LabelSearch::PER_PAGE, LabelSearch::PER_PAGE)),
             'pager' => [
                 'total' => $total,
                 'from' => $total === 0 ? 0 : ($page - 1) * LabelSearch::PER_PAGE + 1,
@@ -109,6 +125,30 @@ final class TranslationsController
             'default_language' => LocaleNames::native($this->texts->sourceLocale($locale) ?? 'en'),
             'editor_assets' => $this->aiOn() ? ['ai-translate.css', 'ai-translate-core.js', 'ai-translate.js'] : [],
         ]));
+    }
+
+    /**
+     * A row as the table shows it: the key split into its group prefix ("folio.account.", shown subtle)
+     * and the rest, and the delivered text in parts, its :placeholders (EditableTexts::placeholders(),
+     * here from the row's own delivered text) marked as tokens.
+     *
+     * @param array{key: string, delivered: ?string, site: ?string, override: ?string} $row
+     * @return array<string, mixed>
+     */
+    private static function shown(array $row): array
+    {
+        $dot = strrpos($row['key'], '.');
+        $row['prefix'] = $dot === false ? '' : substr($row['key'], 0, $dot + 1);
+        $row['name'] = $dot === false ? $row['key'] : substr($row['key'], $dot + 1);
+        $row['parts'] = [];
+        if ($row['delivered'] !== null) {
+            $names = OverrideRules::placeholdersIn($row['delivered']);
+            foreach (preg_split('/(:[A-Za-z_][A-Za-z0-9_]*)/', $row['delivered'], -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [] as $part) {
+                $row['parts'][] = ['text' => $part, 'token' => $part[0] === ':' && in_array(substr($part, 1), $names, true)];
+            }
+        }
+
+        return $row;
     }
 
     private function aiOn(): bool
@@ -194,8 +234,11 @@ final class TranslationsController
             return $this->screen($request, $view, $errors, $values, 422);
         }
         self::flash($request, FolioText::get('folio.translations.saved_all', ['count' => $saved]));
+        // "Save and leave" (the unsaved-changes dialog): once every text is saved, on to the link it left for.
+        $next = $body['_folio_next'] ?? null;
+        $next = is_string($next) ? \Preflow\Core\Http\SafeReturnPath::check($next, ['/']) : null;
 
-        return new Response(302, ['Location' => $this->url($view)]);
+        return new Response(302, ['Location' => $next ?? $this->url($view)]);
     }
 
     private function store(ServerRequestInterface $request, ?string $text): ResponseInterface
@@ -215,10 +258,11 @@ final class TranslationsController
     }
 
     /**
-     * The view to go back to after a save: the posted group (else $group), language, search and page.
+     * The view to go back to after a save: the posted group (else $group), language, search, "Changed
+     * only" and page.
      *
      * @param array<mixed> $body
-     * @return array{group: string, locale: string, q: string, page: int}
+     * @return array{group: string, locale: string, q: string, changed: string, page: int}
      */
     private function view(array $body, string $locale, string $group): array
     {
@@ -226,6 +270,7 @@ final class TranslationsController
             'group' => is_string($body['group'] ?? null) && in_array($body['group'], $this->texts->groups(), true) ? $body['group'] : $group,
             'locale' => $locale,
             'q' => is_string($body['q'] ?? null) ? trim($body['q']) : '',
+            'changed' => ($body['changed'] ?? '') === '1' ? '1' : '',
             'page' => (int) ($body['page'] ?? 1),
         ];
     }
