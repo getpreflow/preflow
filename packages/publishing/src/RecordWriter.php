@@ -120,13 +120,17 @@ final class RecordWriter
      * $overrides (@since 0.75) sets values of the copy: field name => value, or for a translatable
      * field => [locale => value] (the languages given replace the copied ones, the others stay), e.g.
      * a title marked as a copy. They apply after the values are copied and before the address, slug
-     * and unique fields are freed, so an overridden slug still takes a free value.
+     * and unique fields are freed, so an overridden slug still takes a free value. Refused: the keys
+     * the copy's system sets (the id, Publisher::META: version, schedule, share token, publish stamps
+     * and position, and the created and updated values of a #[Timestamps] model), even when a type
+     * declares one as a field; a language the type does not have; a value other than a locale map
+     * (or null, which empties it) for a translatable field.
      *
      * @since 0.75
      *
      * @param array<string, mixed> $overrides field => value, or field => [locale => value] for a translatable field
      *
-     * @throws \InvalidArgumentException when the type has no record with this id, $options asks to publish, or an override names no field of the type (nothing written)
+     * @throws \InvalidArgumentException when the type has no record with this id, $options asks to publish, or an override names no field of the type, a system key, a language the type does not have, or gives a translatable field no locale map (nothing written)
      * @throws ValidationException        from SaveHooks::before(), the storage or the checks of a type that does not publish (nothing stored)
      * @throws VersionConflict
      */
@@ -141,11 +145,25 @@ final class RecordWriter
         $data = array_diff_key($source->toArray(), array_flip([...Publisher::META, '_published_at', '_published_by', ...$this->timestamps($def)]));
         $data[$def->idField] = bin2hex(random_bytes(16));
         $copy = DynamicRecord::fromArray($def, $data);
+        // The keys the copy's system owns: its id, the publishing keys, its position and timestamps.
+        $system = [$def->idField, ...Publisher::META, ...$this->timestamps($def)];
         foreach ($overrides as $name => $value) {
-            if (!is_string($name) || !isset($def->fields[$name]) || $name === $def->idField) {
+            $name = (string) $name;
+            if (in_array($name, $system, true)) {
+                throw new \InvalidArgumentException("\"{$name}\" of type \"{$type}\" is a system key: a copy sets its own.");
+            }
+            if (!isset($def->fields[$name])) {
                 throw new \InvalidArgumentException("Type \"{$type}\" has no field \"{$name}\" a copy can override.");
             }
-            if (in_array($name, $def->translatableFields(), true) && is_array($value)) {
+            if (in_array($name, $def->translatableFields(), true) && $value !== null) {
+                if (!is_array($value)) {
+                    throw new \InvalidArgumentException("\"{$name}\" of type \"{$type}\" is translatable: override it with [locale => value].");
+                }
+                foreach (array_keys($value) as $locale) {
+                    if (!$def->locales->has((string) $locale)) {
+                        throw new \InvalidArgumentException("\"{$name}\" of type \"{$type}\" has no language \"{$locale}\".");
+                    }
+                }
                 // Per language: the given languages replace the copied ones, the others stay.
                 $value = array_replace(LocaleValue::map($copy->get($name), $def->locales), $value);
             }

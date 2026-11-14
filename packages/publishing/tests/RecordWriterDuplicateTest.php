@@ -169,6 +169,62 @@ final class RecordWriterDuplicateTest extends PublishingAppTestCase
         $this->assertCount(1, $this->dm()->queryType('page')->get()->items());
     }
 
+    /** @return list<array{0: string, 1: array<string, mixed>}> */
+    public static function refusedOverrides(): array
+    {
+        return [
+            'the id' => ['page', ['uuid' => 'x']],
+            'a version' => ['page', ['_version' => 3]],
+            'a schedule' => ['page', ['_publish_at' => '2099-01-01T10:00']],
+            'a share token' => ['page', ['_share_token' => 'secret']],
+            'a publish stamp' => ['page', ['_published_at' => '2026-01-01 10:00:00']],
+            'who published' => ['page', ['_published_by' => 'ana']],
+            'the position' => ['page', ['_order' => 5]],
+            'a created stamp' => ['stamped', ['createdAt' => '2020-01-01 00:00:00']],
+            'an updated stamp' => ['stamped', ['updatedAt' => '2020-01-01 00:00:00']],
+            'a language the type does not have' => ['page', ['title' => ['en' => 'About (copy)', 'xx' => 'Nope']]],
+            'a scalar for a translatable field' => ['page', ['title' => 'About (copy)']],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('refusedOverrides')]
+    public function test_an_override_of_a_system_key_or_a_bad_language_value_is_refused_and_nothing_is_written(string $type, array $overrides): void
+    {
+        $this->write('config/models/page.json', (string) json_encode(['key' => 'page', 'table' => 'page', 'storage' => 'json', 'publishing' => true, 'fields' => [
+            'title' => ['type' => 'string', 'translatable' => true],
+            'slug' => ['type' => 'string', 'validate' => ['required', 'slug']],
+            // System keys a type declares as fields of its own are still the system's.
+            '_order' => ['type' => 'number'],
+            '_publish_at' => ['type' => 'string'],
+        ]]));
+        $this->reboot();
+        $writer = $this->writer();
+        $this->working('page', 'p1', ['title' => ['en' => 'About'], 'slug' => 'about']);
+        $this->working('stamped', 's1', ['title' => 'Stamped', 'createdAt' => '2026-01-01 00:00:00', 'updatedAt' => '2026-01-02 00:00:00']);
+
+        try {
+            $writer->duplicate($type, $type === 'page' ? 'p1' : 's1', overrides: $overrides);
+            $this->fail('refused');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString((string) array_key_first($overrides), $e->getMessage());
+            $this->assertMatchesRegularExpression('/system key|has no language|is translatable/', $e->getMessage(), 'refused for what it is, not as an unknown field');
+        }
+        $this->assertCount(1, $this->dm()->queryType($type)->get()->items());
+    }
+
+    public function test_an_override_may_empty_a_translatable_field(): void
+    {
+        $writer = $this->writer();
+        $this->working('topic', 't1', ['name' => ['en' => 'News', 'de' => 'Neues'], 'slug' => ['en' => 'news']]);
+
+        $copy = $this->stored('topic', (string) $writer->duplicate('topic', 't1', overrides: ['name' => null])->record->getId());
+
+        $this->assertEmpty($copy->get('name'));
+    }
+
     public function test_an_orderable_copy_goes_right_after_its_record(): void
     {
         $writer = $this->writer();
