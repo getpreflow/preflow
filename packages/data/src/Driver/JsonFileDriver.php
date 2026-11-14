@@ -408,7 +408,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
         return $value === null || is_scalar($value)
             ? $value
-            : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
 
     /**
@@ -802,7 +802,8 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
                 $regex .= preg_quote($part, '/');
             }
         }
-        $regex .= '$/i';
+        // u: case is ignored in every alphabet, and _ is one character, not one byte (as on SQL).
+        $regex .= '$/iu';
 
         return (bool) preg_match($regex, $value);
     }
@@ -824,6 +825,8 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
                     if (str_contains(mb_strtolower($value), $term)) {
                         return true;
                     }
+                } elseif (is_array($value) && self::containsText($value, $term)) {
+                    return true; // a list: SQL finds the term in its JSON text
                 }
             }
 

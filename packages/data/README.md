@@ -806,12 +806,16 @@ $dm->queryIn($typeDef)->whereAny([
 | `IN` | The field equals one of the listed values. An empty list matches nothing. |
 | `HAS` | The field, an id string or a JSON array string, holds at least one of the listed ids. |
 
-Case is ignored in every alphabet on every driver ("über" finds "Über"): the JSON driver folds
-with `mb_stripos`, and since 0.77 `SqliteDriver` replaces SQLite's `like()` (ASCII only) on its
-connection with one that folds with `mb_strtolower` (`SqliteDialect::prepare()`; give it a
-`Pdo\Sqlite`, `PDO::connect('sqlite:…')`, which the app does; a plain `PDO` works too). On
-MySQL/MariaDB `CONTAINS` and `IN` follow the column's collation, so an accent-insensitive
-collation matches more than the other drivers do ("uber" finds "Über").
+`LIKE`, `CONTAINS` and `search()` ignore case in every alphabet on every shipped driver
+("über" finds "Über", `_` matches one character, an umlaut too): the JSON driver compares with
+Unicode-aware functions (`mb_stripos`, `preg_match` with `/iu`); since 0.77 `SqliteDriver`
+replaces SQLite's `like()`, which folds ASCII only, on its connection with one that folds with
+`mb_strtolower` (`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`,
+as the app opens it, and on a plain `PDO`); MySQL/MariaDB follow the column's collation, so an
+accent-insensitive collation matches more than the other drivers do ("uber" finds "Über").
+`CONTAINS` and `search()` find a term in a list value (an array field) when one of its values
+holds it: SQL storage keeps the list as JSON text, written with umlauts and slashes as they are
+since 0.77 (rows written before keep `a\/b`, which a search for "a/b" misses until resaved).
 
 ## `searchLoose`
 

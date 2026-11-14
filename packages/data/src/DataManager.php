@@ -860,6 +860,9 @@ final class DataManager
                 $map = LocaleValue::map($value, $def->locales);
                 $value = $map === [$def->locales->default => $value] ? $value : $map;
             }
+            if ($value === 'null' && self::takesArray($types[$name])) {
+                $value = null; // JSON null: an array field with no value
+            }
             [$assign, $converted] = self::asPropertyType($types[$name], $value);
             if ($assign) {
                 $model->{$name} = $converted;
@@ -942,11 +945,18 @@ final class DataManager
 
     /**
      * Whether a value an `array` property cannot take holds data that its default would lose: any
-     * value but null and '' (since 0.77 such a read throws UnreadableValue instead of skipping).
+     * value but null and '' (since 0.77 such a read throws UnreadableValue instead of skipping;
+     * JSON "null" was read as null before).
      */
     private static function losesAList(?\ReflectionType $type, mixed $value): bool
     {
-        if ($value === null || $value === '' || $type === null) {
+        return $value !== null && $value !== '' && self::takesArray($type);
+    }
+
+    /** Whether the property's type (or one in its union) is array. */
+    private static function takesArray(?\ReflectionType $type): bool
+    {
+        if ($type === null) {
             return false;
         }
         $names = $type instanceof \ReflectionUnionType

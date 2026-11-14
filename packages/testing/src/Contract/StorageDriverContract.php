@@ -43,8 +43,11 @@ use Preflow\Data\StorageDriver;
  * key. Strings come back exactly as saved.
  *
  * Query semantics a driver implements (as SQLite and MySQL do):
- * - `LIKE` / `NOT LIKE` ignore case (PostgreSQL needs ILIKE); `%` matches any text, `_` one
- *   character.
+ * - `LIKE` / `NOT LIKE` ignore case in every alphabet ("über" finds "Über"; PostgreSQL needs
+ *   ILIKE, SQLite a Unicode like(), see SqliteDialect::prepare()); `%` matches any text, `_` one
+ *   character (an umlaut is one).
+ * - search() and the `CONTAINS` of whereAny() find a term in a text, and in a list (a `json`
+ *   field saved as a list) when one of its values holds it, slashes and umlauts as they are.
  * - A null field matches only `where(field, null)` (IS NULL); `=`, `!=`, `<>`, `<`, `>`, `<=`,
  *   `>=`, `LIKE`, `NOT LIKE`, `IN` and `NOT IN` never match it. `!= null` / `<> null` is IS NOT
  *   NULL. An empty `IN` list matches nothing, an empty `NOT IN` list everything (nulls too).
@@ -285,6 +288,27 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame(['2', '3'], $this->ids((new Query())->where('title', 'NOT LIKE', 'a%')));
     }
 
+    public function test_like_ignores_case_in_every_alphabet(): void
+    {
+        $this->seedWords();
+
+        $this->assertSame(['u'], $this->wordIds((new Query())->where('title', 'LIKE', '%über%')), 'ü finds Ü');
+        $this->assertSame(['e'], $this->wordIds((new Query())->where('title', 'LIKE', 'été')));
+        $this->assertSame(['u'], $this->wordIds((new Query())->where('title', 'LIKE', '_ber uns')), '_ is one character, an umlaut too');
+        $this->assertSame(['e', 'k'], $this->wordIds((new Query())->where('title', 'NOT LIKE', '%ÜBER%')));
+    }
+
+    public function test_search_finds_a_term_in_text_and_in_list_values(): void
+    {
+        $this->seedWords();
+
+        $this->assertSame(['u'], $this->wordIds((new Query())->search('über', ['title'])));
+        $this->assertSame(['k'], $this->wordIds((new Query())->search('über', ['tags'])), 'a list (json) field: one of its values');
+        $this->assertSame(['k'], $this->wordIds((new Query())->search('a/b', ['tags'])), 'a slash in a list is found as it is');
+        $this->assertSame(['k'], $this->wordIds((new Query())->whereAny([['field' => 'tags', 'operator' => 'CONTAINS', 'value' => 'A/B']])));
+        $this->assertSame([], $this->wordIds((new Query())->search('nothing', ['title', 'tags'])));
+    }
+
     public function test_where_in_and_not_in(): void
     {
         $this->seedItems();
@@ -385,6 +409,21 @@ abstract class StorageDriverContract extends TestCase
         $this->driver->save('items', '1', ['uuid' => '1', 'title' => 'Apple', 'tags' => null, 'price' => 1.5]);
         $this->driver->save('items', '2', ['uuid' => '2', 'title' => 'Banana', 'tags' => 'x', 'price' => 10]);
         $this->driver->save('items', '3', ['uuid' => '3', 'title' => 'Cherry', 'tags' => 'y', 'price' => 2]);
+    }
+
+    /** Words with umlauts and accents; tags is a list (a json field). */
+    private function seedWords(): void
+    {
+        $this->createType('words', ['uuid' => 'string', 'title' => 'string', 'tags' => 'json']);
+        $this->driver->save('words', 'u', ['uuid' => 'u', 'title' => 'Über uns', 'tags' => null]);
+        $this->driver->save('words', 'e', ['uuid' => 'e', 'title' => 'ÉTÉ', 'tags' => ['Sommer']]);
+        $this->driver->save('words', 'k', ['uuid' => 'k', 'title' => 'Kartenspiel', 'tags' => ['Folio', 'Übersetzung', 'a/b']]);
+    }
+
+    /** @return list<string> the matching word ids, sorted */
+    private function wordIds(Query $query): array
+    {
+        return $this->sortedIds($this->driver->findMany('words', $query));
     }
 
     /** @return array<string, mixed> */

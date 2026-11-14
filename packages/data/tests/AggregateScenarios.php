@@ -368,7 +368,7 @@ trait AggregateScenarios
             ['extra' => null, 'count' => 8],
             ['extra' => '["b","a"]', 'count' => 1],
             ['extra' => '{"hint":true}', 'count' => 2],
-            ['extra' => '{"note":"Rätsel\\/2"}', 'count' => 1],
+            ['extra' => '{"note":"Rätsel/2"}', 'count' => 1],
         ], $rows);
 
         $measures = $this->dm->queryIn($answer)->aggregate()
@@ -378,7 +378,7 @@ trait AggregateScenarios
             ->max('extra', 'highest')
             ->get();
         $this->assertSame([
-            ['member' => 'm1', 'kinds' => 2, 'lowest' => '{"hint":true}', 'highest' => '{"note":"Rätsel\\/2"}'],
+            ['member' => 'm1', 'kinds' => 2, 'lowest' => '{"hint":true}', 'highest' => '{"note":"Rätsel/2"}'],
             ['member' => 'm2', 'kinds' => 1, 'lowest' => '["b","a"]', 'highest' => '["b","a"]'],
             ['member' => 'm3', 'kinds' => 0, 'lowest' => null, 'highest' => null],
         ], $measures);

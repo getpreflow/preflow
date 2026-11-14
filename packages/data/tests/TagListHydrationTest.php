@@ -101,14 +101,26 @@ final class TagListHydrationTest extends TestCase
     }
 
     #[DataProvider('storages')]
-    public function test_an_empty_or_null_value_reads_as_null(string $storage): void
+    public function test_a_plain_id_left_from_a_single_field_is_an_error(string $storage): void
+    {
+        $this->boot($storage);
+        $this->dm->driver('default')->save('reference', 'r1', ['uuid' => 'r1', 'name' => 'Atlas', 'uses' => 'a1b2c3'], 'uuid');
+
+        $this->expectException(\Preflow\Data\UnreadableValue::class);
+        $this->dm->find(TaggedReference::class, 'r1');
+    }
+
+    #[DataProvider('storages')]
+    public function test_an_empty_null_or_json_null_value_reads_as_null(string $storage): void
     {
         $this->boot($storage);
         $this->dm->driver('default')->save('reference', 'r1', ['uuid' => 'r1', 'name' => 'Atlas', 'uses' => null], 'uuid');
         $this->dm->driver('default')->save('reference', 'r2', ['uuid' => 'r2', 'name' => 'Atlas', 'uses' => ''], 'uuid');
+        $this->dm->driver('default')->save('reference', 'r3', ['uuid' => 'r3', 'name' => 'Atlas', 'uses' => 'null'], 'uuid');
 
         $this->assertNull($this->dm->find(TaggedReference::class, 'r1')?->uses);
         $this->assertNull($this->dm->find(TaggedReference::class, 'r2')?->uses);
+        $this->assertNull($this->dm->find(TaggedReference::class, 'r3')?->uses, 'JSON null is no value, not an error');
     }
 
     private function rrmdir(string $dir): void

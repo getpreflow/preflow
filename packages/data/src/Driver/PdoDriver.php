@@ -131,9 +131,11 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
 
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
     {
-        // Structured values (e.g. translatable locale maps) are stored as JSON text.
+        // Structured values (e.g. translatable locale maps) are stored as JSON text, with its
+        // umlauts and slashes as they are, so CONTAINS finds "Über" or "a/b" in a list as the JSON
+        // driver does (rows written before 0.77 keep "a\/b").
         $data = array_map(
-            static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) : $v,
+            static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) : $v,
             $data,
         );
 
@@ -314,7 +316,7 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
     private function insertNew(string $type, array $data, string $idField): bool
     {
         $data = array_map(
-            static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) : $v,
+            static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) : $v,
             $data,
         );
         try {
