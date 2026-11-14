@@ -2262,10 +2262,29 @@ final class MediaLibrary
      */
     public function thumbnailUrl(Asset $asset): ?string
     {
+        return $this->shownUrl($asset, null);
+    }
+
+    /**
+     * A URL to show the file at a size, sharp at $minWidth pixels: the smallest WebP variant at least
+     * that wide, else the widest one, else the original image. The same files as thumbnailUrl()
+     * otherwise: the delivered image (with its edits), a video's or document's poster or preview, the
+     * gated URL of a private file; null for other files. An admin's large preview (Folio's asset page).
+     *
+     * @since 0.76
+     */
+    public function displayUrl(Asset $asset, int $minWidth): ?string
+    {
+        return $this->shownUrl($asset, max(1, $minWidth));
+    }
+
+    /** thumbnailUrl() ($minWidth null: the 480 variant first) and displayUrl(). */
+    private function shownUrl(Asset $asset, ?int $minWidth): ?string
+    {
         if ($asset->kind() !== 'image') {
             $poster = $asset->posterId !== null && $asset->posterId !== $asset->id ? $this->find($asset->posterId) : null;
             if ($poster !== null && $poster->kind() === 'image') {
-                return $this->thumbnailUrl($poster);
+                return $this->shownUrl($poster, $minWidth);
             }
             $preview = $this->previewAsset($asset);
             if ($preview === null || $asset->private) {
@@ -2278,10 +2297,17 @@ final class MediaLibrary
         if ($asset->private) {
             return $this->url($asset); // gated: staff need the private permission (or "*") to see it
         }
-        $webp = array_filter($asset->variants, static fn (Variant $v) => $v->format === 'webp');
-        usort($webp, static fn (Variant $a, Variant $b) => [$a->width !== 480, $a->width] <=> [$b->width !== 480, $b->width]);
+        $webp = array_values(array_filter($asset->variants, static fn (Variant $v) => $v->format === 'webp'));
+        if ($minWidth === null) {
+            usort($webp, static fn (Variant $a, Variant $b) => [$a->width !== 480, $a->width] <=> [$b->width !== 480, $b->width]);
+            $pick = $webp[0] ?? null;
+        } else {
+            usort($webp, static fn (Variant $a, Variant $b) => $a->width <=> $b->width);
+            $wide = array_values(array_filter($webp, static fn (Variant $v) => $v->width >= $minWidth));
+            $pick = $wide[0] ?? ($webp === [] ? null : $webp[count($webp) - 1]);
+        }
 
-        return $this->url(($webp[0] ?? null)?->path ?? $asset->path);
+        return $this->url($pick?->path ?? $asset->path);
     }
 
     /**

@@ -141,3 +141,67 @@ test('Replace file: something dragged that is no file is left alone', () => {
     assert.equal(over.defaultPrevented, false);
     assert.ok(!p.replace.classList.contains('is-dragover'));
 });
+
+test('Replace file: back from the back/forward cache, the zone is idle again', () => {
+    const p = page();
+    Object.defineProperty(p.file, 'files', { value: [{ name: 'new.png' }], configurable: true, writable: true });
+    p.file.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.ok(p.replace.classList.contains('is-uploading'));
+    assert.equal(p.replace.getAttribute('aria-busy'), 'true');
+
+    (p.w.listeners.pageshow || []).forEach((fn) => fn({ persisted: true }));
+
+    assert.ok(!p.replace.classList.contains('is-uploading'));
+    assert.equal(p.replace.getAttribute('aria-busy'), null);
+});
+
+test('the Details form is under the unsaved guard: a typed change and a focal click both count', () => {
+    const p = page();
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), false);
+    const click = new p.w.Event('click', { bubbles: true, cancelable: true });
+    Object.defineProperty(click, 'clientX', { value: 300 });
+    Object.defineProperty(click, 'clientY', { value: 100 });
+    p.picker.dispatchEvent(click);
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true, 'a new focal point is an unsaved edit');
+    p.w.Folio.unsaved.clear(p.form);
+
+    const title = p.form.appendChild(p.doc.createElement('input'));
+    title.setAttribute('name', 'title');
+    title.dispatchEvent(new p.w.Event('input', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true);
+});
+
+const flushAll = async () => { for (let i = 0; i < 4; i++) { await flush(); } };
+
+test('Replace file with unsaved details asks first; Cancel keeps the page and the changes', async () => {
+    const p = page();
+    p.fx.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true);
+
+    Object.defineProperty(p.file, 'files', { value: [{ name: 'new.png' }], configurable: true, writable: true });
+    p.file.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    const dialog = p.doc.body.querySelector('dialog[data-folio-dialog]');
+    assert.ok(dialog && dialog.open, 'the question');
+    assert.equal(dialog.querySelector('[data-folio-dialog-title]').textContent, 'Replace the file with unsaved changes?');
+    assert.ok(dialog.classList.contains('is-danger'));
+    assert.equal(dialog.querySelector('[data-folio-dialog-confirm]').textContent, 'Replace anyway');
+    assert.equal((p.replace.sent || []).length, 0, 'nothing sent yet');
+
+    dialog.querySelector('[data-folio-dialog-cancel]').click();
+    await flushAll();
+    assert.equal((p.replace.sent || []).length, 0);
+    assert.ok(!p.replace.classList.contains('is-uploading'));
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true, 'the changes stay');
+});
+
+test('Replace file with unsaved details: "Replace anyway" drops them and sends the file', async () => {
+    const p = page();
+    p.fx.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    Object.defineProperty(p.file, 'files', { value: [{ name: 'new.png' }], configurable: true, writable: true });
+    p.file.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    p.doc.body.querySelector('dialog[data-folio-dialog] [data-folio-dialog-confirm]').click();
+    await flushAll();
+
+    assert.equal((p.replace.sent || []).length, 1);
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), false, 'no leave prompt on the way out');
+});

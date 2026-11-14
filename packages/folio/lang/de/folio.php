@@ -598,6 +598,8 @@ return [
         'used_in_count' => 'Verwendet in · :count',
         'replace_file' => 'Datei ersetzen',
         'replace_line' => 'Alt-Text, Fokuspunkt und Verwendung bleiben. Die aktuelle Datei bleibt als Version :number erhalten.',
+        // Another asset as the type of a "Used in" row (a video's poster, a copy).
+        'type_one' => 'Medium',
         'versions' => 'Versionen',
         'version_current' => 'Aktuell',
         'version_replaced' => 'Ersetzt',
@@ -982,6 +984,10 @@ return [
         'not_saved_forbidden' => 'Nicht gespeichert – du darfst das nicht bearbeiten.',
         'not_saved_offline' => 'Nicht gespeichert – prüfe deine Verbindung und speichere von Hand.',
         'link_copied' => 'Link kopiert',
+        // The asset page's Replace file while its details hold unsaved changes (0.76).
+        'replace_unsaved_title' => 'Datei mit ungespeicherten Änderungen ersetzen?',
+        'replace_unsaved' => 'Deine Änderungen an den Angaben dieser Datei sind noch nicht gespeichert und gehen verloren. Um sie zu behalten, speichere zuerst und ersetze die Datei danach.',
+        'replace_anyway' => 'Trotzdem ersetzen',
         'link_not_copied' => 'Der Link konnte nicht kopiert werden.',
         'shortcuts' => 'Tastenkürzel',
         'shortcut_help' => 'Diese Kürzel zeigen',

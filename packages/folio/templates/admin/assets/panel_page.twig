@@ -16,7 +16,8 @@
 {% block actions %}
     <a class="btn btn-secondary" href="{{ asset.original }}" download><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-download"></use></svg>{{ t(edited|default(false) ? 'folio.assets.download_original' : 'folio.assets.download') }}</a>
     {%- if tab == 'details' and can('assets.edit') %}
-    <button type="submit" class="btn btn-primary" form="folio-asset-form">{{ t('folio.common.save') }}</button>
+    {# data-folio-save: ⌘S, and "Save and leave" when the unsaved guard asks before a link. #}
+    <button type="submit" class="btn btn-primary" form="folio-asset-form" data-folio-save data-busy-label="{{ t('folio.form.saving') }}" title="{{ t('folio.common.save') }} (⌘S)" aria-keyshortcuts="Meta+S Control+S">{{ t('folio.common.save') }}</button>
     {%- endif %}
 {% endblock %}
 {% block content %}

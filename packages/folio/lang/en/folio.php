@@ -615,6 +615,8 @@ return [
         'used_in_count' => 'Used in · :count',
         'replace_file' => 'Replace file',
         'replace_line' => 'Keeps alt text, focal point and usage. The current file stays as version :number.',
+        // Another asset as the type of a "Used in" row (a video's poster, a copy).
+        'type_one' => 'Asset',
         'versions' => 'Versions',
         'version_current' => 'Current',
         'version_replaced' => 'Replaced',
@@ -1008,6 +1010,10 @@ return [
         'not_saved_forbidden' => "Not saved — you don't have access to edit this.",
         'not_saved_offline' => 'Not saved — check your connection and save manually.',
         'link_copied' => 'Link copied',
+        // The asset page's Replace file while its details hold unsaved changes (0.76).
+        'replace_unsaved_title' => 'Replace the file with unsaved changes?',
+        'replace_unsaved' => 'Your changes to this file’s details are not saved yet and will be lost. To keep them, save first, then replace the file.',
+        'replace_anyway' => 'Replace anyway',
         'link_not_copied' => 'The link could not be copied.',
         'shortcuts' => 'Keyboard shortcuts',
         'shortcut_help' => 'Show these shortcuts',

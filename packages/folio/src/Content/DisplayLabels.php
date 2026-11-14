@@ -64,12 +64,23 @@ final class DisplayLabels
     public function noun(string $type, int $n): string
     {
         $plural = $this->type($type);
-        $singular = $this->singular($type) ?? (FolioText::locale() === 'en' ? self::guessSingular($plural) : $plural);
+        $singular = $this->one($type);
 
         return FolioText::choice('folio.format.type_noun', $n, [
             'singular' => FolioText::noun($singular),
             'plural' => FolioText::noun($plural),
         ]);
+    }
+
+    /**
+     * The type's label for one record as a name ("Reference", a usage row's type): "label_singular"
+     * (a key), else in English a guess from the label, else the label itself. Its case as written.
+     *
+     * @since 0.76
+     */
+    public function one(string $type): string
+    {
+        return $this->singular($type) ?? (FolioText::locale() === 'en' ? self::guessSingular($this->type($type)) : $this->type($type));
     }
 
     private static function guessSingular(string $label): string

@@ -106,7 +106,7 @@ final class AssetDetailPageTest extends TestCase
         // The header: the file name as the title, Download (the file as uploaded), Save naming the form outside it.
         $this->assertMatchesRegularExpression('#<h1><span class="folio-title-text folio-asset-title">quadrant\.png</span></h1>#', $body);
         $this->assertMatchesRegularExpression('#<a class="btn btn-secondary" href="/media/[^"]+" download>.*?Download</a>#s', $body);
-        $this->assertStringContainsString('<button type="submit" class="btn btn-primary" form="folio-asset-form">Save</button>', $body);
+        $this->assertMatchesRegularExpression('#<button type="submit" class="btn btn-primary" form="folio-asset-form" data-folio-save [^>]*>Save</button>#', $body);
         $this->assertStringContainsString('<form method="post" action="/folio/assets/' . $asset->id . '?back=', $body);
         $this->assertStringContainsString('class="folio-asset-form" id="folio-asset-form"', $body);
         $this->assertSame(1, substr_count($body, '>Save</button>'), 'one Save, in the header');

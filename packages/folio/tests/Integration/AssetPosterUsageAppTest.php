@@ -33,8 +33,8 @@ final class AssetPosterUsageAppTest extends TestCase
         $poster = $lib->upload($this->file($this->png(), 'poster.png'), null);
         $video = $lib->upload($this->file("notes\n", 'clip.txt'), null);
         $lib->update($video->id, ['poster' => $poster->id]);
-        // Another asset uses it: the library's tile and label ("Assets"), the note after the name.
-        $row = self::row('/folio/assets/' . $video->id, 'asset', 'clip.txt', '(as poster)', 'Assets');
+        // Another asset uses it: the library's tile and "Asset", the note after the name.
+        $row = self::row('/folio/assets/' . $video->id, 'asset', 'clip.txt', '(as poster)', 'Asset');
 
         $panel = (string) $this->get('/folio/assets/' . $poster->id)->getBody();
         $this->assertStringContainsString('<h2 class="folio-asset-block-title">Used in · 1</h2>', $panel);
@@ -59,8 +59,34 @@ final class AssetPosterUsageAppTest extends TestCase
         $panel = (string) $this->get('/folio/assets/' . $poster->id)->getBody();
 
         $this->assertStringContainsString('<h2 class="folio-asset-block-title">Used in · 2</h2>', $panel);
-        $this->assertMatchesRegularExpression('#<ul class="folio-asset-usage-list">\s*' . self::row('/folio/post/p1/edit', 'page', 'Hello', null, 'Posts')
-            . '\s*' . self::row('/folio/assets/' . $video->id, 'asset', 'clip.txt', '(as poster)', 'Assets') . '\s*</ul>#s', $panel);
+        $this->assertMatchesRegularExpression('#<ul class="folio-asset-usage-list">\s*' . self::row('/folio/post/p1/edit', 'page', 'Hello', null, 'Post')
+            . '\s*' . self::row('/folio/assets/' . $video->id, 'asset', 'clip.txt', '(as poster)', 'Asset') . '\s*</ul>#s', $panel);
+    }
+
+    public function test_a_usage_without_a_type_or_with_an_unknown_one_has_a_neutral_tile_and_no_type(): void
+    {
+        $app = $this->app();
+        $lib = $app->container()->get(MediaLibrary::class);
+        $asset = $lib->upload($this->file($this->png(), 'logo.png'), null);
+        // A site's own source: one entry without a type, one with a type key no catalog knows.
+        $app->container()->get(\Preflow\Media\Usage\AssetUsage::class)->register(new class implements \Preflow\Media\Usage\AssetReferenceSource {
+            public function name(): string { return 'shop'; }
+            public function usagesOf(string $assetId): array
+            {
+                return [
+                    new \Preflow\Media\Usage\AssetUsageEntry('Untyped', '/shop/1', 'shop'),
+                    new \Preflow\Media\Usage\AssetUsageEntry('Unknown kind', '/shop/2', 'shop', type: 'no-such-type'),
+                ];
+            }
+        });
+
+        $panel = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio/assets/' . $asset->id))->getBody();
+
+        $this->assertStringContainsString('<h2 class="folio-asset-block-title">Used in · 2</h2>', $panel);
+        foreach (['/shop/1' => 'Untyped', '/shop/2' => 'Unknown kind'] as $href => $label) {
+            $this->assertMatchesRegularExpression('#<a class="folio-asset-use-row" href="' . preg_quote($href, '#') . '"><span class="folio-type-icon" data-family="" aria-hidden="true">.*?</span>\s*<span class="folio-asset-use-label">' . $label . '</span>\s*</a>#s', $panel);
+        }
+        $this->assertStringNotContainsString('folio-asset-use-type', $panel);
     }
 
     /** A "Used in" row as a regex: the link, the type's tile (its family), the name with its note, the type's label. */

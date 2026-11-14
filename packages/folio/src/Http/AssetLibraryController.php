@@ -56,6 +56,9 @@ final class AssetLibraryController
 {
     private const int PER_PAGE = 48;
 
+    /** The width the Details tab's large image should be sharp at. */
+    private const int PREVIEW_WIDTH = 960;
+
     public function __construct(
         private readonly MediaLibrary $library,
         private readonly AssetUsage $usage,
@@ -70,7 +73,7 @@ final class AssetLibraryController
         /** Asked whether machine translation is available (since 0.66; before, the AI connection). */
         private readonly ?\Preflow\I18n\Machine\MachineTranslator $translator = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
-        /** The type labels of "Used in" (since 0.76; without it the type's key). */
+        /** The type labels of "Used in", for one record (since 0.76; without it the catalog's label). */
         private readonly ?\Preflow\Folio\Content\DisplayLabels $labels = null,
         /** Who replaced a version, by name (since 0.76; without it the stored id). */
         private readonly ?\Preflow\Folio\Users\AuthorNames $authors = null,
@@ -954,7 +957,8 @@ final class AssetLibraryController
             'editor_assets' => array_values(array_unique(['admin.js', ...$fieldAssets])),
             'asset' => $this->item($asset),
             'copy_of' => $this->originalLabel($asset),
-            'preview' => $this->previewUrl($asset),
+            // The Details tab's large image: sharp at its size (the media core picks the variant).
+            'preview' => $this->library->displayUrl($asset, self::PREVIEW_WIDTH),
             'fields' => $fields,
             'version_count' => $this->versionCount($asset),
             'swatches' => self::swatches($asset),
@@ -1008,29 +1012,6 @@ final class AssetLibraryController
     private function versionCount(Asset $asset): int
     {
         return count($this->library->versions($asset->id)) + 1;
-    }
-
-    /**
-     * The Details tab's large image: the delivered file's WebP variant that is at least 960 pixels wide (else
-     * its widest), so the preview is sharp at its size; the thumbnail where there is none (private, no variants).
-     */
-    private function previewUrl(Asset $asset): ?string
-    {
-        if ($asset->kind() !== 'image') {
-            return $this->library->thumbnailUrl($asset);
-        }
-        $delivered = $this->library->deliveryAsset($asset) ?? $asset;
-        if ($delivered->private) {
-            return $this->library->thumbnailUrl($asset);
-        }
-        $webp = array_values(array_filter($delivered->variants, static fn (\Preflow\Media\Variant $v): bool => $v->format === 'webp'));
-        if ($webp === []) {
-            return $this->library->thumbnailUrl($asset);
-        }
-        usort($webp, static fn (\Preflow\Media\Variant $a, \Preflow\Media\Variant $b): int => $a->width <=> $b->width);
-        $large = array_values(array_filter($webp, static fn (\Preflow\Media\Variant $v): bool => $v->width >= 960));
-
-        return $this->library->url(($large[0] ?? $webp[count($webp) - 1])->path);
     }
 
     /**
@@ -1121,8 +1102,8 @@ final class AssetLibraryController
      * who may open it (assets.delete).
      *
      * Its type (AssetUsageEntry::$type, since 0.76) as the row's tile and name: a Folio type's family, icon
-     * and label from the catalog, another asset (a copy, a video's poster) as the library's; an unknown or
-     * missing key has a neutral tile and no name.
+     * and label for one record (DisplayLabels::one(), "Reference") from the catalog, another asset (a copy, a
+     * video's poster) as the library's tile and "Asset"; an unknown or missing key has a neutral tile and no name.
      *
      * @return array{label: string, url: string, where: string, source: string, note: ?string, blocks: bool, family: ?\Preflow\Data\TypeFamily, icon: string, type_label: ?string}
      */
@@ -1130,8 +1111,8 @@ final class AssetLibraryController
     {
         $listing = $entry->type !== null ? $this->catalog->get($entry->type) : null;
         [$family, $icon, $typeLabel] = match (true) {
-            $listing !== null => [$listing->family, $listing->glyph(), $this->labels?->type($listing->key) ?? $listing->label],
-            $entry->type === CopyReferences::TYPE || $entry->type === PosterReferences::TYPE => [\Preflow\Data\TypeFamily::Asset, 'ui-library', FolioText::get('folio.nav.assets')],
+            $listing !== null => [$listing->family, $listing->glyph(), $this->labels?->one($listing->key) ?? $listing->label],
+            $entry->type === CopyReferences::TYPE || $entry->type === PosterReferences::TYPE => [\Preflow\Data\TypeFamily::Asset, 'ui-library', FolioText::get('folio.assets.type_one')],
             default => [null, 'ui-file', null],
         };
 

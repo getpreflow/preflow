@@ -1644,7 +1644,8 @@
     }
 
     function initUnsavedGuard() {
-        unsaved.guarded = Array.prototype.slice.call(document.querySelectorAll('.folio-form form, .folio-side form'))
+        // The record editor's forms, and an asset's Details form (its Save is in the topbar: data-folio-save).
+        unsaved.guarded = Array.prototype.slice.call(document.querySelectorAll('.folio-form form, .folio-side form, form.folio-asset-form'))
             .filter(function (form) { return !form.hasAttribute('hx-post'); });
         if (unsaved.guarded.length === 0) { return; }
         document.addEventListener('input', onGuardEdit);
@@ -2436,11 +2437,16 @@
         fx.value = String(Math.round(Math.min(100, Math.max(0, (e.clientX - rect.left) / rect.width * 100))));
         fy.value = String(Math.round(Math.min(100, Math.max(0, (e.clientY - rect.top) / rect.height * 100))));
         placeFocalMarker(picker);
+        // A changed focal point is an unsaved edit like a typed one (the unsaved guard listens for change).
+        fx.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     // Asset page, Replace file ([data-folio-replace]): a plain upload form without script. With it the file
     // input hides inside its drop zone (a label, so a click still opens the dialog) and so does the button: a
-    // chosen file, or the first one dropped on the form, goes to the replace route at once.
+    // chosen file, or the first one dropped on the form, goes to the replace route at once. While the Details
+    // form holds unsaved changes it asks first (folioConfirm, two ways: "Replace anyway", which drops those
+    // changes, or Cancel; saving first is the person's own Save, as a save-then-replace would need two posts).
+    // Back from the back/forward cache, the zone is idle again (pageshow).
     function initReplace(root) {
         root.querySelectorAll('[data-folio-replace]').forEach(function (form) {
             form.classList.add('is-live');
@@ -2450,9 +2456,32 @@
 
     function sendReplace(form) {
         if (form.classList.contains('is-uploading')) { return; }
-        form.classList.add('is-uploading');
-        form.setAttribute('aria-busy', 'true');
-        if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); }
+        var details = document.querySelector('form.folio-asset-form');
+        var go = function () {
+            if (details) { clearDirty(details); } // the replace leaves the page: its changes go with it
+            form.classList.add('is-uploading');
+            form.setAttribute('aria-busy', 'true');
+            if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); }
+        };
+        if (!details || unsaved.dirty.indexOf(details) < 0) { go(); return; }
+        folioConfirm({
+            title: folioT('replace_unsaved_title'),
+            message: folioT('replace_unsaved'),
+            confirm: folioT('replace_anyway'),
+            tone: 'danger',
+            icon: 'ui-warn'
+        }).then(function (answer) {
+            if (answer === 'confirm') { go(); return; }
+            var input = form.querySelector('[data-folio-replace-file]');
+            if (input) { try { input.value = ''; } catch (err) { /* read-only in some browsers */ } }
+        });
+    }
+
+    function resetReplace() {
+        document.querySelectorAll('[data-folio-replace]').forEach(function (form) {
+            form.classList.remove('is-uploading', 'is-dragover');
+            form.removeAttribute('aria-busy');
+        });
     }
 
     function onReplaceChange(e) {
@@ -3586,6 +3615,7 @@
         document.addEventListener('click', onAssetFieldClick);
         document.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initReplace(document);
+        window.addEventListener('pageshow', resetReplace);
         document.addEventListener('change', onReplaceChange);
         document.addEventListener('dragover', onReplaceDragOver);
         document.addEventListener('dragleave', onReplaceDragLeave);
