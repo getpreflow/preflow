@@ -397,6 +397,45 @@ accent, which also marks actions (the primary button, focus, ticked rows): a `li
 {{ types.type_icon(listing.family, listing.glyph) }}      {# 24px; types.type_icon(family, icon, 28) for a header #}
 ```
 
+### The ink layer (since 0.76)
+
+Folio's darkest surface, the sign-in's green-black with its glow, is the **ink layer**: the
+dashboard band, the brand tile, empty states and the 404 / forbidden cards. It looks the same in
+both themes. Use it sparingly: at most one ink place per screen, never inside a form or a table.
+The classes, for a screen of your own:
+
+| Class | What |
+|---|---|
+| `.folio-ink` | the surface: ink background with its glow, light text, rounded |
+| `.folio-ink-card` | a card on it: text at the bottom left, marks behind it on the right |
+| `.folio-ink-title` | the card's title |
+| `.folio-ink-line` | the living line: mono text in ink's light green; end it with `<span class="folio-caret" aria-hidden="true"></span>` |
+| `.folio-ink-action` (on a `.btn`) | the primary action on ink (`--ink-accent`) |
+| `.folio-ink-error`, `.folio-ink-glyph`, `.folio-ink-muted` | the 404 / forbidden card: one large mark glyph, a muted message |
+| `.folio-ink-marks` | the marks layer (`folio_ink_marks()` draws it) |
+| `.folio-ink-drift` | the marks drift slowly (stopped under reduced motion) |
+| `.mc-1` … `.mc-6` | the six mark hues (`--mark-1` … `--mark-6`) |
+
+**`folio_ink_marks(seed, count = 6, area = {}, aspect = 1)`** draws the editing marks
+(caret, pilcrow, brace, …: the `mark-*` symbols of `icons.svg`) as one aria-hidden `<svg>`,
+placed from a fixed seed so a screen looks the same on every request. A seed that is not a
+number is a screen's fixed name (its crc32 is the seed). `area` is the box the marks stay in,
+as fractions of the surface (`{x: [0.5, 1.0], y: [0, 1]}`: the right half, away from the text);
+`aspect` is the surface's width / height, so the marks spread evenly on screen; `count` is at
+most 60. In PHP, `Preflow\Folio\View\InkMarks::place()` gives the same placement as data.
+
+```twig
+<section class="folio-ink folio-ink-card">
+    {{ folio_ink_marks('shop-empty', 6, {x: [0.5, 1.0], y: [0, 1]}, 3) }}
+    <p class="folio-ink-title">No orders yet</p>
+    <p class="folio-ink-line">orders arrive here<span class="folio-caret" aria-hidden="true"></span></p>
+    <a class="btn folio-ink-action" href="/folio/shop/settings">Set up the shop</a>
+</section>
+```
+
+An empty list of your own can use the partial instead:
+`{% include '@folio/admin/partials/_empty.twig' with {screen: 'shop', title: '…', line: '…', action: {label: '…', url: '…'}} only %}`.
+
 ### Styling extension screens
 
 Screens inside the admin shell get the control styling for free: plain `input`, `select`,

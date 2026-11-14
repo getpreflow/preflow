@@ -416,6 +416,17 @@ configured `filters` fields (a relation by id, a list means any of them; a multi
 means "contains"), and on the asset's own `private` flag. A page past the end gives the last
 page. Works on JSON and SQL storage.
 
+`missingAlt: true` keeps only images whose alt text in the default locale is null or empty
+(what an SEO audit flags; only images are asked for one); it combines with the other
+conditions (since 0.76). `missingAltCount(kind, search, filters)` counts that set with the same
+conditions, so a "Missing alt text · N" toggle beside a search counts what it would list:
+
+```php
+$library->query(search: 'harbour', missingAlt: true);   // the harbour images without alt text
+$library->missingAltCount(search: 'harbour');           // how many of them
+$library->missingAltCount();                            // every live original image without one
+```
+
 ## Colour management
 
 Variants are always sRGB, so every browser shows the colours the photographer saw.
@@ -488,6 +499,13 @@ colours and the box formats treat a video like a document with a picture.
   turned.
 - **A poster wins.** An image poster set on the video (or on a document) is shown instead of the
   preview, in the library and in `media_image()`; clear the poster and the frame is back.
+- `thumbnailUrl($asset)` is the small picture an admin list shows (the 480 variant first);
+  `displayUrl($asset, $minWidth)` (since 0.76) is a large preview sharp at `$minWidth` pixels:
+  the smallest WebP variant at least that wide, else the widest, else the original image, and
+  for a video or document its poster or preview, the gated URL for a private file, null for
+  other files.
+- `posterCounts($ids)` (since 0.76) counts, in one query, how many assets use each id as their
+  poster, live and binned; `posterCounts($ids, binned: false)` the live ones only.
 - ffmpeg is run with an argument list (no shell), reads only the asset's own file and has a
   20 second limit for all its tries. The input format is pinned by the file's type (`-f mov` for
   MP4 and QuickTime, `-f matroska` for WebM), so ffmpeg never reads a crafted file as something
@@ -587,14 +605,24 @@ first.
   not blocked:
 
 ```php
-use Preflow\Media\Usage\{AssetReferenceSource, AssetUsage, AssetUsageEntry};
+use Preflow\Media\Usage\{AssetReferenceSource, AssetUsage, AssetUsageEntry, CountsAssetUsage};
 
-final class OrderReferences implements AssetReferenceSource
+final class OrderReferences implements AssetReferenceSource, CountsAssetUsage
 {
     public function name(): string { return 'orders'; }
 
     /** @return list<AssetUsageEntry> */
-    public function usagesOf(string $assetId): array { /* scan or ask an index */ }
+    public function usagesOf(string $assetId): array
+    {
+        // one entry per place: label, edit URL, source, note, blocksDelete, type
+        return [/* new AssetUsageEntry('Order 1042', '/admin/orders/1042', 'orders', type: 'order') */];
+    }
+
+    /** Optional (CountsAssetUsage): a whole library page of ids in one query. */
+    public function usageCounts(array $assetIds, bool $nonBlocking = false): array
+    {
+        return [/* asset id => how many orders use it */];
+    }
 }
 
 // in your provider's boot()
@@ -609,6 +637,21 @@ checked, wrap it: `new LazyReferenceSource('orders', fn () => $container->get(Or
 A source may scan its data on request or keep an index up to date on save; the interface
 does not care. It is asked on every delete, so keep it cheap: Folio's skips types without
 asset or blocks fields and, on SQL storage, reads only rows whose columns contain the id.
+
+An `AssetUsageEntry` carries `label`, `url` (where it is edited, or null), `source`, an
+optional `note` ("published version"), `blocksDelete` (false for a use that only keeps the
+asset out of cleanup, such as an earlier revision) and, since 0.76, `type`: a key the source
+defines for what uses it (a content type's key, `asset` for another asset), so a UI can show
+that kind's icon and name; null when the source has none.
+
+**Counting a page of assets (since 0.76).** `AssetUsage::counts($ids)` gives each id its
+number of usages for a whole library page at once: a source that implements
+`CountsAssetUsage` is asked once (`usageCounts($ids, $nonBlocking)`), any other `usagesOf()`
+per asset. By default only the usages that **block a delete** count, as a library card's
+"used N×" shows them, so a source can skip what holds only non-blocking ones (Folio does not
+read its revisions then). `counts($ids, nonBlocking: true)` counts every usage, as `of()`,
+`isUsed()`, cleanup and emptying the bin see them. A batch must answer what `usagesOf()`
+would: the blocking entries, or all of them with `$nonBlocking`.
 
 ## The bin
 
