@@ -22,6 +22,9 @@ final class InkMarks
 
     public const int MAX = 60;
 
+    /** The widest (and, inverted, the tallest) box shape place() takes as given. */
+    private const float ASPECT_MAX = 20.0;
+
     /** The drawn side of a mark in CSS pixels. */
     private const float SIZE_MIN = 24.0;
     private const float SIZE_MAX = 52.0;
@@ -31,14 +34,21 @@ final class InkMarks
 
     /**
      * @param array{x?: array{0?: float|int, 1?: float|int}, y?: array{0?: float|int, 1?: float|int}} $area fractions of the box
+     * @param float $aspect the box's width / height (e.g. 1100 / 160 for a dashboard band), so the marks spread
+     *                      evenly in pixels; 1 for a square box (kept within 1/20..20; anything else counts as 1)
      * @return list<array{mark: string, x: float, y: float, size: float, rotate: int, hue: int}>
      *         x/y: the mark's anchor as fractions of the box (inside the area); size in px; rotate in degrees; hue 1..6
      */
-    public static function place(int $seed, int $count, array $area): array
+    public static function place(int $seed, int $count, array $area, float $aspect = 1.0): array
     {
         $count = max(0, min(self::MAX, $count));
         [$x0, $x1] = self::span($area['x'] ?? null);
         [$y0, $y1] = self::span($area['y'] ?? null);
+        $aspect = is_finite($aspect) && $aspect > 0 ? min(self::ASPECT_MAX, max(1 / self::ASPECT_MAX, $aspect)) : 1.0;
+        // Distances in the box's own proportions (units of its height), so the marks spread evenly
+        // on screen: in a wide band a step across is worth more than a step down.
+        $sx = ($x1 - $x0) * $aspect;
+        $sy = $y1 - $y0;
         $next = self::generator($seed);
 
         $marks = [];
@@ -50,7 +60,7 @@ final class InkMarks
                 $candidate = [$next(), $next()];
                 $distance = INF;
                 foreach ($points as $point) {
-                    $distance = min($distance, ($candidate[0] - $point[0]) ** 2 + ($candidate[1] - $point[1]) ** 2);
+                    $distance = min($distance, (($candidate[0] - $point[0]) * $sx) ** 2 + (($candidate[1] - $point[1]) * $sy) ** 2);
                 }
                 if ($distance > $bestDistance) {
                     $best = $candidate;
@@ -94,14 +104,15 @@ final class InkMarks
     /**
      * The layer: <svg class="folio-ink-marks" aria-hidden="true"> with one <use> of a mark-* symbol
      * of $icons (the icons.svg URL) per mark, in its own viewport at the anchor (percentages of the box).
+     * $aspect is the box's width / height, as for place().
      *
      * @param array{x?: array{0?: float|int, 1?: float|int}, y?: array{0?: float|int, 1?: float|int}} $area
      */
-    public static function svg(string $icons, int $seed, int $count, array $area): string
+    public static function svg(string $icons, int $seed, int $count, array $area, float $aspect = 1.0): string
     {
         $href = htmlspecialchars($icons, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
         $out = '';
-        foreach (self::place($seed, $count, $area) as $mark) {
+        foreach (self::place($seed, $count, $area, $aspect) as $mark) {
             [$u, $v] = self::offsets($mark, $area);
             $size = $mark['size'];
             $out .= '<svg x="' . self::num($mark['x'] * 100) . '%" y="' . self::num($mark['y'] * 100) . '%" overflow="visible">'

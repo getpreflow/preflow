@@ -79,6 +79,41 @@ final class InkMarksTest extends TestCase
         }
     }
 
+    public function test_marks_in_a_wide_band_spread_out_on_screen(): void
+    {
+        // A 1100×160 dashboard band, marks on its right half: with the box's aspect, the nearest two marks
+        // (centres as drawn) are never closer than 24px; measured in the unit square they bunch up.
+        [$w, $h] = [1100.0, 160.0];
+        $nearest = static function (array $marks) use ($w, $h): float {
+            $centres = [];
+            foreach ($marks as $mark) {
+                [$left, $top, $right, $bottom] = InkMarks::box($mark, self::AREA, $w, $h);
+                $centres[] = [($left + $right) / 2, ($top + $bottom) / 2];
+            }
+            $d = INF;
+            foreach ($centres as $i => $a) {
+                foreach (array_slice($centres, $i + 1) as $b) {
+                    $d = min($d, hypot($a[0] - $b[0], $a[1] - $b[1]));
+                }
+            }
+
+            return $d;
+        };
+        $even = $flat = 0.0;
+        for ($seed = 1; $seed <= 20; $seed++) {
+            $spread = $nearest(InkMarks::place($seed, 14, self::AREA, $w / $h));
+            $this->assertGreaterThanOrEqual(24.0, $spread, "seed {$seed}");
+            $even += $spread;
+            $flat += $nearest(InkMarks::place($seed, 14, self::AREA));
+        }
+        $this->assertGreaterThan(1.5 * $flat, $even, 'the aspect spreads them clearly better than the unit square');
+
+        // A box shape that makes no sense counts as square; the same seed and aspect give the same marks.
+        $this->assertSame(InkMarks::place(3, 10, self::AREA), InkMarks::place(3, 10, self::AREA, 0.0));
+        $this->assertSame(InkMarks::place(3, 10, self::AREA), InkMarks::place(3, 10, self::AREA, NAN));
+        $this->assertSame(InkMarks::place(3, 10, self::AREA, 6.875), InkMarks::place(3, 10, self::AREA, 6.875));
+    }
+
     public function test_an_odd_area_is_read_safely(): void
     {
         // Swapped ends, values outside 0..1 and a missing axis: the area is clamped to the box.
@@ -141,16 +176,17 @@ final class InkMarksTest extends TestCase
         try {
             $probe = $this->dir . '/ink-probe';
             mkdir($probe);
-            file_put_contents($probe . '/probe.twig', "<div>{{ folio_ink_marks(7, 6, {x: [0.5, 1], y: [0, 1]}) }}</div>");
+            file_put_contents($probe . '/probe.twig', "<div>{{ folio_ink_marks(7, 6, {x: [0.5, 1], y: [0, 1]}) }}</div><p>{{ folio_ink_marks(7, 6, {x: [0.5, 1], y: [0, 1]}, 1100 / 160) }}</p>");
             $engine = $this->flow->container()->get(FolioEngine::class);
             $engine->addNamespace('inkprobe', $probe);
 
             $html = $engine->render('@inkprobe/probe.twig');
             $icons = $this->flow->container()->get(\Preflow\Folio\Http\AdminAssetUrls::class)('icons.svg');
             // The markup comes through as markup (not escaped), with the versioned icons URL.
-            $this->assertSame('<div>' . InkMarks::svg($icons, 7, 6, self::AREA) . '</div>', $html);
+            $this->assertSame('<div>' . InkMarks::svg($icons, 7, 6, self::AREA) . '</div><p>' . InkMarks::svg($icons, 7, 6, self::AREA, 6.875) . '</p>', $html);
+            $this->assertNotSame(InkMarks::svg($icons, 7, 6, self::AREA), InkMarks::svg($icons, 7, 6, self::AREA, 6.875), 'the aspect reaches the placement');
             $this->assertStringStartsWith('<div><svg class="folio-ink-marks" aria-hidden="true"', $html);
-            $this->assertSame(6, substr_count($html, '<use '));
+            $this->assertSame(12, substr_count($html, '<use '));
         } finally {
             $this->removeSite();
         }

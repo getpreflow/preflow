@@ -205,7 +205,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 }
 
 /* ---- app shell ---- */
-/* The skip link: the first tab stop of every admin page, out of sight until it has focus; it jumps
+/* The skip link: the first tab stop of both shells (sidebar and rail), out of sight until it has focus; it jumps
    past the sidebar or the rail to main#folio-main (tabindex -1, so it takes focus without a ring). */
 .folio-skip {
   position: fixed;

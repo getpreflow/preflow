@@ -1477,15 +1477,17 @@ final class FolioServiceProvider extends ServiceProvider
                 callable: static fn (string $file): string => $container->get(\Preflow\Folio\Http\AdminAssetUrls::class)($file),
                 isSafe: false,
             ));
-            // folio_ink_marks(seed, count, area): the ink layer's marks (InkMarks), an aria-hidden <svg> of
-            // mark-* symbols from icons.svg. Every value in it is a number or a fixed mark name.
+            // folio_ink_marks(seed, count, area, aspect = 1): the ink layer's marks (InkMarks), an aria-hidden
+            // <svg> of mark-* symbols from icons.svg; aspect is the box's width / height (marks spread evenly
+            // on screen). Every value in it is a number or a fixed mark name.
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_ink_marks',
-                callable: static fn (int|float|string $seed, int|float|string $count = 6, array $area = []): string => \Preflow\Folio\View\InkMarks::svg(
+                callable: static fn (int|float|string $seed, int|float|string $count = 6, array $area = [], int|float|string $aspect = 1): string => \Preflow\Folio\View\InkMarks::svg(
                     $container->get(\Preflow\Folio\Http\AdminAssetUrls::class)('icons.svg'),
                     (int) $seed,
                     (int) $count,
                     $area,
+                    (float) $aspect,
                 ),
                 isSafe: true,
             ));

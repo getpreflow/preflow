@@ -86,9 +86,11 @@ final class SkipLinkTest extends TestCase
     #[RunInSeparateProcess]
     public function test_the_skip_link_speaks_the_interface_language(): void
     {
-        foreach (['en' => 'Skip to content', 'de' => 'Zum Inhalt springen', 'fr' => 'Aller au contenu'] as $locale => $text) {
-            $strings = require dirname(__DIR__, 2) . '/lang/' . $locale . '/folio.php';
-            $this->assertSame($text, $strings['layout']['skip'], $locale);
-        }
+        $this->removeSite();
+        $this->staffSite(folio: ['locale' => 'de']);
+        $this->signIn();
+        $link = $this->dom('/folio')->query('/html/body/a[@class="folio-skip"]')->item(0);
+        $this->assertInstanceOf(\DOMElement::class, $link);
+        $this->assertSame('Zum Inhalt springen', trim($link->textContent));
     }
 }
