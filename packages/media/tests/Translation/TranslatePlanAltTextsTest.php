@@ -73,7 +73,7 @@ final class TranslatePlanAltTextsTest extends TestCase
 
         ob_start();
         $code = (new TranslatePlanCommand(function () use ($sources): Application {
-            $app = Application::create(['app' => ['locale' => 'en']]);
+            $app = $this->appInAssetRoot(['app' => ['locale' => 'en']]);
             $app->container()->instance(TextSources::class, $sources);
             $app->container()->instance(JobRunner::class, $this->runner);
             $app->container()->instance(Locales::class, $this->locales);

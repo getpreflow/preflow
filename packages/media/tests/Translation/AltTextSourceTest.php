@@ -124,11 +124,13 @@ final class AltTextSourceTest extends TestCase
 
         $single = $this->app(Locales::single('en'));
         $this->assertFalse($single->container()->get(TextSources::class)->has(AltTextSource::COLLECTION));
+        // Its caches (storage/) go to the test's own directory, never the checkout's.
+        $this->assertSame(realpath($this->assetRoot), realpath($multi->basePath()));
     }
 
     private function app(Locales $locales): Application
     {
-        $app = Application::create(['app' => ['locale' => 'en']]);
+        $app = $this->appInAssetRoot(['app' => ['locale' => 'en']]);
         $app->container()->instance(Locales::class, $locales);
         $media = new MediaServiceProvider();
         $app->registerProvider($media);

@@ -26,6 +26,24 @@ trait MediaFixtures
         mkdir($this->assetRoot, 0777, true);
     }
 
+    /**
+     * An app from config alone (Application::create(array) takes the working directory as its base
+     * path), created inside the asset root, so whatever it writes under storage/ (the Composer
+     * metadata cache) lands there and never in the checkout.
+     *
+     * @param array<string, mixed> $config
+     */
+    private function appInAssetRoot(array $config): \Preflow\Core\Application
+    {
+        $cwd = getcwd() ?: '.';
+        chdir($this->assetRoot);
+        try {
+            return \Preflow\Core\Application::create($config);
+        } finally {
+            chdir($cwd);
+        }
+    }
+
     private function removeAssetRoot(): void
     {
         if (!is_dir($this->assetRoot)) {
