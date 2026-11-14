@@ -39,6 +39,7 @@ final readonly class TypeListing
         public string|array|null $labels = null,
         public string|array|null $singular = null,
         public string $group = 'site',
+        /** The type's family (data's TypeFamily): its tile colour and glyph. @since 0.75 */
         public ?TypeFamily $family = null,
     ) {}
 

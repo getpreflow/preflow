@@ -1631,7 +1631,7 @@ final class AdminController
         ];
     }
 
-    /** The record form's id: the topbar buttons and the side panel's record controls name it (form="…"). */
+    /** The record form's id: the topbar buttons and the side panel's record controls name it (form="…"). @since 0.75 */
     public const string RECORD_FORM = 'folio-record';
 
     /**

@@ -160,7 +160,7 @@ final class RelationFieldType implements FieldType, \Preflow\Folio\Field\HasColu
         return $html;
     }
 
-    /** "Dubach Holzbau AG" → "DH": the first letters of the first two words. */
+    /** "Dubach Holzbau AG" → "DH": the first letters of the first two words. @since 0.75 */
     public static function initials(string $label): string
     {
         $words = preg_split('/[\s\-_.,·&\/]+/u', trim($label), -1, PREG_SPLIT_NO_EMPTY) ?: [];

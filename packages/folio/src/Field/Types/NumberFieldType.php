@@ -72,11 +72,13 @@ final class NumberFieldType extends AbstractScalarFieldType implements \Preflow\
         return $this->renderDecorated($ctx->name, $options, $control, '', 'folio-number-field');
     }
 
-    /** The longest "unit" text. */
+    /** The longest "unit" text. @since 0.75 */
     public const int UNIT_MAX = 12;
 
     /**
      * The "unit" option: a short one-line text, or null when the field has none.
+     *
+     * @since 0.75
      *
      * @param array<string, mixed> $config
      * @throws \LogicException for anything else (TypeCatalog reports it at boot)

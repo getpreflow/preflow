@@ -29,7 +29,7 @@ final readonly class ListQuery
 
     private const array NUMERIC_TYPES = ['number', 'int', 'integer', 'float'];
 
-    /** The publish states "status" can narrow a list to (Preflow\Publishing\PublishState values). */
+    /** The publish states "status" can narrow a list to (Preflow\Publishing\PublishState values). @since 0.75 */
     public const array STATUSES = ['published', 'changed', 'draft'];
 
     /**
@@ -142,7 +142,7 @@ final readonly class ListQuery
         return self::fromRequest($request->withQueryParams($params), $def, $listConfig, $def->locales->default, $statuses);
     }
 
-    /** The list's URL for this view: $base and the validated parameters of query(). */
+    /** The list's URL for this view: $base and the validated parameters of query(). @since 0.75 */
     public function url(string $base): string
     {
         $query = $this->query();

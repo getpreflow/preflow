@@ -57,6 +57,8 @@ final class BooleanFieldType extends AbstractScalarFieldType implements \Preflow
      * The "display" option: "checkbox" (the default) or "switch", for a setting that acts at once
      * (board LibFields; a checkbox with role="switch", so it still posts like one).
      *
+     * @since 0.75
+     *
      * @param array<string, mixed> $config
      * @throws \LogicException for another value (TypeCatalog reports it at boot)
      */

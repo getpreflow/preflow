@@ -95,12 +95,14 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         return $values === [] ? [] : ['in:' . implode(',', array_map('strval', $values))];
     }
 
-    /** A required choice (or one with a default) of up to this many options is segmented. */
+    /** A required choice (or one with a default) of up to this many options is segmented. @since 0.75 */
     public const int SEGMENTED_MAX = 4;
 
     /**
      * The "display" option: "select", "radio" or "cards" (cards need {value: {label, help}} options);
      * absent: segmented or select, by the rule above.
+     *
+     * @since 0.75
      *
      * @param array<string, mixed> $config
      * @throws \LogicException otherwise (TypeCatalog reports it at boot)

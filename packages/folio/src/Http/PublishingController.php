@@ -156,6 +156,8 @@ final class PublishingController
      * The editor's save state (#folio-save-state): "No changes" when the working copy is what is
      * live, else "Draft saved 19:37" right after a save at that time, or "Saved · not published"
      * when the page is loaded (the time of the last save is not kept).
+     *
+     * @since 0.75
      */
     public static function stateText(PublishState $state, ?\DateTimeInterface $savedAt = null): string
     {

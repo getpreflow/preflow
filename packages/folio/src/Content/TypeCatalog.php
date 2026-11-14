@@ -210,10 +210,10 @@ final class TypeCatalog
         );
     }
 
-    /** Where the editor puts a field: "main" (the form column, the default) or "side" (the side panel's Details card). */
+    /** Where the editor puts a field: "main" (the form column, the default) or "side" (the side panel's Details card). @since 0.75 */
     public const array FIELD_PANELS = ['main', 'side'];
 
-    /** How wide a field is in the form column: "full" (the default) or "half" (two half fields share a row). */
+    /** How wide a field is in the form column: "full" (the default) or "half" (two half fields share a row). @since 0.75 */
     public const array FIELD_WIDTHS = ['full', 'half'];
 
     /**

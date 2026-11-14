@@ -18,6 +18,8 @@ namespace Preflow\Folio\View;
  * <template> are not touched; script that clones them into the side panel gets the form from
  * admin.js (the side fieldset's observer), like any control added later. Every <textarea> gets the
  * guard newline after its start tag back, so a value that starts with a newline round-trips.
+ *
+ * @since 0.75
  */
 final class FormOwner
 {
