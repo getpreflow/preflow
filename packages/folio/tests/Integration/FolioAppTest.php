@@ -58,10 +58,9 @@ final class FolioAppTest extends TestCase
             ->withParsedBody(['title' => 'Seed', 'slug' => 'seed', 'body' => 'B', 'status' => 'published']));
 
         $body = (string) $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio'))->getBody();
-        $this->assertStringContainsString('folio-card-grid', $body);
-        $this->assertStringContainsString('folio-card-label', $body);
-        $this->assertStringContainsString('Pages', $body);
-        $this->assertStringContainsString('1 record', $body);
+        // The type's row in the Content section: its tile, label and count.
+        $this->assertStringContainsString('class="folio-dash-section folio-dash-content"', $body);
+        $this->assertMatchesRegularExpression('#<li class="folio-dash-row">\s*<span class="folio-type-icon"[^>]*>.*?</span>\s*<a class="folio-dash-row-link" href="/folio/page"><span class="folio-dash-row-label">Pages</span><span class="folio-dash-row-count">1 record</span></a>#s', $body);
     }
 
     public function test_create_form_renders_under_strict_twig(): void

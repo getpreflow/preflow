@@ -66,7 +66,7 @@ final class PublishingAppTest extends TestCase
         $partial = $this->dashboard('/folio?review=1', true);
         $this->assertStringStartsWith('<section id="folio-review"', ltrim($partial), 'the refresh gets the section alone');
         $this->assertStringContainsString('120 of 410 texts', $partial);
-        $this->assertStringNotContainsString('folio-card-grid', $partial);
+        $this->assertStringNotContainsString('folio-dash-content', $partial, 'not the rest of the dashboard');
     }
 
     #[RunInSeparateProcess]
@@ -134,7 +134,10 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('French (1)', $body);
         $this->assertStringContainsString('/folio/post/p1/edit?locale=de', $body, 'the first language by code');
         $this->assertStringNotContainsString('Secret title', $body, 'a type the user may not view');
-        $this->assertGreaterThan(strpos($body, 'folio-card-grid'), strpos($body, 'class="folio-review"'), 'the section follows the cards in the page body');
+        $this->assertStringContainsString('class="folio-dash-section folio-dash-content"', $body);
+        $this->assertGreaterThan(strpos($body, 'folio-dash-content'), strpos($body, 'class="folio-review"'), 'the section follows the content in the page body');
+        // "Needs you" counts what the user may see, and links down to the section.
+        $this->assertMatchesRegularExpression('~<a class="folio-needs-card" data-tone="info" href="\#folio-review">.*?<span class="folio-needs-title">1 translation waits for review</span>~s', $body);
         preg_match('~<title>(.*?)</title>~s', $body, $title);
         $this->assertStringNotContainsString('Waiting for review', $title[1] ?? '', 'not in the <title>');
     }

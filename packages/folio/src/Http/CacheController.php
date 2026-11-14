@@ -170,7 +170,8 @@ final class CacheController
         return $removed ? ' ' . FolioText::get('folio.cache.boot_cleared') : '';
     }
 
-    private static function label(\Preflow\Core\Cache\CacheSource $source): string
+    /** A cache's name in the interface language: Folio's text for the caches it knows, else the name it registers with (also the dashboard's cache line). */
+    public static function label(\Preflow\Core\Cache\CacheSource $source): string
     {
         $key = self::LABELS[$source->key()] ?? null;
 

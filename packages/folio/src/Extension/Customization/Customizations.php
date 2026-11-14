@@ -13,6 +13,7 @@ use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\BulkAction;
+use Preflow\Folio\Extension\DashboardItem;
 use Preflow\Folio\Extension\DashboardNotice;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
@@ -43,10 +44,10 @@ final class Customizations
 
     private const string PERMISSION_PATTERN = '/^[a-z][a-z0-9_-]*(\.[a-z0-9_-]+)+$/';
 
-    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, ListNotice::class, DashboardNotice::class, FieldPlaceholder::class, SaveRecord::class, ...self::HOOKS];
+    private const array METHOD_ATTRIBUTES = [FormPanel::class, RecordAction::class, BulkAction::class, ListColumn::class, NavBadge::class, ListNotice::class, DashboardNotice::class, DashboardItem::class, FieldPlaceholder::class, SaveRecord::class, ...self::HOOKS];
 
     /**
-     * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
+     * @param array<string, array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, dashboardItems: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}> $types
      */
     /** @var array<string, ?int> */
     private array $badgeCounts = [];
@@ -82,7 +83,7 @@ final class Customizations
                 if (!$catalog->has($key)) {
                     throw new ExtensionException("Type customization {$class}: #[FolioType('{$key}')] names no content type \"{$key}\".");
                 }
-                $types[$key] ??= ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'hooks' => [], 'placeholders' => []];
+                $types[$key] ??= ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'dashboardItems' => [], 'hooks' => [], 'placeholders' => []];
 
                 $badgeMethod = null;
                 $built = new \stdClass(); // one instance per class, shared by its methods' closures
@@ -163,6 +164,12 @@ final class Customizations
                             $types[$key]['listNotices'][] = $call;
                         } elseif ($meta instanceof DashboardNotice) {
                             $types[$key]['dashboardNotices'][] = $call;
+                        } elseif ($meta instanceof DashboardItem) {
+                            $returns = $method->getReturnType();
+                            if (!$returns instanceof \ReflectionNamedType || $returns->getName() !== \Preflow\Folio\Dashboard\NeedsYou::class) {
+                                throw new ExtensionException("#[DashboardItem] on {$where}: the method must declare the return type ?" . \Preflow\Folio\Dashboard\NeedsYou::class . '.');
+                            }
+                            $types[$key]['dashboardItems'][] = $call;
                         } else {
                             if ($meta instanceof SaveRecord) {
                                 if ($catalog->get($key)?->publishing === true) {
@@ -186,11 +193,11 @@ final class Customizations
     }
 
     /**
-     * @return array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
+     * @return array{panels: list<array{label: string, position: string, extension: string, owner: string, callable: \Closure}>, actions: list<array{name: string, label: string, permission: string, icon: ?string, confirm: ?string, toolbar: bool, group: string, callable: \Closure}>, bulk: list<array{name: string, label: string, permission: string, confirm: ?string, group: string, callable: \Closure}>, columns: list<array{label: string, position: int, callable: \Closure}>, badges: list<\Closure>, listNotices: list<\Closure>, dashboardNotices: list<\Closure>, dashboardItems: list<\Closure>, hooks: array<class-string, list<\Closure>>, placeholders: array<string, \Closure>}
      */
     public function forType(string $key): array
     {
-        $type = $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'hooks' => [], 'placeholders' => []];
+        $type = $this->types[$key] ?? ['panels' => [], 'actions' => [], 'bulk' => [], 'columns' => [], 'badges' => [], 'listNotices' => [], 'dashboardNotices' => [], 'dashboardItems' => [], 'hooks' => [], 'placeholders' => []];
         foreach (['panels', 'actions', 'bulk', 'columns'] as $list) {
             $type[$list] = array_map(self::texts(...), $type[$list]);
         }
@@ -282,6 +289,42 @@ final class Customizations
         }
 
         return $notices;
+    }
+
+    /**
+     * The #[DashboardItem] cards of the types $canView allows, in the order of dashboardNotices().
+     * Methods of other types are not called. A method that throws (a NeedsYou with an unknown tone
+     * among them) or returns null adds nothing, and so does an item whose URL is not an admin or
+     * site path (Link::href()); each card's url is resolved against $adminPrefix.
+     *
+     * @param \Closure(string): bool $canView whether the signed-in user may view a type key
+     * @return list<\Preflow\Folio\Dashboard\NeedsYou>
+     * @since 0.76
+     */
+    public function dashboardItems(\Closure $canView, string $adminPrefix): array
+    {
+        $items = [];
+        foreach ($this->types as $key => $type) {
+            if ($type['dashboardItems'] === [] || !$canView($key)) {
+                continue;
+            }
+            foreach ($type['dashboardItems'] as $call) {
+                try {
+                    $item = $call();
+                } catch (\Throwable) {
+                    continue;
+                }
+                if (!$item instanceof \Preflow\Folio\Dashboard\NeedsYou || $item->title === '') {
+                    continue;
+                }
+                $href = (new \Preflow\Folio\Extension\Link($item->title, $item->url))->href($adminPrefix);
+                if ($href !== null) {
+                    $items[] = new \Preflow\Folio\Dashboard\NeedsYou($item->title, $item->text, $href, $item->tone, $item->icon);
+                }
+            }
+        }
+
+        return $items;
     }
 
     /**

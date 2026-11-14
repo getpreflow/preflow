@@ -691,6 +691,18 @@ final class FolioServiceProvider extends ServiceProvider
             ) : null,
             pageMeta: $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\Folio\Seo\FolioPageMeta::class) : null,
             siteUrl: is_string($appUrl = $app->config()->get('app.url')) && $appUrl !== '' ? $appUrl : null,
+            dashboard: new \Preflow\Folio\Dashboard\Dashboard(
+                $c->get(TypeCatalog::class),
+                $c->get(DataManager::class),
+                $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+                $prefix,
+                $c->get(\Preflow\Publishing\Publisher::class),
+                $c->get(Customizations::class),
+                $c->bound(\Preflow\Folio\Redirects\NotFoundEntries::class) ? static fn (): \Preflow\Folio\Redirects\NotFoundEntries => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class) : null,
+                // Live assets (not binned, no private copies), counted by the library's own query.
+                $c->bound(\Preflow\Media\MediaLibrary::class) ? static fn (): int => $c->get(\Preflow\Media\MediaLibrary::class)->query(perPage: 1)->total : null,
+                $c->get(\Preflow\Core\Cache\CacheRegistry::class),
+            ),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
             $c->get(TypeCatalog::class),

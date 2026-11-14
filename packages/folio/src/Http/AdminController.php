@@ -94,6 +94,8 @@ final class AdminController
         private readonly ?\Preflow\Folio\Seo\FolioPageMeta $pageMeta = null,
         // config app.url: the host the search result shows ("example.com › about"); null shows the path alone.
         private readonly ?string $siteUrl = null,
+        // The dashboard's data (since 0.76); null builds one from the catalog and the data manager alone.
+        private readonly ?\Preflow\Folio\Dashboard\Dashboard $dashboard = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -118,24 +120,17 @@ final class AdminController
             ]));
         }
 
-        $cards = [];
-        foreach ($this->catalog->all() as $listing) {
-            $cards[] = [
-                'key' => $listing->key,
-                'label' => $this->labels->type($listing->key),
-                'count' => count($this->dm->queryType($listing->key)->get()->items()),
-            ];
-        }
-
         $review = $this->reviewSection();
+        $dashboard = $this->dashboard ?? new \Preflow\Folio\Dashboard\Dashboard($this->catalog, $this->dm, $this->labels, $this->prefix, $this->publisher, $this->customizations);
 
         return $this->html($this->engine->render('@folio/admin/dashboard.twig', [
             'prefix' => $this->prefix,
-            'types' => $this->catalog->all(),
-            'cards' => $cards,
+            'dashboard' => $dashboard->view(fn (string $permission): bool => $this->can($permission), (int) ($review['total'] ?? 0)),
+            // The header's "View site": the site's address (config app.url), else its home page.
+            'site_url' => $this->siteUrl ?? '/',
             'review' => $review,
             'editor_assets' => ($review['polling'] ?? false) ? ['htmx.js'] : [],
-            // #[DashboardNotice] HTML of the types the user may view, printed raw above the cards.
+            // #[DashboardNotice] HTML of the types the user may view, printed raw above "Needs you".
             'dashboard_notices' => $this->customizations?->dashboardNotices(fn (string $type): bool => $this->can($type . '.view')) ?? [],
         ]));
     }
@@ -151,7 +146,9 @@ final class AdminController
      * item); while a shown job is queued or running and has changed in the last 10 minutes, the
      * section refreshes itself ("polling").
      *
-     * @return array{groups: list<array{label: string, family: ?\Preflow\Data\TypeFamily, icon: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, jobs: list<array<string, mixed>>, no_worker: bool, polling: bool}|null
+     * "total" counts every record waiting (shown and more): the dashboard's "Needs you" card.
+     *
+     * @return array{groups: list<array{label: string, family: ?\Preflow\Data\TypeFamily, icon: string, rows: list<array{title: string, url: string, languages: list<string>}>}>, more: int, total: int, jobs: list<array<string, mixed>>, no_worker: bool, polling: bool}|null
      */
     private function reviewSection(): ?array
     {
@@ -219,6 +216,7 @@ final class AdminController
         return [
             'groups' => array_values($groups),
             'more' => $more,
+            'total' => $shown + $more,
             'jobs' => $jobs,
             'no_worker' => $queued && !WorkerWatch::runs($this->worker),
             'polling' => $polling,

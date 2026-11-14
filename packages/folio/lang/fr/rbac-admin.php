@@ -59,6 +59,8 @@ return [
         'add' => 'Ajouter',
         'dismiss' => 'Ignorer',
         'dashboard' => ':count nouvelle autorisation à examiner dans Rôles|:count nouvelles autorisations à examiner dans Rôles',
+        'needs_you' => '{0} :count nouvelle autorisation dans Rôles|{1} :count nouvelle autorisation dans Rôles|[2,*] :count nouvelles autorisations dans Rôles',
+        'needs_you_text' => 'Une mise à jour les a apportées. Décidez rôle par rôle.',
         'added' => 'Ajouté au rôle :role.',
         'dismissed' => 'Ignoré.',
         'no_role' => 'Choisissez le rôle auquel l’ajouter.',

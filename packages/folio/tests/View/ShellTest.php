@@ -101,9 +101,10 @@ final class ShellTest extends TestCase
         $this->assertSame(1, $x->query('.//button[@type="submit" and @data-menu-row]', $logout)->length);
         $this->assertSame(0, $x->query('//aside[@class="folio-sidebar"]/div[' . self::cls('folio-sidebar-foot') . ']/*[' . self::cls('folio-theme-switch') . ']')->length, 'no separate switches in the foot any more');
 
-        // Topbar: the title, no subtitle on the dashboard.
+        // Topbar: the title and, since 0.76, one subtitle line under it (the dashboard's "what this page is for").
         $this->one($x, '//header[' . self::cls('folio-topbar') . ']//h1', 'the title');
-        $this->assertSame(0, $x->query('//*[' . self::cls('folio-subtitle') . ']')->length);
+        $this->assertSame('What needs you, what changed, and where to start.', trim($this->one($x, '//header[' . self::cls('folio-topbar') . ']//p[' . self::cls('folio-subtitle') . ']', 'the subtitle')->textContent));
+        $this->assertSame(1, $x->query('//*[' . self::cls('folio-subtitle') . ']')->length);
     }
 
     #[RunInSeparateProcess]

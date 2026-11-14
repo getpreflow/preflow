@@ -13,7 +13,7 @@ use Psr\Http\Message\ResponseInterface;
 
 /**
  * Permissions an update brought (KnownPermissions::fresh()) are announced to whoever may edit
- * roles: a notice on the Roles list, a badge on its sidebar item, a line on the dashboard. Dismiss
+ * roles: a notice on the Roles list, a badge on its sidebar item, a "Needs you" card on the dashboard. Dismiss
  * or "Add to role" from the notice makes them known for good; nothing is granted on its own.
  * Installed: staff "admin" ['*'] (Administrator); the first look at the known list leaves
  * redirects.manage fresh. The config user editor@ manages roles below it, keeper@ only sees them.
@@ -98,7 +98,7 @@ final class NewPermissionsTest extends TestCase
         $dashboard = (string) $this->send('GET', '/folio')->getBody();
         $this->assertStringContainsString('<span>Roles</span>', $dashboard, 'keeper sees the Roles item');
         $this->assertNull(self::badge($dashboard));
-        $this->assertStringNotContainsString('to review in Roles', $dashboard);
+        $this->assertStringNotContainsString('in Roles</span>', $dashboard);
         $list = $this->send('GET', '/folio/rbac_role');
         $this->assertSame(200, $list->getStatusCode());
         $this->assertStringNotContainsString('rbac-new', (string) $list->getBody());
@@ -227,7 +227,8 @@ final class NewPermissionsTest extends TestCase
         $this->as('editor');
 
         $html = (string) $this->send('GET', '/folio')->getBody();
-        $this->assertMatchesRegularExpression('#<a href="/folio/rbac_role">\s*1 new permission to review in Roles\s*</a>#', $html);
+        // A "Needs you" card (0.76; before, a notice line), linking to the Roles list.
+        $this->assertMatchesRegularExpression('#<a class="folio-needs-card" data-tone="warning" href="/folio/rbac_role">.*?\#ui-shield".*?<span class="folio-needs-title">1 new permission in Roles</span><span class="folio-needs-text">An update brought them. Decide per role.</span>#s', $html);
     }
 
     #[RunInSeparateProcess]
@@ -244,7 +245,7 @@ final class NewPermissionsTest extends TestCase
         $this->assertStringContainsString('Dismissed.', $list);
         $this->assertStringNotContainsString('rbac-new', $list);
         $this->assertNull(self::badge($list));
-        $this->assertStringNotContainsString('to review in Roles', (string) $this->send('GET', '/folio')->getBody());
+        $this->assertStringNotContainsString('in Roles</span>', (string) $this->send('GET', '/folio')->getBody());
         $this->assertSame([], $this->known()->fresh());
         $this->assertSame([], (new KnownPermissions($this->container()->get(DataManager::class), $this->container()->get(Access::class)->registry()))->fresh(), 'stored, not remembered');
         $this->assertSame(['*'], $this->roles()[array_key_first(array_filter($this->roles(), static fn ($r): bool => $r->get('name') === 'admin'))]->get('permissions'));
@@ -445,7 +446,7 @@ final class NewPermissionsTest extends TestCase
         $this->assertNotEmpty(array_filter($this->errorLog(), static fn (string $line): bool => str_contains($line, 'rbac: new permissions not shown')), 'logged, not shown');
         $dashboard = $this->send('GET', '/folio');
         $this->assertSame(200, $dashboard->getStatusCode());
-        $this->assertStringNotContainsString('to review in Roles', (string) $dashboard->getBody());
+        $this->assertStringNotContainsString('in Roles</span>', (string) $dashboard->getBody());
 
         foreach (['dismiss' => ['names' => ['redirects.manage']], 'grant' => ['names' => ['redirects.manage'], 'role' => 'r-helper']] as $action => $body) {
             $res = $this->send('POST', '/folio/rbac/new-permissions/' . $action, $body);

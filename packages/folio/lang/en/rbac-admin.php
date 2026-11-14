@@ -54,7 +54,7 @@ return [
         'no_population' => 'No population: give the type "users" or the field "population".',
     ],
     // The new permissions an update brought: the notice above the Roles list, its actions, the
-    // dashboard line (:count, "one|many"). :role is a role's label.
+    // dashboard line (kept) and its "Needs you" card (needs_you*, since 0.76; :count). :role is a role's label.
     'new' => [
         'title' => 'New permissions',
         'intro' => 'These permissions came with an update. They are not given to any role automatically.',
@@ -63,6 +63,8 @@ return [
         'add' => 'Add',
         'dismiss' => 'Dismiss',
         'dashboard' => ':count new permission to review in Roles|:count new permissions to review in Roles',
+        'needs_you' => ':count new permission in Roles|:count new permissions in Roles',
+        'needs_you_text' => 'An update brought them. Decide per role.',
         'added' => 'Added to :role.',
         'dismissed' => 'Dismissed.',
         'no_role' => 'Choose a role to add it to.',

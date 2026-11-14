@@ -199,6 +199,12 @@ final class AdminNav
         return $ordered;
     }
 
+    /** Whether a section is one of Folio's own (dashboard, pages, content, library, settings), named by sectionLabel(). @since 0.76 */
+    public static function isBuiltIn(string $section): bool
+    {
+        return isset(self::BUILTIN[$section]);
+    }
+
     /** A section's heading: "Pages" for pages (Folio's own sections in the interface language), "Member area" for member_area. */
     public static function sectionLabel(string $section): string
     {

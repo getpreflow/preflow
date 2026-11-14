@@ -23,9 +23,9 @@ use Preflow\View\TemplateEngineInterface;
  * The permissions an update brought (Folio's KnownPermissions::fresh()) as whoever manages roles
  * sees them: a count for the Roles sidebar badge, the notice on the Roles list (one line per
  * permission group, with the roles that already cover it and how, an "Add to role…" picker and
- * Dismiss) and the dashboard line. Only for a user who may edit roles (rbac_role.edit); nothing
- * when Folio keeps no known list (no DataManager) or its table isn't there yet (a site not
- * migrated). Nothing here grants: NewPermissionsScreen does, on the user's choice.
+ * Dismiss) and the dashboard's "Needs you" card. Only for a user who may edit roles
+ * (rbac_role.edit); nothing when Folio keeps no known list (no DataManager) or its table isn't
+ * there yet (a site not migrated). Nothing here grants: NewPermissionsScreen does, on the user's choice.
  *
  * @since 0.53
  */
@@ -85,18 +85,21 @@ final class NewPermissions
         ]);
     }
 
-    /** The dashboard line (HTML), or null. */
-    public function dashboard(): ?string
+    /** The dashboard's "Needs you" card (since 0.76; before, a notice line), linking to the Roles list; or null. */
+    public function dashboard(): ?\Preflow\Folio\Dashboard\NeedsYou
     {
         $fresh = $this->forManager();
         if ($fresh === []) {
             return null;
         }
 
-        return $this->engine()->render('@rbac/new-permissions-dashboard.twig', [
-            'count' => count($fresh),
-            'url' => $this->prefix() . '/rbac_role',
-        ]);
+        return new \Preflow\Folio\Dashboard\NeedsYou(
+            $this->translator->choice('rbac-admin.new.needs_you', count($fresh), ['count' => count($fresh)]),
+            $this->translator->get('rbac-admin.new.needs_you_text'),
+            'rbac_role',
+            'warning',
+            'ui-shield',
+        );
     }
 
     /**

@@ -59,6 +59,8 @@ return [
         'add' => 'Hinzufügen',
         'dismiss' => 'Ausblenden',
         'dashboard' => ':count neue Berechtigung in Rollen zu prüfen|:count neue Berechtigungen in Rollen zu prüfen',
+        'needs_you' => ':count neue Berechtigung in Rollen|:count neue Berechtigungen in Rollen',
+        'needs_you_text' => 'Eine Erweiterung hat neue Rechte gebracht. Pro Rolle entscheiden.',
         'added' => 'Zu :role hinzugefügt.',
         'dismissed' => 'Ausgeblendet.',
         'no_role' => 'Wähle die Rolle, der du sie geben willst.',

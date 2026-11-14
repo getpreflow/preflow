@@ -805,6 +805,122 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-card-label { font-weight: 620; font-size: 15px; }
 .folio-card-count { color: var(--c-text-muted); font-size: 13px; }
 
+/* ---- dashboard (0.76): ink band, "Needs you", content by section, footer line ---- */
+.folio-dash-band {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 160px;
+  padding: 28px 32px;
+}
+.folio-dash-band.folio-ink { margin-top: 0; }   /* first on the page: no section gap above it */
+.folio-dash-band > p { position: relative; margin: 0; }
+.folio-dash-marks { position: absolute; inset: 0; pointer-events: none; }
+.folio-dash-marks.is-narrow { display: none; }
+.folio-dash-band-title { font-size: 28px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; color: var(--ink-fg); }
+.folio-dash-band .folio-ink-line { font-size: 13px; overflow-wrap: anywhere; }
+.folio-dash-section { display: flex; flex-direction: column; gap: 12px; margin-top: 28px; }
+.folio-page-notices + .folio-dash-section { margin-top: 0; }
+.folio-dash-band + .folio-page-notices { margin-top: 28px; }
+.folio-dash-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.folio-dash-title { margin: 0; font-size: 15px; font-weight: 600; }
+.folio-dash-meta { font-size: 12px; color: var(--c-text-subtle); }
+/* A card per open task: the tone's tile and edge, title and text, an arrow; the whole card links. */
+.folio-needs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.folio-needs-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  height: 100%;
+  padding: 16px;
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--tone, var(--c-border-strong));
+  border-radius: 12px;
+  background: var(--c-surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--c-text);
+  text-decoration: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.folio-needs-card:hover { color: var(--c-text); border-color: var(--c-border-strong); border-left-color: var(--tone, var(--c-border-strong)); box-shadow: var(--shadow-md); }
+.folio-needs-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.folio-needs-card[data-tone="warning"] { --tone: var(--c-warning); --tone-soft: var(--c-warning-soft); }
+.folio-needs-card[data-tone="info"] { --tone: var(--c-info); --tone-soft: var(--c-info-soft); }
+.folio-needs-card[data-tone="danger"] { --tone: var(--c-danger); --tone-soft: var(--c-danger-soft); }
+.folio-needs-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  background: var(--tone-soft, var(--c-neutral-soft));
+  color: var(--tone, var(--c-text-muted));
+}
+.folio-needs-icon .folio-icon { width: 16px; height: 16px; }
+.folio-needs-body { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.35; }
+.folio-needs-title { font-weight: 600; overflow-wrap: anywhere; }
+.folio-needs-text { font-size: 13px; color: var(--c-text-muted); }
+.folio-needs-arrow { flex: none; width: 16px; height: 16px; margin-top: 8px; color: var(--c-text-subtle); }
+/* Content: one card per sidebar section (a single section: one card, no heading). */
+.folio-dash-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.folio-dash-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface);
+}
+.folio-dash-group-title { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--c-border); font-size: 13px; font-weight: 600; color: var(--c-text-muted); }
+.folio-dash-rows { margin: 0; padding: 0; list-style: none; }
+.folio-dash-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px 14px; border-bottom: 1px solid var(--c-border); }
+.folio-dash-row:last-child { border-bottom: 0; }
+.folio-dash-row:hover { background: var(--c-surface-2); }
+.folio-dash-row-link { display: flex; flex: 1; flex-direction: column; min-width: 0; color: var(--c-text); line-height: 1.3; text-decoration: none; }
+.folio-dash-row-link:hover { color: var(--c-text); }
+.folio-dash-row-link:hover .folio-dash-row-label { text-decoration: underline; text-underline-offset: 3px; }
+.folio-dash-row-label { font-weight: 600; overflow-wrap: anywhere; }
+.folio-dash-row-count { font-size: 12px; color: var(--c-text-subtle); font-variant-numeric: tabular-nums; }
+.folio-dash-add.btn { flex: none; width: 30px; min-height: 30px; color: var(--c-text-muted); }
+/* The footer line: the caches' size (for folio.cache) and the shortcuts hint. */
+.folio-dash-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 28px;
+  padding: 12px 14px;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+.folio-dash-foot p { margin: 0; }
+.folio-dash-cache { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: 1 1 auto; min-width: 0; }
+.folio-dash-cache .folio-icon { width: 16px; height: 16px; color: var(--c-text-subtle); }
+.folio-dash-cache a { color: var(--c-accent-text); font-weight: 500; }
+.folio-dash-tip { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--c-text-subtle); }
+@media (max-width: 640px) {
+  .folio-dash-band { min-height: 150px; padding: 22px 20px; }
+  .folio-dash-marks.is-wide { display: none; }
+  .folio-dash-marks.is-narrow { display: block; }
+  .folio-dash-band-title { font-size: 22px; }
+  .folio-dash-tip { margin-left: 0; }
+}
+
 /* ---- dashboard: translations waiting for review ---- */
 .folio-review { margin-top: 28px; }
 .folio-review-title { margin: 0 0 12px; }

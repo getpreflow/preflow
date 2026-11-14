@@ -12,7 +12,8 @@ use Preflow\Folio\Extension\Attributes\FolioType;
 use Preflow\Folio\Extension\BeforeDelete;
 use Preflow\Folio\Extension\BeforeSave;
 use Preflow\Folio\Extension\Customization\Refused;
-use Preflow\Folio\Extension\DashboardNotice;
+use Preflow\Folio\Dashboard\NeedsYou;
+use Preflow\Folio\Extension\DashboardItem;
 use Preflow\Folio\Extension\ListNotice;
 use Preflow\Folio\Extension\NavBadge;
 use Preflow\Folio\Rbac\NewPermissions;
@@ -37,7 +38,7 @@ use Preflow\Validation\ValidationResult;
  * (StaffManagers: staff.edit and rbac_role.edit).
  *
  * The roles type's one customization also announces new permissions (NewPermissions) to those
- * who may edit roles: the sidebar badge, the notice above the list and the dashboard line.
+ * who may edit roles: the sidebar badge, the notice above the list and the dashboard's "Needs you" card (#[DashboardItem]).
  */
 #[FolioType('rbac_role')]
 final class RoleRules
@@ -66,8 +67,8 @@ final class RoleRules
         return $this->newPermissions->notice();
     }
 
-    #[DashboardNotice]
-    public function newPermissionsLine(): ?string
+    #[DashboardItem]
+    public function newPermissionsCard(): ?NeedsYou
     {
         return $this->newPermissions->dashboard();
     }

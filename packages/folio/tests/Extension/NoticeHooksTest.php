@@ -15,7 +15,7 @@ use Psr\Http\Message\ResponseInterface;
 /**
  * A full app with auth and preflow/roles and extensions (written by the test) whose type
  * customizations put HTML above the type's list (#[ListNotice]) and above the dashboard's
- * cards (#[DashboardNotice]).
+ * "Needs you" and content (#[DashboardNotice]).
  */
 final class NoticeHooksTest extends TestCase
 {
@@ -83,7 +83,9 @@ final class NoticeHooksTest extends TestCase
 
         $dashboard = (string) $this->send('GET', '/folio')->getBody();
         $this->assertStringContainsString('<p class="crm-dash">Contacts wait</p>', $dashboard);
-        $this->assertLessThan(strpos($dashboard, 'folio-card-grid'), strpos($dashboard, 'crm-dash'));
+        // Above "Needs you" and the content (0.76; before, above the cards).
+        $this->assertLessThan(strpos($dashboard, 'folio-dash-content'), strpos($dashboard, 'crm-dash'));
+        $this->assertLessThan(strpos($dashboard, 'crm-dash'), strpos($dashboard, 'folio-dash-band'), 'below the ink band');
         $this->assertStringNotContainsString('crm-list', $dashboard);
 
         // Another type's list has none.

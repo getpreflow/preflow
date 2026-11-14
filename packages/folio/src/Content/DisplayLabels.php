@@ -55,6 +55,34 @@ final class DisplayLabels
     }
 
     /**
+     * The type's label as a noun for $n records: "jobs", "job" (the count goes before it), through
+     * folio.format.type_noun (the language's plural forms) with the singular label ("label_singular",
+     * a key) and the plural one. FolioText::noun(): in lower case where the language writes nouns so;
+     * a label starting with an acronym keeps its case ("FAQ entries"). Without a singular, English
+     * guesses one; other languages use the label. (Since 0.76 here; DeleteSummary had it before.)
+     */
+    public function noun(string $type, int $n): string
+    {
+        $plural = $this->type($type);
+        $singular = $this->singular($type) ?? (FolioText::locale() === 'en' ? self::guessSingular($plural) : $plural);
+
+        return FolioText::choice('folio.format.type_noun', $n, [
+            'singular' => FolioText::noun($singular),
+            'plural' => FolioText::noun($plural),
+        ]);
+    }
+
+    private static function guessSingular(string $label): string
+    {
+        return match (true) {
+            (bool) preg_match('/ies$/u', $label) => mb_substr($label, 0, -3) . 'y',
+            (bool) preg_match('/(ss|us|is)$/u', $label) => $label,
+            (bool) preg_match('/s$/u', $label) => mb_substr($label, 0, -1),
+            default => $label,
+        };
+    }
+
+    /**
      * The list's empty state ("No members yet."): the type's own sentence {group}.types.{type}.empty
      * when its group has one (a label that doesn't fit Folio's sentence, e.g. German "Team"),
      * else Folio's sentence around the label.

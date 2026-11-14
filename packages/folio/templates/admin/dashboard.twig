@@ -1,24 +1,72 @@
 {% extends "@folio/admin/_layout.twig" %}
+{% import '@folio/admin/partials/_type_icon.twig' as types %}
+{# The dashboard (Preflow\Folio\Dashboard\Dashboard::view(): dashboard.new, .stats, .needs,
+   .sections, .cache): the ink band, extensions' notices, "Needs you", the content by sidebar
+   section, the review queue and the footer line. Every value is data: no type key, hue or token
+   is named here (a card's tone is one of NeedsYou::TONES, admin.css colours it). #}
 {% block title %}Folio — {{ t('folio.dashboard.title') }}{% endblock %}
 {% block page_title %}{{ t('folio.dashboard.title') }}{% endblock %}
+{% block subtitle %}{{ t('folio.dashboard.subtitle') }}{% endblock %}
+{% block actions %}
+    <a class="btn btn-secondary" href="{{ site_url }}" target="_blank" rel="noopener"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-external"></use></svg>{{ t('folio.dashboard.view_site') }}</a>
+    {% if dashboard.new %}<a class="btn btn-primary" href="{{ dashboard.new.url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ dashboard.new.label }}</a>{% endif %}
+{% endblock %}
 {% block content %}
+    {% set icons = folio_asset('icons.svg') %}
+    {# The screen's one ink place: the band, its marks on the right half (the band is about 1100 × 160);
+       on a phone (about 340 × 150) fewer marks, above the text. admin.css shows one set. #}
+    <section class="folio-ink folio-dash-band" aria-label="{{ folio_site.name }}">
+        <div class="folio-dash-marks is-wide">{{ folio_ink_marks(7, 14, {x: [0.5, 1.0], y: [0, 1]}, 1100 / 160) }}</div>
+        <div class="folio-dash-marks is-narrow">{{ folio_ink_marks(7, 6, {x: [0.3, 1.0], y: [0, 0.4]}, 340 / 150) }}</div>
+        <p class="folio-dash-band-title">{{ t('folio.dashboard.ink_title') }}</p>
+        <p class="folio-ink-line">{{ ([folio_site.name]|merge(dashboard.stats))|join(' · ') }}<span class="folio-caret" aria-hidden="true"></span></p>
+    </section>
     {# Extensions' #[DashboardNotice] HTML: built and escaped by the extension, so printed raw. #}
     {% if dashboard_notices|default([]) is not empty %}<div class="folio-page-notices">{% for notice in dashboard_notices %}{{ notice|raw }}{% endfor %}</div>{% endif %}
-    <div class="folio-card-grid">
-        {% for card in cards|filter(c => can(c.key ~ '.view')) %}
-            <a class="folio-card" href="{{ prefix }}/{{ card.key }}">
-                <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg></span>
-                <span class="folio-card-label">{{ card.label }}</span>
-                <span class="folio-card-count">{{ t('folio.dashboard.records', {}, card.count) }}</span>
-            </a>
-        {% endfor %}
-        {% if can('assets.view') %}
-        <a class="folio-card" href="{{ prefix }}/assets">
-            <span class="folio-card-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-library"></use></svg></span>
-            <span class="folio-card-label">{{ t('folio.dashboard.assets') }}</span>
-            <span class="folio-card-count">{{ t('folio.dashboard.assets_hint') }}</span>
-        </a>
-        {% endif %}
-    </div>
+    {% if dashboard.needs is not empty %}
+    <section class="folio-dash-section folio-dash-needs" aria-labelledby="folio-needs-title">
+        <div class="folio-dash-head">
+            <h2 id="folio-needs-title" class="folio-dash-title">{{ t('folio.dashboard.needs.title') }}</h2>
+            <span class="folio-dash-meta">{{ t('folio.dashboard.needs.open', {count: dashboard.needs|length}, dashboard.needs|length) }}</span>
+        </div>
+        <ul class="folio-needs" role="list">
+            {% for item in dashboard.needs %}
+            <li><a class="folio-needs-card" data-tone="{{ item.tone }}" href="{{ item.url }}">
+                <span class="folio-needs-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.glyph() }}"></use></svg></span>
+                <span class="folio-needs-body"><span class="folio-needs-title">{{ item.title }}</span>{% if item.text %}<span class="folio-needs-text">{{ item.text }}</span>{% endif %}</span>
+                <svg class="folio-icon folio-needs-arrow" aria-hidden="true"><use href="{{ icons }}#ui-arrow"></use></svg>
+            </a></li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+    {% if dashboard.sections is not empty %}
+    <section class="folio-dash-section folio-dash-content" aria-labelledby="folio-content-title">
+        <h2 id="folio-content-title" class="folio-dash-title">{{ t('folio.dashboard.content') }}</h2>
+        {# One card per sidebar section; a site with a single section has one card without a heading. #}
+        <div class="folio-dash-groups">
+            {% for section in dashboard.sections %}
+            <div class="folio-dash-group">
+                {% if dashboard.sections|length > 1 %}<h3 class="folio-dash-group-title">{{ section.label }}</h3>{% endif %}
+                <ul class="folio-dash-rows" role="list">
+                    {% for row in section.rows %}
+                    <li class="folio-dash-row">
+                        {{ types.type_icon(row.family, row.icon) }}
+                        <a class="folio-dash-row-link" href="{{ row.url }}"><span class="folio-dash-row-label">{{ row.label }}</span>{% if row.meta %}<span class="folio-dash-row-count">{{ row.meta }}</span>{% endif %}</a>
+                        {% if row.create_url %}<a class="btn btn-secondary btn-icon btn-sm folio-dash-add" href="{{ row.create_url }}" aria-label="{{ row.create_label }}" title="{{ row.create_label }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-plus"></use></svg></a>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
     {% if review %}{% include '@folio/admin/partials/dashboard-review.twig' %}{% endif %}
+    <div class="folio-dash-foot">
+        {% if dashboard.cache %}
+        <p class="folio-dash-cache"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-database"></use></svg><span>{{ t('folio.dashboard.cache_line', {size: dashboard.cache.size, largest: dashboard.cache.largest}) }}</span> <a href="{{ prefix }}/cache">{{ t('folio.dashboard.open_cache') }}</a></p>
+        {% endif %}
+        <p class="folio-dash-tip">{{ t('folio.dashboard.shortcuts') }}</p>
+    </div>
 {% endblock %}
