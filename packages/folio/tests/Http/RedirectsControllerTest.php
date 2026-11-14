@@ -123,8 +123,8 @@ final class RedirectsControllerTest extends TestCase
 
         $this->assertSame(200, $res->getStatusCode());
         $this->assertMatchesRegularExpression('#<h1>\s*Redirects\s*</h1>#', $body);
-        // A record target: its label and its URL; the hits.
-        $this->assertMatchesRegularExpression('#/old-about.*?About.*?/about.*?<td>7</td>#s', $body);
+        // A record target: its label and its URL; the hits (that row's own Hits cell).
+        $this->assertMatchesRegularExpression('#/old-about.*?About.*?/about.*?<td class="is-number">7</td>#s', $body);
         // A URL target, an area, temporary.
         $this->assertStringContainsString('https://example.org/store', $body);
         $this->assertMatchesRegularExpression('#/shop.*?302#s', $body);
@@ -173,7 +173,7 @@ final class RedirectsControllerTest extends TestCase
         $body = (string) $this->fetch('/folio/redirects?tab=not-found')->getBody();
 
         $this->assertStringContainsString('/de/missing', $body);
-        $this->assertMatchesRegularExpression('#/de/missing.*?Deutsch.*?<td>3</td>#s', $body);
+        $this->assertMatchesRegularExpression('#/de/missing.*?Deutsch.*?<td class="is-number">3</td>#s', $body);
         $this->assertStringNotContainsString('/once', $body);
         $this->assertStringContainsString('href="/folio/redirects/new?not_found=' . $id . '"', $body);
         $this->assertStringContainsString('action="/folio/redirects/not-found/' . $id . '/dismiss"', $body);
@@ -200,7 +200,9 @@ final class RedirectsControllerTest extends TestCase
         // Editing keeps the hits; deleting removes the entry.
         $this->assertSame(1, $this->entries()->at('en', '/old-about')['hits']);
         $edit = (string) $this->fetch('/folio/redirects/' . $entry['id'])->getBody();
-        $this->assertStringContainsString('value="/old-about"', $edit);
+        // The address after the form's "/", its language in the select.
+        $this->assertStringContainsString('name="address" value="old-about"', $edit);
+        $this->assertStringContainsString('<option value="en" selected>', $edit);
         $this->assertStringContainsString('value="page:p1"', $edit);
         $this->assertSame(302, $this->send('/folio/redirects/' . $entry['id'], ['address' => '/old-about', 'target' => '/elsewhere', 'status' => '302'])->getStatusCode());
         $edited = $this->entries()->at('en', '/old-about');
@@ -213,8 +215,13 @@ final class RedirectsControllerTest extends TestCase
     public function test_address_prefill_only_takes_a_path(): void
     {
         // From the admin's 404 page ("→ add a redirect"): a path on this site is prefilled.
-        $this->assertStringContainsString('name="address" value="/old"', (string) $this->fetch('/folio/redirects/new?address=%2Fold')->getBody());
-        $this->assertStringContainsString('name="address" value="/de/alte-seite"', (string) $this->fetch('/folio/redirects/new?address=/de/alte-seite')->getBody());
+        // The field shows the path after its "/"; a language prefix goes into the language select.
+        $old = (string) $this->fetch('/folio/redirects/new?address=%2Fold')->getBody();
+        $this->assertStringContainsString('name="address" value="old"', $old);
+        $this->assertStringContainsString('<option value="" selected>Any language</option>', $old);
+        $german = (string) $this->fetch('/folio/redirects/new?address=/de/alte-seite')->getBody();
+        $this->assertStringContainsString('name="address" value="alte-seite"', $german);
+        $this->assertStringContainsString('<option value="de" selected>', $german);
         // A URL, another host, a relative address or a backslash host never is.
         foreach (['https://x', '//x', 'x', '/\\x', ' /x', 'javascript:alert(1)'] as $refused) {
             $res = $this->fetch('/folio/redirects/new?address=' . rawurlencode($refused));
@@ -223,7 +230,9 @@ final class RedirectsControllerTest extends TestCase
         }
         // A not-found row still wins.
         $id = $this->hitMissing('de', '/missing', 2);
-        $this->assertStringContainsString('name="address" value="/de/missing"', (string) $this->fetch('/folio/redirects/new?not_found=' . $id . '&address=%2Fold')->getBody());
+        $fromRow = (string) $this->fetch('/folio/redirects/new?not_found=' . $id . '&address=%2Fold')->getBody();
+        $this->assertStringContainsString('name="address" value="missing"', $fromRow);
+        $this->assertStringContainsString('<option value="de" selected>', $fromRow);
     }
 
     public function test_create_area_entry_prefix_mode(): void
@@ -256,7 +265,8 @@ final class RedirectsControllerTest extends TestCase
             $res = $this->send('/folio/redirects', ['address' => '/old', 'target' => $target, 'status' => '301']);
             $this->assertSame(422, $res->getStatusCode(), $target);
         }
-        foreach (['/folio/page', '/--component/x', 'no-slash', '/a/../b'] as $address) {
+        // A path typed without its "/" gets it (the form shows one in front); a scheme never does.
+        foreach (['/folio/page', '/--component/x', 'mailto:x@example.org', 'https://example.org/x', '/a/../b', '?x=1'] as $address) {
             $res = $this->send('/folio/redirects', ['address' => $address, 'target' => '/x', 'status' => '301']);
             $this->assertSame(422, $res->getStatusCode(), $address);
         }
@@ -428,7 +438,7 @@ final class RedirectsControllerTest extends TestCase
             $res = $this->send('/folio/redirects', ['address' => $address, 'target' => '/elsewhere', 'status' => '301']);
             $this->assertSame(422, $res->getStatusCode(), $address);
             $this->assertStringContainsString('A page has this address; it always wins.', (string) $res->getBody());
-            $this->assertStringContainsString('value="' . $address . '"', (string) $res->getBody(), 'the typed address stays');
+            $this->assertStringContainsString('name="address" value="' . ltrim($address, '/') . '"', (string) $res->getBody(), 'the typed address stays (after the form\'s "/")');
         }
         $this->assertSame([], $this->entries()->all());
     }
@@ -536,7 +546,8 @@ final class RedirectsControllerTest extends TestCase
         $this->hitMissing('de', '/andere', 2);
 
         $form = (string) $this->fetch('/folio/redirects/new?not_found=' . $id)->getBody();
-        $this->assertStringContainsString('value="/de/fehlt"', $form);
+        $this->assertStringContainsString('name="address" value="fehlt"', $form);
+        $this->assertStringContainsString('<option value="de" selected>', $form);
         $this->assertStringContainsString('name="not_found" value="' . $id . '"', $form);
 
         $res = $this->send('/folio/redirects', ['address' => '/de/fehlt', 'target' => '/de/da', 'status' => '301', 'not_found' => $id]);
@@ -618,6 +629,140 @@ final class RedirectsControllerTest extends TestCase
         $this->booted = null;
         $this->signInAs('editor');
         $this->assertStringNotContainsString('href="/folio/redirects"', (string) $this->fetch('/folio/page')->getBody());
+    }
+
+    public function test_list_rows_tabs_and_drawer_links(): void
+    {
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+        $this->entries()->storeUnchecked(['path' => '/old-about', 'locale' => '', 'target_type' => 'page', 'target_id' => 'p1', 'hits' => 2, 'created_at' => '2026-10-01T10:00:00+00:00']);
+
+        // No not-found rows: no badge on the tab.
+        $body = (string) $this->fetch('/folio/redirects')->getBody();
+        $this->assertStringNotContainsString('folio-tab-badge', $body);
+        // The header action and each row's Edit open the drawer (plain links without script).
+        $this->assertMatchesRegularExpression('#<a class="btn btn-primary" href="/folio/redirects/new" data-folio-drawer><svg[^>]*><use href="[^"]*\#ui-plus"></use></svg>New redirect</a>#', $body);
+        $this->assertStringContainsString('<th>From → to</th>', $body);
+        // From → to in one cell: the address, then the target; the language under it; the kind and code.
+        $this->assertMatchesRegularExpression('#<code>/old-about</code></a>.*?<span class="folio-redirect-to">About</span> <code class="folio-redirect-url">/about</code>.*?<span class="folio-redirect-meta">Any language · Pages</span>#s', $body);
+        $this->assertMatchesRegularExpression('#<span class="folio-redirect-kind">Handmade</span></td>\s*<td class="folio-mono">301</td>#', $body);
+        // The row menu: Edit (drawer) and Delete asking "Delete this redirect?" about that address, Keep / Delete.
+        $id = $this->entries()->at('', '/old-about')['id'];
+        $this->assertStringContainsString('<a class="folio-menu-item" role="menuitem" href="/folio/redirects/' . $id . '" data-folio-drawer>', $body);
+        $this->assertStringContainsString('<form method="post" action="/folio/redirects/' . $id . '/delete" data-confirm="Delete this redirect?" data-confirm-item="/old-about" data-confirm-cancel="Keep" data-confirm-label="Delete" data-confirm-tone="danger" data-confirm-icon="ui-trash">', $body);
+
+        // Two addresses on the not-found list: the badge counts them, on both tabs.
+        $id1 = $this->hitMissing('en', '/missing-a', 2);
+        $this->hitMissing('de', '/missing-b', 3);
+        $this->hitMissing('en', '/once', 1);
+        $badge = '#href="/folio/redirects\?tab=not-found"(?: aria-current="page")?>Not found <span class="folio-tab-badge"><span class="folio-sr">\(</span>2<span class="folio-sr">\)</span></span></a>#';
+        $this->assertMatchesRegularExpression($badge, (string) $this->fetch('/folio/redirects')->getBody());
+        $notFound = (string) $this->fetch('/folio/redirects?tab=not-found')->getBody();
+        $this->assertMatchesRegularExpression($badge, $notFound);
+        // "→ add a redirect" opens the drawer with the address.
+        $this->assertStringContainsString('href="/folio/redirects/new?not_found=' . $id1 . '" data-folio-drawer>→ add a redirect</a>', $notFound);
+    }
+
+    public function test_search_finds_the_old_or_the_new_address(): void
+    {
+        $this->publishPage('p1', ['en' => 'Team'], ['en' => 'team']);
+        $this->entries()->storeUnchecked(['path' => '/crew', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1']);
+        $this->entries()->storeUnchecked(['path' => '/shop', 'locale' => 'en', 'target_url' => 'https://example.org/store']);
+        $this->entries()->storeUnchecked(['path' => '/other', 'locale' => 'en', 'target_url' => '/x']);
+
+        $byTarget = (string) $this->fetch('/folio/redirects?q=store')->getBody();
+        $this->assertStringContainsString('/shop', $byTarget);
+        $this->assertStringNotContainsString('/crew', $byTarget);
+        $byLabel = (string) $this->fetch('/folio/redirects?q=team')->getBody();
+        $this->assertStringContainsString('/crew', $byLabel);
+        $this->assertStringNotContainsString('/other', $byLabel);
+        $this->assertStringContainsString('placeholder="Old or new address"', $byLabel);
+    }
+
+    public function test_form_parts(): void
+    {
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+        $form = (string) $this->fetch('/folio/redirects/new')->getBody();
+
+        $this->assertStringContainsString('<span class="folio-input-prefix" aria-hidden="true">/</span>', $form);
+        $this->assertStringContainsString('A path such as /old-page. Queries are ignored.', $form);
+        $this->assertMatchesRegularExpression('#<select id="folio-redirect-language" name="language">\s*<option value="" selected>Any language</option><option value="en">English</option><option value="de">Deutsch</option>#', $form);
+        // "Send visitors to": the segmented (shown by script), the page search (a combobox over _targets) and the
+        // address input; both post "target", the page's only once script enables it. No datalist any more.
+        $this->assertStringContainsString('<legend class="form-label">Send visitors to', $form);
+        $this->assertMatchesRegularExpression('#data-redirect-kinds hidden>\s*<label class="folio-segment"><input type="radio" name="target_kind" value="page" checked><span>A page</span></label>\s*<label class="folio-segment"><input type="radio" name="target_kind" value="address"><span>An address</span></label>#', $form);
+        $this->assertStringContainsString('<input type="hidden" name="target" value="" data-redirect-page-value disabled>', $form);
+        $this->assertMatchesRegularExpression('#<input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="folio-redirect-results"[^>]* data-redirect-targets="/folio/redirects/_targets"#', $form);
+        $this->assertStringContainsString('role="listbox"', $form);
+        $this->assertMatchesRegularExpression('#<input type="text" id="folio-redirect-target" name="target" value=""#', $form);
+        $this->assertStringNotContainsString('<datalist', $form);
+        // The answer as radio cards.
+        $this->assertMatchesRegularExpression('#<label class="folio-radio-card"><input type="radio" name="status" value="301" checked><span class="folio-radio-card-text"><span class="folio-radio-card-label">301 · Moved for good</span><span class="folio-radio-card-help">Search engines move the ranking over.</span>#', $form);
+        $this->assertMatchesRegularExpression('#<input type="radio" name="status" value="302"><span class="folio-radio-card-text"><span class="folio-radio-card-label">302 · For now</span><span class="folio-radio-card-help">The old address comes back later.</span>#', $form);
+        $this->assertMatchesRegularExpression('#<a class="btn btn-ghost" href="/folio/redirects">Cancel</a>\s*<button type="submit" class="btn btn-primary"[^>]*>Save redirect</button>#', $form);
+        $this->assertStringContainsString('class="folio-shell', $form, 'without _drawer=1: the page');
+
+        // A page target: the page mode with the pick as a row (label, type and URL).
+        $this->entries()->storeUnchecked(['path' => '/old', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1', 'status' => 302]);
+        $edit = (string) $this->fetch('/folio/redirects/' . $this->entries()->at('en', '/old')['id'])->getBody();
+        $this->assertStringContainsString('<input type="hidden" name="target" value="page:p1" data-redirect-page-value disabled>', $edit);
+        $this->assertStringContainsString('<span class="folio-redirect-picked-label" data-redirect-picked-label>About</span>', $edit);
+        $this->assertStringContainsString('<span class="folio-redirect-picked-meta" data-redirect-picked-meta>Pages · /about</span>', $edit);
+        $this->assertStringContainsString('value="302" checked', $edit);
+        // A URL target: the address mode.
+        $this->entries()->storeUnchecked(['path' => '/away', 'locale' => 'en', 'target_url' => 'https://example.org/']);
+        $away = (string) $this->fetch('/folio/redirects/' . $this->entries()->at('en', '/away')['id'])->getBody();
+        $this->assertStringContainsString('name="target_kind" value="address" checked', $away);
+        $this->assertStringContainsString('name="target" value="https://example.org/"', $away);
+    }
+
+    public function test_form_in_the_drawer(): void
+    {
+        $id = $this->hitMissing('en', '/gone', 2);
+        $form = (string) $this->fetch('/folio/redirects/new?not_found=' . $id . '&_drawer=1')->getBody();
+
+        $this->assertStringContainsString('<body class="folio-drawer-body">', $form);
+        $this->assertStringNotContainsString('class="folio-shell', $form);
+        $this->assertStringContainsString('<input type="hidden" name="_drawer" value="1">', $form);
+        $this->assertStringContainsString('name="address" value="gone"', $form);
+        $this->assertMatchesRegularExpression('#<div class="folio-drawer-actions">\s*<a class="btn btn-ghost" href="/folio/redirects" data-folio-drawer-cancel>Cancel</a>#', $form);
+
+        // A refused form stays in the drawer.
+        $refused = $this->send('/folio/redirects', ['address' => '', 'target' => '/x', 'status' => '301', '_drawer' => '1']);
+        $this->assertSame(422, $refused->getStatusCode());
+        $this->assertStringContainsString('<body class="folio-drawer-body">', (string) $refused->getBody());
+        $this->assertStringContainsString('Enter the old address.', (string) $refused->getBody());
+
+        // A saved one tells the list behind it (drawer_saved: folio-drawer, type "redirect"), which reloads.
+        $saved = $this->send('/folio/redirects', ['address' => 'gone', 'language' => 'en', 'target' => '/x', 'status' => '301', 'not_found' => $id, '_drawer' => '1']);
+        $this->assertSame(200, $saved->getStatusCode());
+        $this->assertMatchesRegularExpression('#source: \'folio-drawer\', type: "redirect", id: ""#', (string) $saved->getBody());
+        $this->assertSame('/x', $this->entries()->at('en', '/gone')['target_url'] ?? null);
+        $this->assertNull($this->notFound()->find($id));
+    }
+
+    public function test_language_select_and_typed_address(): void
+    {
+        // The select decides the language of an address typed without a prefix; '' is any language.
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => 'alt', 'language' => 'de', 'target' => '/de/neu', 'status' => '301'])->getStatusCode());
+        $this->assertSame('/de/neu', $this->entries()->at('de', '/alt')['target_url'] ?? null);
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => 'anywhere', 'language' => '', 'target' => '/x', 'status' => '301'])->getStatusCode());
+        $this->assertSame('/x', $this->entries()->at('', '/anywhere')['target_url'] ?? null);
+        $this->assertSame('/x', $this->fetch('/de/anywhere')->getHeaderLine('Location'), 'any language: also under /de');
+        $this->assertSame('/x', $this->fetch('/anywhere')->getHeaderLine('Location'));
+        // A prefix typed in front wins over the select.
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/de/vorher', 'language' => '', 'target' => '/y', 'status' => '301'])->getStatusCode());
+        $this->assertSame('/y', $this->entries()->at('de', '/vorher')['target_url'] ?? null);
+        // An unknown language is not one: the address alone decides, as without the select.
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => '/frueher', 'language' => 'xx', 'target' => '/y', 'status' => '301'])->getStatusCode());
+        $this->assertNotNull($this->entries()->at('en', '/frueher'));
+        // A query or fragment is left out (the lookup never sees one).
+        $this->assertSame(302, $this->send('/folio/redirects', ['address' => 'with-query?x=1#top', 'target' => '/y', 'status' => '301'])->getStatusCode());
+        $this->assertNotNull($this->entries()->at('en', '/with-query'));
+
+        // Editing an any-language entry keeps "Any language" in the select.
+        $edit = (string) $this->fetch('/folio/redirects/' . $this->entries()->at('', '/anywhere')['id'])->getBody();
+        $this->assertStringContainsString('name="address" value="anywhere"', $edit);
+        $this->assertStringContainsString('<option value="" selected>Any language</option>', $edit);
     }
 
     /** Signed in with auth and roles: "manager" may manage redirects, "editor" may not. */

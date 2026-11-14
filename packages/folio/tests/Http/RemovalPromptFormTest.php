@@ -129,6 +129,20 @@ final class RemovalPromptFormTest extends TestCase
         $this->assertMatchesRegularExpression('#<form method="post" action="/folio/page/p1/unpublish"[^>]* data-removal-addresses="2"#', $html);
     }
 
+    public function test_removal_forms_name_the_record_for_the_dialog_title(): void
+    {
+        // The dialog asks "Delete “About”?" / "Unpublish “About”?" (admin.js reads data-removal-label).
+        $this->publishPage('p1', ['en' => 'about', 'de' => 'ueber-uns']);
+
+        $html = $this->editor('p1');
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/page/p1/unpublish"[^>]* data-removal-addresses="2" data-removal-label="About"#', $html);
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/page/p1/delete"[^>]* data-removal-label="About"#', $html);
+
+        $list = (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/page'))->getBody();
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/page/p1/unpublish"[^>]* data-removal-label="About">#', $list);
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/page/p1/delete"[^>]* data-removal-label="About">#', $list);
+    }
+
     /** A signed-in user who may do everything but $permission. */
     private function signInWithout(string $permission): void
     {

@@ -156,13 +156,13 @@
         {% endif %}
         <div class="folio-side-foot-row">
         {% if publishing and publishing.unpublish_url %}
-            <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}" data-removal-addresses="{{ publishing.unpublish_addresses|default(0) }}" class="folio-side-unpublish">
+            <form method="post" action="{{ publishing.unpublish_url }}" data-confirm="{{ t('folio.publishing.confirm_unpublish') }}" data-removal-addresses="{{ publishing.unpublish_addresses|default(0) }}"{% if record_title|default(null) %} data-removal-label="{{ record_title }}"{% endif %} class="folio-side-unpublish">
                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                 <button type="submit" class="btn btn-secondary" data-tone="danger">{{ t('folio.publishing.unpublish') }}</button>
             </form>
         {% endif %}
         {% if delete|default(null) %}
-            <form method="post" action="{{ delete.url }}" data-confirm="{{ t('folio.list.confirm_delete') }}" data-delete-plan="{{ delete.plan }}" data-delete-id="{{ delete.id }}" data-folio-discards class="folio-side-delete">
+            <form method="post" action="{{ delete.url }}" data-confirm="{{ t('folio.list.confirm_delete') }}" data-delete-plan="{{ delete.plan }}" data-delete-id="{{ delete.id }}" data-removal-label="{{ delete.label }}" data-folio-discards class="folio-side-delete">
                 <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                 {% if publishing and publishing.unpublish_url %}
                 <button type="submit" class="btn btn-secondary btn-icon" data-tone="danger" aria-label="{{ t('folio.form.delete_named', {label: delete.label}) }}" title="{{ t('folio.form.delete_named', {label: delete.label}) }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg></button>

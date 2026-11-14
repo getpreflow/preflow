@@ -1,47 +1,95 @@
-{% extends "@folio/admin/_layout.twig" %}
-{# A redirect entry (RedirectsController): the old address as visitors see it, "and everything under it" with its mode,
-   the target (a page from the picker as "type:id", a URL or a path) and, for hand-made entries, 301 or 302. #}
+{% extends layout|default('@folio/admin/_layout.twig') %}
+{# A redirect entry (RedirectsController), in the list's drawer (_drawer=1) or as a page without script: the old
+   address after a "/" (on a site with locale prefixes the language comes from the select, or from a prefix typed
+   in front), "and everything under it" with its mode, "Send visitors to" (a page from the search, posted as
+   "type:id", or an address: a URL or a path) and, for hand-made entries, 301 or 302 as radio cards.
+   Both target modes post the one field "target": without script only the address input shows, and it takes a URL,
+   a path or "type:id"; admin.js (initRedirectForm) shows the segmented and the page search. #}
+{% set icons = folio_asset('icons.svg') %}
+{% set in_drawer = drawer|default(false) %}
 {% block title %}Folio — {{ entry ? t('folio.redirects.edit') : t('folio.redirects.new') }}{% endblock %}
 {% block page_title %}{{ entry ? t('folio.redirects.edit') : t('folio.redirects.new') }}{% endblock %}
 {% block content %}
-    <p><a href="{{ prefix }}/redirects">← {{ t('folio.nav.redirects') }}</a></p>
-    <form class="folio-form" method="post" action="{{ action }}" novalidate>
+    {% set address = values.address starts with '/' ? values.address|slice(1) : values.address %}
+    <form class="folio-form folio-redirect-form" method="post" action="{{ action }}" novalidate data-redirect-form>
         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+        {% if in_drawer %}<input type="hidden" name="_drawer" value="1">{% endif %}
         {% if values.not_found %}<input type="hidden" name="not_found" value="{{ values.not_found }}">{% endif %}
-        <div class="form-group">
-            <label class="form-label" for="folio-redirect-address">{{ t('folio.redirects.address') }}</label>
-            <input type="text" id="folio-redirect-address" name="address" value="{{ values.address }}" placeholder="/…" autocomplete="off" required>
-            <small class="form-help">{{ t('folio.redirects.address_help') }}</small>
+        <div class="form-group folio-affix-field{% if errors.address is defined %} has-error{% endif %}">
+            <label class="form-label" for="folio-redirect-address">{{ t('folio.redirects.address') }} <span class="form-required" aria-hidden="true">*</span></label>
+            <div class="folio-input-affix">
+                <span class="folio-input-prefix" aria-hidden="true">/</span>
+                <input type="text" id="folio-redirect-address" name="address" value="{{ address }}" autocomplete="off" spellcheck="false" required aria-describedby="folio-redirect-address-help"{% if errors.address is defined %} aria-invalid="true"{% endif %}>
+            </div>
+            <small class="form-help" id="folio-redirect-address-help">{{ t('folio.redirects.address_help') }}</small>
             {% if errors.address is defined %}<div class="form-error">{{ errors.address }}</div>{% endif %}
         </div>
-        <fieldset class="form-group">
+        {% if languages|default([]) is not empty %}
+            <div class="form-group">
+                <label class="form-label" for="folio-redirect-language">{{ t('folio.layout.language') }}</label>
+                <select id="folio-redirect-language" name="language">
+                    {% for code, name in languages %}<option value="{{ code }}"{% if code ~ '' == values.language|default('') %} selected{% endif %}>{{ name }}</option>{% endfor %}
+                </select>
+            </div>
+        {% endif %}
+        <fieldset class="form-group folio-redirect-area">
+            <legend class="folio-sr">{{ t('folio.redirects.area') }}</legend>
             <label class="form-check"><input type="checkbox" name="area" value="1"{% if values.area %} checked{% endif %}> {{ t('folio.redirects.area') }}</label>
-            <div>
+            <div class="folio-redirect-modes">
                 <label class="form-radio"><input type="radio" name="mode" value="one"{% if values.mode != 'prefix' %} checked{% endif %}> {{ t('folio.redirects.mode_one') }}</label>
                 <label class="form-radio"><input type="radio" name="mode" value="prefix"{% if values.mode == 'prefix' %} checked{% endif %}> {{ t('folio.redirects.mode_prefix') }}</label>
             </div>
         </fieldset>
-        <div class="form-group">
-            <label class="form-label" for="folio-redirect-target">{{ t('folio.redirects.target') }}</label>
-            {# admin.js fills the list from _targets as the user types: the value is "type:id", the label the page and its URL. #}
-            <input type="text" id="folio-redirect-target" name="target" value="{{ values.target }}" list="folio-redirect-targets" placeholder="{{ t('folio.redirects.target_search') }}" autocomplete="off" data-redirect-targets="{{ prefix }}/redirects/_targets" required>
-            <datalist id="folio-redirect-targets"></datalist>
-            {% if picked %}<small class="form-help">{{ t('folio.redirects.target_picked', {label: picked}) }}</small>{% endif %}
-            <small class="form-help">{{ t('folio.redirects.target_help') }}</small>
+        <fieldset class="form-group folio-redirect-target{% if errors.target is defined %} has-error{% endif %}" data-redirect-target>
+            <legend class="form-label">{{ t('folio.redirects.send_to') }} <span class="form-required" aria-hidden="true">*</span></legend>
+            {# Shown by admin.js: without script the address input below takes every kind of target. #}
+            <div class="folio-segmented folio-segmented-choice" role="radiogroup" aria-label="{{ t('folio.redirects.send_to') }}" data-redirect-kinds hidden>
+                <label class="folio-segment"><input type="radio" name="target_kind" value="page"{% if target_kind == 'page' %} checked{% endif %}><span>{{ t('folio.redirects.to_page') }}</span></label>
+                <label class="folio-segment"><input type="radio" name="target_kind" value="address"{% if target_kind == 'address' %} checked{% endif %}><span>{{ t('folio.redirects.to_address') }}</span></label>
+            </div>
+            <div class="folio-redirect-page" data-redirect-page hidden>
+                {# The picked page's "type:id": posted as "target" in this mode (admin.js enables it). #}
+                <input type="hidden" name="target" value="{{ picked_item ? picked_item.value : '' }}" data-redirect-page-value disabled>
+                <div class="folio-redirect-box">
+                    <label class="folio-redirect-search">
+                        <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>
+                        <span class="folio-sr">{{ t('folio.redirects.target_search') }}</span>
+                        <input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="folio-redirect-results" placeholder="{{ t('folio.redirects.target_search') }}" autocomplete="off" spellcheck="false" data-redirect-search data-redirect-targets="{{ prefix }}/redirects/_targets"{% if errors.target is defined %} aria-invalid="true"{% endif %}>
+                    </label>
+                    <ul class="folio-redirect-results" id="folio-redirect-results" role="listbox" aria-label="{{ t('folio.redirects.target_search') }}" data-redirect-results hidden></ul>
+                    <div class="folio-redirect-picked" data-redirect-picked aria-live="polite"{% if not picked_item %} hidden{% endif %}>
+                        <span class="folio-redirect-picked-icon" aria-hidden="true"><svg class="folio-icon"><use href="{{ icons }}#ui-file"></use></svg></span>
+                        <span class="folio-redirect-picked-text">
+                            <span class="folio-redirect-picked-label" data-redirect-picked-label>{{ picked_item.label|default('') }}</span>
+                            <span class="folio-redirect-picked-meta" data-redirect-picked-meta>{{ picked_item ? [picked_item.type, picked_item.url]|filter(v => v)|join(' · ') : '' }}</span>
+                        </span>
+                        <svg class="folio-icon folio-redirect-picked-check" aria-hidden="true"><use href="{{ icons }}#ui-check"></use></svg>
+                    </div>
+                </div>
+            </div>
+            <div class="folio-redirect-address" data-redirect-address>
+                <label class="folio-sr" for="folio-redirect-target">{{ t('folio.redirects.to_address') }}</label>
+                <input type="text" id="folio-redirect-target" name="target" value="{{ values.target }}" placeholder="{{ t('folio.redirects.prompt.url_placeholder') }}" autocomplete="off" spellcheck="false" required data-redirect-address-input aria-describedby="folio-redirect-target-help"{% if errors.target is defined %} aria-invalid="true"{% endif %}>
+                {% if picked %}<small class="form-help" data-redirect-picked-help>{{ t('folio.redirects.target_picked', {label: picked}) }}</small>{% endif %}
+                <small class="form-help" id="folio-redirect-target-help">{{ t('folio.redirects.target_help') }}</small>
+            </div>
             {% if errors.target is defined %}<div class="form-error">{{ errors.target }}</div>{% endif %}
-        </div>
+        </fieldset>
         <fieldset class="form-group">
             <legend class="form-label">{{ t('folio.redirects.answer') }}</legend>
             {% if manual %}
-                <label class="form-radio"><input type="radio" name="status" value="301"{% if values.status != 302 %} checked{% endif %}> {{ t('folio.redirects.permanent') }}</label>
-                <label class="form-radio"><input type="radio" name="status" value="302"{% if values.status == 302 %} checked{% endif %}> {{ t('folio.redirects.temporary') }}</label>
+                <div class="folio-radio-cards">
+                    {% for code, key in {301: 'permanent', 302: 'temporary'} %}
+                        <label class="folio-radio-card"><input type="radio" name="status" value="{{ code }}"{% if (code == 302) == (values.status == 302) %} checked{% endif %}><span class="folio-radio-card-text"><span class="folio-radio-card-label">{{ t('folio.redirects.' ~ key ~ '_card') }}</span><span class="folio-radio-card-help">{{ t('folio.redirects.' ~ key ~ '_help') }}</span></span></label>
+                    {% endfor %}
+                </div>
             {% else %}
                 <small class="form-help">{{ t('folio.redirects.automatic_status') }}</small>
             {% endif %}
         </fieldset>
-        <div class="folio-form-buttons">
-            <a class="btn btn-ghost" href="{{ prefix }}/redirects">{{ t('folio.common.cancel') }}</a>
-            <button type="submit" class="btn btn-primary" data-busy-label="{{ t('folio.form.saving') }}">{{ t('folio.common.save') }}</button>
+        <div class="{{ in_drawer ? 'folio-drawer-actions' : 'folio-form-buttons' }}">
+            <a class="btn btn-ghost" href="{{ prefix }}/redirects"{% if in_drawer %} data-folio-drawer-cancel{% endif %}>{{ t('folio.common.cancel') }}</a>
+            <button type="submit" class="btn btn-primary" data-busy-label="{{ t('folio.form.saving') }}">{{ t('folio.redirects.save') }}</button>
         </div>
     </form>
 {% endblock %}

@@ -1971,6 +1971,11 @@ unpublishing one asks, in place of the plain confirmation, where the old links g
   (`GET {prefix}/redirects/_targets?q=`, `{items: [{value: "type:id", label, type, url}]}`).
 - **A URL or a path**: `https://…` or a path on this site (`/…`, never `//host`).
 
+The three are radio cards (the chosen one opens to its search or input; the arrow keys, Home and
+End move the choice). The dialog's title names the record when the form carries
+`data-removal-label` ("Delete “About”?", "Unpublish “About”?"; the list's and the editor's forms
+do), else it is the form's own question.
+
 The form posts the choice as `_redirect_to` (`type:id` or the URL); the server checks it again
 and treats anything it can't use as no target. A bulk delete has one target for the whole
 batch; records deleted by cascade get the same one.
@@ -2017,21 +2022,27 @@ is hidden when there are none.
 `{prefix}/redirects`, permission `redirects.manage` (the automatic entries need none: they follow
 from publishing). Two tabs:
 
-- **Redirects**: old address, language, target, kind (automatic, removed page, hand-made),
-  permanent or temporary, hits since created, and a broken flag when the target page is gone or
-  none was picked; untargeted and broken entries first. Search by address; `?record=type:id`
-  shows the entries of one record. Add, edit, delete.
-- **Not found**: addresses visitors asked for that don't exist, hit at least twice, most hit
-  first, with **Redirect…** (the form, prefilled) and **Dismiss**. A dismissed address comes back
+- **Redirects**: "from → to" (the old address, the target, and the language, area and target type
+  under it), kind (automatic, removed page, handmade), code (301 or 302), hits since created, and
+  a broken flag when the target page is gone or none was picked; untargeted and broken entries
+  first. The search finds the old or the new address (a URL, or a page's label);
+  `?record=type:id` shows the entries of one record. Add, edit (the drawer), delete (the row's
+  "…" menu).
+- **Not found** (its tab counts the rows): addresses visitors asked for that don't exist, hit at
+  least twice, most hit first, with **→ add a redirect** (the form, prefilled) and **Dismiss**. A dismissed address comes back
   only when it is hit again 30 days or more after the dismissal; an address that gets a redirect
   or that a page takes leaves the list. The count is approximate: an address is counted at most
   once a minute (hits in between are dropped), a burst of new addresses is recorded at most 30 a
   minute, and the list keeps the 1,000 most recently hit addresses.
 
-A hand-made entry has an old address, typed as visitors see it (`/de/werkstatt` for German on a
-site with locale prefixes; the prefix of any of the site's languages becomes the entry's
-language, else it is the default language; without prefixes entries are language-neutral), and
-a target: a page picked from the search, or a URL or path. It can cover *everything under it*
+The form opens in the drawer (`?_drawer=1`; the list reloads after a save) and is a page of its
+own without script. A hand-made entry has an old address, typed after the form's `/` (a query or
+fragment is left out), with its language: on a site with locale prefixes a select offers "Any
+language" or one of the site's languages, and a language prefix typed in front (`/de/werkstatt`)
+still wins; without prefixes entries are language-neutral. Posted without the select, the prefix
+or else the default language decides, as before. "Send visitors to" is **A page** (a search over
+`_targets`, the pick shown with its type and URL) or **An address** (a URL or path); both post
+the one field `target`, and without script the address input takes `type:id` too. It can cover *everything under it*
 (an area): either all to one target, or **keep the rest** under a new address
 (`/workshops-2024/basel` → `/workshops/basel`, a URL or path target without `?` or `#`). Hand-made
 entries answer 301 (default) or 302; automatic and removed-page entries are always 301.
@@ -2042,7 +2053,7 @@ rest of the path is appended to the URL), nor with a `?` or `#` (kept as typed).
 
 The form refuses what could never work or would loop:
 
-- an address with `?` or `#`, under a non-public path (the admin, members, private files), or
+- an address under a non-public path (the admin, members, private files), or
   that a page holds now (it would never answer; an area's root may be a page);
 - an area over the whole site (`/`);
 - an address that already has an entry (edit that one instead);

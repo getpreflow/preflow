@@ -61,7 +61,7 @@ final class EditorSidePanelTest extends TestCase
         }
         $this->assertStringContainsString('Draft, not on the site', $post);
         $this->assertStringContainsString('aria-label="Delete “Hello”"', $post, 'the delete form, with the delete plan');
-        $this->assertStringContainsString('data-delete-plan="/folio/post/_delete-plan" data-delete-id="p1" data-folio-discards', $post, 'a delete saves no pending edits first');
+        $this->assertMatchesRegularExpression('#data-delete-plan="/folio/post/_delete-plan" data-delete-id="p1" data-removal-label="[^"]+" data-folio-discards#', $post, 'a delete saves no pending edits first; the removal dialog names the record');
         $this->assertStringNotContainsString('id="folio-side-search"', $post, 'no search result while SEO is off');
 
         // A publishing type without a frontend route or translations: no address, no languages.

@@ -202,6 +202,7 @@
         var data = e.data;
         if (data && typeof data === 'object' && data.source === 'folio-assets') { onAssetsPicked(data); return; }
         if (data && typeof data === 'object' && data.source === 'folio-preview') { onPreviewMessage(data); return; }
+        if (data && typeof data === 'object' && data.source === 'folio-drawer-cancel') { closeDrawer(); return; }
         if (!data || typeof data !== 'object' || data.source !== 'folio-drawer') { return; }
 
         var matrix = activeMatrix;
@@ -242,6 +243,33 @@
     window.Folio = window.Folio || {};
     window.Folio.chooseAssets = chooseAssets;
     window.Folio.openDrawer = openDrawer;
+
+    // Links with data-folio-drawer (Settings → Redirects: New redirect, Edit, "→ add a redirect") open their page
+    // in the drawer (_drawer=1); a modified or middle click still opens the page itself. Without this
+    // script they are plain links to the page. In the drawer, a Cancel link with data-folio-drawer-cancel
+    // closes it (a message to the page behind) instead of leaving the form.
+    function onDrawerLinkClick(e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[data-folio-drawer], a[data-folio-drawer-cancel]') : null;
+        if (!a || e.defaultPrevented || e.button > 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+        if (a.hasAttribute('data-folio-drawer-cancel')) {
+            if (window.parent && window.parent !== window) {
+                e.preventDefault();
+                window.parent.postMessage({ source: 'folio-drawer-cancel' }, window.location.origin);
+            }
+            return;
+        }
+        var href = a.getAttribute('href');
+        if (!href) { return; }
+        e.preventDefault();
+        var menu = a.closest('[data-folio-row-menu]');
+        if (menu) { menu.open = false; }
+        openDrawer(href + (href.indexOf('?') === -1 ? '?' : '&') + '_drawer=1');
+    }
+
+    // A saved redirect drawer: the list behind it shows the saved state (and the flash) again.
+    function onRedirectDrawerSaved(e) {
+        if (e && e.detail && e.detail.type === 'redirect') { window.location.reload(); }
+    }
 
     function onAssetsPicked(data) {
         var picker = activePicker;
@@ -823,9 +851,9 @@
     // layouts; built here when a layout has none): a title, a message, an optional list (the delete
     // plan's lines), Cancel and the confirm button (.btn-danger for tone 'danger', else .btn-primary),
     // and an optional third button. For extensions too:
-    //   folioConfirm({title, message, items, confirm, cancel, tone, extra, icon}) → Promise<'confirm'|'cancel'|'extra'>
+    //   folioConfirm({title, message, items, mono, confirm, cancel, tone, extra, icon}) → Promise<'confirm'|'cancel'|'extra'>
     //   folioAlert({title, message, items, icon}) → Promise<void> (one OK button)
-    // icon: an id from icons.svg for the tile (default ui-info, ui-warn for danger).
+    // icon: an id from icons.svg for the tile (default ui-info, ui-warn for danger); mono: the items in mono (addresses).
     // Escape and a click on the backdrop cancel. A danger dialog starts on Cancel, any other on its
     // confirm button; closing returns the focus to where it was (a closed menu's toggle when the
     // opener sat in that menu). A second ask while one is open cancels the first.
@@ -935,6 +963,7 @@
             list.appendChild(li);
         });
         list.hidden = items.length === 0;
+        if (list.classList) { list.classList.toggle('is-mono', !!o.mono && items.length > 0); }
         dialog.setAttribute('aria-labelledby', titleEl.id);
         var described = message !== '' ? messageEl.id : (items.length ? list.id : '');
         if (described) { dialog.setAttribute('aria-describedby', described); } else { dialog.removeAttribute('aria-describedby'); }
@@ -1032,7 +1061,18 @@
         if (!src.hasAttribute('data-confirm')) { return; }
         e.preventDefault();
         var submitter = e.submitter || null;
-        folioConfirm({ title: src.getAttribute('data-confirm'), items: selectedLabels(src), confirm: confirmLabel(src, submitter), tone: confirmTone(src, submitter) })
+        // data-confirm-item: the one thing it is about (a redirect's address, in mono); data-confirm-cancel and
+        // data-confirm-icon name the safe button ("Keep") and the icon.
+        var item = src.getAttribute('data-confirm-item');
+        folioConfirm({
+            title: src.getAttribute('data-confirm'),
+            items: item ? [item] : selectedLabels(src),
+            mono: !!item,
+            confirm: confirmLabel(src, submitter),
+            cancel: src.getAttribute('data-confirm-cancel') || '',
+            icon: src.getAttribute('data-confirm-icon') || '',
+            tone: confirmTone(src, submitter)
+        })
             .then(function (answer) { if (answer === 'confirm') { resubmit(f, submitter); } });
     }
 
@@ -1089,10 +1129,12 @@
                 folioAlert({ title: folioT('delete_blocked'), message: plan.confirm, items: usedBy });
             } else if ((parseInt(plan.addresses, 10) || 0) > 0) {
                 // The records have public addresses: ask where their old links go as well.
+                // Its title names the record ("Delete “About”?"), else the form's question; the plan's lines follow.
+                var named = src.getAttribute('data-removal-label');
                 removalPrompt(plan.confirm.split('\n'), folioT('redirects.prompt.delete'), function (target) {
                     setRemovalTarget(f, target);
                     send();
-                });
+                }, named ? folioT('redirects.prompt.delete_title', { label: named }) : question);
             } else {
                 var lines = Array.isArray(plan.lines) ? plan.lines : [];
                 folioConfirm({ title: question, message: plan.confirm.split('\n')[0], items: lines, confirm: label, tone: 'danger', icon: 'ui-trash' })
@@ -1145,19 +1187,24 @@
         if (!f || !f.hasAttribute || e.defaultPrevented || f._folioConfirmed || f.hasAttribute('data-delete-plan') || removalAddresses(f) <= 0) { return; }
         e.preventDefault();
         var submitter = e.submitter || null;
-        removalPrompt([f.getAttribute('data-confirm') || ''], folioT('redirects.prompt.unpublish'), function (target) {
+        var named = f.getAttribute('data-removal-label');
+        removalPrompt(named ? [] : [f.getAttribute('data-confirm') || ''], folioT('redirects.prompt.unpublish'), function (target) {
             setRemovalTarget(f, target);
             resubmit(f, submitter);
-        });
+        }, named ? folioT('redirects.prompt.unpublish_title', { label: named }) : '');
     }
 
     var removalDialog = null;
 
     /**
-     * Shows the prompt: the confirmation's lines, the three choices, Cancel and $confirmLabel.
-     * onConfirm(target) gets "type:id", a URL or path, or '' for none; Cancel sends nothing.
+     * Shows the prompt (440px, LibOverlays): the title (title, else the first line), the confirmation's
+     * other lines, "Send its old links to…" and three radio cards: Leave them as not found / A page on the
+     * site (its search, the results and "Now: …") / A URL or a path (its input). The chosen card opens to
+     * its controls (.is-chosen); the arrow keys, Home and End move the choice between the cards. Footer
+     * Cancel and $confirmLabel (danger). onConfirm(target) gets "type:id", a URL or path, or '' for none;
+     * Cancel sends nothing.
      */
-    function removalPrompt(lines, confirmLabel, onConfirm) {
+    function removalPrompt(lines, confirmLabel, onConfirm, title) {
         if (removalDialog) { return; }
         var t = function (key, params) { return folioT('redirects.prompt.' + key, params); };
         var el = function (tag, className, text) {
@@ -1166,17 +1213,27 @@
             if (text) { node.textContent = text; }
             return node;
         };
+        lines = lines.filter(function (line) { return line !== ''; });
+        if (!title) { title = lines.shift() || t('send_to'); }
+        var uid = 'folio-removal-' + Date.now().toString(36);
         var dialog = el('dialog', 'folio-removal-dialog');
         dialog.setAttribute('data-removal-dialog', '');
-        dialog.setAttribute('aria-label', t('send_to'));
-        lines.filter(function (line) { return line !== ''; }).forEach(function (line) {
-            dialog.appendChild(el('p', 'folio-removal-line', line));
-        });
+        dialog.setAttribute('aria-labelledby', uid + '-title');
+
+        var head = el('div', 'folio-removal-head');
+        var heading = el('h2', 'folio-removal-title', title);
+        heading.id = uid + '-title';
+        head.appendChild(heading);
+        lines.forEach(function (line) { head.appendChild(el('p', 'folio-removal-line', line)); });
+        dialog.appendChild(head);
 
         var choices = el('fieldset', 'folio-removal-choices');
-        choices.appendChild(el('legend', '', t('send_to')));
+        choices.appendChild(el('legend', 'folio-removal-subtitle', t('send_to')));
         var radios = {};
+        var cards = {};
         var option = function (value, text) {
+            var card = el('div', 'folio-removal-card');
+            card.setAttribute('data-removal-card', value);
             var label = el('label', 'folio-removal-option');
             var radio = document.createElement('input');
             radio.type = 'radio';
@@ -1185,42 +1242,72 @@
             radio.setAttribute('value', value);
             radio.checked = value === 'none';
             radios[value] = radio;
+            cards[value] = card;
             label.appendChild(radio);
             label.appendChild(el('span', '', text));
-            choices.appendChild(label);
-            return label;
-        };
-        var choose = function (value) {
-            Object.keys(radios).forEach(function (key) { radios[key].checked = key === value; });
+            card.appendChild(label);
+            choices.appendChild(card);
+            return card;
         };
         var chosen = function () {
             return Object.keys(radios).filter(function (key) { return radios[key].checked; })[0] || 'none';
         };
+        // The chosen card is marked (and opens to its controls); the others close.
+        var mark = function () {
+            var now = chosen();
+            Object.keys(cards).forEach(function (key) { cards[key].classList.toggle('is-chosen', key === now); });
+        };
+        var choose = function (value) {
+            Object.keys(radios).forEach(function (key) { radios[key].checked = key === value; });
+            mark();
+        };
 
         option('none', t('leave'));
-        option('page', t('to_page'));
+        var pageCard = option('page', t('to_page'));
+        var more = el('div', 'folio-removal-more');
+        var searchBox = el('label', 'folio-removal-search-box');
         var search = el('input', 'folio-removal-search');
         search.type = 'search';
         search.setAttribute('data-removal-search', '');
         search.setAttribute('autocomplete', 'off');
         search.setAttribute('placeholder', t('search'));
         search.setAttribute('aria-label', t('search'));
+        searchBox.appendChild(search);
         var results = el('ul', 'folio-removal-results');
         results.setAttribute('data-removal-results', '');
         var picked = el('p', 'folio-removal-picked');
         picked.setAttribute('aria-live', 'polite');
-        choices.appendChild(search);
-        choices.appendChild(results);
-        choices.appendChild(picked);
-        option('url', t('to_url'));
+        more.appendChild(searchBox);
+        more.appendChild(results);
+        more.appendChild(picked);
+        pageCard.appendChild(more);
+        var urlCard = option('url', t('to_url'));
         var url = el('input', 'folio-removal-url');
         url.type = 'text';
         url.setAttribute('data-removal-url', '');
         url.setAttribute('autocomplete', 'off');
         url.setAttribute('placeholder', t('url_placeholder'));
         url.setAttribute('aria-label', t('to_url'));
-        choices.appendChild(url);
+        var urlMore = el('div', 'folio-removal-more');
+        urlMore.appendChild(url);
+        urlCard.appendChild(urlMore);
         dialog.appendChild(choices);
+        mark();
+        choices.addEventListener('change', mark);
+        // The radio group's keys (as browsers do it, here also where they don't): the next or the previous card, wrapping.
+        choices.addEventListener('keydown', function (e) {
+            var radio = e.target;
+            if (!radio || radio.name !== 'folio_removal_target') { return; }
+            var keys = Object.keys(radios);
+            var at = keys.indexOf(radio.value);
+            var to = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? (at + 1) % keys.length
+                : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? (at - 1 + keys.length) % keys.length
+                : e.key === 'Home' ? 0 : e.key === 'End' ? keys.length - 1 : -1;
+            if (to < 0) { return; }
+            e.preventDefault();
+            choose(keys[to]);
+            radios[keys[to]].focus();
+        });
 
         var error = el('p', 'folio-removal-error');
         error.setAttribute('data-removal-error', '');
@@ -1268,6 +1355,10 @@
                             button.addEventListener('click', function () {
                                 page = item.value;
                                 choose('page');
+                                Array.prototype.forEach.call(results.querySelectorAll('.folio-removal-pick'), function (b) {
+                                    b.classList.toggle('is-picked', b === button);
+                                    b.setAttribute('aria-pressed', b === button ? 'true' : 'false');
+                                });
                                 picked.textContent = t('picked', { label: String(item.label || item.value) });
                                 error.hidden = true;
                             });
@@ -2075,35 +2166,165 @@
     // and the page asks before leaving while such rows are unsaved. A row the server refused
     // carries data-unsaved: its text is the posted one, not the saved one.
 
-    // Settings → Redirects: the target field's page picker. As the user types, the field's datalist
-    // gets the matching public pages from {prefix}/redirects/_targets ({items: [{value, label, type, url}]}):
-    // the value "type:id" goes into the field, a URL or path typed by hand stays as it is.
-    function initRedirectTargets() {
-        var input = document.querySelector('[data-redirect-targets]');
-        var list = input && input.list;
-        if (!list || !window.fetch) { return; }
-        var seq = 0;
-        var timer = null;
-        input.addEventListener('input', function () {
-            var q = input.value.trim();
-            clearTimeout(timer);
-            if (q === '' || q.charAt(0) === '/' || /^https?:/i.test(q)) { list.textContent = ''; return; }
-            timer = setTimeout(function () {
-                var mine = ++seq;
-                fetch(input.getAttribute('data-redirect-targets') + '?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-                    .then(function (res) { return res.ok ? res.json() : { items: [] }; })
-                    .then(function (data) {
-                        if (mine !== seq) { return; }
-                        list.textContent = '';
-                        (data.items || []).forEach(function (item) {
-                            var option = document.createElement('option');
-                            option.value = item.value;
-                            option.label = item.label + ' (' + item.type + ') ' + item.url;
-                            list.appendChild(option);
-                        });
-                    })
-                    .catch(function () {});
-            }, 200);
+    // Settings → Redirects, the form (redirects/form.twig, [data-redirect-form]): "Send visitors to" as a segmented
+    // (A page / An address). Both modes post the one field "target": the page mode its hidden "type:id"
+    // ([data-redirect-page-value]), the address mode the text input; the other one is disabled. The page
+    // search is a combobox over {prefix}/redirects/_targets ({items: [{value, label, type, url}]}): typing lists
+    // the matching public pages, ArrowDown/ArrowUp move through them, Enter picks, Escape closes the list
+    // (a second Escape clears the search). The pick shows as a row under the search. Without this script only the
+    // address input shows, and it takes a URL, a path or "type:id".
+    function initRedirectForm() {
+        document.querySelectorAll('[data-redirect-form]').forEach(function (form) {
+            if (form._folioRedirect) { return; }
+            var kinds = form.querySelector('[data-redirect-kinds]');
+            var pagePane = form.querySelector('[data-redirect-page]');
+            var addressPane = form.querySelector('[data-redirect-address]');
+            var pageValue = form.querySelector('[data-redirect-page-value]');
+            var addressInput = form.querySelector('[data-redirect-address-input]');
+            var search = form.querySelector('[data-redirect-search]');
+            var list = form.querySelector('[data-redirect-results]');
+            var picked = form.querySelector('[data-redirect-picked]');
+            if (!kinds || !pagePane || !addressPane || !pageValue || !addressInput || !search || !list || !picked) { return; }
+            form._folioRedirect = true;
+            var pickedHelp = form.querySelector('[data-redirect-picked-help]');
+            if (pickedHelp) { pickedHelp.hidden = true; }
+
+            function mode() {
+                var checked = Array.prototype.filter.call(kinds.querySelectorAll('input[name="target_kind"]'), function (r) { return r.checked; })[0];
+                return checked ? checked.value : 'page';
+            }
+            function show() {
+                var page = mode() === 'page';
+                pagePane.hidden = !page;
+                addressPane.hidden = page;
+                pageValue.disabled = !page;
+                addressInput.disabled = page;
+            }
+            kinds.hidden = false;
+            // A page typed by hand ("type:id") in the address input is the page mode's pick.
+            if (mode() === 'page' && pageValue.value === '' && /^[a-z0-9_-]+:[^\/]/i.test(addressInput.value) && !/^https?:/i.test(addressInput.value)) {
+                pageValue.value = addressInput.value;
+            }
+            show();
+            kinds.addEventListener('change', function () {
+                show();
+                (mode() === 'page' ? search : addressInput).focus();
+            });
+
+            var items = [];
+            var active = -1;
+            var seq = 0;
+            var timer = null;
+            var url = search.getAttribute('data-redirect-targets') || '';
+            var optionId = function (i) { return list.id + '-' + i; };
+
+            function close() {
+                list.hidden = true;
+                list.textContent = '';
+                items = [];
+                active = -1;
+                search.setAttribute('aria-expanded', 'false');
+                search.removeAttribute('aria-activedescendant');
+            }
+            function highlight(i) {
+                active = i;
+                Array.prototype.forEach.call(list.querySelectorAll('[role="option"]'), function (li, n) {
+                    li.setAttribute('aria-selected', n === i ? 'true' : 'false');
+                    li.classList.toggle('is-active', n === i);
+                });
+                if (i >= 0) {
+                    search.setAttribute('aria-activedescendant', optionId(i));
+                    var li = list.querySelector('#' + optionId(i));
+                    if (li && li.scrollIntoView) { li.scrollIntoView({ block: 'nearest' }); }
+                } else {
+                    search.removeAttribute('aria-activedescendant');
+                }
+            }
+            function pick(item) {
+                pageValue.value = item.value;
+                var label = picked.querySelector('[data-redirect-picked-label]');
+                var meta = picked.querySelector('[data-redirect-picked-meta]');
+                if (label) { label.textContent = String(item.label || item.value); }
+                if (meta) { meta.textContent = [item.type, item.url].filter(Boolean).join(' · '); }
+                picked.hidden = false;
+                search.value = '';
+                close();
+                pageValue.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            function render(found) {
+                list.textContent = '';
+                items = found;
+                active = -1;
+                if (found.length === 0) {
+                    var none = document.createElement('li');
+                    none.className = 'folio-redirect-none';
+                    none.setAttribute('role', 'presentation');
+                    none.textContent = folioT('no_matches');
+                    list.appendChild(none);
+                }
+                found.forEach(function (item, i) {
+                    var li = document.createElement('li');
+                    li.id = optionId(i);
+                    li.className = 'folio-redirect-option';
+                    li.setAttribute('role', 'option');
+                    li.setAttribute('aria-selected', 'false');
+                    li.setAttribute('data-redirect-option', item.value);
+                    var label = document.createElement('span');
+                    label.className = 'folio-redirect-option-label';
+                    label.textContent = String(item.label || item.value);
+                    var meta = document.createElement('span');
+                    meta.className = 'folio-redirect-option-meta';
+                    meta.textContent = [item.type, item.url].filter(Boolean).join(' · ');
+                    li.appendChild(label);
+                    li.appendChild(meta);
+                    // mousedown: before the search loses focus.
+                    li.addEventListener('mousedown', function (e) { e.preventDefault(); });
+                    li.addEventListener('click', function () { pick(item); });
+                    list.appendChild(li);
+                });
+                list.hidden = false;
+                search.setAttribute('aria-expanded', 'true');
+            }
+
+            search.addEventListener('input', function () {
+                var q = search.value.trim();
+                clearTimeout(timer);
+                if (q === '' || !window.fetch) { seq++; close(); return; }
+                timer = setTimeout(function () {
+                    var mine = ++seq;
+                    fetch(url + '?q=' + encodeURIComponent(q), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+                        .then(function (res) { return res.ok ? res.json() : { items: [] }; })
+                        .then(function (data) {
+                            if (mine !== seq) { return; }
+                            render(((data && data.items) || []).filter(function (item) { return item && typeof item.value === 'string'; }));
+                        })
+                        .catch(function () {});
+                }, 200);
+            });
+            search.addEventListener('keydown', function (e) {
+                var open = !list.hidden && items.length > 0;
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    if (!open) { return; }
+                    e.preventDefault();
+                    var n = items.length;
+                    highlight(e.key === 'ArrowDown' ? (active + 1) % n : (active <= 0 ? n - 1 : active - 1));
+                } else if (e.key === 'Enter') {
+                    // Never sends the form from the search: Enter picks the highlighted page (or the only one).
+                    e.preventDefault();
+                    if (open && (active >= 0 || items.length === 1)) { pick(items[active >= 0 ? active : 0]); }
+                } else if (e.key === 'Escape') {
+                    if (!list.hidden) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        close();
+                    } else if (search.value !== '') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        search.value = '';
+                    }
+                }
+            });
+            search.addEventListener('blur', function () { setTimeout(close, 150); });
         });
     }
 
@@ -3679,6 +3900,8 @@
         document.addEventListener('dragleave', onAssetsDragLeave);
         document.addEventListener('drop', onAssetsDrop);
         document.addEventListener('folio:drawer-saved', onAssetsDrawerSaved);
+        document.addEventListener('folio:drawer-saved', onRedirectDrawerSaved);
+        document.addEventListener('click', onDrawerLinkClick);
         document.addEventListener('change', onEnablesChange);
         // Back/forward may restore ticked boxes: show the bar for them.
         window.addEventListener('pageshow', function () { initBulk(document); });
@@ -3735,7 +3958,7 @@
         initUnsavedGuard();
         initFormEdits();
         initTranslations();
-        initRedirectTargets();
+        initRedirectForm();
         initNavSections();
         initUserMenus();
         initShellRail();

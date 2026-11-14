@@ -1,41 +1,48 @@
 {% extends "@folio/admin/_layout.twig" %}
-{# Settings → Redirects (RedirectsController): the entries, or the not-found list (tab "not-found"). #}
+{# Settings → Redirects (RedirectsController): the entries, or the not-found list (tab "not-found", its badge counts
+   the rows it shows). Each entry is one "from → to" row (the old address in mono with its language and area under
+   it, then the target: a page's label, type and URL, a URL, or the Broken / No target badge), its kind, code,
+   hits and creation date, and a "…" menu. "New redirect", Edit and "→ add a redirect" are links to the form's
+   page; admin.js opens them in the drawer (data-folio-drawer) and reloads the list after a save. #}
+{% set content_width = 'wide' %}
 {% block title %}Folio — {{ t('folio.nav.redirects') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.redirects') }}{% endblock %}
 {% block subtitle %}{% if not unavailable|default(false) %}{{ tab == 'not-found' ? t('folio.redirects.not_found_intro') : t('folio.redirects.intro') }}{% endif %}{% endblock %}
+{% block actions %}{% if not unavailable|default(false) %}<a class="btn btn-primary" href="{{ prefix }}/redirects/new" data-folio-drawer><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.redirects.new') }}</a>{% endif %}{% endblock %}
 {% block content %}
+    {% set icons = folio_asset('icons.svg') %}
     {% if unavailable|default(false) %}
         {# A SQL site that has not run `preflow migrate` yet: no redirect tables. #}
         <div class="folio-alert folio-alert-warning" role="alert">{{ t('folio.redirects.not_migrated') }} <code>preflow migrate</code></div>
     {% else %}
     <nav class="folio-tabs" aria-label="{{ t('folio.nav.redirects') }}">
         <a href="{{ prefix }}/redirects"{% if tab == 'redirects' %} aria-current="page"{% endif %}>{{ t('folio.redirects.tab_redirects') }}</a>
-        <a href="{{ prefix }}/redirects?tab=not-found"{% if tab == 'not-found' %} aria-current="page"{% endif %}>{{ t('folio.redirects.tab_not_found') }}</a>
+        <a href="{{ prefix }}/redirects?tab=not-found"{% if tab == 'not-found' %} aria-current="page"{% endif %}>{{ t('folio.redirects.tab_not_found') }}{% if not_found_count|default(0) > 0 %} <span class="folio-tab-badge"><span class="folio-sr">(</span>{{ folio_number(not_found_count) }}<span class="folio-sr">)</span></span>{% endif %}</a>
     </nav>
     {% if tab == 'not-found' %}
         {% if missing is empty %}
             {% include '@folio/admin/partials/_empty.twig' with {screen: 'redirects-not-found', title: t('folio.redirects.not_found_empty'), line: t('folio.redirects.not_found_empty_line')} only %}
         {% else %}
         <div class="folio-table-wrap">
-        <table class="folio-table">
+        <table class="folio-table folio-redirects-table">
             <thead><tr>
                 <th>{{ t('folio.redirects.address') }}</th>
                 <th>{{ t('folio.layout.language') }}</th>
-                <th>{{ t('folio.redirects.hits') }}</th>
+                <th class="is-number">{{ t('folio.redirects.hits') }}</th>
                 <th>{{ t('folio.redirects.first_hit') }}</th>
                 <th>{{ t('folio.redirects.last_hit') }}</th>
-                <th><span class="folio-sr">{{ t('folio.common.actions') }}</span></th>
+                <th class="folio-actions-cell"><span class="folio-sr">{{ t('folio.common.actions') }}</span></th>
             </tr></thead>
             <tbody>
             {% for row in missing %}
                 <tr>
-                    <td><code>{{ row.address }}</code></td>
+                    <td class="folio-redirect-from"><code>{{ row.address }}</code></td>
                     <td>{{ row.language }}</td>
-                    <td>{{ folio_number(row.hits) }}</td>
-                    <td>{{ folio_date(row.first_hit_at, 'datetime') }}</td>
-                    <td>{{ folio_date(row.last_hit_at, 'datetime') }}</td>
-                    <td><div class="folio-row-actions">
-                        <a class="btn btn-secondary btn-sm" href="{{ row.redirect }}">{{ t('folio.redirects.redirect_action') }}</a>
+                    <td class="is-number">{{ folio_number(row.hits) }}</td>
+                    <td class="folio-redirect-date">{{ folio_date(row.first_hit_at, 'datetime') }}</td>
+                    <td class="folio-redirect-date">{{ folio_date(row.last_hit_at, 'datetime') }}</td>
+                    <td class="folio-actions-cell"><div class="folio-row-actions">
+                        <a class="btn btn-ghost btn-sm folio-redirect-add" href="{{ row.redirect }}" data-folio-drawer>{{ t('folio.redirects.add_redirect') }}</a>
                         <form method="post" action="{{ prefix }}/redirects/not-found/{{ row.id }}/dismiss">
                             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                             <button type="submit" class="btn btn-ghost btn-sm">{{ t('folio.redirects.dismiss') }}</button>
@@ -48,17 +55,14 @@
         </div>
         {% endif %}
     {% else %}
-        <div class="folio-toolbar">
-            <form class="folio-toolbar-fields" method="get" action="{{ prefix }}/redirects" role="search">
-                {% if record %}<input type="hidden" name="record" value="{{ record }}">{% endif %}
-                <label class="folio-list-search">
-                    <span class="folio-sr">{{ t('folio.redirects.search_label') }}</span>
-                    <input type="search" name="q" value="{{ q }}" placeholder="{{ t('folio.common.search_placeholder') }}" autocomplete="off">
-                </label>
-                <button type="submit" class="btn btn-secondary btn-sm">{{ t('folio.common.search') }}</button>
-            </form>
-            <a class="btn btn-primary btn-sm" href="{{ prefix }}/redirects/new">{{ t('folio.redirects.new') }}</a>
-        </div>
+        <form class="folio-list-toolbar" method="get" action="{{ prefix }}/redirects" role="search">
+            {% if record %}<input type="hidden" name="record" value="{{ record }}">{% endif %}
+            <label class="folio-list-search">
+                <span class="folio-sr">{{ t('folio.redirects.search_label') }}</span>
+                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>
+                <input type="search" name="q" value="{{ q }}" placeholder="{{ t('folio.redirects.search_placeholder') }}" autocomplete="off">
+            </label>
+        </form>
         {% if record %}
             <p class="folio-help">{{ t('folio.redirects.filtered') }} <a href="{{ prefix }}/redirects">{{ t('folio.redirects.show_all') }}</a></p>
         {% endif %}
@@ -73,39 +77,47 @@
             } only %}
         {% else %}
         <div class="folio-table-wrap">
-        <table class="folio-table">
+        <table class="folio-table folio-redirects-table">
             <thead><tr>
-                <th>{{ t('folio.redirects.address') }}</th>
-                <th>{{ t('folio.layout.language') }}</th>
-                <th>{{ t('folio.redirects.target') }}</th>
+                <th>{{ t('folio.redirects.from_to') }}</th>
                 <th>{{ t('folio.redirects.kind') }}</th>
-                <th>{{ t('folio.redirects.answer') }}</th>
-                <th>{{ t('folio.redirects.hits') }}</th>
+                <th>{{ t('folio.redirects.code') }}</th>
+                <th class="is-number">{{ t('folio.redirects.hits') }}</th>
                 <th>{{ t('folio.redirects.created') }}</th>
-                <th><span class="folio-sr">{{ t('folio.common.actions') }}</span></th>
+                <th class="folio-actions-cell"><span class="folio-sr">{{ t('folio.common.actions') }}</span></th>
             </tr></thead>
             <tbody>
             {% for row in rows %}
                 <tr>
-                    <td><a class="folio-row-link" href="{{ row.edit }}"><code>{{ row.address }}</code></a>
-                        {%- if row.area %}<br><span class="folio-help">{{ t('folio.redirects.area') }}{% if row.mode == 'prefix' %} · {{ t('folio.redirects.mode_prefix_short') }}{% endif %}</span>{% endif %}</td>
-                    <td>{{ row.language }}</td>
-                    <td>
-                        {%- if row.target.state == 'none' %}<span class="folio-badge is-incomplete">{{ t('folio.redirects.no_target') }}</span>
-                        {%- elseif row.target.state == 'broken' %}<span class="folio-badge is-incomplete" title="{{ t('folio.redirects.broken_help') }}">{{ t('folio.redirects.broken') }}</span>
-                        {%- elseif row.target.label is not null %}{{ row.target.label }} <span class="folio-help">({{ row.target.type }})</span>{% if row.target.url %}<br><code>{{ row.target.url }}</code>{% endif %}
-                        {%- else %}<code>{{ row.target.url }}</code>{% endif -%}
+                    <td class="folio-redirect-cell">
+                        <span class="folio-redirect-line">
+                            <a class="folio-row-link folio-redirect-from" href="{{ row.edit }}" data-folio-drawer><code>{{ row.address }}</code></a>
+                            <svg class="folio-icon folio-redirect-arrow" aria-hidden="true"><use href="{{ icons }}#ui-arrow"></use></svg><span class="folio-sr">{{ t('folio.redirects.to') }}</span>
+                            {%- if row.target.state == 'none' %}<span class="folio-badge is-incomplete">{{ t('folio.redirects.no_target') }}</span>
+                            {%- elseif row.target.state == 'broken' %}<span class="folio-badge is-incomplete" title="{{ t('folio.redirects.broken_help') }}">{{ t('folio.redirects.broken') }}</span>
+                            {%- elseif row.target.label is not null %}<span class="folio-redirect-to">{{ row.target.label }}</span>{% if row.target.url %} <code class="folio-redirect-url">{{ row.target.url }}</code>{% endif %}
+                            {%- else %}<code class="folio-redirect-to">{{ row.target.url }}</code>{% endif -%}
+                        </span>
+                        <span class="folio-redirect-meta">{{ row.language }}
+                            {%- if row.area %} · {{ t('folio.redirects.area') }}{% if row.mode == 'prefix' %} · {{ t('folio.redirects.mode_prefix_short') }}{% endif %}{% endif %}
+                            {%- if row.target.type %} · {{ row.target.type }}{% endif %}</span>
                     </td>
-                    <td>{{ t('folio.redirects.kind_' ~ row.kind) }}</td>
-                    <td>{{ row.status }}</td>
-                    <td>{{ folio_number(row.hits) }}</td>
-                    <td>{{ row.created_at ? folio_date(row.created_at, 'date') : '—' }}</td>
-                    <td><div class="folio-row-actions">
-                        <a class="btn btn-ghost btn-sm" href="{{ row.edit }}">{{ t('folio.common.edit') }}</a>
-                        <form method="post" action="{{ row.edit }}/delete" data-confirm="{{ t('folio.redirects.delete_confirm') }}" data-confirm-tone="danger">
-                            <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
-                            <button type="submit" class="btn btn-ghost btn-sm">{{ t('folio.common.delete') }}</button>
-                        </form>
+                    <td><span class="folio-redirect-kind">{{ t('folio.redirects.kind_' ~ row.kind) }}</span></td>
+                    <td class="folio-mono">{{ row.status }}</td>
+                    <td class="is-number">{{ folio_number(row.hits) }}</td>
+                    <td class="folio-redirect-date">{{ row.created_at ? folio_date(row.created_at, 'date') : '—' }}</td>
+                    <td class="folio-actions-cell"><div class="folio-row-actions">
+                        <details class="folio-row-menu" data-folio-row-menu>
+                            <summary class="btn btn-ghost btn-icon btn-sm" aria-label="{{ t('folio.list.more_actions', {title: row.address}) }}" title="{{ t('folio.list.more_actions', {title: row.address}) }}" aria-haspopup="menu"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-dots"></use></svg></summary>
+                            <div class="folio-menu folio-row-menu-panel" role="menu" aria-label="{{ t('folio.list.more_actions', {title: row.address}) }}">
+                                <a class="folio-menu-item" role="menuitem" href="{{ row.edit }}" data-folio-drawer><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-edit"></use></svg><span>{{ t('folio.common.edit') }}</span></a>
+                                <div class="folio-menu-sep" role="separator"></div>
+                                <form method="post" action="{{ row.edit }}/delete" data-confirm="{{ t('folio.redirects.delete_confirm') }}" data-confirm-item="{{ row.address }}" data-confirm-cancel="{{ t('folio.redirects.keep') }}" data-confirm-label="{{ t('folio.common.delete') }}" data-confirm-tone="danger" data-confirm-icon="ui-trash">
+                                    <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
+                                    <button type="submit" class="folio-menu-item is-danger" role="menuitem"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg><span>{{ t('folio.common.delete') }}…</span></button>
+                                </form>
+                            </div>
+                        </details>
                     </div></td>
                 </tr>
             {% endfor %}

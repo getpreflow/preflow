@@ -117,7 +117,7 @@ final class ListRowMenuTest extends TestCase
         $this->assertStringContainsString('<kbd class="folio-menu-hint" aria-hidden="true">E</kbd>', $menu);
         $this->assertStringContainsString('<a class="folio-menu-item" role="menuitem" href="/world" target="_blank" rel="noopener">', $menu);
         // Unpublish: the editor's route and prompt (its address count), then back to the list.
-        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/post/p2/unpublish" data-confirm="[^"]+" data-removal-addresses="1">\s*<input type="hidden" name="_csrf_token" value="[^"]*">\s*<input type="hidden" name="_from" value="list">#', $menu);
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/post/p2/unpublish" data-confirm="[^"]+" data-removal-addresses="1" data-removal-label="[^"]+">\s*<input type="hidden" name="_csrf_token" value="[^"]*">\s*<input type="hidden" name="_from" value="list">#', $menu);
         $this->assertStringContainsString('<input type="hidden" name="_query" value="">', $menu, 'the view to come back to');
         $this->assertStringContainsString('<form method="post" action="/folio/post/p2/duplicate">', $menu);
         $this->assertStringContainsString('<kbd class="folio-menu-hint" aria-hidden="true">D</kbd>', $menu);
@@ -208,7 +208,7 @@ final class ListRowMenuTest extends TestCase
 
         $menu = $this->menu($this->list(), 'p1');
 
-        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/post/p1/delete" data-confirm="Delete this record\?" data-delete-plan="/folio/post/_delete-plan" data-delete-id="p1">\s*<input type="hidden" name="_csrf_token" value="[^"]*">\s*<button type="submit" class="folio-menu-item is-danger" role="menuitem">#', $menu);
+        $this->assertMatchesRegularExpression('#<form method="post" action="/folio/post/p1/delete" data-confirm="Delete this record\?" data-delete-plan="/folio/post/_delete-plan" data-delete-id="p1" data-removal-label="[^"]+">\s*<input type="hidden" name="_csrf_token" value="[^"]*">\s*<button type="submit" class="folio-menu-item is-danger" role="menuitem">#', $menu);
         $this->assertSame('Delete…', self::items($menu)[array_key_last(self::items($menu))], 'the danger item comes last');
     }
 

@@ -291,3 +291,76 @@ test('test_bulk_delete_asks_for_the_ticked_ids_and_submits_the_button_again', as
     assert.equal(form._folioConfirmed, false, 'only that one submit');
     assert.equal(log.fetched.length, 1, 'the plan is not asked for again');
 });
+
+const card = (d, value) => d.querySelector('[data-removal-card="' + value + '"]');
+const choice = (d) => ['none', 'page', 'url'].filter((v) => d.querySelector('input[value="' + v + '"]').checked);
+
+test('test_radio_cards_follow_the_keyboard_and_open_the_chosen_one', async () => {
+    const { w } = admin();
+    const form = unpublishForm(w, 2);
+    submit(w, form);
+    const d = dialog(w);
+    const none = d.querySelector('input[value="none"]');
+
+    assert.equal(card(d, 'none').classList.contains('is-chosen'), true, 'the default card is the chosen one');
+    assert.equal(card(d, 'page').classList.contains('is-chosen'), false);
+
+    none.focus();
+    assert.equal(none.keydown('ArrowDown').defaultPrevented, true);
+    assert.deepEqual(choice(d), ['page']);
+    assert.equal(w.document.activeElement, d.querySelector('input[value="page"]'), 'the focus moves with the choice');
+    assert.equal(card(d, 'page').classList.contains('is-chosen'), true, 'the page card opens to its search');
+    assert.equal(card(d, 'none').classList.contains('is-chosen'), false);
+    assert.ok(card(d, 'page').querySelector('input[data-removal-search]'), 'the search sits in its card');
+
+    w.document.activeElement.keydown('ArrowRight');
+    assert.deepEqual(choice(d), ['url']);
+    assert.ok(card(d, 'url').querySelector('input[data-removal-url]'), 'the URL input sits in its card');
+    w.document.activeElement.keydown('ArrowDown');
+    assert.deepEqual(choice(d), ['none'], 'wraps round');
+    w.document.activeElement.keydown('ArrowUp');
+    assert.deepEqual(choice(d), ['url']);
+    w.document.activeElement.keydown('Home');
+    assert.deepEqual(choice(d), ['none']);
+    w.document.activeElement.keydown('End');
+    assert.deepEqual(choice(d), ['url']);
+    assert.equal(w.document.activeElement.keydown('Enter').defaultPrevented, false, 'other keys are left alone');
+
+    // A click (a change event) marks its card too.
+    const page = d.querySelector('input[value="page"]');
+    d.querySelector('input[value="url"]').checked = false;
+    page.checked = true;
+    page.dispatchEvent(new Event('change', { bubbles: true }));
+    assert.equal(card(d, 'page').classList.contains('is-chosen'), true);
+    assert.equal(card(d, 'url').classList.contains('is-chosen'), false);
+});
+
+test('test_dialog_title_names_the_record', async () => {
+    const { w } = admin({ plan: { restricted: false, lines: ['Also deletes 2 games.'], confirm: "This can't be undone.\nAlso deletes 2 games.", addresses: 1 } });
+    const form = deleteForm(w);
+    form.setAttribute('data-removal-label', 'Winter news');
+    submit(w, form);
+    await settle();
+    let d = dialog(w);
+    const title = (dlg) => dlg.querySelector('#' + dlg.getAttribute('aria-labelledby'));
+    assert.equal(title(d).textContent, 'Delete “Winter news”?');
+    assert.equal(d.querySelector('legend').textContent, 'Send its old links to…', 'the subtitle');
+    assert.deepEqual(d.querySelectorAll('.folio-removal-line').map((p) => p.textContent), ["This can't be undone.", 'Also deletes 2 games.']);
+    d.querySelector('button[data-removal-cancel]').click();
+
+    // Without a name: the form's own question.
+    const plain = admin({ plan: { restricted: false, lines: [], confirm: "This can't be undone.", addresses: 1 } });
+    submit(plain.w, deleteForm(plain.w));
+    await settle();
+    assert.equal(title(dialog(plain.w)).textContent, 'Delete this record?');
+
+    // Unpublish: "Unpublish “…”?", or its data-confirm.
+    const named = admin();
+    const off = unpublishForm(named.w, 1);
+    off.setAttribute('data-removal-label', 'About');
+    submit(named.w, off);
+    d = dialog(named.w);
+    assert.equal(title(d).textContent, 'Unpublish “About”?');
+    assert.equal(d.querySelector('button[data-removal-confirm]').textContent, 'Unpublish');
+    assert.equal(d.querySelector('button[data-removal-confirm]').className, 'btn btn-danger');
+});

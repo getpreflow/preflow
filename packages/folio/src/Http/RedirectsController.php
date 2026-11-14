@@ -62,7 +62,7 @@ final class RedirectsController
         private readonly RedirectRules $rules,
     ) {}
 
-    /** GET {prefix}/redirects?q=…&record=type:id, or ?tab=not-found */
+    /** GET {prefix}/redirects?q=…&record=type:id (q: the old or the new address), or ?tab=not-found */
     public function index(ServerRequestInterface $request): ResponseInterface
     {
         return $this->guarded(function () use ($request): ResponseInterface {
@@ -71,13 +71,17 @@ final class RedirectsController
             $record = is_string($query['record'] ?? null) && str_contains($query['record'], ':') ? $query['record'] : '';
             $notFoundTab = ($query['tab'] ?? null) === 'not-found';
 
+            $missing = $notFoundTab ? $this->missing() : [];
+
             return $this->html('@folio/admin/redirects/index.twig', [
                 'prefix' => $this->prefix,
                 'tab' => $notFoundTab ? 'not-found' : 'redirects',
                 'q' => $q,
                 'record' => $record,
                 'rows' => $notFoundTab ? [] : $this->rows($q, $record),
-                'missing' => $notFoundTab ? $this->missing() : [],
+                'missing' => $missing,
+                // The Not found tab's badge (hidden at 0), on both tabs.
+                'not_found_count' => $notFoundTab ? count($missing) : count($this->notFound->visible()),
                 'csrf' => self::csrf($request),
             ]);
         });
@@ -86,7 +90,8 @@ final class RedirectsController
     /**
      * GET {prefix}/redirects/new (?not_found={id} starts from that address; ?address=/path, from the
      * admin's 404 page, prefills a path on this site: anything else, a URL or "//host" included, is
-     * left out). Saving validates the address as always.
+     * left out). Saving validates the address as always. With _drawer=1 (the list's drawer) the form
+     * comes in the drawer layout, and so does every form after it; without, it is a page.
      */
     public function create(ServerRequestInterface $request): ResponseInterface
     {
@@ -96,10 +101,10 @@ final class RedirectsController
             $id = $query['not_found'] ?? null;
             $row = is_string($id) ? $this->notFound->find($id) : null;
             if ($row !== null) {
-                $values['address'] = $this->visible($row['locale'], $row['path']);
+                $values = $this->addressValues($row['locale'], $row['path']) + $values;
                 $values['not_found'] = $row['id'];
             } elseif (is_string($query['address'] ?? null) && self::isPath($query['address'])) {
-                $values['address'] = $query['address'];
+                $values = $this->typedAddressValues($query['address']) + $values;
             }
 
             return $this->form($request, null, $values);
@@ -123,8 +128,7 @@ final class RedirectsController
                 return self::unknown($request);
             }
 
-            return $this->form($request, $entry, [
-                'address' => $this->visible($entry['locale'], $entry['path']),
+            return $this->form($request, $entry, $this->addressValues($entry['locale'], $entry['path']) + [
                 'area' => $entry['area'],
                 'mode' => $entry['mode'],
                 'target' => $entry['target_type'] !== null && $entry['target_id'] !== null
@@ -132,6 +136,7 @@ final class RedirectsController
                     : (string) $entry['target_url'],
                 'status' => $entry['status'],
                 'not_found' => '',
+                'target_kind' => '',
             ]);
         });
     }
@@ -255,16 +260,21 @@ final class RedirectsController
     {
         $body = (array) $request->getParsedBody();
         $text = static fn (string $name): string => is_string($body[$name] ?? null) ? trim($body[$name]) : '';
+        // The form's language select (sites with locale prefixes): '' any language, else one of the site's.
+        $language = $this->prefixed && is_string($body['language'] ?? null)
+            && ($body['language'] === '' || $this->locales->has($body['language'])) ? $body['language'] : null;
         $values = [
             'address' => $text('address'),
+            'language' => $language ?? '',
             'area' => ($body['area'] ?? null) === '1',
             'mode' => $text('mode') === AreaMode::Prefix->value ? AreaMode::Prefix->value : AreaMode::One->value,
             'target' => $text('target'),
             'status' => $text('status') === '302' ? 302 : 301,
             'not_found' => $text('not_found'),
+            'target_kind' => $text('target_kind'),
         ];
         $host = $request->getUri()->getHost();
-        [$locale, $path, $addressError] = $this->readAddress($values['address']);
+        [$locale, $path, $addressError] = $this->readAddress($values['address'], $language);
         $mode = $values['area'] ? $values['mode'] : AreaMode::One->value;
         [$target, $targetError] = $this->readTarget($values['target']);
 
@@ -339,6 +349,10 @@ final class RedirectsController
             $this->notFound->forget($from['locale'], $from['path']);
         }
         self::flash($request, FolioText::get('folio.redirects.saved'));
+        if (self::inDrawer($request)) {
+            // The list behind the drawer reloads (admin.js) and shows the flash.
+            return $this->html('@folio/admin/drawer_saved.twig', ['type' => 'redirect', 'id' => '']);
+        }
 
         return new Response(302, ['Location' => $this->prefix . '/redirects']);
     }
@@ -357,22 +371,32 @@ final class RedirectsController
     }
 
     /**
-     * The entry's locale and path for a typed address, or why it is refused. The address is
-     * normalized first, then its locale prefix split off (as LocaleMiddleware does).
+     * The entry's locale and path for a typed address, or why it is refused. The form shows a "/"
+     * in front of the field, so a path typed without it gets it (never a scheme or a backslash
+     * host); a query or fragment is left out, since the lookup never sees one. The address is
+     * normalized, then its locale prefix split off (as LocaleMiddleware does). Without a prefix
+     * the form's language select ($language: '' any language) decides, where the form has one;
+     * else the default language.
      *
      * @return array{string, ?string, ?string} locale, path (null when refused), error
      */
-    private function readAddress(string $address): array
+    private function readAddress(string $address, ?string $language = null): array
     {
         if ($address === '') {
             return ['', null, FolioText::get('folio.redirects.errors.address_required')];
         }
-        // A query or fragment never reaches the lookup: such an address could never match.
-        $full = str_contains($address, '?') || str_contains($address, '#') ? null : RedirectPath::normalize($address);
+        $bare = (string) preg_replace('/[?#].*$/s', '', $address);
+        if ($bare !== '' && !str_starts_with($bare, '/') && !str_starts_with($bare, '\\') && preg_match('/^[a-z][a-z0-9+.-]*:/i', $bare) !== 1) {
+            $bare = '/' . $bare;
+        }
+        $full = RedirectPath::normalize($bare);
         if ($full === null) {
             return ['', null, FolioText::get('folio.redirects.errors.address_invalid')];
         }
         [$locale, $path] = $this->site->split($full);
+        if ($language !== null && $path === $full) {
+            $locale = $language;
+        }
         if ($this->nonPublic->matches($path) || $this->nonPublic->matches($full)) {
             return [$locale, null, FolioText::get('folio.redirects.errors.address_not_public')];
         }
@@ -423,6 +447,55 @@ final class RedirectsController
         return $this->site->lookupLocale($locale);
     }
 
+    /**
+     * The form's address and language for a stored one: on a site with locale prefixes the
+     * address without its prefix and the language in the select; elsewhere as visitors see it.
+     *
+     * @return array{address: string, language: string}
+     */
+    private function addressValues(string $locale, string $path): array
+    {
+        return $this->languages() === []
+            ? ['address' => $this->visible($locale, $path), 'language' => '']
+            : ['address' => (new VisibleAddress($this->locales->default, false))->of('', $path), 'language' => $locale];
+    }
+
+    /**
+     * The form's address and language for a typed path (the 404 page's prefill): a locale prefix
+     * goes into the select; without one it is any language.
+     *
+     * @return array{address: string, language: string}
+     */
+    private function typedAddressValues(string $typed): array
+    {
+        $full = RedirectPath::normalize($typed);
+        if ($this->languages() === [] || $full === null) {
+            return ['address' => $typed, 'language' => ''];
+        }
+        [$locale, $path] = $this->site->split($full);
+
+        return $path === $full ? ['address' => $typed, 'language' => ''] : $this->addressValues($locale, $path);
+    }
+
+    /**
+     * The language select's options (code => name, '' any language), on a site whose addresses
+     * carry the language; none elsewhere (every entry there is for any language).
+     *
+     * @return array<string, string>
+     */
+    private function languages(): array
+    {
+        if (!$this->prefixed || count($this->locales->available) < 2) {
+            return [];
+        }
+        $options = ['' => FolioText::get('folio.redirects.any_language')];
+        foreach ($this->locales->available as $locale) {
+            $options[$locale] = LocaleNames::native($locale);
+        }
+
+        return $options;
+    }
+
     /** The address as visitors see and type it ("/de/über-uns"). */
     private function visible(string $locale, string $path): string
     {
@@ -445,9 +518,6 @@ final class RedirectsController
                 continue;
             }
             $address = $this->visible($entry['locale'], $entry['path']);
-            if ($q !== '' && mb_stripos($address, $q) === false) {
-                continue;
-            }
             $target = ['state' => 'none', 'label' => null, 'type' => null, 'url' => null];
             if ($entry['target_url'] !== null) {
                 $target = ['state' => 'ok', 'label' => null, 'type' => null, 'url' => $entry['target_url']];
@@ -462,6 +532,10 @@ final class RedirectsController
                         'url' => $this->resolver->urlFor($live, $this->lookupLocale($entry['locale']))
                             ?? $this->resolver->urlFor($live, $live->getType()->locales->default),
                     ];
+            }
+            // The search finds the old address or the target (its URL, or the page's label).
+            if ($q !== '' && array_filter([$address, $target['url'], $target['label']], static fn (?string $text): bool => $text !== null && mb_stripos($text, $q) !== false) === []) {
+                continue;
             }
             $rows[] = $entry + [
                 'address' => $address,
@@ -505,14 +579,31 @@ final class RedirectsController
     {
         $target = RemovalTarget::parse($values['target'], $this->resolver);
         $picked = $target?->type !== null && $target->id !== null ? $this->live->find($target->type, $target->id) : null;
+        $page = $target?->type !== null && $target->id !== null;
+        // "Send visitors to": a page (a picked or posted "type:id", or nothing yet) or an address.
+        $kind = in_array($values['target_kind'] ?? '', ['page', 'address'], true)
+            ? $values['target_kind']
+            : ($values['target'] === '' || $page ? 'page' : 'address');
+        $drawer = self::inDrawer($request);
 
         return $this->html('@folio/admin/redirects/form.twig', [
             'prefix' => $this->prefix,
+            'layout' => $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig',
+            'editor_assets' => ['admin.js'],
+            'drawer' => $drawer,
             'entry' => $entry,
             'action' => $this->prefix . '/redirects' . ($entry !== null ? '/' . $entry['id'] : ''),
             'values' => $values,
             'errors' => $errors,
+            'languages' => $this->languages(),
+            'target_kind' => $kind,
             'picked' => $picked !== null ? (new RecordLabeler())->label($picked) : null,
+            'picked_item' => $picked !== null ? [
+                'value' => $values['target'],
+                'label' => (new RecordLabeler())->label($picked),
+                'type' => $this->typeLabel((string) $target?->type),
+                'url' => $this->resolver->urlFor($picked, $picked->getType()->locales->default) ?? '',
+            ] : null,
             'manual' => ($entry['kind'] ?? 'manual') === 'manual',
             'csrf' => self::csrf($request),
         ], $errors === [] ? 200 : 422);
@@ -521,7 +612,15 @@ final class RedirectsController
     /** @return array<string, mixed> */
     private static function blank(): array
     {
-        return ['address' => '', 'area' => false, 'mode' => AreaMode::One->value, 'target' => '', 'status' => 301, 'not_found' => ''];
+        return ['address' => '', 'language' => '', 'area' => false, 'mode' => AreaMode::One->value, 'target' => '', 'status' => 301, 'not_found' => '', 'target_kind' => ''];
+    }
+
+    /** Whether the form is in the list's drawer: _drawer=1 in the query (opened) or the posted form. */
+    private static function inDrawer(ServerRequestInterface $request): bool
+    {
+        $body = $request->getParsedBody();
+
+        return ($request->getQueryParams()['_drawer'] ?? null) === '1' || (is_array($body) && ($body['_drawer'] ?? null) === '1');
     }
 
     /** @return array<string, mixed>|null */
