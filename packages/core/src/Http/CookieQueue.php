@@ -46,6 +46,26 @@ final class CookieQueue
         return $cookies;
     }
 
+    /**
+     * Runs $render with the queue set aside: it starts empty, what the render queues is dropped (its
+     * response never reaches the browser), and the values queued before are back afterwards, also
+     * when $render throws. Core's internal render scope uses it (since 0.75), so a render's own
+     * ResolveUserMiddleware cannot take the cookies of the request that started it.
+     *
+     * @template T
+     * @param \Closure(): T $render
+     * @return T
+     */
+    public function isolated(\Closure $render): mixed
+    {
+        [$outer, $this->cookies] = [$this->cookies, []];
+        try {
+            return $render();
+        } finally {
+            $this->cookies = $outer;
+        }
+    }
+
     public function apply(ResponseInterface $response): ResponseInterface
     {
         foreach ($this->pull() as $cookie) {

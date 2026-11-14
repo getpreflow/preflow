@@ -2470,7 +2470,8 @@ final class Application
      * the visitor's session data is hidden (templates read the session directly,
      * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
      * is signed in during it, mail it queues is dropped (Notifier::discardingQueued(),
-     * since 0.74), and the translator locale and signed-in users are put back
+     * since 0.74), the request's queued cookies are set aside for it (CookieQueue::isolated(),
+     * since 0.75), and the translator locale and signed-in users are put back
      * afterwards, so nothing passes between the request and its renders.
      *
      * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
@@ -2504,6 +2505,14 @@ final class Application
             if ($notifier !== null) {
                 $render = $next;
                 $next = static fn (): ResponseInterface => $notifier->discardingQueued($render);
+            }
+
+            // The request's queued Set-Cookie values (a rotated remember-me token, the signed-in
+            // marker) stay its own: the render's ResolveUserMiddleware would otherwise pull them.
+            if ($container->has(\Preflow\Core\Http\CookieQueue::class)) {
+                $cookies = $container->get(\Preflow\Core\Http\CookieQueue::class);
+                $inner = $next;
+                $next = static fn (): ResponseInterface => $cookies->isolated($inner);
             }
 
             $sessionData->hide();

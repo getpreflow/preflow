@@ -157,7 +157,9 @@ Every internal render (GEO's Markdown views and `llms-full.txt`, the SEO audit's
 runs in core's anonymous render scope: the request context names the rendered page, nobody is signed in,
 the session is hidden, and the translator locale and users are put back afterwards. Since 0.74 mail the page
 queues with `Notifier::sendLater()` during it is dropped (`Notifier::discardingQueued()`), so the request
-that flushes the queue afterwards sends only its own mail; `send()` still sends at once. The audit's pages
+that flushes the queue afterwards sends only its own mail; `send()` still sends at once. Since 0.75 the
+request's queued cookies are set aside for the render (`CookieQueue::isolated()`), so a remember-me token
+rotated or a signed-in marker set by the request that runs an audit step still reaches its response. The audit's pages
 (also a step run from Folio inside an admin's request) and rebuilds also see PHP's superglobals as an
 anonymous visitor's (`AnonymousGlobals`).
 
@@ -355,6 +357,8 @@ default: with a JSON default and the auth tables in SQLite, set `'auth' => 'sqli
 `config/data.php`). It is bound when `config/auth.php` exists. The
 middleware that queued them applies them to its response; the Kernel applies what is left to
 an error response, which bypasses the pipeline, so a rotated cookie is never lost.
+`isolated(\Closure $render)` (since 0.75) runs `$render` with the queue empty, drops what it
+queued and puts the earlier values back; core's internal render scope uses it.
 
 ### Auth providers from config
 
