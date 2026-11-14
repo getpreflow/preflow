@@ -72,6 +72,30 @@ final class ModelLabelsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_create_title_names_one_record(): void
+    {
+        $this->site('Apps');
+        $this->write('lang/de/site.php', "<?php return ['types' => ['app' => ['label' => 'Anwendungen', 'singular' => 'Anwendung']]];");
+        $this->signInAs('de');
+        $this->assertStringContainsString('<span class="folio-title-text">Neu: Anwendung</span>', $this->html('/folio/app/new'), 'the singular key');
+
+        $this->removeSite();
+        $this->site('Apps');
+        $this->signInAs('en');
+        $this->assertStringContainsString('<span class="folio-title-text">New Apps</span>', $this->html('/folio/app/new'), 'without a singular: the label');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_the_create_title_uses_the_model_files_singular(): void
+    {
+        $this->site('Apps');
+        $model = json_decode((string) file_get_contents($this->dir . '/config/models/app.json'), true);
+        $this->write('config/models/app.json', (string) json_encode(['label_singular' => ['en' => 'App', 'fr' => 'Application']] + $model));
+        $this->signInAs('fr');
+        $this->assertStringContainsString('<span class="folio-title-text">Nouveau : Application</span>', $this->html('/folio/app/new'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_key_in_the_site_file_wins(): void
     {
         $this->site('Apps');

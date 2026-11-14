@@ -702,7 +702,7 @@ final class AdminController
         $locale = $this->requestLocale($request, $this->registry->get($type));
 
         // The fields' declared defaults, so a new record's form starts from them (a boolean defaulting to true is checked).
-        return $this->form($type, self::defaults($this->registry->get($type)), $action, FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]), [], $csrf, 200, $layout, $locale, $this->prefix . '/' . $type . '/new');
+        return $this->form($type, self::defaults($this->registry->get($type)), $action, FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), [], $csrf, 200, $layout, $locale, $this->prefix . '/' . $type . '/new');
     }
 
     public function store(ServerRequestInterface $request): ResponseInterface
@@ -723,7 +723,7 @@ final class AdminController
         $record = $this->drafts->build($typeDef, $request, [], $locale, $this->can('assets.upload'));
         if ($this->drafts->uploadErrors() !== []) {
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale);
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale);
         }
         // The writer gives the new record its id and, in an orderable list, the last place.
         $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
@@ -732,7 +732,7 @@ final class AdminController
                 // Nothing stored: the form creates again (the writer assigns a fresh id and place then).
                 unset($values[$typeDef->idField], $values['_order']);
 
-                return $this->form($type, $values, $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->labelFor($type)]), $errors, $csrf, $status, $layout, $locale);
+                return $this->form($type, $values, $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $errors, $csrf, $status, $layout, $locale);
             }
             // The draft is stored: a re-rendered form must update it, not create another.
             $base = $this->prefix . '/' . $type . '/' . $values[$typeDef->idField];
@@ -2369,6 +2369,12 @@ final class AdminController
     private function labelFor(string $type): string
     {
         return $this->labels->type($type);
+    }
+
+    /** One record of the type ("New App"): its singular label, else the type's label. */
+    private function singularFor(string $type): string
+    {
+        return $this->labels->singular($type) ?? $this->labels->type($type);
     }
 
     private function html(string $body): ResponseInterface
