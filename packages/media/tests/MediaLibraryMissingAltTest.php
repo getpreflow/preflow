@@ -78,6 +78,11 @@ final class MediaLibraryMissingAltTest extends TestCase
         $this->assertSame([$fresh->id], self::idsOf($lib->query(search: 'fresh', missingAlt: true)->items));
         $this->assertSame([], $lib->query(kind: 'document', missingAlt: true)->items);
         $this->assertSame([$private->id], self::idsOf($lib->query(filters: ['private' => true], missingAlt: true)->items));
+        // The count takes the same conditions as the list, so a toggle beside a search counts what it shows.
+        $this->assertSame(1, $lib->missingAltCount(search: 'fresh'));
+        $this->assertSame(0, $lib->missingAltCount(kind: 'document'));
+        $this->assertSame(4, $lib->missingAltCount(kind: 'image'));
+        $this->assertSame(1, $lib->missingAltCount(filters: ['private' => true]));
         $this->assertSame(6, $lib->query()->total);
         $this->assertSame(6, $lib->query(missingAlt: false)->total);
 

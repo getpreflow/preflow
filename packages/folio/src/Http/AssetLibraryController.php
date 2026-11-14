@@ -811,7 +811,8 @@ final class AssetLibraryController
         foreach (['grid' => ['folio.assets.grid', 'ui-grid'], 'list' => ['folio.assets.list', 'ui-list']] as $v => [$label, $icon]) {
             $views[] = ['label' => FolioText::get($label), 'icon' => $icon, 'href' => $href(['view' => $v === 'list' ? 'list' : ''] + $here), 'current' => $view === $v];
         }
-        $missingCount = $picker ? 0 : $this->library->missingAltCount();
+        // "Missing alt text · N": the images the toggle would list with this kind, search and filters.
+        $missingCount = $picker ? 0 : $this->library->missingAltCount($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]));
         $back = $this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'missing_alt' => $missingAlt ? '1' : '', 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []));
 
         return $this->html($this->engine->render('@folio/admin/assets/index.twig', [

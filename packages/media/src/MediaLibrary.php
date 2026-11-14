@@ -798,11 +798,15 @@ final class MediaLibrary
 
     /**
      * How many images lack an alt text in the default locale (null or empty): the set
-     * query(missingAlt: true) lists without a search or filter (live originals, private ones too).
+     * query(missingAlt: true) lists with the same $kind, $search and $filters (none: every live
+     * original, private ones too), so a toggle beside a search counts what it would show.
+     *
+     * @since 0.76
+     * @param array<string, mixed> $filters field name => value, as query() takes them
      */
-    public function missingAltCount(): int
+    public function missingAltCount(?string $kind = null, string $search = '', array $filters = []): int
     {
-        return $this->query(perPage: 1, missingAlt: true)->total;
+        return $this->query($kind, $search, $filters, 1, 1, missingAlt: true)->total;
     }
 
     /** A page of the query's assets; a page past the end gives the last page. */

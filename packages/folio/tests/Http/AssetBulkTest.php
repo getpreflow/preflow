@@ -257,6 +257,18 @@ final class AssetBulkTest extends TestCase
         $this->assertStringContainsString('<a href="/folio/assets?kind=image&amp;picker=1&amp;multiple=0">Images</a>', $picker);
     }
 
+    public function test_the_missing_alt_count_follows_the_kind_and_the_search(): void
+    {
+        $this->lib()->upload($this->file($this->png(), 'barn.png'), null);
+        $this->lib()->upload($this->file($this->png(), 'field.png'), null);
+
+        $this->assertStringContainsString('href="/folio/assets?missing_alt=1">Missing alt text · 2</a>', (string) $this->get('/folio/assets')->getBody());
+        $searched = (string) $this->get('/folio/assets?q=barn')->getBody();
+        $this->assertStringContainsString('href="/folio/assets?missing_alt=1&amp;q=barn">Missing alt text · 1</a>', $searched, 'what the toggle would list');
+        $this->assertStringContainsString('aria-current="page">Missing alt text · 1</a>', (string) $this->get('/folio/assets?missing_alt=1&q=barn')->getBody());
+        $this->assertStringNotContainsString('folio-assets-missing-alt', (string) $this->get('/folio/assets?kind=document')->getBody(), 'no image of that kind');
+    }
+
     public function test_the_missing_alt_toggle_hides_when_every_image_has_one(): void
     {
         $asset = $this->lib()->upload($this->file($this->png(), 'photo.png'), null);
