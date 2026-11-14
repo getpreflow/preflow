@@ -938,6 +938,8 @@ return [
         'leave_stay' => 'Rester',
         'save_and_leave' => 'Enregistrer et quitter',
         'leave_failed_title' => 'Vos modifications ne sont pas enregistrées',
+        // The go-ahead of a confirmed action whose pending save failed ("Unpublish without saving").
+        'continue_without_saving' => ':action sans enregistrer',
     ],
     'format' => [
         'noun_case' => 'lower',

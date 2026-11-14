@@ -212,11 +212,12 @@ test('Folio.navigate (a shortcut opening a row) goes through the guard', async (
 // ---- The autosaving record form ------------------------------------------------------
 
 /** The editor: #folio-record autosaves (hx-post) into #folio-save-state. */
-function autosavePage() {
+function autosavePage({ texts = null, panel = false } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
     w.location.href = 'https://site.test/folio/post/p1/edit';
     w.confirm = () => { throw new Error('window.confirm called'); };
     const doc = w.document;
+    if (texts) { el(w, doc.body, 'script', { type: 'application/json', id: 'folio-i18n' }, JSON.stringify(texts)); }
     const link = el(w, doc.body, 'a', { href: '/folio/post' }, 'Posts');
     const state = el(w, doc.body, 'span', { id: 'folio-save-state', class: 'folio-save-state', 'data-text-unsaved': 'Unsaved changes', 'data-text-saving': 'Saving…' });
     el(w, state, 'span', { 'data-folio-save-text': '' }, 'Draft saved 19:37');
@@ -225,8 +226,15 @@ function autosavePage() {
     const title = el(w, form, 'input', { type: 'text', name: 'title' });
     const flushes = [];
     form.addEventListener('folio:save-now', () => flushes.push('save-now'));
+    // panel: a side panel extension form of its own (guarded), with a note field and its Save button.
+    let panelForm = null, note = null, panelSave = null;
+    if (panel) {
+        panelForm = el(w, el(w, doc.body, 'aside', { class: 'folio-side' }), 'form', { method: 'post', action: '/folio/post/p1/note' });
+        note = el(w, panelForm, 'input', { type: 'text', name: 'note' });
+        panelSave = el(w, panelForm, 'button', { type: 'submit', 'data-folio-save': '' }, 'Save note');
+    }
     load(w, ADMIN_JS);
-    return { w, link, state, form, title, flushes };
+    return { w, link, state, form, title, flushes, panelForm, note, panelSave };
 }
 
 function setState(p, cls, text) {
@@ -355,4 +363,76 @@ test('a confirmed action whose pending save fails asks, and Stay sends nothing',
     part(p.w, 'cancel').click();
     await settle();
     assert.equal(off.sent, undefined);
+});
+
+test('"Leave without saving" a dirty panel form still saves the record\'s pending edits first', async () => {
+    const p = autosavePage({ panel: true });
+    edit(p.w, p.note);
+    setState(p, 'is-unsaved', 'Unsaved changes');
+    p.link.click();
+    assert.equal(isOpen(p.w), true, 'asked about the panel form');
+    part(p.w, 'confirm').click();
+    await settle();
+    assert.deepEqual(p.flushes, ['save-now'], 'the record is saved at once');
+    assert.equal(p.w.location.href, 'https://site.test/folio/post/p1/edit', 'not before the record is saved');
+    answer(p, { swap: { cls: '', text: 'Draft saved 19:38' } });
+    await settle();
+    assert.equal(p.w.location.href, '/folio/post');
+});
+
+test('"Leave without saving" with nothing pending in the record leaves at once', async () => {
+    const p = autosavePage({ panel: true });
+    edit(p.w, p.note);
+    p.link.click();
+    part(p.w, 'confirm').click();
+    await settle();
+    assert.deepEqual(p.flushes, []);
+    assert.equal(p.w.location.href, '/folio/post');
+});
+
+test('"Save and leave" a panel form saves the record\'s pending edits first, then the panel', async () => {
+    const p = autosavePage({ panel: true });
+    edit(p.w, p.note);
+    setState(p, 'is-unsaved', 'Unsaved changes');
+    p.link.click();
+    part(p.w, 'extra').click();
+    await settle();
+    assert.deepEqual(p.flushes, ['save-now']);
+    assert.equal(p.panelForm.sent, undefined, 'the panel waits for the record');
+    answer(p, { swap: { cls: '', text: 'Draft saved 19:38' } });
+    await settle();
+    assert.deepEqual(p.panelForm.sent, [p.panelSave]);
+    assert.equal(p.panelForm.querySelector('input[name="_folio_next"]').value, '/folio/post');
+});
+
+test('a confirmed Delete or Discard does not save the edits it throws away', async () => {
+    const p = autosavePage();
+    const del = el(p.w, p.w.document.body, 'form', { method: 'post', action: '/folio/post/p1/discard', 'data-confirm': 'Discard the draft?', 'data-folio-discards': '' });
+    const button = el(p.w, del, 'button', { type: 'submit', class: 'btn btn-danger' }, 'Discard');
+    setState(p, 'is-unsaved', 'Unsaved changes');
+    submitBy(p.w, del, button);
+    part(p.w, 'confirm').click();
+    await settle();
+    assert.deepEqual(p.flushes, [], 'no save first');
+    assert.deepEqual(del.sent, [button], 'sent at once');
+    // The delayed autosave would save the edits again after the discard.
+    const e = new p.w.CustomEvent('htmx:beforeRequest', { bubbles: true, cancelable: true, detail: { elt: p.form, requestConfig: { triggeringEvent: { type: 'folio:edit' } } } });
+    p.form.dispatchEvent(e);
+    assert.equal(e.defaultPrevented, true, 'the queued autosave is dropped');
+});
+
+test('a confirmed action whose save fails names the action on its go-ahead button', async () => {
+    const p = autosavePage({ texts: { continue_without_saving: ':action without saving', leave_confirm: 'Leave without saving' } });
+    const off = el(p.w, p.w.document.body, 'form', { method: 'post', action: '/folio/post/p1/unpublish', 'data-confirm': 'Take this page off the site?' });
+    const button = el(p.w, off, 'button', { type: 'submit' }, 'Unpublish');
+    setState(p, 'is-unsaved', 'Unsaved changes');
+    submitBy(p.w, off, button);
+    part(p.w, 'confirm').click();
+    await settle();
+    answer(p, { swap: { cls: 'is-conflict', text: 'Not saved — someone else saved this meanwhile.' } });
+    await settle();
+    assert.equal(part(p.w, 'confirm').textContent, 'Unpublish without saving');
+    part(p.w, 'confirm').click();
+    await settle();
+    assert.deepEqual(off.sent, [button], 'the action goes once confirmed');
 });

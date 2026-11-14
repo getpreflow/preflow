@@ -1756,20 +1756,34 @@
             tone: 'danger',
             extra: save ? folioT('save_and_leave') : null
         }).then(function (answer) {
+            // The record's own pending edits (autosave) are saved first either way: the answer was
+            // about form, not about them.
+            var record = recordToFlush(form);
             if (answer === 'confirm') {
+                if (record) { flushThenLeave(record, go); return; }
                 allowLeave();
                 go();
             } else if (answer === 'extra') {
+                if (record) { flushThenLeave(record, function () { saveAndLeave(form, save, href); }); return; }
                 saveAndLeave(form, save, href);
             }
         });
     }
 
+    /** The autosaving form when it holds pending edits or a failed save, unless it is except; else null. */
+    function recordToFlush(except) {
+        var stateEl = document.getElementById('folio-save-state');
+        if (!savePending() && !(stateEl && stateEl.classList.contains('is-conflict'))) { return null; }
+        var record = autosaveForm();
+        return record && record !== except ? record : null;
+    }
+
     // The autosaving form's edits are saved now: a running autosave is waited for; else "folio:save-now"
     // (the form's second hx-trigger) sends one at once. The delayed autosave still queued is dropped
     // (onBeforeRequest). Edits made while a save ran are saved in another round. Once saved, go(); a
-    // refused or failed save (or none within FLUSH_MAX_MS) asks with its reason.
-    function flushThenLeave(form, go) {
+    // refused or failed save (or none within FLUSH_MAX_MS) asks with its reason; its go-ahead button
+    // says goLabel ("Unpublish without saving" before a confirmed action), else "Leave without saving".
+    function flushThenLeave(form, go, goLabel) {
         if (flushing) { return; }
         flushing = true;
         form._folioLeaving = true;
@@ -1792,7 +1806,7 @@
             folioConfirm({
                 title: folioT('leave_failed_title'),
                 message: reason || folioT('not_saved_offline'),
-                confirm: folioT('leave_confirm'),
+                confirm: goLabel || folioT('leave_confirm'),
                 cancel: folioT('leave_stay'),
                 tone: 'danger'
             }).then(function (answer) {
@@ -1875,17 +1889,21 @@
         var f = e.target;
         if (e.defaultPrevented || !f || f.tagName !== 'FORM') { return; }
         if (f._folioConfirmed) {
-            // A confirmed action (Unpublish, Delete…) in the record editor: its pending autosave is saved
-            // first, then the action is sent; a save that fails asks as leaving would.
-            var record = autosaveForm();
-            var stateEl = document.getElementById('folio-save-state');
-            if (record && f !== record && !f._folioFlushed && (savePending() || (stateEl && stateEl.classList.contains('is-conflict')))) {
+            // A confirmed action (Unpublish, Publish…) in the record editor: its pending autosave is saved
+            // first, then the action is sent; a save that fails asks, its button naming the action
+            // ("Unpublish without saving"). An action that throws the edits away (Delete, Discard the
+            // draft: data-folio-discards) saves nothing first, and the queued autosave is dropped.
+            var record = recordToFlush(f);
+            if (record && f.hasAttribute('data-folio-discards')) {
+                record._folioSubmitting = true;
+            } else if (record && !f._folioFlushed) {
                 e.preventDefault();
                 var held = e.submitter || null;
+                var action = confirmLabel(f, held) || folioT('confirm');
                 flushThenLeave(record, function () {
                     f._folioFlushed = true;
                     try { resubmit(f, held); } finally { f._folioFlushed = false; }
-                });
+                }, folioT('continue_without_saving', { action: action }));
                 return;
             }
             allowLeave();

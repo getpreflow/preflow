@@ -61,7 +61,7 @@ final class EditorSidePanelTest extends TestCase
         }
         $this->assertStringContainsString('Draft, not on the site', $post);
         $this->assertStringContainsString('aria-label="Delete “Hello”"', $post, 'the delete form, with the delete plan');
-        $this->assertStringContainsString('data-delete-plan="/folio/post/_delete-plan" data-delete-id="p1"', $post);
+        $this->assertStringContainsString('data-delete-plan="/folio/post/_delete-plan" data-delete-id="p1" data-folio-discards', $post, 'a delete saves no pending edits first');
         $this->assertStringNotContainsString('id="folio-side-search"', $post, 'no search result while SEO is off');
 
         // A publishing type without a frontend route or translations: no address, no languages.
@@ -94,6 +94,7 @@ final class EditorSidePanelTest extends TestCase
         $this->assertStringContainsString('Published, changes not live yet', $side);
         $this->assertStringContainsString('<span class="folio-badge is-published">Published</span> <span class="folio-badge is-changed">Changes not live</span>', $page);
         $this->assertStringContainsString('Discard changes', $side);
+        $this->assertMatchesRegularExpression('~<form method="post" action="[^"]*" data-confirm="[^"]*" data-confirm-tone="danger" data-folio-discards>~', $side, 'a discard saves no pending edits first');
         $this->assertStringContainsString('>Unpublish</button>', $side);
     }
 

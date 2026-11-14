@@ -964,6 +964,8 @@ return [
         'leave_stay' => 'Stay',
         'save_and_leave' => 'Save and leave',
         'leave_failed_title' => 'Your changes are not saved',
+        // The go-ahead of a confirmed action whose pending save failed ("Unpublish without saving").
+        'continue_without_saving' => ':action without saving',
     ],
     // ICU patterns (d, dd, MM, MMM, yyyy, HH, mm) and, without ext-intl, the number separators.
     'format' => [

@@ -938,6 +938,8 @@ return [
         'leave_stay' => 'Bleiben',
         'save_and_leave' => 'Speichern und verlassen',
         'leave_failed_title' => 'Deine Änderungen sind nicht gespeichert',
+        // The go-ahead of a confirmed action whose pending save failed ("Unpublish without saving").
+        'continue_without_saving' => ':action ohne Speichern',
     ],
     'format' => [
         'noun_case' => 'keep',
