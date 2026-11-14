@@ -828,6 +828,9 @@ return [
   parts and per-request values (each render's own), the page is not stored
   (`X-Page-Cache-Skip: differs`) and `page cache: {url} differs per visitor outside live parts`
   is logged: something personal is not in a live part or registered. It never runs on a hit.
+  Since 0.75 the second render's queued mail (`Notifier::sendLater()`) and queued cookies are
+  dropped, as for an internal render: a GET page that queues a mail sends it once, not twice.
+  Other effects it has (a data write, `Mailer::send()`) still happen twice.
   - `'first'` (the default) verifies each key once per release: its first store, by a visitor
     or a rebuild. A verified key is noted in the release's index (kept when the page is
     forgotten, emptied by `cache:clear pages` and a rollback), and is not verified again; a key

@@ -1475,6 +1475,8 @@ final class Application
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
             rebuildOnly: $this->runningInConsole(),
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+            // The second render's queued mail and cookies are dropped: the visitor's render had them.
+            verifyScope: static fn (\Closure $render): ResponseInterface => self::outboxAside($container, $render),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);
@@ -2496,24 +2498,8 @@ final class Application
             $users = $auth?->users() ?? [];
             $guard = $auth?->guardName();
 
-            // Mail the render queues is dropped, not sent: the request that flushes the queue
-            // afterwards (an admin request running an audit step, a visitor's request whose GEO
-            // view rendered the page) sends only its own. (Core conflicts with notify before 0.74.)
-            $notifier = class_exists(\Preflow\Notify\Notifier::class) && $container->bound(\Preflow\Notify\Notifier::class)
-                ? $container->get(\Preflow\Notify\Notifier::class)
-                : null;
-            if ($notifier !== null) {
-                $render = $next;
-                $next = static fn (): ResponseInterface => $notifier->discardingQueued($render);
-            }
-
-            // The request's queued Set-Cookie values (a rotated remember-me token, the signed-in
-            // marker) stay its own: the render's ResolveUserMiddleware would otherwise pull them.
-            if ($container->has(\Preflow\Core\Http\CookieQueue::class)) {
-                $cookies = $container->get(\Preflow\Core\Http\CookieQueue::class);
-                $inner = $next;
-                $next = static fn (): ResponseInterface => $cookies->isolated($inner);
-            }
+            $render = $next;
+            $next = static fn (): ResponseInterface => self::outboxAside($container, $render);
 
             $sessionData->hide();
             // Nobody is signed in for the render, even when it is called from inside the pipeline.
@@ -2539,6 +2525,31 @@ final class Application
                 }
             }
         };
+    }
+
+    /**
+     * Runs a render whose effects on the request's outbox must not count (an internal render, the
+     * page cache's verify render): mail it queues is dropped, not sent, so the request that flushes
+     * the queue afterwards (an admin request running an audit step, a visitor's request whose GEO
+     * view or verify rendered the page) sends only its own (since 0.74; core conflicts with notify
+     * before 0.74); and the request's queued Set-Cookie values (a rotated remember-me token, the
+     * signed-in marker) are set aside, so the render's ResolveUserMiddleware cannot pull them and
+     * what the render queues is dropped (since 0.75).
+     *
+     * @param \Closure(): ResponseInterface $render
+     */
+    private static function outboxAside(Container $container, \Closure $render): ResponseInterface
+    {
+        if (class_exists(\Preflow\Notify\Notifier::class) && $container->bound(\Preflow\Notify\Notifier::class)) {
+            $notifier = $container->get(\Preflow\Notify\Notifier::class);
+            $mail = $render;
+            $render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);
+        }
+        if ($container->has(\Preflow\Core\Http\CookieQueue::class)) {
+            return $container->get(\Preflow\Core\Http\CookieQueue::class)->isolated($render);
+        }
+
+        return $render();
     }
 
     private function bootSession(): void

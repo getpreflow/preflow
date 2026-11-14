@@ -159,6 +159,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param bool $rebuildOnly only rebuilds use the cache (the console)
      * @param (\Closure(): bool)|null $sessionActive whether a session is open, for rebuilds;
      *        session_status() === PHP_SESSION_ACTIVE when null
+     * @param (\Closure(\Closure(): ResponseInterface): ResponseInterface)|null $verifyScope wraps only
+     *        verify's second render (since 0.75): what that render queues must not happen a second
+     *        time (core drops its queued mail and cookies, as for an internal render)
      */
     public function __construct(
         private readonly PageCacheConfig $config,
@@ -184,6 +187,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly bool $rebuildOnly = false,
         private readonly ?\Closure $sessionActive = null,
         private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
+        private readonly ?\Closure $verifyScope = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
         $this->clock = $clock ?? static fn (): float => microtime(true);
@@ -528,6 +532,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
 
                 return true;
+            }
+            if ($this->verifyScope !== null) {
+                $inner = $render;
+                $render = fn (): ResponseInterface => ($this->verifyScope)($inner);
             }
             $response = AnonymousGlobals::run((string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->cache->isolated(fn (): ResponseInterface => $this->visitorScope !== null
                 ? ($this->visitorScope)($other, $render)
