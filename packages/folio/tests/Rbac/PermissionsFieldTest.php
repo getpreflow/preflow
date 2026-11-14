@@ -139,7 +139,7 @@ final class PermissionsFieldTest extends TestCase
 
     public function test_fresh_permissions_are_marked_new_with_the_only_new_filter(): void
     {
-        // job's view, a chip and a group pattern came with an update; a fresh name without a control here is not counted.
+        // page.view (a row), codes.revoke (a chip) and assets.* (a group pattern) came with an update; ghost.view has no control here and is not counted.
         $html = $this->render(['page.view'], ['page.view', 'codes.revoke', 'assets.*', 'ghost.view']);
 
         $this->assertMatchesRegularExpression('#<button type="button" class="rbac-fresh-filter" aria-pressed="false" data-rbac-fresh-filter data-folio-no-edit>Only new \(3\)</button></div>#', $html);
@@ -170,7 +170,7 @@ final class PermissionsFieldTest extends TestCase
             $this->assertStringNotContainsString(' disabled', $tag, 'locks are the script\'s, and only for what a pattern covers');
             $this->assertStringNotContainsString(' hidden', $tag);
         }
-        $this->assertDoesNotMatchRegularExpression('#<(tr|tbody|div|label)[^>]* hidden[ >]#', preg_replace('#<div class="rbac-changes" data-rbac-changes hidden>#', '', $html));
+        $this->assertDoesNotMatchRegularExpression('#<(tr|tbody|div|label)[^>]* hidden[ >]#', $html);
     }
 
     public function test_inapplicable_verbs_dashed(): void
@@ -222,9 +222,7 @@ final class PermissionsFieldTest extends TestCase
     {
         $html = $this->render(['*', 'ghost.view']);
 
-        $this->assertMatchesRegularExpression('#^<fieldset class="form-group rbac-permissions" data-rbac-permissions><legend class="rbac-legend">Permissions</legend><input type="hidden" name="permissions\[\]" value="">'
-            // The unsaved count and Cancel (rbac.js shows them next to Save), then the switch.
-            . '<div class="rbac-changes" data-rbac-changes hidden><span class="rbac-changes-count" role="status" data-rbac-changes-count data-text=":count unsaved change\|:count unsaved changes"></span><button type="button" class="btn btn-ghost" data-rbac-cancel>Cancel</button></div><label class="rbac-everything">#', $html);
+        $this->assertMatchesRegularExpression('#^<fieldset class="form-group rbac-permissions" data-rbac-permissions><legend class="rbac-legend">Permissions</legend><input type="hidden" name="permissions\[\]" value=""><label class="rbac-everything">#', $html);
         $this->assertMatchesRegularExpression(
             '#<label class="rbac-everything"><span class="rbac-everything-text"><span class="rbac-everything-label">Allow everything</span>'
             . '<span class="rbac-everything-hint">Every permission, including those of future extensions\. Admins only\.</span></span>'

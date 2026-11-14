@@ -1776,6 +1776,93 @@
         onLeave: function (fn) { if (typeof fn === 'function') { unsaved.leaveChecks.push(fn); } }
     };
 
+    // ---- A form without autosave: its unsaved count and Cancel (0.76) ------------------------------
+    // Folio.unsaved.count(form): how many of the form's controls differ from the page as loaded, its
+    // own and those naming it with form="…" (the side panel's): text-like inputs and textareas by
+    // defaultValue, checkboxes and radios by defaultChecked, selects by their options' defaultSelected.
+    // Disabled controls, hidden and file inputs, and controls marked data-folio-no-edit are not counted
+    // (a field whose state lives in hidden inputs counts through its visible controls only).
+    // Folio.unsaved.discard(form): puts every such control back (disabled ones too), clears the form's
+    // unsaved mark and sends a bubbling "folio:discard" on the form, so a field with derived state
+    // (locks, previews, counters) restores itself from the restored controls.
+    // form.twig renders [data-folio-unsaved-state="<form id>"] ("N unsaved changes") and
+    // [data-folio-discard="<form id>"] (Cancel) beside Save on a framed form without autosave; both
+    // stay hidden while the count is 0.
+    function ownControlsOf(form) {
+        var list = Array.prototype.slice.call(form.querySelectorAll('input, select, textarea'));
+        if (form.id) {
+            Array.prototype.slice.call(document.querySelectorAll('[form="' + form.id + '"]')).forEach(function (el) {
+                if (list.indexOf(el) < 0) { list.push(el); }
+            });
+        }
+        return list.filter(function (el) {
+            var type = String(el.type || '').toLowerCase();
+            return ['INPUT', 'SELECT', 'TEXTAREA'].indexOf(el.tagName) >= 0
+                && ['hidden', 'file', 'submit', 'button', 'reset', 'image'].indexOf(type) < 0
+                && isEdit(el) && formOf(el) === form;
+        });
+    }
+
+    function optionsOf(select) {
+        return Array.prototype.slice.call(select.options || select.querySelectorAll('option'));
+    }
+
+    function controlChanged(el) {
+        var type = String(el.type || '').toLowerCase();
+        if (type === 'checkbox' || type === 'radio') { return !!el.checked !== !!el.defaultChecked; }
+        if (el.tagName === 'SELECT') { return optionsOf(el).some(function (o) { return !!o.selected !== !!o.defaultSelected; }); }
+        return String(el.value == null ? '' : el.value) !== String(el.defaultValue == null ? '' : el.defaultValue);
+    }
+
+    function changedCount(form) {
+        if (!form) { return 0; }
+        return ownControlsOf(form).filter(function (el) { return !el.disabled && controlChanged(el); }).length;
+    }
+
+    function discardForm(form) {
+        if (!form) { return; }
+        ownControlsOf(form).forEach(function (el) {
+            var type = String(el.type || '').toLowerCase();
+            if (type === 'checkbox' || type === 'radio') {
+                el.checked = !!el.defaultChecked;
+            } else if (el.tagName === 'SELECT') {
+                optionsOf(el).forEach(function (o) { o.selected = !!o.defaultSelected; });
+            } else {
+                el.value = el.defaultValue == null ? '' : el.defaultValue;
+            }
+        });
+        clearDirty(form);
+        form.dispatchEvent(new CustomEvent('folio:discard', { bubbles: true }));
+        refreshUnsavedStates();
+    }
+
+    function refreshUnsavedStates() {
+        Array.prototype.slice.call(document.querySelectorAll('[data-folio-unsaved-state]')).forEach(function (state) {
+            var id = state.getAttribute('data-folio-unsaved-state');
+            var n = changedCount(document.getElementById(id));
+            state.hidden = n === 0;
+            var text = state.querySelector('[data-folio-save-text]') || state;
+            text.textContent = n === 0 ? '' : plural(folioT('unsaved_count', { count: adminNumber(n) }), n);
+            Array.prototype.slice.call(document.querySelectorAll('[data-folio-discard="' + id + '"]')).forEach(function (button) {
+                button.hidden = n === 0;
+            });
+        });
+    }
+
+    function initUnsavedStates() {
+        if (!document.querySelector('[data-folio-unsaved-state]')) { return; }
+        document.addEventListener('input', refreshUnsavedStates);
+        document.addEventListener('change', refreshUnsavedStates);
+        document.addEventListener('click', function (e) {
+            var button = e.target && e.target.closest ? e.target.closest('[data-folio-discard]') : null;
+            if (button) { discardForm(document.getElementById(button.getAttribute('data-folio-discard'))); }
+        });
+        refreshUnsavedStates();
+    }
+
+    window.Folio.unsaved.count = changedCount;
+    window.Folio.unsaved.discard = discardForm;
+
     // ---- Leaving with unsaved changes: the styled dialog -------------------------------------------
     // In-admin navigation (a same-origin link: the sidebar, the rail, breadcrumbs, a row menu, a link a
     // shortcut clicks; a plain form that leaves, such as Log out; Folio.navigate(href)) while a guarded
@@ -3971,6 +4058,7 @@
         document.addEventListener('click', onRelationClick);
         initSplit();
         initUnsavedGuard();
+        initUnsavedStates();
         initFormEdits();
         initTranslations();
         initRedirectForm();

@@ -5,7 +5,8 @@
 //   each box would, never touching a delegation-denied box (it stays disabled) or a locked one;
 // - "Only new" only hides rows, never drops their values;
 // - "Allow everything" still sends "*" alone.
-// Also the section sums, the unsaved count with Cancel next to Save, and Folio.unsaved.
+// Also the section sums, and the editor's own unsaved count and Cancel (admin.js, Folio.unsaved.count /
+// discard, "folio:discard") as the roles form uses them.
 // Run: node --test 'packages/folio/tests/js/*.test.mjs'
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,25 +33,28 @@ const VERBS = ['view', 'create', 'edit', 'publish', 'delete'];
  * {label: [[type, verbs it has, pattern?, new?]]}; selected: the stored names; denied: names the
  * editor can't grant; kept: hidden kept names.
  */
-function screen({ sections, selected = [], denied = [], kept = [], admin = false, chips = [], saveable = true }) {
+function screen({ sections, selected = [], denied = [], kept = [], chips = [] }) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
     const doc = w.document;
     const topbar = el(w, doc.body, 'header', { class: 'folio-topbar' });
-    const saveButtons = saveable ? el(w, topbar, 'div', { class: 'folio-save-buttons' }) : null;
-    const save = saveable ? el(w, saveButtons, 'button', { type: 'submit', form: 'folio-record', 'data-folio-save': '' }, 'Save') : null;
+    // form.twig on a form without autosave: the unsaved count and Cancel before the save buttons.
+    const state = el(w, topbar, 'span', { class: 'folio-save-state is-unsaved', 'data-folio-unsaved-state': 'folio-record' });
+    state.hidden = true;
+    const count = el(w, state, 'span', { class: 'folio-save-state-text', 'data-folio-save-text': '' });
+    const cancel = el(w, topbar, 'button', { type: 'button', class: 'btn btn-ghost', 'data-folio-discard': 'folio-record' }, 'Cancel');
+    cancel.hidden = true;
+    const saveButtons = el(w, topbar, 'div', { class: 'folio-save-buttons' });
+    const save = el(w, saveButtons, 'button', { type: 'submit', form: 'folio-record', 'data-folio-save': '' }, 'Save');
     const main = el(w, doc.body, 'div', { class: 'folio-form folio-editor' });
     const form = el(w, main, 'form', { method: 'post', action: '/folio/rbac_role/r-editor', id: 'folio-record' });
     el(w, form, 'input', { type: 'hidden', name: '_csrf_token', value: 't' });
     const field = el(w, form, 'fieldset', { class: 'form-group rbac-permissions', 'data-rbac-permissions': '' });
     el(w, field, 'input', { type: 'hidden', name: 'permissions[]', value: '' });
-    const changes = el(w, field, 'div', { class: 'rbac-changes', 'data-rbac-changes': '' });
-    changes.hidden = true;
-    const count = el(w, changes, 'span', { 'data-rbac-changes-count': '', 'data-text': ':count unsaved change|:count unsaved changes' });
-    const cancel = el(w, changes, 'button', { type: 'button', 'data-rbac-cancel': '' }, 'Cancel');
     const box = (parent, value, attrs = {}) => {
         const input = el(w, parent, 'input', { type: 'checkbox', name: 'permissions[]', value, ...attrs });
         if (denied.includes(value)) { input.setAttribute('data-rbac-denied', ''); input.disabled = true; }
         input.checked = selected.includes(value);
+        input.defaultChecked = input.checked; // as the server's checked attribute
         return input;
     };
     const label = el(w, field, 'label', { class: 'rbac-everything' });
@@ -88,9 +92,11 @@ function screen({ sections, selected = [], denied = [], kept = [], admin = false
     });
     const side = el(w, doc.body, 'aside', { class: 'folio-side' });
     const roleLabel = el(w, side, 'input', { type: 'text', name: 'label', value: 'Editor', form: 'folio-record' });
-    if (admin) { load(w, ADMIN_JS); }
+    roleLabel.defaultValue = 'Editor';
+    // The layout loads admin.js, then the field's assets.
+    load(w, ADMIN_JS);
     load(w, RBAC_JS);
-    return { w, doc, form, field, save, saveButtons, topbar, changes, count, cancel, everything, filter, rows, columns, sums, bodies, chipBoxes, roleLabel };
+    return { w, doc, form, field, save, saveButtons, topbar, state, count, cancel, everything, filter, rows, columns, sums, bodies, chipBoxes, roleLabel };
 }
 
 /** A click on a box as the browser does it: it flips, then "change" bubbles. */
@@ -199,47 +205,65 @@ test('"Allow everything" sends "*" alone, kept names included; off again, the re
     assert.deepEqual(posted(p), ['', 'page.publish', 'page.*', 'post.view']);
 });
 
-test('the unsaved count sits next to Save; Cancel puts every control back', () => {
+test('the editor counts the matrix like any control: a switch is one change, its locked boxes none', () => {
     const p = screen({ sections: CONTENT, selected: ['post.view'] });
-    assert.equal(p.changes.parentNode, p.topbar, 'moved before the save buttons');
-    assert.equal(p.topbar.children.indexOf(p.changes), p.topbar.children.indexOf(p.saveButtons) - 1);
-    assert.equal(p.changes.hidden, true);
+    assert.equal(p.state.hidden, true);
+    assert.equal(p.cancel.hidden, true);
 
     click(p.w, p.rows.job.cells.view);
-    assert.equal(p.changes.hidden, false);
+    assert.equal(p.state.hidden, false);
+    assert.equal(p.cancel.hidden, false);
     assert.equal(p.count.textContent, '1 unsaved change');
-    click(p.w, p.rows.page.all); // the switch is one change; its locked boxes are not
+    click(p.w, p.rows.page.all);
     p.roleLabel.value = 'Editors';
     p.roleLabel.dispatchEvent(new p.w.Event('input', { bubbles: true }));
     assert.equal(p.count.textContent, '3 unsaved changes');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 3);
+    p.columns.Content.edit.click(); // post.edit and job.edit
+    assert.equal(p.count.textContent, '5 unsaved changes');
     click(p.w, p.rows.job.cells.view);
-    assert.equal(p.count.textContent, '2 unsaved changes');
-
-    p.cancel.click();
-    assert.equal(p.changes.hidden, true);
-    assert.equal(p.roleLabel.value, 'Editor');
-    assert.equal(p.rows.page.all.checked, false);
-    assert.ok(VERBS.every((verb) => !p.rows.page.cells[verb].disabled && !p.rows.page.cells[verb].checked));
-    assert.deepEqual(posted(p), ['', 'post.view']);
+    assert.equal(p.count.textContent, '4 unsaved changes');
 });
 
-test('the roles form is under Folio.unsaved: a column toggle marks it, Cancel clears it, Save clears it', () => {
-    const p = screen({ sections: CONTENT, selected: [], admin: true });
+test('Cancel restores the matrix: a denied box stays as it was, a row locked at load is locked again', () => {
+    const p = screen({ sections: CONTENT, selected: ['job.*', 'post.edit'], denied: ['post.edit', 'post.delete'] });
+    const job = p.rows.job;
+    assert.ok(VERBS.every((verb) => job.cells[verb].checked && job.cells[verb].disabled && job.cells[verb].getAttribute('data-rbac-was') === '0'));
+
+    click(p.w, job.all); // unlock job
+    click(p.w, job.cells.view);
+    click(p.w, p.everything);
+    p.roleLabel.value = 'X';
+    p.roleLabel.dispatchEvent(new p.w.Event('input', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true);
+
+    p.cancel.click();
+    assert.equal(p.state.hidden, true);
+    assert.equal(p.cancel.hidden, true);
+    assert.equal(p.w.Folio.unsaved.isDirty(), false);
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0);
+    assert.equal(p.roleLabel.value, 'Editor');
+    assert.equal(p.everything.checked, false);
+    assert.equal(job.all.checked, true);
+    assert.ok(VERBS.every((verb) => job.cells[verb].checked && job.cells[verb].disabled), 'locked again');
+    assert.ok(VERBS.every((verb) => job.cells[verb].getAttribute('data-rbac-was') === '0'), 'its own state kept under the lock');
+    const { cells } = p.rows.post;
+    assert.equal(cells.edit.checked, true, 'denied and granted: unchanged');
+    assert.equal(cells.edit.disabled, true);
+    assert.equal(cells.delete.checked, false, 'denied and not granted: unchanged');
+    assert.equal(cells.delete.disabled, true);
+    assert.deepEqual(posted(p), ['', 'job.*']);
+
+    // Row lock off again: job's boxes are their own (unchecked) state.
+    click(p.w, job.all);
+    assert.ok(VERBS.every((verb) => !job.cells[verb].checked && !job.cells[verb].disabled && !job.cells[verb].hasAttribute('data-rbac-was')));
+});
+
+test('the roles form is under Folio.unsaved: a column toggle marks it, Save clears it', () => {
+    const p = screen({ sections: CONTENT, selected: [] });
     assert.equal(p.w.Folio.unsaved.isDirty(p.form), false);
     p.columns.Content.view.click();
     assert.equal(p.w.Folio.unsaved.isDirty(p.form), true, 'a toggle announces its changes');
-    p.cancel.click();
-    assert.equal(p.w.Folio.unsaved.isDirty(), false);
-
-    click(p.w, p.rows.page.all);
-    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true);
     p.form.requestSubmit(p.save);
     assert.equal(p.w.Folio.unsaved.isDirty(), false);
-});
-
-test('without a Save button (read-only) the count stays in the field, hidden', () => {
-    const p = screen({ sections: CONTENT, selected: [], saveable: false });
-    assert.equal(p.changes.parentNode, p.field);
-    click(p.w, p.rows.job.cells.view);
-    assert.equal(p.changes.hidden, true);
 });

@@ -44,8 +44,6 @@ return [
         'other' => 'Autres autorisations',
         'other_group' => 'Autres',
         'denied' => 'Vous ne pouvez pas accorder ceci',
-        'changes' => ':count modification non enregistrée|:count modifications non enregistrées',
-        'cancel' => 'Annuler',
         'legend' => 'Légende',
         'granted' => 'Accordée',
         'na' => 'N’existe pas pour ce type',

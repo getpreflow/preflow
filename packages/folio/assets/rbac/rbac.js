@@ -9,10 +9,10 @@
  * - Each section's "· N granted" (data-rbac-sum) follows the boxes.
  * - "Only new (N)" (data-rbac-fresh-filter) hides every row and chip without a "New" mark; hidden
  *   controls still post.
- * - The unsaved count and Cancel (data-rbac-changes) move next to the editor's Save. The count is the
- *   controls of the record form whose own state differs from the page's; Cancel puts them all back
- *   and clears the form's unsaved mark (Folio.unsaved). Every change a toggle makes is announced as a
- *   "change" event, so the unsaved-changes guard sees it as it sees a click.
+ * - Every change a toggle makes is announced as a "change" event, so the editor's unsaved count and
+ *   guard (Folio.unsaved) see it as they see a click. Locked boxes are disabled, so they don't count.
+ *   The editor's Cancel (Folio.unsaved.discard) restores every box and sends "folio:discard" on the
+ *   form: the locks are applied again from the restored state.
  * State is kept in attributes (data-rbac-was), not in dataset.
  */
 (function () {
@@ -33,11 +33,6 @@
             box.removeAttribute(WAS);
         }
         box.disabled = locked || box.hasAttribute('data-rbac-denied');
-    }
-
-    /** A box's own state: what it holds under a lock, else whether it is checked. */
-    function own(box) {
-        return box.hasAttribute(WAS) ? box.getAttribute(WAS) === '1' : !!box.checked;
     }
 
     function apply(field) {
@@ -108,76 +103,6 @@
         });
     }
 
-    function isControl(el) {
-        return el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA';
-    }
-
-    /** The record form's own controls: those inside it and those that name it (the side panel's). */
-    function controls(form, field) {
-        var list = all(form || field, 'input, select, textarea').filter(isControl);
-        if (form && form.id) {
-            all(document, '[form="' + form.id + '"]').forEach(function (el) {
-                if (list.indexOf(el) < 0 && isControl(el)) { list.push(el); }
-            });
-        }
-        return list.filter(function (el) { return el.type !== 'hidden' && !el.hasAttribute('data-folio-no-edit'); });
-    }
-
-    function stateOf(el) {
-        return el.type === 'checkbox' || el.type === 'radio' ? (own(el) ? '1' : '0') : String(el.value);
-    }
-
-    function initChanges(field) {
-        var panel = field.querySelector('[data-rbac-changes]');
-        var form = field.closest('form');
-        var list = controls(form, field);
-        var saved = list.map(stateOf);
-        var count = panel ? panel.querySelector('[data-rbac-changes-count]') : null;
-
-        // Next to the editor's Save (the topbar); without one (read-only) it stays hidden.
-        var save = document.querySelector('.folio-save-buttons');
-        if (panel && save && save.parentNode) {
-            save.parentNode.insertBefore(panel, save);
-        }
-
-        function refresh() {
-            var n = list.filter(function (el, i) { return stateOf(el) !== saved[i]; }).length;
-            if (!panel) { return; }
-            panel.hidden = n === 0 || !save;
-            if (count) {
-                var forms = (count.getAttribute('data-text') || ':count').split('|');
-                count.textContent = (n === 1 || forms.length === 1 ? forms[0] : forms[1]).replace(':count', String(n));
-            }
-        }
-
-        function cancel() {
-            // Back to the page's state: unlock everything, restore each control, then lock again.
-            list.forEach(function (el) { el.removeAttribute(WAS); });
-            list.forEach(function (el, i) {
-                if (el.type === 'checkbox' || el.type === 'radio') {
-                    el.checked = saved[i] === '1';
-                } else {
-                    el.value = saved[i];
-                }
-            });
-            apply(field);
-            refresh();
-            if (form && window.Folio && window.Folio.unsaved) { window.Folio.unsaved.clear(form); }
-        }
-
-        ['change', 'input'].forEach(function (type) {
-            document.addEventListener(type, function (e) {
-                if (list.indexOf(e.target) >= 0) { refresh(); }
-            });
-        });
-        if (panel) {
-            panel.addEventListener('click', function (e) {
-                if (e.target && e.target.closest && e.target.closest('[data-rbac-cancel]')) { cancel(); }
-            });
-        }
-        refresh();
-    }
-
     function init() {
         all(document, '[data-rbac-permissions]').forEach(function (field) {
             field.addEventListener('change', function (event) {
@@ -197,8 +122,15 @@
                     filterFresh(field, filter);
                 }
             });
+            // Cancel (Folio.unsaved.discard) put every box back to the page's state: lock again from there.
+            var form = field.closest('form');
+            if (form) {
+                form.addEventListener('folio:discard', function () {
+                    all(field, '[' + WAS + ']').forEach(function (box) { box.removeAttribute(WAS); });
+                    apply(field);
+                });
+            }
             apply(field);
-            initChanges(field);
         });
     }
 

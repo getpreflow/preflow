@@ -983,6 +983,8 @@ return [
         'selected' => 'Ausgewählt',
         'selected_count' => ':count ausgewählt',
         'translations_unsaved' => ':count ungespeicherte Änderung|:count ungespeicherte Änderungen',
+        // The editor's unsaved count beside Save on a form without autosave (since 0.76).
+        'unsaved_count' => ':count Änderung ungespeichert|:count Änderungen ungespeichert',
         'no_matches' => 'Keine Treffer',
         'more' => 'Mehr…',
         'block' => 'Block',

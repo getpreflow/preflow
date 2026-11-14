@@ -29,8 +29,8 @@ use Preflow\Rbac\RoleList;
  * n/a only. Permissions an update brought (NewPermissions::forManager(): only for a user who may
  * edit roles) carry a "New" badge, with an "Only new (N)" filter that hides the other rows (their
  * values still post). rbac.js locks what "Everything" or a row's switch already grants, toggles
- * columns, counts the unsaved changes and puts them with Cancel next to the editor's Save; without
- * it every box stays usable. Delegation: what the signed-in user doesn't cover (PermissionCoverage)
+ * columns and locks again after the editor's Cancel (Folio.unsaved.discard, "folio:discard"); the
+ * editor's unsaved count beside Save counts the boxes like any control. Without it every box stays usable. Delegation: what the signed-in user doesn't cover (PermissionCoverage)
  * is rendered disabled ("You can't grant this"); RoleRules refuses a save that adds it anyway, and
  * no column or row switch ever changes such a box.
  * Its words are the "rbac-admin" group's (FolioText: the admin's language); type, section and permission labels
@@ -82,9 +82,6 @@ final class PermissionsFieldType implements FieldType
         $html = '<fieldset class="form-group rbac-permissions' . ($ctx->errors !== [] ? ' has-error' : '') . '" data-rbac-permissions>'
             . '<legend class="rbac-legend">' . $e($ctx->label ?? 'Permissions') . '</legend>'
             . '<input type="hidden" name="' . $name . '" value="">' // none checked still posts an empty list
-            // The unsaved count and Cancel: rbac.js shows them next to the editor's Save.
-            . '<div class="rbac-changes" data-rbac-changes hidden><span class="rbac-changes-count" role="status" data-rbac-changes-count data-text="' . $e($t('changes')) . '"></span>'
-            . '<button type="button" class="btn btn-ghost" data-rbac-cancel>' . $e($t('cancel')) . '</button></div>'
             . '<label class="rbac-everything"><span class="rbac-everything-text"><span class="rbac-everything-label">' . $e($t('everything')) . '</span>'
             . '<span class="rbac-everything-hint">' . $e($t('everything_hint')) . '</span></span>'
             . '<input type="checkbox" class="rbac-switch-input" role="switch" name="' . $name . '" value="*" data-rbac-everything' . $denied('*') . ($everything ? ' checked' : '') . '>'

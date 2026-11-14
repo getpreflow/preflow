@@ -1009,6 +1009,8 @@ return [
         'selected' => 'Selected',
         'selected_count' => ':count selected',
         'translations_unsaved' => ':count unsaved change|:count unsaved changes',
+        // The editor's unsaved count beside Save on a form without autosave (since 0.76).
+        'unsaved_count' => ':count unsaved change|:count unsaved changes',
         'no_matches' => 'No matches',
         'more' => 'More…',
         'block' => 'Block',

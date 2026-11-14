@@ -36,9 +36,8 @@ return [
         'enable' => 'Enable',
     ],
     // The permissions of a role (the rbac_permissions field). :verb a column's verb, :type a content
-    // type's label, :section a sidebar section's; :names the unknown permissions; :count a number
-    // (changes: "one|more", the unsaved count beside Save). The key shows granted and n/a only: the
-    // engine checks exact names, so no permission implies another.
+    // type's label, :section a sidebar section's; :names the unknown permissions; :count a number.
+    // The key shows granted and n/a only: the engine checks exact names, so no permission implies another.
     'matrix' => [
         'everything' => 'Allow everything',
         'everything_hint' => 'Every permission, including those of future extensions. Admins only.',
@@ -49,8 +48,6 @@ return [
         'other' => 'Other permissions',
         'other_group' => 'Other',
         'denied' => "You can't grant this",
-        'changes' => ':count unsaved change|:count unsaved changes',
-        'cancel' => 'Cancel',
         'legend' => 'Legend',
         'granted' => 'Granted',
         'na' => 'Not available for this type',

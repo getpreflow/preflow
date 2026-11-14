@@ -44,8 +44,6 @@ return [
         'other' => 'Weitere Berechtigungen',
         'other_group' => 'Weitere',
         'denied' => 'Das kannst du nicht vergeben',
-        'changes' => ':count Änderung ungespeichert|:count Änderungen ungespeichert',
-        'cancel' => 'Abbrechen',
         'legend' => 'Legende',
         'granted' => 'Erteilt',
         'na' => 'Gibt es für diesen Typ nicht',

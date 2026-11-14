@@ -1878,6 +1878,8 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 .folio-save-state-icon { flex: none; width: 14px; height: 14px; }
 .folio-caret { flex: none; display: inline-block; width: 2px; height: 1.15em; margin-left: -3px; background: var(--c-accent); animation: folio-blink 1.1s steps(1) infinite; }
 .folio-save-state.is-unsaved { color: var(--c-warning); }
+/* A form without autosave: its unsaved count and Cancel (form.twig, admin.js) stay hidden at 0. */
+.folio-save-state[hidden], [data-folio-discard][hidden] { display: none; }
 .folio-save-state:is(.is-unsaved, .is-saving, .is-conflict) .folio-save-state-icon { display: none; }
 .folio-save-state.is-saving::before {
   content: ""; flex: none; width: 12px; height: 12px;

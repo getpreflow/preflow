@@ -467,6 +467,16 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('Live', (string) $this->get('/hello')->getBody());
     }
 
+    public function test_an_autosaving_editor_keeps_its_save_state_and_gets_no_manual_unsaved_count(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello']]);
+
+        $html = (string) $this->get('/folio/post/p1/edit')->getBody();
+        $this->assertStringContainsString('id="folio-save-state"', $html);
+        $this->assertStringNotContainsString('data-folio-unsaved-state', $html);
+        $this->assertStringNotContainsString('data-folio-discard=', $html);
+    }
+
     public function test_save_after_autosave_does_not_conflict(): void
     {
         $this->working('post', 'p1', ['title' => ['en' => 'T'], 'slug' => ['en' => 'hello'], '_version' => 4]);

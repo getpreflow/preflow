@@ -69,6 +69,9 @@ final class RolesInFolioTest extends TestCase
         $this->assertMatchesRegularExpression('#<aside class="folio-side".*<input type="text" name="name" value="editor"[^>]* class="folio-input-mono" form="folio-record"#s', $form);
         $this->assertStringContainsString('For code and imports; rarely change it.', $form);
         $this->assertMatchesRegularExpression('#<aside class="folio-side".*name="label"[^>]*form="folio-record".*name="population"[^>]*form="folio-record"#s', $form);
+        // Roles have no autosave: the editor's unsaved count and Cancel sit before Save, hidden until a change (admin.js).
+        $this->assertMatchesRegularExpression('#<span class="folio-save-state is-unsaved" data-folio-unsaved-state="folio-record" aria-live="polite" hidden><span class="folio-save-state-text" data-folio-save-text></span></span>\s*<button type="button" class="btn btn-ghost" data-folio-discard="folio-record" hidden>Cancel</button>.*<div class="folio-save-buttons">#s', $form);
+        $this->assertStringNotContainsString('id="folio-save-state"', $form);
         $this->assertMatchesRegularExpression('#<span class="rbac-group-label">Assets</span><label class="rbac-group-all" title="assets\.\*"><input type="checkbox" name="permissions\[\]" value="assets\.\*" data-rbac-all> All</label>#', $form);
         // An undeclared stored name: shown as unknown, not as a checkbox.
         $this->assertStringContainsString('Unknown, removed on save: <code>ghost.view</code>', $form);

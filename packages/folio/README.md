@@ -1723,6 +1723,24 @@ pending edits first, then goes; if that save fails, the dialog's go-ahead names 
 (Folio's Delete and Discard changes do): it saves nothing first, and the queued autosave is dropped
 (since 0.75).
 
+**Unsaved count and Cancel (forms without autosave, since 0.76).** An editor whose type does not
+autosave (no publishing, such as Roles) shows **"N unsaved changes"** and **Cancel** beside Save,
+hidden while nothing is changed. `Folio.unsaved.count(form)` is the number of the form's controls
+that differ from the page as loaded: its own and those that name it with `form="…"` (the side
+panel's), text-like inputs and textareas by `defaultValue`, checkboxes and radios by
+`defaultChecked`, selects by their options' `defaultSelected`. Disabled controls, hidden and file
+inputs, and controls marked `data-folio-no-edit` are not counted. Cancel calls
+`Folio.unsaved.discard(form)`: every such control goes back to its default (disabled ones too), the
+form's unsaved mark is cleared, and a bubbling **`folio:discard`** event is sent on the form. The
+markup is form.twig's `[data-folio-unsaved-state="<form id>"]` and `[data-folio-discard="<form id>"]`;
+any non-autosaving form can carry them.
+
+For field and extension authors: a field that changes controls from script should send a bubbling
+`change` (or `input`) event for each, so the count and the leave guard see it as a click. A field
+with derived state (locks, previews, counters, a value kept in a hidden input) listens for
+`folio:discard` on its form and rebuilds that state from the restored controls; the permissions
+matrix (`rbac_permissions`) re-applies its locks there.
+
 ### Type customizations
 
 A class with `#[FolioType('note')]` customizes the admin of an existing type (an unknown
