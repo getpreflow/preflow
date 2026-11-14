@@ -211,8 +211,8 @@ final class QuerySqlTest extends TestCase
         $this->assertSame([], $lib->assetsWithPoster('not-an-id'));
         // Live usages first; the binned asset's does not block a delete.
         $this->assertEquals([
-            new AssetUsageEntry('rules.pdf', null, PosterReferences::NAME, PosterReferences::NOTE),
-            new AssetUsageEntry('notes.txt', null, PosterReferences::NAME, PosterReferences::NOTE_BINNED, blocksDelete: false),
+            new AssetUsageEntry('rules.pdf', null, PosterReferences::NAME, PosterReferences::NOTE, type: PosterReferences::TYPE),
+            new AssetUsageEntry('notes.txt', null, PosterReferences::NAME, PosterReferences::NOTE_BINNED, blocksDelete: false, type: PosterReferences::TYPE),
         ], (new PosterReferences(static fn (): MediaLibrary => $lib))->usagesOf($a));
     }
 }

@@ -75,6 +75,67 @@ final class AssetBulkTest extends TestCase
         $this->assertMatchesRegularExpression('#<div class="folio-alert folio-alert-error" role="alert">Still in use, so they stay \(remove them there first\): (used\.png, original\.png|original\.png, used\.png)</div>#', $page);
     }
 
+    /** @return iterable<string, array{bool}> */
+    public static function orders(): iterable
+    {
+        yield 'original first' => [true];
+        yield 'copy first' => [false];
+    }
+
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('orders')]
+    public function test_an_original_and_its_copy_go_to_the_bin_together_in_any_order(bool $originalFirst): void
+    {
+        $lib = $this->lib();
+        $original = $lib->upload($this->file($this->png(), 'original.png'), null);
+        $copy = $lib->makeCopy($original->id, null);
+        $this->signIn(['*']);
+        $lib = $this->session->container()->get(MediaLibrary::class);
+
+        $ids = $originalFirst ? [$original->id, $copy->id] : [$copy->id, $original->id];
+        $this->assertSame(302, $this->send('POST', '/folio/assets/bulk', ['_action' => 'bin', 'ids' => $ids])->getStatusCode());
+
+        $lib->flush();
+        $this->assertNotNull($lib->findBinned($copy->id));
+        $this->assertNotNull($lib->findBinned($original->id), 'the copy went first, so the original was free');
+        $this->assertStringContainsString('2 files moved to the bin.', (string) $this->send('GET', '/folio/assets')->getBody());
+    }
+
+    public function test_unused_and_missing_alt_take_whitespace_alt_text_as_query_does(): void
+    {
+        $this->media(['bin_dir' => $this->dir . '/storage/media-bin', 'cleanup' => ['enabled' => true, 'min_age_days' => 7]]);
+        $blank = $this->lib()->upload($this->file($this->png(), 'blank.png'), null);
+        $spaces = $this->lib()->upload($this->file($this->png(), 'spaces.png'), null);
+        $dm = $this->dm();
+        foreach ([$blank->id, $spaces->id] as $id) {
+            $record = $dm->findIn($this->lib()->definition(), $id) ?? throw new \RuntimeException('missing ' . $id);
+            $record->set('created_at', '2020-01-01T00:00:00+00:00');
+            if ($id === $spaces->id) {
+                $record->set('alt', ['en' => '  ']); // written around the library, which trims: one rule, exactly '' or none is missing
+            }
+            $dm->saveType($record, false);
+        }
+
+        foreach (['/folio/assets?missing_alt=1', '/folio/assets?missing_alt=1&unused=1'] as $url) {
+            $page = (string) $this->get($url)->getBody();
+            $this->assertStringContainsString('blank.png', $page, $url);
+            $this->assertStringNotContainsString('spaces.png', $page, $url);
+        }
+    }
+
+    public function test_an_empty_library_has_the_count_slot_and_the_drop_zone(): void
+    {
+        $page = (string) $this->get('/folio/assets')->getBody();
+        $this->assertStringContainsString('<span class="folio-title-count folio-assets-count" data-folio-assets-count hidden>0 files</span>', $page);
+        $this->assertMatchesRegularExpression('#<div class="folio-asset-drop is-alone">\s*(\{\#.*?\#\}\s*)?<label class="folio-asset-dropzone" for="folio-assets-files" data-folio-assets-drop>#s', $page);
+        $this->assertStringContainsString('id="folio-assets-files"', $page, 'the input it labels');
+        $this->assertStringContainsString('No assets yet.', $page);
+
+        $picker = (string) $this->get('/folio/assets?picker=1&multiple=0')->getBody();
+        $this->assertStringNotContainsString('data-folio-assets-drop', $picker);
+        $this->assertStringNotContainsString('data-folio-assets-count', $picker);
+    }
+
     #[RunInSeparateProcess]
     public function test_bulk_needs_permission_and_csrf(): void
     {

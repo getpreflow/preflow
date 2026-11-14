@@ -3437,7 +3437,7 @@
                 current.parentNode.replaceChild(document.importNode(fresh, true), current);
                 var count = document.querySelector('[data-folio-assets-count]');
                 var freshCount = page.querySelector('[data-folio-assets-count]');
-                if (count && freshCount) { count.textContent = freshCount.textContent; }
+                if (count && freshCount) { count.textContent = freshCount.textContent; count.hidden = freshCount.hidden; }
                 initAssetLibrary();
                 initBulk(document);
             })

@@ -550,7 +550,7 @@ final class BinTest extends TestCase
         }
         $this->lib->delete($clip->id);
         $this->assertEquals(
-            [new AssetUsageEntry('clip.txt', null, PosterReferences::NAME, PosterReferences::NOTE_BINNED, blocksDelete: false)],
+            [new AssetUsageEntry('clip.txt', null, PosterReferences::NAME, PosterReferences::NOTE_BINNED, blocksDelete: false, type: PosterReferences::TYPE)],
             $this->usage->of($poster->id),
         );
         $this->lib->delete($poster->id); // its asset is in the bin: the poster may follow

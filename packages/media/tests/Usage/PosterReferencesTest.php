@@ -58,7 +58,7 @@ final class PosterReferencesTest extends TestCase
             $library->delete($poster->id);
             $this->fail('delete() should refuse an asset used as a poster');
         } catch (AssetInUseException $e) {
-            $this->assertEquals([new AssetUsageEntry('clip.txt', null, 'media', 'as poster')], $e->usages);
+            $this->assertEquals([new AssetUsageEntry('clip.txt', null, 'media', 'as poster', type: 'asset')], $e->usages);
         }
         $this->assertNotNull($library->find($poster->id));
 

@@ -6,7 +6,8 @@
 {% block title %}Folio — {{ t('folio.nav.assets') }}{% endblock %}
 {% block title_lead %}{% if not picker %}{{ types.type_icon(family|default(null), 'ui-library', 28) }}{% endif %}{% endblock %}
 {% block page_title %}{{ picker ? t(multiple ? 'folio.assets.choose_many' : 'folio.assets.choose_one') : t('folio.nav.assets') }}{% endblock %}
-{% block title_after %}{% if not picker and items is not empty %}<span class="folio-title-count folio-assets-count" data-folio-assets-count>{{ t('folio.assets.count', {}, total) }}</span>{% endif %}{% endblock %}
+{# Always there outside the picker (hidden while empty), so admin.js can fill it after a first upload. #}
+{% block title_after %}{% if not picker %}<span class="folio-title-count folio-assets-count" data-folio-assets-count{% if items is empty %} hidden{% endif %}>{{ t('folio.assets.count', {}, total) }}</span>{% endif %}{% endblock %}
 {% block actions %}
     {% set icons = folio_asset('icons.svg') %}
     {% if not picker %}
@@ -89,6 +90,7 @@
             {# The upload form above is the action; the line invites to it only those who may upload. #}
             {% include '@folio/admin/partials/_empty.twig' with {screen: 'assets', title: t('folio.assets.empty'), line: can('assets.upload') ? t('folio.assets.empty_line') : ''} only %}
         {% endif %}
+        {% if may_upload %}<div class="folio-asset-drop is-alone">{% include '@folio/admin/assets/_drop.twig' %}</div>{% endif %}
     {% else %}
         {% if picker %}<p class="folio-help folio-assets-count">{{ t('folio.assets.count', {}, total) }}</p>{% endif %}
         {# The frame holds the grid or table and the selection bar, which floats at the bottom while assets are ticked. #}

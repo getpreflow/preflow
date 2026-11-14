@@ -23,6 +23,9 @@ final class PosterReferences implements AssetReferenceSource, CountsAssetUsage
     public const string NOTE = 'as poster';
     public const string NOTE_BINNED = 'poster of a binned asset';
 
+    /** AssetUsageEntry::$type of a poster use: another asset (the video or document) uses it. */
+    public const string TYPE = 'asset';
+
     /**
      * @param \Closure(): MediaLibrary $library resolved on first use (the library itself asks this source)
      * @param (\Closure(Asset): ?string)|null $editUrl
@@ -43,10 +46,10 @@ final class PosterReferences implements AssetReferenceSource, CountsAssetUsage
         $live = $binned = [];
         foreach (($this->library)()->assetsWithPoster($assetId) as $asset) {
             if ($asset->binnedAt === null) {
-                $live[] = new AssetUsageEntry($asset->label(), $this->editUrl !== null ? ($this->editUrl)($asset) : null, self::NAME, self::NOTE);
+                $live[] = new AssetUsageEntry($asset->label(), $this->editUrl !== null ? ($this->editUrl)($asset) : null, self::NAME, self::NOTE, type: self::TYPE);
             } else {
                 // A binned asset has no screen to edit it on: no URL.
-                $binned[] = new AssetUsageEntry($asset->label(), null, self::NAME, self::NOTE_BINNED, blocksDelete: false);
+                $binned[] = new AssetUsageEntry($asset->label(), null, self::NAME, self::NOTE_BINNED, blocksDelete: false, type: self::TYPE);
             }
         }
 

@@ -156,6 +156,33 @@ class FolioRecordReferencesSqlTest extends TestCase
         $this->assertSame(['page', 'page', 'page'], array_map(static fn (AssetUsageEntry $e): ?string => $e->type, $this->references()->usagesOf(self::ID)));
     }
 
+    public function test_the_batch_escapes_like_wildcards_in_an_id(): void
+    {
+        $page = $this->registry->get('page');
+        $odd = 'ab%_cd';
+        $this->save($page, 'p1', ['title' => 'Looks alike', 'cover' => 'abXYZcd']); // what an unescaped '%ab%_cd%' would match
+        $this->save($page, 'p2', ['title' => 'Exact', 'cover' => $odd]);
+        $collector = new DebugCollector();
+        $dm = new DataManager(drivers: ['sql' => $this->driverOn($collector)], defaultDriver: 'sql', typeRegistry: $this->registry);
+        $references = new FolioRecordReferences($this->walker(), $dm, new TypeCatalog($this->dir . '/models'), $this->registry, '/folio');
+
+        $this->assertSame([$odd => 1, self::ID => 0], $references->usageCounts([$odd, self::ID]));
+        $working = array_values(array_filter($collector->getQueries(), static fn (array $q): bool => str_contains((string) $q['sql'], 'FROM "page" ') || str_contains((string) $q['sql'], 'FROM `page` ')));
+        $this->assertCount(1, $working);
+        $this->assertContains('%ab!%!_cd%', $working[0]['bindings'], 'the wildcards are escaped');
+        $this->assertSame(1, $this->countRows($working[0]), 'only the exact row is a candidate');
+    }
+
+    /** @param array{sql: string, bindings: list<mixed>} $query */
+    private function countRows(array $query): int
+    {
+        $pdo = $this->dm->driver('sql')->pdo();
+        $stmt = $pdo->prepare((string) $query['sql']);
+        $stmt->execute($query['bindings']);
+
+        return count($stmt->fetchAll());
+    }
+
     public function test_revision_reference_on_sql(): void
     {
         $page = $this->registry->get('page');

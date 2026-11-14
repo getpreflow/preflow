@@ -2513,6 +2513,7 @@ html trix-toolbar .trix-input--dialog { color: var(--c-text); background: var(--
 .folio-asset-alt-warn .folio-icon { width: 13px; height: 13px; }
 /* The last cell: the drop zone (a label for the file input; admin.js uploads what is dropped on it). */
 .folio-asset-drop { display: flex; min-width: 0; }
+.folio-asset-drop.is-alone { margin-top: 16px; }
 .folio-asset-dropzone {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;

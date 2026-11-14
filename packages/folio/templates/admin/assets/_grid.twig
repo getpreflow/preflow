@@ -23,11 +23,7 @@
     {% if not picker and can('assets.upload') %}
         {# Without script a label for the upload form's file input; with it files dropped here (or chosen) are uploaded one by one. #}
         <li class="folio-asset-drop">
-            <label class="folio-asset-dropzone" for="folio-assets-files" data-folio-assets-drop>
-                <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-upload"></use></svg>
-                <span class="folio-asset-drop-title">{{ t('folio.assets.drop_title') }}</span>
-                <span class="folio-asset-drop-line" data-folio-assets-drop-status>{{ t('folio.assets.drop_line') }}</span>
-            </label>
+            {% include '@folio/admin/assets/_drop.twig' %}
         </li>
     {% endif %}
 </ul>

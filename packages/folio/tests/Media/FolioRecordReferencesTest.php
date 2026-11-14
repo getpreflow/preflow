@@ -214,7 +214,7 @@ final class FolioRecordReferencesTest extends TestCase
         // Poster use is the media core's own source (PosterReferences); Folio's records do not report it twice.
         $this->assertSame([], $this->usage()->usagesOf($poster->id));
         $core = new \Preflow\Media\Usage\PosterReferences(static fn () => $library, static fn ($a) => '/folio/assets/' . $a->id);
-        $this->assertEquals([new AssetUsageEntry('clip.txt', '/folio/assets/' . $video->id, 'media', 'as poster')], $core->usagesOf($poster->id));
+        $this->assertEquals([new AssetUsageEntry('clip.txt', '/folio/assets/' . $video->id, 'media', 'as poster', type: 'asset')], $core->usagesOf($poster->id));
     }
 
     public function test_types_without_asset_or_blocks_fields_are_not_read(): void

@@ -262,11 +262,10 @@ final class AssetLibraryController
         $binned = 0;
         $refused = [];
         $failed = [];
-        foreach (self::ids($body['ids'] ?? null) as $id) {
-            $asset = $this->library->find($id);
-            if ($asset === null) {
-                continue;
-            }
+        // Copies first: an original goes after its own copies, which would refuse it while they are live.
+        $assets = array_values(array_filter(array_map(fn (string $id): ?Asset => $this->library->find($id), self::ids($body['ids'] ?? null))));
+        usort($assets, static fn (Asset $a, Asset $b): int => (int) $b->isCopy() <=> (int) $a->isCopy());
+        foreach ($assets as $asset) {
             try {
                 $this->library->delete($asset->id);
                 $binned++;
@@ -881,8 +880,8 @@ final class AssetLibraryController
         $assets = [];
         foreach ($this->cleanup->candidates($kind === '' ? [] : ['kind' => $kind]) as $candidate) {
             $asset = $candidate->asset;
-            if ($missingAlt && ($asset->kind() !== 'image' || trim($asset->alt[$this->locales->default] ?? '') !== '')) {
-                continue; // as MediaLibrary::query(missingAlt: true)
+            if ($missingAlt && ($asset->kind() !== 'image' || ($asset->alt[$this->locales->default] ?? '') !== '')) {
+                continue; // as MediaLibrary::query(missingAlt: true): null or exactly '' (the library trims on save)
             }
             $text = mb_strtolower($asset->originalName . ' ' . $asset->title . ' ' . implode(' ', $asset->alt));
             if (array_filter($words, static fn (string $w): bool => !str_contains($text, $w)) === []) {

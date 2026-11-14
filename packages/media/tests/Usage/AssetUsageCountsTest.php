@@ -103,6 +103,14 @@ final class AssetUsageCountsTest extends TestCase
         $lib->makeCopy($original->id, null);
 
         $this->assertSame(['asset'], array_map(static fn (AssetUsageEntry $e): ?string => $e->type, $usage->of($original->id)));
+        // A poster's user is another asset too, live or binned.
+        $usage->register(new PosterReferences(static function () use (&$lib): MediaLibrary {
+            return $lib;
+        }), last: true);
+        $poster = $lib->upload($this->upload($this->png(40, 30), 'poster.png'), null);
+        $clip = $lib->upload($this->upload("a\n", 'a.txt'), null);
+        $lib->update($clip->id, ['poster' => $poster->id]);
+        $this->assertSame([['as poster', 'asset']], array_map(static fn (AssetUsageEntry $e): array => [$e->note, $e->type], $usage->of($poster->id)));
         $this->assertNull((new AssetUsageEntry('x', null, 's'))->type);
     }
 
