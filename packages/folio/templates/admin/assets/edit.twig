@@ -1,13 +1,9 @@
-{% extends '@folio/admin/_layout.twig' %}
-{# Editors use the icon rail: the form, preview and side panel get the room. #}
-{% set shell = 'rail' %}
-{% block title %}Folio — {{ t('folio.assets.edit_title', {label: asset.label}) }}{% endblock %}
-{% block page_title %}{{ t('folio.assets.edit_heading', {label: asset.label}) }}{% if asset.copy %} <span class="folio-asset-copy-mark">{{ copy_of ? t('folio.assets.copy_of_label', {label: copy_of}) : t('folio.assets.copy_mark') }}</span>{% endif %}{% endblock %}
-{% block actions %}<a class="btn btn-secondary" href="{{ back }}">{{ t('folio.assets.back') }}</a>{% endblock %}
-{% block content %}
+{% extends '@folio/admin/assets/panel_page.twig' %}
+{# The Edit image tab: the asset page's frame (panel_page.twig) around the image editor. #}
 {% set tab = 'edit' %}
 {% set editable = true %}
-{% include '@folio/admin/assets/_tabs.twig' %}
+{% block title %}Folio — {{ t('folio.assets.edit_title', {label: asset.label}) }}{% endblock %}
+{% block tab_content %}
 {# Every form posts one op to {prefix}/assets/{id}/edit; image-editor.js fills x, y, w, h (percent of the
    turned and mirrored original) from Cropper.js. No inline styles: sizes come from image-editor.css. #}
 {% set action = prefix ~ '/assets/' ~ asset.id ~ '/edit' ~ back_q %}

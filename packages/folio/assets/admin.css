@@ -1063,7 +1063,7 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 /* What follows a table (Save buttons, a test result, the next section) keeps a little air. */
 .folio-table-wrap + :is(form, .folio-form-buttons, .folio-alert, .folio-notice) { margin-top: 16px; }
 /* Section spacing (AI status months); the asset pages' panels sit directly under their tabs and keep that 16px gap. */
-:where(.folio-content) > section:not(.folio-asset-panel, .folio-image-editor) { margin-top: 28px; }
+:where(.folio-content) > section:not(.folio-asset-panel, .folio-asset-versions, .folio-image-editor) { margin-top: 28px; }
 .folio-empty p { margin: 0; }
 .folio-empty-icon { width: 32px; height: 32px; color: var(--c-text-subtle); }
 
@@ -2478,8 +2478,8 @@ html trix-toolbar .trix-input--dialog { color: var(--c-text); background: var(--
 .folio-asset-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .folio-asset-kind { font-size: 11.5px; font-weight: 650; letter-spacing: .04em; color: var(--c-text-muted); }
 .folio-asset-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 10px 12px; }
-.folio-asset-filename { font-family: var(--font-mono); font-size: 12px; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.folio-asset-grid .folio-asset-filename { font-weight: 500; }
+.folio-asset-addressname { font-family: var(--font-mono); font-size: 12px; color: var(--c-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folio-asset-grid .folio-asset-addressname { font-weight: 500; }
 .folio-asset-grid .folio-asset-meta { font-size: 12px; color: var(--c-text-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folio-asset-unused { color: var(--c-text-subtle); }
 .folio-asset-grid .folio-asset-pick { margin: 0 12px 12px; align-self: flex-start; }
@@ -2529,7 +2529,7 @@ html trix-toolbar .trix-input--dialog { color: var(--c-text); background: var(--
 .folio-asset-dropzone:hover, .folio-assets.is-dragover .folio-asset-dropzone { border-color: var(--c-accent); background: var(--c-accent-soft); color: var(--c-accent-text); }
 .folio-assets.is-uploading .folio-asset-dropzone { cursor: progress; opacity: .75; }
 .folio-assets-results { margin-bottom: 4px; }
-.folio-asset-list .folio-asset-filename { display: block; margin-top: 2px; color: var(--c-text-subtle); }
+.folio-asset-list .folio-asset-addressname { display: block; margin-top: 2px; color: var(--c-text-subtle); }
 .folio-asset-list .folio-asset-facts { white-space: nowrap; }
 /* "Edit alt text" for the selection (drawer or page): one row per image. */
 .folio-assets-alt-form { display: grid; gap: 14px; }
@@ -2615,70 +2615,157 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 .folio-tabs > :is(a[aria-current="page"], [aria-selected="true"]) { color: var(--c-text); font-weight: 600; border-bottom-color: var(--c-accent); }
 .folio-tabs > :is(a, button):focus-visible { outline-offset: -2px; }
 .folio-tab-count { font-size: 11px; font-weight: 450; color: var(--c-text-subtle); }
+/* The asset page (board AssetDetail, 0.76): the stage (surface-2) with the large image and its crop
+   previews, the panel beside it, the copies under both. One bordered surface; its parts bring their padding. */
 .folio-asset-panel {
+  /* The focal point the crop previews follow (admin.js sets the saved one, then each click). */
+  --folio-fx: 50%;
+  --folio-fy: 50%;
   display: grid;
-  gap: 24px;
-  max-width: 1100px;
-  padding: 20px;
+  max-width: 1360px;
   border: 1px solid var(--c-border);
   border-radius: var(--r);
   background: var(--c-surface);
   box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
-.folio-asset-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
-.folio-asset-column { display: grid; gap: 18px; min-width: 0; }
+.folio-asset-lines { display: grid; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--c-border); }
+.folio-asset-columns { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+.folio-asset-column { display: grid; gap: 18px; align-content: start; min-width: 0; }
+.folio-asset-stage { padding: 24px 20px; background: var(--c-surface-2); }
+.folio-asset-side { padding: 20px; border-top: 1px solid var(--c-border); }
 @media (min-width: 60rem) {
-  .folio-asset-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .folio-asset-columns { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); }
+  .folio-asset-stage { padding: 28px 32px; }
+  .folio-asset-side { border-top: 0; border-left: 1px solid var(--c-border); }
 }
 .folio-asset-panel p { margin: 0; }
-.folio-asset-preview { display: grid; gap: 8px; justify-items: start; }
-.folio-asset-usage ul { margin: 6px 0 0; padding-left: 18px; }
-.folio-focal-picker { position: relative; display: inline-block; max-width: 100%; border-radius: var(--r-sm); overflow: hidden; cursor: crosshair; }
-.folio-focal-picker img { display: block; max-width: 100%; max-height: 22rem; }
+.folio-asset-preview { display: grid; gap: 14px; justify-items: center; text-align: center; }
+.folio-focal-picker { position: relative; display: inline-block; max-width: 100%; border-radius: 12px; overflow: hidden; cursor: crosshair; box-shadow: var(--shadow-lg); }
+.folio-focal-picker img { display: block; max-width: 100%; max-height: min(60vh, 34rem); }
 .folio-focal-marker {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 20px;
-  height: 20px;
-  margin: -10px 0 0 -10px;
-  border: 2px solid #fff;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 2.5px solid #fff;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px rgb(0 0 0 / .55), 0 2px 6px rgb(0 0 0 / .4);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / .5), 0 2px 6px rgb(0 0 0 / .4);
   pointer-events: none;
 }
+/* Crop previews: each box the image cut by object-fit around the focal point (--folio-fx / --folio-fy, set
+   by admin.js on the panel). With object-position p%, the image's p% sits at the box's p%: so does the dot. */
+.folio-crops { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; }
+.folio-crops[hidden] { display: none; }
+.folio-crop { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 0; }
+.folio-crop-box {
+  position: relative; display: block; height: 72px; overflow: hidden;
+  border: 1px solid var(--c-border-strong); border-radius: var(--r-xs); background: var(--c-surface);
+}
+.folio-crop-box[data-ratio="16:9"] { aspect-ratio: 16 / 9; }
+.folio-crop-box[data-ratio="4:3"] { aspect-ratio: 4 / 3; }
+.folio-crop-box[data-ratio="1:1"] { aspect-ratio: 1; }
+.folio-crop-box[data-ratio="9:16"] { aspect-ratio: 9 / 16; }
+.folio-crop-box img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: var(--folio-fx) var(--folio-fy); }
+.folio-crop-dot {
+  position: absolute; left: var(--folio-fx); top: var(--folio-fy);
+  width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  border: 1.5px solid #fff; border-radius: 50%; box-shadow: 0 0 0 1px rgb(0 0 0 / .5);
+}
+.folio-crop-label { font-family: var(--font-mono); font-size: 11px; color: var(--c-text-subtle); }
 .folio-asset-form { display: grid; gap: 14px; }
 .folio-asset-form .btn { justify-self: start; }
 /* Extra fields (form groups) take the form's grid gap, not their own bottom margin as well. */
 .folio-asset-form .form-group { margin-bottom: 0; }
+.folio-asset-form .folio-field { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.folio-field.is-missing input { border-color: var(--c-warning); }
+.folio-field-warning { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: var(--c-warning); }
+.folio-field-warning .folio-icon { width: 13px; height: 13px; }
 .folio-asset-meta, .folio-help { font-size: 12.5px; color: var(--c-text-muted); }
+.folio-asset-title { font-family: var(--font-mono); font-weight: 500; font-synthesis-weight: none; }
+/* The file facts: Type, Size, File (the address in mono, ellipsed, with its copy button). */
+.folio-asset-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 14px; margin: 0; padding-top: 18px; border-top: 1px solid var(--c-border); font-size: 13px; }
+.folio-asset-facts dt { color: var(--c-text-muted); }
+.folio-asset-facts dd { margin: 0; min-width: 0; }
+.folio-asset-facts dd.folio-asset-meta { font-size: 13px; color: var(--c-text); }
+.folio-asset-address { display: flex; align-items: center; gap: 4px; }
+.folio-asset-address a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--c-text); }
+.folio-asset-address .btn { flex: none; }
+.folio-asset-block { display: grid; gap: 8px; }
+.folio-asset-block-title { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--c-text-subtle); }
+/* Used in: a row per user, its type's tile, the name (and how: published version, earlier revision…), the type. */
+.folio-asset-usage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.folio-asset-use-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px;
+  border: 1px solid var(--c-border); border-radius: var(--r-sm);
+  color: var(--c-text); font-size: 13px; text-decoration: none;
+}
+a.folio-asset-use-row:hover { background: var(--c-row-hover); color: var(--c-text); }
+.folio-asset-use-label { flex: 1; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.folio-asset-use-note { font-weight: 400; color: var(--c-text-muted); }
+.folio-asset-use-type { flex: none; font-size: 12px; color: var(--c-text-subtle); }
 
 /* Library 0.35: note, PDF preview, swatches, replace and versions, toolbar filters */
 .folio-asset-note { padding: 8px 12px; border-radius: var(--r-sm); background: var(--c-surface-2); border: 1px solid var(--c-border); font-size: 13px; }
 .folio-asset-preview-image { display: block; max-width: 100%; max-height: 22rem; border-radius: var(--r-sm); border: 1px solid var(--c-border); }
-.folio-swatches { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.folio-swatches { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .folio-swatch { display: inline-flex; align-items: center; gap: 2px; }
 .folio-swatch-chip, .folio-swatch-rgb {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 8px 2px 2px;
-  border: 1px solid var(--c-border); border-radius: var(--r-sm); background: var(--c-surface);
-  color: inherit; font: inherit; font-size: 12.5px; cursor: copy;
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px 0 4px;
+  border: 1px solid var(--c-border); border-radius: 7px; background: var(--c-surface-2);
+  color: inherit; font: inherit; font-size: 11px; cursor: copy;
 }
-.folio-swatch-rgb { padding: 2px 6px; color: var(--c-text-muted); }
-.folio-swatch.is-dominant .folio-swatch-chip { border-color: var(--c-border-strong); font-weight: 600; }
-.folio-swatch-color { display: block; width: 22px; height: 22px; border-radius: var(--r-xs); box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
+.folio-swatch-rgb { padding: 0 6px; color: var(--c-text-muted); }
+.folio-swatch-chip:hover, .folio-swatch-rgb:hover { border-color: var(--c-border-strong); }
+.folio-swatch.is-dominant .folio-swatch-chip { border-color: var(--c-border-strong); font-weight: 500; }
+.folio-swatch-color { display: block; width: 20px; height: 20px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / .12); }
 .folio-swatch-hex { font-family: var(--font-mono); }
-[data-copy].is-copied { border-color: var(--c-border-strong); }
-[data-copy].is-copied::after { content: "Copied"; font-size: 11.5px; color: var(--c-text-muted); }
-.folio-asset-versions { display: grid; gap: 10px; }
-.folio-asset-versions h2, .folio-asset-versions h3 { margin: 0; }
-.folio-asset-current { font-size: 13px; overflow-wrap: anywhere; }
-.folio-asset-replace { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
-.folio-asset-replace input[type="file"] { flex: 1 1 12rem; min-width: 0; }
+[data-copy].is-copied { border-color: var(--c-accent); }
+/* Replace file: the library's dashed drop zone around the file input. Without script the input and the
+   Replace button show; with it (.is-live) the input hides in the zone (still focusable) and a file goes at once. */
+.folio-asset-replace { display: grid; gap: 8px; margin: 0; }
+.folio-asset-replace-drop { min-height: 0; gap: 4px; padding: 14px; border-radius: var(--r); }
+.folio-asset-replace-drop .folio-asset-drop-title { display: inline-flex; align-items: center; gap: 6px; }
+.folio-asset-replace-drop .folio-asset-drop-title .folio-icon { width: 16px; height: 16px; }
+.folio-asset-replace-drop input[type="file"] { max-width: 100%; margin-top: 6px; font-size: 12px; }
+.folio-asset-replace .btn { justify-self: start; }
+.folio-asset-replace.is-live input[type="file"] {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+.folio-asset-replace.is-live .folio-asset-replace-drop { position: relative; }
+.folio-asset-replace.is-live [data-folio-replace-submit] { display: none; }
+.folio-asset-replace-drop:focus-within { box-shadow: var(--focus-ring); }
+.folio-asset-replace.is-dragover .folio-asset-replace-drop { border-color: var(--c-accent); background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-asset-replace.is-uploading .folio-asset-replace-drop { cursor: progress; opacity: .75; }
+.folio-asset-delete { margin: 0; }
+/* Move to bin: text-only danger (deviation row "Danger buttons"); a delete for good stays filled. */
+.btn-ghost[data-tone="danger"] { color: var(--c-danger); }
+.folio-asset-bin { justify-self: start; margin-left: -12px; }
+.folio-asset-copies { display: grid; gap: 10px; padding: 20px; border-top: 1px solid var(--c-border); }
+.folio-asset-copies h2 { margin: 0; font-size: 15px; }
+/* The Versions tab: the current file, then the earlier ones, each a row with its number in a tile. */
+.folio-asset-versions { display: grid; gap: 12px; max-width: 760px; }
+.folio-asset-versions h2 { margin: 12px 0 0; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--c-text-subtle); }
+.folio-asset-versions p { margin: 0; }
 .folio-asset-version-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.folio-asset-version { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 13px; }
+.folio-asset-version {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 44px; padding: 6px 10px;
+  border: 1px solid var(--c-border); border-radius: 9px; background: var(--c-surface); font-size: 13px;
+}
 .folio-asset-version form { margin: 0; }
-.folio-asset-version-number { font-weight: 600; min-width: 2.5em; }
-.folio-asset-version-meta { color: var(--c-text-muted); }
+.folio-asset-version-number {
+  flex: none; display: grid; place-items: center; min-width: 22px; height: 22px; padding: 0 4px;
+  border-radius: var(--r-xs); background: var(--c-row-hover); color: var(--c-text-muted);
+  font-family: var(--font-mono); font-size: 11px;
+}
+.folio-asset-version.is-current .folio-asset-version-number { background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-asset-version-text { flex: 1 1 14rem; min-width: 0; }
+.folio-asset-version:not(.is-current) .folio-asset-version-text { color: var(--c-text-muted); }
+.folio-asset-version-meta { color: var(--c-text-subtle); font-size: 12px; }
+.folio-asset-version-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; }
 .folio-assets-filter .form-group { margin: 0; }
 
 /* Asset field inside a record form */

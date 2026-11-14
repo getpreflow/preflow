@@ -503,6 +503,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Media\Cleanup\AssetCleanup::class),
             $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             $c->get(\Preflow\Auth\Access\Access::class),
+            labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            authors: new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
         ));
 
         self::isolatePageCacheRenders($container);

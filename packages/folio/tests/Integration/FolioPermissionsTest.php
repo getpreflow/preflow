@@ -223,12 +223,13 @@ final class FolioPermissionsTest extends TestCase
         $this->assertSame(403, $this->send('POST', '/folio/assets/' . $asset->id . '/versions/1/delete')->getStatusCode());
         $this->assertSame([2, [1]], [$lib->find($asset->id)?->version, array_map(static fn ($v) => $v->number, $lib->versions($asset->id))]);
 
-        // The panel offers none of it.
+        // The Details tab offers no Replace; the Versions tab opens version 1 but offers no Restore or Delete.
         $panel = (string) $this->send('GET', '/folio/assets/' . $asset->id)->getBody();
-        $this->assertStringContainsString('href="/files/' . $asset->id . '/v/1"', $panel);
         $this->assertStringNotContainsString('/replace"', $panel);
-        $this->assertStringNotContainsString('/versions/1/restore"', $panel);
-        $this->assertStringNotContainsString('/versions/1/delete"', $panel);
+        $versions = (string) $this->send('GET', '/folio/assets/' . $asset->id . '/versions')->getBody();
+        $this->assertStringContainsString('href="/files/' . $asset->id . '/v/1"', $versions);
+        $this->assertStringNotContainsString('/versions/1/restore"', $versions);
+        $this->assertStringNotContainsString('/versions/1/delete"', $versions);
     }
 
     #[RunInSeparateProcess]

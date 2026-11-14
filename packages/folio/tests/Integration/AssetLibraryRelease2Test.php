@@ -90,10 +90,12 @@ final class AssetLibraryRelease2Test extends TestCase
         $this->lib()->replace($asset->id, $this->file($this->png(300, 150), 'new.png'), null);
         $v1 = $this->lib()->versions($asset->id)[0];
 
-        $panel = (string) $this->get('/folio/assets/' . $asset->id)->getBody();
+        // The versions are their own tab now (0.76); Details links it with the count.
+        $this->assertStringContainsString('href="/folio/assets/' . $asset->id . '/versions">Versions <span class="folio-tab-count">2</span>', (string) $this->get('/folio/assets/' . $asset->id)->getBody());
+        $panel = (string) $this->get('/folio/assets/' . $asset->id . '/versions')->getBody();
 
         $this->assertStringContainsString('folio-asset-versions', $panel);
-        $this->assertMatchesRegularExpression('#<li class="folio-asset-version">\s*<span class="folio-asset-version-number">v1</span>#', $panel);
+        $this->assertMatchesRegularExpression('#<li class="folio-asset-version">\s*<span class="folio-asset-version-number">1</span>#', $panel);
         $this->assertStringContainsString((new \DateTimeImmutable($v1->createdAt))->setTimezone(new \DateTimeZone(date_default_timezone_get()))->format('M j, Y H:i'), $panel); // folio_date(…, 'datetime'), English
         $this->assertStringContainsString((int) ceil($v1->size / 1024) . ' KB · 200×100', $panel);
         $this->assertStringContainsString('href="/files/' . $asset->id . '/v/1"', $panel);
@@ -108,7 +110,7 @@ final class AssetLibraryRelease2Test extends TestCase
 
         $res = $this->post('/folio/assets/' . $asset->id . '/versions/1/restore');
         $this->assertSame(302, $res->getStatusCode());
-        $this->assertSame('/folio/assets/' . $asset->id . '?done=restored&version=1', $res->getHeaderLine('Location'));
+        $this->assertSame('/folio/assets/' . $asset->id . '/versions?done=restored&version=1', $res->getHeaderLine('Location'));
         $restored = $this->lib()->find($asset->id);
         $this->assertSame([3, 200], [$restored?->version, $restored?->width]);
         $this->assertSame([2, 1], array_map(static fn ($v) => $v->number, $this->lib()->versions($asset->id)));
@@ -116,7 +118,7 @@ final class AssetLibraryRelease2Test extends TestCase
 
         $res = $this->post('/folio/assets/' . $asset->id . '/versions/2/delete');
         $this->assertSame(302, $res->getStatusCode());
-        $this->assertSame('/folio/assets/' . $asset->id . '?done=version-deleted', $res->getHeaderLine('Location'));
+        $this->assertSame('/folio/assets/' . $asset->id . '/versions?done=version-deleted', $res->getHeaderLine('Location'));
         $this->assertSame([1], array_map(static fn ($v) => $v->number, $this->lib()->versions($asset->id)));
         $this->assertStringContainsString('Version deleted.', (string) $this->get($res->getHeaderLine('Location'))->getBody());
     }
@@ -130,7 +132,7 @@ final class AssetLibraryRelease2Test extends TestCase
         $this->assertSame(404, $this->post('/folio/assets/' . str_repeat('a', 32) . '/replace')->getStatusCode());
     }
 
-    public function test_a_failure_in_the_core_is_a_panel_error_not_a_500(): void
+    public function test_a_failure_in_the_core_is_a_page_error_not_a_500(): void
     {
         $asset = $this->lib()->upload($this->file($this->png(200, 100), 'old.png'), null);
         $this->lib()->replace($asset->id, $this->file($this->png(300, 150), 'new.png'), null);
@@ -148,7 +150,8 @@ final class AssetLibraryRelease2Test extends TestCase
 
         $this->assertSame(422, $res->getStatusCode());
         $body = (string) $res->getBody();
-        $this->assertStringContainsString('folio-asset-panel', $body);
+        // On the Versions tab, where the Delete was.
+        $this->assertStringContainsString('<section class="folio-asset-versions"', $body);
         $this->assertStringContainsString('Could not delete version 1. The error was logged.', $body);
         $this->assertStringContainsString('could not delete version 1 of asset ' . $asset->id, (string) file_get_contents($this->dir . '/php-error.log'));
         $this->assertSame([1], array_map(static fn ($v) => $v->number, $this->lib()->versions($asset->id)));

@@ -2215,14 +2215,17 @@
         }
     }
 
-    // Copy a value (asset library swatches: hex or rgb): <button data-copy="…">.
+    // Copy a value (an asset's swatches and file address, a record's id): <button data-copy="…">. It says
+    // "Copied" in the toast; where the browser refuses, nothing claims a copy.
     function onDataCopyClick(e) {
         var btn = e.target.closest ? e.target.closest('[data-copy]') : null;
-        if (!btn || !navigator.clipboard || !navigator.clipboard.writeText) { return; }
-        navigator.clipboard.writeText(btn.getAttribute('data-copy')).then(function () {
+        if (!btn) { return; }
+        copyLater(btn.getAttribute('data-copy')).then(function (copied) {
+            if (!copied) { return; }
             btn.classList.add('is-copied');
             setTimeout(function () { btn.classList.remove('is-copied'); }, 1200);
-        }, function () {});
+            showToast(folioT('copied'), true);
+        });
     }
 
     // ---- Busy buttons ---------------------------------------------------------
@@ -2395,26 +2398,108 @@
         showToast(e.detail && typeof e.detail.message === 'string' ? e.detail.message : '');
     }
 
-    // Asset library: click the image to set the focal point (percent of width/height).
+    // Asset page: click the image to set the focal point (percent of width/height). The marker and the crop
+    // previews follow it: the panel carries it as --folio-fx / --folio-fy (admin.css cuts each preview box
+    // around it), and the previews show only once this script keeps them right.
+    function focalPanel(picker) {
+        return picker.closest('.folio-asset-panel') || picker.closest('section');
+    }
+
+    function focalField(panel, name) {
+        var form = panel ? panel.querySelector('.folio-asset-form') : null;
+        return form ? form.querySelector('[name="' + name + '"]') : null;
+    }
+
     function placeFocalMarker(picker) {
-        var form = picker.closest('section') ? picker.closest('section').querySelector('.folio-asset-form') : null;
+        var panel = focalPanel(picker);
+        var fx = focalField(panel, 'focal_x');
+        var fy = focalField(panel, 'focal_y');
         var marker = picker.querySelector('.folio-focal-marker');
-        if (!form || !marker) { return; }
-        marker.style.left = form.querySelector('[name=focal_x]').value + '%';
-        marker.style.top = form.querySelector('[name=focal_y]').value + '%';
+        if (!fx || !fy || !marker) { return; }
+        marker.style.left = fx.value + '%';
+        marker.style.top = fy.value + '%';
+        if (panel.style && typeof panel.style.setProperty === 'function') {
+            panel.style.setProperty('--folio-fx', fx.value + '%');
+            panel.style.setProperty('--folio-fy', fy.value + '%');
+        }
+        panel.querySelectorAll('[data-folio-crops]').forEach(function (crops) { crops.hidden = false; });
     }
 
     function onFocalClick(e) {
         var picker = e.target.closest ? e.target.closest('[data-folio-focal]') : null;
         if (!picker) { return; }
-        var form = picker.closest('section') ? picker.closest('section').querySelector('.folio-asset-form') : null;
+        var panel = focalPanel(picker);
+        var fx = focalField(panel, 'focal_x');
+        var fy = focalField(panel, 'focal_y');
         var rect = picker.getBoundingClientRect();
-        if (!form || rect.width === 0 || rect.height === 0) { return; }
-        var x = Math.round(Math.min(100, Math.max(0, (e.clientX - rect.left) / rect.width * 100)));
-        var y = Math.round(Math.min(100, Math.max(0, (e.clientY - rect.top) / rect.height * 100)));
-        form.querySelector('[name=focal_x]').value = String(x);
-        form.querySelector('[name=focal_y]').value = String(y);
+        if (!fx || !fy || rect.width === 0 || rect.height === 0) { return; }
+        fx.value = String(Math.round(Math.min(100, Math.max(0, (e.clientX - rect.left) / rect.width * 100))));
+        fy.value = String(Math.round(Math.min(100, Math.max(0, (e.clientY - rect.top) / rect.height * 100))));
         placeFocalMarker(picker);
+    }
+
+    // Asset page, Replace file ([data-folio-replace]): a plain upload form without script. With it the file
+    // input hides inside its drop zone (a label, so a click still opens the dialog) and so does the button: a
+    // chosen file, or the first one dropped on the form, goes to the replace route at once.
+    function initReplace(root) {
+        root.querySelectorAll('[data-folio-replace]').forEach(function (form) {
+            form.classList.add('is-live');
+            form.querySelectorAll('[data-folio-replace-submit]').forEach(function (b) { b.hidden = true; });
+        });
+    }
+
+    function sendReplace(form) {
+        if (form.classList.contains('is-uploading')) { return; }
+        form.classList.add('is-uploading');
+        form.setAttribute('aria-busy', 'true');
+        if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); }
+    }
+
+    function onReplaceChange(e) {
+        var input = e.target;
+        if (!input || !input.matches || !input.matches('[data-folio-replace-file]')) { return; }
+        var form = input.closest('[data-folio-replace].is-live');
+        if (form && input.files && input.files.length) { sendReplace(form); }
+    }
+
+    function replaceDropForm(e) {
+        var form = e.target && e.target.closest ? e.target.closest('[data-folio-replace].is-live') : null;
+        return form && draggedFiles(e) ? form : null;
+    }
+
+    function onReplaceDragOver(e) {
+        var form = replaceDropForm(e);
+        if (!form) { return; }
+        e.preventDefault();
+        if (e.dataTransfer) { e.dataTransfer.dropEffect = 'copy'; }
+        form.classList.add('is-dragover');
+    }
+
+    function onReplaceDragLeave(e) {
+        var form = replaceDropForm(e);
+        if (form && (!e.relatedTarget || !form.contains(e.relatedTarget))) { form.classList.remove('is-dragover'); }
+    }
+
+    function onReplaceDrop(e) {
+        var form = replaceDropForm(e);
+        if (!form) { return; }
+        e.preventDefault();
+        form.classList.remove('is-dragover');
+        var files = e.dataTransfer && e.dataTransfer.files;
+        var input = form.querySelector('[data-folio-replace-file]');
+        if (!input || !files || !files.length) { return; }
+        try {
+            if (files.length > 1 && typeof window.DataTransfer === 'function') {
+                var one = new window.DataTransfer(); // the route takes one file: the first
+                one.items.add(files[0]);
+                input.files = one.files;
+            } else {
+                input.files = files;
+            }
+        } catch (err) {
+            return; // a browser that does not let a script set the files: the dialog still works
+        }
+        sendReplace(form);
     }
 
     // Asset picker (inside the drawer iframe): hand the chosen asset to the editor.
@@ -3500,6 +3585,11 @@
         document.addEventListener('click', onPickClick);
         document.addEventListener('click', onAssetFieldClick);
         document.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
+        initReplace(document);
+        document.addEventListener('change', onReplaceChange);
+        document.addEventListener('dragover', onReplaceDragOver);
+        document.addEventListener('dragleave', onReplaceDragLeave);
+        document.addEventListener('drop', onReplaceDrop);
         // Capture phase: addresses are clean before autosave or any other handler reads the field.
         document.addEventListener('change', onAddressChange, true);
         document.addEventListener('submit', onAddressSubmit, true);

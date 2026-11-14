@@ -267,14 +267,15 @@ final class AssetEditorTest extends TestCase
         $this->assertStringContainsString('href="/folio/assets/' . $asset->id . '/edit"', $panel);
         $this->assertStringContainsString('Edit image', $panel);
         $this->assertStringNotContainsString('Download original', $panel);
-        $this->assertStringContainsString(' · 200×100</p>', $panel);
+        $this->assertStringContainsString(' · 200×100</dd>', $panel);
         $this->assertStringNotContainsString('Edit image', (string) $this->send('GET', '/folio/assets/' . $pdf->id)->getBody());
         $this->assertStringNotContainsString('Edit image', (string) $this->send('GET', '/folio/assets/' . $private->id)->getBody());
 
         $this->edit($asset, ['op' => 'crop', 'x' => '50', 'y' => '0', 'w' => '50', 'h' => '100']);
         $panel = (string) $this->send('GET', '/folio/assets/' . $asset->id)->getBody();
-        $this->assertMatchesRegularExpression('#<a [^>]*href="/media/' . preg_quote($asset->path, '#') . '"[^>]*download[^>]*>Download original</a>#', $panel);
-        $this->assertStringContainsString(' · 100×100 (original 200×100)</p>', $panel);
+        // The header's Download says it is the original once the delivered image differs.
+        $this->assertMatchesRegularExpression('#<a [^>]*href="/media/' . preg_quote($asset->path, '#') . '"[^>]*download[^>]*>(?:<svg[^>]*>.*?</svg>)?Download original</a>#s', $panel);
+        $this->assertStringContainsString(' · 100×100 (original 200×100)</dd>', $panel);
     }
 
     private function lib(): MediaLibrary

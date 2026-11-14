@@ -1,0 +1,49 @@
+{% extends '@folio/admin/assets/panel_page.twig' %}
+{# The Versions tab (board LibOverlays "asset-versions"): the current file first ("N · Current · 1280×800 ·
+   48 KB"), then each earlier file, newest first, with when it was replaced and by whom, Open, Restore and
+   Delete. Restore keeps the current file as a version too. #}
+{% set tab = 'versions' %}
+{% block title %}Folio — {{ t('folio.assets.versions') }} · {{ asset.label }}{% endblock %}
+{% block tab_content %}
+<section class="folio-asset-versions" aria-label="{{ t('folio.assets.versions') }}">
+    {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
+    {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+    <ol class="folio-asset-version-list">
+        <li class="folio-asset-version is-current">
+            <span class="folio-asset-version-number">{{ raw.version }}</span>
+            <span class="folio-asset-version-text">{{ t('folio.assets.version_current') }}{% if asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</span>
+            <span class="folio-asset-version-meta">{{ t('folio.assets.size_kb', {size: folio_number((asset.size / 1024)|round(0, 'ceil'))}) }}</span>
+            <a class="btn btn-ghost btn-sm" href="{{ asset.url }}">{{ t('folio.assets.open') }}</a>
+        </li>
+    </ol>
+    {% if versions is not empty %}
+    <h2>{{ t('folio.assets.earlier_versions') }}</h2>
+    <ol class="folio-asset-version-list">
+        {% for v in versions %}
+            <li class="folio-asset-version">
+                <span class="folio-asset-version-number">{{ v.number }}</span>
+                <span class="folio-asset-version-text">{{ t('folio.assets.version_replaced') }}{% if v.created_at %} · {{ folio_date(v.created_at, 'datetime') }}{% endif %}{% if v.by %} · {{ t('folio.assets.version_by', {name: v.by}) }}{% endif %}</span>
+                <span class="folio-asset-version-meta">{{ t('folio.assets.size_kb', {size: folio_number((v.size / 1024)|round(0, 'ceil'))}) }}{% if v.width %} · {{ v.width }}×{{ v.height }}{% endif %}</span>
+                <span class="folio-asset-version-actions">
+                    <a class="btn btn-ghost btn-sm" href="{{ v.url }}">{{ t('folio.assets.open') }}</a>
+                    {% if can('assets.edit') %}
+                    <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/restore{{ back_q }}" data-confirm="{{ t('folio.assets.confirm_restore', {number: v.number}) }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                        <button type="submit" class="btn btn-ghost btn-sm">{{ t('folio.common.restore') }}</button>
+                    </form>
+                    {% endif %}
+                    {% if can('assets.delete') %}
+                    <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/delete{{ back_q }}" data-confirm="{{ t('folio.assets.confirm_delete_version', {number: v.number}) }}" data-confirm-tone="danger">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                        <button type="submit" class="btn btn-ghost btn-sm" data-tone="danger">{{ t('folio.common.delete') }}</button>
+                    </form>
+                    {% endif %}
+                </span>
+            </li>
+        {% endfor %}
+    </ol>
+    {% else %}
+    <p class="folio-help">{{ t('folio.assets.no_versions') }}</p>
+    {% endif %}
+</section>
+{% endblock %}

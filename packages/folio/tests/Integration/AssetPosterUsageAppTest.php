@@ -33,17 +33,18 @@ final class AssetPosterUsageAppTest extends TestCase
         $poster = $lib->upload($this->file($this->png(), 'poster.png'), null);
         $video = $lib->upload($this->file("notes\n", 'clip.txt'), null);
         $lib->update($video->id, ['poster' => $poster->id]);
-        $row = '<li><a href="/folio/assets/' . $video->id . '">clip.txt</a> (as poster)</li>';
+        // Another asset uses it: the library's tile and label ("Assets"), the note after the name.
+        $row = self::row('/folio/assets/' . $video->id, 'asset', 'clip.txt', '(as poster)', 'Assets');
 
         $panel = (string) $this->get('/folio/assets/' . $poster->id)->getBody();
-        $this->assertStringContainsString('<p>Used in 1 record:</p>', $panel);
-        $this->assertStringContainsString('<ul>' . $row . '</ul>', $panel);
+        $this->assertStringContainsString('<h2 class="folio-asset-block-title">Used in · 1</h2>', $panel);
+        $this->assertMatchesRegularExpression('#<ul class="folio-asset-usage-list">\s*' . $row . '\s*</ul>#s', $panel);
 
         $res = $this->post('/folio/assets/' . $poster->id . '/delete');
         $this->assertSame(409, $res->getStatusCode());
         $body = (string) $res->getBody();
         $this->assertStringContainsString('Used in 1 record — remove it there first.', $body);
-        $this->assertStringContainsString($row, $body);
+        $this->assertMatchesRegularExpression('#' . $row . '#s', $body);
         $this->assertNotNull($this->app()->container()->get(MediaLibrary::class)->find($poster->id));
     }
 
@@ -57,9 +58,18 @@ final class AssetPosterUsageAppTest extends TestCase
 
         $panel = (string) $this->get('/folio/assets/' . $poster->id)->getBody();
 
-        $this->assertStringContainsString('<p>Used in 2 records:</p>', $panel);
-        $this->assertStringContainsString('<ul><li><a href="/folio/post/p1/edit">Hello</a></li>'
-            . '<li><a href="/folio/assets/' . $video->id . '">clip.txt</a> (as poster)</li></ul>', $panel);
+        $this->assertStringContainsString('<h2 class="folio-asset-block-title">Used in · 2</h2>', $panel);
+        $this->assertMatchesRegularExpression('#<ul class="folio-asset-usage-list">\s*' . self::row('/folio/post/p1/edit', 'page', 'Hello', null, 'Posts')
+            . '\s*' . self::row('/folio/assets/' . $video->id, 'asset', 'clip.txt', '(as poster)', 'Assets') . '\s*</ul>#s', $panel);
+    }
+
+    /** A "Used in" row as a regex: the link, the type's tile (its family), the name with its note, the type's label. */
+    private static function row(string $href, string $family, string $label, ?string $note, string $type): string
+    {
+        return '<li class="folio-asset-use is-blocking"><a class="folio-asset-use-row" href="' . preg_quote($href, '#') . '">'
+            . '<span class="folio-type-icon" data-family="' . $family . '" aria-hidden="true">.*?</span>\s*'
+            . '<span class="folio-asset-use-label">' . preg_quote($label, '#') . ($note !== null ? ' <span class="folio-asset-use-note">' . preg_quote($note, '#') . '</span>' : '') . '</span>\s*'
+            . '<span class="folio-asset-use-type">' . preg_quote($type, '#') . '</span></a>\s*</li>';
     }
 
     private function file(string $bytes, string $name): UploadedFileInterface

@@ -38,9 +38,10 @@ use Psr\Http\Message\UploadedFileInterface;
 /**
  * {prefix}/assets: the media library. Grid/list, search, kind filter, the filters of
  * config/media.php ("filters"), multi-file upload, an asset page at {prefix}/assets/{id} (Details tab: alt per language,
- * title, focal point, video poster, the extra fields with Folio's field types) with usage,
- * colour swatches, replace and the version list (open, restore, delete), and delete (the
- * library refuses it while used). With ?picker=1 it renders in the drawer layout and each
+ * title, focal point with crop previews, video poster, the extra fields with Folio's field types, file
+ * facts, colour swatches, usage with each user's type, replace, and delete (the library refuses it
+ * while used)) and its Versions tab at {prefix}/assets/{id}/versions (the current file, then the
+ * earlier ones: open, restore, delete). With ?picker=1 it renders in the drawer layout and each
  * asset gets a "Select" button. {prefix}/assets/{id}/edit is the Edit image screen: rotate,
  * mirror, the image crop and the cover presets' cuts (Cropper.js draws the area). With
  * bin_dir a delete moves the file into the bin ({prefix}/assets/bin lists and restores);
@@ -69,6 +70,10 @@ final class AssetLibraryController
         /** Asked whether machine translation is available (since 0.66; before, the AI connection). */
         private readonly ?\Preflow\I18n\Machine\MachineTranslator $translator = null,
         private readonly ?\Preflow\Auth\Access\Access $access = null,
+        /** The type labels of "Used in" (since 0.76; without it the type's key). */
+        private readonly ?\Preflow\Folio\Content\DisplayLabels $labels = null,
+        /** Who replaced a version, by name (since 0.76; without it the stored id). */
+        private readonly ?\Preflow\Folio\Users\AuthorNames $authors = null,
     ) {}
 
     /** The image crop's ratios besides "Free" and the box presets' own: label => width / height. */
@@ -139,8 +144,24 @@ final class AssetLibraryController
             return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
-        $query = $request->getQueryParams();
-        $notice = match (true) {
+        return $this->renderPanel($request, $asset, self::notice($request->getQueryParams()));
+    }
+
+    /** {prefix}/assets/{id}/versions: the Versions tab (the current file, then the earlier ones newest first). */
+    public function versions(ServerRequestInterface $request): ResponseInterface
+    {
+        $asset = $this->library->find((string) $request->getAttribute('id', ''));
+        if ($asset === null) {
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
+        }
+
+        return $this->renderVersions($request, $asset, self::notice($request->getQueryParams()));
+    }
+
+    /** @param array<string, mixed> $query the line a redirect back to the page asks for ("saved=1", "done=…") */
+    private static function notice(array $query): ?string
+    {
+        return match (true) {
             ($query['saved'] ?? null) === '1' => FolioText::get('folio.assets.saved'),
             ($query['done'] ?? null) === 'replaced' => FolioText::get('folio.assets.replaced'),
             ($query['done'] ?? null) === 'restored' => FolioText::get('folio.assets.restored', ['number' => (int) ($query['version'] ?? 0)]),
@@ -149,8 +170,6 @@ final class AssetLibraryController
             ($query['done'] ?? null) === 'remade' => FolioText::get('folio.assets.remade'),
             default => null,
         };
-
-        return $this->renderPanel($request, $asset, $notice);
     }
 
     public function save(ServerRequestInterface $request): ResponseInterface
@@ -441,10 +460,10 @@ final class AssetLibraryController
         try {
             $this->library->restore($asset->id, $version->number, self::by($request));
         } catch (\Throwable $e) {
-            return $this->failed($request, $asset, 'restore version ' . $version->number, $e, FolioText::get('folio.assets.restore_failed', ['number' => $version->number]));
+            return $this->failed($request, $asset, 'restore version ' . $version->number, $e, FolioText::get('folio.assets.restore_failed', ['number' => $version->number]), versions: true);
         }
 
-        return $this->backToPanel($request, $asset, 'done=restored&version=' . $version->number);
+        return $this->backToPanel($request, $asset, 'done=restored&version=' . $version->number, '/versions');
     }
 
     public function deleteVersion(ServerRequestInterface $request): ResponseInterface
@@ -456,10 +475,10 @@ final class AssetLibraryController
         try {
             $this->library->deleteVersion($asset->id, $version->number);
         } catch (\Throwable $e) {
-            return $this->failed($request, $asset, 'delete version ' . $version->number, $e, FolioText::get('folio.assets.delete_version_failed', ['number' => $version->number]));
+            return $this->failed($request, $asset, 'delete version ' . $version->number, $e, FolioText::get('folio.assets.delete_version_failed', ['number' => $version->number]), versions: true);
         }
 
-        return $this->backToPanel($request, $asset, 'done=version-deleted');
+        return $this->backToPanel($request, $asset, 'done=version-deleted', '/versions');
     }
 
     /** The Edit image screen: the turned and mirrored original in the cropper, and each box preset's cut. */
@@ -626,6 +645,7 @@ final class AssetLibraryController
             'editor_assets' => ['admin.js', 'cropper.css', 'image-editor.css', 'cropper.js', 'image-editor.js'],
             'asset' => $this->item($asset),
             'copy_of' => $this->originalLabel($asset),
+            'version_count' => $this->versionCount($asset),
             'oriented' => $this->library->orientedUrl($asset),
             'crop' => $asset->crop?->toArray(),
             'edited' => $asset->isEdited(),
@@ -669,7 +689,7 @@ final class AssetLibraryController
      * A failed file change as a panel error, never a 500: an upload error's message as it is
      * (it names the file and the reason), anything else logged and reported in general words.
      */
-    private function failed(ServerRequestInterface $request, Asset $asset, string $action, \Throwable $e, string $message): ResponseInterface
+    private function failed(ServerRequestInterface $request, Asset $asset, string $action, \Throwable $e, string $message, bool $versions = false): ResponseInterface
     {
         if ($e instanceof AssetUploadException) {
             return $this->renderPanel($request, $asset, null, MediaMessages::text($e->getMessage()), 422);
@@ -677,7 +697,8 @@ final class AssetLibraryController
         error_log('folio: could not ' . $action . ' of asset ' . $asset->id . ': ' . $e::class . ': ' . $e->getMessage());
         $current = $this->library->find($asset->id) ?? $asset;
 
-        return $this->renderPanel($request, $current, null, $message, 422);
+        // A version's restore or delete failed on the Versions tab: it says so there.
+        return $versions ? $this->renderVersions($request, $current, null, $message, 422) : $this->renderPanel($request, $current, null, $message, 422);
     }
 
     /** @return array{?Asset, ?AssetVersion} the asset and its version {n} from the route */
@@ -697,9 +718,10 @@ final class AssetLibraryController
         return [$asset, null];
     }
 
-    private function backToPanel(ServerRequestInterface $request, Asset $asset, string $query): ResponseInterface
+    /** $tab: '' for Details, '/versions' for the Versions tab. */
+    private function backToPanel(ServerRequestInterface $request, Asset $asset, string $query, string $tab = ''): ResponseInterface
     {
-        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . '?' . $query . $this->backQuery($request, '&')]);
+        return new Response(302, ['Location' => $this->prefix . '/assets/' . $asset->id . $tab . '?' . $query . $this->backQuery($request, '&')]);
     }
 
     /**
@@ -931,8 +953,10 @@ final class AssetLibraryController
             'section' => 'assets',
             'editor_assets' => array_values(array_unique(['admin.js', ...$fieldAssets])),
             'asset' => $this->item($asset),
+            'copy_of' => $this->originalLabel($asset),
+            'preview' => $this->previewUrl($asset),
             'fields' => $fields,
-            'versions' => array_map(fn (AssetVersion $v) => $this->versionRow($asset, $v), $this->library->versions($asset->id)),
+            'version_count' => $this->versionCount($asset),
             'swatches' => self::swatches($asset),
             'note' => MediaMessages::note($asset->note),
             'raw' => $asset,
@@ -941,6 +965,7 @@ final class AssetLibraryController
             'original_url' => $this->library->originalUrl($asset),
             'delivered' => self::size($this->library->deliveryAsset($asset) ?? $asset),
             'locales' => $this->locales->available,
+            'default_locale' => $this->locales->default,
             'ai_translate' => $aiTranslate,
             'default_language' => \Preflow\I18n\LocaleNames::native($this->locales->default),
             'posters' => array_map(fn (Asset $a) => $this->item($a), $posters),
@@ -954,6 +979,58 @@ final class AssetLibraryController
         ] + $this->backContext($request);
 
         return $this->html($this->engine->render('@folio/admin/assets/panel_page.twig', $context), $status);
+    }
+
+    /** The Versions tab: the current file as the first row, then the earlier versions (each kept when it was replaced) newest first. */
+    private function renderVersions(ServerRequestInterface $request, Asset $asset, ?string $notice, ?string $error = null, int $status = 200): ResponseInterface
+    {
+        $versions = $this->library->versions($asset->id); // newest first, as the library keeps them
+
+        return $this->html($this->engine->render('@folio/admin/assets/versions.twig', [
+            'prefix' => $this->prefix,
+            'types' => $this->catalog->all(),
+            'section' => 'assets',
+            'editor_assets' => ['admin.js'],
+            'asset' => $this->item($asset),
+            'copy_of' => $this->originalLabel($asset),
+            'raw' => $asset,
+            'editable' => $this->library->isEditable($asset),
+            'edited' => $asset->kind() === 'image' && $asset->isEdited(),
+            'versions' => array_map(fn (AssetVersion $v) => $this->versionRow($asset, $v), $versions),
+            'version_count' => count($versions) + 1,
+            'notice' => $notice,
+            'error' => $error,
+            'csrf' => self::csrf($request),
+        ] + $this->backContext($request)), $status);
+    }
+
+    /** The Versions tab's count: the current file and the earlier ones. */
+    private function versionCount(Asset $asset): int
+    {
+        return count($this->library->versions($asset->id)) + 1;
+    }
+
+    /**
+     * The Details tab's large image: the delivered file's WebP variant that is at least 960 pixels wide (else
+     * its widest), so the preview is sharp at its size; the thumbnail where there is none (private, no variants).
+     */
+    private function previewUrl(Asset $asset): ?string
+    {
+        if ($asset->kind() !== 'image') {
+            return $this->library->thumbnailUrl($asset);
+        }
+        $delivered = $this->library->deliveryAsset($asset) ?? $asset;
+        if ($delivered->private) {
+            return $this->library->thumbnailUrl($asset);
+        }
+        $webp = array_values(array_filter($delivered->variants, static fn (\Preflow\Media\Variant $v): bool => $v->format === 'webp'));
+        if ($webp === []) {
+            return $this->library->thumbnailUrl($asset);
+        }
+        usort($webp, static fn (\Preflow\Media\Variant $a, \Preflow\Media\Variant $b): int => $a->width <=> $b->width);
+        $large = array_values(array_filter($webp, static fn (\Preflow\Media\Variant $v): bool => $v->width >= 960));
+
+        return $this->library->url(($large[0] ?? $webp[count($webp) - 1])->path);
     }
 
     /**
@@ -1043,10 +1120,21 @@ final class AssetLibraryController
      * would lose its file). The template links the poster of a binned file to the bin for those
      * who may open it (assets.delete).
      *
-     * @return array{label: string, url: string, where: string, source: string, note: ?string, blocks: bool}
+     * Its type (AssetUsageEntry::$type, since 0.76) as the row's tile and name: a Folio type's family, icon
+     * and label from the catalog, another asset (a copy, a video's poster) as the library's; an unknown or
+     * missing key has a neutral tile and no name.
+     *
+     * @return array{label: string, url: string, where: string, source: string, note: ?string, blocks: bool, family: ?\Preflow\Data\TypeFamily, icon: string, type_label: ?string}
      */
     private function usageRow(AssetUsageEntry $entry): array
     {
+        $listing = $entry->type !== null ? $this->catalog->get($entry->type) : null;
+        [$family, $icon, $typeLabel] = match (true) {
+            $listing !== null => [$listing->family, $listing->glyph(), $this->labels?->type($listing->key) ?? $listing->label],
+            $entry->type === CopyReferences::TYPE || $entry->type === PosterReferences::TYPE => [\Preflow\Data\TypeFamily::Asset, 'ui-library', FolioText::get('folio.nav.assets')],
+            default => [null, 'ui-file', null],
+        };
+
         $where = match ($entry->note) {
             FolioRecordReferences::PUBLISHED => 'published',
             FolioRecordReferences::REVISION => 'revision',
@@ -1063,6 +1151,9 @@ final class AssetLibraryController
             'source' => $entry->source,
             'note' => $entry->note,
             'blocks' => $entry->blocksDelete || $this->library->binDir() === null,
+            'family' => $family,
+            'icon' => $icon,
+            'type_label' => $typeLabel,
         ];
     }
 
@@ -1174,6 +1265,7 @@ final class AssetLibraryController
             'width' => $version->width,
             'height' => $version->height,
             'mime' => $version->mime,
+            'by' => $this->authors?->label($version->createdBy) ?? $version->createdBy,
             'url' => rtrim($this->media->privateUrl, '/') . '/' . $asset->id . '/v/' . $version->number,
         ];
     }

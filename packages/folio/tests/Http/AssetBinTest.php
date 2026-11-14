@@ -156,9 +156,10 @@ final class AssetBinTest extends TestCase
         $publisher->publish($this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello'], 'cover' => '']), null);
 
         $panel = (string) $this->get('/folio/assets/' . $asset->id)->getBody();
-        $this->assertStringContainsString('<li><a href="/folio/post/p1/edit">Hello</a> (earlier revision)</li>', $panel);
-        // Into the bin (reversible): the outlined danger button, and not disabled.
-        $this->assertMatchesRegularExpression('/<button type="submit" class="btn btn-secondary" data-tone="danger">/', $panel);
+        // An earlier revision does not block: no is-blocking mark on its row.
+        $this->assertMatchesRegularExpression('#<li class="folio-asset-use"><a class="folio-asset-use-row" href="/folio/post/p1/edit">.*?<span class="folio-asset-use-label">Hello <span class="folio-asset-use-note">\(earlier revision\)</span></span>#s', $panel);
+        // Into the bin (reversible): the text-only danger button (0.76), and not disabled.
+        $this->assertMatchesRegularExpression('/<button type="submit" class="btn btn-ghost folio-asset-bin" data-tone="danger">/', $panel);
         $this->assertDoesNotMatchRegularExpression('/<button type="submit" class="btn [^"]*"( data-tone="danger")? disabled/', $panel);
 
         $this->assertSame('/folio/assets?done=binned', $this->post('/folio/assets/' . $asset->id . '/delete')->getHeaderLine('Location'));
@@ -224,7 +225,7 @@ final class AssetBinTest extends TestCase
         $this->lib()->delete($doc->id);
 
         // The test app allows everything (no auth): assets.delete included.
-        $this->assertStringContainsString('<a href="/folio/assets/bin">clip.txt</a> (poster of a file in the bin)', (string) $this->get('/folio/assets/' . $poster->id)->getBody());
+        $this->assertMatchesRegularExpression('#<a class="folio-asset-use-row" href="/folio/assets/bin">.*?<span class="folio-asset-use-label">clip\.txt <span class="folio-asset-use-note">\(poster of a file in the bin\)</span></span>#s', (string) $this->get('/folio/assets/' . $poster->id)->getBody());
     }
 
     public function test_a_record_pointing_at_a_binned_file_saves_and_shows_it_in_the_bin(): void
@@ -283,11 +284,11 @@ final class AssetBinTest extends TestCase
         $lib->update($clip->id, ['poster' => $poster->id]);
         $lib->delete($clip->id);
         $posterPanel = (string) $this->as($viewer, 'GET', '/folio/assets/' . $poster->id)->getBody();
-        $this->assertStringContainsString('clip.txt (poster of a file in the bin)', $posterPanel);
+        $this->assertMatchesRegularExpression('#<span class="folio-asset-use-row">.*?clip\.txt <span class="folio-asset-use-note">\(poster of a file in the bin\)</span>#s', $posterPanel);
         $this->assertStringNotContainsString('href="/folio/assets/bin"', $posterPanel);
 
         $deleter = $this->signedIn('deleter');
-        $this->assertStringContainsString('<a href="/folio/assets/bin">clip.txt</a>', (string) $this->as($deleter, 'GET', '/folio/assets/' . $poster->id)->getBody());
+        $this->assertMatchesRegularExpression('#<a class="folio-asset-use-row" href="/folio/assets/bin">.*?clip\.txt#s', (string) $this->as($deleter, 'GET', '/folio/assets/' . $poster->id)->getBody());
         $this->assertSame(200, $this->as($deleter, 'GET', '/folio/assets/bin')->getStatusCode());
         $this->assertStringContainsString('href="/folio/assets/bin"', (string) $this->as($deleter, 'GET', '/folio/assets')->getBody());
         $this->assertSame(302, $this->as($deleter, 'POST', '/folio/assets/bin/' . $asset->id . '/restore')->getStatusCode());

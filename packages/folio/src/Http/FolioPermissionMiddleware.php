@@ -69,6 +69,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'PreviewController@preview' => '{type}.edit',
         'AssetLibraryController@index' => 'assets.view',
         'AssetLibraryController@panel' => 'assets.view',
+        'AssetLibraryController@versions' => 'assets.view',
         'AssetLibraryController@upload' => 'assets.upload',
         'AssetLibraryController@save' => 'assets.edit',
         'AssetLibraryController@destroy' => 'assets.delete',

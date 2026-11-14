@@ -1,11 +1,25 @@
 {% extends '@folio/admin/_layout.twig' %}
-{# The asset's Details tab is an editor like its Edit image tab: both use the icon rail. #}
+{# An asset's page (board AssetDetail): its three tabs share this frame and the icon rail. The topbar:
+   back button, breadcrumb "Assets" over the file name, Download (the file as uploaded: "Download original"
+   once the image is edited) and, on Details,
+   Save; Save sits outside the form and names it (form="folio-asset-form"), as the record editor's
+   buttons do. A tab extends this page with {% set tab = 'edit' %} (or 'versions') and its own
+   tab_content block. #}
 {% set shell = 'rail' %}
+{% set tab = tab|default('details') %}
+{# Details takes the whole width (the stage and the panel beside it); the other tabs stop at 1120px. #}
+{% set content_width = tab == 'details' ? 'wide' : '' %}
 {% block title %}Folio — {{ asset.label }}{% endblock %}
-{% block page_title %}{{ asset.label }}{% endblock %}
-{% block actions %}<a class="btn btn-secondary" href="{{ back }}">{{ t('folio.assets.back') }}</a>{% endblock %}
+{% block topbar_lead %}<a class="btn btn-secondary btn-icon folio-back" href="{{ back }}" aria-label="{{ t('folio.form.back_to', {label: t('folio.nav.assets')}) }}" title="{{ t('folio.form.back_to', {label: t('folio.nav.assets')}) }}"><svg class="folio-icon is-mirrored" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg></a>{% endblock %}
+{% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="{{ t('folio.form.breadcrumb') }}"><a href="{{ back }}">{{ t('folio.nav.assets') }}</a></nav>{% endblock %}
+{% block page_title %}<span class="folio-title-text folio-asset-title">{{ asset.name }}</span>{% if asset.copy %} <span class="folio-asset-copy-mark">{{ copy_of ? t('folio.assets.copy_of_label', {label: copy_of}) : t('folio.assets.copy_mark') }}</span>{% endif %}{% endblock %}
+{% block actions %}
+    <a class="btn btn-secondary" href="{{ asset.original }}" download><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-download"></use></svg>{{ t(edited|default(false) ? 'folio.assets.download_original' : 'folio.assets.download') }}</a>
+    {%- if tab == 'details' and can('assets.edit') %}
+    <button type="submit" class="btn btn-primary" form="folio-asset-form">{{ t('folio.common.save') }}</button>
+    {%- endif %}
+{% endblock %}
 {% block content %}
-{% set tab = 'details' %}
 {% include '@folio/admin/assets/_tabs.twig' %}
-{% include '@folio/admin/assets/panel.twig' %}
+{% block tab_content %}{% include '@folio/admin/assets/panel.twig' %}{% endblock %}
 {% endblock %}

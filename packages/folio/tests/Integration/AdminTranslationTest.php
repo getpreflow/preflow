@@ -165,7 +165,7 @@ final class AdminTranslationTest extends TestCase
     }
 
     /** Part 2: English source texts of the asset, users, roles, settings, extensions, cache and error screens. */
-    private const array ENGLISH_PART2 = ['Replace', 'Earlier versions', 'Edit image', 'Rotate left', 'Rotate right', 'Clear cache', 'Not used anywhere.', 'Upload', 'Details', 'Usage', 'Alt text', 'Grid', 'List', 'Select', 'All kinds', 'Images', 'Videos', 'Documents', 'Apply crop', 'Image crop', 'Remove crop', 'Ratio', 'Free', 'Formats', 'Download original', 'Choose an asset', 'Files', 'Size', 'Added', 'Clear all', 'Reset OPcache', 'Memory used', 'Hit rate', 'Installed', 'Not installed', 'Enabled', 'Disabled', 'Enable', 'No access', 'Ask an administrator if you need it.', "You don't have access to this.", 'Not found', 'Folio extensions', 'Folio blocks'];
+    private const array ENGLISH_PART2 = ['Replace', 'Earlier versions', 'Edit image', 'Rotate left', 'Rotate right', 'Clear cache', 'Not used anywhere.', 'Upload', 'Details', 'Usage', 'Alt text', 'Grid', 'List', 'Select', 'All kinds', 'Images', 'Videos', 'Documents', 'Apply crop', 'Image crop', 'Remove crop', 'Ratio', 'Free', 'Formats', 'Download original', 'Choose an asset', 'Replace file', 'Missing — the SEO audit flags this.', 'Crop previews', 'Colours · click to copy', 'Copy file address', 'Current', 'Replaced', 'Files', 'Size', 'Added', 'Clear all', 'Reset OPcache', 'Memory used', 'Hit rate', 'Installed', 'Not installed', 'Enabled', 'Disabled', 'Enable', 'No access', 'Ask an administrator if you need it.', "You don't have access to this.", 'Not found', 'Folio extensions', 'Folio blocks'];
 
     /** @return array<string, array{string, list<string>, list<string>}> locale, texts that must show, English words that are the same in it */
     public static function localesPart2(): array
@@ -215,11 +215,15 @@ final class AdminTranslationTest extends TestCase
             'library (grid)' => $this->html('/folio/assets'),
             'library (list)' => $this->html('/folio/assets?view=list'),
             'asset page' => $this->html('/folio/assets/' . $ids[0]),
+            'versions' => $this->html('/folio/assets/' . $ids[0] . '/versions'),
             'edit image' => $this->html('/folio/assets/' . $ids[0] . '/edit'),
             'picker' => $this->html('/folio/assets?picker=1&multiple=0'),
         ];
         $this->assertStringContainsString('folio-asset-list', $pages['library (list)'], 'the list view is there');
-        $this->assertStringContainsString('folio-asset-version-list', $pages['asset page'], 'the versions are there');
+        $this->assertStringContainsString('data-folio-crops', $pages['asset page'], 'the crop previews are there');
+        $this->assertStringContainsString('folio-alt-missing', $pages['asset page'], 'the alt warning is there');
+        $this->assertStringContainsString('folio-asset-version-list', $pages['versions'], 'the versions are there');
+        $this->assertStringContainsString('<span class="folio-asset-version-number">1</span>', $pages['versions'], 'an earlier version is there');
         $this->assertStringContainsString('data-folio-image-editor', $pages['edit image'], 'the editor is there');
         $this->assertStringContainsString('data-folio-pick', $pages['picker'], 'the picker is there');
         foreach ($pages as $name => $html) {

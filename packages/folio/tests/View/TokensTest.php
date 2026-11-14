@@ -27,6 +27,7 @@ final class TokensTest extends TestCase
     private const LITERAL_ALLOWED = [
         'admin.css' => [
             '.folio-focal-marker' => 'white ring and black outline: must stay visible on any image, whatever the theme',
+            '.folio-crop-dot' => 'the focal marker in each crop preview: the same white ring and black outline, on any image',
             '.folio-swatch-color' => 'black inset outline for a swatch of any user colour; no token is neutral on every colour',
             '.folio-preview-frame' => 'a site page is white regardless of the admin theme',
         ],

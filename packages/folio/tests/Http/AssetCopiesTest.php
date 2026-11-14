@@ -190,8 +190,9 @@ final class AssetCopiesTest extends TestCase
         $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello'], 'cover' => $original->id]);
 
         $panel = (string) $this->get('/folio/assets/' . $original->id)->getBody();
-        $this->assertStringContainsString('<p>Used in 1 record:</p>', $panel);
-        $this->assertStringContainsString('<li><a href="/folio/post/p1/edit">Hello</a></li>', $panel);
+        // "Used in · N": each record with its type's tile and label (the post type is a page type).
+        $this->assertStringContainsString('<h2 class="folio-asset-block-title">Used in · 1</h2>', $panel);
+        $this->assertMatchesRegularExpression('#<li class="folio-asset-use is-blocking"><a class="folio-asset-use-row" href="/folio/post/p1/edit"><span class="folio-type-icon" data-family="page" aria-hidden="true">.*?</span>\s*<span class="folio-asset-use-label">Hello</span>\s*<span class="folio-asset-use-type">Posts</span></a>\s*</li>#s', $panel);
         $this->assertStringContainsString('Has 1 copy (listed under Copies).', $panel);
 
         $res = $this->post('/folio/assets/' . $original->id . '/delete');

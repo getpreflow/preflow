@@ -1,4 +1,11 @@
+{% import '@folio/admin/partials/_type_icon.twig' as types %}
+{% set icons = folio_asset('icons.svg') %}
+{# The Details tab (board AssetDetail): the image on the stage (a click sets the focal point) with its crop
+   previews, and beside it the panel: the form (alt text, title, poster, extra fields), the file facts, the
+   colours, Used in, Replace file and Move to bin. The form's Save is in the topbar (form="folio-asset-form"). #}
 <section class="folio-asset-panel" aria-label="{{ t('folio.assets.details_label') }}">
+    {% if notice or error or note or copy %}
+    <div class="folio-asset-lines">
     {% if notice %}<p class="folio-saved" role="status">{{ notice }}</p>{% endif %}
     {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
     {% if note %}<p class="folio-asset-note" role="note">{{ note }}</p>{% endif %}
@@ -18,87 +25,49 @@
         {% endif %}
     </div>
     {% endif %}
+    </div>
+    {% endif %}
     <div class="folio-asset-columns">
-        <div class="folio-asset-column">
+        <div class="folio-asset-column folio-asset-stage">
             <div class="folio-asset-preview">
                 {% if asset.kind == 'image' %}
                     <div class="folio-focal-picker" data-folio-focal>
-                        <img src="{{ asset.thumb }}" alt="">
+                        <img src="{{ preview ?: asset.thumb }}" alt="">
                         <span class="folio-focal-marker" aria-hidden="true"></span>
                     </div>
                     <p class="folio-help">{{ t('folio.assets.focal_help') }}</p>
+                    {# Crop previews: the image in four boxes, cut around the focal point by CSS (admin.js sets
+                       --folio-fx and --folio-fy on the panel and shows them; without script they stay hidden). #}
+                    <div class="folio-crops" role="group" aria-label="{{ t('folio.assets.crops') }}" data-folio-crops hidden>
+                        {% for ratio in ['16:9', '4:3', '1:1', '9:16'] %}
+                        <figure class="folio-crop">
+                            <span class="folio-crop-box" data-ratio="{{ ratio }}" aria-hidden="true"><img src="{{ asset.thumb }}" alt="" loading="lazy"><span class="folio-crop-dot"></span></span>
+                            <figcaption class="folio-crop-label">{{ ratio }}</figcaption>
+                        </figure>
+                        {% endfor %}
+                    </div>
                 {% else %}
                     {% if asset.thumb %}<img class="folio-asset-preview-image" src="{{ asset.thumb }}" alt="">{% endif %}
                     <p><a href="{{ asset.url }}">{{ asset.name }}</a></p>
                 {% endif %}
-                <p class="folio-asset-meta">{{ asset.mime }} · {{ t('folio.assets.size_kb', {size: folio_number((asset.size / 1024)|round(0, 'ceil'))}) }}{% if edited %} · {{ delivered.width }}×{{ delivered.height }} ({{ t('folio.assets.original') }} {{ asset.width }}×{{ asset.height }}){% elseif asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</p>
-                {% if edited %}
-                    <p class="folio-asset-edit-actions"><a class="btn btn-ghost" href="{{ original_url }}" download>{{ t('folio.assets.download_original') }}</a></p>
-                {% endif %}
-                {% if swatches is not empty %}
-                    <ul class="folio-swatches" aria-label="{{ t('folio.assets.colours') }}">
-                        {% for s in swatches %}
-                            <li class="folio-swatch{% if loop.first %} is-dominant{% endif %}">
-                                <button type="button" class="folio-swatch-chip" data-copy="{{ s.hex }}" title="{{ t('folio.assets.copy_swatch', {label: s.label, value: s.hex}) }}">
-                                    <svg class="folio-swatch-color" viewBox="0 0 1 1" aria-hidden="true" focusable="false"><rect width="1" height="1" fill="{{ s.hex }}"/></svg>
-                                    <span class="folio-swatch-hex">{{ s.hex }}</span>
-                                </button>
-                                <button type="button" class="folio-swatch-rgb" data-copy="{{ s.rgb }}" title="{{ t('folio.assets.copy_value', {value: s.rgb}) }}">RGB</button>
-                            </li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
-            </div>
-            <div class="folio-asset-versions">
-                <h2>{{ t('folio.assets.file') }}</h2>
-                <p class="folio-asset-current">{{ t('folio.assets.version', {number: raw.version}) }} · <a href="{{ asset.url }}">{{ asset.url }}</a></p>
-                {% if can('assets.edit') %}
-                <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/replace{{ back_q }}" enctype="multipart/form-data" class="folio-asset-replace">
-                    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-                    <input type="file" name="file" aria-label="{{ t('folio.assets.new_file') }}">
-                    <button type="submit" class="btn btn-secondary">{{ t('folio.assets.replace') }}</button>
-                </form>
-                <p class="folio-help">{{ t('folio.assets.replace_help') }}</p>
-                {% endif %}
-                {% if versions is not empty %}
-                    <h3>{{ t('folio.assets.earlier_versions') }}</h3>
-                    <ul class="folio-asset-version-list">
-                        {% for v in versions %}
-                            <li class="folio-asset-version">
-                                <span class="folio-asset-version-number">v{{ v.number }}</span>
-                                <span class="folio-asset-version-meta">{{ v.created_at ? folio_date(v.created_at, 'datetime') : '' }} · {{ t('folio.assets.size_kb', {size: folio_number((v.size / 1024)|round(0, 'ceil'))}) }}{% if v.width %} · {{ v.width }}×{{ v.height }}{% endif %}</span>
-                                <a href="{{ v.url }}">{{ t('folio.assets.open') }}</a>
-                                {% if can('assets.edit') %}
-                                <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/restore{{ back_q }}" data-confirm="{{ t('folio.assets.confirm_restore', {number: v.number}) }}">
-                                    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-                                    <button type="submit" class="btn btn-ghost">{{ t('folio.common.restore') }}</button>
-                                </form>
-                                {% endif %}
-                                {% if can('assets.delete') %}
-                                <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/versions/{{ v.number }}/delete{{ back_q }}" data-confirm="{{ t('folio.assets.confirm_delete_version', {number: v.number}) }}" data-confirm-tone="danger">
-                                    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-                                    <button type="submit" class="btn btn-ghost">{{ t('folio.common.delete') }}</button>
-                                </form>
-                                {% endif %}
-                            </li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
             </div>
         </div>
-        <div class="folio-asset-column">
+        <div class="folio-asset-column folio-asset-side">
             {# The dialogs sit outside the form: their fields are not part of the save. #}
             {% for button in ai_translate|default([]) %}
                 {% include '@folio/admin/partials/ai-translate-dialog.twig' with {ai_translate: button} %}
             {% endfor %}
-            <form method="post" action="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}" class="folio-asset-form">
+            <form method="post" action="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}" class="folio-asset-form" id="folio-asset-form">
                 <fieldset class="folio-fields"{% if not can('assets.edit') %} disabled{% endif %}>
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
                 <input type="hidden" name="focal_x" value="{{ asset.focal_x }}">
                 <input type="hidden" name="focal_y" value="{{ asset.focal_y }}">
                 {% for code in locales %}
-                    <label class="folio-field">{{ locales|length > 1 ? t('folio.assets.alt_in', {locale: code}) : t('folio.assets.alt') }}
-                        <input type="text" name="alt[{{ code }}]" value="{{ asset.alt[code]|default('') }}">
+                    {# The default language's alt text missing: the warning the SEO audit's finding matches. #}
+                    {% set missing = code == default_locale and asset.card.warn %}
+                    <label class="folio-field{% if missing %} is-missing{% endif %}">{{ locales|length > 1 ? t('folio.assets.alt_in', {locale: code}) : t('folio.assets.alt') }}
+                        <input type="text" name="alt[{{ code }}]" value="{{ asset.alt[code]|default('') }}"{% if missing %} aria-describedby="folio-alt-missing"{% endif %}>
+                        {% if missing %}<span class="folio-field-warning" id="folio-alt-missing"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-warn"></use></svg>{{ t('folio.assets.alt_missing') }}</span>{% endif %}
                     </label>
                 {% endfor %}
                 <label class="folio-field">{{ t('folio.assets.title') }}
@@ -117,25 +86,80 @@
                     {% for html in fields %}{{ html|raw }}{% endfor %}
                 {% endif %}
                 </fieldset>
-                {% if can('assets.edit') %}<button type="submit" class="btn btn-primary">{{ t('folio.common.save') }}</button>{% endif %}
             </form>
+            <dl class="folio-asset-facts">
+                <dt>{{ t('folio.assets.fact_type') }}</dt><dd>{{ asset.mime }}</dd>
+                <dt>{{ t('folio.assets.size') }}</dt><dd class="folio-asset-meta">{{ t('folio.assets.size_kb', {size: folio_number((asset.size / 1024)|round(0, 'ceil'))}) }}{% if edited %} · {{ delivered.width }}×{{ delivered.height }} ({{ t('folio.assets.original') }} {{ asset.width }}×{{ asset.height }}){% elseif asset.width %} · {{ asset.width }}×{{ asset.height }}{% endif %}</dd>
+                <dt>{{ t('folio.assets.file') }}</dt><dd class="folio-asset-address"><a class="folio-mono" href="{{ asset.url }}" title="{{ asset.url }}">{{ asset.url }}</a><button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy="{{ asset.url }}" aria-label="{{ t('folio.assets.copy_address') }}" title="{{ t('folio.assets.copy_address') }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-copy"></use></svg></button></dd>
+            </dl>
+            {% if swatches is not empty %}
+            <div class="folio-asset-block">
+                <h2 class="folio-asset-block-title">{{ t('folio.assets.colours_copy') }}</h2>
+                <ul class="folio-swatches" aria-label="{{ t('folio.assets.colours') }}">
+                    {% for s in swatches %}
+                        <li class="folio-swatch{% if loop.first %} is-dominant{% endif %}">
+                            <button type="button" class="folio-swatch-chip" data-copy="{{ s.hex }}" title="{{ t('folio.assets.copy_swatch', {label: s.label, value: s.hex}) }}">
+                                <svg class="folio-swatch-color" viewBox="0 0 1 1" aria-hidden="true" focusable="false"><rect width="1" height="1" fill="{{ s.hex }}"/></svg>
+                                <span class="folio-swatch-hex">{{ s.hex }}</span>
+                            </button>
+                            <button type="button" class="folio-swatch-rgb" data-copy="{{ s.rgb }}" title="{{ t('folio.assets.copy_value', {value: s.rgb}) }}">RGB</button>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+            <div class="folio-asset-block folio-asset-usage">
+                {# Records and copies are counted apart: each copy is a usage of its original, but it is listed under Copies. #}
+                {% set records = usage|filter(u => u.where != 'copy') %}
+                {% set copy_usages = usage|length - records|length %}
+                <h2 class="folio-asset-block-title">{{ records is not empty ? t('folio.assets.used_in_count', {count: folio_number(records|length)}) : t('folio.assets.usage') }}</h2>
+                {% if usage is empty %}
+                    <p class="folio-asset-meta">{{ t('folio.assets.unused') }}</p>
+                {% endif %}
+                {% if records is not empty %}
+                    <ul class="folio-asset-usage-list">{% for u in records %}
+                        {% set where = u.where == 'published' ? t('folio.assets.published_version') : (u.where == 'revision' ? t('folio.assets.earlier_revision') : (u.where == 'poster' ? t('folio.assets.as_poster') : (u.where == 'binned_poster' ? t('folio.assets.binned_poster') : ''))) %}
+                        {% set href = u.url ?: (u.where == 'binned_poster' and can('assets.delete') ? prefix ~ '/assets/bin' : '') %}
+                        <li class="folio-asset-use{% if u.blocks %} is-blocking{% endif %}">
+                            {%- if href %}<a class="folio-asset-use-row" href="{{ href }}">{% else %}<span class="folio-asset-use-row">{% endif -%}
+                            {{ types.type_icon(u.family, u.icon) }}
+                            <span class="folio-asset-use-label">{{ u.label }}{% if where %} <span class="folio-asset-use-note">{{ where }}</span>{% endif %}</span>
+                            {% if u.type_label %}<span class="folio-asset-use-type">{{ u.type_label }}</span>{% endif %}
+                            {%- if href %}</a>{% else %}</span>{% endif -%}
+                        </li>{% endfor %}
+                    </ul>
+                {% endif %}
+                {% if copy_usages > 0 %}
+                    <p class="folio-asset-has-copies"><a href="#copies">{{ t('folio.assets.has_copies', {}, copy_usages) }}</a></p>
+                {% endif %}
+            </div>
+            {% if can('assets.edit') %}
+            {# Replace file: a dashed drop zone around the file input. With admin.js a chosen or dropped file is
+               sent at once (the input hides, so does the button); without it this is a plain upload form. #}
+            <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/replace{{ back_q }}" enctype="multipart/form-data" class="folio-asset-replace" data-folio-replace>
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                <label class="folio-asset-dropzone folio-asset-replace-drop">
+                    <span class="folio-asset-drop-title"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-upload"></use></svg>{{ t('folio.assets.replace_file') }}</span>
+                    <span class="folio-asset-drop-line">{{ t('folio.assets.replace_line', {number: raw.version}) }}</span>
+                    <input type="file" name="file" aria-label="{{ t('folio.assets.new_file') }}" data-folio-replace-file>
+                </label>
+                <button type="submit" class="btn btn-secondary" data-folio-replace-submit>{{ t('folio.assets.replace') }}</button>
+            </form>
+            {% endif %}
+            {% if can('assets.delete') %}
+            {# Only a usage that blocks a delete disables it: an earlier revision lets the file go into the bin. #}
+            {% set blocked = usage|filter(u => u.blocks) is not empty %}
+            <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/delete{{ back_q }}" class="folio-asset-delete" data-confirm="{{ t(has_bin ? 'folio.assets.confirm_bin' : 'folio.assets.confirm_delete') }}"{% if not has_bin %} data-confirm-tone="danger"{% endif %}>
+                <input type="hidden" name="_csrf_token" value="{{ csrf }}">
+                {# Into the bin (it can come back): the text-only danger button; deleted for good: the filled one. #}
+                {% if has_bin %}
+                <button type="submit" class="btn btn-ghost folio-asset-bin" data-tone="danger"{% if blocked %} disabled title="{{ t('folio.assets.remove_first') }}"{% endif %}><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg>{{ t('folio.assets.move_to_bin') }}</button>
+                {% else %}
+                <button type="submit" class="btn btn-danger"{% if blocked %} disabled title="{{ t('folio.assets.remove_first') }}"{% endif %}>{{ t('folio.common.delete') }}</button>
+                {% endif %}
+            </form>
+            {% endif %}
         </div>
-    </div>
-    <div class="folio-asset-usage">
-        <h2>{{ t('folio.assets.usage') }}</h2>
-        {# Records and copies are counted apart: each copy is a usage of its original, but it is listed under Copies. #}
-        {% set records = usage|filter(u => u.where != 'copy') %}
-        {% set copy_usages = usage|length - records|length %}
-        {% if usage is empty %}
-            <p>{{ t('folio.assets.unused') }}</p>
-        {% endif %}
-        {% if records is not empty %}
-            <p>{{ t('folio.assets.used_in', {}, records|length) }}</p>
-            <ul>{% for u in records %}<li>{% if u.url %}<a href="{{ u.url }}">{{ u.label }}</a>{% elseif u.where == 'binned_poster' and can('assets.delete') %}<a href="{{ prefix }}/assets/bin">{{ u.label }}</a>{% else %}{{ u.label }}{% endif %}{% if u.where == 'published' %} {{ t('folio.assets.published_version') }}{% elseif u.where == 'revision' %} {{ t('folio.assets.earlier_revision') }}{% elseif u.where == 'poster' %} {{ t('folio.assets.as_poster') }}{% elseif u.where == 'binned_poster' %} {{ t('folio.assets.binned_poster') }}{% endif %}</li>{% endfor %}</ul>
-        {% endif %}
-        {% if copy_usages > 0 %}
-            <p class="folio-asset-has-copies"><a href="#copies">{{ t('folio.assets.has_copies', {}, copy_usages) }}</a></p>
-        {% endif %}
     </div>
     {% if copies is not empty %}
     <div class="folio-asset-copies" id="copies">
@@ -157,14 +181,5 @@
             {% endfor %}
         </ul>
     </div>
-    {% endif %}
-    {% if can('assets.delete') %}
-    {# Only a usage that blocks a delete disables it: an earlier revision lets the file go into the bin. #}
-    {% set blocked = usage|filter(u => u.blocks) is not empty %}
-    <form method="post" action="{{ prefix }}/assets/{{ asset.id }}/delete{{ back_q }}" data-confirm="{{ t(has_bin ? 'folio.assets.confirm_bin' : 'folio.assets.confirm_delete') }}">
-        <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-        {# Into the bin (it can come back): the outlined danger button; deleted for good: the filled one. #}
-        <button type="submit" class="btn {{ has_bin ? 'btn-secondary' : 'btn-danger' }}"{% if has_bin %} data-tone="danger"{% endif %}{% if blocked %} disabled title="{{ t('folio.assets.remove_first') }}"{% endif %}>{{ t('folio.common.delete') }}</button>
-    </form>
     {% endif %}
 </section>
