@@ -223,6 +223,16 @@ final class JsonFileDriverTest extends TestCase
         $this->checkContainsFindsUmlauts($driver);
     }
 
+    public function test_or_group_contains_folds_unicode_case(): void
+    {
+        $this->checkContainsFoldsUnicodeCase($this->driver);
+    }
+
+    public function test_or_group_contains_searches_list_values(): void
+    {
+        $this->checkContainsSearchesListValues($this->driver);
+    }
+
     public function test_or_group_in_matches_listed_values_and_empty_matches_nothing(): void
     {
         $driver = $this->driver;

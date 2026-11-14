@@ -239,7 +239,8 @@ final class DeletePlanner
 
     /**
      * The stored value with $remove taken out: a list keeps its order and stays a
-     * JSON array string (as RelationFieldType::toStorage writes it); a single id
+     * JSON array string (as RelationFieldType::toStorage writes it), an emptied list
+     * is null (no value, as the field type stores one; since 0.77); a single id
      * becomes ''. Public for DeletePlan::valueWithout().
      *
      * @param list<string> $remove
@@ -255,7 +256,7 @@ final class DeletePlanner
                 return $value; // nothing to remove: leave the stored text untouched
             }
 
-            return json_encode($kept, JSON_UNESCAPED_SLASHES);
+            return $kept === [] ? null : json_encode($kept, JSON_UNESCAPED_SLASHES);
         }
 
         return in_array(self::heldIds($value)[0] ?? null, $remove, true) ? '' : $value;

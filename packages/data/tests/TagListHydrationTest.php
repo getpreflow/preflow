@@ -19,7 +19,7 @@ use Preflow\Validation\ValidatorFactory;
 /**
  * A string list a field type stores as JSON text (Folio's tags field, 0.77) reads into a class
  * model's `?array` property, on SQL and JSON storage; the model's own save writes a list the
- * dynamic side reads back; a legacy comma string leaves the property's default (no exception).
+ * dynamic side reads back; a legacy comma string is an UnreadableValue error, never a silent null.
  */
 final class TagListHydrationTest extends TestCase
 {
@@ -90,14 +90,25 @@ final class TagListHydrationTest extends TestCase
     }
 
     #[DataProvider('storages')]
-    public function test_a_legacy_comma_string_leaves_the_default(string $storage): void
+    public function test_a_legacy_comma_string_is_an_error_naming_type_field_and_record(string $storage): void
     {
         $this->boot($storage);
         $this->dm->driver('default')->save('reference', 'r1', ['uuid' => 'r1', 'name' => 'Atlas', 'uses' => 'Folio, members'], 'uuid');
 
-        $read = $this->dm->find(TaggedReference::class, 'r1');
-        $this->assertSame('Atlas', $read?->name);
-        $this->assertNull($read->uses);
+        $this->expectException(\Preflow\Data\UnreadableValue::class);
+        $this->expectExceptionMessage('Type "reference", record "r1": field "uses" holds a value that is not a JSON list, so ' . TaggedReference::class . '::$uses (array) cannot take it.');
+        $this->dm->find(TaggedReference::class, 'r1');
+    }
+
+    #[DataProvider('storages')]
+    public function test_an_empty_or_null_value_reads_as_null(string $storage): void
+    {
+        $this->boot($storage);
+        $this->dm->driver('default')->save('reference', 'r1', ['uuid' => 'r1', 'name' => 'Atlas', 'uses' => null], 'uuid');
+        $this->dm->driver('default')->save('reference', 'r2', ['uuid' => 'r2', 'name' => 'Atlas', 'uses' => ''], 'uuid');
+
+        $this->assertNull($this->dm->find(TaggedReference::class, 'r1')?->uses);
+        $this->assertNull($this->dm->find(TaggedReference::class, 'r2')?->uses);
     }
 
     private function rrmdir(string $dir): void

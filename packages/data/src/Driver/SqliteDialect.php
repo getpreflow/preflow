@@ -128,10 +128,81 @@ final class SqliteDialect implements Dialect
         return $expression;
     }
 
-    /** SQLite's LIKE ignores case (ASCII letters). */
+    /**
+     * LIKE, which ignores case for every letter ("über" finds "Über", as MySQL's utf8mb4
+     * collations do): SQLite's own folds ASCII only, so prepare() replaces its like() function on
+     * each connection SqliteDriver opens.
+     */
     public function likeOperator(): string
     {
         return 'LIKE';
+    }
+
+    /**
+     * Readies a connection: LIKE (and so CONTAINS and loose search) matches case-insensitively in
+     * Unicode (like()). A Pdo\Sqlite (PDO::connect('sqlite:…')) registers it through
+     * createFunction(); a plain PDO only through sqliteCreateFunction(), deprecated since PHP 8.5,
+     * whose deprecation is kept out of this one call.
+     *
+     * @since 0.77
+     */
+    public static function prepare(\PDO $pdo): void
+    {
+        $like = self::like(...);
+        if ($pdo instanceof \Pdo\Sqlite) {
+            $pdo->createFunction('like', $like, -1, \Pdo\Sqlite::DETERMINISTIC);
+
+            return;
+        }
+        set_error_handler(static fn (int $level): bool => $level === E_DEPRECATED, E_DEPRECATED);
+        try {
+            $pdo->sqliteCreateFunction('like', $like, -1, \PDO::SQLITE_DETERMINISTIC);
+        } finally {
+            restore_error_handler();
+        }
+    }
+
+    /** @var array<string, string> LIKE pattern (with its escape) => regular expression */
+    private static array $patterns = [];
+
+    /**
+     * SQL LIKE as SQLite calls it, like(pattern, value[, escape]): % any text, _ one character,
+     * the escape character takes the next one literally; letters compared after mb_strtolower(),
+     * so case is ignored for every alphabet. NULL when the value or the pattern is NULL.
+     *
+     * @since 0.77
+     */
+    public static function like(mixed $pattern, mixed $value, mixed $escape = null): ?int
+    {
+        if ($pattern === null || $value === null) {
+            return null;
+        }
+        $pattern = (string) $pattern;
+        $escape = $escape === null ? '' : (string) $escape;
+        $key = $escape . "\0" . $pattern;
+        if (!isset(self::$patterns[$key])) {
+            if (count(self::$patterns) > 500) {
+                self::$patterns = [];
+            }
+            $regex = '';
+            $chars = mb_str_split(mb_strtolower($pattern));
+            $escapeChar = mb_strtolower($escape);
+            for ($i = 0, $n = count($chars); $i < $n; $i++) {
+                $c = $chars[$i];
+                if ($escapeChar !== '' && $c === $escapeChar && $i + 1 < $n) {
+                    $regex .= preg_quote($chars[++$i], '~');
+                } elseif ($c === '%') {
+                    $regex .= '.*';
+                } elseif ($c === '_') {
+                    $regex .= '.';
+                } else {
+                    $regex .= preg_quote($c, '~');
+                }
+            }
+            self::$patterns[$key] = '~^' . $regex . '$~su';
+        }
+
+        return preg_match(self::$patterns[$key], mb_strtolower((string) $value)) === 1 ? 1 : 0;
     }
 
     /** "no such column: x" (a read), "table t has no column named x" (a write). */

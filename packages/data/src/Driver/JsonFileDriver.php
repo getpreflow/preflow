@@ -743,11 +743,31 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         $value = $condition['value'];
 
         return match ($condition['operator']) {
-            'CONTAINS' => is_scalar($fieldValue) && mb_stripos((string) $fieldValue, (string) $value) !== false,
+            'CONTAINS' => self::containsText($fieldValue, (string) $value),
             'IN' => is_scalar($fieldValue) && in_array((string) $fieldValue, array_map('strval', array_filter((array) $value, 'is_scalar')), true),
             'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value)),
             default => $fieldValue === $value,
         };
+    }
+
+    /**
+     * CONTAINS, ignoring case in every alphabet: a text (or number) that holds the term, or a list
+     * any of whose values does (a tags field a model saved as an array). SQL storage keeps such a
+     * list as JSON text and finds the same records (since 0.77).
+     */
+    private static function containsText(mixed $fieldValue, string $term): bool
+    {
+        if (is_array($fieldValue)) {
+            foreach ($fieldValue as $item) {
+                if (self::containsText($item, $term)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return is_scalar($fieldValue) && mb_stripos((string) $fieldValue, $term) !== false;
     }
 
     /** @param list<string> $ids */

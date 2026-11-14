@@ -13,6 +13,13 @@ final class SqliteDriver extends PdoDriver
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
 
+    /** As PdoDriver's, and LIKE ignores case in every alphabet (SqliteDialect::prepare()). */
+    protected function configure(\PDO $pdo): void
+    {
+        parent::configure($pdo);
+        SqliteDialect::prepare($pdo);
+    }
+
     /** Whether exclusive() has its BEGIN IMMEDIATE open (PDO before PHP 8.5 does not report it). */
     private bool $immediate = false;
 

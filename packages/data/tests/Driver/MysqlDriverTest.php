@@ -128,6 +128,18 @@ final class MysqlDriverTest extends TestCase
     }
 
     #[Group('mysql')]
+    public function test_or_group_contains_folds_unicode_case(): void
+    {
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkContainsFoldsUnicodeCase($driver));
+    }
+
+    #[Group('mysql')]
+    public function test_or_group_contains_searches_list_values(): void
+    {
+        $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkContainsSearchesListValues($driver));
+    }
+
+    #[Group('mysql')]
     public function test_or_group_in_matches_listed_values_and_empty_matches_nothing(): void
     {
         $this->withItemsTable(fn (MysqlDriver $driver) => $this->checkIn($driver));

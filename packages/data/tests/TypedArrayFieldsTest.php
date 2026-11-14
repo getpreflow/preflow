@@ -111,21 +111,19 @@ final class TypedArrayFieldsTest extends TestCase
     }
 
     #[DataProvider('storages')]
-    public function test_a_value_hydrate_skipped_is_not_written_over(string $storage): void
+    public function test_text_an_array_property_cannot_take_is_an_error_not_a_lost_value(string $storage): void
     {
         $this->boot($storage);
         $this->dm->driver('default')->save('gallery', 'g1', ['uuid' => 'g1', 'title' => 'Old', 'images' => 'not json', 'body' => null], 'uuid');
 
-        $read = $this->dm->find(Gallery::class, 'g1');
-        $this->assertNull($read->images, 'a value the property cannot take leaves its default');
-        $read->title = 'New';
-        $this->dm->save($read);
-        $this->assertSame('not json', $this->dm->driver('default')->findOne('gallery', 'g1')['images'], 'an untouched skipped field keeps its stored value');
-
-        $read->images = ['m1'];
-        $this->dm->save($read);
-        $stored = $this->dm->driver('default')->findOne('gallery', 'g1')['images'];
-        $this->assertSame(['m1'], is_string($stored) ? json_decode($stored, true) : $stored, 'a skipped field the code changed is written');
+        try {
+            $this->dm->find(Gallery::class, 'g1');
+            $this->fail('the read took a value it would lose on the next save');
+        } catch (\Preflow\Data\UnreadableValue $e) {
+            $this->assertSame(['gallery', 'images', 'g1'], [$e->type, $e->field, $e->recordId]);
+            $this->assertStringContainsString('Type "gallery", record "g1": field "images" holds a value that is not a JSON list', $e->getMessage());
+        }
+        $this->assertSame('not json', $this->dm->driver('default')->findOne('gallery', 'g1')['images'], 'nothing was written');
     }
 
     public function test_an_auto_increment_id_inserts_updates_and_saves_again(): void

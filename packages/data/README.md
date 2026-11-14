@@ -802,14 +802,16 @@ $dm->queryIn($typeDef)->whereAny([
 | Operator | Matches when |
 |---|---|
 | `=` | The field equals the value. |
-| `CONTAINS` | The field contains the value as a substring, case-insensitively. `%`, `_` and the escape character match literally. |
+| `CONTAINS` | The field contains the value as a substring, case-insensitively. `%`, `_` and the escape character match literally. A list value (an array field; JSON text on SQL) matches when one of its values contains it. |
 | `IN` | The field equals one of the listed values. An empty list matches nothing. |
 | `HAS` | The field, an id string or a JSON array string, holds at least one of the listed ids. |
 
-Driver differences: SQLite's `LIKE` folds case for ASCII letters only (umlauts and other
-non-ASCII letters match case-sensitively); the JSON driver folds with `mb_stripos` and
-compares full Unicode. On MySQL/MariaDB `CONTAINS` and `IN` follow the column's collation,
-so a case- or accent-insensitive collation matches more than the other drivers do.
+Case is ignored in every alphabet on every driver ("über" finds "Über"): the JSON driver folds
+with `mb_stripos`, and since 0.77 `SqliteDriver` replaces SQLite's `like()` (ASCII only) on its
+connection with one that folds with `mb_strtolower` (`SqliteDialect::prepare()`; give it a
+`Pdo\Sqlite`, `PDO::connect('sqlite:…')`, which the app does; a plain `PDO` works too). On
+MySQL/MariaDB `CONTAINS` and `IN` follow the column's collation, so an accent-insensitive
+collation matches more than the other drivers do ("uber" finds "Über").
 
 ## `searchLoose`
 
@@ -1091,9 +1093,12 @@ $dm->queryAs(Job::class, 'job__published')->where('open', true)->get();
 $dm->isReadOnly($job); // true
 ```
 
-**Array fields** (several assets, blocks, a matrix, a multiple relation) are `?array`
-properties: the JSON text SQL storage holds is read as the array. Values that cannot be read
-as the property's type (an unreadable stored value) leave the property's default in place,
+**Array fields** (several assets, blocks, a matrix, a multiple relation, Folio's tags) are `?array`
+properties without a `transform`: the JSON text SQL storage holds is read as the array. Text an
+`array` property cannot take (no JSON list or map, such as a legacy comma string "Folio, members")
+throws `Preflow\Data\UnreadableValue` naming the type, the field and the record (since 0.77):
+convert such rows to JSON lists with a migration before declaring the property as an array.
+Other values that cannot be read as the property's type leave the property's default in place,
 and a save keeps the stored value until the code sets that property. Public `readonly` properties are never filled. Ids are the type's:
 the id field keeps its name and kind, strings are generated on insert, integers auto-increment.
 

@@ -900,7 +900,7 @@ final class Application
             mkdir($dbDir, 0755, true);
         }
         $dsn = str_starts_with($path, 'sqlite:') ? $path : 'sqlite:' . $path;
-        $driver = new \Preflow\Data\Driver\SqliteDriver(static fn (): \PDO => new \PDO($dsn), $collector);
+        $driver = new \Preflow\Data\Driver\SqliteDriver(static fn (): \PDO => \PDO::connect($dsn), $collector);
         $this->container->singleton(\PDO::class, static fn (): \PDO => $driver->pdo());
         return $driver;
     }

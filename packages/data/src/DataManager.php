@@ -831,7 +831,8 @@ final class DataManager
      * reads what its type stores: a translatable field's locale map (JSON text on SQL) as an
      * array, and numbers and yes/no (text on JSON storage, integers on SQL) as the property's
      * type, and an array field's JSON text (SQL) as an array. A NULL a property cannot take
-     * leaves its default; so does any value it cannot take, and a typed save then keeps the
+     * leaves its default; so does any value it cannot take (but text an array property cannot
+     * take throws UnreadableValue: its default would lose a list), and a typed save then keeps the
      * stored value until the code sets the property (see $skipped).
      *
      * @param array<string, mixed> $data
@@ -859,9 +860,12 @@ final class DataManager
                 $map = LocaleValue::map($value, $def->locales);
                 $value = $map === [$def->locales->default => $value] ? $value : $map;
             }
-            [$assign, $value] = self::asPropertyType($types[$name], $value);
+            [$assign, $converted] = self::asPropertyType($types[$name], $value);
             if ($assign) {
-                $model->{$name} = $value;
+                $model->{$name} = $converted;
+            } elseif (self::losesAList($types[$name], $value)) {
+                $id = $data[$meta->idField] ?? null;
+                throw new UnreadableValue($def->key, $name, is_scalar($id) ? (string) $id : null, $meta->modelClass . '::$' . $name);
             } else {
                 $skipped[] = $name;
             }
@@ -934,6 +938,22 @@ final class DataManager
         }
 
         return [false, null];
+    }
+
+    /**
+     * Whether a value an `array` property cannot take holds data that its default would lose: any
+     * value but null and '' (since 0.77 such a read throws UnreadableValue instead of skipping).
+     */
+    private static function losesAList(?\ReflectionType $type, mixed $value): bool
+    {
+        if ($value === null || $value === '' || $type === null) {
+            return false;
+        }
+        $names = $type instanceof \ReflectionUnionType
+            ? array_map(static fn (\ReflectionType $t): string => $t instanceof \ReflectionNamedType ? $t->getName() : '', $type->getTypes())
+            : [$type instanceof \ReflectionNamedType ? $type->getName() : ''];
+
+        return in_array('array', $names, true);
     }
 
     /** @param list<string> $names whether a property of these built-in types takes $value as it is */

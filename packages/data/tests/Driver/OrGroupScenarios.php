@@ -57,6 +57,27 @@ trait OrGroupScenarios
         $this->assertSame(['1'], $this->groupIds($d, $q));
     }
 
+    /** Case is ignored in every alphabet, not only ASCII: "über" finds "Über" (0.77). */
+    private function checkContainsFoldsUnicodeCase(StorageDriver $d): void
+    {
+        $this->seedGroupRows($d, [['1', 'Über uns', ''], ['2', 'ÉTÉ', ''], ['3', 'Kartenspiel', '']]);
+        $find = fn (string $w) => $this->groupIds($d, (new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => $w]]));
+        $this->assertSame(['1'], $find('über'));
+        $this->assertSame(['2'], $find('été'));
+    }
+
+    /** A list value (a model's array, JSON text on SQL) matches when one of its values holds the term (0.77). */
+    private function checkContainsSearchesListValues(StorageDriver $d): void
+    {
+        $d->save('items', '1', ['uuid' => '1', 'title' => 'a', 'tags' => ['Folio', 'Übersetzung']]);
+        $d->save('items', '2', ['uuid' => '2', 'title' => 'b', 'tags' => ['Members']]);
+        $d->save('items', '3', ['uuid' => '3', 'title' => 'c', 'tags' => null]);
+        $find = fn (string $w) => $this->groupIds($d, (new Query())->whereAny([['field' => 'tags', 'operator' => 'CONTAINS', 'value' => $w]]));
+        $this->assertSame(['1'], $find('über'));
+        $this->assertSame(['2'], $find('MEMB'));
+        $this->assertSame([], $find('nothing'));
+    }
+
     private function checkIn(StorageDriver $d): void
     {
         $this->seedGroupRows($d, [['1', 'a', ''], ['2', 'b', ''], ['3', 'c', ''], ['4', '10', '']]);

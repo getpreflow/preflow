@@ -24,7 +24,7 @@ abstract class DataTestCase extends TestCase
     {
         parent::setUp();
 
-        $this->pdo = new \PDO('sqlite::memory:');
+        $this->pdo = \PDO::connect('sqlite::memory:');
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 
         $this->jsonDir = sys_get_temp_dir() . '/preflow_test_data_' . uniqid();
