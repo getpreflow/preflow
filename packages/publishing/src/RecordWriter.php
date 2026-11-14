@@ -145,11 +145,9 @@ final class RecordWriter
         $data = array_diff_key($source->toArray(), array_flip([...Publisher::META, '_published_at', '_published_by', ...$this->timestamps($def)]));
         $data[$def->idField] = bin2hex(random_bytes(16));
         $copy = DynamicRecord::fromArray($def, $data);
-        // The keys the copy's system owns: its id, the publishing keys, its position and timestamps.
-        $system = [$def->idField, ...Publisher::META, ...$this->timestamps($def)];
         foreach ($overrides as $name => $value) {
             $name = (string) $name;
-            if (in_array($name, $system, true)) {
+            if ($this->isSystemKey($def, $name)) {
                 throw new \InvalidArgumentException("\"{$name}\" of type \"{$type}\" is a system key: a copy sets its own.");
             }
             if (!isset($def->fields[$name])) {
@@ -202,6 +200,17 @@ final class RecordWriter
      *
      * @return list<string>
      */
+    /**
+     * Whether $name is a key the record's system owns (its id, the publishing keys, its position
+     * and timestamps): duplicate() refuses it as an override, and a caller building overrides skips it.
+     *
+     * @since 0.75
+     */
+    public function isSystemKey(TypeDefinition $def, string $name): bool
+    {
+        return in_array($name, [$def->idField, ...Publisher::META, ...$this->timestamps($def)], true);
+    }
+
     private function timestamps(TypeDefinition $def): array
     {
         $class = $this->dm->getTypeRegistry()?->classFor($def->key);

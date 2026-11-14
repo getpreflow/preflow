@@ -215,6 +215,25 @@ final class RecordWriterDuplicateTest extends PublishingAppTestCase
         $this->assertCount(1, $this->dm()->queryType($type)->get()->items());
     }
 
+    public function test_is_system_key_names_the_keys_a_copy_owns(): void
+    {
+        $this->write('config/models/page.json', (string) json_encode(['key' => 'page', 'table' => 'page', 'storage' => 'json', 'publishing' => true, 'fields' => [
+            'title' => ['type' => 'string', 'translatable' => true],
+            '_order' => ['type' => 'number'],
+        ]]));
+        $this->reboot();
+        $writer = $this->writer();
+        $page = $this->dm()->getTypeRegistry()->get('page');
+        $stamped = $this->dm()->getTypeRegistry()->get('stamped');
+
+        foreach (['uuid', '_version', '_publish_at', '_share_token', '_order'] as $key) {
+            $this->assertTrue($writer->isSystemKey($page, $key), $key);
+        }
+        $this->assertTrue($writer->isSystemKey($stamped, 'createdAt'));
+        $this->assertFalse($writer->isSystemKey($page, 'title'));
+        $this->assertFalse($writer->isSystemKey($page, 'createdAt'), 'a type without timestamps owns no stamp');
+    }
+
     public function test_an_override_may_empty_a_translatable_field(): void
     {
         $writer = $this->writer();

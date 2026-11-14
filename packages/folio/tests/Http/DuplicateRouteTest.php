@@ -163,6 +163,23 @@ final class DuplicateRouteTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_system_key_as_the_first_list_column_is_not_passed_as_an_override(): void
+    {
+        $this->write('config/models/page.json', (string) json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
+            'fields' => ['_publish_at' => ['type' => 'string'], 'title' => ['type' => 'string']],
+        ]));
+        $this->setUpStaff();
+        $this->as('admin');
+        $this->seed('page', 'p1', ['_publish_at' => '2099-01-01T10:00', 'title' => 'About']);
+
+        $copy = $this->stored('page', $this->copyOf('p1'));
+
+        $this->assertNotNull($copy, 'the copy is made, not refused with a 404');
+        $this->assertSame('About', $copy->get('title'));
+    }
+
+    #[RunInSeparateProcess]
     public function test_a_title_in_a_language_the_site_no_longer_has_is_copied_as_it_is(): void
     {
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");

@@ -531,7 +531,7 @@ final class AdminController
     {
         $def = $source->getType();
         $name = array_key_first($this->listColumns($def, $this->catalog->get($def->key)?->list ?? []));
-        if (!is_string($name) || !in_array($def->fields[$name]->type ?? '', ['string', 'text'], true)) {
+        if (!is_string($name) || !in_array($def->fields[$name]->type ?? '', ['string', 'text'], true) || $this->writer->isSystemKey($def, $name)) {
             return [];
         }
         $value = $source->get($name);
