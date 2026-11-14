@@ -73,6 +73,21 @@ final class EmptyStateTest extends TestCase
         $this->assertStringContainsString('<p class="folio-ink-title">No address was asked for twice without being found.</p>', $this->card($this->body('/folio/redirects?tab=not-found'), 'redirects-not-found'));
     }
 
+    public function test_the_assets_line_invites_only_those_who_may_upload(): void
+    {
+        $this->signInAs('uploader');
+        $card = $this->card($this->body('/folio/assets'), 'assets');
+        $this->assertStringContainsString('<p class="folio-ink-title">No assets yet.</p>', $card);
+        $this->assertStringContainsString('<p class="folio-ink-line">Upload the first files<span class="folio-caret" aria-hidden="true"></span></p>', $card);
+
+        $this->booted = null;
+        $this->signInAs('viewer');
+        $card = $this->card($this->body('/folio/assets'), 'assets');
+        $this->assertStringContainsString('<p class="folio-ink-title">No assets yet.</p>', $card);
+        $this->assertStringNotContainsString('folio-ink-line', $card);
+        $this->assertStringNotContainsString('folio-ink-action', $card);
+    }
+
     public function test_translations_without_texts_show_the_card(): void
     {
         // The site group lists the models' labels: a site without models has none.
@@ -113,10 +128,42 @@ final class EmptyStateTest extends TestCase
     private function body(string $uri): string
     {
         parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
-        $res = $this->booted()->handle((new Psr17Factory())->createServerRequest('GET', $uri)->withQueryParams($query));
+        $request = (new Psr17Factory())->createServerRequest('GET', $uri)->withQueryParams($query);
+        if (session_id() !== '') {
+            $request = $request->withCookieParams([session_name() => session_id()]);
+        }
+        $res = $this->booted()->handle($request);
         $this->assertSame(200, $res->getStatusCode(), $uri);
 
         return (string) $res->getBody();
+    }
+
+    /** Signed in with auth and roles: "uploader" may upload assets, "viewer" may only see them. */
+    private function signInAs(string $role): void
+    {
+        $hash = password_hash('secret', PASSWORD_DEFAULT);
+        $this->write('config/auth.php', "<?php\nreturn " . var_export([
+            'default_guard' => 'session',
+            'guards' => ['session' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'config']],
+            'providers' => ['config' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
+                ['email' => 'uploader@site.test', 'password_hash' => $hash, 'roles' => ['uploader']],
+                ['email' => 'viewer@site.test', 'password_hash' => $hash, 'roles' => ['viewer']],
+            ]]],
+            'session' => ['cookie' => 'folio_empty_state_test', 'path' => '/', 'secure' => false],
+        ], true) . ";\n");
+        $this->write('config/roles.php', "<?php\nreturn " . var_export(['staff' => [
+            'uploader' => ['folio.dashboard', 'assets.view', 'assets.upload'],
+            'viewer' => ['folio.dashboard', 'assets.view'],
+        ]], true) . ";\n");
+        $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
+
+        $f = new Psr17Factory();
+        $page = (string) $this->booted()->handle($f->createServerRequest('GET', '/folio/login'))->getBody();
+        preg_match('/name="_csrf_token" value="([^"]+)"/', $page, $m);
+        $login = $this->booted()->handle($f->createServerRequest('POST', '/folio/login')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([
+            '_csrf_token' => $m[1] ?? '', 'email' => $role . '@site.test', 'password' => 'secret',
+        ]));
+        $this->assertSame(302, $login->getStatusCode());
     }
 
     private function booted(): Application

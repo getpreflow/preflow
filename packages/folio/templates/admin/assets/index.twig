@@ -65,7 +65,8 @@
         {% if unused or q or kind or filtered %}
             <div class="folio-empty folio-no-matches"><p>{% if unused %}{{ t('folio.assets.no_unused', {days: min_age_days}) }}{% else %}{{ t('folio.assets.no_match') }}{% endif %}</p></div>
         {% else %}
-            {% include '@folio/admin/partials/_empty.twig' with {screen: 'assets', title: t('folio.assets.empty'), line: t('folio.assets.empty_line')} only %}
+            {# The upload form above is the action; the line invites to it only those who may upload. #}
+            {% include '@folio/admin/partials/_empty.twig' with {screen: 'assets', title: t('folio.assets.empty'), line: can('assets.upload') ? t('folio.assets.empty_line') : ''} only %}
         {% endif %}
     {% else %}
         <p class="folio-help folio-assets-count">{{ t('folio.assets.count', {}, total) }}</p>

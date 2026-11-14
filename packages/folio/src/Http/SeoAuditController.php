@@ -79,7 +79,7 @@ final class SeoAuditController
     {
         $audits = $this->runner();
         if (!$audits instanceof Audits) {
-            return $this->refused($audits);
+            return $this->refused($request, $audits);
         }
         $body = $request->getParsedBody();
 
@@ -91,7 +91,7 @@ final class SeoAuditController
     {
         $audits = $this->runner();
         if (!$audits instanceof Audits) {
-            return $this->refused($audits);
+            return $this->refused($request, $audits);
         }
 
         return $this->advance($request, $audits, false);
@@ -108,9 +108,13 @@ final class SeoAuditController
         return $audits instanceof Audits ? $audits : 404;
     }
 
-    private function refused(int $status): ResponseInterface
+    private function refused(ServerRequestInterface $request, int $status): ResponseInterface
     {
-        return new Response($status, ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'no-store'], $status === 403 ? 'Forbidden' : 'Not Found');
+        if ($status === 404) {
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'))->withHeader('Cache-Control', 'no-store');
+        }
+
+        return new Response(403, ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'no-store'], 'Forbidden');
     }
 
     private function advance(ServerRequestInterface $request, Audits $audits, bool $fresh): ResponseInterface

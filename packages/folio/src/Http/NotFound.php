@@ -13,8 +13,9 @@ use Psr\Http\Message\ServerRequestInterface;
 /**
  * The admin's 404, the counterpart of Forbidden. A page the browser opened (a document request: not
  * htmx, not a fetch() in cors mode, and an Accept that names text/html) gets the ink "not found" page
- * in the admin layout, with the controller's message as a muted line and the path asked for. With
- * redirects.manage the path links to a new redirect from it (redirects/new?address=…).
+ * in the admin layout, with the controller's message as a muted line and the path asked for. A path
+ * outside the admin (redirects refuse the admin's own addresses) links to a new redirect from it
+ * (redirects/new?address=…) for users with redirects.manage.
  * Everything else (htmx swaps, fetch() callers, JSON clients, a static file, the public site) gets
  * the message as plain text, as before.
  *
@@ -61,10 +62,18 @@ final class NotFound
         return false;
     }
 
+    private function isAdminPath(string $path): bool
+    {
+        $prefix = rtrim($this->prefix, '/');
+
+        return $prefix === '' || $path === $prefix || str_starts_with($path, $prefix . '/');
+    }
+
     private function page(ServerRequestInterface $request, string $message): ResponseInterface
     {
         $path = $request->getUri()->getPath();
-        $redirect = ($this->can)('redirects.manage')
+        // Redirects refuse the admin's own addresses (NonPublicPaths): the hint only for a path outside it.
+        $redirect = !$this->isAdminPath($path) && ($this->can)('redirects.manage')
             ? $this->prefix . '/redirects/new?address=' . rawurlencode($path)
             : null;
 

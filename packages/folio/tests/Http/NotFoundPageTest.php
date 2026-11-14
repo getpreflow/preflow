@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\Http;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Folio\Http\NotFound;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
 
@@ -45,7 +46,7 @@ final class NotFoundPageTest extends TestCase
         $this->assertMatchesRegularExpression('#<div class="folio-ink folio-ink-card folio-ink-error">\s*<svg class="folio-ink-glyph mc-3" aria-hidden="true"[^>]*><use href="[^"]*icons\.svg[^"]*\#mark-pilcrow">#', $body);
         $this->assertStringContainsString('<h2 class="folio-ink-title">This page wandered off</h2>', $body);
         $this->assertStringContainsString('<p class="folio-ink-muted">Not found</p>', $body);
-        $this->assertMatchesRegularExpression('#<p class="folio-ink-line">/folio/post/nope/edit #', $body);
+        $this->assertStringContainsString('<p class="folio-ink-line">/folio/post/nope/edit<span class="folio-caret" aria-hidden="true"></span></p>', $body, 'an admin path: no redirect hint');
 
         $type = $this->open('/folio/nosuchtype', ['Accept' => self::HTML]);
         $this->assertSame(404, $type->getStatusCode());
@@ -75,20 +76,36 @@ final class NotFoundPageTest extends TestCase
         $this->assertSame('Not found', (string) $res->getBody());
     }
 
-    public function test_the_hint_starts_a_redirect_only_with_redirects_manage(): void
+    public function test_an_admin_path_shows_only_the_path_never_the_redirect_hint(): void
     {
+        // Redirects refuse the admin's own addresses, so even with redirects.manage there is no hint.
         $this->signInAs('manager');
-        $body = (string) $this->open('/folio/post/nope/edit', ['Accept' => self::HTML])->getBody();
-        $this->assertStringContainsString('<p class="folio-ink-line">/folio/post/nope/edit <a href="/folio/redirects/new?address=%2Ffolio%2Fpost%2Fnope%2Fedit">→ add a redirect</a>', $body);
-
-        $this->booted = null;
-        $this->signInAs('editor');
         $res = $this->open('/folio/post/nope/edit', ['Accept' => self::HTML]);
         $body = (string) $res->getBody();
         $this->assertSame(404, $res->getStatusCode());
         $this->assertStringContainsString('This page wandered off', $body);
-        $this->assertStringContainsString('<p class="folio-ink-line">/folio/post/nope/edit<span class="folio-caret"', $body);
+        $this->assertStringContainsString('<p class="folio-ink-line">/folio/post/nope/edit<span class="folio-caret" aria-hidden="true"></span></p>', $body);
         $this->assertStringNotContainsString('redirects/new', $body);
+    }
+
+    public function test_a_path_outside_the_admin_starts_a_redirect_only_with_redirects_manage(): void
+    {
+        $request = fn (bool $may): \Psr\Http\Message\ServerRequestInterface => (new Psr17Factory())->createServerRequest('GET', '/old-page')
+            ->withHeader('Accept', self::HTML)
+            ->withAttribute(NotFound::class, new NotFound(
+                $this->booted()->container()->get(\Preflow\Folio\View\FolioEngine::class),
+                '/folio',
+                $this->booted()->container()->get(\Preflow\Folio\Content\TypeCatalog::class),
+                static fn (string $permission): bool => $may && $permission === 'redirects.manage',
+            ));
+
+        $manager = (string) NotFound::response($request(true), 'Not found')->getBody();
+        $this->assertStringContainsString('<p class="folio-ink-line">/old-page <a href="/folio/redirects/new?address=%2Fold-page">→ add a redirect</a>', $manager);
+
+        $editor = NotFound::response($request(false), 'Not found');
+        $this->assertSame(404, $editor->getStatusCode());
+        $this->assertStringContainsString('<p class="folio-ink-line">/old-page<span class="folio-caret" aria-hidden="true"></span></p>', (string) $editor->getBody());
+        $this->assertStringNotContainsString('redirects/new', (string) $editor->getBody());
     }
 
     public function test_forbidden_is_the_same_ink_card_with_its_own_title(): void
@@ -118,6 +135,41 @@ final class NotFoundPageTest extends TestCase
             }
         }
         $this->assertSame([], $left, 'answer 404 with NotFound::response($request, $message)');
+    }
+
+    /**
+     * A status in a variable could be a 404 that escapes NotFound. These are the known ones, none of
+     * them ever a 404 to a page: each renders its own page at 200 or a validation/limit status, except
+     * AiTranslateController::json, the JSON API whose 404 is JSON its callers parse.
+     */
+    private const array VARIABLE_STATUS = [
+        'AccountController::page',            // the account page: 200 or 422
+        'AdminController::form',              // the record form: 200 or 422
+        'AiSettingsController::render',       // Settings → AI pages: 200 or 422
+        'AiTranslateController::json',        // JSON for fetch() callers, its 404s included (they parse the JSON)
+        'AiTranslateController::page',        // the run screen: 200, 409 or 422
+        'AiTranslateController::progress',    // the run's progress partial: 200 or 409
+        'AssetLibraryController::html',       // the asset screens and panels: 200 or 422
+        'AssetLibraryController::upload',     // the picker upload's JSON: 200 or 422
+        'AuthController::page',               // the sign-in page: 200, 422 or 429
+        'PasswordController::render',         // the password pages: 200 or 422
+        'RedirectsController::html',          // the redirect screens: 200, 422 or 503 (not migrated)
+        'TranslationsController::screen',     // the translations screen: 200 or 422
+    ];
+
+    public function test_no_variable_status_response_can_hide_a_404(): void
+    {
+        $found = [];
+        foreach (glob(dirname(__DIR__, 2) . '/src/Http/*.php') ?: [] as $file) {
+            $php = (string) file_get_contents($file);
+            preg_match_all('/new\s+(?:\\\\?Nyholm\\\\Psr7\\\\)?Response\(\s*\$/', $php, $calls, PREG_OFFSET_CAPTURE);
+            foreach ($calls[0] as [, $offset]) {
+                preg_match_all('/function\s+(\w+)\s*\(/', substr($php, 0, $offset), $functions);
+                $found[] = basename($file, '.php') . '::' . (end($functions[1]) ?: '?');
+            }
+        }
+        sort($found);
+        $this->assertSame(self::VARIABLE_STATUS, $found, 'a Response with a status in a variable: route its 404 through NotFound::response, or list it here with why it is never one');
     }
 
     /** @param array<string, string> $headers */
