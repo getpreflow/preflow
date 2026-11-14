@@ -819,7 +819,8 @@
     // Escape and a click on the backdrop cancel. A danger dialog starts on Cancel, any other on its
     // confirm button; closing returns the focus to where it was (a closed menu's toggle when the
     // opener sat in that menu). A second ask while one is open cancels the first.
-    var dialogState = null; // { dialog, resolve, opener } while a dialog is open
+    var dialogState = null; // { dialog, resolve, opener, openedAt } while a dialog is open
+    var BACKDROP_GRACE_MS = 300;
 
     function dialogPart(dialog, name) {
         return dialog.querySelector('[data-folio-dialog-' + name + ']');
@@ -860,15 +861,26 @@
             var b = dialogPart(dialog, name);
             if (b) { b._folioDefault = b.textContent || folioT(name); }
         });
+        // A click on the backdrop (the dialog element itself: the panel fills it) cancels, but only when the
+        // press started there too (a text selection dragged out of the panel is no cancel) and not in the
+        // first moments after opening (the second click of a double click on the opener).
+        dialog.addEventListener('pointerdown', function (e) { dialog._folioPressedBackdrop = e.target === dialog; });
         dialog.addEventListener('click', function (e) {
             var t = e.target;
-            if (t === dialog) { finishDialog('cancel'); return; } // the backdrop: the panel fills the dialog
+            if (t === dialog) {
+                var pressed = dialog._folioPressedBackdrop === true;
+                dialog._folioPressedBackdrop = false;
+                if (pressed && dialogState && Date.now() - dialogState.openedAt >= BACKDROP_GRACE_MS) { finishDialog('cancel'); }
+                return;
+            }
             var b = t && t.closest ? t.closest('[data-folio-dialog-cancel], [data-folio-dialog-confirm], [data-folio-dialog-extra]') : null;
             if (!b) { return; }
             finishDialog(b.hasAttribute('data-folio-dialog-confirm') ? 'confirm' : b.hasAttribute('data-folio-dialog-extra') ? 'extra' : 'cancel');
         });
         dialog.addEventListener('cancel', function (e) { e.preventDefault(); finishDialog('cancel'); }); // Escape
-        dialog.addEventListener('close', function () { if (dialogState && dialogState.dialog === dialog) { finishDialog('cancel'); } });
+        // Closed some other way (a form method="dialog"). Browsers queue the close event: by the time it runs,
+        // the next question may have opened the dialog again, so an event for an open dialog is stale.
+        dialog.addEventListener('close', function () { if (dialogState && dialogState.dialog === dialog && !dialog.open) { finishDialog('cancel'); } });
         return dialog;
     }
 
@@ -932,7 +944,7 @@
         dialog.classList.toggle('has-extra', !extra.hidden);
 
         return new Promise(function (resolve) {
-            dialogState = { dialog: dialog, resolve: resolve, opener: document.activeElement };
+            dialogState = { dialog: dialog, resolve: resolve, opener: document.activeElement, openedAt: Date.now() };
             if (!dialog.open && typeof dialog.showModal === 'function') { dialog.showModal(); }
             dialog.setAttribute('open', ''); // showModal() sets it too; without it the dialog shows in place
             (danger ? cancel : ok).focus();
@@ -1025,7 +1037,7 @@
             return;
         }
         var boosted = elt.closest ? elt.closest('[hx-boost]') : null;
-        if (boosted && boosted.getAttribute('hx-boost') === 'true' && holdLeave(function () { d.issueRequest(true); }, { href: null })) {
+        if (boosted && boosted.getAttribute('hx-boost') === 'true' && holdLeave(function () { d.issueRequest(true); }, null, e)) {
             e.preventDefault();
         }
     }
@@ -1825,7 +1837,8 @@
         }
         var dirty = unsaved.dirty.filter(function (f) { return f.isConnected !== false; });
         if (dirty.length) {
-            askLeave(dirty[0], go, href);
+            // "Save and leave" saves one form: offered only when exactly one holds unsaved changes.
+            askLeave(dirty[0], go, dirty.length === 1 ? href : null);
             return true;
         }
         // Pending edits, or a save that failed (a conflict, offline): saving again is tried first.
@@ -1861,7 +1874,23 @@
     function onLeaveSubmit(e) {
         var f = e.target;
         if (e.defaultPrevented || !f || f.tagName !== 'FORM') { return; }
-        if (f._folioConfirmed) { allowLeave(); return; }
+        if (f._folioConfirmed) {
+            // A confirmed action (Unpublish, Delete…) in the record editor: its pending autosave is saved
+            // first, then the action is sent; a save that fails asks as leaving would.
+            var record = autosaveForm();
+            var stateEl = document.getElementById('folio-save-state');
+            if (record && f !== record && !f._folioFlushed && (savePending() || (stateEl && stateEl.classList.contains('is-conflict')))) {
+                e.preventDefault();
+                var held = e.submitter || null;
+                flushThenLeave(record, function () {
+                    f._folioFlushed = true;
+                    try { resubmit(f, held); } finally { f._folioFlushed = false; }
+                });
+                return;
+            }
+            allowLeave();
+            return;
+        }
         if (f._folioLeaveOk || f === autosaveForm()) { return; }
         var sub = e.submitter || null;
         var target = String((sub && sub.getAttribute && sub.getAttribute('formtarget')) || f.getAttribute('target') || '').toLowerCase();

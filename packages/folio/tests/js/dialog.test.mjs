@@ -54,6 +54,12 @@ function serverDialog(w) {
 }
 
 const theDialog = (w) => w.document.body.querySelector('dialog[data-folio-dialog]');
+const press = (w, el) => el.dispatchEvent(new w.Event('pointerdown', { bubbles: true }));
+/** A press and click on the backdrop (the dialog element itself). */
+function backdropClick(w) {
+    press(w, theDialog(w));
+    theDialog(w).click();
+}
 const part = (w, name) => theDialog(w).querySelector('[data-folio-dialog-' + name + ']');
 
 function button(w, parent, text, attrs = {}) {
@@ -117,7 +123,8 @@ test('Cancel, Escape and a click on the backdrop resolve "cancel"', async () => 
     assert.equal(esc.defaultPrevented, true, 'the dialog closes itself, after resolving');
 
     answer = w.folioConfirm({ title: 'Restore?' });
-    theDialog(w).click(); // the ::backdrop is the dialog element itself; the panel fills the rest
+    await settle(320); // past the grace time after opening
+    backdropClick(w); // the ::backdrop is the dialog element itself; the panel fills the rest
     assert.equal(await answer, 'cancel', 'backdrop');
 
     answer = w.folioConfirm({ title: 'Restore?' });
@@ -125,6 +132,37 @@ test('Cancel, Escape and a click on the backdrop resolve "cancel"', async () => 
     assert.equal(theDialog(w).open, true, 'a click inside the panel is no backdrop click');
     part(w, 'cancel').click();
     await answer;
+});
+
+test('only a press and click both on the backdrop cancel, and not right after opening', async () => {
+    const { w } = admin();
+    const answer = w.folioConfirm({ title: 'Delete?', tone: 'danger' });
+    backdropClick(w);
+    assert.equal(theDialog(w).open, true, 'the second click of a double click on the opener');
+    await settle(320);
+    // A text selection dragged out of the panel: pressed inside, released on the backdrop.
+    press(w, theDialog(w).querySelector('[data-folio-dialog-title]'));
+    theDialog(w).click();
+    assert.equal(theDialog(w).open, true, 'pressed in the panel');
+    theDialog(w).click();
+    assert.equal(theDialog(w).open, true, 'a click without a press on the backdrop');
+    backdropClick(w);
+    assert.equal(await answer, 'cancel');
+});
+
+test('chained questions: the first one\'s queued close event does not cancel the next', async () => {
+    const { w } = admin();
+    const flow = (async () => {
+        const first = await w.folioConfirm({ title: 'Archive?' });
+        const second = await w.folioAlert({ title: 'Archived' }).then(() => 'alerted');
+        return [first, second];
+    })();
+    part(w, 'confirm').click();
+    await settle(5); // the close event of the first question has run by now
+    assert.equal(theDialog(w).open, true, 'the alert is still open');
+    assert.equal(part(w, 'title').textContent, 'Archived');
+    part(w, 'confirm').click();
+    assert.deepEqual(await flow, ['confirm', 'alerted']);
 });
 
 test('danger dialogs start on Cancel, others on the confirm button; the focus returns to the opener', async () => {
@@ -188,11 +226,13 @@ test('a message alone becomes the title; no message, no aria-describedby', async
     await answer;
 });
 
-test('a second ask while one is open cancels the first', async () => {
+test('a second ask while one is open cancels only the first', async () => {
     const { w } = admin();
     const first = w.folioConfirm({ title: 'One?' });
     const second = w.folioConfirm({ title: 'Two?' });
     assert.equal(await first, 'cancel');
+    await settle(5); // the first one's close event
+    assert.equal(theDialog(w).open, true, 'the second stays open');
     assert.equal(part(w, 'title').textContent, 'Two?');
     part(w, 'confirm').click();
     assert.equal(await second, 'confirm');
@@ -345,6 +385,14 @@ test('hx-confirm asks through the dialog: htmx:confirm is held and issueRequest(
     part(w, 'confirm').click();
     await settle();
     assert.deepEqual(calls, [true]);
+
+    // A boosted link is a navigation: with a clean page it goes, unasked (href null: no "Save and leave").
+    const nav = w.document.body.appendChild(w.document.createElement('div'));
+    nav.setAttribute('hx-boost', 'true');
+    const boosted = nav.appendChild(w.document.createElement('a'));
+    boosted.setAttribute('href', '/folio/news');
+    ({ event, calls } = htmxConfirm(w, boosted, null));
+    assert.equal(event.defaultPrevented, false, 'nothing unsaved: htmx goes on');
 
     const autosave = form(w, { 'hx-post': '/folio/x/autosave' });
     ({ event, calls } = htmxConfirm(w, autosave, null));

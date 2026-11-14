@@ -38,7 +38,7 @@ class Element {
         // A frame's window: what a message event from that frame carries as its source.
         if (this.tagName === 'IFRAME') { this.contentWindow = { frame: this }; }
         // A <dialog>: showModal() opens it (the open attribute too, as in the DOM), close() closes it and
-        // sends "close"; escape() is the Escape key: a cancelable "cancel", then close() unless prevented.
+        // queues "close"; escape() is the Escape key: a cancelable "cancel", then close() unless prevented.
         if (this.tagName === 'DIALOG') {
             this.open = false;
             this.showModal = () => {
@@ -47,12 +47,14 @@ class Element {
                 this.attributes.open = '';
                 this.ownerDocument.modals = (this.ownerDocument.modals || 0) + 1;
             };
+            // As in browsers, the close event is queued (a task), not sent from inside close().
             this.close = () => {
                 if (!this.open) { return; }
                 this.open = false;
                 delete this.attributes.open;
                 this.ownerDocument.modals -= 1;
-                this.dispatchEvent(new Event('close'));
+                const t = setTimeout(() => this.dispatchEvent(new Event('close')), 0);
+                if (t && t.unref) { t.unref(); }
             };
             this.escape = () => {
                 const event = new Event('cancel', { cancelable: true });

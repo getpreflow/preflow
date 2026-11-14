@@ -25,7 +25,7 @@ function el(w, parent, tag, attrs = {}, text = '') {
  * A page with the sidebar (links), a guarded editor form (#rec, not autosaving) with a text field
  * and a Save button outside it (form="rec"), and a Log out form. save: whether there is a Save button.
  */
-function guardedPage({ save = true } = {}) {
+function guardedPage({ save = true, second = false } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
     w.location.href = 'https://site.test/folio/news/n1/edit';
     w.confirm = () => { throw new Error('window.confirm called'); };
@@ -46,10 +46,12 @@ function guardedPage({ save = true } = {}) {
     const wrap = el(w, doc.body, 'div', { class: 'folio-form' });
     const form = el(w, wrap, 'form', { id: 'rec', method: 'post', action: '/folio/news/n1' });
     const title = el(w, form, 'input', { type: 'text', name: 'title' });
+    // second: a side panel form of its own (guarded too), with a note field.
+    const note = second ? el(w, el(w, el(w, doc.body, 'aside', { class: 'folio-side' }), 'form', { method: 'post', action: '/folio/news/n1/note' }), 'input', { type: 'text', name: 'note' }) : null;
     const logout = el(w, doc.body, 'form', { method: 'post', action: '/folio/logout' });
     const logoutButton = el(w, logout, 'button', { type: 'submit' }, 'Log out');
     load(w, ADMIN_JS);
-    return { w, links, form, title, saveButton, logout, logoutButton };
+    return { w, links, form, title, note, saveButton, logout, logoutButton };
 }
 
 function edit(w, input, value = 'Winter') {
@@ -311,4 +313,46 @@ test('autosave saved: links simply leave', () => {
     const p = autosavePage();
     assert.equal(p.link.click().defaultPrevented, false);
     assert.deepEqual(p.flushes, []);
+});
+
+test('two dirty forms: no "Save and leave" (it would save only one)', () => {
+    const p = guardedPage({ second: true });
+    edit(p.w, p.title);
+    edit(p.w, p.note);
+    assert.equal(p.w.Folio.unsaved.dirtyForms().length, 2);
+    p.links.list.click();
+    assert.equal(isOpen(p.w), true);
+    assert.equal(part(p.w, 'extra').hidden, true);
+    part(p.w, 'cancel').click();
+});
+
+test('a confirmed action in the record editor (Unpublish) saves the pending edit first', async () => {
+    const p = autosavePage();
+    const off = el(p.w, p.w.document.body, 'form', { method: 'post', action: '/folio/post/p1/unpublish', 'data-confirm': 'Take this page off the site?' });
+    const button = el(p.w, off, 'button', { type: 'submit' }, 'Unpublish');
+    setState(p, 'is-unsaved', 'Unsaved changes');
+    submitBy(p.w, off, button);
+    part(p.w, 'confirm').click();
+    await settle();
+    assert.deepEqual(p.flushes, ['save-now'], 'the edit is saved first');
+    assert.equal(off.sent, undefined, 'the action waits for it');
+    answer(p, { swap: { cls: '', text: 'Draft saved 19:38' } });
+    await settle();
+    assert.deepEqual(off.sent, [button], 'then Unpublish is sent');
+});
+
+test('a confirmed action whose pending save fails asks, and Stay sends nothing', async () => {
+    const p = autosavePage();
+    const off = el(p.w, p.w.document.body, 'form', { method: 'post', action: '/folio/post/p1/unpublish', 'data-confirm': 'Take this page off the site?' });
+    const button = el(p.w, off, 'button', { type: 'submit' }, 'Unpublish');
+    setState(p, 'is-unsaved', 'Unsaved changes');
+    submitBy(p.w, off, button);
+    part(p.w, 'confirm').click();
+    await settle();
+    answer(p, { swap: { cls: 'is-conflict', text: 'Not saved — someone else saved this meanwhile.' } });
+    await settle();
+    assert.equal(part(p.w, 'message').textContent, 'Not saved — someone else saved this meanwhile.');
+    part(p.w, 'cancel').click();
+    await settle();
+    assert.equal(off.sent, undefined);
 });

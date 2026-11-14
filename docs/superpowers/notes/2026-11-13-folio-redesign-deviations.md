@@ -105,6 +105,7 @@ Each row carries exactly one label.
 | Styled confirm dialog: one native `<dialog>` (`partials/_dialog.twig`, `.folio-dialog`) behind `window.folioConfirm` / `window.folioAlert` replaces every `window.confirm`/`alert`: `data-confirm`, the delete plan (its lines as the list; "Still in use" with what points here), `hx-confirm` (`htmx:confirm`) and the unsaved-changes guard (Leave without saving / Stay / Save and leave; autosaving editors save first and ask only on failure). Task 7. | LibOverlays | Fixed in 0.75 |
 | AI "Write a draft" in rich text, the "+" insert line and `/` block picker, ⌘K palette | PageEditor, RecordEditor | Proposal |
 | The share link's "Link copied · 7 days" state | LibOverlays | Fixed in 0.75 |
+| The unsaved-changes guard holds links, plain form submits, `Folio.navigate()` and `hx-boost` requests (through `htmx:confirm`), but not an `hx-get`/`hx-push-url` swap of the main area: the admin has no such swap (only the dashboard's review poll, which leaves nothing); a screen that adds one should use `hx-boost` or `Folio.navigate()`. | LibOverlays | Adaptation |
 
 ## Lists (0.75, Task 3)
 

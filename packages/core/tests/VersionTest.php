@@ -43,9 +43,52 @@ final class VersionTest extends TestCase
         $this->assertNull(Version::installed('preflow/not-a-package'));
         $this->assertNull(Version::label('preflow/not-a-package'));
 
-        // The monorepo installs its packages from path repositories: a dev version with a reference.
-        $this->assertSame(Version::format(InstalledVersions::getPrettyVersion('preflow/core'), InstalledVersions::getReference('preflow/core')), Version::label('preflow/core'));
-        $this->assertStringStartsWith('dev', (string) Version::label('preflow/core'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_path_install_is_plain_dev(): void
+    {
+        // A path repository (the monorepo, a local checkout): Composer symlinks it, or mirrors it
+        // (installed.json says dist type "path"). Its reference is Composer's content hash, no commit.
+        $dir = sys_get_temp_dir() . '/preflow-version-' . bin2hex(random_bytes(4));
+        mkdir($dir . '/packages/part', 0777, true);
+        mkdir($dir . '/vendor/acme/mirrored', 0777, true);
+        mkdir($dir . '/vendor/acme/git', 0777, true);
+        mkdir($dir . '/vendor/composer', 0777, true);
+        symlink($dir . '/packages/part', $dir . '/vendor/acme/linked');
+        try {
+            InstalledVersions::reload([
+                'root' => ['name' => 'acme/site', 'pretty_version' => '1.0.0', 'version' => '1.0.0.0', 'reference' => null, 'type' => 'project', 'install_path' => $dir, 'aliases' => [], 'dev' => true],
+                'versions' => [
+                    'acme/linked' => ['pretty_version' => 'dev-main', 'version' => 'dev-main', 'reference' => '0aa90e607d8a1c2a398b024c20a180c0af0f0514', 'type' => 'library', 'install_path' => $dir . '/vendor/composer/../acme/linked', 'aliases' => [], 'dev_requirement' => false],
+                    'acme/linked-guessed' => ['pretty_version' => '0.70.99', 'version' => '0.70.99.0', 'reference' => '0aa90e607d8a1c2a398b024c20a180c0af0f0514', 'type' => 'library', 'install_path' => $dir . '/vendor/acme/linked/', 'aliases' => [], 'dev_requirement' => false],
+                    'acme/mirrored' => ['pretty_version' => 'dev-main', 'version' => 'dev-main', 'reference' => '0aa90e607d8a1c2a398b024c20a180c0af0f0514', 'type' => 'library', 'install_path' => $dir . '/vendor/acme/mirrored', 'aliases' => [], 'dev_requirement' => false],
+                    'acme/git' => ['pretty_version' => 'dev-main', 'version' => 'dev-main', 'reference' => '01c613de0aa90e607d8a1c2a398b024c20a180c0', 'type' => 'library', 'install_path' => $dir . '/vendor/acme/git', 'aliases' => [], 'dev_requirement' => false],
+                ],
+            ]);
+            // What installed.json says about mirrored path installs (read once, next to InstalledVersions).
+            (new \ReflectionProperty(Version::class, 'pathInstalls'))->setValue(null, ['acme/mirrored' => true]);
+
+            $this->assertSame('dev', Version::label('acme/linked'), 'symlinked: no content hash');
+            $this->assertSame('dev', Version::label('acme/linked-guessed'), 'a version Composer guessed for a checkout is no release');
+            $this->assertSame('0.70.99', Version::installed('acme/linked-guessed'), 'installed() stays Composer\'s version');
+            $this->assertSame('dev', Version::label('acme/mirrored'), 'mirrored path install');
+            $this->assertSame('dev · 01c613d', Version::label('acme/git'), 'a VCS install keeps its commit');
+        } finally {
+            unlink($dir . '/vendor/acme/linked');
+            foreach (['/vendor/acme/git', '/vendor/acme/mirrored', '/vendor/acme', '/vendor/composer', '/vendor', '/packages/part', '/packages', ''] as $sub) {
+                @rmdir($dir . $sub);
+            }
+        }
+    }
+
+    public function test_installed_json_marks_path_installs(): void
+    {
+        // This monorepo installs every preflow package from its path repository.
+        $paths = (new \ReflectionMethod(Version::class, 'pathInstalls'))->invoke(null);
+        $this->assertIsArray($paths);
+        $this->assertArrayHasKey('preflow/core', $paths);
+        $this->assertArrayNotHasKey('phpunit/phpunit', $paths);
     }
 
     #[RunInSeparateProcess]

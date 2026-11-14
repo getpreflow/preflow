@@ -746,6 +746,8 @@ final class AdminController
         }
 
         if ($drawer) {
+            // The drawer's save hands the new record back to the editor below (drawer_saved.twig); a
+            // _folio_next does not apply here: "Save and leave" is the full-page editor's.
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render('@folio/admin/drawer_saved.twig', [
                 'type' => $type,
                 'id' => $record->getId(),

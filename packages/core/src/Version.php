@@ -13,14 +13,19 @@ use Composer\InstalledVersions;
  *     Version::installed('preflow/folio'); // "0.75.0" (no leading "v"), "dev-main", or null
  *     Version::label('preflow/folio');     // "0.75.0", or "dev · 01c613d" for a dev install
  *
- * A dev install is a branch ("dev-main", "0.75.x-dev"), a path repository (the monorepo, a local
- * checkout) or a package the root replaces, whose root has no version ("No version set"). Its label
- * is "dev" with the first seven characters of Composer's reference when it is a hash (a commit for
- * VCS installs; for path repositories Composer's own content hash). Null when the package is not
- * installed, only provided by another, or Composer's runtime API is not there.
+ * A dev install is a branch ("dev-main", "0.75.x-dev") or a package the root replaces, whose root
+ * has no version ("No version set"). Its label is "dev" with the first seven characters of Composer's
+ * reference when that is a hash (the commit of a VCS install, the root's for a replaced package). A
+ * path repository (the monorepo, a local checkout: symlinked, or mirrored, which installed.json marks
+ * with dist type "path") is plain "dev": its reference is Composer's content hash, not a commit, and
+ * a version Composer guessed for it is no release. Null when the package is not installed, only
+ * provided by another, or Composer's runtime API is not there.
  */
 final class Version
 {
+    /** @var array<string, true>|null package names installed.json marks as path installs, read once */
+    private static ?array $pathInstalls = null;
+
     /** The package's pretty version without a leading "v", or null when it is not installed. */
     public static function installed(string $package): ?string
     {
@@ -34,7 +39,11 @@ final class Version
     {
         $found = self::lookup($package);
 
-        return $found === null ? null : self::format($found['pretty'], $found['reference']);
+        if ($found === null) {
+            return null;
+        }
+
+        return $found['path'] ? 'dev' : self::format($found['pretty'], $found['reference']);
     }
 
     /**
@@ -55,6 +64,34 @@ final class Version
             : 'dev';
     }
 
+    /**
+     * The packages vendor/composer/installed.json (next to the InstalledVersions class) lists with
+     * dist type "path": mirrored path installs, which are no symlink. Read once per process.
+     *
+     * @return array<string, true>
+     */
+    private static function pathInstalls(): array
+    {
+        if (self::$pathInstalls !== null) {
+            return self::$pathInstalls;
+        }
+        $paths = [];
+        try {
+            $file = dirname((string) (new \ReflectionClass(InstalledVersions::class))->getFileName()) . '/installed.json';
+            $json = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+            $packages = is_array($json) ? ($json['packages'] ?? $json) : [];
+            foreach (is_array($packages) ? $packages : [] as $package) {
+                if (is_array($package) && is_string($package['name'] ?? null) && ($package['dist']['type'] ?? null) === 'path') {
+                    $paths[$package['name']] = true;
+                }
+            }
+        } catch (\Throwable) {
+            $paths = [];
+        }
+
+        return self::$pathInstalls = $paths;
+    }
+
     private static function isDev(string $pretty): bool
     {
         return str_starts_with($pretty, 'dev-')
@@ -72,7 +109,7 @@ final class Version
      * The package's entry in Composer's installed data: its own version, or the root's when the root
      * replaces it (a monorepo). Null when not installed, only provided, or without Composer's API.
      *
-     * @return array{pretty: string, reference: ?string}|null
+     * @return array{pretty: string, reference: ?string, path: bool}|null
      */
     private static function lookup(string $package): ?array
     {
@@ -85,11 +122,17 @@ final class Version
                 continue;
             }
             if (isset($entry['pretty_version']) && is_string($entry['pretty_version'])) {
-                return ['pretty' => $entry['pretty_version'], 'reference' => is_string($entry['reference'] ?? null) ? $entry['reference'] : null];
+                $dir = is_string($entry['install_path'] ?? null) ? rtrim($entry['install_path'], '/') : '';
+
+                return [
+                    'pretty' => $entry['pretty_version'],
+                    'reference' => is_string($entry['reference'] ?? null) ? $entry['reference'] : null,
+                    'path' => ($dir !== '' && is_link($dir)) || isset(self::pathInstalls()[$package]),
+                ];
             }
             $root = $data['root'] ?? [];
             if (isset($entry['replaced']) && is_string($root['pretty_version'] ?? null)) {
-                return ['pretty' => $root['pretty_version'], 'reference' => is_string($root['reference'] ?? null) ? $root['reference'] : null];
+                return ['pretty' => $root['pretty_version'], 'reference' => is_string($root['reference'] ?? null) ? $root['reference'] : null, 'path' => false];
             }
         }
 
