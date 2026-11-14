@@ -3506,3 +3506,10 @@ span.folio-asset-stale { display: inline-block; padding: 0 6px; border-radius: v
 @media (prefers-reduced-motion: reduce) {
   .folio-dialog[open], .folio-dialog[open]::backdrop { animation: none; }
 }
+
+/* The user menu's last line: the installed Folio version (title: Preflow core's). */
+.folio-user-version {
+  margin: 4px 0 0; padding: 6px 10px 2px;
+  font-family: var(--font-mono); font-size: 11px; line-height: 1.4;
+  color: var(--c-text-subtle); overflow-wrap: anywhere; user-select: text;
+}

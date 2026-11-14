@@ -24,6 +24,7 @@ Requires PHP 8.4+.
 | HTTP exceptions | `NotFoundHttpException`, `ForbiddenHttpException`, `UnauthorizedHttpException` |
 | `NonPublicPaths` | Path prefixes that are not public pages (admin, member area, private files), for features that treat unknown addresses as pages |
 | `SafeReturnPath` | Whether a "next" / "return to" value is a safe path on this site under allowed prefixes |
+| `Version` (0.75) | Installed package versions from Composer: `Version::installed('preflow/folio')` ("0.75.0", no "v"; null when not installed), `Version::label()` ("0.75.0", or "dev · 01c613d" for branches, path repos and monorepo replaces) |
 | Route contracts | `Route`, `RouteMode`, `RouterInterface`, `ConfiguredMiddleware` (route middleware with arguments) |
 
 ## API

@@ -41,6 +41,8 @@ return [
         'done_count' => ':label: done (:count)',
     ],
     'layout' => [
+        'version' => 'Folio :version',
+        'version_core' => 'Preflow core :version',
         'language' => 'Language',
         'theme' => 'Theme',
         'theme_system' => 'System theme',

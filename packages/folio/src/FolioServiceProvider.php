@@ -1500,6 +1500,13 @@ final class FolioServiceProvider extends ServiceProvider
                 callable: fn (): array => $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->names(),
             ));
 
+            // The installed version of a package (the user menu's last line): Preflow\Core\Version's label,
+            // "0.75.0" or "dev · 01c613d"; null when Composer does not know it.
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_version',
+                callable: static fn (string $package = 'preflow/folio'): ?string => \Preflow\Core\Version::label($package),
+            ));
+
             // Dates and numbers in the interface language: folio_date(value, 'date'|'datetime'), folio_number(value).
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_date',

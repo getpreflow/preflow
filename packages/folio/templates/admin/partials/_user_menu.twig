@@ -46,5 +46,9 @@
                 <svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-logout"></use></svg>{{ t('folio.layout.log_out') }}
             </button>
         </form>
+        {# The installed Folio (Preflow\Core\Version through folio_version()); the title names Preflow core's. #}
+        {% set folio_v = folio_version() %}
+        {% set core_v = folio_version('preflow/core') %}
+        {% if folio_v %}<p class="folio-user-version"{% if core_v %} title="{{ t('folio.layout.version_core', {version: core_v}) }}"{% endif %}>{{ t('folio.layout.version', {version: folio_v}) }}</p>{% endif %}
     </div>
 </div>

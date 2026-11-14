@@ -107,6 +107,28 @@ final class ShellTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_user_menu_ends_with_the_installed_folio_version(): void
+    {
+        $this->signIn();
+        $x = $this->dom('/folio');
+
+        // Preflow\Core\Version's label: "0.75.0" for a release, "dev · 01c613d" for this monorepo's path install.
+        $folio = \Preflow\Core\Version::label('preflow/folio');
+        $core = \Preflow\Core\Version::label('preflow/core');
+        $this->assertNotNull($folio);
+        $this->assertNotNull($core);
+        foreach (['sidebar', 'rail'] as $menu) {
+            if ($menu === 'rail' && $x->query('//*[@id="folio-user-panel-rail"]')->length === 0) {
+                continue; // the dashboard has the sidebar only
+            }
+            $line = $this->one($x, '//*[@id="folio-user-panel-' . $menu . '"]/p[' . self::cls('folio-user-version') . ']', 'one version line in the ' . $menu . ' menu');
+            $this->assertSame('Folio ' . $folio, trim($line->textContent));
+            $this->assertSame('Preflow core ' . $core, $line->getAttribute('title'));
+        }
+        $this->assertSame(0, $x->query('//p[' . self::cls('folio-user-version') . ']/following-sibling::*')->length, 'at the bottom, under Log out');
+    }
+
+    #[RunInSeparateProcess]
     public function test_an_editor_has_the_rail_with_labelled_icon_links(): void
     {
         $this->signIn();
