@@ -9,8 +9,8 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 
 /**
- * The styled dialog (partials/_dialog.twig, admin.js's folioConfirm / folioAlert): every layout renders
- * it once; Folio's scripts and templates never ask through the browser's own confirm, alert or prompt;
+ * The styled dialog (partials/_dialog.twig, admin.js's folioConfirm / folioAlert): every layout that
+ * loads admin.js renders it once (the sign-in pages' _auth_layout.twig loads no script that opens it); Folio's scripts and templates never ask through the browser's own confirm, alert or prompt;
  * "Save and leave" (the unsaved-changes dialog) saves with _folio_next and the save goes there.
  */
 final class DialogTest extends TestCase
@@ -48,8 +48,8 @@ final class DialogTest extends TestCase
     #[RunInSeparateProcess]
     public function test_each_layout_renders_the_dialog_once(): void
     {
-        // The auth layout (forgot password), before signing in.
-        $this->assertCount(1, $this->dialogs($this->html('/folio/forgot')), '_auth_layout.twig');
+        // The auth layout (forgot password), before signing in: no admin.js there, so no dialog either.
+        $this->assertCount(0, $this->dialogs($this->html('/folio/forgot')), '_auth_layout.twig');
 
         $this->signIn();
         $page = $this->html('/folio');
