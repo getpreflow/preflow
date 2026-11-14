@@ -22,6 +22,7 @@ release, so lists and editors come in 0.75 and settings, library screens and ink
 - **Proposal**: needs the owner's yes before anyone builds it (phase 8, or new).
 - **Fixed in 0.73**: a difference that Task 4 found and closed in this release. It is listed so the
   record is complete.
+- **Fixed in 0.75**: a difference closed by the lists and editors release (a 0.75 row done).
 
 Each row carries exactly one label.
 
@@ -37,7 +38,7 @@ Each row carries exactly one label.
 
 | Difference | Label | Why / what |
 |---|---|---|
-| `--c-type-*` (the type tints) and `--w-side-panel` are defined, but nothing reads them yet. | 0.75 | `.folio-type-icon` reads the type tints since 0.75 (one rule per `TypeFamily` value in `admin.css`); `--w-side-panel` sets the editor side panel's width since 0.75 (Task 4). |
+| `--c-type-*` (the type tints) and `--w-side-panel` are defined, but nothing reads them yet. | Fixed in 0.75 | `.folio-type-icon` reads the type tints since 0.75 (one rule per `TypeFamily` value in `admin.css`); `--w-side-panel` sets the editor side panel's width since 0.75 (Task 4). |
 | The type tile's radius is `--r-xs` (6px); the 0.75 plan named `--r-sm`, which is 8px. | Adaptation | COMPONENTS §1 asks for radius 6; the 28px list-header tile uses 7px, as on the List board. |
 | The `live` type family is tinted with the accent (emerald: `--c-accent-text` on `--c-accent-soft`), as the HolzDashboard board tints CO₂-Rechner. Emerald also marks actions (primary buttons, the active nav item). | Adaptation | Ruling for 0.75: stay close to the board; the handoff's README keeps emerald for actions, so a live tile shares the action colour. If the owner objects, it is one CSS rule (`.folio-type-icon[data-family="live"]`). |
 | `.folio-notice` is the info tone (blue) by default. Before 0.73 every notice was amber. `is-warning` or `role="alert"` gives the amber warning tone, and `folio-alert-error` the red. | Adaptation | COMPONENTS §3 makes the notice the info tone. Extension notices (`#[ListNotice]`, `#[DashboardNotice]`) that warn need `is-warning`. The README's Admin styling section and the attribute table say so. |
@@ -72,7 +73,7 @@ Each row carries exactly one label.
 | Without script, the sidebar's user panel stays open in place, and the button says `aria-expanded="true"`. If admin.js fails, the head script drops `folio-js` at `load` and the same layout shows. On editor pages without script, the rail's panel stays shut. | Adaptation | Log out and the language must stay reachable. The rail is too narrow for an open panel; its brand tile leads to the dashboard, whose sidebar has the menu. |
 | The sidebar's search entry ("Search or jump to… ⌘K") is not built. | Proposal | ⌘K palette, phase 8. |
 | Nav items have no plain count of entries (board: "Pages 2", "Objekte 436"). Nav badges stay the warning pill for "needs attention" counts. | Proposal | The nav model has no totals, and counting every type on every request costs queries. `#[NavBadge]` stays "needs attention". |
-| Nav and title icons are the icon each model configures, so several types share the sliders icon. The board has tinted type icons. | 0.75 | `.folio-type-icon` and the type tints come with the lists. |
+| Nav and title icons are the icon each model configures, so several types share the sliders icon. The board has tinted type icons. | Fixed in 0.75 | `.folio-type-icon` and the type tints come with the lists: list titles, the review queue and the dashboard show each type's icon on its family's tint (`TypeFamily`). |
 | Long subtitles wrap; for example, the not-found intro is four lines at 1440. The board's subtitle is one short line. | Adaptation | Cutting them would hide the explanation. |
 | Shorter subtitle copy, so every subtitle fits one line as on the boards. | Proposal | A copy change the owner decides on. The keys stay. |
 | The editor topbar has a breadcrumb over the title. The board has a back button, the content-language and layout segmented controls, the save state, Save draft and the Publish split button. | Fixed in 0.75 | The editor action bar (Task 4). |
@@ -88,7 +89,7 @@ Each row carries exactly one label.
 | Screen | Board | Label |
 |---|---|---|
 | Lists: the toolbar (search with icon, status segmented with counts, chips, density), the table (12px head on surface-2 instead of uppercase, title plus meta line, mono numbers, one "…" menu instead of Edit and trash), the language indicator, the floating bulk bar with Translate, the pager ("1–8 of 17"), and the home marker on the pages list | List, PagesList | Fixed in 0.75 |
-| Editors: the action bar, removing the floating publish box, the 320px side panel (publishing, address with copy, languages, search preview, revisions, system fields, Unpublish/Delete), Content / SEO & sharing tabs instead of the disclosure, block cards with type icons, the grouped searchable block picker, the preview bar (device toggle, URL pill), the ownership card and relation rows | PageEditor, RecordEditor, ReferenceEdit | 0.75 |
+| Editors: the action bar, removing the floating publish box, the 320px side panel (publishing, address with copy, languages, search preview, revisions, system fields, Unpublish/Delete), Content / SEO & sharing tabs instead of the disclosure, block cards with type icons, the grouped searchable block picker, the preview bar (device toggle, URL pill), the ownership card and relation rows | PageEditor, RecordEditor, ReferenceEdit | Fixed in 0.75 (Tasks 4–5) |
 | Fields: affix and copy on slug and path, the counter on text, the Trix toolbar, the number stepper, the date with relative hint, the switch variant, segmented and radio cards for selects, relation rows, the asset field drop zone, matrix rows, env set/not set | LibFields | Fixed in 0.75 (Task 6; differences under "Fields" below) |
 | Dashboard: the subtitle and header actions (View site, New page split), the ink band with the mono stats line, "Needs you" cards, and the Content list with type icons and quick create | Dashboard, HolzDashboard | 0.76 (ink band, dashboard) |
 | Dashboard: Recent changes | Dashboard | Proposal (needs an activity source) |
@@ -117,7 +118,7 @@ Captured on a scratch starter-folio (pages 2 rows after a Duplicate, news 3, job
 | The row menu follows the board (Edit, View on site, Copy preview link, Duplicate, divider, Unpublish and Delete… in red) and adds what the board does not show before the divider: Move up / Move down on orderable lists and the type's header record actions. | Adaptation | The board's pages list is not orderable and has no extension actions; they are the record's own actions, so they stay above the danger items. |
 | Shortcut hints show only on Edit (E) and Duplicate (D). The board also shows V (View on site), L (Copy preview link) and ⌫ (Delete). | Adaptation | Only keys that exist get a hint; V, L and ⌫ were not in the shortcut set (a destructive one-key Delete especially). |
 | The density toggle (Compact / Comfortable) sits where the List board has a list / grid view toggle. | Adaptation | There is no grid view of records; the brief asks for density. |
-| The status column says "Changed" (the publishing state text), the board "+2 changes" next to "Published". | 0.75 | `Publisher::changes()` counts come with the editor side panel (Task 4); a per-row count would read every snapshot on the list. |
+| The status column says "Changed" (the publishing state text), the board "+2 changes" next to "Published". | Adaptation | The count (`Publisher::changes()`) shows in the editor side panel's Publishing, with the list of what changed. A count per list row would read every row's live snapshot on each list page, which costs too much on long lists; the row keeps its "Changed" badge. |
 | Row tiles are 24px (board 26px). | Adaptation | The type tile macro has two sizes (24, 28); 26 would be a third for 2px. |
 | The List board's "Changed" relative date column ("vor 3 Wochen") is not added. | Proposal | A column a type lists if it wants it (`list.columns`); a default updated-at column needs the owner's yes. |
 | "Fehlende Sprachen übersetzen" header action shows as "Translate all…" whenever AI translation applies, not only when the type has gaps. | Adaptation | Knowing whether a type has gaps means reading every record's texts on each list view. |
