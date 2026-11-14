@@ -299,7 +299,8 @@ final class ScreenTest extends TestCase
         $this->members();
         $this->as('admin');
 
-        $head = substr($b = (string) $this->send('GET', '/folio')->getBody(), 0, (int) strpos($b, '</head>'));
+        // A Folio page that loads nothing of its own (the dashboard loads htmx since 0.76).
+        $head = substr($b = (string) $this->send('GET', '/folio/extensions')->getBody(), 0, (int) strpos($b, '</head>'));
 
         $this->assertStringNotContainsString('folio-extension-assets', $head);
         $this->assertStringNotContainsString('type="module"', $head);

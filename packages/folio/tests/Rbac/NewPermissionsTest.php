@@ -98,7 +98,7 @@ final class NewPermissionsTest extends TestCase
         $dashboard = (string) $this->send('GET', '/folio')->getBody();
         $this->assertStringContainsString('<span>Roles</span>', $dashboard, 'keeper sees the Roles item');
         $this->assertNull(self::badge($dashboard));
-        $this->assertStringNotContainsString('in Roles</span>', $dashboard);
+        $this->assertStringNotContainsString('in Roles</span>', $this->needsPart());
         $list = $this->send('GET', '/folio/rbac_role');
         $this->assertSame(200, $list->getStatusCode());
         $this->assertStringNotContainsString('rbac-new', (string) $list->getBody());
@@ -226,7 +226,7 @@ final class NewPermissionsTest extends TestCase
         $this->managerSetup();
         $this->as('editor');
 
-        $html = (string) $this->send('GET', '/folio')->getBody();
+        $html = $this->needsPart();
         // A "Needs you" card (0.76; before, a notice line), linking to the Roles list.
         $this->assertMatchesRegularExpression('#<a class="folio-needs-card" data-tone="warning" href="/folio/rbac_role">.*?\#ui-shield".*?<span class="folio-needs-title">1 new permission in Roles</span><span class="folio-needs-text">An update brought them. Decide per role.</span>#s', $html);
     }
@@ -245,7 +245,7 @@ final class NewPermissionsTest extends TestCase
         $this->assertStringContainsString('Dismissed.', $list);
         $this->assertStringNotContainsString('rbac-new', $list);
         $this->assertNull(self::badge($list));
-        $this->assertStringNotContainsString('in Roles</span>', (string) $this->send('GET', '/folio')->getBody());
+        $this->assertStringNotContainsString('in Roles</span>', $this->needsPart());
         $this->assertSame([], $this->known()->fresh());
         $this->assertSame([], (new KnownPermissions($this->container()->get(DataManager::class), $this->container()->get(Access::class)->registry()))->fresh(), 'stored, not remembered');
         $this->assertSame(['*'], $this->roles()[array_key_first(array_filter($this->roles(), static fn ($r): bool => $r->get('name') === 'admin'))]->get('permissions'));
@@ -446,7 +446,7 @@ final class NewPermissionsTest extends TestCase
         $this->assertNotEmpty(array_filter($this->errorLog(), static fn (string $line): bool => str_contains($line, 'rbac: new permissions not shown')), 'logged, not shown');
         $dashboard = $this->send('GET', '/folio');
         $this->assertSame(200, $dashboard->getStatusCode());
-        $this->assertStringNotContainsString('in Roles</span>', (string) $dashboard->getBody());
+        $this->assertStringNotContainsString('in Roles</span>', $this->needsPart());
 
         foreach (['dismiss' => ['names' => ['redirects.manage']], 'grant' => ['names' => ['redirects.manage'], 'role' => 'r-helper']] as $action => $body) {
             $res = $this->send('POST', '/folio/rbac/new-permissions/' . $action, $body);
@@ -454,5 +454,17 @@ final class NewPermissionsTest extends TestCase
             $this->assertStringContainsString("New permissions can't be checked yet: run preflow migrate.", self::text($this->send('GET', '/folio/rbac_role')), $action);
         }
         $this->assertSame(['page.view'], $this->stored('rbac_role', 'r-helper')?->get('permissions'));
+    }
+
+    /** The dashboard's "Needs you" part, as its htmx placeholder fetches it after the page. */
+    private function needsPart(): string
+    {
+        $request = (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/folio?part=needs')
+            ->withHeader('HX-Request', 'true')
+            ->withQueryParams(['part' => 'needs']);
+        $response = $this->session->handle($request);
+        $this->assertSame(200, $response->getStatusCode());
+
+        return (string) $response->getBody();
     }
 }

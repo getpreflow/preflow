@@ -45,11 +45,14 @@ final class Dashboard
     ) {}
 
     /**
+     * The page itself: the header's button, the band's stats and the content. "Needs you" (needs())
+     * and the cache line (cache()) come in their own requests after the page (the dashboard loads
+     * them with htmx), so their slower work never holds the page up.
+     *
      * @param \Closure(string): bool $can whether the signed-in user holds a permission
-     * @param int $reviewCount records with machine translations waiting for review that the user may see (0: no card)
-     * @return array{new: ?array{label: string, url: string}, stats: list<string>, needs: list<NeedsYou>, sections: list<array{name: string, label: string, rows: list<array{key: string, label: string, family: ?TypeFamily, icon: string, count: ?int, meta: string, url: string, singleton: bool, create_url: ?string, create_label: ?string}>}>, cache: ?array{size: string, largest: string}}
+     * @return array{new: ?array{label: string, url: string}, stats: list<string>, sections: list<array{name: string, label: string, rows: list<array{key: string, label: string, family: ?TypeFamily, icon: string, count: ?int, meta: string, url: string, singleton: bool, create_url: ?string, create_label: ?string}>}>}
      */
-    public function view(\Closure $can, int $reviewCount = 0): array
+    public function view(\Closure $can): array
     {
         $listings = array_values(array_filter(
             $this->catalog->all(),
@@ -65,10 +68,21 @@ final class Dashboard
         return [
             'new' => $this->newButton($sections, $can),
             'stats' => $this->stats($listings, $counts, $assets),
-            'needs' => [...$this->builtIn($can, $reviewCount), ...($this->customizations?->dashboardItems(static fn (string $type): bool => $can($type . '.view'), $this->prefix) ?? [])],
             'sections' => $sections,
-            'cache' => $can('folio.cache') ? $this->cache() : null,
         ];
+    }
+
+    /**
+     * The "Needs you" cards: Folio's own, then the #[DashboardItem] ones (in #[DashboardNotice]'s
+     * order: by type as the customizations were registered, then extension name).
+     *
+     * @param \Closure(string): bool $can
+     * @param int $reviewCount records with machine translations waiting for review that the user may see (0: no card)
+     * @return list<NeedsYou>
+     */
+    public function needs(\Closure $can, int $reviewCount = 0): array
+    {
+        return [...$this->builtIn($can, $reviewCount), ...($this->customizations?->dashboardItems(static fn (string $type): bool => $can($type . '.view'), $this->prefix) ?? [])];
     }
 
     /** The type's records, by an aggregate count; null when its storage can't be read (a table not migrated). */
@@ -269,16 +283,28 @@ final class Dashboard
         return $items;
     }
 
-    /** @return array{size: string, largest: string}|null all caches' size and the largest one's name; null without caches or bytes */
-    private function cache(): ?array
+    /**
+     * All caches' size and the largest one's name, for a user with folio.cache (what the Cache screen
+     * asks); null for anyone else, without caches or bytes. It walks the cache directories, so the
+     * dashboard asks for it after the page.
+     *
+     * @param \Closure(string): bool $can
+     * @return array{size: string, largest: string}|null
+     */
+    public function cache(\Closure $can): ?array
     {
-        if ($this->caches === null) {
+        if ($this->caches === null || !$can('folio.cache')) {
             return null;
         }
         $total = 0;
         $largest = null;
         $largestBytes = -1;
-        foreach ($this->caches->all() as $source) {
+        try {
+            $sources = $this->caches->all();
+        } catch (\Throwable) {
+            return null;
+        }
+        foreach ($sources as $source) {
             try {
                 $bytes = $source->stats()->bytes;
             } catch (\Throwable) {

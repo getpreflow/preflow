@@ -120,16 +120,34 @@ final class AdminController
             ]));
         }
 
-        $review = $this->reviewSection();
         $dashboard = $this->dashboard ?? new \Preflow\Folio\Dashboard\Dashboard($this->catalog, $this->dm, $this->labels, $this->prefix, $this->publisher, $this->customizations);
+        $can = fn (string $permission): bool => $this->can($permission);
+
+        // The parts the page loads after itself (htmx, hx-trigger "load"): "Needs you" compares every
+        // publishing type's working copies with their snapshots, the cache line walks the cache
+        // directories. Each answers with its part alone, or nothing.
+        $part = $request->getHeaderLine('HX-Request') === 'true' ? (string) ($request->getQueryParams()['part'] ?? '') : '';
+        if ($part === 'needs') {
+            $needs = $dashboard->needs($can, (int) ($this->reviewSection()['total'] ?? 0));
+
+            return $this->html($needs === [] ? '' : $this->engine->render('@folio/admin/partials/dashboard-needs.twig', ['needs' => $needs]));
+        }
+        if ($part === 'cache') {
+            $cache = $dashboard->cache($can);
+
+            return $this->html($cache === null ? '' : $this->engine->render('@folio/admin/partials/dashboard-cache.twig', ['prefix' => $this->prefix, 'cache' => $cache]));
+        }
+
+        $review = $this->reviewSection();
 
         return $this->html($this->engine->render('@folio/admin/dashboard.twig', [
             'prefix' => $this->prefix,
-            'dashboard' => $dashboard->view(fn (string $permission): bool => $this->can($permission), (int) ($review['total'] ?? 0)),
+            'dashboard' => $dashboard->view($can),
             // The header's "View site": the site's address (config app.url), else its home page.
             'site_url' => $this->siteUrl ?? '/',
             'review' => $review,
-            'editor_assets' => ($review['polling'] ?? false) ? ['htmx.js'] : [],
+            // Folio's own htmx: the parts loaded after the page, and the review section's refresh.
+            'editor_assets' => ['htmx.js'],
             // #[DashboardNotice] HTML of the types the user may view, printed raw above "Needs you".
             'dashboard_notices' => $this->customizations?->dashboardNotices(fn (string $type): bool => $this->can($type . '.view')) ?? [],
         ]));

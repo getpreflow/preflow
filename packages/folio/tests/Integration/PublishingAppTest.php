@@ -93,7 +93,8 @@ final class PublishingAppTest extends TestCase
 
         $body = $this->dashboard();
         $this->assertStringContainsString('120 of 410 texts', $body, 'still shown');
-        $this->assertStringNotContainsString('hx-trigger', $body, 'but no longer polled');
+        $this->assertStringNotContainsString('every 5s', $body, 'but no longer polled');
+        $this->assertDoesNotMatchRegularExpression('~<section id="folio-review"[^>]*hx-trigger~', $body);
     }
 
     #[RunInSeparateProcess]
@@ -110,7 +111,9 @@ final class PublishingAppTest extends TestCase
 
         $body = $this->dashboard();
         $this->assertStringContainsString('The provider refused the request', $body);
-        $this->assertStringNotContainsString('hx-trigger', $body);
+        // The review section does not poll (the page's own parts load once, on "load").
+        $this->assertStringNotContainsString('every 5s', $body);
+        $this->assertDoesNotMatchRegularExpression('~<section id="folio-review"[^>]*hx-trigger~', $body);
 
         $partial = $this->dashboard('/folio?review=1', true);
         $this->assertStringNotContainsString('hx-trigger', $partial, 'the last refresh ends the polling');
@@ -137,7 +140,7 @@ final class PublishingAppTest extends TestCase
         $this->assertStringContainsString('class="folio-dash-section folio-dash-content"', $body);
         $this->assertGreaterThan(strpos($body, 'folio-dash-content'), strpos($body, 'class="folio-review"'), 'the section follows the content in the page body');
         // "Needs you" counts what the user may see, and links down to the section.
-        $this->assertMatchesRegularExpression('~<a class="folio-needs-card" data-tone="info" href="\#folio-review">.*?<span class="folio-needs-title">1 translation waits for review</span>~s', $body);
+        $this->assertMatchesRegularExpression('~<a class="folio-needs-card" data-tone="info" href="\#folio-review">.*?<span class="folio-needs-title">1 translation waits for review</span>~s', $this->dashboard('/folio?part=needs', true));
         preg_match('~<title>(.*?)</title>~s', $body, $title);
         $this->assertStringNotContainsString('Waiting for review', $title[1] ?? '', 'not in the <title>');
     }

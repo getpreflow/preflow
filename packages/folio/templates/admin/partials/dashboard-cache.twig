@@ -1,0 +1,2 @@
+{# The dashboard's cache line (Dashboard::cache(), GET {prefix}?part=cache after the page, folio.cache only). #}
+<p class="folio-dash-cache"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-database"></use></svg><span>{{ t('folio.dashboard.cache_line', {size: cache.size, largest: cache.largest}) }}</span> <a href="{{ prefix }}/cache">{{ t('folio.dashboard.open_cache') }}</a></p>

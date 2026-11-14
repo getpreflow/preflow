@@ -90,6 +90,7 @@ return [
         'assets_hint' => 'Images, videos and files',
         'subtitle' => 'What needs you, what changed, and where to start.',
         'view_site' => 'View site',
+        'new_tab' => '(opens in a new tab)',
         'ink_title' => 'Every word in its place.',
         'asset_noun' => 'asset|assets',
         'files' => ':count file|:count files',

@@ -1,14 +1,14 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% import '@folio/admin/partials/_type_icon.twig' as types %}
-{# The dashboard (Preflow\Folio\Dashboard\Dashboard::view(): dashboard.new, .stats, .needs,
-   .sections, .cache): the ink band, extensions' notices, "Needs you", the content by sidebar
-   section, the review queue and the footer line. Every value is data: no type key, hue or token
-   is named here (a card's tone is one of NeedsYou::TONES, admin.css colours it). #}
+{# The dashboard (Preflow\Folio\Dashboard\Dashboard::view(): dashboard.new, .stats, .sections): the
+   ink band, extensions' notices, "Needs you" and the cache line (both loaded after the page), the
+   content by sidebar section, the review queue and the footer line. Every value is data: no type
+   key, hue or token is named here. #}
 {% block title %}Folio — {{ t('folio.dashboard.title') }}{% endblock %}
 {% block page_title %}{{ t('folio.dashboard.title') }}{% endblock %}
 {% block subtitle %}{{ t('folio.dashboard.subtitle') }}{% endblock %}
 {% block actions %}
-    <a class="btn btn-secondary" href="{{ site_url }}" target="_blank" rel="noopener"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-external"></use></svg>{{ t('folio.dashboard.view_site') }}</a>
+    <a class="btn btn-secondary" href="{{ site_url }}" target="_blank" rel="noopener"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-external"></use></svg>{{ t('folio.dashboard.view_site') }}<span class="folio-sr"> {{ t('folio.dashboard.new_tab') }}</span></a>
     {% if dashboard.new %}<a class="btn btn-primary" href="{{ dashboard.new.url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ dashboard.new.label }}</a>{% endif %}
 {% endblock %}
 {% block content %}
@@ -23,23 +23,8 @@
     </section>
     {# Extensions' #[DashboardNotice] HTML: built and escaped by the extension, so printed raw. #}
     {% if dashboard_notices|default([]) is not empty %}<div class="folio-page-notices">{% for notice in dashboard_notices %}{{ notice|raw }}{% endfor %}</div>{% endif %}
-    {% if dashboard.needs is not empty %}
-    <section class="folio-dash-section folio-dash-needs" aria-labelledby="folio-needs-title">
-        <div class="folio-dash-head">
-            <h2 id="folio-needs-title" class="folio-dash-title">{{ t('folio.dashboard.needs.title') }}</h2>
-            <span class="folio-dash-meta">{{ t('folio.dashboard.needs.open', {count: dashboard.needs|length}, dashboard.needs|length) }}</span>
-        </div>
-        <ul class="folio-needs" role="list">
-            {% for item in dashboard.needs %}
-            <li><a class="folio-needs-card" data-tone="{{ item.tone }}" href="{{ item.url }}">
-                <span class="folio-needs-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.glyph() }}"></use></svg></span>
-                <span class="folio-needs-body"><span class="folio-needs-title">{{ item.title }}</span>{% if item.text %}<span class="folio-needs-text">{{ item.text }}</span>{% endif %}</span>
-                <svg class="folio-icon folio-needs-arrow" aria-hidden="true"><use href="{{ icons }}#ui-arrow"></use></svg>
-            </a></li>
-            {% endfor %}
-        </ul>
-    </section>
-    {% endif %}
+    {# "Needs you" (partials/dashboard-needs.twig) loads after the page: ?part=needs, nothing when nothing is open. #}
+    <div class="folio-dash-later" hx-get="{{ prefix }}?part=needs" hx-trigger="load" hx-swap="outerHTML"></div>
     {% if dashboard.sections is not empty %}
     <section class="folio-dash-section folio-dash-content" aria-labelledby="folio-content-title">
         <h2 id="folio-content-title" class="folio-dash-title">{{ t('folio.dashboard.content') }}</h2>
@@ -64,9 +49,8 @@
     {% endif %}
     {% if review %}{% include '@folio/admin/partials/dashboard-review.twig' %}{% endif %}
     <div class="folio-dash-foot">
-        {% if dashboard.cache %}
-        <p class="folio-dash-cache"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-database"></use></svg><span>{{ t('folio.dashboard.cache_line', {size: dashboard.cache.size, largest: dashboard.cache.largest}) }}</span> <a href="{{ prefix }}/cache">{{ t('folio.dashboard.open_cache') }}</a></p>
-        {% endif %}
+        {# The caches' size walks their directories: loaded after the page (?part=cache), for folio.cache only. #}
+        {% if can('folio.cache') %}<p class="folio-dash-cache" hx-get="{{ prefix }}?part=cache" hx-trigger="load" hx-swap="outerHTML"></p>{% endif %}
         <p class="folio-dash-tip">{{ t('folio.dashboard.shortcuts') }}</p>
     </div>
 {% endblock %}

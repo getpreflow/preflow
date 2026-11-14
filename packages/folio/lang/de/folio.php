@@ -82,6 +82,7 @@ return [
         'assets_hint' => 'Bilder, Videos und Dateien',
         'subtitle' => 'Was dich braucht, was sich geändert hat und wo du anfängst.',
         'view_site' => 'Website ansehen',
+        'new_tab' => '(öffnet in einem neuen Tab)',
         'ink_title' => 'Jedes Wort an seinem Platz.',
         'asset_noun' => 'Medium|Medien',
         'files' => ':count Datei|:count Dateien',

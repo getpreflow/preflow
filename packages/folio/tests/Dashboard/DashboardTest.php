@@ -80,12 +80,18 @@ final class DashboardTest extends TestCase
     {
         $this->openWork();
         $this->as('admin');
-        $body = $this->dashboard();
+        // The page loads the section after itself, above the content.
+        $page = $this->dashboard();
+        $this->assertStringContainsString('<div class="folio-dash-later" hx-get="/folio?part=needs" hx-trigger="load" hx-swap="outerHTML"></div>', $page);
+        $this->assertLessThan(strpos($page, 'folio-dash-content'), strpos($page, '?part=needs'), 'Needs you comes before the content');
+        $this->assertStringNotContainsString('folio-needs-card', $page, 'the comparing happens in the part, not the page');
+
+        $body = $this->part('needs');
+        $this->assertStringStartsWith('<section class="folio-dash-section folio-dash-needs"', ltrim($body), 'the section alone');
         $this->assertStringContainsString('<h2 id="folio-needs-title" class="folio-dash-title">Needs you</h2>', $body);
         $this->assertStringContainsString('2 open', $body);
         $this->assertMatchesRegularExpression('#<a class="folio-needs-card" data-tone="warning" href="/folio/post\?status=changed">.*?<span class="folio-needs-title">Posts: 1 change is not live</span>#s', $body);
         $this->assertMatchesRegularExpression('#<a class="folio-needs-card" data-tone="info" href="/folio/redirects\?tab=not-found">.*?<span class="folio-needs-title">1 not-found address to check</span>#s', $body);
-        $this->assertLessThan(strpos($body, 'folio-dash-content'), strpos($body, 'folio-dash-needs'), 'Needs you comes before the content');
     }
 
     #[RunInSeparateProcess]
@@ -94,7 +100,7 @@ final class DashboardTest extends TestCase
         $this->openWork();
         // post.view without post.publish, no redirects.manage: neither card, so no section.
         $this->as('editor');
-        $this->assertStringNotContainsString('folio-dash-needs', $this->dashboard());
+        $this->assertSame('', $this->part('needs'));
     }
 
     /** A published post with a change that is not live, and a not-found address hit twice (one app, before signing in). */
@@ -131,17 +137,17 @@ final class DashboardTest extends TestCase
         $this->item('memo', 'NoteMemo', 'note', 'return null;', notice: 'return \'<p class="memo-notice">Read me</p>\';');
         $this->as('admin');
 
-        $response = $this->send('GET', '/folio');
-        $this->assertSame(200, $response->getStatusCode());
-        $body = (string) $response->getBody();
+        $page = $this->dashboard();
+        $body = $this->part('needs');
         $this->assertMatchesRegularExpression('#<a class="folio-needs-card" data-tone="info" href="/folio/contact\?f=open">\s*<span class="folio-needs-icon"><svg class="folio-icon" aria-hidden="true"><use href="[^"]*\#ui-users"></use></svg></span>\s*<span class="folio-needs-body"><span class="folio-needs-title">3 contacts to call</span><span class="folio-needs-text">They asked for a call back.</span></span>#', $body);
         $this->assertStringContainsString('1 open', $body, 'the unknown tone, the throw and the other host add no card');
         $this->assertStringNotContainsString('Loud', $body);
         $this->assertStringNotContainsString('other.test', $body);
         $this->assertFileExists($marker);
         // #[DashboardNotice] HTML stays above the section; a null item adds no card.
-        $this->assertStringContainsString('<p class="memo-notice">Read me</p>', $body);
-        $this->assertLessThan(strpos($body, 'folio-dash-needs'), strpos($body, '<p class="memo-notice">Read me</p>'));
+        $this->assertStringContainsString('<p class="memo-notice">Read me</p>', $page);
+        $this->assertLessThan(strpos($page, '?part=needs'), strpos($page, '<p class="memo-notice">Read me</p>'));
+        $this->assertStringNotContainsString('memo-notice', $body, 'notices are the page\'s, not the part\'s');
     }
 
     #[RunInSeparateProcess]
@@ -151,7 +157,7 @@ final class DashboardTest extends TestCase
         $this->item('crm', 'ContactAdmin', 'contact', 'file_put_contents(' . var_export($marker, true) . ', "x"); return new \\Preflow\\Folio\\Dashboard\\NeedsYou("3 contacts to call", url: "contact");');
         $this->as('editor'); // no contact.view
 
-        $this->assertStringNotContainsString('3 contacts to call', $this->dashboard());
+        $this->assertStringNotContainsString('3 contacts to call', $this->part('needs'));
         $this->assertFileDoesNotExist($marker);
     }
 
@@ -185,8 +191,8 @@ final class DashboardTest extends TestCase
         self::endSession();
         $this->as('admin');
 
+        $this->assertSame('', $this->part('needs'), 'nothing open: no "Needs you" section');
         $body = $this->dashboard();
-        $this->assertStringNotContainsString('folio-dash-needs', $body, 'nothing open: no "Needs you" section');
         // Several sections (content and the library): a card each, with its heading.
         $this->assertMatchesRegularExpression('#<h3 class="folio-dash-group-title">Content</h3>#', $body);
         $this->assertMatchesRegularExpression('#<h3 class="folio-dash-group-title">Library</h3>#', $body);
@@ -197,7 +203,7 @@ final class DashboardTest extends TestCase
         $this->assertMatchesRegularExpression('#<li class="folio-dash-row">\s*<span class="folio-type-icon" data-family="page" aria-hidden="true"><svg class="folio-icon"><use href="[^"]*\#ui-file"></use></svg></span>\s*<a class="folio-dash-row-link" href="/folio/post">#', $body);
         $this->assertMatchesRegularExpression('#<span class="folio-type-icon" data-family="asset" aria-hidden="true"><svg class="folio-icon"><use href="[^"]*\#ui-library"></use></svg></span>\s*<a class="folio-dash-row-link" href="/folio/assets">#', $body);
         // The header: View site and "New …" for the first page-family type (posts have a frontend).
-        $this->assertMatchesRegularExpression('#<a class="btn btn-secondary" href="/" target="_blank" rel="noopener">.*?View site</a>#s', $body);
+        $this->assertMatchesRegularExpression('#<a class="btn btn-secondary" href="/" target="_blank" rel="noopener">.*?View site<span class="folio-sr"> \(opens in a new tab\)</span></a>#s', $body);
         $this->assertMatchesRegularExpression('#<a class="btn btn-primary" href="/folio/post/new">.*?New post</a>#s', $body);
         // The ink band: the site, the two largest families by their largest type, the assets.
         $this->assertMatchesRegularExpression('#<p class="folio-ink-line">Pub · 2 notes · 0 posts · 0 assets<span class="folio-caret" aria-hidden="true"></span></p>#', $body);
@@ -226,8 +232,11 @@ final class DashboardTest extends TestCase
         $this->as('admin');
         $this->send('GET', '/folio/note'); // compiles templates: the caches hold something
         $body = $this->dashboard();
-        $this->assertMatchesRegularExpression('#<p class="folio-dash-cache">.*?<span>Caches hold [0-9.]+ [KMG]?B, mostly [^<]+\.</span> <a href="/folio/cache">Open cache</a></p>#s', $body);
+        $this->assertStringContainsString('<p class="folio-dash-cache" hx-get="/folio?part=cache" hx-trigger="load" hx-swap="outerHTML"></p>', $body, 'loaded after the page');
+        $this->assertStringNotContainsString('Caches hold', $body);
         $this->assertStringContainsString('<p class="folio-dash-tip">Press ? for shortcuts</p>', $body);
+        $body = $this->part('cache');
+        $this->assertMatchesRegularExpression('#<p class="folio-dash-cache">.*?<span>Caches hold [0-9.]+ [KMG]?B, mostly [^<]+\.</span> <a href="/folio/cache">Open cache</a></p>#s', $body);
     }
 
     #[RunInSeparateProcess]
@@ -237,6 +246,7 @@ final class DashboardTest extends TestCase
         $body = $this->dashboard();
         $this->assertStringNotContainsString('folio-dash-cache', $body);
         $this->assertStringContainsString('Press ? for shortcuts', $body);
+        $this->assertSame('', $this->part('cache'), 'the part asks the permission too');
     }
 
     public function test_counts_are_aggregates_not_loaded_records(): void
@@ -321,9 +331,22 @@ final class DashboardTest extends TestCase
         return (string) $response->getBody();
     }
 
-    private function send(string $method, string $uri): ResponseInterface
+    /** A part the dashboard loads after itself (htmx's GET {prefix}?part=…). */
+    private function part(string $name): string
+    {
+        $response = $this->send('GET', '/folio?part=' . $name, ['HX-Request' => 'true']);
+        $this->assertSame(200, $response->getStatusCode());
+
+        return (string) $response->getBody();
+    }
+
+    /** @param array<string, string> $headers */
+    private function send(string $method, string $uri, array $headers = []): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest($method, $uri);
+        foreach ($headers as $name => $value) {
+            $request = $request->withHeader($name, $value);
+        }
         parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
 
         return $this->session->handle($request->withQueryParams($query));

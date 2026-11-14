@@ -1,0 +1,19 @@
+{# The dashboard's "Needs you" section (Dashboard::needs(), GET {prefix}?part=needs after the page):
+   a card per open task, the whole card a link; a card's tone is one of NeedsYou::TONES and
+   admin.css colours it. The controller sends nothing instead when nothing is open. #}
+{% set icons = folio_asset('icons.svg') %}
+<section class="folio-dash-section folio-dash-needs" aria-labelledby="folio-needs-title">
+    <div class="folio-dash-head">
+        <h2 id="folio-needs-title" class="folio-dash-title">{{ t('folio.dashboard.needs.title') }}</h2>
+        <span class="folio-dash-meta">{{ t('folio.dashboard.needs.open', {count: needs|length}, needs|length) }}</span>
+    </div>
+    <ul class="folio-needs" role="list">
+        {% for item in needs %}
+        <li><a class="folio-needs-card" data-tone="{{ item.tone }}" href="{{ item.url }}">
+            <span class="folio-needs-icon"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#{{ item.glyph() }}"></use></svg></span>
+            <span class="folio-needs-body"><span class="folio-needs-title">{{ item.title }}</span>{% if item.text %}<span class="folio-needs-text">{{ item.text }}</span>{% endif %}</span>
+            <svg class="folio-icon folio-needs-arrow" aria-hidden="true"><use href="{{ icons }}#ui-arrow"></use></svg>
+        </a></li>
+        {% endfor %}
+    </ul>
+</section>
