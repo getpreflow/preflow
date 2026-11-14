@@ -219,7 +219,8 @@ final class TypeCatalog
     /**
      * The editor layout keys of the type's fields ("panel", "width"; since 0.75): a value outside
      * FIELD_PANELS / FIELD_WIDTHS is a boot error, so a typo never moves a field silently. So is
-     * an invalid editor option of a built-in field type ("unit", "display").
+     * an invalid editor option of a built-in field type ("unit", "display", a tags field's limits
+     * and options, a translatable tags field).
      *
      * @param array<mixed> $fields
      */
@@ -241,6 +242,7 @@ final class TypeCatalog
                     'number', 'int', 'integer', 'float' => \Preflow\Folio\Field\Types\NumberFieldType::unit($field),
                     'boolean' => \Preflow\Folio\Field\Types\BooleanFieldType::display($field),
                     'select' => \Preflow\Folio\Field\Types\SelectFieldType::display($field),
+                    'tags' => \Preflow\Folio\Field\Types\TagsFieldType::checkConfig($field),
                     default => null,
                 };
             } catch (\LogicException $e) {

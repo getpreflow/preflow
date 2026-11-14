@@ -54,4 +54,14 @@ final class FieldTypeRegistryTest extends TestCase
         $this->assertTrue($r->has('integer'));
         $this->assertSame('number', $r->get('integer')->key());
     }
+
+    public function test_the_tag_field_registers_under_its_key(): void
+    {
+        $r = new FieldTypeRegistry();
+        $r->register($this->fakeType('string'));
+        $r->register(new \Preflow\Folio\Field\Types\TagsFieldType());
+
+        $this->assertTrue($r->has('tags'));
+        $this->assertInstanceOf(\Preflow\Folio\Field\Types\TagsFieldType::class, $r->get('tags'));
+    }
 }

@@ -162,6 +162,47 @@ final class SqliteAppTest extends TestCase
         $this->assertStringContainsString('1–2 of 2', $body);
     }
 
+    /**
+     * The tag field (0.77) on SQLite: a form without script posts one comma string, with script a
+     * list (name[]); both store the JSON list in the text column, which the list's loose search
+     * (CONTAINS) finds, umlauts included. Too many tags are refused on save.
+     */
+    public function test_tags_round_trip_and_loose_search_on_sqlite(): void
+    {
+        $this->writeModel('reference', [
+            'label' => 'References',
+            'fields' => [
+                'name' => ['type' => 'string'],
+                'uses' => ['type' => 'tags', 'max' => 3],
+            ],
+            'list' => ['columns' => ['name', 'uses']],
+        ]);
+        $this->migrateStep();
+        $registry = $this->app()->container()->get(\Preflow\Folio\Field\FieldTypeRegistry::class);
+        $this->assertSame('tags', $registry->get('tags')->key());
+        $this->assertTrue($this->dm()->fieldKinds()->isText('tags'), 'loose search covers tags');
+
+        // Without script: the comma string.
+        $this->assertSame(302, $this->post('/folio/reference', ['name' => 'Atlas', 'uses' => 'Folio, Übersetzung, folio'])->getStatusCode());
+        $atlas = $this->dm()->queryType('reference')->where('name', 'Atlas')->first();
+        $this->assertSame('["Folio","Übersetzung"]', $atlas?->get('uses'));
+
+        // With script: the list.
+        $this->assertSame(302, $this->post('/folio/reference', ['name' => 'Games', 'uses' => ['Members', ' AI ']])->getStatusCode());
+        $games = $this->dm()->queryType('reference')->where('name', 'Games')->first();
+        $this->assertSame('["Members","AI"]', $games?->get('uses'));
+
+        $body = (string) $this->get('/folio/reference?q=bersetzung')->getBody();
+        $this->assertStringContainsString('Atlas', $body);
+        $this->assertStringNotContainsString('Games', $body);
+        $this->assertStringContainsString('Folio, Übersetzung', (string) $this->get('/folio/reference')->getBody(), 'the list cell');
+
+        $res = $this->post('/folio/reference', ['name' => 'Many', 'uses' => ['a', 'b', 'c', 'd']]);
+        $this->assertSame(422, $res->getStatusCode());
+        $this->assertStringContainsString('At most 3 tags.', (string) $res->getBody());
+        $this->assertNull($this->dm()->queryType('reference')->where('name', 'Many')->first());
+    }
+
     /** @return list<string> */
     /** The English title as stored (SQL columns hold a translatable field as JSON text). */
     private function storedTitle(string $id): ?string

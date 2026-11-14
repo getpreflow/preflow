@@ -11,6 +11,7 @@
  * - Relation: the search (embedded options or the search endpoint), picking, removing, open in the drawer.
  * - Rows with a grip (relation, matrix): the arrow keys and drag move them.
  * - Asset: a file dropped on the field goes to the library's upload route and is chosen.
+ * - Tags: chips and an "Add…" input (Enter, comma, paste, Backspace, ✕), announced (0.77).
  *
  * Every change a script makes is announced as a change event on a control of the record form, so the
  * autosave, the preview and the unsaved-changes guard hear it. Search boxes carry data-folio-no-edit.
@@ -640,6 +641,190 @@
         });
     }
 
+    // ---- Tags: chips and an "Add…" input (0.77) -------------------------------------------------------
+    // TagsFieldType renders the chips (each with a nameless hidden input) and the plain comma input the
+    // form posts without script. Here the chips take over: their inputs get the name (name[]), the plain
+    // one is turned off. Enter or a comma adds what was typed (so does leaving the input), a paste with commas adds
+    // each part, Backspace on the empty input removes the last chip, ✕ removes its chip. Each change is
+    // a change event on the plain input (in the record form, so admin.js announces it as folio:edit) and
+    // is announced in the live region; a tag over the field's limits is refused and the reason announced.
+    function tagsOf(el) {
+        return closest(el, '[data-folio-tags]');
+    }
+
+    // The field's data-text-<name>, else admin.js's words; :tag and :max filled in.
+    var TAG_TEXTS = {
+        remove: function () { return t('fields.tag_remove'); },
+        added: function () { return t('fields.tag_added'); },
+        removed: function () { return t('fields.tag_removed'); },
+        'too-many': function () { return t('fields.tags_too_many'); },
+        'too-long': function () { return t('fields.tags_too_long'); },
+    };
+    function tagText(field, name, params) {
+        var text = field.getAttribute('data-text-' + name) || TAG_TEXTS[name]();
+        Object.keys(params || {}).forEach(function (k) { text = text.split(':' + k).join(String(params[k])); });
+        return text;
+    }
+
+    function tagParts(field) {
+        return {
+            list: field.querySelector('[data-folio-tags-list]'),
+            input: field.querySelector('[data-folio-tags-input]'),
+            plain: field.querySelector('[data-folio-tags-plain]'),
+            template: field.querySelector('[data-folio-tags-template]'),
+        };
+    }
+
+    function tagChips(field) {
+        var list = tagParts(field).list;
+        return list ? Array.prototype.slice.call(list.querySelectorAll('[data-folio-tag]')) : [];
+    }
+
+    function chipText(chip) {
+        var input = chip.querySelector('[data-folio-tag-value]');
+        return input ? input.value : '';
+    }
+
+    function cleanTag(text) {
+        return String(text == null ? '' : text).replace(/[\u0000-\u001F\u007F-\u009F]+/g, '').trim();
+    }
+
+    function initTags(field) {
+        if (field._folioTags) { return; }
+        field._folioTags = true;
+        var parts = tagParts(field);
+        tagChips(field).forEach(function (chip) {
+            var input = chip.querySelector('[data-folio-tag-value]');
+            if (input) { input.name = field.getAttribute('data-folio-tags-name') || ''; }
+        });
+        if (parts.plain) { parts.plain.disabled = true; }
+        // The label names the add input now (the plain one is hidden).
+        var label = field.querySelector('label[for]');
+        if (label && parts.input && parts.input.id) { label.setAttribute('for', parts.input.id); }
+    }
+
+    function tagEdited(field) {
+        changed(tagParts(field).plain);
+    }
+
+    /** Adds each of $texts; true when all were taken (or were there already). */
+    function addTags(field, texts) {
+        var parts = tagParts(field);
+        if (!parts.list || !parts.template) { return false; }
+        var max = parseInt(field.getAttribute('data-max'), 10) || 20;
+        var maxLength = parseInt(field.getAttribute('data-max-length'), 10) || 40;
+        var all = true;
+        texts.forEach(function (raw) {
+            var tag = cleanTag(raw);
+            if (tag === '') { return; }
+            var fold = tag.toLocaleLowerCase();
+            var chips = tagChips(field);
+            if (chips.some(function (c) { return chipText(c).toLocaleLowerCase() === fold; })) { return; }
+            if (chips.length >= max) { announce(tagText(field, 'too-many', { max: max })); all = false; return; }
+            if (Array.from(tag).length > maxLength) { announce(tagText(field, 'too-long', { max: maxLength })); all = false; return; }
+            var source = parts.template.content ? parts.template.content.firstElementChild : parts.template.children[0];
+            if (!source) { all = false; return; }
+            var chip = source.cloneNode(true);
+            var text = chip.querySelector('.folio-tag-text');
+            if (text) { text.textContent = tag; }
+            var remove = chip.querySelector('[data-folio-tag-remove]');
+            if (remove) {
+                var label = tagText(field, 'remove', { tag: tag });
+                remove.setAttribute('aria-label', label);
+                remove.setAttribute('title', label);
+            }
+            var input = chip.querySelector('[data-folio-tag-value]');
+            if (input) { input.value = tag; input.name = field.getAttribute('data-folio-tags-name') || ''; }
+            parts.list.appendChild(chip);
+            own(chip);
+            tagEdited(field);
+            announce(tagText(field, 'added', { tag: tag }));
+        });
+        return all;
+    }
+
+    /** Adds what the input holds; the text stays when a tag was refused. */
+    function commitTags(field) {
+        var input = tagParts(field).input;
+        if (!input || cleanTag(input.value) === '') { if (input) { input.value = ''; } return; }
+        if (addTags(field, input.value.split(','))) { input.value = ''; }
+    }
+
+    function removeTag(field, chip, focusNext) {
+        var chips = tagChips(field);
+        var at = chips.indexOf(chip);
+        var next = chips[at + 1] || null;
+        var tag = chipText(chip);
+        chip.parentNode.removeChild(chip);
+        tagEdited(field);
+        announce(tagText(field, 'removed', { tag: tag }));
+        if (focusNext) {
+            var to = next ? next.querySelector('[data-folio-tag-remove]') : tagParts(field).input;
+            if (to && typeof to.focus === 'function') { to.focus(); }
+        }
+    }
+
+    function onTagsKeydown(e) {
+        var input = closest(e.target, '[data-folio-tags-input]');
+        var field = tagsOf(input);
+        if (!input || !field) { return; }
+        if (e.key === 'Enter' || e.key === ',') {
+            e.preventDefault(); // never the record form's implicit submit, nor the comma in the text
+            commitTags(field);
+        } else if (e.key === 'Backspace' && input.value === '') {
+            var chips = tagChips(field);
+            if (chips.length) {
+                e.preventDefault();
+                removeTag(field, chips[chips.length - 1], false);
+            }
+        }
+    }
+
+    // A comma that arrives without its key (a phone keyboard, autocomplete): what stands before it is added.
+    function onTagsInput(e) {
+        var input = closest(e.target, '[data-folio-tags-input]');
+        var field = tagsOf(input);
+        if (!input || !field || input.value.indexOf(',') < 0) { return; }
+        var pieces = input.value.split(',');
+        var rest = pieces.pop();
+        input.value = addTags(field, pieces) ? rest.replace(/^\s+/, '') : input.value;
+    }
+
+    function onTagsPaste(e) {
+        var input = closest(e.target, '[data-folio-tags-input]');
+        var field = tagsOf(input);
+        var data = e.clipboardData || window.clipboardData;
+        var text = field && data && typeof data.getData === 'function' ? String(data.getData('text') || '') : '';
+        if (!/[,\n]/.test(text)) { return; }
+        e.preventDefault();
+        addTags(field, (input.value + text).split(/[,\n]/));
+        input.value = '';
+    }
+
+    // Leaving the input with text in it adds that text.
+    function onTagsChange(e) {
+        var input = closest(e.target, '[data-folio-tags-input]');
+        var field = tagsOf(input);
+        if (input && field) { commitTags(field); }
+    }
+
+    function onTagsClick(e) {
+        var remove = closest(e.target, '[data-folio-tag-remove]');
+        var field = tagsOf(remove);
+        if (remove && field) {
+            e.preventDefault();
+            var chip = closest(remove, '[data-folio-tag]');
+            if (chip) { removeTag(field, chip, true); }
+            return;
+        }
+        // A click on the box beside the chips goes to the input.
+        var box = closest(e.target, '.folio-tags-box');
+        if (box && e.target === box) {
+            var input = box.querySelector('[data-folio-tags-input]');
+            if (input && typeof input.focus === 'function') { input.focus(); }
+        }
+    }
+
     // ---- Asset: drop a file on the field -----------------------------------------------------------
     function accepts(accept, file) {
         var tokens = String(accept || '').split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
@@ -791,6 +976,7 @@
         root.querySelectorAll('[data-folio-stepper]').forEach(syncStepper);
         root.querySelectorAll('[data-folio-affix] input').forEach(syncOpenUrl);
         root.querySelectorAll('textarea[aria-describedby]').forEach(syncCounter);
+        root.querySelectorAll('[data-folio-tags]').forEach(initTags);
     }
     // Folio.initFields(root): the hints, counters and steppers under root follow their controls again
     // (admin.js calls it after Cancel put a form's controls back).
@@ -830,6 +1016,11 @@
         document.addEventListener('click', onStep);
         document.addEventListener('click', onRelationClick);
         document.addEventListener('input', onRelationInput);
+        document.addEventListener('keydown', onTagsKeydown);
+        document.addEventListener('input', onTagsInput);
+        document.addEventListener('paste', onTagsPaste);
+        document.addEventListener('change', onTagsChange);
+        document.addEventListener('click', onTagsClick);
         // Capture phase: Escape in a relation search closes its results before the editor's own Escape
         // (the side sheet) sees it, and marks it handled: one Esc closes one layer.
         document.addEventListener('keydown', onRelationKeydown, true);

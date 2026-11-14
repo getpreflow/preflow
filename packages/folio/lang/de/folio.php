@@ -452,6 +452,16 @@ return [
         'type' => 'Typ',
         'entry' => 'Eintrag',
         'view' => 'Ansicht',
+        // Das Tag-Feld (0.77).
+        'tag_remove' => ':tag entfernen',
+        'tags_add' => 'Hinzufügen…',
+        'tags_add_label' => 'Zu :label hinzufügen',
+        'tags_hint' => 'Enter oder Komma fügt einen hinzu.',
+        'tags_hint_plain' => 'Trenne sie mit Kommas.',
+        'tag_added' => ':tag hinzugefügt.',
+        'tag_removed' => ':tag entfernt.',
+        'tags_too_many' => 'Höchstens :max Tags.',
+        'tags_too_long' => 'Ein Tag darf höchstens :max Zeichen lang sein.',
     ],
     'delete' => [
         'cannot_undo' => 'Das lässt sich nicht rückgängig machen.',

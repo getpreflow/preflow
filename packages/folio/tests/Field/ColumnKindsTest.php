@@ -28,6 +28,7 @@ final class ColumnKindsTest extends TestCase
         $this->assertSame(ColumnKind::Short, (new SelectFieldType())->columnKind([]));
         $this->assertSame(ColumnKind::Short, (new EnvFieldType())->columnKind([]));
         $this->assertSame(ColumnKind::Short, (new PurposeFieldType([]))->columnKind([]));
+        $this->assertSame(ColumnKind::Text, (new \Preflow\Folio\Field\Types\TagsFieldType())->columnKind(['max' => 5]), 'a JSON list: text');
         $this->assertNotInstanceOf(HasColumnKind::class, new TextFieldType());
     }
 

@@ -452,6 +452,16 @@ return [
         'type' => 'Type',
         'entry' => 'Entrée',
         'view' => 'Vue',
+        // Le champ de tags (0.77).
+        'tag_remove' => 'Retirer :tag',
+        'tags_add' => 'Ajouter…',
+        'tags_add_label' => 'Ajouter à :label',
+        'tags_hint' => 'Entrée ou une virgule en ajoute un.',
+        'tags_hint_plain' => 'Séparez-les par des virgules.',
+        'tag_added' => ':tag ajouté.',
+        'tag_removed' => ':tag retiré.',
+        'tags_too_many' => 'Au maximum :max tags.',
+        'tags_too_long' => 'Un tag peut compter au maximum :max caractères.',
     ],
     'delete' => [
         'cannot_undo' => 'Cette action est irréversible.',

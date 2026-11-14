@@ -789,7 +789,7 @@ A value that is not a list of section names is ignored (every section starts ope
 
 `string`, `text` (`"monospace": true` gives a code-style editor), `number`, `boolean`,
 `date` (`"time": true` for date and time), `select` (`"options"` as a map or a list;
-`"display": "radio"`), `richtext`, `asset`, `relation` and `matrix`.
+`"display": "radio"`), `richtext`, `asset`, `relation`, `matrix` and `tags` (since 0.77).
 
 How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` runs the controls):
 
@@ -823,6 +823,22 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
 - `matrix`: a table with a header row, rows with a grip (drag, or focus it and press ↑ / ↓) and
   a trash button, and "+ Add row".
 - `env`: the variable's name and "set" or "not set"; never its value.
+- `tags` (0.77): a list of short texts ("Folio", "members"), shown as chips with ✕ and an inline
+  "Add…" input. Enter or a comma adds what was typed (so does leaving the input), a pasted
+  "a, b, c" adds three, Backspace on the empty input removes the last chip; each change is announced
+  to screen readers and counts as an edit (autosave, the unsaved count). Without script it is one
+  comma-separated text input. Saving trims each tag, strips control characters, drops empty ones
+  and keeps each once (case ignored, the first spelling wins). `"max"` (tags per record, default 20)
+  and `"maxLength"` (characters per tag, default 40) are checked on save ("At most 20 tags."), and
+  `"options"` (a list of texts) are suggested while typing. The value is stored as a JSON list
+  (`["Folio","Übersetzung"]`, readable umlauts) in a text column, so the list's search finds a
+  tag on every storage; a comma string stored before (`"Folio, members"`) is read as its parts.
+  The frontend gets `<ul class="tags"><li>Folio</li>…</ul>`, a list cell "Folio, members, AI +2". A
+  `tags` field cannot be `"translatable"` (one list serves every language): that, or an invalid
+  `"max"`, `"maxLength"` or `"options"`, stops the boot with a `FrontendConfigException`. On a model
+  class, declare it as `#[Field(type: 'tags')] public ?array $uses = null;`: the data package reads
+  the JSON list into the array (no `transform`: a `JsonTransformer` would encode the stored JSON a
+  second time).
 
 An invalid `"unit"` or `"display"` (or `"display": "cards"` without `{label, help}` options) stops
 the boot with a `FrontendConfigException` naming the type and the field.

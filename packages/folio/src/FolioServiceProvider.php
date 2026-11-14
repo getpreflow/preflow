@@ -570,6 +570,7 @@ final class FolioServiceProvider extends ServiceProvider
             $registry->register(new DateFieldType());
             $registry->register(new SelectFieldType());
             $registry->register(new EnvFieldType());
+            $registry->register(new \Preflow\Folio\Field\Types\TagsFieldType());
             $registry->register(new BlocksFieldType(
                 $c->get(BlockRegistry::class),
                 $registry,

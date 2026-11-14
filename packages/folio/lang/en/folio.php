@@ -466,6 +466,16 @@ return [
         'type' => 'Type',
         'entry' => 'Entry',
         'view' => 'View',
+        // The tag field (0.77).
+        'tag_remove' => 'Remove :tag',
+        'tags_add' => 'Add…',
+        'tags_add_label' => 'Add to :label',
+        'tags_hint' => 'Enter or comma adds one.',
+        'tags_hint_plain' => 'Separate them with commas.',
+        'tag_added' => 'Added :tag.',
+        'tag_removed' => 'Removed :tag.',
+        'tags_too_many' => 'At most :max tags.',
+        'tags_too_long' => 'A tag can have at most :max characters.',
     ],
     // What deleting would do (the confirmation) and why it can't.
     'delete' => [
