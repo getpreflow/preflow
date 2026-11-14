@@ -868,8 +868,11 @@
         });
         // A click on the backdrop (the dialog element itself: the panel fills it) cancels, but only when the
         // press started there too (a text selection dragged out of the panel is no cancel) and not in the
-        // first moments after opening (the second click of a double click on the opener).
+        // first moments after opening (the second click of a double click on the opener). A press on the
+        // backdrop released over the panel clicks their common ancestor, the dialog: the release must be
+        // on the backdrop too. Closing forgets the press.
         dialog.addEventListener('pointerdown', function (e) { dialog._folioPressedBackdrop = e.target === dialog; });
+        dialog.addEventListener('pointerup', function (e) { if (e.target !== dialog) { dialog._folioPressedBackdrop = false; } });
         dialog.addEventListener('click', function (e) {
             var t = e.target;
             if (t === dialog) {
@@ -894,6 +897,7 @@
         if (!state) { return; }
         dialogState = null;
         var dialog = state.dialog;
+        dialog._folioPressedBackdrop = false;
         if (dialog.open && typeof dialog.close === 'function') { dialog.close(); }
         dialog.removeAttribute('open');
         var back = state.opener;

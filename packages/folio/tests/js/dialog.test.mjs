@@ -150,6 +150,28 @@ test('only a press and click both on the backdrop cancel, and not right after op
     assert.equal(await answer, 'cancel');
 });
 
+test('a press on the backdrop released over the panel is no cancel; a closed dialog forgets its press', async () => {
+    const { w } = admin();
+    const answer = w.folioConfirm({ title: 'Delete?', tone: 'danger' });
+    await settle(320);
+    const title = theDialog(w).querySelector('[data-folio-dialog-title]');
+    // Pressed on the backdrop, released on the panel: the click goes to the common ancestor, the dialog.
+    press(w, theDialog(w));
+    title.dispatchEvent(new w.Event('pointerup', { bubbles: true }));
+    theDialog(w).click();
+    assert.equal(theDialog(w).open, true, 'released over the panel');
+    // A press on the backdrop, then the dialog closes another way (Cancel): the next question starts clean.
+    press(w, theDialog(w));
+    part(w, 'cancel').click();
+    assert.equal(await answer, 'cancel');
+    const next = w.folioConfirm({ title: 'Archive?' });
+    await settle(320);
+    theDialog(w).click();
+    assert.equal(theDialog(w).open, true, 'no press left over from the last question');
+    backdropClick(w);
+    assert.equal(await next, 'cancel');
+});
+
 test('chained questions: the first one\'s queued close event does not cancel the next', async () => {
     const { w } = admin();
     const flow = (async () => {
