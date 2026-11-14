@@ -9,7 +9,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * Since 0.75: core 0.75 (Version::label(), the installed Folio and core versions the user menu shows); data 0.75 (TypeFamily, the "family" TypeCatalog reads and the type tiles show) and i18n 0.75
  * (Completeness, the language indicator's three states, which TranslationStatus::state() computes); publishing 0.75
- * (RecordAddressFields, which FolioRecordTypes implements so RecordWriter::duplicate() frees a copy's address).
+ * (RecordAddressFields, which FolioRecordTypes implements so RecordWriter::duplicate() frees a copy's address); blocks 0.75
+ * (BlockDefinition::$family, which the block picker and cards read; blocks 0.74 has no such property); form 0.75 (FieldRenderer's
+ * newline after <textarea>, which keeps a value's leading newline when FormOwner reparses the side panel).
  *
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing Folio with a release that lacks the APIs it calls: core 0.74 and view 0.74 (view's Audits, the SEO audit as a
@@ -46,8 +48,8 @@ use PHPUnit\Framework\TestCase;
  * preflow/codes is suggested too (Folio carries its admin since 0.40); a codes release before 0.68 lacks
  * Codes::checkUpdate(), update() with the checks in the write and CodeRefused, which the code admin calls, so it conflicts.
  * preflow/blocks (required since 0.70: the block classes, registry and renderer that were Folio's own; BlockLocale,
- * BlockTextCleaner and BlockPreviewMarks, which ContentLocale, SafeRichText and FolioBlockPreviewMarks implement) has no
- * release before 0.70, so it needs no conflict.
+ * BlockTextCleaner and BlockPreviewMarks, which ContentLocale, SafeRichText and FolioBlockPreviewMarks implement)
+ * conflicts below 0.75 (BlockDefinition::$family, see above).
  * preflow/publishing (required since 0.71: the Publisher, LiveContent and the other publishing classes that were Folio's own;
  * PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and RecordAddresses, which Folio's adapters implement)
  * conflicts below 0.72: 0.71 still carries the config/folio.php fallback and the shadow-table index rules 0.72 changed.
@@ -62,7 +64,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.75', 'preflow/data' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.75', 'preflow/media' => '<0.70', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.75', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.75', 'preflow/data' => '<0.75', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.75', 'preflow/media' => '<0.70', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.75', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members, codes and rbac are suggested, not required.
