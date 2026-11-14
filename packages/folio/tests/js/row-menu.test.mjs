@@ -205,7 +205,7 @@ test('Review Focus 4: Delete in the menu still asks for the delete plan, then co
     const dialog = l.w.document.body.querySelector('dialog[data-folio-dialog]');
     assert.equal(dialog.open, true, 'the styled dialog asks');
     assert.equal(dialog.querySelector('[data-folio-dialog-message]').textContent, "This can't be undone.");
-    assert.equal(dialog.querySelector('[data-folio-dialog-confirm]').textContent, 'delete', 'folio.js.delete (no dictionary on this page: the key)');
+    assert.equal(dialog.querySelector('[data-folio-dialog-confirm]').textContent, 'Delete', 'folio.js.delete');
     assert.ok(dialog.querySelector('[data-folio-dialog-confirm]').classList.contains('btn-danger'));
     dialog.querySelector('[data-folio-dialog-confirm]').click();
     await settle();

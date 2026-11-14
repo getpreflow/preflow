@@ -2,9 +2,9 @@
 {% block title %}Folio — {{ t('folio.errors.forbidden_title') }}{% endblock %}
 {% block page_title %}{{ t('folio.errors.forbidden_title') }}{% endblock %}
 {% block content %}
-    <div class="folio-empty">
-        <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-file"></use></svg>
-        <p>{{ message }}</p>
-        <p class="folio-muted">{{ t('folio.errors.forbidden_help') }}</p>
-    </div>
+    {% include '@folio/admin/partials/_ink_error.twig' with {
+        title: t('folio.errors.forbidden_card_title'),
+        message: message,
+        line: t('folio.errors.forbidden_help'),
+    } only %}
 {% endblock %}

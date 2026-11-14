@@ -20,9 +20,11 @@
 
     var Folio = window.Folio = window.Folio || {};
 
+    // admin.js's words (folioT). Without it, '': each caller then has the template's data-text-* text,
+    // and the user never sees a raw key.
     function t(key, params) {
         if (typeof window.folioT === 'function') { return window.folioT(key, params); }
-        return key;
+        return '';
     }
 
     // A control a script inserted names the record form at once (admin.js's Folio.ownControls), so its

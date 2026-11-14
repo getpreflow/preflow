@@ -19,11 +19,12 @@
     </div>
 {% endif %}
 {% if not has_records %}
-    <div class="folio-empty">
-        <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ icons }}#ui-file"></use></svg>
-        <p>{{ empty_text|default(t('folio.list.empty', {label: folio_noun(label)})) }}</p>
-        {% if may.create %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new">{{ t('folio.list.create_one') }}</a>{% endif %}
-    </div>
+    {% include '@folio/admin/partials/_empty.twig' with {
+        screen: 'list',
+        title: empty_text|default(t('folio.list.empty', {label: folio_noun(label)})),
+        line: may.create ? t('folio.list.empty_line') : '',
+        action: may.create ? {label: t('folio.list.create_one'), url: prefix ~ '/' ~ type ~ '/new'} : null,
+    } only %}
 {% elseif rows is empty %}
     <div class="folio-empty folio-no-matches">
         <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ icons }}#ui-search"></use></svg>

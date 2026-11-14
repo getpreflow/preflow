@@ -356,6 +356,39 @@ final class AiRunTest extends TestCase
         $this->assertSame('done', $this->job($id)->state);
     }
 
+    public function test_each_item_status_has_its_badge(): void
+    {
+        $id = self::jobId($this->estimate());
+        $this->request('POST', "/folio/post/_ai/jobs/{$id}/start", [], true);
+        $this->request('POST', "/folio/post/_ai/jobs/{$id}/stop", [], true); // a stopped job shows its items and does not step
+        $store = new FileJobStore($this->dir . '/storage/ai/jobs');
+        $badge = function (string $title) use ($id): string {
+            $html = (string) $this->step($id)->getBody();
+            $this->assertSame(1, preg_match('#<a href="[^"]*">' . $title . '</a></td>\s*<td><span class="([^"]*)">#', $html, $m), $title);
+
+            return $m[1];
+        };
+
+        $store->update($id, static function (Job $job): void {
+            $job->items['p1']['status'] = 'failed';
+            $job->items['p2']['status'] = 'conflict';
+        });
+        $this->assertSame('folio-badge is-failed', $badge('Hello'));
+        $this->assertSame('folio-badge is-changed', $badge('World'));
+
+        $store->update($id, static function (Job $job): void {
+            $job->items['p1']['status'] = 'done';
+            $job->items['p2']['status'] = 'skipped';
+        });
+        $this->assertSame('folio-badge is-ok', $badge('Hello'));
+        $this->assertSame('folio-badge', $badge('World'), 'skipped stays plain');
+        // A pending item is not listed (it shows as the record being translated), so no is-draft row here;
+        // the template maps it to is-draft.
+        $template = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/admin/ai/run-progress.twig');
+        $this->assertStringContainsString("pending: ' is-draft'", $template);
+        $this->assertStringNotContainsString('is-incomplete', $template);
+    }
+
     public function test_unavailable_shows_message_and_stops(): void
     {
         $id = self::jobId($this->estimate());

@@ -81,7 +81,7 @@ final class CacheController
     public function refreshPage(ServerRequestInterface $request): ResponseInterface
     {
         if ($this->pages === null) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.cache.unknown'));
+            return NotFound::response($request, FolioText::get('folio.cache.unknown'));
         }
         $body = (array) $request->getParsedBody();
         $url = is_string($body['url'] ?? null) ? trim($body['url']) : '';
@@ -101,7 +101,7 @@ final class CacheController
     public function refreshAll(ServerRequestInterface $request): ResponseInterface
     {
         if ($this->pages === null) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.cache.unknown'));
+            return NotFound::response($request, FolioText::get('folio.cache.unknown'));
         }
         try {
             self::flash($request, 'success', FolioText::get('folio.cache.refreshed_all', ['count' => $this->pages->refreshAll()]));
@@ -141,7 +141,7 @@ final class CacheController
 
         $source = is_string($body['key'] ?? null) ? $this->caches->get($body['key']) : null;
         if ($source === null) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.cache.unknown'));
+            return NotFound::response($request, FolioText::get('folio.cache.unknown'));
         }
         $cleared = $source->clear();
         self::flash($request, 'success', FolioText::get('folio.cache.cleared', ['label' => self::label($source), 'count' => $cleared->entries, 'size' => Bytes::human($cleared->bytes)])

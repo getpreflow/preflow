@@ -66,7 +66,7 @@ final class BlockEditorController
             : null;
 
         return $html === null
-            ? new Response(404, [], FolioText::get('folio.errors.nothing_to_duplicate'))
+            ? NotFound::response($request, FolioText::get('folio.errors.nothing_to_duplicate'))
             : new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);
     }
 
@@ -94,7 +94,7 @@ final class BlockEditorController
             : null;
 
         if ($html === null) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_block'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_block'));
         }
 
         return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html);

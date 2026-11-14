@@ -315,6 +315,40 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 @media (prefers-reduced-motion: reduce) {
   .folio-ink-drift, .folio-auth-drift, .folio-caret, .folio-auth-caret { animation: none !important; }
 }
+/* An ink card (partials/_empty.twig, not-found.twig, forbidden.twig): the text at the bottom left, the
+   marks on the right half behind it. The 404 / forbidden card (.folio-ink-error) centres one large
+   glyph above its text, on a glow of the third mark hue. */
+.folio-ink-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 220px;
+  padding: 24px;
+}
+.folio-ink-card > :not(.folio-ink-marks) { position: relative; }
+.folio-ink-title { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em; color: var(--ink-fg); }
+.folio-ink-card .folio-ink-line { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+/* The primary action on ink: --ink-accent (emerald still means action). */
+.folio-ink-action.btn { margin-top: 6px; border-color: transparent; background: var(--ink-accent); color: var(--ink-deep); font-weight: 600; }
+.folio-ink-action.btn:hover { background: color-mix(in srgb, var(--ink-accent) 84%, var(--ink-fg)); color: var(--ink-deep); }
+.folio-ink-action.btn:focus-visible { box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--ink-accent); }
+.folio-ink-error {
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  background: radial-gradient(14rem 10rem at 50% 30%, color-mix(in srgb, var(--mark-3) 18%, transparent), transparent 70%), var(--ink);
+}
+.folio-ink-error .folio-ink-title { font-size: 18px; }
+.folio-ink-glyph { width: 48px; height: 48px; margin-bottom: 4px; }
+.folio-ink-glyph use { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.folio-ink-muted { margin: 0; font-size: 13px; color: color-mix(in srgb, var(--ink-fg) 74%, transparent); }
+.folio-ink-error .folio-ink-line { font-size: 12px; }
+.folio-ink-line a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.folio-ink-line a:hover { color: var(--ink-fg); }
+.folio-ink-line a:focus-visible { outline: 2px solid var(--ink-accent); outline-offset: 2px; border-radius: 2px; }
 
 /* The site switcher: tile, site name, environment line ("Folio · development"; "Folio" in production). */
 .folio-site { display: flex; align-items: center; gap: 4px; }

@@ -3,7 +3,8 @@
     'use strict';
 
     // The page's words (folio.js.* in the interface language): <script type="application/json" id="folio-i18n">,
-    // read once. folioT('removed', {label: 'Hero'}) fills :label; a missing key comes back as the key.
+    // read once. folioT('removed', {label: 'Hero'}) fills :label. A missing key gives '' (never the raw key):
+    // every key the scripts use exists in every language (JsTextKeysTest).
     var folioTexts = null;
     function folioT(key, params) {
         if (folioTexts === null) {
@@ -11,7 +12,7 @@
             var el = document.getElementById('folio-i18n');
             try { folioTexts = el ? JSON.parse(el.textContent || '{}') : {}; } catch (e) { folioTexts = {}; }
         }
-        var text = typeof folioTexts[key] === 'string' ? folioTexts[key] : key;
+        var text = typeof folioTexts[key] === 'string' ? folioTexts[key] : '';
         Object.keys(params || {}).forEach(function (name) {
             text = text.split(':' + name).join(String(params[name]));
         });

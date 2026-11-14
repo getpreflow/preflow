@@ -17,10 +17,7 @@
         <div class="folio-notice" role="status"><p>{{ t('folio.extensions.read_only') }}</p></div>
     {% endif %}
     {% if extensions is empty %}
-        <div class="folio-empty">
-            <svg class="folio-icon folio-empty-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-settings"></use></svg>
-            <p>{{ t('folio.extensions.empty') }}</p>
-        </div>
+        {% include '@folio/admin/partials/_empty.twig' with {screen: 'extensions', title: t('folio.extensions.empty'), line: t('folio.extensions.empty_line')} only %}
     {% else %}
         <div class="folio-table-wrap">
         <table class="folio-table">

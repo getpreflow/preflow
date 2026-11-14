@@ -1,0 +1,12 @@
+{# The ink card of the admin's error pages (not-found.twig, forbidden.twig; INK.md "404 / forbidden"):
+   one large pilcrow in the third mark hue, a friendly title, the message as a muted line and, when
+   given, a mono line (the path, and for those who may the way to fix it).
+   {title, message, line?: string, line_link?: {label, url}} #}
+<div class="folio-ink folio-ink-card folio-ink-error">
+    <svg class="folio-ink-glyph mc-3" aria-hidden="true" focusable="false"><use href="{{ folio_asset('icons.svg') }}#mark-pilcrow"></use></svg>
+    <h2 class="folio-ink-title">{{ title }}</h2>
+    <p class="folio-ink-muted">{{ message }}</p>
+    {% if line|default('') is not same as('') or line_link|default(null) %}
+        <p class="folio-ink-line">{{ line|default('') }}{% if line_link|default(null) %}{{ line|default('') is not same as('') ? ' ' : '' }}<a href="{{ line_link.url }}">{{ line_link.label }}</a>{% endif %}<span class="folio-caret" aria-hidden="true"></span></p>
+    {% endif %}
+</div>

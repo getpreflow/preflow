@@ -374,7 +374,7 @@ final class FolioAppTest extends TestCase
     public function test_list_shows_empty_state_when_no_records(): void
     {
         $body = (string) $this->get('/folio/page')->getBody();
-        $this->assertStringContainsString('folio-empty', $body);
+        $this->assertStringContainsString('class="folio-ink folio-ink-card folio-ink-empty" data-folio-empty="list"', $body);
         $this->assertStringContainsString('No pages yet', $body); // names the type
     }
 

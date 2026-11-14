@@ -20,7 +20,7 @@ function page(build, { folio = {} } = {}) {
     w.folioT = (key, params = {}) => Object.entries(params).reduce((text, [k, v]) => text.split(':' + k).join(String(v)), {
         'fields.move_named': 'Move :label', 'fields.open_named': 'Open :label', 'fields.remove_named': 'Remove :label',
         position: ':index of :total', at_position: ':label, position :position.',
-    }[key] ?? key);
+    }[key] ?? '');
     const el = (parent, tag, attrs = {}, cls = '') => {
         const e = parent.appendChild(doc.createElement(tag));
         Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
@@ -292,6 +292,15 @@ test('typing searches the options (accents and case ignored) and leaves linked o
     type(p.w, p.find, 'nobody');
     await tick();
     assert.equal(p.results.querySelector('.folio-relation-empty').textContent, 'Nothing found.');
+});
+
+test('without admin.js a text the template did not give is empty, never the raw key', async () => {
+    const p = relation({ multiple: true });
+    p.results.removeAttribute('data-text-empty');
+    delete p.w.folioT;
+    type(p.w, p.find, 'nobody');
+    await tick();
+    assert.equal(p.results.querySelector('.folio-relation-empty').textContent, '');
 });
 
 test('a pick adds a row from the template, with its name, meta and open link; Enter never submits', async () => {

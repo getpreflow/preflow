@@ -136,7 +136,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
         $query = $request->getQueryParams();
@@ -157,7 +157,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         $body = (array) $request->getParsedBody();
         $meta = array_intersect_key($body, array_flip(['alt', 'title', 'focal_x', 'focal_y']));
@@ -179,7 +179,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         try {
             $this->library->delete($asset->id);
@@ -233,7 +233,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->findBinned((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         try {
             $this->library->restoreFromBin($asset->id);
@@ -282,7 +282,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         $file = $request->getUploadedFiles()['file'] ?? null;
         if (!$file instanceof UploadedFileInterface || $file->getError() === UPLOAD_ERR_NO_FILE) {
@@ -301,7 +301,7 @@ final class AssetLibraryController
     {
         [$asset, $version] = $this->version($request);
         if ($asset === null || $version === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         try {
             $this->library->restore($asset->id, $version->number, self::by($request));
@@ -316,7 +316,7 @@ final class AssetLibraryController
     {
         [$asset, $version] = $this->version($request);
         if ($asset === null || $version === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         try {
             $this->library->deleteVersion($asset->id, $version->number);
@@ -332,7 +332,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null || !$this->library->isEditable($asset)) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         $query = $request->getQueryParams();
         $preset = is_string($query['preset'] ?? null) && isset($this->formats->boxes()[$query['preset']]) ? $query['preset'] : null;
@@ -358,7 +358,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         try {
             $done = $this->apply($asset->id, (array) $request->getParsedBody());
@@ -382,7 +382,7 @@ final class AssetLibraryController
     {
         $asset = $this->library->find((string) $request->getAttribute('id', ''));
         if ($asset === null || !$this->library->isEditable($asset)) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         try {
             $copy = $this->library->makeCopy($asset->id, self::by($request));
@@ -407,7 +407,7 @@ final class AssetLibraryController
     {
         $copy = $this->library->find((string) $request->getAttribute('id', ''));
         if ($copy === null || !$copy->isCopy()) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         if (!$this->library->canRemake($copy)) {
             return $this->renderPanel($request, $copy, null, FolioText::get('folio.assets.cannot_remake'), 422);

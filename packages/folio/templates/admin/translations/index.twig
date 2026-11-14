@@ -38,8 +38,10 @@
     {% if site_texts %}
         <p class="folio-help">{{ t('folio.translations.site_texts') }}</p>
     {% endif %}
-    {% if rows is empty %}
-        <p class="folio-help">{{ t('folio.translations.empty') }}</p>
+    {% if rows is empty and view.q != '' %}
+        <div class="folio-empty folio-no-matches"><p>{{ t('folio.translations.empty') }}</p></div>
+    {% elseif rows is empty %}
+        {% include '@folio/admin/partials/_empty.twig' with {screen: 'translations', title: t('folio.translations.empty_title'), line: t('folio.translations.empty_line')} only %}
     {% else %}
     {# "Save all filled" (admin.js): posts every row whose text differs from the saved one, in one request.
        Shown once a row changes (an AI fill or typing), or right away after some texts were refused. #}

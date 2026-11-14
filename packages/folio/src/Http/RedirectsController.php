@@ -83,16 +83,23 @@ final class RedirectsController
         });
     }
 
-    /** GET {prefix}/redirects/new (?not_found={id} starts from that address) */
+    /**
+     * GET {prefix}/redirects/new (?not_found={id} starts from that address; ?address=/path, from the
+     * admin's 404 page, prefills a path on this site: anything else, a URL or "//host" included, is
+     * left out). Saving validates the address as always.
+     */
     public function create(ServerRequestInterface $request): ResponseInterface
     {
         return $this->guarded(function () use ($request): ResponseInterface {
             $values = self::blank();
-            $id = $request->getQueryParams()['not_found'] ?? null;
+            $query = $request->getQueryParams();
+            $id = $query['not_found'] ?? null;
             $row = is_string($id) ? $this->notFound->find($id) : null;
             if ($row !== null) {
                 $values['address'] = $this->visible($row['locale'], $row['path']);
                 $values['not_found'] = $row['id'];
+            } elseif (is_string($query['address'] ?? null) && self::isPath($query['address'])) {
+                $values['address'] = $query['address'];
             }
 
             return $this->form($request, null, $values);
@@ -113,7 +120,7 @@ final class RedirectsController
         return $this->guarded(function () use ($request): ResponseInterface {
             $entry = $this->entry($request);
             if ($entry === null) {
-                return self::unknown();
+                return self::unknown($request);
             }
 
             return $this->form($request, $entry, [
@@ -135,7 +142,7 @@ final class RedirectsController
         return $this->guarded(function () use ($request): ResponseInterface {
             $entry = $this->entry($request);
 
-            return $entry === null ? self::unknown() : $this->save($request, $entry);
+            return $entry === null ? self::unknown($request) : $this->save($request, $entry);
         });
     }
 
@@ -145,7 +152,7 @@ final class RedirectsController
         return $this->guarded(function () use ($request): ResponseInterface {
             $entry = $this->entry($request);
             if ($entry === null) {
-                return self::unknown();
+                return self::unknown($request);
             }
             $this->entries->delete($entry['id']);
             self::flash($request, FolioText::get('folio.redirects.deleted'));
@@ -160,7 +167,7 @@ final class RedirectsController
         return $this->guarded(function () use ($request): ResponseInterface {
             $row = $this->notFound->find((string) $request->getAttribute('id', ''));
             if ($row === null) {
-                return self::unknown();
+                return self::unknown($request);
             }
             $this->notFound->dismiss($row['id'], new \DateTimeImmutable());
             self::flash($request, FolioText::get('folio.redirects.dismissed', ['address' => $this->visible($row['locale'], $row['path'])]));
@@ -534,9 +541,15 @@ final class RedirectsController
         return $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
     }
 
-    private static function unknown(): ResponseInterface
+    /** A path on this site: "/…", never "//host" or "/\host", a scheme or a relative "x". */
+    private static function isPath(string $address): bool
     {
-        return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.redirects.unknown'));
+        return preg_match('~^/(?![/\\\\])[^\\\\\\s]*$~', $address) === 1 && RedirectPath::normalize($address) !== null;
+    }
+
+    private static function unknown(ServerRequestInterface $request): ResponseInterface
+    {
+        return NotFound::response($request, FolioText::get('folio.redirects.unknown'));
     }
 
     private static function flash(ServerRequestInterface $request, string $message): void

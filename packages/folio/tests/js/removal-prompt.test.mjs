@@ -222,7 +222,7 @@ test('test_restricted_plan_only_alerts', async () => {
     submit(w, form);
     await settle();
 
-    assert.deepEqual(folioDialog(w), { title: 'delete_blocked', message: "Can't delete: 2 progress records still point here.", alert: true });
+    assert.deepEqual(folioDialog(w), { title: 'Still in use', message: "Can't delete: 2 progress records still point here.", alert: true });
     assert.equal(dialog(w), null);
     answerDialog(w, 'confirm');
     await settle();

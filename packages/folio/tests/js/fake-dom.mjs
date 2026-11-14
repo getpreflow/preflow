@@ -4,9 +4,33 @@
 // <dialog> with showModal(), close() and escape(),
 // form owners (form="…") and requestSubmit(), a MutationObserver for appended elements, and a
 // window that delivers postMessage events.
-// load(file) runs a browser script against it.
+// load(file) runs a browser script against it, on a page that has the admin's words (#folio-i18n) as
+// every admin layout does.
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+
+let english = null;
+
+/**
+ * The admin's #folio-i18n dictionary in English, as FolioServiceProvider::jsTexts builds it from
+ * lang/en/folio.php: folio.js.x as "x", folio.fields.x as "fields.x", folio.redirects.prompt.x as
+ * "redirects.prompt.x".
+ */
+export function adminTexts() {
+    if (english === null) {
+        const lang = fileURLToPath(new URL('../../lang/en/folio.php', import.meta.url));
+        const php = `$t = require $argv[1]; $out = [];
+            $add = function (array $texts, string $prefix) use (&$add, &$out): void {
+                foreach ($texts as $k => $v) { is_array($v) ? $add($v, $prefix . $k . '.') : $out[$prefix . $k] = $v; }
+            };
+            $add($t['js'], ''); $add($t['fields'], 'fields.'); $add($t['redirects']['prompt'], 'redirects.prompt.');
+            echo json_encode($out, JSON_UNESCAPED_UNICODE);`;
+        english = JSON.parse(execFileSync('php', ['-r', php, lang], { encoding: 'utf8' }));
+    }
+    return { ...english };
+}
 
 /** A text node: what setting textContent leaves inside an element (one per element here). */
 class Text {
@@ -363,8 +387,22 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
     return window;
 }
 
-/** Runs a browser script file in the fake window (its globals are the window's properties). */
+/**
+ * Runs a browser script file in the fake window (its globals are the window's properties). The page
+ * gets the admin's English words (adminTexts()) as the layouts render them; a test's own #folio-i18n
+ * keeps its words and gets the others.
+ */
 export function load(window, file) {
+    const doc = window.document;
+    let i18n = doc.getElementById('folio-i18n');
+    if (!i18n) {
+        i18n = doc.body.appendChild(doc.createElement('script'));
+        i18n.setAttribute('type', 'application/json');
+        i18n.setAttribute('id', 'folio-i18n');
+    }
+    let own = {};
+    try { own = JSON.parse(i18n.textContent || '{}'); } catch (e) { own = {}; }
+    i18n.textContent = JSON.stringify({ ...adminTexts(), ...own });
     vm.createContext(window);
     vm.runInContext(readFileSync(file, 'utf8'), window, { filename: file });
     return window;

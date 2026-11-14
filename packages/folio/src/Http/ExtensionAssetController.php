@@ -29,7 +29,7 @@ final class ExtensionAssetController
         $type = $real === null ? null : ExtensionAssets::type($real);
         $body = $real === null ? false : @file_get_contents($real);
         if ($type === null || $body === false) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
 
         $hash = ExtensionAssets::hash($real);

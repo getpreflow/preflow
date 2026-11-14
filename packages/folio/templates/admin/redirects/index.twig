@@ -14,7 +14,7 @@
     </nav>
     {% if tab == 'not-found' %}
         {% if missing is empty %}
-            <p class="folio-help">{{ t('folio.redirects.not_found_empty') }}</p>
+            {% include '@folio/admin/partials/_empty.twig' with {screen: 'redirects-not-found', title: t('folio.redirects.not_found_empty'), line: t('folio.redirects.not_found_empty_line')} only %}
         {% else %}
         <div class="folio-table-wrap">
         <table class="folio-table">
@@ -62,8 +62,15 @@
         {% if record %}
             <p class="folio-help">{{ t('folio.redirects.filtered') }} <a href="{{ prefix }}/redirects">{{ t('folio.redirects.show_all') }}</a></p>
         {% endif %}
-        {% if rows is empty %}
-            <p class="folio-help">{{ t('folio.redirects.empty') }}</p>
+        {% if rows is empty and (q or record) %}
+            <div class="folio-empty folio-no-matches"><p>{{ t('folio.list.no_matches') }}</p></div>
+        {% elseif rows is empty %}
+            {% include '@folio/admin/partials/_empty.twig' with {
+                screen: 'redirects',
+                title: t('folio.redirects.empty'),
+                line: t('folio.list.empty_line'),
+                action: {label: t('folio.redirects.new'), url: prefix ~ '/redirects/new'},
+            } only %}
         {% else %}
         <div class="folio-table-wrap">
         <table class="folio-table">

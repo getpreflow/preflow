@@ -912,6 +912,12 @@ final class FolioServiceProvider extends ServiceProvider
             $c->has(TemplateEngineInterface::class) ? $c->get(\Preflow\Folio\View\FolioEngine::class) : null,
             static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),
             self::validatorFactory($c),
+            $c->has(TemplateEngineInterface::class) ? new \Preflow\Folio\Http\NotFound(
+                $c->get(\Preflow\Folio\View\FolioEngine::class),
+                $prefix,
+                $c->get(TypeCatalog::class),
+                static fn (string $permission): bool => !$c->has(\Preflow\Auth\Access\Access::class) || $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            ) : null,
         ));
         $container->bind(\Preflow\Folio\Http\LocaleController::class, fn (Container $c) => new \Preflow\Folio\Http\LocaleController(
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
@@ -1479,12 +1485,13 @@ final class FolioServiceProvider extends ServiceProvider
             ));
             // folio_ink_marks(seed, count, area, aspect = 1): the ink layer's marks (InkMarks), an aria-hidden
             // <svg> of mark-* symbols from icons.svg; aspect is the box's width / height (marks spread evenly
-            // on screen). Every value in it is a number or a fixed mark name.
+            // on screen). A seed that is not a number is a screen's fixed name: its crc32 is the seed
+            // (partials/_empty.twig). Every value in the svg is a number or a fixed mark name.
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_ink_marks',
                 callable: static fn (int|float|string $seed, int|float|string $count = 6, array $area = [], int|float|string $aspect = 1): string => \Preflow\Folio\View\InkMarks::svg(
                     $container->get(\Preflow\Folio\Http\AdminAssetUrls::class)('icons.svg'),
-                    (int) $seed,
+                    is_string($seed) && !is_numeric($seed) ? crc32($seed) : (int) $seed,
                     (int) $count,
                     $area,
                     (float) $aspect,

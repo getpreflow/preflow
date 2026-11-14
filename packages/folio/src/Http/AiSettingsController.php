@@ -48,13 +48,13 @@ final class AiSettingsController
     /** GET {prefix}/ai */
     public function status(ServerRequestInterface $request): ResponseInterface
     {
-        return $this->guard() ?? $this->statusPage($request);
+        return $this->guard($request) ?? $this->statusPage($request);
     }
 
     /** POST {prefix}/ai/test: the same check as `preflow ai:check`; failures are shown, never thrown. */
     public function test(ServerRequestInterface $request): ResponseInterface
     {
-        if ($off = $this->guard()) {
+        if ($off = $this->guard($request)) {
             return $off;
         }
         $result = (new AiCheck($this->ai))->run();
@@ -76,13 +76,13 @@ final class AiSettingsController
     /** GET {prefix}/ai/tuning */
     public function tuning(ServerRequestInterface $request): ResponseInterface
     {
-        return $this->guard() ?? $this->tuningPage($request, []);
+        return $this->guard($request) ?? $this->tuningPage($request, []);
     }
 
     /** POST {prefix}/ai/tuning: every level's textarea (one instruction per line), plus an optional new field level. */
     public function saveTuning(ServerRequestInterface $request): ResponseInterface
     {
-        if ($off = $this->guard()) {
+        if ($off = $this->guard($request)) {
             return $off;
         }
         $body = self::body($request);
@@ -116,7 +116,7 @@ final class AiSettingsController
     /** GET {prefix}/ai/glossary */
     public function glossary(ServerRequestInterface $request): ResponseInterface
     {
-        if ($off = $this->guard()) {
+        if ($off = $this->guard($request)) {
             return $off;
         }
         $rows = [];
@@ -134,7 +134,7 @@ final class AiSettingsController
      */
     public function saveGlossary(ServerRequestInterface $request): ResponseInterface
     {
-        if ($off = $this->guard()) {
+        if ($off = $this->guard($request)) {
             return $off;
         }
         $body = self::body($request);
@@ -182,10 +182,10 @@ final class AiSettingsController
     }
 
     /** 404 unless the screens exist (visible()). */
-    private function guard(): ?ResponseInterface
+    private function guard(ServerRequestInterface $request): ?ResponseInterface
     {
         if (!self::visible($this->ai)) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
 
         return null;

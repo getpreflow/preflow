@@ -11,7 +11,7 @@
         <p class="folio-help folio-assets-no-bin" role="note">{{ t('folio.assets.no_bin') }}</p>
     {% endif %}
     {% if items is empty %}
-        <div class="folio-empty"><p>{{ t('folio.assets.bin_empty') }}</p></div>
+        {% include '@folio/admin/partials/_empty.twig' with {screen: 'assets-bin', title: t('folio.assets.bin_empty'), line: t('folio.assets.bin_empty_line')} only %}
     {% else %}
         <p class="folio-help folio-assets-count">{{ t('folio.assets.bin_count', {}, total) }}</p>
         <div class="folio-table-wrap">

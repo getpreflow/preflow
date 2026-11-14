@@ -55,7 +55,7 @@ Each row carries exactly one label.
 | The review-queue card has no type icon. | Fixed in 0.75 | Each type's group heading shows its tile (`type_icon` macro: the type's icon on its family's tint, from `TypeListing::$family`). |
 | The review-queue card shows the translated progress sentence in mono, not a bare "6 / 17". | Adaptation | The sentence keeps the translation keys. |
 | Alert, notice, field-error, chip and toast glyphs are CSS masks (copies of the icons.md paths), not `<use>` icons. | Adaptation | Field-type PHP and flash markup stay unchanged. |
-| The `is-failed` badge exists, but the AI run item status "failed" still renders `is-incomplete`. | 0.76 | It is a markup change in the AI run screen. |
+| The `is-failed` badge exists, but the AI run item status "failed" still renders `is-incomplete`. | Fixed in 0.76 | "failed" renders `is-failed`, "conflict" `is-changed`, "pending" `is-draft`; "done" stays `is-ok` and "skipped" plain. |
 | On a ticked list row, the accent-soft row fill hides the published badge's fill. The text and dot stay readable. | Fixed in 0.75 | On a ticked row, accent-soft badges and complete language items take the surface fill. |
 | The asset screens' failure messages now use `folio-alert-error`; before, they used the warning tone. | Fixed in 0.73 | Uploads, moves to the bin, panel and edit errors. |
 | The Redirects and AI settings tab bars are now `.folio-tabs` (underline tabs, `aria-current`); before, they were rows of small buttons. | Fixed in 0.73 | Same links, same keys. |
@@ -102,7 +102,7 @@ Each row carries exactly one label.
 | Asset detail: the large preview on surface-2, the right panel (alt warning, file facts, swatches, Used in with type icons, Replace drop zone), the Versions tab | AssetDetail | 0.76 |
 | Asset detail: crop previews (16:9, 4:3, 1:1, 9:16) | AssetDetail | Proposal |
 | Ink layer: marks in `icons.svg` (`mark-*`), `.folio-ink-marks` with `.mc-1…6`, `.folio-ink-line`, `.folio-ink-drift`, the caret on ink, `folio_ink_marks(seed, count, area)` (`InkMarks`), and the sign-in drawn from the shared marks and classes (its `.folio-auth-*` names stay as aliases; `.folio-caret` and the save status with caret came with the editor in 0.75) | Ink | Fixed in 0.76 |
-| Ink layer: ink empty states, the 404 and forbidden ink cards (today forbidden is a plain card and an unknown admin path answers the plain text "Unknown type") | Ink | 0.76 |
+| Ink layer: ink empty states (`partials/_empty.twig`: lists, assets, bin, extensions, translations, both redirect tabs; a search or filter with no results stays plain), the 404 page (`NotFound::response()`: a page the browser opened gets the ink card with the path and, for `redirects.manage`, "→ add a redirect"; htmx, fetch and JSON callers keep the plain text) and the forbidden ink card | Ink | Fixed in 0.76 |
 | The removal dialog restyle (radio cards, "Now: …") | LibOverlays | 0.76 (with redirects) |
 | Styled confirm dialog: one native `<dialog>` (`partials/_dialog.twig`, `.folio-dialog`) behind `window.folioConfirm` / `window.folioAlert` replaces every `window.confirm`/`alert`: `data-confirm`, the delete plan (its lines as the list; "Still in use" with what points here), `hx-confirm` (`htmx:confirm`) and the unsaved-changes guard (Leave without saving / Stay / Save and leave; autosaving editors save first and ask only on failure). Task 7. | LibOverlays | Fixed in 0.75 |
 | AI "Write a draft" in rich text, the "+" insert line and `/` block picker, ⌘K palette | PageEditor, RecordEditor | Proposal |

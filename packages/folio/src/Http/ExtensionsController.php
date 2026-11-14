@@ -61,7 +61,7 @@ final class ExtensionsController
             $definition = $candidate->name === $name ? $candidate : $definition;
         }
         if ($definition === null || ($part !== null && !$definition->hasPart($part))) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.extensions.unknown'));
+            return NotFound::response($request, FolioText::get('folio.extensions.unknown'));
         }
 
         try {

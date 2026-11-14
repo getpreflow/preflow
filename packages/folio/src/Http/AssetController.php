@@ -30,12 +30,12 @@ final class AssetController
         $file = (string) $request->getAttribute('file', '');
         $rel = $this->allowlist->get($file);
         if ($rel === null) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
 
         $path = str_starts_with($rel, '/') ? $rel : $this->baseDir . '/' . $rel; // absolute: a file from another package
         if (!is_file($path)) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
 
         $type = $this->contentType($file);

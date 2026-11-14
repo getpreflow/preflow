@@ -324,7 +324,7 @@ final class AiTranslateController
     public function suggestLabels(ServerRequestInterface $request): ResponseInterface
     {
         if (!$this->translator->available() || $this->labels === null) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
         if (!($this->access?->can('ai.translate') ?? true) || !($this->access?->can('translations.edit') ?? true)) {
             return self::json(403, ['error' => 'Forbidden.']);
@@ -357,7 +357,7 @@ final class AiTranslateController
     public function suggestAlt(ServerRequestInterface $request): ResponseInterface
     {
         if (!$this->translator->available() || $this->media === null || $this->mediaLocales === null) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
         if (!($this->access?->can('ai.translate') ?? true) || !($this->access?->can('assets.edit') ?? true)) {
             return self::json(403, ['error' => 'Forbidden.']);
@@ -374,7 +374,7 @@ final class AiTranslateController
         }
 
         if (!$this->sources->has(AltTextSource::COLLECTION)) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
         $units = $this->sources->get(AltTextSource::COLLECTION)->units($asset->id, $locale, Scope::All);
 
@@ -474,7 +474,7 @@ final class AiTranslateController
     private function target(ServerRequestInterface $request): array|ResponseInterface
     {
         if (!$this->translator->available()) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
@@ -510,11 +510,11 @@ final class AiTranslateController
     private function runType(ServerRequestInterface $request): string|ResponseInterface
     {
         if (!$this->translator->available()) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type) || !$this->sources->has($type) || $this->languages($type) === []) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         if (!($this->access?->can('ai.translate') ?? true) || !($this->access?->can($type . '.edit') ?? true)) {
             return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
@@ -532,7 +532,7 @@ final class AiTranslateController
         }
         $job = $this->jobs->get((string) $request->getAttribute('job', ''));
         if ($job === null || $job->collection !== $type) {
-            return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], FolioText::get('folio.ai_run.unknown_job'));
+            return NotFound::response($request, FolioText::get('folio.ai_run.unknown_job'));
         }
 
         return $job;

@@ -45,14 +45,14 @@ final class AccountController
     {
         $user = $this->user($request);
 
-        return $user === null ? self::notFound() : $this->page($user);
+        return $user === null ? self::notFound($request) : $this->page($user);
     }
 
     public function password(ServerRequestInterface $request): ResponseInterface
     {
         $user = $this->user($request);
         if ($user === null) {
-            return self::notFound();
+            return self::notFound($request);
         }
         $record = $user->record();
         $key = 'account:' . $record->getType()->key . ':' . $record->getId();
@@ -76,7 +76,7 @@ final class AccountController
 
         // Only the password: the record as stored, nothing from the form but the new password.
         if (!$this->passwords->setPassword($record, $password)) {
-            return self::notFound(); // disabled meanwhile: as if the account were gone
+            return self::notFound($request); // disabled meanwhile: as if the account were gone
         }
         $fresh = $this->passwords->account($record);
         if ($fresh !== null) {
@@ -116,8 +116,8 @@ final class AccountController
         return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'private, no-store'], $html);
     }
 
-    private static function notFound(): ResponseInterface
+    private static function notFound(ServerRequestInterface $request): ResponseInterface
     {
-        return new Response(404, ['Content-Type' => 'text/plain; charset=UTF-8'], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
+        return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.not_found'));
     }
 }

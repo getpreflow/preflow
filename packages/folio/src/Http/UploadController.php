@@ -33,7 +33,7 @@ final class UploadController
 
         $base = realpath($this->uploadsDir);
         if ($base === false) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
 
         $full = realpath($this->uploadsDir . '/' . $path);
@@ -41,7 +41,7 @@ final class UploadController
             || !str_starts_with($full, $base . DIRECTORY_SEPARATOR)
             || !is_file($full)
         ) {
-            return new Response(404, [], 'Not found');
+            return NotFound::response($request, 'Not found');
         }
 
         $ext = strtolower(pathinfo($full, PATHINFO_EXTENSION));

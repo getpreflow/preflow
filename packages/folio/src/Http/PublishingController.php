@@ -50,7 +50,7 @@ final class PublishingController
         [$type, $id] = $this->target($request);
         $current = $type !== null ? $this->dm->findType($type, $id) : null;
         if ($type === null || $current === null) {
-            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
 
         $typeDef = $current->getType();
@@ -88,7 +88,7 @@ final class PublishingController
             return $this->backToEditor($type, $id);
         }
         if ($type === null || $restored === null) {
-            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
 
         return $this->backToEditor($type, $id, '?restored=1');
@@ -108,7 +108,7 @@ final class PublishingController
         }
         $working = $this->shareable($request);
         if ($working === null) {
-            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
 
         $nonce = $working->get('_share_token');
@@ -140,7 +140,7 @@ final class PublishingController
     {
         $working = $this->shareable($request);
         if ($working === null) {
-            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.not_found'));
         }
         $this->rotateShareToken($working);
 
@@ -172,7 +172,7 @@ final class PublishingController
     {
         [$type, $id] = $this->target($request);
         if ($type === null) {
-            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
         // "Send its old links to…": none chosen leaves them answering 404.
         $target = \Preflow\Folio\Redirects\RemovalTarget::parse(((array) $request->getParsedBody())['_redirect_to'] ?? null, $this->resolver);
@@ -192,7 +192,7 @@ final class PublishingController
     {
         [$type, $id] = $this->target($request);
         if ($type === null) {
-            return new Response(404, [], \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
         try {
             $this->writer->discard($type, $id, new SaveOptions(mayPublish: $this->mayPublish($type)));

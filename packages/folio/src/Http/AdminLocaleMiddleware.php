@@ -24,6 +24,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * the locale and the overrides state are put back as they were, so nothing reaches a later
  * public request. A preview inside the admin renders with asFrontend().
  *
+ * Every admin route runs it, so it also hands the request the admin's 404 page (NotFound).
+ *
  * After AdminAuthMiddleware on signed-in routes (the user is the request's Authenticatable).
  */
 final class AdminLocaleMiddleware implements MiddlewareInterface
@@ -43,6 +45,8 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         private readonly ?\Closure $onStart = null,
         /** the shared validator factory: Folio's forms validate with the translator, in the interface language */
         private readonly ?\Preflow\Validation\ValidatorFactory $validators = null,
+        /** the admin's 404 page, on the request for NotFound::response() (attribute NotFound::class) */
+        private readonly ?NotFound $notFound = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -59,9 +63,14 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         $previousText = \Preflow\Folio\FolioText::use($this->translator); // Folio's words in PHP (field types, notices)
         $previousValidation = $this->validators?->useTranslator($this->translator);
         try {
-            return $handler->handle($request
+            $request = $request
                 ->withAttribute(self::FRONTEND_LOCALE, $request->getAttribute(self::FRONTEND_LOCALE) ?? $previousLocale)
-                ->withAttribute(self::LOCALE, $locale));
+                ->withAttribute(self::LOCALE, $locale);
+            if ($this->notFound !== null) {
+                $request = $request->withAttribute(NotFound::class, $this->notFound);
+            }
+
+            return $handler->handle($request);
         } finally {
             $this->validators?->useTranslator($previousValidation);
             \Preflow\Folio\FolioText::use($previousText);

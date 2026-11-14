@@ -90,13 +90,13 @@ test('a dirty form: a same-origin link click opens the dialog, Stay keeps everyt
     const click = p.links.list.click();
     assert.equal(click.defaultPrevented, true, 'held');
     assert.equal(isOpen(p.w), true);
-    assert.equal(part(p.w, 'title').textContent, 'leave_title');
-    assert.equal(part(p.w, 'confirm').textContent, 'leave_confirm', '"Leave without saving"');
+    assert.equal(part(p.w, 'title').textContent, 'Leave without saving?');
+    assert.equal(part(p.w, 'confirm').textContent, 'Leave without saving');
     assert.ok(part(p.w, 'confirm').classList.contains('btn-danger'));
-    assert.equal(part(p.w, 'cancel').textContent, 'leave_stay', '"Stay"');
+    assert.equal(part(p.w, 'cancel').textContent, 'Stay');
     assert.equal(p.w.document.activeElement, part(p.w, 'cancel'), 'the focus starts on Stay');
     assert.equal(part(p.w, 'extra').hidden, false, '"Save and leave": the form has a Save button');
-    assert.equal(part(p.w, 'extra').textContent, 'save_and_leave');
+    assert.equal(part(p.w, 'extra').textContent, 'Save and leave');
 
     part(p.w, 'cancel').click();
     await settle();
@@ -298,7 +298,7 @@ test('autosave refused (a conflict): the dialog says why; Leave goes, Stay stays
     await settle();
     assert.equal(isOpen(p.w), true);
     assert.equal(part(p.w, 'message').textContent, 'Not saved — someone else saved this meanwhile.');
-    assert.equal(part(p.w, 'confirm').textContent, 'leave_confirm');
+    assert.equal(part(p.w, 'confirm').textContent, 'Leave without saving');
     assert.equal(part(p.w, 'extra').hidden, true);
     part(p.w, 'cancel').click();
     await settle();

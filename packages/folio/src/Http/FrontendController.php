@@ -81,7 +81,7 @@ final class FrontendController
         $login = $route->loginFor($locale, $record->getType()->locales->default);
         if ($login === null) {
             $notFound = $this->errors?->handleException(new NotFoundHttpException(), $request)
-                ?? new Response(404, ['Content-Type' => 'text/html; charset=UTF-8'], 'Not Found');
+                ?? NotFound::response($request, 'Not Found');
 
             return $notFound->withHeader('Cache-Control', 'private, no-store');
         }

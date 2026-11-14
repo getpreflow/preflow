@@ -62,7 +62,7 @@
                 {% for item in rows %}
                     <tr>
                         <td><a href="{{ item.url }}">{{ item.title }}</a></td>
-                        <td><span class="folio-badge{% if item.status == 'done' %} is-ok{% elseif item.status == 'skipped' %}{% else %} is-incomplete{% endif %}">{{ t('folio.ai_run.status.' ~ item.status) }}</span></td>
+                        <td><span class="folio-badge{{ {done: ' is-ok', failed: ' is-failed', conflict: ' is-changed', pending: ' is-draft'}[item.status] ?? '' }}">{{ t('folio.ai_run.status.' ~ item.status) }}</span></td>
                         <td>{{ item.translated|default(0) }}</td>
                         <td>{{ item.message|default('') }}</td>
                     </tr>

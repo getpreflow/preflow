@@ -1,0 +1,18 @@
+{# The ink empty state (INK.md, "Empty states"): an ink card with six marks on its right half, the
+   title, a mono line ending in a caret and the screen's primary action in --ink-accent. A search or
+   filter with no results is not an empty state: it stays plain (.folio-empty.folio-no-matches).
+   At most one ink place per screen, never inside a form or a table.
+
+   {% include '@folio/admin/partials/_empty.twig' with {
+       screen: 'list',                            the screen's fixed name: its crc32 seeds the marks, so a screen keeps its marks
+       title: t('folio.list.empty', {…}),         text (escaped here)
+       line: t('folio.list.empty_line'),          the mono line; '' or none for no line
+       action: {label: '…', url: '/folio/…'},     optional: a link styled as the primary action; null or none for no action
+   } only %}
+#}
+<div class="folio-ink folio-ink-card folio-ink-empty" data-folio-empty="{{ screen }}">
+    {{ folio_ink_marks(screen, 6, {x: [0.5, 1.0], y: [0, 1]}, 3) }}
+    <p class="folio-ink-title">{{ title }}</p>
+    {% if line|default('') is not same as('') %}<p class="folio-ink-line">{{ line }}<span class="folio-caret" aria-hidden="true"></span></p>{% endif %}
+    {% if action|default(null) %}<a class="btn folio-ink-action" href="{{ action.url }}">{{ action.label }}</a>{% endif %}
+</div>

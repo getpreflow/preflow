@@ -16,7 +16,7 @@
         var el = document.getElementById('folio-i18n');
         var words = {};
         try { words = el ? JSON.parse(el.textContent || '{}') : {}; } catch (e) { words = {}; }
-        return Object.prototype.hasOwnProperty.call(words, key) ? words[key] : key;
+        return Object.prototype.hasOwnProperty.call(words, key) ? words[key] : ''; // never the raw key (JsTextKeysTest)
     }
 
     // ---- Save state: the first edit after a save says "Unsaved changes"; autosave then shows "Saving…",

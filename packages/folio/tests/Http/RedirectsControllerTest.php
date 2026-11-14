@@ -210,6 +210,22 @@ final class RedirectsControllerTest extends TestCase
         $this->assertSame(404, $this->fetch('/folio/redirects/' . $entry['id'])->getStatusCode());
     }
 
+    public function test_address_prefill_only_takes_a_path(): void
+    {
+        // From the admin's 404 page ("→ add a redirect"): a path on this site is prefilled.
+        $this->assertStringContainsString('name="address" value="/old"', (string) $this->fetch('/folio/redirects/new?address=%2Fold')->getBody());
+        $this->assertStringContainsString('name="address" value="/de/alte-seite"', (string) $this->fetch('/folio/redirects/new?address=/de/alte-seite')->getBody());
+        // A URL, another host, a relative address or a backslash host never is.
+        foreach (['https://x', '//x', 'x', '/\\x', ' /x', 'javascript:alert(1)'] as $refused) {
+            $res = $this->fetch('/folio/redirects/new?address=' . rawurlencode($refused));
+            $this->assertSame(200, $res->getStatusCode(), $refused);
+            $this->assertStringContainsString('name="address" value=""', (string) $res->getBody(), $refused);
+        }
+        // A not-found row still wins.
+        $id = $this->hitMissing('de', '/missing', 2);
+        $this->assertStringContainsString('name="address" value="/de/missing"', (string) $this->fetch('/folio/redirects/new?not_found=' . $id . '&address=%2Fold')->getBody());
+    }
+
     public function test_create_area_entry_prefix_mode(): void
     {
         $res = $this->send('/folio/redirects', ['address' => '/blog', 'area' => '1', 'mode' => 'prefix', 'target' => '/journal', 'status' => '302']);

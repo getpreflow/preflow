@@ -275,7 +275,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         if ($this->isSingleton($type)) {
             // A singleton has no list: its one record (id = type key) is edited directly.
@@ -585,7 +585,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type) || $this->isSingleton($type) || !$this->exporter()->available()) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         $typeDef = $this->registry->get($type);
         $listConfig = $this->catalog->get($type)?->list ?? [];
@@ -642,12 +642,12 @@ final class AdminController
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
 
         $record = $this->dm->findType($type, $id);
         if ($record === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
         $payload = json_encode(
@@ -668,7 +668,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
 
         $params = $request->getQueryParams();
@@ -691,7 +691,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type) || $this->isSingleton($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
@@ -709,7 +709,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type) || $this->isSingleton($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
 
         $typeDef = $this->registry->get($type);
@@ -763,11 +763,11 @@ final class AdminController
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         $record = $this->dm->findType($type, $id);
         if ($record === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
         $csrf = $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '';
@@ -800,7 +800,7 @@ final class AdminController
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         $typeDef = $this->registry->get($type);
         $current = $this->dm->findType($type, $id);
@@ -809,7 +809,7 @@ final class AdminController
         $locale = $body['_locale'] ?? $body['locale'] ?? '';
         $locale = is_string($locale) ? $locale : '';
         if ($current === null || !$typeDef->locales->has($locale) || $locale === $typeDef->locales->default) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         $path = $body['_confirm_path'] ?? $body['path'] ?? null;
         $path = is_string($path) && $path !== '' ? $path : null;
@@ -855,13 +855,13 @@ final class AdminController
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
 
         $typeDef = $this->registry->get($type);
         $current = $this->dm->findType($type, $id);
         if ($current === null && !($this->isSingleton($type) && $id === $type)) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         $existing = $current?->toArray() ?? [$typeDef->idField => $id]; // a singleton is created on first save
 
@@ -914,11 +914,11 @@ final class AdminController
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type) || $this->isSingleton($type) || ($this->catalog->get($type)?->list['orderable'] ?? false) !== true) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
 
         if ($this->dm->findType($type, $id) === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         $direction = (string) (((array) $request->getParsedBody())['direction'] ?? '');
         if ($direction === 'up' || $direction === 'down') {
@@ -928,7 +928,7 @@ final class AdminController
                 self::flash($request, 'error', self::errorText($e));
             } catch (\InvalidArgumentException) {
                 // RecordTypes, not the catalog, says what is orderable: a site's own may disagree.
-                return new Response(404, [], FolioText::get('folio.errors.not_found'));
+                return NotFound::response($request, FolioText::get('folio.errors.not_found'));
             }
         }
 
@@ -949,7 +949,7 @@ final class AdminController
         $type = (string) $request->getAttribute('type', '');
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type) || !$this->duplicable($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         // The route asks create (FolioPermissionMiddleware); a copy also shows the record, so view too.
         if (!$this->can($type . '.create') || !$this->can($type . '.view')) {
@@ -957,7 +957,7 @@ final class AdminController
         }
         $source = $this->dm->findType($type, $id);
         if ($source === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
         try {
@@ -971,7 +971,7 @@ final class AdminController
 
             return new Response(302, ['Location' => $this->prefix . '/' . $type]);
         } catch (\InvalidArgumentException) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         self::flash($request, 'success', FolioText::get('folio.list.duplicated', ['title' => $this->labeler->label($source)]));
 
@@ -982,16 +982,16 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if ($this->isSingleton($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.singleton_delete'));
+            return NotFound::response($request, FolioText::get('folio.errors.singleton_delete'));
         }
         $id = (string) $request->getAttribute('id', '');
         if (!$this->catalog->has($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
 
         $record = $this->dm->findType($type, $id);
         if ($record === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
         // Through the delete plan: cascades, detaches and restrictions of declared relations;
@@ -1015,7 +1015,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type) || $this->isSingleton($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         $ids = self::postedIds($request);
         if ($ids === null || $ids === []) {
@@ -1047,7 +1047,7 @@ final class AdminController
     {
         $type = (string) $request->getAttribute('type', '');
         if (!$this->catalog->has($type) || $this->isSingleton($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         if (($records = $this->postedRecords($request, $type)) instanceof ResponseInterface) {
             return $records;
@@ -1077,14 +1077,14 @@ final class AdminController
         $type = (string) $request->getAttribute('type', '');
         $name = (string) $request->getAttribute('name', '');
         if (!$this->catalog->has($type) || $this->isSingleton($type)) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_type'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_type'));
         }
         $typeDef = $this->registry->get($type);
 
         if (str_starts_with($name, 'set-')) {
             $field = $this->bulkFields($type, $typeDef)[substr($name, 4)] ?? null;
             if ($field === null) {
-                return new Response(404, [], FolioText::get('folio.errors.unknown_action'));
+                return NotFound::response($request, FolioText::get('folio.errors.unknown_action'));
             }
             $value = ((array) $request->getParsedBody())['value'] ?? null;
             if (!is_string($value) || !isset($field['options'][$value])) {
@@ -1099,7 +1099,7 @@ final class AdminController
 
         $action = $this->customizations?->bulkAction($type, $name);
         if ($action === null) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_action'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_action'));
         }
         if (!$this->can($action['permission'])) {
             return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
@@ -1320,14 +1320,14 @@ final class AdminController
         $id = (string) $request->getAttribute('id', '');
         $action = $this->catalog->has($type) ? $this->customizations?->action($type, (string) $request->getAttribute('name', '')) : null;
         if ($action === null) {
-            return new Response(404, [], FolioText::get('folio.errors.unknown_action'));
+            return NotFound::response($request, FolioText::get('folio.errors.unknown_action'));
         }
         if (!$this->can($action['permission'])) {
             return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
         }
         $record = $this->dm->findType($type, $id);
         if ($record === null) {
-            return new Response(404, [], FolioText::get('folio.errors.not_found'));
+            return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
         $response = ($action['callable'])($record, $request);
