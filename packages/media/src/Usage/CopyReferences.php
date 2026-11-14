@@ -48,8 +48,9 @@ final class CopyReferences implements AssetReferenceSource, CountsAssetUsage
      * @param list<string> $assetIds
      * @return array<string, int>
      */
-    public function usageCounts(array $assetIds): array
+    public function usageCounts(array $assetIds, bool $nonBlocking = false): array
     {
+        // Every copy blocks a delete of its original: the same count either way.
         return ($this->library)()->copyCounts($assetIds);
     }
 }

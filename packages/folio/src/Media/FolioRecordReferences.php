@@ -36,7 +36,8 @@ use Preflow\Media\Usage\CountsAssetUsage;
  * without an asset or blocks field or a share image are skipped, and on SQL
  * storage only rows whose asset, blocks or `_seo` columns (a revision's "data")
  * contain the id (LIKE) are walked. A library page counts the usages of all its
- * assets at once (usageCounts(): one query per type and source for the page's ids).
+ * assets at once (usageCounts(): one query per type and source for the page's ids, the
+ * revisions left out unless asked: they hold no usage that blocks a delete).
  * Each entry's type is the record's type key.
  */
 final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUsage
@@ -61,19 +62,21 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
     /** @return list<AssetUsageEntry> */
     public function usagesOf(string $assetId): array
     {
-        return array_values($this->collect([$assetId])[$assetId] ?? []);
+        return array_values($this->collect([$assetId], true)[$assetId] ?? []);
     }
 
     /**
      * The usages of a whole page of assets: the same walk as usagesOf(), with one query per
-     * type and source for all the ids (OR-ed LIKEs), counted here.
+     * type and source for all the ids (OR-ed LIKEs), counted here. An earlier revision does not
+     * block a delete, so the revisions are read only with $nonBlocking: a library page's cards
+     * count without them (scanning every revision's data on each page view is the slow part).
      *
      * @param list<string> $assetIds
      * @return array<string, int>
      */
-    public function usageCounts(array $assetIds): array
+    public function usageCounts(array $assetIds, bool $nonBlocking = false): array
     {
-        return array_map('count', $this->collect($assetIds));
+        return array_map('count', $this->collect($assetIds, $nonBlocking));
     }
 
     /**
@@ -81,9 +84,10 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
      * working copy first, then its published version, then an earlier revision.
      *
      * @param list<string> $assetIds
+     * @param bool $revisions read the revisions too (their usages do not block a delete)
      * @return array<string, array<string, AssetUsageEntry>>
      */
-    private function collect(array $assetIds): array
+    private function collect(array $assetIds, bool $revisions): array
     {
         $ids = array_values(array_unique(array_filter($assetIds, static fn ($id): bool => is_string($id) && $id !== '')));
         $usage = array_fill_keys($ids, []);
@@ -121,7 +125,7 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
                     }
                 }
             }
-            if ($listing->publishing) {
+            if ($revisions && $listing->publishing) {
                 foreach ($this->candidates(ShadowTypes::revisions($def), ['data'], $ids) as $row) {
                     $key = $listing->key . '/' . (string) $row->get('record_id');
                     $data = json_decode((string) $row->get('data'), true);

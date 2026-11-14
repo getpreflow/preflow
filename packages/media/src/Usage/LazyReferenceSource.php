@@ -33,15 +33,15 @@ final class LazyReferenceSource implements AssetReferenceSource, CountsAssetUsag
      * @param list<string> $assetIds
      * @return array<string, int>
      */
-    public function usageCounts(array $assetIds): array
+    public function usageCounts(array $assetIds, bool $nonBlocking = false): array
     {
         $source = ($this->source)();
         if ($source instanceof CountsAssetUsage) {
-            return $source->usageCounts($assetIds);
+            return $source->usageCounts($assetIds, $nonBlocking);
         }
         $counts = [];
         foreach ($assetIds as $id) {
-            $counts[$id] = count($source->usagesOf($id));
+            $counts[$id] = AssetUsage::countOf($source->usagesOf($id), $nonBlocking);
         }
 
         return $counts;

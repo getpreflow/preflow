@@ -767,12 +767,14 @@ final class MediaLibrary
 
     /**
      * How many assets, live and binned, use each of the ids as their poster (0 for none), in one
-     * query: count(assetsWithPoster($id)) for each.
+     * query: count(assetsWithPoster($id)) for each; without $binned, the live ones only.
      *
+     * @since 0.76
      * @param list<string> $ids
+     * @param bool $binned count the assets in the bin too
      * @return array<string, int>
      */
-    public function posterCounts(array $ids): array
+    public function posterCounts(array $ids, bool $binned = true): array
     {
         $ids = array_values(array_unique(array_filter($ids, static fn ($id) => is_string($id) && preg_match(self::ID_PATTERN, $id) === 1)));
         if ($ids === []) {
@@ -781,7 +783,11 @@ final class MediaLibrary
         $counts = array_fill_keys($ids, 0);
         $records = $this->dm->queryIn($this->definition())->whereAny([['field' => 'poster', 'operator' => 'IN', 'value' => $ids]])->get();
         foreach ($records->items() as $record) {
-            $poster = (string) ($record->toArray()['poster'] ?? '');
+            $data = $record->toArray();
+            $poster = (string) ($data['poster'] ?? '');
+            if (!$binned && (string) ($data['binned_at'] ?? '') !== '') {
+                continue;
+            }
             if (isset($counts[$poster])) {
                 $counts[$poster]++;
             }

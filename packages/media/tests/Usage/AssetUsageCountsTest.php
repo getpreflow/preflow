@@ -59,14 +59,24 @@ final class AssetUsageCountsTest extends TestCase
         $usage->register($this->batchSource('flows', [$original->id => 2, $poster->id => 1]));
 
         $ids = [$poster->id, $original->id, $unused->id, $clipA->id, 'not-an-id'];
+        // By default the usages that block a delete (a library card's "used N×"): count(blocking($id)) for each.
         $counts = $usage->counts($ids);
 
         $this->assertSame($ids, array_keys($counts), 'every given id, in order');
         foreach ($ids as $id) {
-            $this->assertSame(count($usage->of($id)), $counts[$id], $id);
+            $this->assertSame(count($usage->blocking($id)), $counts[$id], $id);
         }
-        $this->assertSame([$poster->id => 4, $original->id => 3, $unused->id => 0, $clipA->id => 0, 'not-an-id' => 0], $counts);
+        $this->assertSame([$poster->id => 3, $original->id => 3, $unused->id => 0, $clipA->id => 0, 'not-an-id' => 0], $counts, 'the binned clip\'s poster use left out');
+
+        // With the ones that do not (the poster of a binned asset): count(of($id)) for each.
+        $all = $usage->counts($ids, nonBlocking: true);
+        foreach ($ids as $id) {
+            $this->assertSame(count($usage->of($id)), $all[$id], $id);
+        }
+        $this->assertSame([$poster->id => 4, $original->id => 3, $unused->id => 0, $clipA->id => 0, 'not-an-id' => 0], $all);
         $this->assertSame([], $usage->counts([]));
+        $this->assertSame([$poster->id => 2, $clipA->id => 0], $lib->posterCounts([$poster->id, $clipA->id]), 'live and binned');
+        $this->assertSame([$poster->id => 1, $clipA->id => 0], $lib->posterCounts([$poster->id, $clipA->id], binned: false));
     }
 
     public function test_a_batch_source_is_asked_once_and_others_per_asset(): void
@@ -78,7 +88,21 @@ final class AssetUsageCountsTest extends TestCase
         $usage->register($plain);
 
         $this->assertSame(['x' => 3, 'y' => 1, 'z' => 0], $usage->counts(['x', 'y', 'z', 'x']));
-        $this->assertSame([['x', 'y', 'z']], $batch->calls);
+        $this->assertSame([[['x', 'y', 'z'], false]], $batch->calls);
+        $usage->counts(['x'], nonBlocking: true);
+        $this->assertSame([['x'], true], $batch->calls[1], 'the batch is told which usages to count');
+    }
+
+    public function test_a_source_without_a_batch_counts_only_blocking_entries_unless_asked(): void
+    {
+        $usage = new AssetUsage();
+        $usage->register(AssetUsageTest::source('pages', ['y' => [
+            new AssetUsageEntry('Home', null, 'pages'),
+            new AssetUsageEntry('Home, earlier', null, 'pages', 'earlier revision', blocksDelete: false),
+        ]]));
+
+        $this->assertSame(['y' => 1], $usage->counts(['y']));
+        $this->assertSame(['y' => 2], $usage->counts(['y'], nonBlocking: true));
     }
 
     public function test_lazy_source_passes_counts_to_its_source(): void
@@ -88,7 +112,13 @@ final class AssetUsageCountsTest extends TestCase
         $plain = new LazyReferenceSource('pages', static fn (): AssetReferenceSource => AssetUsageTest::source('pages', ['y' => [new AssetUsageEntry('Home', null, 'pages')]]));
 
         $this->assertSame(['x' => 2], $lazy->usageCounts(['x', 'y']));
+        $this->assertSame([[['x', 'y'], false]], $batch->calls);
+        $lazy->usageCounts(['x'], true);
+        $this->assertSame([['x'], true], $batch->calls[1]);
         $this->assertSame(['x' => 0, 'y' => 1], $plain->usageCounts(['x', 'y']));
+        $soft = new LazyReferenceSource('pages', static fn (): AssetReferenceSource => AssetUsageTest::source('pages', ['y' => [new AssetUsageEntry('Then', null, 'pages', blocksDelete: false)]]));
+        $this->assertSame(['y' => 0], $soft->usageCounts(['y']));
+        $this->assertSame(['y' => 1], $soft->usageCounts(['y'], true));
     }
 
     public function test_the_entry_type_is_the_sources_key(): void
@@ -118,7 +148,7 @@ final class AssetUsageCountsTest extends TestCase
     private function batchSource(string $name, array $counts): AssetReferenceSource&CountsAssetUsage
     {
         return new class($name, $counts) implements AssetReferenceSource, CountsAssetUsage {
-            /** @var list<list<string>> */
+            /** @var list<array{list<string>, bool}> */
             public array $calls = [];
 
             /** @param array<string, int> $counts */
@@ -134,9 +164,9 @@ final class AssetUsageCountsTest extends TestCase
                 return array_fill(0, $this->counts[$assetId] ?? 0, new AssetUsageEntry('Flow', null, $this->name));
             }
 
-            public function usageCounts(array $assetIds): array
+            public function usageCounts(array $assetIds, bool $nonBlocking = false): array
             {
-                $this->calls[] = $assetIds;
+                $this->calls[] = [$assetIds, $nonBlocking];
 
                 return array_intersect_key($this->counts, array_flip($assetIds));
             }

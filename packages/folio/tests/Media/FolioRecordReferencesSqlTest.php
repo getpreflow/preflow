@@ -146,12 +146,22 @@ class FolioRecordReferencesSqlTest extends TestCase
         $dm = new DataManager(drivers: ['sql' => $this->driverOn($collector)], defaultDriver: 'sql', typeRegistry: $this->registry);
         $references = new FolioRecordReferences($this->walker(), $dm, new TypeCatalog($this->dir . '/models'), $this->registry, '/folio');
 
+        // A library page's cards: the usages that block a delete, without reading the revisions (0.76).
         $counts = $references->usageCounts([self::ID, self::OTHER, $third]);
 
-        $this->assertSame([self::ID => 3, self::OTHER => 3, $third => 0], $counts);
-        $this->assertCount(3, $collector->getQueries(), 'the working table, its published shadow and its revisions, once for all ids');
+        $this->assertSame([self::ID => 2, self::OTHER => 3, $third => 0], $counts);
+        $this->assertCount(2, $collector->getQueries(), 'the working table and its published shadow, once for all ids');
         foreach ([self::ID, self::OTHER, $third] as $id) {
-            $this->assertSame(count($this->references()->usagesOf($id)), $counts[$id], $id);
+            $blocking = array_filter($this->references()->usagesOf($id), static fn (AssetUsageEntry $e): bool => $e->blocksDelete);
+            $this->assertSame(count($blocking), $counts[$id], $id);
+        }
+
+        // With the usages that do not block (an earlier revision): every usage, the revisions read once more.
+        $all = $references->usageCounts([self::ID, self::OTHER, $third], true);
+        $this->assertSame([self::ID => 3, self::OTHER => 3, $third => 0], $all);
+        $this->assertCount(5, $collector->getQueries(), 'the working table, its published shadow and its revisions');
+        foreach ([self::ID, self::OTHER, $third] as $id) {
+            $this->assertSame(count($this->references()->usagesOf($id)), $all[$id], $id);
         }
         $this->assertSame(['page', 'page', 'page'], array_map(static fn (AssetUsageEntry $e): ?string => $e->type, $this->references()->usagesOf(self::ID)));
     }

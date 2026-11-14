@@ -62,8 +62,9 @@ final class PosterReferences implements AssetReferenceSource, CountsAssetUsage
      * @param list<string> $assetIds
      * @return array<string, int>
      */
-    public function usageCounts(array $assetIds): array
+    public function usageCounts(array $assetIds, bool $nonBlocking = false): array
     {
-        return ($this->library)()->posterCounts($assetIds);
+        // A binned asset's poster use does not block a delete: counted with $nonBlocking only.
+        return ($this->library)()->posterCounts($assetIds, binned: $nonBlocking);
     }
 }

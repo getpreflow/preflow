@@ -53,14 +53,22 @@ final class AssetUsage
     }
 
     /**
-     * How many usages each asset has (count(of($id)) for each), for a whole page of assets at once:
-     * a source that implements CountsAssetUsage is asked once, any other per asset. Every given id
-     * is a key; an unused one counts 0.
+     * How many usages each asset has, for a whole page of assets at once: a source that
+     * implements CountsAssetUsage is asked once, any other per asset. Every given id is a key;
+     * an unused one counts 0.
      *
+     * By default only the usages that block a delete count (count(blocking($id)) for each): a
+     * library card's "used N×", which a source can answer without reading what holds only
+     * non-blocking usages (Folio's earlier revisions, a scan of every revision on each page
+     * view). With $nonBlocking every usage counts (count(of($id)) for each), as cleanup and
+     * emptying the bin see them (of(), isUsed()).
+     *
+     * @since 0.76
      * @param list<string> $assetIds
+     * @param bool $nonBlocking also count the usages that do not block a delete (an earlier revision, the poster of a binned asset)
      * @return array<string, int>
      */
-    public function counts(array $assetIds): array
+    public function counts(array $assetIds, bool $nonBlocking = false): array
     {
         $ids = array_values(array_unique(array_filter($assetIds, 'is_string')));
         $counts = array_fill_keys($ids, 0);
@@ -69,18 +77,27 @@ final class AssetUsage
         }
         foreach ($this->ordered() as $source) {
             if ($source instanceof CountsAssetUsage) {
-                $batch = $source->usageCounts($ids);
+                $batch = $source->usageCounts($ids, $nonBlocking);
                 foreach ($ids as $id) {
                     $counts[$id] += max(0, (int) ($batch[$id] ?? 0));
                 }
                 continue;
             }
             foreach ($ids as $id) {
-                $counts[$id] += count($source->usagesOf($id));
+                $counts[$id] += self::countOf($source->usagesOf($id), $nonBlocking);
             }
         }
 
         return $counts;
+    }
+
+    /**
+     * @param list<AssetUsageEntry> $entries
+     * @internal what CountsAssetUsage::usageCounts() answers for a source without a batch
+     */
+    public static function countOf(array $entries, bool $nonBlocking): int
+    {
+        return $nonBlocking ? count($entries) : count(array_filter($entries, static fn (AssetUsageEntry $e): bool => $e->blocksDelete));
     }
 
     public function isUsed(string $assetId): bool
