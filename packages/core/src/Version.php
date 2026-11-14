@@ -20,6 +20,8 @@ use Composer\InstalledVersions;
  * with dist type "path") is plain "dev": its reference is Composer's content hash, not a commit, and
  * a version Composer guessed for it is no release. Null when the package is not installed, only
  * provided by another, or Composer's runtime API is not there.
+ *
+ * @since 0.75
  */
 final class Version
 {
@@ -75,21 +77,33 @@ final class Version
         if (self::$pathInstalls !== null) {
             return self::$pathInstalls;
         }
-        $paths = [];
         try {
-            $file = dirname((string) (new \ReflectionClass(InstalledVersions::class))->getFileName()) . '/installed.json';
-            $json = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
-            $packages = is_array($json) ? ($json['packages'] ?? $json) : [];
-            foreach (is_array($packages) ? $packages : [] as $package) {
-                if (is_array($package) && is_string($package['name'] ?? null) && ($package['dist']['type'] ?? null) === 'path') {
-                    $paths[$package['name']] = true;
-                }
-            }
+            $paths = self::pathInstallsIn(dirname((string) (new \ReflectionClass(InstalledVersions::class))->getFileName()) . '/installed.json');
         } catch (\Throwable) {
             $paths = [];
         }
 
         return self::$pathInstalls = $paths;
+    }
+
+    /**
+     * The packages an installed.json file lists with dist type "path" (Composer 2's {"packages": [...]}
+     * or Composer 1's bare list); none when the file is missing or unreadable.
+     *
+     * @return array<string, true>
+     */
+    private static function pathInstallsIn(string $file): array
+    {
+        $json = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+        $packages = is_array($json) ? ($json['packages'] ?? $json) : [];
+        $paths = [];
+        foreach (is_array($packages) ? $packages : [] as $package) {
+            if (is_array($package) && is_string($package['name'] ?? null) && ($package['dist']['type'] ?? null) === 'path') {
+                $paths[$package['name']] = true;
+            }
+        }
+
+        return $paths;
     }
 
     private static function isDev(string $pretty): bool

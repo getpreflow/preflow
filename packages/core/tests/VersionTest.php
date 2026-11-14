@@ -84,11 +84,25 @@ final class VersionTest extends TestCase
 
     public function test_installed_json_marks_path_installs(): void
     {
-        // This monorepo installs every preflow package from its path repository.
-        $paths = (new \ReflectionMethod(Version::class, 'pathInstalls'))->invoke(null);
-        $this->assertIsArray($paths);
-        $this->assertArrayHasKey('preflow/core', $paths);
-        $this->assertArrayNotHasKey('phpunit/phpunit', $paths);
+        // A fixture installed.json, so the test holds in a standalone checkout as in the monorepo.
+        $file = sys_get_temp_dir() . '/preflow-installed-' . bin2hex(random_bytes(4)) . '.json';
+        $read = new \ReflectionMethod(Version::class, 'pathInstallsIn');
+        $packages = [
+            ['name' => 'acme/local', 'version' => 'dev-main', 'dist' => ['type' => 'path', 'url' => '../local', 'reference' => 'abc']],
+            ['name' => 'phpunit/phpunit', 'version' => '11.5.0', 'dist' => ['type' => 'zip', 'url' => 'https://example.test/phpunit.zip']],
+            ['name' => 'acme/source-only', 'version' => 'dev-main', 'source' => ['type' => 'git', 'url' => 'https://example.test/x.git']],
+        ];
+        try {
+            file_put_contents($file, (string) json_encode(['packages' => $packages, 'dev' => true]));
+            $this->assertSame(['acme/local' => true], $read->invoke(null, $file), 'Composer 2: {"packages": [...]}');
+            file_put_contents($file, (string) json_encode($packages));
+            $this->assertSame(['acme/local' => true], $read->invoke(null, $file), 'Composer 1: a bare list');
+            file_put_contents($file, 'not json');
+            $this->assertSame([], $read->invoke(null, $file));
+        } finally {
+            @unlink($file);
+        }
+        $this->assertSame([], $read->invoke(null, $file), 'no file');
     }
 
     #[RunInSeparateProcess]
