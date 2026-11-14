@@ -60,6 +60,19 @@ final class SelectFieldTypeTest extends TestCase
         $this->assertStringContainsString('<option value="gone" selected>gone (no longer an option)</option>', $html);
     }
 
+    public function test_an_empty_placeholder_option_is_no_segment_and_does_not_count(): void
+    {
+        // holz's ad type: "– bitte wählen –" under "" and four real choices. The placeholder is the
+        // radiogroup's own "nothing chosen", so four choices still segment, and none is checked.
+        $config = ['options' => ['' => '– choose –', '1' => 'One', '2' => 'Two', '3' => 'Three', '4' => 'Four']];
+        $html = (new SelectFieldType())->renderEditor(new FieldContext(name: 'type', config: $config, required: true));
+        $this->assertStringContainsString('folio-segmented-choice', $html);
+        $this->assertStringNotContainsString('– choose –', $html);
+        $this->assertStringNotContainsString('value=""', $html);
+        $this->assertStringNotContainsString('checked', $html);
+        $this->assertSame(4, substr_count($html, 'class="folio-segment"'));
+    }
+
     public function test_display_cards_renders_radio_cards_with_descriptions(): void
     {
         $config = ['display' => 'cards', 'options' => [

@@ -12,7 +12,7 @@ use Preflow\Folio\Field\FieldContext;
  * longer an option stays visible (and selected) so editing never silently drops it.
  *
  * How it shows (board LibFields, 0.75): up to SEGMENTED_MAX options of a choice that is required or
- * has a "default" are a segmented radiogroup; "display": "cards" shows radio cards with a
+ * has a "default" are a segmented radiogroup (an option under "", a placeholder, is no segment); "display": "cards" shows radio cards with a
  * description each ("options" as {value: {"label": …, "help": …}}); "display": "radio" radio chips;
  * "display": "select" a select (an optional one keeps "—", for no choice). Any other "display"
  * value is a boot error (TypeCatalog, through display()).
@@ -50,9 +50,11 @@ final class SelectFieldType extends AbstractScalarFieldType implements \Preflow\
         if ($display === 'cards') {
             return $this->cards($ctx, $options, self::helps($ctx->config), $value);
         }
-        if (!array_key_exists('display', $ctx->config) && count($options) <= self::SEGMENTED_MAX
+        // An option under "" is a placeholder ("– choose –"): a radiogroup's own "nothing chosen", not a segment.
+        $choices = array_diff_key($options, ['' => true]);
+        if (!array_key_exists('display', $ctx->config) && count($choices) <= self::SEGMENTED_MAX
             && ($ctx->required || array_key_exists('default', $ctx->config))) {
-            return $this->segmented($ctx, $options, $value);
+            return $this->segmented($ctx, $choices, $value);
         }
 
         if (!$ctx->required) {
