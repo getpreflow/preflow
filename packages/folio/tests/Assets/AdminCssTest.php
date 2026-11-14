@@ -287,4 +287,23 @@ final class AdminCssTest extends TestCase
         // The toast's undo bar stops under reduced motion.
         $this->assertMatchesRegularExpression('/@media \(prefers-reduced-motion: reduce\) \{[^@]*\.folio-toast-timer \{ display: none; \}/', $css);
     }
+
+    public function test_the_phone_filter_sheet_comes_after_the_base_popover_rule(): void
+    {
+        $css = $this->css();
+        // Same specificity: the phone sheet only wins when it comes later in the file.
+        $base = strpos($css, "\n.folio-filter-panel {");
+        $phone = strpos($css, '.folio-filter-panel { position: fixed;');
+        $this->assertNotFalse($base);
+        $this->assertNotFalse($phone);
+        $this->assertGreaterThan($base, $phone, 'the @media (max-width: 560px) filter sheet must follow the base .folio-filter-panel rule');
+    }
+
+    public function test_no_dead_one_column_picker_rule_before_the_base_rule(): void
+    {
+        $css = $this->css();
+        $base = strpos($css, "\n.folio-blocks-items {");
+        $this->assertNotFalse($base);
+        $this->assertDoesNotMatchRegularExpression('/\.folio-blocks-items \{ grid-template-columns: minmax\(0, 1fr\); \}/', substr($css, 0, $base));
+    }
 }

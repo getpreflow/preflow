@@ -902,7 +902,6 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 @media (max-width: 560px) {
   .folio-list-toolbar .folio-list-search { flex: 1 1 100%; min-width: 0; }
   .folio-list-toolbar > .folio-segmented.folio-status-switch { flex: 0 1 auto; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
-  .folio-filter-panel { position: fixed; top: auto; left: 16px; right: 16px; bottom: 16px; width: auto; max-width: none; max-height: calc(100vh - 32px); overflow-y: auto; }
 }
 /* Narrow: the filter bar's fields and buttons become full-width rows. */
 @media (max-width: 560px) {
@@ -924,6 +923,10 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
   display: grid; width: 300px; max-width: calc(100vw - 32px);
   border: 1px solid var(--c-border); border-radius: 12px;
   background: var(--c-surface-raised); box-shadow: var(--shadow-lg);
+}
+/* Phone: the popover becomes a bottom sheet (after the base rule, which it overrides). */
+@media (max-width: 560px) {
+  .folio-filter-panel { position: fixed; top: auto; left: 16px; right: 16px; bottom: 16px; width: auto; max-width: none; max-height: calc(100vh - 32px); overflow-y: auto; }
 }
 .folio-filter-fields { display: grid; gap: 14px; padding: 14px; }
 .folio-filter-field { display: grid; gap: 5px; }
@@ -1563,9 +1566,6 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 /* A narrow form column (the form next to the preview): block summaries give way to the labels. */
 @container (max-width: 380px) {
   .folio-block-summary:not(.is-error) { display: none; }
-}
-@container (max-width: 360px) {
-  .folio-blocks-items { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---- alerts and notices ---- */
