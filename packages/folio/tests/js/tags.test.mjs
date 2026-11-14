@@ -267,3 +267,11 @@ test('a decomposed umlaut is the same tag (NFC), whatever its case', () => {
     key(p, 'Enter');
     assert.equal(chips(p)[1], 'März', 'stored composed');
 });
+
+test('leaving the page adds the text still typed, as an edit autosave flushes', () => {
+    const p = page(['Folio']);
+    p.add.value = 'typed';
+    p.w.Folio.navigate('/folio/news');
+    assert.deepEqual(chips(p), ['Folio', 'typed']);
+    assert.equal(p.edits.length, 1, 'a folio:edit before the leave decides');
+});

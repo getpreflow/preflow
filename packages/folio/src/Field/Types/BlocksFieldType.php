@@ -605,7 +605,6 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         return $label !== null ? \Preflow\Folio\FolioText::label($label) : ucfirst(str_replace('_', ' ', $field));
     }
 
-    /** @param array<string, mixed> $context */
     /**
      * A block field the editor cannot hold: a translatable tags field (one list serves every
      * language, as on a type; TypeCatalog refuses it there at boot). @since 0.77
@@ -623,6 +622,7 @@ final class BlocksFieldType implements FieldType, StructuredFieldType, \Preflow\
         }
     }
 
+    /** @param array<string, mixed> $context */
     private function render(string $template, array $context): string
     {
         if ($this->engine === null) {

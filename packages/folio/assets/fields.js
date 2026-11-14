@@ -1047,6 +1047,14 @@
         // Capture: before htmx (or the browser) sends the form.
         document.addEventListener('submit', onTagsSave, true);
         document.addEventListener('folio:save-now', onTagsSave, true);
+        // Leaving the page (a link, the sidebar, a shortcut): text still typed in a tags field is added
+        // first, so it is an edit the guard and autosave's flush see, not text lost with the page.
+        if (Folio.unsaved && typeof Folio.unsaved.onLeave === 'function') {
+            Folio.unsaved.onLeave(function () {
+                document.querySelectorAll('[data-folio-tags]').forEach(commitTags);
+                return false;
+            });
+        }
         // Capture phase: Escape in a relation search closes its results before the editor's own Escape
         // (the side sheet) sees it, and marks it handled: one Esc closes one layer.
         document.addEventListener('keydown', onRelationKeydown, true);
