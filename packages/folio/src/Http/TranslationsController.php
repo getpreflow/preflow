@@ -67,22 +67,8 @@ final class TranslationsController
         $changedOnly = ($query['changed'] ?? '') === '1';
 
         // "Changed only · N": N counts the rows the search finds that have an override, so turned on it
-        // equals the list's total.
-        $overrides = $this->overrides->all($locale);
-        $rows = [];
-        $changedCount = 0;
-        foreach ($this->texts->rows($group, $locale) as $key => $row) {
-            $row['override'] = $overrides[$key] ?? null;
-            if ($q !== '' && !LabelSearch::matches($q, $row)) {
-                continue;
-            }
-            if ($row['override'] !== null) {
-                $changedCount++;
-            } elseif ($changedOnly) {
-                continue;
-            }
-            $rows[] = $row;
-        }
+        // equals the list's total. The same filter gives the AI button its units (LabelUnits).
+        ['rows' => $rows, 'changed' => $changedCount] = LabelSearch::filter($this->texts->rows($group, $locale), $this->overrides->all($locale), $q, $changedOnly);
         $total = count($rows);
         $lastPage = max(1, (int) ceil($total / LabelSearch::PER_PAGE));
         $page = min($lastPage, max(1, (int) ($query['page'] ?? 1)));
@@ -120,7 +106,7 @@ final class TranslationsController
             'csrf' => $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
             'errors' => $errors,
             'values' => $values,
-            'ai_translate' => $this->aiTranslate($group, $locale, $q, $page),
+            'ai_translate' => $this->aiTranslate($group, $locale, $q, $changedOnly, $page),
             'choose_target' => $this->aiOn() && $this->texts->sourceLocale($locale) === null,
             'default_language' => LocaleNames::native($this->texts->sourceLocale($locale) ?? 'en'),
             'editor_assets' => $this->aiOn() ? ['ai-translate.css', 'ai-translate-core.js', 'ai-translate.js'] : [],
@@ -129,8 +115,8 @@ final class TranslationsController
 
     /**
      * A row as the table shows it: the key split into its group prefix ("folio.account.", shown subtle)
-     * and the rest, and the delivered text in parts, its :placeholders (EditableTexts::placeholders(),
-     * here from the row's own delivered text) marked as tokens.
+     * and the rest, and the delivered text in parts, its :placeholders marked (OverrideRules::placeholderParts(),
+     * the names EditableTexts::placeholders() gives, here from the row's own delivered text).
      *
      * @param array{key: string, delivered: ?string, site: ?string, override: ?string} $row
      * @return array<string, mixed>
@@ -140,13 +126,7 @@ final class TranslationsController
         $dot = strrpos($row['key'], '.');
         $row['prefix'] = $dot === false ? '' : substr($row['key'], 0, $dot + 1);
         $row['name'] = $dot === false ? $row['key'] : substr($row['key'], $dot + 1);
-        $row['parts'] = [];
-        if ($row['delivered'] !== null) {
-            $names = OverrideRules::placeholdersIn($row['delivered']);
-            foreach (preg_split('/(:[A-Za-z_][A-Za-z0-9_]*)/', $row['delivered'], -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY) ?: [] as $part) {
-                $row['parts'][] = ['text' => $part, 'token' => $part[0] === ':' && in_array(substr($part, 1), $names, true)];
-            }
-        }
+        $row['parts'] = $row['delivered'] === null ? [] : OverrideRules::placeholderParts($row['delivered']);
 
         return $row;
     }
@@ -162,7 +142,7 @@ final class TranslationsController
      *
      * @return array<string, mixed>|null
      */
-    private function aiTranslate(string $group, string $locale, string $q, int $page): ?array
+    private function aiTranslate(string $group, string $locale, string $q, bool $changedOnly, int $page): ?array
     {
         if (!$this->aiOn() || $this->texts->sourceLocale($locale) === null) {
             return null;
@@ -174,7 +154,7 @@ final class TranslationsController
             'locale' => $locale,
             'language' => LocaleNames::native($locale),
             'form' => '.folio-translations',
-            'extra' => ['group' => $group, 'q' => $q, 'page' => $page],
+            'extra' => ['group' => $group, 'q' => $q, 'changed' => $changedOnly ? '1' : '', 'page' => $page],
             'intro' => FolioText::get('folio.ai_translate.intro_labels'),
             'scope_needed' => FolioText::get('folio.ai_translate.scope_needed_labels'),
             'filled' => FolioText::get('folio.ai_translate.filled_labels'),

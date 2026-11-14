@@ -2177,8 +2177,10 @@
             });
             var n = changed().length;
             bar.hidden = n === 0;
-            if (count && n > 0) { count.textContent = plural(folioT('translations_unsaved', { count: n }), n); }
+            if (count && n > 0) { count.textContent = plural(folioT('translations_unsaved', { count: adminNumber(n) }), n); }
             if (n > 0) { markDirty(bar); } else { clearDirty(bar); }
+            // After a refused save: "N texts were not saved" goes once nothing refused (or changed) is left.
+            if (n === 0) { document.querySelectorAll('[data-translations-refused]').forEach(function (el) { el.remove(); }); }
         };
 
         table.querySelectorAll('[data-translations-row-save]').forEach(function (b) { b.hidden = true; });
@@ -2230,8 +2232,10 @@
         }
 
         // A row's own form (its Reset, or its Save without script) takes only that row's edit with it.
-        document.addEventListener('submit', function (e) {
-            if (!e.defaultPrevented) { submitted = e.target; }
+        // On the window, after onLeaveSubmit (boot order): a submit the leave dialog held (and the person
+        // stayed) is defaultPrevented and not recorded, so a later tab close still asks.
+        window.addEventListener('submit', function (e) {
+            submitted = e.defaultPrevented ? null : e.target;
         });
         window.Folio.unsaved.onLeave(function (e) {
             var f = e && e.type === 'submit' ? e.target : (e && e.type === 'beforeunload' ? submitted : null);
@@ -2241,6 +2245,11 @@
             return list.length > 0 && list.every(function (el) { return el.getAttribute('data-ai-path') === key.value; });
         });
         refresh();
+    }
+
+    // A count in the interface language's digits and separators (<html lang>, as folio_number formats).
+    function adminNumber(n) {
+        try { return new Intl.NumberFormat(document.documentElement.getAttribute('lang') || 'en').format(n); } catch (e) { return String(n); }
     }
 
     // "one|other" (lang files' two forms, PluralResolver's simple case): the first for 1, else the second.

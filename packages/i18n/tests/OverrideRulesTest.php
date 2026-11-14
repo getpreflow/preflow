@@ -79,4 +79,18 @@ final class OverrideRulesTest extends TestCase
         $this->assertSame(OverrideRules::NOT_OFFERED, $this->reason($rules->check('deu', 'any.key', 'Hallo')));
         $this->assertSame(OverrideRules::NO_MARKUP, $this->reason($rules->check('de', 'any.key', '<i>')));
     }
+
+    public function test_a_text_splits_into_text_and_placeholders(): void
+    {
+        $this->assertSame([
+            ['text' => 'Use at least ', 'placeholder' => false],
+            ['text' => ':min', 'placeholder' => true],
+            ['text' => ' characters, ', 'placeholder' => false],
+            ['text' => ':min_x', 'placeholder' => true],
+            ['text' => '.', 'placeholder' => false],
+        ], OverrideRules::placeholderParts('Use at least :min characters, :min_x.'));
+        $this->assertSame([['text' => ':a', 'placeholder' => true], ['text' => ':b', 'placeholder' => true]], OverrideRules::placeholderParts(':a:b'));
+        $this->assertSame([['text' => 'Plain: no 1 placeholder', 'placeholder' => false]], OverrideRules::placeholderParts('Plain: no 1 placeholder'), 'a colon alone is text');
+        $this->assertSame([], OverrideRules::placeholderParts(''));
+    }
 }

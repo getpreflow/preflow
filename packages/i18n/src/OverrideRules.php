@@ -103,4 +103,24 @@ final class OverrideRules
 
         return $names;
     }
+
+    /**
+     * A text in parts, in order: plain text and its placeholders (":name", placeholder true), so a
+     * screen can show the placeholders apart. Empty parts are left out.
+     *
+     * @return list<array{text: string, placeholder: bool}>
+     */
+    public static function placeholderParts(string $text): array
+    {
+        $parts = [];
+        foreach (preg_split(self::PLACEHOLDER, $text, -1, PREG_SPLIT_DELIM_CAPTURE) ?: [] as $i => $piece) {
+            if ($i % 2 === 1) {
+                $parts[] = ['text' => ':' . $piece, 'placeholder' => true];
+            } elseif ($piece !== '') {
+                $parts[] = ['text' => $piece, 'placeholder' => false];
+            }
+        }
+
+        return $parts;
+    }
 }

@@ -317,7 +317,7 @@ final class AiTranslateController
     }
 
     /**
-     * Body: group, locale, scope (needed|all), q?, page?, note?. The suggestion for the texts of
+     * Body: group, locale, scope (needed|all), q?, changed? (1: "Changed only"), page?, note?. The suggestion for the texts of
      * one page of Settings → Translations (the page the editor sees, so each has its input);
      * same answer as suggest. Permission: ai.translate and translations.edit.
      */
@@ -340,6 +340,7 @@ final class AiTranslateController
             trim((string) ($body['q'] ?? '')),
             (int) ($body['page'] ?? 1),
             $scope,
+            ($body['changed'] ?? '') === '1',
         );
         if ($units === null) {
             return self::json(422, ['error' => 'Choose a group and a language to translate into.']);

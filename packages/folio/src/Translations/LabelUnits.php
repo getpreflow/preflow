@@ -11,7 +11,7 @@ use Preflow\I18n\Machine\TranslationUnit;
 
 /**
  * The AI units of Settings → Translations: the texts of one page of the screen (same group,
- * language, search and page, so every unit has its input on the page the editor looks at), as
+ * language, search, "Changed only" and page, so every unit has its input on the page the editor looks at), as
  * the screen shows them. The unit id is the text's key. Needed means the language has no text of
  * its own and no override while the source language has one; All every text with a source.
  * The source is English (the delivered column), with its own override applied.
@@ -38,7 +38,7 @@ final class LabelUnits
     /**
      * @return list<TranslationUnit>|null null for a group or language the screen does not offer
      */
-    public function forPage(string $group, string $locale, string $search, int $page, Scope $scope): ?array
+    public function forPage(string $group, string $locale, string $search, int $page, Scope $scope, bool $changedOnly = false): ?array
     {
         $from = $this->sourceFor($group, $locale);
         if ($from === null) {
@@ -47,13 +47,7 @@ final class LabelUnits
         $overrides = $this->overrides->all($locale);
         $sourceOverrides = $this->overrides->all($from);
 
-        $rows = [];
-        foreach ($this->texts->rows($group, $locale) as $key => $row) {
-            $row['override'] = $overrides[$key] ?? null;
-            if ($search === '' || LabelSearch::matches($search, $row)) {
-                $rows[] = $row;
-            }
-        }
+        $rows = LabelSearch::filter($this->texts->rows($group, $locale), $overrides, $search, $changedOnly)['rows'];
         $last = max(1, (int) ceil(count($rows) / LabelSearch::PER_PAGE));
         $page = min($last, max(1, $page));
 

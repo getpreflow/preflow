@@ -48,7 +48,7 @@
         {% include '@folio/admin/partials/_empty.twig' with {screen: 'translations', title: t('folio.translations.empty_title'), line: t('folio.translations.empty_line')} only %}
     {% else %}
     {% if errors|default([]) is not empty %}
-        <p class="folio-help folio-translations-refused" role="alert">{{ t('folio.translations.save_all_refused', {count: errors|length}) }}</p>
+        <p class="folio-help folio-translations-refused" role="alert" data-translations-refused>{{ t('folio.translations.save_all_refused', {count: errors|length}) }}</p>
     {% endif %}
     {# Each row is a form of its own: without script its Save button saves that row. Reset is the row's
        reset form (its button sits in the field, form="…"), so Enter in a field never resets. #}
@@ -61,7 +61,7 @@
             {% set refused = values[row.key] is defined %}
             <tr{% if row.override is not null %} class="is-changed"{% endif %}>
                 <td><code class="folio-translations-key" id="folio-translation-key-{{ loop.index }}">{% if row.prefix != '' %}<span class="folio-translations-prefix">{{ row.prefix }}</span>{% endif %}{{ row.name }}</code>{% if row.override is not null %}<span class="folio-sr"> ({{ t('folio.translations.changed') }})</span>{% endif %}</td>
-                <td class="folio-translations-delivered">{% if row.delivered is null %}—{% else %}{% for part in row.parts %}{% if part.token %}<code class="folio-token" title="{{ t('folio.translations.placeholder_title') }}">{{ part.text }}</code>{% else %}{{ part.text }}{% endif %}{% endfor %}{% endif %}{% if row.site is not null %}<span class="folio-help folio-translations-site">{{ t('folio.translations.site_file') }}: {{ row.site }}</span>{% endif %}</td>
+                <td class="folio-translations-delivered">{% if row.delivered is null %}—{% else %}{% for part in row.parts %}{% if part.placeholder %}<code class="folio-token" title="{{ t('folio.translations.placeholder_title') }}">{{ part.text }}</code>{% else %}{{ part.text }}{% endif %}{% endfor %}{% endif %}{% if row.site is not null %}<span class="folio-help folio-translations-site">{{ t('folio.translations.site_file') }}: {{ row.site }}</span>{% endif %}</td>
                 <td>
                     <form method="post" action="{{ prefix }}/translations" class="folio-translations-row">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">

@@ -28,8 +28,10 @@ function el(w, parent, tag, attrs = {}, text = '') {
  * the save-all bar (hidden), and the table with one row form per key. rows: [key, saved override].
  * refused: {key: posted text} as after a 422 (the field holds the refused text, data-saved the saved one).
  */
-function screen({ rows = [['folio.account.change_password', ''], ['folio.account.password_changed', 'Signed out elsewhere'], ['folio.account.repeat', '']], refused = {} } = {}) {
+function screen({ rows = [['folio.account.change_password', ''], ['folio.account.password_changed', 'Signed out elsewhere'], ['folio.account.repeat', '']], refused = {}, lang = null, intl = null } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
+    if (lang) { w.document.documentElement.setAttribute('lang', lang); }
+    if (intl) { w.Intl = intl; }
     w.location.href = 'https://site.test/folio/translations?group=folio&locale=en';
     w.confirm = () => { throw new Error('window.confirm called'); };
     const doc = w.document;
@@ -51,6 +53,7 @@ function screen({ rows = [['folio.account.change_password', ''], ['folio.account
     discard.hidden = true;
     const saveAll = el(w, bar, 'button', { type: 'submit', 'data-folio-save': '' }, 'Save all');
 
+    const alert = Object.keys(refused).length ? el(w, doc.body, 'p', { class: 'folio-help folio-translations-refused', role: 'alert', 'data-translations-refused': '' }, '1 text was not saved') : null;
     const table = el(w, doc.body, 'table', { class: 'folio-table folio-translations' });
     const tbody = el(w, table, 'tbody');
     const fields = {}, rowSaves = {}, rowForms = {}, resets = {}, trs = {};
@@ -74,7 +77,7 @@ function screen({ rows = [['folio.account.change_password', ''], ['folio.account
         fields[key] = input; rowForms[key] = form; trs[key] = tr;
     });
     load(w, ADMIN_JS);
-    return { w, doc, dashboard, filter, group, search, apply, german, changedOnly, bar, count, discard, saveAll, table, fields, rowSaves, rowForms, resets, trs };
+    return { w, doc, alert, dashboard, filter, group, search, apply, german, changedOnly, bar, count, discard, saveAll, table, fields, rowSaves, rowForms, resets, trs };
 }
 
 function type(w, input, value) {
@@ -189,7 +192,9 @@ test('after refused texts the bar shows at once; Discard brings back the saved t
     assert.equal(p.w.Folio.unsaved.isDirty(p.bar), true, 'the refused text is not saved');
     assert.ok(p.trs[B].classList.contains('is-edited'));
 
+    assert.ok(p.alert.isConnected, 'the refusal is said above the table');
     p.discard.click();
+    assert.equal(p.alert.isConnected, false, '"N texts were not saved" goes with the refused texts');
     assert.equal(p.fields[B].value, 'Signed out elsewhere', 'the saved text');
     assert.equal(p.fields[B].hasAttribute('data-unsaved'), false);
     assert.equal(p.rowForms[B].querySelector('.form-error'), null);
@@ -282,4 +287,25 @@ test('Reset of the only changed row is no leave; with other changes it asks', ()
     const other = submitBy(q.w, q.resets[B].form, q.resets[B].button);
     assert.equal(other.defaultPrevented, true);
     assert.equal(isOpen(q.w), true);
+});
+
+test('a Reset the dialog held (Stay) does not later excuse a tab close', async () => {
+    const p = screen();
+    type(p.w, p.fields[A], 'Change your password');
+    type(p.w, p.fields[B], 'Other');
+    const held = submitBy(p.w, p.resets[B].form, p.resets[B].button);
+    assert.equal(held.defaultPrevented, true);
+    part(p.w, 'cancel').click(); // Stay
+    await settle();
+    type(p.w, p.fields[A], ''); // now only B's row holds a change
+    assert.equal(p.w.Folio.unsaved.isDirty(p.bar), true);
+    assert.equal(asksToLeave(p.w), true, 'the reset never went, so closing the tab still asks');
+});
+
+test('the count is written in the interface language\'s digits', () => {
+    const intl = { NumberFormat: function (lang) { return { format: (n) => lang + '#' + n }; } };
+    const p = screen({ lang: 'de', intl });
+    type(p.w, p.fields[A], 'x');
+    type(p.w, p.fields[C], 'y');
+    assert.equal(p.count.textContent, 'de#2 unsaved changes');
 });

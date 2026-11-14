@@ -92,6 +92,26 @@ final class AiLabelsAndMediaTest extends TestCase
         $this->assertSame('Tschüss', $all['texts']['shop.bye']['previous']);
     }
 
+    /** "Changed only" (changed=1): the AI button gets exactly the rows the screen renders, and posts the filter. */
+    public function test_labels_follow_the_changed_only_filter(): void
+    {
+        $this->overrides()->set('de', 'shop.hello', 'Hallo :name', null);
+        $request = (new Psr17Factory())->createServerRequest('GET', '/folio/translations?group=shop&locale=de&changed=1');
+        $screen = (string) ($this->session ?? $this->aiApp())->handle($request)->getBody();
+        preg_match_all('~<input type="hidden" name="key" value="([^"]+)"~', $screen, $m);
+        $rendered = array_values(array_unique($m[1]));
+        $this->assertSame(['shop.hello', 'shop.thanks'], $rendered, 'only the overridden rows');
+        $this->assertStringContainsString('&quot;changed&quot;:&quot;1&quot;', $screen, 'the button posts the filter');
+
+        $all = self::json($this->call('/folio/translations/_ai/suggest', ['group' => 'shop', 'locale' => 'de', 'scope' => 'all', 'changed' => '1']));
+        $this->assertSame($rendered, array_keys($all['texts']), 'not bye, which is not on screen');
+        $sent = implode("\n", array_map(static fn ($r): string => $r->prompt, $this->fake->requests()));
+        $this->assertStringNotContainsString('Goodbye', $sent, 'a row off screen is never sent (nor billed)');
+
+        $searched = self::json($this->call('/folio/translations/_ai/suggest', ['group' => 'shop', 'locale' => 'de', 'scope' => 'all', 'changed' => '1', 'q' => 'thank']));
+        $this->assertSame(['shop.thanks'], array_keys($searched['texts']), 'search and filter together');
+    }
+
     public function test_labels_placeholders_preserved_or_failed(): void
     {
         $drop = static fn (\Preflow\Ai\AiRequest $r): \Preflow\Ai\AiResponse => FakeAiClient::json(array_map(
