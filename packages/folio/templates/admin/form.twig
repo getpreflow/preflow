@@ -4,6 +4,8 @@
 {% import '@folio/admin/partials/_languages.twig' as langs %}
 {% set framed = framed|default(false) %}
 {% set record_form = record_form|default('folio-record') %}
+{# A form without autosave (0.76) shows its unsaved state and Cancel beside Save (admin.js). #}
+{% set unsaved_state = framed and (can_save ?? true) and not (publishing and (publishing.autosave_url or publishing.save_state)) %}
 {% block title %}Folio — {{ record_title|default(null) ?: heading }}{% endblock %}
 {# The editor frame's topbar (0.75): back button · breadcrumb "Label · count" over the title and its
    status badges · content-language switch · layout switch · save state · Save draft · Publish. The
@@ -22,10 +24,11 @@
     <div class="folio-segmented folio-view-switch" role="group" aria-label="{{ t('folio.form.view') }}" data-folio-preview>{% for mode, text in {'form': t('folio.form.view_form'), 'split': t('folio.form.view_split'), 'preview': t('folio.form.view_preview')} %}<button type="button" data-folio-view="{{ mode }}" aria-pressed="false" title="{{ text }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#{{ {'form': 'ui-form', 'split': 'ui-split', 'preview': 'ui-eye'}[mode] }}"></use></svg><span>{{ text }}</span></button>{% endfor %}</div>
     {%- endif %}
     {%- if publishing and publishing.save_state %}{% include '@folio/admin/publishing/status.twig' with {text: publishing.save_state, version: null, conflict: false} %}{% endif %}
-    {%- if framed and (can_save ?? true) and not (publishing and (publishing.autosave_url or publishing.save_state)) %}
+    {%- if unsaved_state %}
     {# A form without autosave (0.76): its unsaved count and Cancel beside Save. admin.js counts the record form's
-       changed controls (Folio.unsaved.count) and Cancel puts them back (Folio.unsaved.discard, "folio:discard" on
-       the form); both stay hidden while nothing is changed, and without script. #}
+       changed fields (Folio.unsaved.count) and Cancel puts them back (Folio.unsaved.discard, "folio:discard" on
+       the form) or reloads the form's data-folio-edit-url; both stay hidden while nothing is changed, and without
+       script. After a refused save (data-folio-refused on the form) they show "Not saved" from the start. #}
     <span class="folio-save-state is-unsaved" data-folio-unsaved-state="{{ record_form }}" aria-live="polite" hidden><span class="folio-save-state-text" data-folio-save-text></span></span>
     <button type="button" class="btn btn-ghost" data-folio-discard="{{ record_form }}" hidden>{{ t('folio.common.cancel') }}</button>
     {%- endif %}
@@ -68,6 +71,8 @@
             </div>
         {% endif %}
         {% set form_attrs = {'id': record_form} %}
+        {% if unsaved_state and edit_url|default(null) %}{% set form_attrs = form_attrs|merge({'data-folio-edit-url': edit_url}) %}{% endif %}
+        {% if unsaved_state and refused|default(false) %}{% set form_attrs = form_attrs|merge({'data-folio-refused': ''}) %}{% endif %}
         {% if multipart|default(false) %}{% set form_attrs = form_attrs|merge({'enctype': 'multipart/form-data'}) %}{% endif %}
         {% if publishing and publishing.autosave_url %}
             {# Autosave: debounced htmx POST of the whole form, the side panel's form="…" controls too. Their

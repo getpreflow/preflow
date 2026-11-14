@@ -1725,21 +1725,35 @@ pending edits first, then goes; if that save fails, the dialog's go-ahead names 
 
 **Unsaved count and Cancel (forms without autosave, since 0.76).** An editor whose type does not
 autosave (no publishing, such as Roles) shows **"N unsaved changes"** and **Cancel** beside Save,
-hidden while nothing is changed. `Folio.unsaved.count(form)` is the number of the form's controls
-that differ from the page as loaded: its own and those that name it with `form="…"` (the side
-panel's), text-like inputs and textareas by `defaultValue`, checkboxes and radios by
-`defaultChecked`, selects by their options' `defaultSelected`. Disabled controls, hidden and file
-inputs, and controls marked `data-folio-no-edit` are not counted. Cancel calls
-`Folio.unsaved.discard(form)`: every such control goes back to its default (disabled ones too), the
-form's unsaved mark is cleared, and a bubbling **`folio:discard`** event is sent on the form. The
-markup is form.twig's `[data-folio-unsaved-state="<form id>"]` and `[data-folio-discard="<form id>"]`;
-any non-autosaving form can carry them.
+hidden while nothing is changed. admin.js takes a snapshot of the form's submittable values once
+the field scripts have run: what FormData would send for the form and the controls that name it
+with `form="…"` (the side panel's), without controls marked `data-folio-no-edit` and names that
+start with `_` (`_csrf_token`, `_locale`, `_version`). `Folio.unsaved.count(form)` is the number of
+**field names** whose values differ from that snapshot, so a field kept in hidden inputs (rich
+text, blocks, relations, picked assets) counts, and a radio group or a checkbox list (the
+permissions matrix) counts once. While the form holds unsaved changes the state never hides: when
+nothing is left to count it says **"Unsaved changes"** without a number.
+
+Cancel calls `Folio.unsaved.discard(form)`. When only visible controls changed, they go back to
+the page as loaded in place (disabled ones too), the form's unsaved mark is cleared, a bubbling
+**`folio:discard`** event is sent on the form, and fields.js's counters, date hints and steppers
+follow (`Folio.initFields(root)`). When a hidden input changed (or the restore does not reach the
+snapshot), Cancel **reloads the edit page** (the form's `data-folio-edit-url`, in the content
+language) past the leave guard once: a form without autosave has no server draft, so that shows
+the saved state.
+
+A **refused save** (a 422 re-render with the posted values) carries `data-folio-refused` on the
+form: it starts unsaved, so leaving asks, the state says **"Not saved"** (or the count once
+something else changes), and Cancel reloads the edit page. The markup is form.twig's
+`[data-folio-unsaved-state="<form id>"]` and `[data-folio-discard="<form id>"]`; any
+non-autosaving form can carry them.
 
 For field and extension authors: a field that changes controls from script should send a bubbling
-`change` (or `input`) event for each, so the count and the leave guard see it as a click. A field
-with derived state (locks, previews, counters, a value kept in a hidden input) listens for
-`folio:discard` on its form and rebuilds that state from the restored controls; the permissions
-matrix (`rbac_permissions`) re-applies its locks there.
+`change` (or `input`) event for each (fields.js does so for Trix's `trix-change`), so the count and
+the leave guard see it as a click. A field whose visible controls have derived state (locks,
+previews) listens for `folio:discard` on its form and rebuilds that state from the restored
+controls; the permissions matrix (`rbac_permissions`) re-applies its locks there. A field kept in
+hidden inputs needs nothing: Cancel reloads the page for it.
 
 ### Type customizations
 

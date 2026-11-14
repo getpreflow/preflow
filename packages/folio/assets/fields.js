@@ -792,6 +792,18 @@
         root.querySelectorAll('[data-folio-affix] input').forEach(syncOpenUrl);
         root.querySelectorAll('textarea[aria-describedby]').forEach(syncCounter);
     }
+    // Folio.initFields(root): the hints, counters and steppers under root follow their controls again
+    // (admin.js calls it after Cancel put a form's controls back).
+    Folio.initFields = init;
+
+    // A rich text editor (Trix) writes its hidden input after its own input event: its "trix-change" is
+    // announced as a change on that input, so the unsaved count sees the new value.
+    function onTrixChange(e) {
+        var editor = e.target;
+        var id = editor && editor.getAttribute ? editor.getAttribute('input') : null;
+        var input = editor && editor.inputElement ? editor.inputElement : (id ? document.getElementById(id) : null);
+        if (input) { input.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
 
     function onInput(e) {
         var target = e.target;
@@ -811,6 +823,7 @@
         document.addEventListener('change', onAssetFileChange);
         document.addEventListener('input', onInput);
         document.addEventListener('change', onInput);
+        document.addEventListener('trix-change', onTrixChange);
         document.addEventListener('click', onDateClear);
         document.addEventListener('click', onDateIcon);
         document.addEventListener('click', onCopyAddress);

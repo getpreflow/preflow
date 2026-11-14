@@ -1729,7 +1729,9 @@
 
     function onGuardEdit(e) {
         if (!isEdit(e.target)) { return; }
-        markDirty(formOf(e.target));
+        var form = formOf(e.target);
+        if (form) { form._folioEdited = true; } // its unsaved count keeps the snapshot it has (initUnsavedStates)
+        markDirty(form);
     }
 
     function onGuardSubmit(e) {
@@ -1777,18 +1779,28 @@
     };
 
     // ---- A form without autosave: its unsaved count and Cancel (0.76) ------------------------------
-    // Folio.unsaved.count(form): how many of the form's controls differ from the page as loaded, its
-    // own and those naming it with form="…" (the side panel's): text-like inputs and textareas by
-    // defaultValue, checkboxes and radios by defaultChecked, selects by their options' defaultSelected.
-    // Disabled controls, hidden and file inputs, and controls marked data-folio-no-edit are not counted
-    // (a field whose state lives in hidden inputs counts through its visible controls only).
-    // Folio.unsaved.discard(form): puts every such control back (disabled ones too), clears the form's
-    // unsaved mark and sends a bubbling "folio:discard" on the form, so a field with derived state
-    // (locks, previews, counters) restores itself from the restored controls.
-    // form.twig renders [data-folio-unsaved-state="<form id>"] ("N unsaved changes") and
-    // [data-folio-discard="<form id>"] (Cancel) beside Save on a framed form without autosave; both
-    // stay hidden while the count is 0.
-    function ownControlsOf(form) {
+    // The form's submittable values as FormData would send them, its own controls and those naming it
+    // with form="…" (the side panel's): enabled, named controls; checkboxes and radios when checked,
+    // a select's chosen options. Controls marked data-folio-no-edit and names starting with "_" (the
+    // CSRF token, _locale, _version, _folio_next) are not record data. A snapshot of them is taken at
+    // boot and again once every field script has run (DOMContentLoaded: after the deferred scripts),
+    // unless the form was edited by then.
+    // Folio.unsaved.count(form): how many field names hold other values than the snapshot, so a field
+    // kept in hidden inputs (rich text, blocks, relations, asset picks) counts, and a radio group or a
+    // checkbox list counts once.
+    // Folio.unsaved.discard(form): when only visible controls changed, they go back to the page as
+    // loaded (defaultValue, defaultChecked, defaultSelected; disabled ones too), the unsaved mark is
+    // cleared, a bubbling "folio:discard" is sent on the form (a field with derived state, such as the
+    // permissions matrix's locks, rebuilds it there) and fields.js's counters, dates and steppers sync
+    // again. A change in hidden inputs (or a restore that does not reach the snapshot) reloads the edit
+    // page instead, past the leave guard once: a form without autosave has no server draft, so that
+    // shows the saved state.
+    // form.twig renders [data-folio-unsaved-state="<form id>"] and [data-folio-discard="<form id>"]
+    // (Cancel) beside Save on a framed form without autosave, and on the form data-folio-edit-url (the
+    // page Cancel reloads) and, after a refused save, data-folio-refused: the form starts unsaved,
+    // shows "Not saved" and Cancel reloads. While the form holds unsaved changes the state shows, with
+    // the count, else "Unsaved changes"; it hides once nothing is changed.
+    function controlsOf(form) {
         var list = Array.prototype.slice.call(form.querySelectorAll('input, select, textarea'));
         if (form.id) {
             Array.prototype.slice.call(document.querySelectorAll('[form="' + form.id + '"]')).forEach(function (el) {
@@ -1798,29 +1810,82 @@
         return list.filter(function (el) {
             var type = String(el.type || '').toLowerCase();
             return ['INPUT', 'SELECT', 'TEXTAREA'].indexOf(el.tagName) >= 0
-                && ['hidden', 'file', 'submit', 'button', 'reset', 'image'].indexOf(type) < 0
+                && ['submit', 'button', 'reset', 'image'].indexOf(type) < 0
                 && isEdit(el) && formOf(el) === form;
         });
+    }
+
+    /** The controls Cancel can put back in place: every one but hidden inputs. */
+    function ownControlsOf(form) {
+        return controlsOf(form).filter(function (el) { return String(el.type || '').toLowerCase() !== 'hidden'; });
     }
 
     function optionsOf(select) {
         return Array.prototype.slice.call(select.options || select.querySelectorAll('option'));
     }
 
-    function controlChanged(el) {
-        var type = String(el.type || '').toLowerCase();
-        if (type === 'checkbox' || type === 'radio') { return !!el.checked !== !!el.defaultChecked; }
-        if (el.tagName === 'SELECT') { return optionsOf(el).some(function (o) { return !!o.selected !== !!o.defaultSelected; }); }
-        return String(el.value == null ? '' : el.value) !== String(el.defaultValue == null ? '' : el.defaultValue);
+    /** {values: {name: [values]}, hidden: {name: [values of hidden inputs]}}, as the form would submit now. */
+    function valuesOf(form) {
+        var out = { values: {}, hidden: {} };
+        controlsOf(form).forEach(function (el) {
+            var name = String(el.name || el.getAttribute('name') || '');
+            if (name === '' || name.charAt(0) === '_' || el.disabled) { return; }
+            var type = String(el.type || '').toLowerCase();
+            var add = function (value, map) { (map[name] = map[name] || []).push(String(value == null ? '' : value)); };
+            if (type === 'checkbox' || type === 'radio') {
+                if (el.checked) { add(el.value === '' ? 'on' : el.value, out.values); }
+            } else if (el.tagName === 'SELECT') {
+                optionsOf(el).forEach(function (o) { if (o.selected) { add(o.value, out.values); } });
+            } else {
+                add(el.value, out.values);
+                if (type === 'hidden') { add(el.value, out.hidden); }
+            }
+        });
+        return out;
+    }
+
+    function takeSnapshot(form) {
+        if (form) { form._folioSnapshot = valuesOf(form); }
+    }
+
+    function snapshotOf(form) {
+        if (!form._folioSnapshot) { takeSnapshot(form); }
+        return form._folioSnapshot;
+    }
+
+    function differing(a, b) {
+        var names = Object.keys(a);
+        Object.keys(b).forEach(function (n) { if (names.indexOf(n) < 0) { names.push(n); } });
+        return names.filter(function (n) { return JSON.stringify(a[n] || []) !== JSON.stringify(b[n] || []); });
+    }
+
+    function changedNames(form) {
+        return form ? differing(valuesOf(form).values, snapshotOf(form).values) : [];
     }
 
     function changedCount(form) {
-        if (!form) { return 0; }
-        return ownControlsOf(form).filter(function (el) { return !el.disabled && controlChanged(el); }).length;
+        return changedNames(form).length;
+    }
+
+    /** Whether a hidden input of the form holds another value than the snapshot (Cancel cannot restore it). */
+    function hiddenChanged(form) {
+        return differing(valuesOf(form).hidden, snapshotOf(form).hidden).length > 0;
+    }
+
+    function editUrlOf(form) {
+        return form.getAttribute('data-folio-edit-url') || window.location.href;
+    }
+
+    /** The edit page again, past the leave guard once. */
+    function reloadForm(form) {
+        clearDirty(form);
+        allowLeave();
+        navigateTo(editUrlOf(form));
     }
 
     function discardForm(form) {
         if (!form) { return; }
+        if (form.hasAttribute('data-folio-refused') || hiddenChanged(form)) { reloadForm(form); return; }
         ownControlsOf(form).forEach(function (el) {
             var type = String(el.type || '').toLowerCase();
             if (type === 'checkbox' || type === 'radio') {
@@ -1831,28 +1896,73 @@
                 el.value = el.defaultValue == null ? '' : el.defaultValue;
             }
         });
-        clearDirty(form);
         form.dispatchEvent(new CustomEvent('folio:discard', { bubbles: true }));
+        // Counters, date hints and steppers follow the restored values (fields.js).
+        if (window.Folio && typeof window.Folio.initFields === 'function') { window.Folio.initFields(document); }
+        if (changedCount(form) > 0) { reloadForm(form); return; }
+        clearDirty(form);
+        form._folioEdited = false;
         refreshUnsavedStates();
     }
 
     function refreshUnsavedStates() {
         Array.prototype.slice.call(document.querySelectorAll('[data-folio-unsaved-state]')).forEach(function (state) {
             var id = state.getAttribute('data-folio-unsaved-state');
-            var n = changedCount(document.getElementById(id));
-            state.hidden = n === 0;
+            var form = document.getElementById(id);
+            var n = changedCount(form);
+            var dirty = !!form && window.Folio.unsaved.isDirty(form);
+            var shown = n > 0 || dirty;
+            state.hidden = !shown;
             var text = state.querySelector('[data-folio-save-text]') || state;
-            text.textContent = n === 0 ? '' : plural(folioT('unsaved_count', { count: adminNumber(n) }), n);
+            text.textContent = !shown ? ''
+                : n > 0 ? plural(folioT('unsaved_count', { count: adminNumber(n) }), n)
+                : folioT(form.hasAttribute('data-folio-refused') ? 'not_saved' : 'unsaved_changes');
             Array.prototype.slice.call(document.querySelectorAll('[data-folio-discard="' + id + '"]')).forEach(function (button) {
-                button.hidden = n === 0;
+                button.hidden = !shown;
             });
         });
     }
 
+    var refreshLater = null;
+    function onUnsavedStateEdit(e) {
+        if (!isEdit(e.target)) { return; }
+        refreshUnsavedStates();
+        // A field that writes its hidden input just after its event (a rich text editor) is counted too.
+        clearTimeout(refreshLater);
+        refreshLater = setTimeout(refreshUnsavedStates, 0);
+    }
+
+    /** The forms that get a snapshot: the guarded ones and those with an unsaved state. */
+    function snapshotForms() {
+        var forms = unsaved.guarded.slice();
+        Array.prototype.slice.call(document.querySelectorAll('[data-folio-unsaved-state]')).forEach(function (state) {
+            var form = document.getElementById(state.getAttribute('data-folio-unsaved-state'));
+            if (form && form.tagName === 'FORM' && forms.indexOf(form) < 0) { forms.push(form); }
+        });
+        return forms;
+    }
+
+    // Once the field scripts have run: the snapshot again (unless the form was edited already), and a
+    // refused save's form is unsaved.
+    function settleUnsavedStates() {
+        snapshotForms().forEach(function (form) {
+            if (!form._folioEdited) { takeSnapshot(form); }
+            if (form.hasAttribute('data-folio-refused')) { markDirty(form); }
+        });
+        refreshUnsavedStates();
+    }
+
     function initUnsavedStates() {
+        snapshotForms().forEach(function (form) {
+            takeSnapshot(form);
+            if (form.hasAttribute('data-folio-refused')) { markDirty(form); }
+        });
+        // DOMContentLoaded comes after the deferred scripts; when it has passed already, the timer.
+        document.addEventListener('DOMContentLoaded', settleUnsavedStates);
+        setTimeout(settleUnsavedStates, 0);
         if (!document.querySelector('[data-folio-unsaved-state]')) { return; }
-        document.addEventListener('input', refreshUnsavedStates);
-        document.addEventListener('change', refreshUnsavedStates);
+        document.addEventListener('input', onUnsavedStateEdit);
+        document.addEventListener('change', onUnsavedStateEdit);
         document.addEventListener('click', function (e) {
             var button = e.target && e.target.closest ? e.target.closest('[data-folio-discard]') : null;
             if (button) { discardForm(document.getElementById(button.getAttribute('data-folio-discard'))); }

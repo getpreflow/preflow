@@ -739,7 +739,7 @@ final class AdminController
         $record = $this->drafts->build($typeDef, $request, [], $locale, $this->can('assets.upload'));
         if ($this->drafts->uploadErrors() !== []) {
             $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
-            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale);
+            return $this->form($type, $record->toArray(), $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $this->drafts->uploadErrors(), $csrf, 422, $layout, $locale, $this->prefix . '/' . $type . '/new');
         }
         // The writer gives the new record its id and, in an orderable list, the last place.
         $layout = $drawer ? '@folio/admin/_drawer_layout.twig' : '@folio/admin/_layout.twig';
@@ -748,7 +748,7 @@ final class AdminController
                 // Nothing stored: the form creates again (the writer assigns a fresh id and place then).
                 unset($values[$typeDef->idField], $values['_order']);
 
-                return $this->form($type, $values, $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $errors, $csrf, $status, $layout, $locale);
+                return $this->form($type, $values, $this->prefix . '/' . $type . ($drawer ? '?_drawer=1' : ''), FolioText::get('folio.form.new', ['label' => $this->singularFor($type)]), $errors, $csrf, $status, $layout, $locale, $this->prefix . '/' . $type . '/new');
             }
             // The draft is stored: a re-rendered form must update it, not create another.
             $base = $this->prefix . '/' . $type . '/' . $values[$typeDef->idField];
@@ -1595,6 +1595,10 @@ final class AdminController
             'publishing' => $publishing,
             'notice' => $notice,
             'reload_url' => $reloadUrl,
+            // A form without autosave: Cancel reloads the edit page (in this language), and a refused
+            // save (re-rendered with the posted values) starts unsaved (form.twig, admin.js).
+            'edit_url' => $editUrl === null ? null : $editUrl . ($multilingual && $locale !== $locales->default ? (str_contains($editUrl, '?') ? '&' : '?') . 'locale=' . rawurlencode($locale) : ''),
+            'refused' => $status >= 400,
             'panels' => $panels,
             'record_actions' => $recordActions,
             'page_assets' => $panelAssets,

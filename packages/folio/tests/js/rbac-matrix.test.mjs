@@ -205,7 +205,7 @@ test('"Allow everything" sends "*" alone, kept names included; off again, the re
     assert.deepEqual(posted(p), ['', 'page.publish', 'page.*', 'post.view']);
 });
 
-test('the editor counts the matrix like any control: a switch is one change, its locked boxes none', () => {
+test('the editor counts the matrix as one field: any switch or box is a change of the permissions, back as loaded none', () => {
     const p = screen({ sections: CONTENT, selected: ['post.view'] });
     assert.equal(p.state.hidden, true);
     assert.equal(p.cancel.hidden, true);
@@ -215,14 +215,16 @@ test('the editor counts the matrix like any control: a switch is one change, its
     assert.equal(p.cancel.hidden, false);
     assert.equal(p.count.textContent, '1 unsaved change');
     click(p.w, p.rows.page.all);
+    p.columns.Content.edit.click(); // post.edit and job.edit
+    assert.equal(p.count.textContent, '1 unsaved change', 'every box is the one permissions field (counted by name)');
     p.roleLabel.value = 'Editors';
     p.roleLabel.dispatchEvent(new p.w.Event('input', { bubbles: true }));
-    assert.equal(p.count.textContent, '3 unsaved changes');
-    assert.equal(p.w.Folio.unsaved.count(p.form), 3);
-    p.columns.Content.edit.click(); // post.edit and job.edit
-    assert.equal(p.count.textContent, '5 unsaved changes');
+    assert.equal(p.count.textContent, '2 unsaved changes');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 2);
     click(p.w, p.rows.job.cells.view);
-    assert.equal(p.count.textContent, '4 unsaved changes');
+    click(p.w, p.rows.page.all);
+    p.columns.Content.edit.click();
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1, 'the matrix as loaded again: only the label');
 });
 
 test('Cancel restores the matrix: a denied box stays as it was, a row locked at load is locked again', () => {

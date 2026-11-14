@@ -985,6 +985,9 @@ return [
         'translations_unsaved' => ':count ungespeicherte Änderung|:count ungespeicherte Änderungen',
         // The editor's unsaved count beside Save on a form without autosave (since 0.76).
         'unsaved_count' => ':count Änderung ungespeichert|:count Änderungen ungespeichert',
+        // The same state without a number: a form changed in a way the count does not show, and a refused save (0.76).
+        'unsaved_changes' => 'Ungespeicherte Änderungen',
+        'not_saved' => 'Nicht gespeichert',
         'no_matches' => 'Keine Treffer',
         'more' => 'Mehr…',
         'block' => 'Block',

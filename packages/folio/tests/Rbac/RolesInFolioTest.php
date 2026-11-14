@@ -161,6 +161,29 @@ final class RolesInFolioTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_refused_save_renders_the_form_as_not_saved_with_its_edit_page_for_cancel(): void
+    {
+        $this->install();
+        $this->role('r-editor', 'staff', 'editor', ['page.*']);
+        $this->as('admin');
+
+        // As loaded: Cancel's page, nothing refused.
+        $form = (string) $this->send('GET', '/folio/rbac_role/r-editor/edit')->getBody();
+        $this->assertMatchesRegularExpression('#<form [^>]*id="folio-record"[^>]*data-folio-edit-url="/folio/rbac_role/r-editor/edit"#', $form);
+        $this->assertStringNotContainsString('data-folio-refused', $form);
+
+        // A refused save shows the posted values: admin.js starts it unsaved ("Not saved"), Cancel reloads the edit page.
+        $res = $this->send('POST', '/folio/rbac_role/r-editor', ['name' => 'admin', 'label' => 'Clash', 'population' => 'staff', 'permissions' => ['page.*']]);
+        $this->assertSame(422, $res->getStatusCode());
+        $body = (string) $res->getBody();
+        $this->assertMatchesRegularExpression('#<form [^>]*id="folio-record"[^>]*data-folio-edit-url="/folio/rbac_role/r-editor/edit"[^>]*data-folio-refused#', $body);
+
+        // A refused create reloads the empty form.
+        $new = (string) $this->send('POST', '/folio/rbac_role', ['name' => 'admin', 'label' => 'Second admin', 'population' => 'staff', 'permissions' => []])->getBody();
+        $this->assertMatchesRegularExpression('#<form [^>]*data-folio-edit-url="/folio/rbac_role/new"[^>]*data-folio-refused#', $new);
+    }
+
+    #[RunInSeparateProcess]
     public function test_population_must_be_staff_or_members(): void
     {
         $this->install();

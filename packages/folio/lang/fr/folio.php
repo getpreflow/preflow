@@ -985,6 +985,9 @@ return [
         'translations_unsaved' => ':count modification non enregistrée|:count modifications non enregistrées',
         // The editor's unsaved count beside Save on a form without autosave (since 0.76).
         'unsaved_count' => ':count modification non enregistrée|:count modifications non enregistrées',
+        // The same state without a number: a form changed in a way the count does not show, and a refused save (0.76).
+        'unsaved_changes' => 'Modifications non enregistrées',
+        'not_saved' => 'Non enregistré',
         'no_matches' => 'Aucun résultat',
         'more' => 'Plus…',
         'block' => 'Bloc',
