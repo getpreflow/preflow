@@ -361,6 +361,42 @@ the stylesheet link and the small theme scripts are plain markup in
 CSP. If you override `_layout.twig`, keep the nonces and the
 `<meta name="csp-nonce">` tag (the rich-text editor reads it).
 
+### Type tiles and families
+
+Since 0.75 each type and block has a tile: its icon on the tint of its **family**, a
+`Preflow\Data\TypeFamily` (see the [preflow/data README](../data/README.md#type-families-since-075)).
+A type declares it at the top of its model file (for a model class, in its admin file):
+
+```json
+{ "key": "company", "label": "Companies", "icon": "ui-users", "family": "reference", "fields": { … } }
+```
+
+| `"family"` | For | Tint |
+|---|---|---|
+| `page` | pages and posts (the default for a type with a `"frontend"`) | `--c-type-page` (blue) |
+| `reference` | lookup data: categories, companies, tags | `--c-type-reference` (violet) |
+| `asset` | files and media | `--c-type-asset` (amber) |
+| `member` | accounts (the default for a user type) | `--c-type-member` (lime) |
+| `shop` | products, orders | `--c-type-shop` (rose) |
+| `live` | tools that act at once: jobs, a queue | the accent (emerald) |
+
+Without a `"family"` (and without a frontend or users) the tile is neutral. Any other value stops
+the boot with `Type "company": "family" must be one of page, reference, asset, member, shop, live`.
+A block takes it from its attribute, `#[Block('quote', family: TypeFamily::Reference)]`
+(preflow/blocks), and an extension's sidebar item from `AdminNav::add(…, family: TypeFamily::Live)`.
+
+The tiles show in list headers and rows, the dashboard's review queue, block cards, the block picker
+and relation rows; the sidebar's items (`folio_nav()`) carry the family too, for a layout of your own. Each tint is a token pair in `admin.css`, `--c-type-{family}`
+and `--c-type-{family}-soft`, written as `light-dark()` like every colour; `.folio-type-icon[data-family]`
+is the only rule that maps a family to them, so no template names a colour. `live` uses the emerald
+accent, which also marks actions (the primary button, focus, ticked rows): a `live` tile reads as
+"acts at once". In your own templates, draw a tile with the macro:
+
+```twig
+{% import '@folio/admin/partials/_type_icon.twig' as types %}
+{{ types.type_icon(listing.family, listing.glyph) }}      {# 24px; types.type_icon(family, icon, 28) for a header #}
+```
+
 ### Styling extension screens
 
 Screens inside the admin shell get the control styling for free: plain `input`, `select`,
@@ -1678,7 +1714,14 @@ saved at once and the page leaves when they are; only a save that fails asks, wi
 and other sites are not held. Closing the tab, reloading, typing an address and back/forward keep
 the browser's own question (no page can style it). `Folio.navigate(href)` goes to a page through the
 same guard; `Folio.unsaved.isDirty()`, `.dirtyForms()`, `.clear(form)`, `.onLeave(fn)` and
-`.pending()` are the hooks behind it.
+`.pending()` are the hooks behind it. Leaving without saving a side panel form still saves the
+record's own pending edits first (since 0.75).
+
+A confirmed action in an autosaving editor (a `data-confirm` form such as Unpublish) saves the
+pending edits first, then goes; if that save fails, the dialog's go-ahead names the action
+("Unpublish without saving"). A form that throws the edits away carries **`data-folio-discards`**
+(Folio's Delete and Discard changes do): it saves nothing first, and the queued autosave is dropped
+(since 0.75).
 
 ### Type customizations
 

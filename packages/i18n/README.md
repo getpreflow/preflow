@@ -147,6 +147,25 @@ Model files write display texts as a plain string or as a map per language:
 `DerivedKeys` collects keys that come from such files, with the file's own text, so
 `translations:check` can check them: `$derived->add('Folio model labels', fn () => [key => text])`.
 
+## Completeness (since 0.75)
+
+`Preflow\I18n\Completeness` says how complete a record is in one language: `Complete` (every text
+the default language has is there, or there is nothing to translate), `Partial` (some are) or
+`Missing` (none are, or the record is not shown in that language). Whatever counts a record's texts
+per language says the result with it, so an admin can show the three states without knowing how
+they were counted:
+
+```php
+use Preflow\I18n\Completeness;
+
+Completeness::of(visible: true, total: 3, missing: 1);  // Completeness::Partial
+Completeness::of(visible: true, total: 0, missing: 0);  // Complete: nothing to translate
+Completeness::of(visible: false, total: 3, missing: 0); // Missing: not shown in that language
+```
+
+Folio counts from its field types (`TranslationStatus::state()`) and shows the three states as the
+language dots in the editor and the list.
+
 ## `preflow translations:check`
 
 ```bash

@@ -668,6 +668,7 @@ free-text kinds). The pointer is stored as today: an id string, or a JSON array 
 | `onDelete` | What deleting a *target* does to the pointing records (see [Delete plans](#delete-plans)): `detach` (default) removes the id from the pointer, `cascade` deletes the pointing record too, `restrict` refuses the delete. Any other value throws `InvalidArgumentException`. |
 | `onSelfDelete` | The same choices, applied when the owner deletes their own record (`deletePlan(..., DeletedBy::Self)`) instead of staff. Unset follows `onDelete`; any other value throws `InvalidArgumentException`. |
 | `labelField` | The target field shown and searched as its label. |
+| `metaField` | (since 0.75) The target field a picker shows under the label, such as an email under a name. Read as `Relation::$metaField`; `#[Relation(metaField: 'email')]` on a model class. |
 
 ```php
 $dm->relationsOf('job');       // list<Relation>: what 'job' declares
@@ -963,7 +964,7 @@ kind and has none (an array, an object, an untyped one) is an error naming it. D
 with `type: 'date'`. `#[Field]` takes `type`, `label`, `help` (text or a locale map), `config`
 (kind settings written at field level, as in a JSON file: `options`, `accept`, `time`, `blocks`,
 `fields`, `multiple`), `default`, `translatable`, `unique` (or a scope list), `index`, `length`,
-`searchable` and `transform`. `#[Relation(to:, onDelete:, onSelfDelete:, labelField:)]` writes the
+`searchable` and `transform`. `#[Relation(to:, onDelete:, onSelfDelete:, labelField:, metaField:)]` writes the
 relation the JSON file would, and `#[Index('state', 'updated_at')]` on the class its `"indexes"`.
 `ModelSchema::of(Job::class)` shows the type derived from a class.
 
@@ -1018,6 +1019,49 @@ the id field keeps its name and kind, strings are generated on insert, integers 
 
 **Not yet on classes:** a type-level `matrixable` or `views`. The generator in
 `preflow/devtools` refuses a type that has them.
+
+## Type families (since 0.75)
+
+`Preflow\Data\TypeFamily` names what kind of content a type or a block holds: `page`, `reference`
+(lookup data: categories, companies), `asset`, `member` (accounts), `shop` or `live` (tools that act
+at once). A type declares it as `"family"` at the top of its model file (or of a model class's admin
+file); a block declares it in its attribute, `#[Block('quote', family: TypeFamily::Reference)]`
+(see the [preflow/blocks README](../blocks/README.md)).
+
+```json
+{ "key": "company", "table": "company", "family": "reference", "fields": { … } }
+```
+
+The enum only names the kinds: nothing in this package maps a family to a colour or an icon, which
+is an admin's business. Folio tints its type tiles with it, takes `page` for a type with a
+`"frontend"` and `member` for a user type when none is declared, and stops at boot on a value that
+is not a case (see [Type tiles and families](../folio/README.md#type-tiles-and-families)).
+`TypeFamily::tryFrom($value)` reads one.
+
+## Display texts and their keys
+
+A model file's display texts (the type's label, its singular, field labels and help, select
+options, a sidebar section) can be translated with keys in a language file
+(`lang/{locale}/{group}.php`: `site` for a site's own types, a package's group for the types it
+ships). `Preflow\Data\ModelLabelKeys` names them; a key wins over the file's text, which is a plain
+string or a map per language:
+
+| Key | Text |
+|---|---|
+| `{group}.types.{type}.label` | the type's label ("Apps"; the file's `"label"`) |
+| `{group}.types.{type}.singular` | one record ("App"; the file's `"label_singular"`) |
+| `{group}.fields.{type}.{field}.label` / `.help` | a field's label and help |
+| `{group}.options.{type}.{field}.{value}` | a select option's label |
+| `{group}.option_helps.{type}.{field}.{value}` | (since 0.75) the description of an option given as `{"label": …, "help": …}` |
+| `{group}.sections.{section}` | a sidebar section a type names |
+
+Since 0.75 a select option may carry a description: `"options": {"301": {"label": "Moved for good",
+"help": "Search engines move the ranking"}}` (each a text or a map per language).
+`ModelLabelKeys::isDescribedOption($option)` tells such an option (only `label` and `help` keys) from
+a label map, and `ModelLabelKeys::optionHelp($group, $type, $field, $value)` gives its key (null for
+a value a key can't name: empty, or with a dot). `ModelLabelKeys::derive($schema, $group)` lists
+every key of a model file with the file's text, the descriptions included (Folio registers them
+with i18n's `DerivedKeys`, so `preflow translations:check` reports the missing ones).
 
 ## Usage
 

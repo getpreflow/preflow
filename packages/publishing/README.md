@@ -41,6 +41,7 @@ $publisher = $container->get(Publisher::class);
 $publisher->saveDraft($record, $loadedVersion);  // no rules; VersionConflict when someone saved in between
 $publisher->publish($record, $userId);           // checks, then copies the working copy to the snapshot
 $publisher->state($record);                      // PublishState::Draft, Published or Changed
+$publisher->changes($record);                    // (since 0.75) what a publish would change: ['title', '_locales']
 $publisher->live('post', $id);                   // what the site shows: the snapshot
 $publisher->query('post');                       // a QueryBuilder over the snapshots
 $publisher->unpublish('post', $id);              // the snapshot goes; the page answers 404
@@ -51,6 +52,13 @@ $publisher->restore('post', $id, $revisionId);   // into the working copy; publi
 
 `enabled($type)` says whether a type publishes. A type that does not publish is its own live copy:
 `live()` and `query()` read the record itself.
+
+**What changed** (since 0.75): `changes($working)` lists the top-level keys whose working value
+differs from the published one: the type's fields first, in field order, then the other content
+keys a record carries (its languages `_locales`, its SEO `_seo`, translation marks), sorted. The id
+and the publishing keys never count, nor does an empty value against a missing one; both sides are
+compared as stored, so the record may be the stored one or one built in PHP. A record never
+published has nothing to compare with and gives `[]`. It reads the snapshot once. An admin shows it as "2 changes: Title, Languages".
 
 **Versions:** each save writes `_version` + 1. Pass the `_version` your form loaded as
 `$loadedVersion`: a save that lands in between makes yours throw `VersionConflict` (`->current` is
@@ -81,6 +89,7 @@ $writer->setField($record, 'status', 'archived');          // one field, then sa
 $writer->reorder('faq', $id, 'up');                        // false when it is first already
 $writer->restore('post', $id, $revisionId, new SaveOptions(mayPublish: false)); // a revision into the working copy
 $writer->discard('post', $id, new SaveOptions(mayPublish: false));              // back to what is published
+$writer->duplicate('post', $id, new SaveOptions(by: $userId), ['title' => ['en' => 'About (copy)']]); // (since 0.75) a draft copy
 ```
 
 A save runs `SaveHooks::before()` first (a `ValidationException` there stores nothing). A type that
@@ -195,7 +204,17 @@ implement `RecordAddressFields` on it too:** without it, `duplicate()` frees onl
 `slug` or one with the `slug` rule, and copies every other address field unchanged, so the copy
 would claim the same address. Its `$overrides` (field => value, or => `[locale => value]` for a translatable field)
 set values of the copy before the address is freed, e.g. a title marked as a copy; an overridden
-address field still takes a free value.
+address field still takes a free value. An override is refused (`InvalidArgumentException`, nothing
+written) when it names no field of the type, a key the copy's system sets (the id, `_version`,
+`_publish_at`, `_share_token`, `_published_at`, `_published_by`, `_order`, or the created and
+updated values of a `#[Timestamps]` model), a language the type does not have, or gives a
+translatable field anything but a locale map (or `null`, which empties it).
+
+`duplicate()` (since 0.75) copies every language, its own blocks (new block ids) and the same
+references; the copy gets a new id, the free address above, the `-2`, `-3`… suffix in its other
+unique text fields (other unique fields are left empty), the system keys of a new record, a place
+right after the record in an orderable list, and, for a type that publishes, a draft that was never
+live (`publish: true` is refused).
 
 **Restore and discard** replace the working copy's content: its fields, the `stateKeys()` and the
 `RecordColumns`, take the revision's or snapshot's values (a field the revision does not have
