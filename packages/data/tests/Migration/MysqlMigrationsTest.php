@@ -10,6 +10,8 @@ use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Migration\Migrator;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Migration\Table;
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\ColumnSpec;
 use Preflow\Testing\MysqlTestDatabase;
 
 #[Group('mysql')]
@@ -176,6 +178,39 @@ final class MysqlMigrationsTest extends TestCase
         $this->assertSame('2026-09-01', $this->pdo->query('SELECT created_at FROM staff')->fetchColumn());
         $this->expectException(\LogicException::class);
         $schema->renameColumn('staff', 'createdAt', 'created');
+    }
+
+    public function test_convert_column_on_mysql_keeps_data_default_nullability_and_indexes(): void
+    {
+        // holz's case: indexed record fields made LONGTEXT before 0.72 become VARCHAR(191) utf8mb4_bin.
+        $this->pdo->exec('CREATE TABLE `object` (`uuid` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `state` LONGTEXT, `owner` LONGTEXT, '
+            . "`kind` VARCHAR(20) NOT NULL DEFAULT 'chair', `n` TEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $this->pdo->exec('CREATE INDEX `idx_object_owner` ON `object` (`owner`(191))');
+        $this->pdo->exec("INSERT INTO object (uuid, state, owner, n) VALUES ('a', 'Sold', 'ann', '12'), ('b', NULL, 'bob', NULL)");
+        $schema = new Schema($this->pdo);
+
+        foreach (['state', 'owner'] as $column) {
+            $schema->convertColumn('object', new ColumnSpec($column, ColumnKind::Short));
+        }
+        $schema->convertColumn('object', fn (Table $t) => $t->string('kind', 40)); // NOT NULL, as declared
+        $schema->convertColumn('object', new ColumnSpec('n', ColumnKind::Number));
+
+        $columns = $this->pdo->query("SELECT COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'object' ORDER BY ORDINAL_POSITION")->fetchAll(\PDO::FETCH_NUM);
+        $this->assertSame(['state', 'varchar(191)', 'utf8mb4_bin', 'YES'], array_slice($columns[1], 0, 4));
+        $this->assertSame(['owner', 'varchar(191)', 'utf8mb4_bin', 'YES'], array_slice($columns[2], 0, 4));
+        $this->assertSame(['kind', 'varchar(40)', 'utf8mb4_unicode_ci', 'NO'], array_slice($columns[3], 0, 4));
+        $this->assertContains($columns[3][4], ["'chair'", 'chair'], 'default kept (MariaDB quotes it, MySQL does not)');
+        $this->assertSame(['n', 'double', null, 'YES'], array_slice($columns[4], 0, 4));
+        $this->assertContains('idx_object_owner', $schema->indexes('object'));
+        $this->assertSame([['a', 'Sold', 'ann', 'chair', 12.0], ['b', null, 'bob', 'chair', null]], array_map(
+            static fn (array $r): array => [$r[0], $r[1], $r[2], $r[3], $r[4] === null ? null : (float) $r[4]],
+            $this->pdo->query('SELECT uuid, state, owner, kind, n FROM object ORDER BY uuid')->fetchAll(\PDO::FETCH_NUM),
+        ));
+
+        $this->pdo->exec("INSERT INTO object (uuid, state) VALUES ('c', '" . str_repeat('ä', 50) . "')");
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('50 characters, the new type holds 40');
+        $schema->convertColumn('object', new ColumnSpec('state', ColumnKind::Short, 40)); // 100 bytes, 50 characters
     }
 
     public function test_add_columns_and_fill_nulls_on_mysql(): void

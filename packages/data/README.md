@@ -186,6 +186,40 @@ with `copyColumn()` + `dropColumn()`). A registered `SchemaGrammar` implements `
 `copyColumn()`, `dropColumn()` and `dropIndex()` (each returns the SQL), `indexColumns()` (index name => its columns) and
 `assertCanDropColumn()` (throws a LogicException when the server can't drop a column).
 
+**Converting a column** (since 0.75): `convertColumn()` changes an existing column's type,
+length, collation or nullability in place and keeps its data, its default, its indexes and the
+other columns. On MySQL/MariaDB it is one `ALTER TABLE … MODIFY` (NULL / NOT NULL and DEFAULT
+carried over unless changed); SQLite cannot change a column, so the table is rebuilt in one
+savepoint (new table, rows copied, old one dropped, new one renamed, indexes and triggers made
+again; views keep working). The new column is a record-table `ColumnSpec`, typed as
+`RecordTableSync` makes it (nullability kept), or one column declared with the `create()` builder
+(NOT NULL unless `nullable()`, as in `create()`):
+
+```php
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\ColumnSpec;
+
+// An indexed record field made LONGTEXT before 0.72: VARCHAR(191) COLLATE utf8mb4_bin on MySQL.
+$schema->convertColumn('object', new ColumnSpec('state', ColumnKind::Short));      // length: 191 by default
+$schema->convertColumn('object', new ColumnSpec('price', ColumnKind::Number));     // DOUBLE / NUMERIC
+$schema->convertColumn('staff', fn (Table $t) => $t->string('name', 80)->nullable());
+$schema->convertColumn('staff', fn (Table $t) => $t->boolean('active'));            // NOT NULL now
+```
+
+It refuses (LogicException, nothing changed) a column the table doesn't have, a value longer than
+a bounded new type (`string`, `uuid`, a Short spec; counted in characters), NULLs in a column that
+becomes NOT NULL (`fillNulls()` first), and a builder callback with no or several columns, a primary
+key or an index (convert, then `addColumns()`/`create()` the index). A value the new type cannot
+hold otherwise (text into a number) is the server's call: MySQL in strict mode refuses it, SQLite
+keeps it. On SQLite it also refuses a table whose definition has what the rebuild cannot carry
+over (`REFERENCES`, `CHECK`, `UNIQUE`, `COLLATE`, `CONSTRAINT`, `AUTOINCREMENT`, a generated column,
+`WITHOUT ROWID`, `STRICT`); tables made by `create()` and `RecordTableSync` have none. With foreign
+keys on, the rebuild switches them off and checks them before it commits; inside an open
+transaction it cannot, so there it refuses unless they are off. Check `columnTypes()` first to skip
+a column that is converted already. A registered `SchemaGrammar` implements
+`convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void`
+(it runs the statements itself; `$nullable` null keeps the column's nullability).
+
 **Several migration paths.** `new Migrator($pdo, [$dir1, $dir2])` takes one path or a list
 and runs the files of all of them in name order; the same file name in two paths is one
 migration. `preflow migrate` (see `preflow/devtools`) uses the paths of
@@ -457,6 +491,9 @@ final class Job extends Model { … }
     TEXT column is that length, at most 191), and the interface has a new
     `uniqueIndexes(\PDO $pdo, string $table): array` (the names of the unique indexes). A grammar
     of your own (`Grammars::register()`) must add them.
+- **Upgrading to 0.75.** `SchemaGrammar` has a new method,
+  `convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void`
+  (behind `Schema::convertColumn()`). A grammar of your own (`Grammars::register()`) must add it.
 - Custom field types tell the data package their column with `Preflow\Folio\Field\HasColumnKind`
   (`columnKind(array $config): ColumnKind`) or `FieldKinds::column($type, ColumnKind|Closure)`.
 
@@ -573,7 +610,10 @@ warning names is converted on purpose:
 - `RecordTableSync::specs()` and `RecordTableSync::indexes()` are public (the script builds its columns
   and indexes with them, so it makes the indexes migrate would).
 - A column whose kind changed later (a field turned translatable, a relation became `multiple`,
-  a field's type was edited or it became unique) is converted with a migration in the project.
+  a field's type was edited or it became unique) is converted with a migration in the project,
+  with `Schema::convertColumn()` (since 0.75; see "Converting a column"), for example
+  `$schema->convertColumn('object', new ColumnSpec('state', ColumnKind::Short))` for a field that
+  became indexed.
 
 `preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
 

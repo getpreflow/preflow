@@ -82,6 +82,14 @@ interface SchemaGrammar
     /** ALTER TABLE … DROP COLUMN … (SQLite 3.35+, MySQL). Since 0.65. */
     public function dropColumn(string $table, string $column): string;
 
+    /**
+     * Changes $column of $table to $type (a columnType() or recordColumnType() result) in place, keeping
+     * its data, its default, its indexes and the other columns; $nullable null keeps its nullability.
+     * Runs the statements itself (SQLite rebuilds the table in a transaction). Schema::convertColumn()
+     * has checked the column and the data before. Since 0.75.
+     */
+    public function convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void;
+
     public function createMigrationsTable(): string;
 
     /** Whether a column of this kind can carry an index. */

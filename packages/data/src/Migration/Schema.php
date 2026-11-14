@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Migration;
 
+use Preflow\Data\FieldKinds;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\ColumnSpec;
 
 final class Schema
 {
@@ -164,6 +167,77 @@ final class Schema
             throw new \LogicException("Cannot rename \"{$table}.{$from}\" to \"{$to}\": the table already has a column \"{$to}\".");
         }
         $this->pdo->exec($this->grammar->renameColumn($table, $own, $to));
+    }
+
+    /**
+     * Changes an existing column's type, length, collation or nullability in place, keeping its data,
+     * its default, its indexes and the other columns (MySQL/MariaDB: ALTER TABLE … MODIFY; SQLite: the
+     * table is rebuilt in one transaction, its indexes, triggers and views kept). $to is either
+     *
+     * - a ColumnSpec: a record-table column, typed as RecordTableSync makes it (a Short column is
+     *   VARCHAR(length, default 191) COLLATE utf8mb4_bin on MySQL; nullability kept), or
+     * - a callback declaring the one column with the create() builder: string('name', 40), boolean(), …;
+     *   NOT NULL unless ->nullable(), as in create(); collation follows the kind (uuid compares exactly).
+     *
+     * Refuses (LogicException, nothing changed) a column the table doesn't have, a value longer than
+     * a bounded new type (string, uuid, Short), NULLs in a column becoming NOT NULL (fillNulls() first),
+     * and a builder callback that declares no or several columns, a primary key or an index. A value the
+     * new type cannot hold otherwise (text into a number) is the server's call: MySQL in strict mode
+     * refuses it, SQLite keeps it as it is.
+     *
+     * @param ColumnSpec|callable(Table): mixed $to
+     * @since 0.75
+     */
+    public function convertColumn(string $table, ColumnSpec|callable $to): void
+    {
+        if ($to instanceof ColumnSpec) {
+            $name = $to->name;
+            $type = $this->grammar->recordColumnType($to->kind, $to->length);
+            $nullable = null;
+            $length = $to->kind === ColumnKind::Short ? ($to->length ?? FieldKinds::DEFAULT_LENGTH) : null;
+        } else {
+            $builder = new Table($table);
+            $to($builder);
+            $columns = $builder->columns();
+            if (count($columns) !== 1) {
+                throw new \LogicException("Cannot convert columns of \"{$table}\": declare exactly one column (got " . count($columns) . ').');
+            }
+            $column = $columns[0];
+            $name = $column['name'];
+            if ($column['primary']) {
+                throw new \LogicException("Cannot convert \"{$table}.{$name}\" into a primary key.");
+            }
+            if ($builder->getIndexDefinitions() !== []) {
+                throw new \LogicException("Cannot convert \"{$table}.{$name}\" with an index: convert it, then add the index.");
+            }
+            $type = $this->grammar->columnType($column['kind'], $column['length']);
+            $nullable = $column['nullable'];
+            $length = match ($column['kind']) {
+                'string' => $column['length'] ?? 255,
+                'uuid' => 64,
+                default => null,
+            };
+        }
+        $own = $this->existing($table, $this->columns($table), $name);
+        $t = $this->grammar->quote($table);
+        $c = $this->grammar->quote($own);
+        if ($length !== null) {
+            // LENGTH counts characters on SQLite, bytes on MySQL (never fewer): the candidates, measured in characters here.
+            $stmt = $this->pdo->prepare("SELECT {$c} FROM {$t} WHERE LENGTH({$c}) > ?");
+            $stmt->bindValue(1, $length, \PDO::PARAM_INT); // as text, SQLite would compare it as greater than any number
+            $stmt->execute();
+            $longest = max([0, ...array_map(static fn (mixed $v): int => mb_strlen((string) $v), $stmt->fetchAll(\PDO::FETCH_COLUMN))]);
+            if ($longest > $length) {
+                throw new \LogicException("Cannot convert \"{$table}.{$own}\": a value has {$longest} characters, the new type holds {$length}. Shorten it first.");
+            }
+        }
+        if ($nullable === false) {
+            $nulls = (int) $this->pdo->query("SELECT COUNT(*) FROM {$t} WHERE {$c} IS NULL")->fetchColumn();
+            if ($nulls > 0) {
+                throw new \LogicException("Cannot make \"{$table}.{$own}\" NOT NULL: it is NULL in {$nulls} row" . ($nulls === 1 ? '' : 's') . '. Backfill it with fillNulls() first.');
+            }
+        }
+        $this->grammar->convertColumn($this->pdo, $table, $own, $type, $nullable);
     }
 
     /** Adds a nullable column to an existing table; a null type is free text (TEXT / LONGTEXT). */

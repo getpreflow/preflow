@@ -176,6 +176,95 @@ final class SqliteGrammar implements SchemaGrammar
         return 'ALTER TABLE ' . $this->quote($table) . ' DROP COLUMN ' . $this->quote($column);
     }
 
+    /**
+     * SQLite cannot change a column, so the table is rebuilt (sqlite.org/lang_altertable.html, "other
+     * kinds of table schema changes"): a new table with every column as PRAGMA table_info reports it
+     * (type, NOT NULL, DEFAULT, primary key) and $column changed, the rows copied, the old table dropped,
+     * the new one renamed, its indexes and triggers made again; views keep naming the table. All in one
+     * savepoint, so it joins a transaction the caller has open. Foreign keys are switched off for the
+     * rebuild (and checked before it commits) when no transaction is open, as dropping the old table
+     * would otherwise act on the rows that refer to it; with one open they must already be off.
+     * Refuses (LogicException, nothing changed) a table whose CREATE statement has what table_info
+     * cannot carry over: REFERENCES, CHECK, UNIQUE, COLLATE, CONSTRAINT, AUTOINCREMENT, a generated
+     * column, WITHOUT ROWID or STRICT.
+     */
+    public function convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void
+    {
+        $find = $pdo->prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?");
+        $find->execute([$table]);
+        $create = (string) $find->fetchColumn();
+        $find = null; // an open statement would lock the table against the DROP below
+        // Identifiers and literals out of the way, so a column named "check" is no constraint.
+        $bare = (string) preg_replace('/"(?:[^"]|"")*"|\'(?:[^\']|\'\')*\'|`(?:[^`]|``)*`|\[[^\]]*\]/', '', $create);
+        if (preg_match('/\b(REFERENCES|CHECK|UNIQUE|COLLATE|CONSTRAINT|AUTOINCREMENT|GENERATED|WITHOUT\s+ROWID|STRICT)\b|\bAS\s*\(/i', $bare, $m) === 1) {
+            throw new \LogicException("Cannot convert \"{$table}.{$column}\" on SQLite: the table is rebuilt for it, and its definition has " . strtoupper($m[1] ?? 'AS (') . ', which the rebuild cannot keep.');
+        }
+        $foreignKeys = (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn() === 1;
+        if ($foreignKeys && $pdo->inTransaction()) {
+            throw new \LogicException("Cannot convert \"{$table}.{$column}\" on SQLite inside a transaction while foreign keys are on: SQLite cannot switch them off there.");
+        }
+
+        $info = $pdo->query('PRAGMA table_info(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC);
+        $keys = array_values(array_filter($info, static fn (array $c): bool => (int) $c['pk'] > 0));
+        usort($keys, static fn (array $a, array $b): int => (int) $a['pk'] <=> (int) $b['pk']);
+        $defs = [];
+        foreach ($info as $col) {
+            $own = strcasecmp((string) $col['name'], $column) === 0;
+            $def = trim($this->quote((string) $col['name']) . ' ' . ($own ? $type : (string) $col['type']));
+            if (count($keys) === 1 && (int) $col['pk'] === 1) {
+                $def .= ' PRIMARY KEY';
+            }
+            if ($own ? ($nullable ?? (int) $col['notnull'] === 0) === false : (int) $col['notnull'] === 1) {
+                $def .= ' NOT NULL';
+            }
+            if ($col['dflt_value'] !== null) {
+                $def .= ' DEFAULT ' . $col['dflt_value'];
+            }
+            $defs[] = $def;
+        }
+        if (count($keys) > 1) {
+            $defs[] = 'PRIMARY KEY (' . implode(', ', array_map(fn (array $c): string => $this->quote((string) $c['name']), $keys)) . ')';
+        }
+        $kept = $pdo->prepare("SELECT sql FROM sqlite_master WHERE type IN ('index', 'trigger') AND tbl_name = ? AND sql IS NOT NULL ORDER BY type");
+        $kept->execute([$table]);
+        $remake = $kept->fetchAll(\PDO::FETCH_COLUMN);
+        $kept = null;
+        $new = $table . '__preflow_converting';
+        $names = implode(', ', array_map(fn (array $c): string => $this->quote((string) $c['name']), $info));
+
+        if ($foreignKeys) {
+            $pdo->exec('PRAGMA foreign_keys = OFF');
+        }
+        $legacy = (int) $pdo->query('PRAGMA legacy_alter_table')->fetchColumn();
+        $pdo->exec('SAVEPOINT preflow_convert_column');
+        try {
+            $pdo->exec('CREATE TABLE ' . $this->quote($new) . ' (' . implode(', ', $defs) . ')');
+            $pdo->exec('INSERT INTO ' . $this->quote($new) . " ({$names}) SELECT {$names} FROM " . $this->quote($table));
+            $pdo->exec('DROP TABLE ' . $this->quote($table));
+            // Legacy rename: views and triggers elsewhere that name the table are left as they are (they
+            // name it again once the rename is done) instead of being checked against the missing table.
+            $pdo->exec('PRAGMA legacy_alter_table = ON');
+            $pdo->exec('ALTER TABLE ' . $this->quote($new) . ' RENAME TO ' . $this->quote($table));
+            $pdo->exec('PRAGMA legacy_alter_table = ' . $legacy);
+            foreach ($remake as $sql) {
+                $pdo->exec((string) $sql);
+            }
+            if ($foreignKeys && $pdo->query('PRAGMA foreign_key_check')->fetch() !== false) {
+                throw new \LogicException("Cannot convert \"{$table}.{$column}\": the rebuilt table breaks a foreign key.");
+            }
+            $pdo->exec('RELEASE preflow_convert_column');
+        } catch (\Throwable $e) {
+            $pdo->exec('ROLLBACK TO preflow_convert_column');
+            $pdo->exec('RELEASE preflow_convert_column');
+            $pdo->exec('PRAGMA legacy_alter_table = ' . $legacy);
+            throw $e;
+        } finally {
+            if ($foreignKeys) {
+                $pdo->exec('PRAGMA foreign_keys = ON');
+            }
+        }
+    }
+
     public function createMigrationsTable(): string
     {
         return 'CREATE TABLE IF NOT EXISTS preflow_migrations (

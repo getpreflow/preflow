@@ -205,6 +205,41 @@ final class MysqlGrammar implements SchemaGrammar
         return 'ALTER TABLE ' . $this->quote($table) . ' DROP COLUMN ' . $this->quote($column);
     }
 
+    /** ALTER TABLE … MODIFY, with the column's NULL / NOT NULL and DEFAULT carried over unless changed. */
+    public function convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void
+    {
+        $stmt = $pdo->prepare('SELECT IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+        $stmt->execute([$table, $column]);
+        [$isNullable, $default, $extra] = $stmt->fetch(\PDO::FETCH_NUM) ?: throw new \LogicException("Cannot convert \"{$table}.{$column}\": no such column.");
+        $nullable ??= $isNullable === 'YES';
+        $sql = 'ALTER TABLE ' . $this->quote($table) . ' MODIFY ' . $this->quote($column) . ' ' . $type . ($nullable ? ' NULL' : ' NOT NULL');
+        $default = self::defaultClause($pdo, $default, (string) $extra);
+        if ($default !== null) {
+            $sql .= ' DEFAULT ' . $default;
+        }
+        $pdo->exec($sql);
+    }
+
+    /**
+     * information_schema's COLUMN_DEFAULT as SQL. MariaDB (10.2.7+) reports it as SQL already: a quoted
+     * literal, an expression, or the word NULL. MySQL 8 reports a literal unquoted and SQL NULL for
+     * none; an expression default carries DEFAULT_GENERATED in EXTRA.
+     */
+    private static function defaultClause(\PDO $pdo, ?string $default, string $extra): ?string
+    {
+        if ($default === null) {
+            return null;
+        }
+        if (str_contains(strtolower((string) $pdo->getAttribute(\PDO::ATTR_SERVER_VERSION)), 'mariadb')) {
+            return strtoupper($default) === 'NULL' ? null : $default;
+        }
+        if (str_contains(strtoupper($extra), 'DEFAULT_GENERATED')) {
+            return preg_match('/^current_timestamp(\(\d*\))?$/i', $default) === 1 ? $default : '(' . $default . ')';
+        }
+
+        return $pdo->quote($default);
+    }
+
     public function createMigrationsTable(): string
     {
         return 'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '

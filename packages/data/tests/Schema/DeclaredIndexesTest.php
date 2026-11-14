@@ -298,6 +298,7 @@ final class RacingGrammar implements \Preflow\Data\Migration\Grammar\SchemaGramm
     public function renameColumn(string $table, string $from, string $to): string { return $this->g->renameColumn($table, $from, $to); }
     public function copyColumn(string $table, string $from, string $to): string { return $this->g->copyColumn($table, $from, $to); }
     public function dropColumn(string $table, string $column): string { return $this->g->dropColumn($table, $column); }
+    public function convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void { $this->g->convertColumn($pdo, $table, $column, $type, $nullable); }
     public function createMigrationsTable(): string { return $this->g->createMigrationsTable(); }
     public function canIndex(string $kind): bool { return $this->g->canIndex($kind); }
 }
