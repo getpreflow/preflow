@@ -7,6 +7,9 @@ namespace Preflow\Folio\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.76: data 0.76 (Query::localize() with the type's locales, which the missing-alt filter relies on on JSON storage), i18n 0.76
+ * (OverrideRules::placeholderParts(), the tokens of Settings → Translations) and media 0.76 (AssetUsage::counts(), AssetUsageEntry::$type,
+ * MediaLibrary::query(missingAlt:), missingAltCount(), displayUrl()).
  * Since 0.75: core 0.75 (Version::label(), the installed Folio and core versions the user menu shows); data 0.75 (TypeFamily, the "family" TypeCatalog reads and the type tiles show) and i18n 0.75
  * (Completeness, the language indicator's three states, which TranslationStatus::state() computes); publishing 0.75
  * (RecordAddressFields, which FolioRecordTypes implements so RecordWriter::duplicate() frees a copy's address); blocks 0.75
@@ -64,7 +67,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.75', 'preflow/data' => '<0.75', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.75', 'preflow/media' => '<0.70', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.75', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.66', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.75', 'preflow/data' => '<0.76', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.76', 'preflow/media' => '<0.76', 'preflow/members' => '<0.68', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.75', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members, codes and rbac are suggested, not required.

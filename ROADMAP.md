@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-14 (v0.75.0)
+> Last updated: 2026-11-14 (v0.76.0)
 
 ## Current State
 
-**v0.75.0** — 7729 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.76.0** — 7837 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,46 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Folio redesign, part 3: settings, library, dashboard and ink (v0.76.0, released 2026-11-14):** the rest of Folio
+  gets the redesign (plan `docs/superpowers/plans/2026-11-14-release-0.76-folio-redesign-settings-library-ink.md`,
+  differences from the boards in `docs/superpowers/notes/2026-11-13-folio-redesign-deviations.md`).
+  - **Ink layer:** the editing marks live in `icons.svg` (`mark-*`), with `.folio-ink*` classes and `folio_ink_marks(seed,
+    count, area, aspect)` (deterministic placement); ink empty states; an admin "not found" page and the no-access
+    page as ink cards; a "Skip to content" link on the sidebar and rail screens. The sign-in shares the classes.
+  - **Dashboard:** ink band with the site's counts, "Needs you" (new permissions, changes not live, not-found
+    addresses, translations to review; loaded after the page), content by sidebar section with quick create, the
+    cache line (loaded after the page). Counts use aggregates. Extensions add cards with `#[DashboardItem]` → `NeedsYou`.
+  - **Assets:** cards with "used N×", kind segmented, "Missing alt text · N", grid/list toggle, drop zone, selection
+    bar (Edit alt text, Download for one file, Move to bin). **Asset detail:** large image with focal point and crop
+    previews (16:9, 4:3, 1:1, 9:16), file facts, colours to copy, "Used in" by type, replace by drop, Versions tab.
+  - **Translations:** inline editing, changed rows with reset, "Changed only · N", sticky save-all bar; AI translate
+    follows the filter. **Redirects:** "from → to" table, not-found badge, drawer form (A page / An address, 301/302
+    cards, any language), restyled removal dialog. **Cache:** total with stacked bar, size bars, page cache and OPcache
+    cards. **Roles:** matrix by section with type tiles, row switches, column toggles, "Neu" and "Nur neue (N)";
+    exact grants only (owner).
+  - **Editors without autosave** show "N unsaved changes" and Cancel; a refused save says "Not saved"; drawers ask
+    before closing with unsaved changes.
+  - **Framework APIs (usable without Folio):** media `AssetUsage::counts()`, `CountsAssetUsage`, `AssetUsageEntry::$type`,
+    `MediaLibrary::query(missingAlt:)`, `missingAltCount()`, `posterCounts()`, `displayUrl()`; data `Query::localize()`
+    with the type's locales (JSON storage reads a map without the locale as null, as SQL does); i18n
+    `OverrideRules::placeholderParts()`.
+  - **Upgrading:**
+    - Upgrade data, i18n, media and folio together (`composer update "preflow/*" -W`); the constraints refuse mixes.
+    - `NewPermissions::dashboard()` returns `?NeedsYou`; `@rbac/new-permissions-dashboard.twig` is removed (Roles uses
+      `#[DashboardItem]`).
+    - Overrides: `dashboard.twig` (no `.folio-card-grid`; htmx always loaded), `assets/*` (`panel.twig` no longer gets
+      `versions`: earlier versions are on the Versions tab), `cache.twig`, `translations/index.twig`, `redirects/*`
+      follow the new structure.
+    - An `AssetReferenceSource` may implement `CountsAssetUsage::usageCounts($ids, $nonBlocking)` for fast library
+      pages; library cards count blocking usages only.
+    - Editors without autosave get the unsaved state and Cancel: fields that change values by script announce it with
+      a bubbling `change`; fields with derived visible state listen for `folio:discard`; own guarded forms carry
+      `data-folio-guard`.
+    - A select's empty-key placeholder option no longer counts toward the four-option segmented rule.
+    - New `folio.*` keys: check translation overrides.
+  - **Next:** 0.77 the approved proposals (⌘K palette, `/` block picker and insert line, AI "Write a draft", recent
+    changes) and the tag field; then the render-context release. Follow-ups: publishing "published from" version for
+    cheap state counts; usage counts on non-SQL storage; roles unsaved count per changed value.
 - **Folio redesign, part 2: lists and editors (v0.75.0, released 2026-11-14):** lists, the record editor, blocks,
   the preview and every field type get the redesign; native confirm and alert boxes are gone (plan
   `docs/superpowers/plans/2026-11-13-release-0.75-folio-redesign-lists-editors.md`, differences from the boards in
