@@ -1,7 +1,7 @@
 {% extends "@folio/admin/_layout.twig" %}
 {# Settings → Cache (CacheController::index()): the total with a stacked bar by cache, the table with
    size bars, and the page cache and OPcache as two cards. Every value is data: the controller sends
-   each bar segment's share (data-folio-share, in percent: admin.js sets it as --w, since the CSP refuses style attributes) and its place among the largest (stack 1..5, 0 = everything else); admin.css
+   each bar segment's start and share (percent, as SVG x and width attributes: the CSP refuses style attributes) and its place among the largest (stack 1..5, 0 = everything else); admin.css
    gives the places their colours, so no type key, hue or token is named here. #}
 {% block title %}Folio — {{ t('folio.nav.cache') }}{% endblock %}
 {% block page_title %}{{ t('folio.nav.cache') }}{% endblock %}
@@ -18,7 +18,7 @@
         <p class="folio-cache-total-line"><strong id="folio-cache-total" class="folio-cache-total-size">{{ total.size }}</strong> <span class="folio-cache-total-files">{{ total.files }}</span></p>
         {% if not total.empty %}
         <div class="folio-stack" role="img" aria-label="{{ stack_label }}">
-            {% for part in stack %}<span class="{{ part.n ? 'folio-stack-' ~ part.n : 'folio-stack-rest' }}" data-folio-share="{{ part.width }}"></span>{% endfor %}
+            <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true" focusable="false">{% for part in stack %}<rect class="{{ part.n ? 'folio-stack-' ~ part.n : 'folio-stack-rest' }}" x="{{ part.x }}%" y="0" width="{{ part.width }}%" height="10"/>{% endfor %}</svg>
         </div>
         <ul class="folio-stack-legend">
             {% for part in stack %}<li><span class="folio-stack-swatch {{ part.n ? 'folio-stack-' ~ part.n : 'folio-stack-rest' }}" aria-hidden="true"></span>{{ part.label }}</li>{% endfor %}
@@ -34,7 +34,7 @@
             <tr>
                 <td><strong>{{ cache.label }}</strong><code>{{ cache.key }}</code>{% if cache.note %}<span class="folio-help folio-cache-note">{{ cache.note }}</span>{% endif %}</td>
                 <td class="folio-cache-num">{{ folio_number(cache.entries) }}</td>
-                <td class="folio-cache-sizecell"><span class="folio-cache-size"><span class="folio-cache-bar" aria-hidden="true"><span class="{{ cache.stack ? 'folio-stack-' ~ cache.stack : 'folio-stack-rest' }}" data-folio-share="{{ cache.width }}"></span></span><span class="folio-cache-bytes">{{ cache.size }}</span></span></td>
+                <td class="folio-cache-sizecell"><span class="folio-cache-size"><svg class="folio-cache-bar" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true" focusable="false">{% if cache.width != '0.0' %}<rect class="{{ cache.stack ? 'folio-stack-' ~ cache.stack : 'folio-stack-rest' }}" x="0" y="0" width="{{ cache.width }}%" height="6"/>{% endif %}</svg><span class="folio-cache-bytes">{{ cache.size }}</span></span></td>
                 <td><div class="folio-row-actions">
                     <form method="post" action="{{ prefix }}/cache/clear">
                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">

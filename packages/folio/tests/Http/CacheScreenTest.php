@@ -107,20 +107,20 @@ final class CacheScreenTest extends TestCase
 
         $total = 10000;
         $this->assertMatchesRegularExpression('#<strong id="folio-cache-total" class="folio-cache-total-size">' . preg_quote(Bytes::human($total), '#') . '</strong>\s*<span class="folio-cache-total-files">in 2 files</span>#', $body);
-        // The biggest cache is segment 1 of the bar; widths as data-folio-share (CSP: no style attribute), the colour by class.
+        // The biggest cache is segment 1 of the bar; an SVG rect with percent attributes (CSP: no style attribute), the colour by class.
         preg_match('#<div class="folio-stack" role="img" aria-label="([^"]*)">(.*?)</div>#s', $body, $bar);
         $this->assertStringContainsString('Blocks ' . Bytes::human(9000), $bar[1]);
-        $this->assertMatchesRegularExpression('#\s*<span class="folio-stack-1" data-folio-share="[0-9.]+"></span>#', $bar[2]);
-        $this->assertStringNotContainsString('style=', $body, 'the strict CSP refuses style attributes: widths go through data-folio-share');
+        $this->assertMatchesRegularExpression('#<rect class="folio-stack-1" x="0\.0%" y="0" width="90\.0%" height="10"/><rect class="folio-stack-2" x="90\.0%" y="0" width="10\.0%" height="10"/>#', $bar[2]);
+        $this->assertStringNotContainsString('style=', $body, 'the strict CSP refuses style attributes: the bars are SVG rects');
         $this->assertMatchesRegularExpression('#<span class="folio-stack-swatch folio-stack-1" aria-hidden="true"></span>Blocks#', $body);
         // The row's bar: the largest cache is full width, in its segment's colour.
-        $this->assertMatchesRegularExpression('#Blocks.*?<span class="folio-cache-bar" aria-hidden="true"><span class="folio-stack-1" data-folio-share="100\.0"></span>#s', $body);
+        $this->assertMatchesRegularExpression('#Blocks.*?<svg class="folio-cache-bar" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="folio-stack-1" x="0" y="0" width="100\.0%" height="6"/>#s', $body);
         // Clear all asks first, with the total as its message.
         $this->assertMatchesRegularExpression('#<form method="post" action="/folio/cache/clear" data-confirm="Clear every cache\?" data-confirm-message="' . preg_quote(Bytes::human($total), '#') . ' in \d+ files?\.[^"]*" data-confirm-label="Clear all" data-confirm-tone="danger">#', $body);
     }
 
     #[RunInSeparateProcess]
-    public function test_an_empty_cache_has_a_disabled_clear_button(): void
+    public function test_a_cache_without_files_has_a_disabled_clear_button(): void
     {
         $this->write('storage/cache/blocks.cache', str_repeat('b', 2000));
 
@@ -137,7 +137,7 @@ final class CacheScreenTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('#<button[^>]*\sdisabled#', $byKey['blocks']);
         $this->assertMatchesRegularExpression('#<button type="submit" class="btn btn-ghost btn-sm" aria-label="Clear cache Folio extensions" disabled>#', $byKey['folio.extensions']);
         $this->assertStringContainsString('<span class="folio-cache-bytes">0 B</span>', $byKey['folio.extensions']);
-        $this->assertStringContainsString('<span class="folio-stack-rest" data-folio-share="0.0"></span>', $byKey['folio.extensions']);
+        $this->assertStringNotContainsString('<rect', $byKey['folio.extensions'], 'no bar at 0 B');
     }
 
     #[RunInSeparateProcess]
@@ -284,6 +284,13 @@ final class CacheScreenTest extends TestCase
         $this->assertStringContainsString('<section class="folio-panel folio-cache-card folio-cache-pages" aria-labelledby="folio-cache-pages-title">', (string) $this->send('GET', '/folio/cache')->getBody(), 'shown with the cache on');
         $this->send('POST', '/folio/cache/pages/refresh', ['url' => '/about']);
         $this->assertStringContainsString('/about refreshed (0 cached copies forgotten); it is rebuilt now.', (string) $this->send('GET', '/folio/cache')->getBody());
+        // Only a plain path gets the prefix; anything else goes to the Refresher as typed and is refused.
+        foreach (['//host/x', 'host.tld/x', '?x', 'mailto:x', 'about.html'] as $bad) {
+            $this->send('POST', '/folio/cache/pages/refresh', ['url' => $bad]);
+            $this->assertStringContainsString('Not an address of this site: ' . $bad, (string) $this->send('GET', '/folio/cache')->getBody(), $bad);
+        }
+        $this->send('POST', '/folio/cache/pages/refresh', ['url' => 'about/team']);
+        $this->assertStringContainsString('/about/team refreshed', (string) $this->send('GET', '/folio/cache')->getBody());
         // The field shows the "/" as its prefix: a path typed without it is the same page.
         $this->send('POST', '/folio/cache/pages/refresh', ['url' => 'about']);
         $this->assertStringContainsString('/about refreshed (0 cached copies forgotten)', (string) $this->send('GET', '/folio/cache')->getBody());

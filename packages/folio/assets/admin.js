@@ -1097,7 +1097,7 @@
         var question = d.question || elt.getAttribute('data-confirm');
         if (question) {
             e.preventDefault();
-            folioConfirm({ title: question, confirm: confirmLabel(elt, null), tone: confirmTone(elt, null) })
+            folioConfirm({ title: question, message: elt.getAttribute('data-confirm-message') || '', confirm: confirmLabel(elt, null), tone: confirmTone(elt, null) })
                 .then(function (answer) { if (answer === 'confirm') { d.issueRequest(true); } });
             return;
         }
@@ -2516,18 +2516,6 @@
         root.querySelectorAll('[data-folio-focal]').forEach(placeFocalMarker);
         initTabs(root);
         initNeedsChange(root);
-        applyShares(root);
-    }
-
-    // Bars and bar segments (Settings → Cache): data-folio-share="71.2" is a share in percent, set as --w
-    // here because the strict CSP refuses style attributes.
-    function applyShares(root) {
-        var items = root.querySelectorAll ? Array.prototype.slice.call(root.querySelectorAll('[data-folio-share]')) : [];
-        if (root.hasAttribute && root.hasAttribute('data-folio-share')) { items.push(root); }
-        items.forEach(function (el) {
-            var n = parseFloat(el.getAttribute('data-folio-share'));
-            if (isFinite(n)) { el.style.setProperty('--w', Math.min(100, Math.max(0, n)) + '%'); }
-        });
     }
 
     // Share-preview link: copy the URL (select it when the clipboard is unavailable).
@@ -3989,7 +3977,6 @@
         initNavSections();
         initUserMenus();
         initShellRail();
-        applyShares(document);
         // After the menus' own keys (Escape, arrows), which mark their events handled.
         initShortcuts();
         initListShortcuts();
