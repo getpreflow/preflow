@@ -297,3 +297,28 @@ test('accessible names and states: the esc chip, the count line, aria-expanded',
     type(p, 'zz');
     assert.equal(input.getAttribute('aria-expanded'), 'false', 'no rows');
 });
+
+test('a failed search stays visible as a row and is announced; the next answer clears it', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const p = page();
+        press(p, 'k', { meta: true });
+        type(p, 'dub');
+        mock.timers.tick(150);
+        p.requests[0].resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+        await flush();
+        const error = palette(p).querySelector('.folio-command-error');
+        assert.ok(error, 'a visible row in the list');
+        assert.equal(error.textContent, 'The search did not answer. Try again.');
+        assert.equal(palette(p).querySelector('[aria-live="polite"]').textContent, 'The search did not answer. Try again.', 'and announced');
+        type(p, 'dube');
+        assert.equal(palette(p).querySelector('.folio-command-error'), null, 'a new term clears it');
+        mock.timers.tick(150);
+        p.answer(p.requests[1], ANSWER);
+        await flush();
+        assert.equal(palette(p).querySelector('.folio-command-error'), null);
+        assert.deepEqual(titles(p), ['Werkhalle Dubach', 'dub.png']);
+    } finally {
+        mock.timers.reset();
+    }
+});

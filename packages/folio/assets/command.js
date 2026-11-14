@@ -31,6 +31,7 @@
     var rows = [];        // the option elements, in order
     var active = -1;
     var records = [];     // the last answer's groups
+    var failed = false;   // the last request failed: a visible row says so until the next term or answer
     var timer = null;
     var seq = 0;          // the newest request; older answers are dropped
     var pending = null;   // the AbortController of the request in flight
@@ -155,6 +156,7 @@
         opener = document.activeElement;
         input.value = '';
         records = [];
+        failed = false;
         if (typeof dialog.showModal === 'function') { dialog.showModal(); }
         dialog.setAttribute('open', ''); // showModal() sets it too; without it the dialog shows in place
         render();
@@ -180,6 +182,7 @@
         var term = input.value.trim();
         // A new term: whatever was asked for the old one is dropped, even inside the debounce window.
         stop();
+        failed = false;
         if (term.length < MIN_TERM) {
             records = [];
         } else {
@@ -201,14 +204,15 @@
         }).then(function (answer) {
             if (mine !== seq) { return; } // a newer term asked since
             pending = null;
+            failed = false;
             records = answer && Array.isArray(answer.groups) ? answer.groups : [];
             render();
         }).catch(function (err) {
             if (mine !== seq || (err && err.name === 'AbortError')) { return; }
             pending = null;
             records = [];
+            failed = true;
             render();
-            status.textContent = t('command_failed');
         });
     }
 
@@ -256,7 +260,15 @@
                 }), ws);
             });
         }
-        status.textContent = rows.length === 0 ? t('command_none') : rows.length === 1 ? t('command_one') : t('command_many', { count: rows.length });
+        if (failed) {
+            // Shown in the list (the count line is for screen readers only) and announced there too.
+            var error = document.createElement('p');
+            error.className = 'folio-command-error';
+            error.setAttribute('role', 'none');
+            error.textContent = t('command_failed');
+            list.appendChild(error);
+        }
+        status.textContent = failed ? t('command_failed') : rows.length === 0 ? t('command_none') : rows.length === 1 ? t('command_one') : t('command_many', { count: rows.length });
         input.setAttribute('aria-expanded', rows.length ? 'true' : 'false');
         select(rows.length ? 0 : -1);
     }
