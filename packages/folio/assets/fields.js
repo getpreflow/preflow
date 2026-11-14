@@ -815,7 +815,9 @@
         document.addEventListener('click', onStep);
         document.addEventListener('click', onRelationClick);
         document.addEventListener('input', onRelationInput);
-        document.addEventListener('keydown', onRelationKeydown);
+        // Capture phase: Escape in a relation search closes its results before the editor's own Escape
+        // (the side sheet) sees it, and marks it handled: one Esc closes one layer.
+        document.addEventListener('keydown', onRelationKeydown, true);
         document.addEventListener('keydown', onSortKeydown);
         document.addEventListener('pointerdown', onSortPointerDown);
         document.addEventListener('dragstart', onSortDragStart);

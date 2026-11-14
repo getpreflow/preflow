@@ -365,8 +365,13 @@
         }
     }
 
+    // Capture phase, marked handled: Escape closes the drawer only, not the editor's side sheet under it.
     function onKeydown(e) {
-        if (e.key === 'Escape' && drawerEl) { closeDrawer(); }
+        if (e.key === 'Escape' && drawerEl) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeDrawer();
+        }
     }
 
     // ---- Split-view editor ---------------------------------------------
@@ -3281,7 +3286,7 @@
         window.addEventListener('pageshow', clearAllBusy);
         document.querySelectorAll('[data-folio-matrix]').forEach(initMatrix);
         window.addEventListener('message', onMessage);
-        document.addEventListener('keydown', onKeydown);
+        document.addEventListener('keydown', onKeydown, true);
         initTabs(document);
         document.addEventListener('input', onRelationSearchInput);
         document.addEventListener('focusin', onRelationFocusIn);

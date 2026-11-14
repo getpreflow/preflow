@@ -159,20 +159,33 @@ class Element {
     }
     hasAttribute(name) { return this.getAttribute(name) !== null; }
     removeAttribute(name) { delete this.attributes[name]; }
-    addEventListener(name, fn) { (this.listeners[name] = this.listeners[name] || []).push(fn); }
-    removeEventListener(name, fn) { this.listeners[name] = (this.listeners[name] || []).filter((f) => f !== fn); }
+    addEventListener(name, fn, options) { addListener(this, name, fn, options); }
+    removeEventListener(name, fn, options) { removeListener(this, name, fn, options); }
+    /**
+     * As the DOM: the capture phase (capture listeners, window down to the parent), the target (its
+     * capture listeners, then the others), then, for a bubbling event, the bubble phase up to the
+     * document and its window (a window listener runs after every document one). stopPropagation()
+     * ends it after the current node.
+     */
     dispatchEvent(event) {
         if (!event.target) { Object.defineProperty(event, 'target', { value: this, configurable: true }); }
-        const path = [this];
+        const ancestors = [];
+        for (let up = this.parentNode; up; up = up.parentNode) { ancestors.push(up); }
+        if ((ancestors[ancestors.length - 1] || this) === this.ownerDocument.documentElement) {
+            ancestors.push(this.ownerDocument);
+            if (this.ownerDocument.defaultView) { ancestors.push(this.ownerDocument.defaultView); }
+        }
+        const run = (node, fns) => { (fns || []).slice().forEach((fn) => fn(event)); return !event.cancelBubble; };
+        for (const node of ancestors.slice().reverse()) {
+            if (!run(node, node.captures && node.captures[event.type])) { return !event.defaultPrevented; }
+        }
+        if (!run(this, this.captures && this.captures[event.type])) { return !event.defaultPrevented; }
+        if (!run(this, this.listeners[event.type])) { return !event.defaultPrevented; }
         if (event.bubbles) {
-            for (let up = this.parentNode; up; up = up.parentNode) { path.push(up); }
-            // On to the document and its window, as in the DOM (a window listener runs after every document one).
-            if (path[path.length - 1] === this.ownerDocument.documentElement) {
-                path.push(this.ownerDocument);
-                if (this.ownerDocument.defaultView) { path.push(this.ownerDocument.defaultView); }
+            for (const node of ancestors) {
+                if (!run(node, node.listeners[event.type])) { break; }
             }
         }
-        path.forEach((node) => { (node.listeners[event.type] || []).slice().forEach((fn) => fn(event)); });
         return !event.defaultPrevented;
     }
     /** Focus as the browser moves it: the document's activeElement, focusout (with relatedTarget) on the old one, focusin on this. */
@@ -277,6 +290,18 @@ function matchesCompound(el, compound) {
     return true;
 }
 
+/** addEventListener(name, fn, true | {capture: true}) keeps capture listeners apart (node.captures); the others in node.listeners. */
+function addListener(node, name, fn, options) {
+    const capture = options === true || !!(options && options.capture);
+    const map = capture ? (node.captures = node.captures || {}) : node.listeners;
+    (map[name] = map[name] || []).push(fn);
+}
+function removeListener(node, name, fn, options) {
+    const capture = options === true || !!(options && options.capture);
+    const map = capture ? (node.captures || {}) : node.listeners;
+    map[name] = (map[name] || []).filter((f) => f !== fn);
+}
+
 function matchesChain(el, parts) {
     if (!matchesCompound(el, parts[parts.length - 1])) { return false; }
     if (parts.length === 1) { return true; }
@@ -293,8 +318,8 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         createElement: (tag) => new Element(tag, document),
         createTextNode: (data) => new Text(data),
         createElementNS: (ns, tag) => new Element(tag, document),
-        addEventListener: (name, fn) => { (document.listeners[name] = document.listeners[name] || []).push(fn); },
-        removeEventListener() {},
+        addEventListener: (name, fn, options) => addListener(document, name, fn, options),
+        removeEventListener: (name, fn, options) => removeListener(document, name, fn, options),
         getElementById: (id) => document.documentElement.querySelector('#' + id),
         querySelector: (s) => document.documentElement.querySelector(s),
         querySelectorAll: (s) => document.documentElement.querySelectorAll(s),
@@ -308,8 +333,8 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
         document,
         listeners: {},
         location: { origin, href: origin + '/folio' },
-        addEventListener: (name, fn) => { (window.listeners[name] = window.listeners[name] || []).push(fn); },
-        removeEventListener() {},
+        addEventListener: (name, fn, options) => addListener(window, name, fn, options),
+        removeEventListener: (name, fn, options) => removeListener(window, name, fn, options),
         /** A message event as postMessage delivers it; by default it comes from the first open iframe (the drawer). */
         receive: (data, fromOrigin = origin, source = document.documentElement.querySelector('iframe')?.contentWindow ?? null) => {
             (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin, source }));
