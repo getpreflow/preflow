@@ -192,6 +192,16 @@ final class ListRowMenuTest extends TestCase
         $this->assertStringContainsString('action="/folio/note/n1/duplicate"', $note);
     }
 
+    public function test_row_form_actions_encode_the_id(): void
+    {
+        $this->working('note', 'n 1', ['name' => 'Remember']);
+
+        $note = (string) $this->get('/folio/note')->getBody();
+
+        $this->assertStringContainsString('action="/folio/note/n%201/duplicate"', $note);
+        $this->assertStringContainsString('action="/folio/note/n%201/delete"', $note);
+    }
+
     public function test_delete_keeps_delete_plan_and_confirm(): void
     {
         $this->publishPost('p1', 'hello');

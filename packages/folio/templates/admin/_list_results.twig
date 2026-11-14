@@ -85,14 +85,14 @@
                                 {# Needs JS: the link is made by a POST and written to the clipboard (no link without it). #}
                                 {% if menu.share_url|default(null) %}<button type="button" class="folio-menu-item" role="menuitem" data-folio-copy-link="{{ menu.share_url }}" hidden><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#link"></use></svg><span>{{ t('folio.form.copy_preview_link') }}</span></button>{% endif %}
                                 {% if row_menu.duplicate %}
-                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/duplicate">
+                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id|url_encode }}/duplicate">
                                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                         <button type="submit" class="folio-menu-item" role="menuitem" aria-keyshortcuts="D" data-folio-menu-duplicate><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-copy"></use></svg><span>{{ t('folio.common.duplicate') }}</span><kbd class="folio-menu-hint" aria-hidden="true">D</kbd></button>
                                     </form>
                                 {% endif %}
                                 {% if orderable and may.edit %}
                                     {% for direction, text in {'up': t('folio.common.move_up'), 'down': t('folio.common.move_down')} %}
-                                        <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/move">
+                                        <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id|url_encode }}/move">
                                             <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                             <input type="hidden" name="direction" value="{{ direction }}">
                                             {% if list.page > 1 %}<input type="hidden" name="page" value="{{ list.page }}">{% endif %}
@@ -116,7 +116,7 @@
                                     </form>
                                 {% endif %}
                                 {% if may.delete %}
-                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id }}/delete" data-confirm="{{ t('folio.list.confirm_delete') }}" data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}">
+                                    <form method="post" action="{{ prefix }}/{{ type }}/{{ row.id|url_encode }}/delete" data-confirm="{{ t('folio.list.confirm_delete') }}" data-delete-plan="{{ prefix }}/{{ type }}/_delete-plan" data-delete-id="{{ row.id }}">
                                         <input type="hidden" name="_csrf_token" value="{{ csrf|default('') }}">
                                         <button type="submit" class="folio-menu-item is-danger" role="menuitem"><svg class="folio-icon" aria-hidden="true"><use href="{{ icons }}#ui-trash"></use></svg><span>{{ t('folio.common.delete') }}…</span></button>
                                     </form>

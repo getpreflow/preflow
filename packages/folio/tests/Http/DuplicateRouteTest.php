@@ -12,7 +12,7 @@ use Preflow\Folio\Tests\Rbac\RbacAppScaffold;
 
 /**
  * "Duplicate" from a list row: POST {prefix}/{type}/{id}/duplicate (CSRF token, the type's create
- * permission) makes a copy through RecordWriter::duplicate() and opens its editor with a "This is a
+ * and view permissions) makes a copy through RecordWriter::duplicate() and opens its editor with a "This is a
  * copy of …" note. Refused for a user type (the copy would carry the account's password and sign-in)
  * and a singleton, on the route as in the menu. Staff from config/auth.php: admin (every permission),
  * editor (pages: view and edit, no create).
@@ -147,6 +147,34 @@ final class DuplicateRouteTest extends TestCase
         $this->assertSame(403, $this->send('POST', '/folio/page/p1/duplicate')->getStatusCode());
         $this->assertSame(['p1'], $this->ids('page'));
         $this->assertStringNotContainsString('/folio/page/p1/duplicate', (string) $this->send('GET', '/folio/page')->getBody(), 'nor in the menu');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_403_with_create_but_without_view(): void
+    {
+        // A copy shows the record: creating without seeing would read any record by its id.
+        $this->install();
+        $this->role('r-editor', 'staff', 'editor', ['folio.dashboard', 'page.create']);
+        $this->as('editor');
+        $this->seed('page', 'p1', ['title' => 'About']);
+
+        $this->assertSame(403, $this->send('POST', '/folio/page/p1/duplicate')->getStatusCode());
+        $this->assertSame(['p1'], $this->ids('page'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_title_in_a_language_the_site_no_longer_has_is_copied_as_it_is(): void
+    {
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
+        $this->write('config/models/page.json', (string) json_encode([
+            'key' => 'page', 'table' => 'page', 'storage' => 'json', 'id_field' => 'uuid', 'label' => 'Pages',
+            'fields' => ['title' => ['type' => 'string', 'translatable' => true]],
+        ]));
+        $this->setUpStaff();
+        $this->as('admin');
+        $this->seed('page', 'p1', ['title' => ['en' => 'About', 'fr' => 'À propos'], '_locales' => ['en']]);
+
+        $this->assertSame(['en' => 'About (copy)', 'fr' => 'À propos'], $this->stored('page', $this->copyOf('p1'))->get('title'));
     }
 
     #[RunInSeparateProcess]

@@ -422,7 +422,7 @@ final class AdminController
             'may' => ['create' => $this->can($type . '.create'), 'edit' => $this->can($type . '.edit'), 'delete' => $this->can($type . '.delete')],
             // The row "…" menu's items that do not depend on the row.
             'row_menu' => [
-                'duplicate' => $this->duplicable($type) && $this->can($type . '.create'),
+                'duplicate' => $this->duplicable($type) && $this->can($type . '.create') && $this->can($type . '.view'),
                 'actions' => $this->menuActions($type),
             ],
             // "Translate all…" (header) and "Translate…" (bulk bar): the AI run screen.
@@ -538,7 +538,8 @@ final class AdminController
         if (in_array($name, $def->translatableFields(), true)) {
             $titles = [];
             foreach (LocaleValue::map($value, $def->locales) as $locale => $title) {
-                if (is_string($title) && trim($title) !== '') {
+                // A language the site no longer has stays as it is (duplicate() takes the site's languages only).
+                if (is_string($title) && trim($title) !== '' && $def->locales->has((string) $locale)) {
                     $titles[$locale] = self::copyTitle($title, (string) $locale);
                 }
             }
@@ -940,7 +941,7 @@ final class AdminController
     /**
      * "Duplicate" (POST {type}/{id}/duplicate): a copy of the record through
      * RecordWriter::duplicate(), a draft with a free address, then the copy's editor with a
-     * "This is a copy of …" note. Needs the type's create permission; never for a singleton or a
+     * "This is a copy of …" note. Needs the type's create and view permissions; never for a singleton or a
      * user type (duplicable()). A refusal (a hook, the rules) goes back to the list with its reason.
      */
     public function duplicate(ServerRequestInterface $request): ResponseInterface
@@ -950,7 +951,8 @@ final class AdminController
         if (!$this->catalog->has($type) || !$this->duplicable($type)) {
             return new Response(404, [], FolioText::get('folio.errors.not_found'));
         }
-        if (!$this->can($type . '.create')) {
+        // The route asks create (FolioPermissionMiddleware); a copy also shows the record, so view too.
+        if (!$this->can($type . '.create') || !$this->can($type . '.view')) {
             return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
         }
         $source = $this->dm->findType($type, $id);
