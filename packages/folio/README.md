@@ -285,6 +285,23 @@ user from the staff guard's provider (`findById()`; its `name`/`email`, as publi
 `getName()`/`getEmail()`, so a model behind `DataManagerUserProvider` shows by name too). It shows
 an e-mail or an unknown value as stored.
 
+## Recent changes and All activity (0.77)
+
+The dashboard's **Recent changes** shows the 5 newest rows of the core's activity log (core
+README, "Activity log"), loaded just after the page (`?part=recent`, like "Needs you"), beside the
+content from 1280px. **All activity** (`{prefix}/activity`) has the rest: 50 rows a page
+("Older" follows the log's cursor, "Newest" goes back), with filters for the type and the person.
+A row shows the type tile, the title linking to the record (a deleted record shows its stored
+title without a link), what happened ("Post · Title, Body edited · draft saved": up to two
+changed fields by their labels), who (`AuthorNames`) and when ("5 minutes ago", "Yesterday", then
+the date).
+
+Rows are filtered on the server: a type's rows for `{type}.view`, assets for `assets.view`,
+redirects for `redirects.manage`; nothing else is read. The screen asks `folio.dashboard`, as the
+dashboard does; there is no permission of its own. A subject that is neither a type key nor
+`asset`/`redirect` (an app's own events) is not shown. `Preflow\Folio\Dashboard\RecentChanges`
+builds the rows for both.
+
 ## Overriding the dashboard
 
 The dashboard is the one core admin action an app can replace without forking: a class

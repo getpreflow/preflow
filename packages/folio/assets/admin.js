@@ -4046,6 +4046,20 @@
         if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); }
     }
 
+    // A filter form that applies at once ([data-folio-autosubmit], the All activity toolbar): a changed select
+    // submits it, so its Filter button ([data-folio-autosubmit-button]) hides. Without script the button stays.
+    function initAutosubmit(root) {
+        root.querySelectorAll('[data-folio-autosubmit] [data-folio-autosubmit-button]').forEach(function (b) { b.hidden = true; });
+    }
+
+    function onAutosubmitChange(e) {
+        var t = e.target;
+        if (!t || !t.matches || !t.matches('select')) { return; }
+        var form = t.closest('[data-folio-autosubmit]');
+        if (!form) { return; }
+        if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); }
+    }
+
     function assetsInput(root) {
         return root ? root.querySelector('[data-folio-assets-files]') : null;
     }
@@ -4217,6 +4231,8 @@
         document.addEventListener('click', onBulkDrawer);
         initAssetLibrary();
         document.addEventListener('change', onAssetsToolbarChange);
+        initAutosubmit(document);
+        document.addEventListener('change', onAutosubmitChange);
         document.addEventListener('change', onAssetsFileChange);
         document.addEventListener('click', onAssetsChooseClick);
         document.addEventListener('dragover', onAssetsDragOver);

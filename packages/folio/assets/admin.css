@@ -895,6 +895,47 @@ h2 small { font-size: 12.5px; font-weight: 450; color: var(--c-text-muted); }
 .folio-dash-row-label { font-weight: 600; overflow-wrap: anywhere; }
 .folio-dash-row-count { font-size: 12px; color: var(--c-text-subtle); font-variant-numeric: tabular-nums; }
 .folio-dash-add.btn { flex: none; width: 30px; min-height: 30px; color: var(--c-text-muted); }
+/* The content and "Recent changes" (0.77): stacked, side by side from 1280px (content 1fr, the list 1.4fr,
+   as the board) once the second one is there; a lone content card keeps the full width. */
+.folio-dash-split { display: flex; flex-direction: column; gap: 28px; margin-top: 28px; }
+.folio-dash-split > .folio-dash-section { margin-top: 0; }
+.folio-dash-split > .folio-dash-later:empty { display: none; }
+@media (min-width: 1280px) {
+  .folio-dash-split:has(> :nth-child(2)) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); align-items: start; }
+}
+.folio-dash-recent { min-width: 0; }
+.folio-dash-recent .folio-dash-head { justify-content: space-between; }
+.folio-dash-recent-all { font-size: 13px; font-weight: 500; color: var(--c-accent-text); }
+.folio-dash-recent-empty { margin: 0; padding: 14px; border: 1px dashed var(--c-border-strong); border-radius: 12px; font-size: 13px; color: var(--c-text-muted); }
+/* An activity row (dashboard and All activity): the type tile, title and what, who and when. */
+.folio-activity-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  background: var(--c-surface);
+}
+.folio-activity-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 14px; border-bottom: 1px solid var(--c-border); }
+.folio-activity-row:last-child { border-bottom: 0; }
+.folio-activity-main { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.35; }
+.folio-activity-title { font-weight: 500; color: var(--c-text); overflow-wrap: anywhere; text-decoration: none; }
+a.folio-activity-title:hover { color: var(--c-text); text-decoration: underline; text-underline-offset: 3px; }
+a.folio-activity-title:focus-visible { outline: none; border-radius: 4px; box-shadow: var(--focus-ring); }
+.folio-activity-title.is-gone { color: var(--c-text-muted); }
+.folio-activity-what { font-size: 12px; color: var(--c-text-subtle); overflow-wrap: anywhere; }
+.folio-activity-meta { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 1px; max-width: 40%; font-size: 12px; line-height: 1.35; color: var(--c-text-subtle); text-align: right; }
+.folio-activity-who { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--c-text-muted); }
+.folio-activity-when { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* All activity: the filters above the list, the pager below it. */
+.folio-activity-toolbar { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin: 0 0 16px; }
+.folio-activity-toolbar select { width: auto; max-width: 100%; min-height: var(--h-button); height: var(--h-button); font-size: 13px; }
+.folio-activity-toolbar [data-folio-autosubmit-button][hidden] { display: none; }
+@media (max-width: 600px) {
+  .folio-activity-row { flex-wrap: wrap; }
+  .folio-activity-meta { flex-direction: row; flex-basis: 100%; justify-content: flex-start; gap: 8px; max-width: none; padding-left: 36px; text-align: left; }
+}
 /* The footer line: the caches' size (for folio.cache) and the shortcuts hint. */
 .folio-dash-foot {
   display: flex;

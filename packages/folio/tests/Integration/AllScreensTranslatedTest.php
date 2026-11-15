@@ -94,9 +94,18 @@ final class AllScreensTranslatedTest extends TestCase
                 $walked[] = $uri;
             }
         }
+        // The dashboard's parts loaded after the page (htmx).
+        foreach (['/folio?part=recent', '/folio?part=needs'] as $part) {
+            if ($this->assertScreen($part, $this->request('GET', $part, [], ['HX-Request' => 'true']), $locale, $english)) {
+                $walked[] = $part;
+            }
+        }
+        foreach (['/folio/activity?type=post', '/folio/activity?by=nobody'] as $filtered) {
+            $this->assertScreen($filtered, $this->request('GET', $filtered), $locale, $english);
+        }
         $this->assertSame([], array_values(array_unique($this->problems)), count($walked) . ' screens walked');
         // Every type's list and form, the dashboard, assets, extensions, cache, translations, account.
-        foreach (['/folio', '/folio/assets', '/folio/extensions', '/folio/cache', '/folio/translations', '/folio/redirects', '/folio/redirects?tab=not-found', '/folio/seo-audit', '/folio/_account', '/folio/staff', '/folio/rbac_role', '/folio/member', '/folio/code', '/folio/post/new'] as $must) {
+        foreach (['/folio', '/folio/assets', '/folio/extensions', '/folio/cache', '/folio/translations', '/folio/redirects', '/folio/redirects?tab=not-found', '/folio/seo-audit', '/folio/activity', '/folio?part=recent', '/folio/_account', '/folio/staff', '/folio/rbac_role', '/folio/member', '/folio/code', '/folio/post/new'] as $must) {
             $this->assertContains($must, $walked);
         }
         $this->assertGreaterThan(25, count($walked), implode("\n", $walked));
@@ -380,6 +389,12 @@ final class AllScreensTranslatedTest extends TestCase
             imagepng($image, $this->dir . '/red.png');
             $ids['_asset'] = $this->flow->container()->get(\Preflow\Media\MediaLibrary::class)->importFile($this->dir . '/red.png', 'red.png', null)->id;
         }
+        // The activity log: a row of every kind (All activity and the dashboard's Recent changes), one of a record that is gone.
+        $log = $this->flow->container()->get(\Preflow\Core\Activity\ActivityLog::class);
+        foreach (\Preflow\Core\Activity\ActivityKind::cases() as $i => $kind) {
+            $log->record(new \Preflow\Core\Activity\Activity('post', 'po1', 'First', $kind, ['title', 'kind', 'related'], 'sf1', (new \DateTimeImmutable('-' . ($i * 7) . ' hours'))->format(DATE_ATOM)));
+        }
+        $log->record(new \Preflow\Core\Activity\Activity('page', 'gone', 'Gone page', \Preflow\Core\Activity\ActivityKind::Deleted, by: 'sf1', at: (new \DateTimeImmutable('-3 days'))->format(DATE_ATOM)));
 
         return $ids;
     }

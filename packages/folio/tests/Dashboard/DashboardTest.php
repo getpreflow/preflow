@@ -209,6 +209,8 @@ final class DashboardTest extends TestCase
         $this->assertMatchesRegularExpression('#<p class="folio-ink-line">Pub · 2 notes · 0 posts · 0 assets<span class="folio-caret" aria-hidden="true"></span></p>#', $body);
         $this->assertStringContainsString('Every word in its place.', $body);
         $this->assertStringContainsString('What needs you, what changed, and where to start.', $body);
+        // The content and "Recent changes" share a row (side by side from 1280px): the content first.
+        $this->assertMatchesRegularExpression('#<div class="folio-dash-split">\s*<section class="folio-dash-section folio-dash-content".*?</section>\s*<div class="folio-dash-later folio-dash-recent-later" hx-get="/folio\?part=recent"#s', $body);
     }
 
     #[RunInSeparateProcess]

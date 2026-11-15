@@ -1,0 +1,12 @@
+{# One row of the activity log (Preflow\Folio\Dashboard\RecentChanges): the type tile, the title (a link
+   to the record; a record that is gone shows its stored title without one), what happened, who and when
+   (the full date and time in the title). Used by "Recent changes" and All activity:
+   {% import '@folio/admin/partials/_activity_row.twig' as activity %} … {{ activity.row(row) }} #}
+{% macro row(row) -%}
+{% import '@folio/admin/partials/_type_icon.twig' as types %}
+<li class="folio-activity-row">
+    {{ types.type_icon(row.family, row.icon) }}
+    <span class="folio-activity-main">{% if row.url %}<a class="folio-activity-title" href="{{ row.url }}"{% if row.drawer %} data-folio-drawer{% endif %}>{{ row.title }}</a>{% else %}<span class="folio-activity-title is-gone">{{ row.title }}</span>{% endif %}<span class="folio-activity-what">{{ row.what }}</span></span>
+    <span class="folio-activity-meta">{% if row.who %}<span class="folio-activity-who">{{ row.who }}</span>{% endif %}<time class="folio-activity-when" datetime="{{ row.at }}" title="{{ row.when_full }}">{{ row.when }}</time></span>
+</li>
+{%- endmacro %}

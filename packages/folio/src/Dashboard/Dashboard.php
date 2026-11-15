@@ -43,7 +43,12 @@ final class Dashboard
         private readonly ?\Closure $notFound = null,
         private readonly ?\Closure $assetTotal = null,
         private readonly ?CacheRegistry $caches = null,
+        /** The activity log as rows ("Recent changes", since 0.77); null: no section. */
+        private readonly ?RecentChanges $recent = null,
     ) {}
+
+    /** How many rows "Recent changes" shows; All activity has the rest. */
+    public const int RECENT_ROWS = 5;
 
     /**
      * The page itself: the header's button, the band's stats and the content. "Needs you" (needs())
@@ -51,7 +56,7 @@ final class Dashboard
      * them with htmx), so their slower work never holds the page up.
      *
      * @param \Closure(string): bool $can whether the signed-in user holds a permission
-     * @return array{new: ?array{label: string, url: string}, stats: list<string>, sections: list<array{name: string, label: string, rows: list<array{key: string, label: string, family: ?TypeFamily, icon: string, count: ?int, meta: string, url: string, singleton: bool, create_url: ?string, create_label: ?string}>}>}
+     * @return array{new: ?array{label: string, url: string}, recent: bool, stats: list<string>, sections: list<array{name: string, label: string, rows: list<array{key: string, label: string, family: ?TypeFamily, icon: string, count: ?int, meta: string, url: string, singleton: bool, create_url: ?string, create_label: ?string}>}>}
      */
     public function view(\Closure $can): array
     {
@@ -70,7 +75,29 @@ final class Dashboard
             'new' => $this->newButton($sections, $can),
             'stats' => $this->stats($listings, $counts, $assets),
             'sections' => $sections,
+            // Whether the page loads "Recent changes" (?part=recent): there is something the user may see.
+            'recent' => $this->recent !== null && $this->recent->subjects($can) !== [],
         ];
+    }
+
+    /**
+     * "Recent changes": the RECENT_ROWS newest rows of the activity log the user may see
+     * (RecentChanges), or null when there is nothing they may see (no section). The log is read
+     * here, in its own request after the page: on JSON storage it reads the whole log.
+     *
+     * @param \Closure(string): bool $can
+     * @return list<array<string, mixed>>|null
+     */
+    public function recent(\Closure $can): ?array
+    {
+        if ($this->recent === null || $this->recent->subjects($can) === []) {
+            return null;
+        }
+        try {
+            return $this->recent->page($can, self::RECENT_ROWS)['rows'];
+        } catch (\Throwable) {
+            return []; // a broken log never breaks the dashboard
+        }
     }
 
     /**

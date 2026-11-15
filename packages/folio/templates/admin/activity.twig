@@ -1,0 +1,47 @@
+{% extends "@folio/admin/_layout.twig" %}
+{# All activity (ActivityController::index(), GET {prefix}/activity): the activity log the user may see,
+   newest first, PER_PAGE rows a page ("Older" follows the log's cursor, "Newest" goes back to the
+   start), filtered by type and person (a GET form; with script a changed select applies at once).
+   Nothing changed yet: the ink empty state; a filter or page without rows: a plain line. #}
+{% import '@folio/admin/partials/_activity_row.twig' as activity %}
+{% block title %}Folio — {{ t('folio.activity.title') }}{% endblock %}
+{% block page_title %}{{ t('folio.activity.title') }}{% endblock %}
+{% block subtitle %}{{ t('folio.activity.subtitle') }}{% endblock %}
+{% block content %}
+    {% if rows is empty and not filtered %}
+        {% include '@folio/admin/partials/_empty.twig' with {
+            screen: 'activity',
+            title: t('folio.activity.empty'),
+            line: t('folio.activity.empty_line'),
+        } only %}
+    {% else %}
+    <form class="folio-activity-toolbar" method="get" action="{{ prefix }}/activity" role="search" data-folio-autosubmit>
+        <select name="type" aria-label="{{ t('folio.activity.type') }}">
+            <option value="">{{ t('folio.activity.all_types') }}</option>
+            {% for subject in subjects %}
+            <option value="{{ subject.key }}"{% if subject.key == type %} selected{% endif %}>{{ subject.label }}</option>
+            {% endfor %}
+        </select>
+        <select name="by" aria-label="{{ t('folio.activity.person') }}">
+            <option value="">{{ t('folio.activity.everyone') }}</option>
+            {% for person in people %}
+            <option value="{{ person.id }}"{% if person.id == by %} selected{% endif %}>{{ person.label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm" data-folio-autosubmit-button>{{ t('folio.common.filter') }}</button>
+    </form>
+    {% if rows is empty %}
+        <div class="folio-empty folio-no-matches"><p>{{ t('folio.activity.no_matches') }}</p></div>
+    {% else %}
+        <ol class="folio-activity-list folio-activity-all" role="list">
+            {% for row in rows %}{{ activity.row(row) }}{% endfor %}
+        </ol>
+    {% endif %}
+    {% if newest_url or older_url %}
+    <nav class="folio-pager folio-activity-pager" aria-label="{{ t('folio.list.pages') }}">
+        {% if newest_url %}<a class="btn btn-secondary btn-sm" href="{{ newest_url }}">{{ t('folio.activity.newest') }}</a>{% else %}<span></span>{% endif %}
+        {% if older_url %}<a class="btn btn-secondary btn-sm" href="{{ older_url }}" rel="next">{{ t('folio.activity.older') }}</a>{% endif %}
+    </nav>
+    {% endif %}
+    {% endif %}
+{% endblock %}

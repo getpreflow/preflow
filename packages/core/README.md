@@ -365,6 +365,8 @@ $log->record(new Activity('page', $id, 'About us', ActivityKind::Saved, changed:
 
 $page = $log->recent(20, subjects: ['page', 'post']);    // ActivityPage: $items, $next
 $more = $log->recent(20, ['page', 'post'], $page->next); // the next page; null on the last
+$ada = $log->recent(20, null, null, by: $userId);        // what one person did
+$people = $log->people(['page', 'post']);                // who did something, the latest first
 ```
 
 - `Activity`: `subject` (a type key, `asset`, `redirect`), `id`, `title` (as it was at the time,
@@ -376,6 +378,9 @@ $more = $log->recent(20, ['page', 'post'], $page->next); // the next page; null 
   previous page's `next` cursor (opaque; an unreadable one reads from the start). Events recorded
   in between never make pages overlap or skip; a row that coalesces (a later save in the same
   editing session) moves to the top and so leaves the later pages.
+  `$by` (0.77, with Folio's All activity) keeps one person's events, compared exactly.
+- `people($subjects)`: each person who did something (`by`, the system's null left out), once,
+  the one with the latest event first: a person filter's options.
 - `prune(): int` applies the retention; it never runs while recording or reading. Run
   `php preflow activity:prune` nightly from cron (`members:prune` runs it too).
 - `forget($subject, $id)` removes every event of a record (erasure for privacy). The members
@@ -386,7 +391,7 @@ $more = $log->recent(20, ['page', 'post'], $page->next); // the next page; null 
   `RecordWriter`, `RecordDeleter` and `Publisher`, media's `MediaLibrary`, Folio's redirects)
   catch what `record()` throws and log it as a warning (`Psr\Log\LoggerInterface`, when bound).
   Your own writers should do the same.
-- `recent()` checks no permission: show a person only the subjects they may read.
+- `recent()` and `people()` check no permission: show a person only the subjects they may read.
 
 ### Cookie queue
 

@@ -16,9 +16,14 @@ final class NullActivityLog implements ActivityLog
     {
     }
 
-    public function recent(int $limit, ?array $subjects = null, ?string $before = null): ActivityPage
+    public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): ActivityPage
     {
         return new ActivityPage();
+    }
+
+    public function people(?array $subjects = null): array
+    {
+        return [];
     }
 
     public function prune(): int

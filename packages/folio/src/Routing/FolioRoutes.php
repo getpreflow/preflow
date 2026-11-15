@@ -33,6 +33,7 @@ final class FolioRoutes
     private const AI_SETTINGS = 'Preflow\\Folio\\Http\\AiSettingsController';
     private const AI_DRAFT = 'Preflow\\Folio\\Http\\AiDraftController';
     private const SEARCH = 'Preflow\\Folio\\Http\\SearchController';
+    private const ACTIVITY = 'Preflow\\Folio\\Http\\ActivityController';
 
     /**
      * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the staff guard)
@@ -89,6 +90,8 @@ final class FolioRoutes
             ['POST', $prefix . '/assets/{id}/versions/{n}/delete',  'deleteVersion', self::ASSETS],
             ['GET',  $prefix . '/extensions',          'index', self::EXTENSIONS],
             ['POST', $prefix . '/extensions/{name}',   'toggle', self::EXTENSIONS],
+            // All activity (the dashboard's "Recent changes" in full); before the generic {type} routes.
+            ['GET',  $prefix . '/activity',            'index', self::ACTIVITY],
             ['GET',  $prefix . '/cache',               'index', self::CACHE],
             ['POST', $prefix . '/cache/clear',         'clear', self::CACHE],
             ['POST', $prefix . '/cache/opcache-reset', 'opcacheReset', self::CACHE],

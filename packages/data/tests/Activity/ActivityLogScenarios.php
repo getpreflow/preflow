@@ -155,6 +155,45 @@ trait ActivityLogScenarios
     }
 
     #[DataProvider('storages')]
+    public function test_person_filter_pages_like_the_rest(string $storage): void
+    {
+        $log = $this->log($storage);
+        foreach (['a' => 'u1', 'b' => 'u2', 'c' => 'u1', 'd' => 'U1', 'e' => 'u1'] as $id => $by) {
+            $log->record(new Activity('page', $id, $id, ActivityKind::Created, by: $by));
+            $this->tick();
+        }
+        $log->record(new Activity('page', 'sys', 'sys', ActivityKind::Published));
+
+        $one = $log->recent(2, null, null, 'u1');
+        $this->assertSame(['e', 'c'], self::ids($one->items), 'exact matches only: "U1" is someone else');
+        $this->assertNotNull($one->next);
+        $two = $log->recent(2, null, $one->next, 'u1');
+        $this->assertSame(['a'], self::ids($two->items));
+        $this->assertNull($two->next);
+        $this->assertSame(['b'], self::ids($log->recent(10, ['page'], null, 'u2')->items));
+        $this->assertSame([], $log->recent(10, ['post'], null, 'u2')->items);
+    }
+
+    #[DataProvider('storages')]
+    public function test_people_most_recent_first(string $storage): void
+    {
+        $log = $this->log($storage);
+        $log->record(new Activity('page', 'a', 'a', ActivityKind::Created, by: 'u1'));
+        $this->tick();
+        $log->record(new Activity('post', 'b', 'b', ActivityKind::Created, by: 'u2'));
+        $this->tick();
+        $log->record(new Activity('page', 'c', 'c', ActivityKind::Created));
+        $this->tick();
+        $log->record(new Activity('asset', 'd', 'd', ActivityKind::Uploaded, by: 'u3'));
+        $this->tick();
+        $log->record(new Activity('page', 'e', 'e', ActivityKind::Created, by: 'u1'));
+
+        $this->assertSame(['u1', 'u3', 'u2'], $log->people(), 'no null person; each once, by their latest event');
+        $this->assertSame(['u1', 'u2'], $log->people(['page', 'post']));
+        $this->assertSame([], $log->people([]));
+    }
+
+    #[DataProvider('storages')]
     public function test_saves_by_the_same_person_coalesce_within_ten_minutes(string $storage): void
     {
         $log = $this->log($storage);

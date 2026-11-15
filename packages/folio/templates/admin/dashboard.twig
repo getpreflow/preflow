@@ -1,8 +1,8 @@
 {% extends "@folio/admin/_layout.twig" %}
 {% import '@folio/admin/partials/_type_icon.twig' as types %}
-{# The dashboard (Preflow\Folio\Dashboard\Dashboard::view(): dashboard.new, .stats, .sections): the
-   ink band, extensions' notices, "Needs you" and the cache line (both loaded after the page), the
-   content by sidebar section, the review queue and the footer line. Every value is data: no type
+{# The dashboard (Preflow\Folio\Dashboard\Dashboard::view(): dashboard.new, .stats, .sections, .recent): the
+   ink band, extensions' notices, "Needs you", "Recent changes" and the cache line (all three loaded after
+   the page), the content by sidebar section, the review queue and the footer line. Every value is data: no type
    key, hue or token is named here. #}
 {% block title %}Folio — {{ t('folio.dashboard.title') }}{% endblock %}
 {% block page_title %}{{ t('folio.dashboard.title') }}{% endblock %}
@@ -25,6 +25,10 @@
     {% if dashboard_notices|default([]) is not empty %}<div class="folio-page-notices">{% for notice in dashboard_notices %}{{ notice|raw }}{% endfor %}</div>{% endif %}
     {# "Needs you" (partials/dashboard-needs.twig) loads after the page: ?part=needs, nothing when nothing is open. #}
     <div class="folio-dash-later" hx-get="{{ prefix }}?part=needs" hx-trigger="load" hx-swap="outerHTML"></div>
+    {# The content and "Recent changes" (loaded after the page: ?part=recent, for who may see some subject):
+       side by side from 1280px (admin.css), stacked below. #}
+    {% if dashboard.sections is not empty or dashboard.recent %}
+    <div class="folio-dash-split">
     {% if dashboard.sections is not empty %}
     <section class="folio-dash-section folio-dash-content" aria-labelledby="folio-content-title">
         <h2 id="folio-content-title" class="folio-dash-title">{{ t('folio.dashboard.content') }}</h2>
@@ -46,6 +50,9 @@
             {% endfor %}
         </div>
     </section>
+    {% endif %}
+    {% if dashboard.recent %}<div class="folio-dash-later folio-dash-recent-later" hx-get="{{ prefix }}?part=recent" hx-trigger="load" hx-swap="outerHTML"></div>{% endif %}
+    </div>
     {% endif %}
     {% if review %}{% include '@folio/admin/partials/dashboard-review.twig' %}{% endif %}
     <div class="folio-dash-foot">

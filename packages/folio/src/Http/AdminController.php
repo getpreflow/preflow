@@ -126,13 +126,19 @@ final class AdminController
         $can = fn (string $permission): bool => $this->can($permission);
 
         // The parts the page loads after itself (htmx, hx-trigger "load"): "Needs you" compares every
-        // publishing type's working copies with their snapshots, the cache line walks the cache
-        // directories. Each answers with its part alone, or nothing.
+        // publishing type's working copies with their snapshots, "Recent changes" reads the activity
+        // log (on JSON storage all of it), the cache line walks the cache directories. Each answers
+        // with its part alone, or nothing.
         $part = $request->getHeaderLine('HX-Request') === 'true' ? (string) ($request->getQueryParams()['part'] ?? '') : '';
         if ($part === 'needs') {
             $needs = $dashboard->needs($can, (int) ($this->reviewSection()['total'] ?? 0));
 
             return $this->html($needs === [] ? '' : $this->engine->render('@folio/admin/partials/dashboard-needs.twig', ['needs' => $needs]));
+        }
+        if ($part === 'recent') {
+            $recent = $dashboard->recent($can);
+
+            return $this->html($recent === null ? '' : $this->engine->render('@folio/admin/partials/dashboard-recent.twig', ['prefix' => $this->prefix, 'rows' => $recent]));
         }
         if ($part === 'cache') {
             $cache = $dashboard->cache($can);

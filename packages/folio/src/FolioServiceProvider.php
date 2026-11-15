@@ -700,6 +700,7 @@ final class FolioServiceProvider extends ServiceProvider
                 // Live assets (not binned, no private copies), counted by the library's own query.
                 $c->bound(\Preflow\Media\MediaLibrary::class) ? static fn (): int => $c->get(\Preflow\Media\MediaLibrary::class)->query(perPage: 1)->total : null,
                 $c->get(\Preflow\Core\Cache\CacheRegistry::class),
+                $c->get(\Preflow\Folio\Dashboard\RecentChanges::class),
             ),
         ));
         $container->bind(\Preflow\Folio\Http\AiTranslateController::class, fn (Container $c) => new \Preflow\Folio\Http\AiTranslateController(
@@ -946,6 +947,34 @@ final class FolioServiceProvider extends ServiceProvider
         ));
         $container->bind(\Preflow\Folio\Http\NavPreferenceController::class, fn (Container $c) => new \Preflow\Folio\Http\NavPreferenceController(
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
+            $prefix,
+        ));
+        // The activity log as rows: the dashboard's "Recent changes" and All activity ({prefix}/activity, since 0.77).
+        $container->singleton(\Preflow\Folio\Dashboard\RecentChanges::class, fn (Container $c) => new \Preflow\Folio\Dashboard\RecentChanges(
+            $c->bound(\Preflow\Core\Activity\ActivityLog::class) ? $c->get(\Preflow\Core\Activity\ActivityLog::class) : new \Preflow\Core\Activity\NullActivityLog(),
+            $c->get(TypeCatalog::class),
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            $c->get(DataManager::class),
+            $prefix,
+            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
+            $c->get(\Preflow\Publishing\Publisher::class),
+            // Of the rows' assets, the ones still in the library (a binned or deleted one: no link).
+            $c->bound(\Preflow\Media\MediaLibrary::class) ? static function (array $ids) use ($c): array {
+                $library = $c->get(\Preflow\Media\MediaLibrary::class);
+                $library->prefetch($ids);
+
+                return array_values(array_filter($ids, static fn (string $id): bool => $library->find($id) !== null));
+            } : null,
+            $c->bound(\Preflow\Folio\Redirects\RedirectEntries::class) ? static function (array $ids) use ($c): array {
+                $entries = $c->get(\Preflow\Folio\Redirects\RedirectEntries::class);
+
+                return array_values(array_filter($ids, static fn (string $id): bool => $entries->find($id) !== null));
+            } : null,
+        ));
+        $container->bind(\Preflow\Folio\Http\ActivityController::class, fn (Container $c) => new \Preflow\Folio\Http\ActivityController(
+            $c->get(\Preflow\Folio\Dashboard\RecentChanges::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
             $prefix,
         ));
         // The ⌘K palette: its screens, actions and g-chords (folio_commands()) and its record search ({prefix}/_search).

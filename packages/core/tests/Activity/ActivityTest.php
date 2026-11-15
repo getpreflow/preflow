@@ -73,6 +73,8 @@ final class ActivityTest extends TestCase
         $this->assertSame([], $page->items);
         $this->assertNull($page->next);
         $this->assertSame(0, $log->prune());
+        $this->assertSame([], $log->people());
+        $this->assertSame([], $log->recent(10, null, null, 'u1')->items);
         $log->forget('page', 'p1');
     }
 

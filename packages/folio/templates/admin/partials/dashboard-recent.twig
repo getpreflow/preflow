@@ -1,0 +1,18 @@
+{# The dashboard's "Recent changes" (Dashboard::recent(), GET {prefix}?part=recent after the page): the
+   newest rows of the activity log the user may see, and the link to All activity. Nothing changed yet:
+   a muted line (the ink empty state is All activity's). The controller sends nothing instead when the
+   user may see no subject at all. #}
+{% import '@folio/admin/partials/_activity_row.twig' as activity %}
+<section class="folio-dash-section folio-dash-recent" aria-labelledby="folio-recent-title">
+    <div class="folio-dash-head">
+        <h2 id="folio-recent-title" class="folio-dash-title">{{ t('folio.activity.recent') }}</h2>
+        <a class="folio-dash-recent-all" href="{{ prefix }}/activity">{{ t('folio.activity.all') }}</a>
+    </div>
+    {% if rows is empty %}
+    <p class="folio-dash-recent-empty">{{ t('folio.activity.empty_short') }}</p>
+    {% else %}
+    <ol class="folio-activity-list" role="list">
+        {% for row in rows %}{{ activity.row(row) }}{% endfor %}
+    </ol>
+    {% endif %}
+</section>

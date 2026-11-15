@@ -96,6 +96,7 @@ final class TwoRolesTest extends TestCase
             ['POST /folio/assets/{id}/remake', '/folio/assets/missing/remake', [], [404, 404, 403]],
             ['GET /folio/extensions', '/folio/extensions', [], [200, 403, 403]],
             ['POST /folio/extensions/{name}', '/folio/extensions/nothing', [], [404, 403, 403]],
+            ['GET /folio/activity', '/folio/activity', [], [200, 200, 403]], // All activity (0.77): folio.dashboard, rows by {type}.view itself
             ['GET /folio/cache', '/folio/cache', [], [200, 403, 403]],
             ['POST /folio/cache/clear', '/folio/cache/clear', ['key' => 'nothing'], [404, 403, 403]],
             ['POST /folio/cache/opcache-reset', '/folio/cache/opcache-reset', [], [302, 403, 403]],

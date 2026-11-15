@@ -54,6 +54,40 @@ final class AdminFormat
         return $date->format(self::phpPattern($pattern));
     }
 
+    /**
+     * When something happened, as a person says it: "Just now" (under a minute, or a clock a
+     * little ahead), "42 minutes ago", "3 hours ago" (earlier today), "Yesterday", else the date
+     * (folio.format.date). '' for nothing or something that is not a date. Days are the app's
+     * timezone's.
+     *
+     * @since 0.77
+     */
+    public function relative(mixed $value, ?\DateTimeImmutable $now = null): string
+    {
+        $date = self::toDate($value);
+        if ($date === null) {
+            return '';
+        }
+        $zone = new \DateTimeZone(date_default_timezone_get());
+        $date = $date->setTimezone($zone);
+        $now = ($now ?? new \DateTimeImmutable())->setTimezone($zone);
+        $seconds = $now->getTimestamp() - $date->getTimestamp();
+        if ($seconds < 60) {
+            return $this->text('folio.format.just_now');
+        }
+        if ($seconds < 3600) {
+            return $this->choice('folio.format.minutes_ago', intdiv($seconds, 60));
+        }
+        if ($date->format('Y-m-d') === $now->format('Y-m-d')) {
+            return $this->choice('folio.format.hours_ago', intdiv($seconds, 3600));
+        }
+        if ($date->format('Y-m-d') === $now->modify('-1 day')->format('Y-m-d')) {
+            return $this->text('folio.format.yesterday');
+        }
+
+        return $this->date($date);
+    }
+
     /** A number with the language's separators ('' for something that is not a number). */
     public function number(mixed $value): string
     {
@@ -80,6 +114,11 @@ final class AdminFormat
     private function text(string $key): string
     {
         return ($this->translator ?? FolioText::translator())->get($key);
+    }
+
+    private function choice(string $key, int $count): string
+    {
+        return ($this->translator ?? FolioText::translator())->choice($key, $count, ['count' => $this->number($count)]);
     }
 
     private static function toDate(mixed $value): ?\DateTimeImmutable

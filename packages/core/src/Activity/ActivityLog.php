@@ -36,8 +36,18 @@ interface ActivityLog
      * @param list<string>|null $subjects only these subjects; null: all, []: none
      * @param string|null $before the cursor of the previous page (ActivityPage::$next); an
      *                            unreadable one reads from the start
+     * @param string|null $by only what this person did (Activity::$by, compared exactly); null: everyone
      */
-    public function recent(int $limit, ?array $subjects = null, ?string $before = null): ActivityPage;
+    public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): ActivityPage;
+
+    /**
+     * Who did something (Activity::$by, the system's null left out): each person once, the one
+     * with the latest event first. An admin's person filter offers them.
+     *
+     * @param list<string>|null $subjects only events of these subjects; null: all, []: none
+     * @return list<string>
+     */
+    public function people(?array $subjects = null): array;
 
     /**
      * Deletes what the log no longer keeps (its retention); returns how many events went. Run on

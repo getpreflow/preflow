@@ -898,8 +898,8 @@ permission: pass only the types the person may read.
 log") kept through the `DataManager`, so it works on every storage driver. It is bound when
 `config/data.php` exists, on the storage alias `activity` when one is configured, else on the
 default storage. `preflow migrate` creates its two tables on SQL storage (the step
-`activity.table`): `preflow_activity` (the rows; indexes on the sort key and on
-(subject, record_id), which `forget()` uses) and `preflow_activity_last` (each record's newest
+`activity.table`): `preflow_activity` (the rows; indexes on the sort key, on
+(subject, record_id), which `forget()` uses, and on the person, which `recent(by:)` uses) and `preflow_activity_last` (each record's newest
 row, for coalescing). JSON storage needs no tables. Until a SQL site is migrated, `recent()`
 reads an empty log, `prune()` and `forget()` do nothing, and the logger is told once.
 
@@ -924,6 +924,8 @@ return [
 - **Transactions:** inside a caller's open transaction, on a storage with `Savepoints` (the SQL
   drivers), a recording runs under a savepoint: its rows commit or roll back with the caller's
   transaction, and a failing recording leaves that transaction usable (PostgreSQL-safe).
+- **People:** `people()` groups the rows by person (`AggregatingStorage`, every built-in
+  driver); on a storage without aggregates it reads them 1000 at a time.
 - **Retention:** `prune()` deletes rows older than `keep_days` and beyond the newest
   `keep_rows`, 1000 at a time with one `DELETE … IN (…)` each (`DataManager::deleteManyIn()`),
   and the newest-row entries pointing at them. It runs from `php preflow activity:prune` (and

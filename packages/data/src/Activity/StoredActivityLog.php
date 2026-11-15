@@ -8,6 +8,7 @@ use Preflow\Core\Activity\Activity;
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
 use Preflow\Core\Activity\ActivityPage;
+use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\ExclusiveWrites;
@@ -25,7 +26,8 @@ use Psr\Log\LoggerInterface;
  * "activity.table"). It is stored on the storage alias "activity" when the site has one, else on
  * "default".
  *
- * - preflow_activity: the rows. Index (subject, record_id) for forget(), index on seq for order.
+ * - preflow_activity: the rows. Index (subject, record_id) for forget(), index on seq for order,
+ *   index on actor for the person filter.
  * - preflow_activity_last: each record's newest row (id: a hash of subject and id; the row's id,
  *   kind, person and time), so record() reads and writes single rows by id and costs the same
  *   however long the log is, on every driver.
@@ -115,7 +117,8 @@ final class StoredActivityLog implements ActivityLog
                 'title' => new TypeFieldDefinition('title', 'text'),
                 'kind' => new TypeFieldDefinition('kind', 'string'),
                 'changed' => new TypeFieldDefinition('changed', 'text'),
-                'actor' => new TypeFieldDefinition('actor', 'string'),
+                // Indexed: the person filter (recent(by:)) reads by it, and an indexed column compares exactly on every driver.
+                'actor' => new TypeFieldDefinition('actor', 'string', index: true, length: 191),
                 'at' => new TypeFieldDefinition('at', 'string'),
                 'seq' => new TypeFieldDefinition('seq', 'string', index: true, length: 48),
             ],
@@ -202,14 +205,17 @@ final class StoredActivityLog implements ActivityLog
         }));
     }
 
-    public function recent(int $limit, ?array $subjects = null, ?string $before = null): ActivityPage
+    public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): ActivityPage
     {
-        if ($limit < 1 || $subjects === []) {
+        if ($limit < 1 || $subjects === [] || $by === '') {
             return new ActivityPage();
         }
         $query = $this->dm->queryIn($this->type)->orderBy('seq', SortDirection::Desc)->limit($limit + 1);
         if ($subjects !== null) {
             $query->where('subject', 'IN', array_values(array_unique(array_map(strval(...), $subjects))));
+        }
+        if ($by !== null) {
+            $query->where('actor', $by);
         }
         if ($before !== null && preg_match(self::SEQ, $before) === 1) {
             $query->where('seq', '<', $before);
@@ -221,11 +227,15 @@ final class StoredActivityLog implements ActivityLog
             $rows = array_slice($rows, 0, $limit);
             $next = (string) $rows[$limit - 1]->get('seq');
         }
+        $person = $by;
         $items = [];
         foreach ($rows as $row) {
             $kind = ActivityKind::tryFrom((string) $row->get('kind'));
             if ($kind === null) {
                 continue; // a kind of a later version: left out, the cursor still counts it
+            }
+            if ($person !== null && $row->get('actor') !== $person) {
+                continue; // a text column may compare case-insensitively (MySQL): exact matches only
             }
             $by = $row->get('actor');
             $items[] = new Activity(
@@ -240,6 +250,63 @@ final class StoredActivityLog implements ActivityLog
         }
 
         return new ActivityPage($items, $next);
+    }
+
+    /**
+     * Each person once, by their latest event. A storage that aggregates (AggregatingStorage, the
+     * built-in drivers) groups the rows; any other is read BATCH rows at a time.
+     */
+    public function people(?array $subjects = null): array
+    {
+        if ($subjects === []) {
+            return [];
+        }
+        $subjects = $subjects === null ? null : array_values(array_unique(array_map(strval(...), $subjects)));
+
+        return $this->whenStored(fn (): array => $this->dm->driver($this->type->storage) instanceof AggregatingStorage
+            ? $this->groupedPeople($subjects)
+            : $this->scannedPeople($subjects), []);
+    }
+
+    /** @param list<string>|null $subjects @return list<string> */
+    private function groupedPeople(?array $subjects): array
+    {
+        $query = $this->dm->queryIn($this->type)->where('actor', '!=', '');
+        if ($subjects !== null) {
+            $query->where('subject', 'IN', $subjects);
+        }
+        $people = [];
+        foreach ($query->aggregate()->groupBy('actor')->max('seq', 'latest')->orderBy('latest', SortDirection::Desc)->get() as $group) {
+            $by = $group['actor'] ?? null;
+            if (is_string($by) && $by !== '' && !in_array($by, $people, true)) {
+                $people[] = $by;
+            }
+        }
+
+        return $people;
+    }
+
+    /** @param list<string>|null $subjects @return list<string> */
+    private function scannedPeople(?array $subjects): array
+    {
+        $people = [];
+        $offset = 0;
+        do {
+            $query = $this->dm->queryIn($this->type)->orderBy('seq', SortDirection::Desc)->offset($offset)->limit(self::BATCH);
+            if ($subjects !== null) {
+                $query->where('subject', 'IN', $subjects);
+            }
+            $rows = array_values($query->get()->items());
+            foreach ($rows as $row) {
+                $by = $row->get('actor');
+                if (is_string($by) && $by !== '' && !in_array($by, $people, true)) {
+                    $people[] = $by;
+                }
+            }
+            $offset += self::BATCH;
+        } while (count($rows) === self::BATCH);
+
+        return $people;
     }
 
     /**

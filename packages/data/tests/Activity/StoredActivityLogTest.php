@@ -7,7 +7,13 @@ namespace Preflow\Data\Tests\Activity;
 require_once __DIR__ . '/ActivityLogScenarios.php';
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Activity\Activity;
+use Preflow\Core\Activity\ActivityKind;
+use Preflow\Data\Activity\StoredActivityLog;
 use Preflow\Data\DataManager;
+use Preflow\Data\Query;
+use Preflow\Data\ResultSet;
+use Preflow\Data\StorageDriver;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Driver\SqliteDriver;
 
@@ -37,6 +43,27 @@ final class StoredActivityLogTest extends TestCase
         return new DataManager(['sqlite' => new SqliteDriver($pdo), 'json' => new JsonFileDriver($this->dir . '/store')], $storage);
     }
 
+    /** people() on a storage that cannot aggregate: read in batches, same answer. */
+    public function test_people_on_a_storage_without_aggregates(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/activity_' . bin2hex(random_bytes(4));
+        mkdir($this->dir, 0777, true);
+        $plain = new PlainDriver(new JsonFileDriver($this->dir . '/store'));
+        $dm = new DataManager(['plain' => $plain], 'plain');
+        $at = new \DateTimeImmutable('2026-11-15T10:00:00+00:00');
+        $log = new StoredActivityLog($dm, 'plain', clock: static function () use (&$at): \DateTimeImmutable {
+            return $at = $at->modify('+1 second');
+        });
+        $log->record(new Activity('page', 'a', 'a', ActivityKind::Created, by: 'u1'));
+        $log->record(new Activity('post', 'b', 'b', ActivityKind::Created, by: 'u2'));
+        $log->record(new Activity('page', 'c', 'c', ActivityKind::Created));
+        $log->record(new Activity('page', 'd', 'd', ActivityKind::Created, by: 'u1'));
+
+        $this->assertNotInstanceOf(\Preflow\Data\AggregatingStorage::class, $plain);
+        $this->assertSame(['u1', 'u2'], $log->people());
+        $this->assertSame(['u2'], $log->people(['post']));
+    }
+
     protected function tearDown(): void
     {
         if ($this->dir === '') {
@@ -52,5 +79,46 @@ final class StoredActivityLogTest extends TestCase
             @rmdir($p);
         };
         $rm($this->dir);
+    }
+}
+
+/** A storage with the plain driver contract only (no aggregates, no exclusive writes). */
+final class PlainDriver implements StorageDriver
+{
+    public function __construct(private readonly JsonFileDriver $inner) {}
+
+    public function findOne(string $type, string|int $id, string $idField = 'uuid'): ?array
+    {
+        return $this->inner->findOne($type, $id, $idField);
+    }
+
+    public function findMany(string $type, Query $query): ResultSet
+    {
+        return $this->inner->findMany($type, $query);
+    }
+
+    public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void
+    {
+        $this->inner->save($type, $id, $data, $idField);
+    }
+
+    public function delete(string $type, string|int $id, string $idField = 'uuid'): void
+    {
+        $this->inner->delete($type, $id, $idField);
+    }
+
+    public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
+    {
+        return $this->inner->exists($type, $id, $idField);
+    }
+
+    public function lastInsertId(): string|int
+    {
+        return $this->inner->lastInsertId();
+    }
+
+    public function rawQuery(string $sql, array $bindings = []): array
+    {
+        return $this->inner->rawQuery($sql, $bindings);
     }
 }

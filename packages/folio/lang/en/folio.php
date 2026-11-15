@@ -85,6 +85,42 @@ return [
         'verbs' => ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete', 'upload' => 'Upload'],
         'groups' => ['folio' => 'Folio', 'assets' => 'Assets', 'ai' => 'AI'],
     ],
+    // The activity log: the dashboard's "Recent changes" and the All activity screen (0.77).
+    'activity' => [
+        'title' => 'Activity',
+        'subtitle' => 'Who changed what, newest first.',
+        'recent' => 'Recent changes',
+        'all' => 'All activity',
+        'empty' => 'Nothing changed yet',
+        'empty_short' => 'Nothing changed yet.',
+        'empty_line' => 'Edits, uploads and publishes show up here.',
+        'no_matches' => 'No activity matches these filters.',
+        'type' => 'Type',
+        'all_types' => 'All types',
+        'person' => 'Person',
+        'everyone' => 'Everyone',
+        'older' => 'Older',
+        'newest' => 'Newest',
+        'asset' => 'Asset',
+        'redirect' => 'Redirect',
+        'private_file' => 'Private file',
+        // "Title, Body edited"; with more fields "Title, Body and 2 more edited".
+        'edited' => ':fields edited|:fields edited',
+        'fields_more' => ':fields and :count more|:fields and :count more',
+        'kinds' => [
+            'created' => 'created',
+            'saved' => 'saved',
+            'draft_saved' => 'draft saved',
+            'published' => 'published',
+            'unpublished' => 'unpublished',
+            'scheduled' => 'scheduled',
+            'restored' => 'earlier version restored',
+            'discarded' => 'changes discarded',
+            'deleted' => 'deleted',
+            'uploaded' => 'uploaded',
+            'replaced' => 'file replaced',
+        ],
+    ],
     'dashboard' => [
         'title' => 'Dashboard',
         'records' => ':count record|:count records',
@@ -1139,6 +1175,11 @@ return [
         'thousands' => ',',
         // A type's label for a count: its singular ("label_singular") or its plural label.
         'type_noun' => ':singular|:plural',
+        // When something happened (the activity rows): under a minute, minutes, hours today, yesterday; older is the date.
+        'just_now' => 'Just now',
+        'minutes_ago' => ':count minute ago|:count minutes ago',
+        'hours_ago' => ':count hour ago|:count hours ago',
+        'yesterday' => 'Yesterday',
     ],
     'mail' => [
         'invite' => [

@@ -120,6 +120,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AccountController@password' => self::SIGNED_IN,
         'LocaleController@update' => self::SIGNED_IN,
         'NavPreferenceController@update' => self::SIGNED_IN,
+        'ActivityController@index' => 'folio.dashboard', // as the dashboard that links here; rows keep to {type}.view, assets.view, redirects.manage
         'SearchController@search' => self::SIGNED_IN, // the ⌘K palette: the controller keeps to {type}.view and assets.view
     ];
 
@@ -176,8 +177,9 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        // The dashboard is where login lands: send people without it to what they may see.
-        if ($rule === 'folio.dashboard' && ($first = $this->firstAllowedSection()) !== null) {
+        // The dashboard is where login lands: send people without it to what they may see (All activity,
+        // which asks the same permission, is refused as any other screen).
+        if ($route->handler === self::NS . 'AdminController@index' && $rule === 'folio.dashboard' && ($first = $this->firstAllowedSection()) !== null) {
             return new Response(302, ['Location' => $first]);
         }
 
