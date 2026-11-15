@@ -522,20 +522,64 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         }
 
         $path = $this->filePath($type, $id);
-        // Stable bytes (0.78): umlauts and slashes as they are, 2.0 stays 2.0, a trailing newline.
-        // The key order is the caller's (DataManager writes a type's records in its canonical order).
-        $json = json_encode($data, self::RECORD_FLAGS) . "\n";
 
-        // Write a temp file next to it, then rename: readers (and exports) only
-        // ever see the old or the new record, never half of one.
-        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
-        if (file_put_contents($tmp, $json, LOCK_EX) === false || !rename($tmp, $path)) {
-            @unlink($tmp);
-            throw new \RuntimeException("Could not write {$path}.");
-        }
+        // A save writes the fields it is given and keeps the others (0.78, as SQL keeps the columns
+        // an UPDATE does not name): the stored file is read and merged under the type's lock, so a
+        // save from another process in between is not undone. A file that does not hold a JSON
+        // object (unreadable, half-written by hand) is replaced by the saved data, as before 0.78.
+        $this->exclusive($type, function () use ($path, $data): void {
+            $raw = is_file($path) ? @file_get_contents($path) : false;
+            $stored = $raw === false ? null : json_decode($raw, true);
+            if (is_array($stored) && ($stored === [] || !array_is_list($stored))) {
+                $data = self::merged($stored, $data);
+            }
+            // Stable bytes (0.78): umlauts and slashes as they are, 2.0 stays 2.0, a trailing newline.
+            // The key order is the caller's (DataManager writes a type's records in its canonical order).
+            $json = json_encode($data, self::RECORD_FLAGS) . "\n";
+
+            // Write a temp file next to it, then rename: readers (and exports) only
+            // ever see the old or the new record, never half of one.
+            $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+            if (file_put_contents($tmp, $json, LOCK_EX) === false || !rename($tmp, $path)) {
+                @unlink($tmp);
+                throw new \RuntimeException("Could not write {$path}.");
+            }
+        });
 
         $this->bumpGeneration($type);
         $this->clearCache($type);
+    }
+
+    /**
+     * The stored record with $data laid over it: the save's keys in its order, and a stored key the
+     * save does not name right after the stored key it followed (or first, when it came before
+     * every key the save names). So a full save keeps the caller's order (DataManager's canonical
+     * one), and a partial save of an unchanged record keeps the file's bytes. One case is not
+     * canonical: a partial save that adds a key while the file holds a key the save does not name
+     * places the kept key between them; the next full save puts every key in its place again.
+     *
+     * @param array<string, mixed> $stored
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private static function merged(array $stored, array $data): array
+    {
+        $after = [];
+        $anchor = null; // null: before the first key the save names
+        foreach ($stored as $key => $value) {
+            if (array_key_exists($key, $data)) {
+                $anchor = $key;
+                continue;
+            }
+            $after[$anchor === null ? "\0" : "k:{$anchor}"][$key] = $value;
+        }
+        $merged = $after["\0"] ?? [];
+        foreach ($data as $key => $value) {
+            $merged[$key] = $value;
+            $merged += $after["k:{$key}"] ?? [];
+        }
+
+        return $merged;
     }
 
     /**

@@ -29,7 +29,12 @@ interface StorageDriver
     public function findMany(string $type, Query $query): ResultSet;
 
     /**
+     * Writes the given fields of the record with that id and leaves every other stored field as it
+     * is; a field given as null is stored as null; a missing record is inserted with the given
+     * fields.
+     *
      * @param array<string, mixed> $data
+     * @since 0.78 the rule above holds on every driver (the JSON driver replaced the file before)
      */
     public function save(string $type, string|int $id, array $data, string $idField = 'uuid'): void;
 

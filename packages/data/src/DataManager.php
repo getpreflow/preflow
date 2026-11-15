@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Data;
 
 use Preflow\Data\Attributes\Timestamps;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Observe\DataObserver;
 use Preflow\Data\Observe\SqlTables;
 use Preflow\Data\Schema\ColumnKind;
@@ -931,7 +930,7 @@ final class DataManager
 
                 return;
             }
-            $this->saveKeepingOtherColumns($driver, $def, $id, $data);
+            $driver->save($def->table, $id, $this->storageValues($def, $data), $def->idField);
         });
 
         if (self::emptyId($id)) {
@@ -960,7 +959,7 @@ final class DataManager
             // Unchanged: the stored version stays (none stays none).
             $version = $changed ? [$versionField => ($current ?? 0) + 1] : ($current === null ? [] : [$versionField => $current]);
             if ($stored === null || !$driver instanceof ConditionalUpdates || $attempt >= self::BUMP_ATTEMPTS) {
-                $this->saveKeepingOtherColumns($driver, $def, $id, [...$data, ...$version]);
+                $driver->save($def->table, $id, $this->storageValues($def, [...$data, ...$version]), $def->idField);
 
                 return;
             }
@@ -969,28 +968,6 @@ final class DataManager
                 return;
             }
         }
-    }
-
-    /**
-     * Writes $data over the stored record, leaving the columns $data does not have as they
-     * are. SQL storage does that itself; a storage that writes whole records (JSON files) gets
-     * the stored record with $data laid over it, read and written under the type's lock where
-     * the storage has one, so a version-checked save in between is not undone.
-     *
-     * @param array<string, mixed> $data
-     */
-    private function saveKeepingOtherColumns(StorageDriver $driver, TypeDefinition $def, string|int $id, array $data): void
-    {
-        if ($driver instanceof PdoDriver) {
-            $driver->save($def->table, $id, $data, $def->idField);
-
-            return;
-        }
-        $write = function () use ($driver, $def, $id, $data): void {
-            $stored = $driver->findOne($def->table, $id, $def->idField);
-            $driver->save($def->table, $id, $this->storageValues($def, $stored === null ? $data : array_replace($stored, $data)), $def->idField);
-        };
-        $driver instanceof ExclusiveWrites ? $driver->exclusive($def->table, $write) : $write();
     }
 
     /**

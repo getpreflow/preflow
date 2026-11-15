@@ -72,7 +72,8 @@ use Preflow\Data\TypeFieldDefinition;
  *   NULL. An empty `IN` list matches nothing, an empty `NOT IN` list everything (nulls too).
  * - Numbers compare and sort as numbers. `where()` binds tighter than `orWhere()`, as AND before
  *   OR in SQL. `total()` counts every match, ignoring limit and offset.
- * - save() of an existing id updates that record; delete() of a missing id does nothing.
+ * - save() of an existing id updates the fields it is given and keeps the others; a field given as
+ *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
  * - A driver with ConditionalUpdates (@since 0.77) writes only the named fields, and only while the
  *   version field holds the expected whole number (as text or number; null: none, NULL or '', and
  *   never 0); a match that changes no value is still a match.
@@ -297,6 +298,33 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame('Second', $row['label'], 'saving an existing id again writes the new values');
         $this->assertNumber(2, $row['amount'] ?? null);
         $this->assertSame(1, $this->driver->findMany('records', new Query())->total(), 'saving an existing id adds no second record');
+    }
+
+    /** @since 0.78 a save writes the fields it is given and keeps the others. */
+    public function test_a_partial_save_keeps_the_other_fields(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One', 'amount' => 1, 'active' => true]);
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'amount' => 2]);
+
+        $row = $this->record('r1');
+        $this->assertSame('One', $row['label'] ?? null, 'a field the save does not name keeps its stored value');
+        $this->assertBoolean(true, $row['active'] ?? null);
+        $this->assertNumber(2, $row['amount'] ?? null);
+        $this->assertSame(1, $this->driver->findMany('records', new Query())->total(), 'a partial save adds no second record');
+    }
+
+    /** @since 0.78 */
+    public function test_a_field_saved_as_null_is_stored_as_null(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One', 'amount' => 1]);
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => null]);
+
+        $row = $this->record('r1');
+        $this->assertArrayHasKey('label', $row, 'a field saved as null stays a field');
+        $this->assertNull($row['label'], 'a field saved as null is stored as null');
+        $this->assertNumber(1, $row['amount'] ?? null);
     }
 
     public function test_exists_tells_saved_from_missing_ids(): void

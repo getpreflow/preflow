@@ -95,7 +95,8 @@ and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as `true`/`false`. A value t
 convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. A hand-written
 file gets this form on its next save; nothing is migrated. SQL storage keeps lists as JSON text in
-their columns. A direct `driver()->save()` keeps its caller's key order; `storageValues()` gives
+their columns. A direct `driver()->save()` keeps its caller's key order (a stored key it does not
+name stays after the key it followed); `storageValues()` gives
 the canonical row to callers that write rows themselves (an import). `updateFieldsIfVersion()`
 writes its fields into the stored file as it is: the stored key order stays, a new key comes last;
 the next full save (`saveType()`, a model's `save()`) writes the canonical order.
@@ -162,7 +163,9 @@ Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/te
 **Must:** implement `Preflow\Data\StorageDriver` (`findOne`, `findMany`, `save`, `delete`,
 `exists`, `lastInsertId`; since 0.78 no `rawQuery`, which moved to `RunsSql`) with the query
 semantics `StorageDriverContract` states (the text-matching rule for `LIKE`, `CONTAINS` and
-`search()`: case and width ignored, accents count; `CONTAINS` in list values, null handling, numbers as numbers), and pass that contract. That is enough for a driver
+`search()`: case and width ignored, accents count; `CONTAINS` in list values, null handling, numbers as numbers;
+`save()` writes the fields it is given and keeps every other stored field, a field given as null
+is stored as null, since 0.78), and pass that contract. That is enough for a driver
 to work everywhere: DataManager, or the capability's consumer (`StoredActivityLog` for `Savepoints`
 and `ChangeTokens`), has a fallback for every capability below except aggregates and raw SQL, and
 those throw rather than give a different result.
@@ -489,7 +492,11 @@ missing column is asked again on the next call, as a migrate may add it.
 
 `save()` writes every key it is given, `null` included: `$record->set('expires_at', null)`
 clears the column on SQLite, MySQL and JSON alike (before 0.42 SQL drivers dropped nulls, so a
-clear needed `''`). A key the caller does not pass is left alone: a partial save no longer
+clear needed `''`). A key the caller does not pass is left alone, on every driver (the JSON driver
+merges the save into the stored file under the type's lock since 0.78; before, a JSON save
+replaced the file). A key leaves a JSON record only by deleting the record and saving it again,
+as a column stays on SQL; a property removed from a model class leaves its key in the files. A
+partial save no longer
 nulls the other columns on SQLite (it used `INSERT OR REPLACE`, which replaced the whole row;
 it is an upsert on the primary key now, and on MySQL an `UPDATE` with an `INSERT` for a new
 record). A save never touches another record: a value colliding with a unique index is an error

@@ -49,7 +49,7 @@ final class JsonFileDriverTest extends TestCase
             $this->driver->save('post', 'p1', ['uuid' => 'p1', 'n' => $i]);
         }
 
-        $files = array_values(array_diff(scandir($this->dataDir . '/post'), ['.', '..']));
+        $files = array_values(array_diff(scandir($this->dataDir . '/post'), ['.', '..', '.lock'])); // .lock: the type's lock file
         $this->assertSame(['p1.json'], $files);
         $this->assertSame(20, $this->driver->findOne('post', 'p1')['n']);
     }
@@ -167,6 +167,89 @@ final class JsonFileDriverTest extends TestCase
 
         $result = $this->driver->findOne('post', 'abc');
         $this->assertSame('New', $result['title']);
+    }
+
+    private function recordFile(string $type, string $id): string
+    {
+        return (string) file_get_contents($this->dataDir . "/{$type}/{$id}.json");
+    }
+
+    public function test_a_key_saved_as_null_stays_in_the_file(): void
+    {
+        $this->driver->save('post', 'r1', ['uuid' => 'r1', 'label' => 'One', 'n' => 1]);
+        $this->driver->save('post', 'r1', ['uuid' => 'r1', 'label' => null]);
+
+        $this->assertSame(['uuid' => 'r1', 'label' => null, 'n' => 1], json_decode($this->recordFile('post', 'r1'), true));
+        $this->assertStringContainsString('"label": null', $this->recordFile('post', 'r1'));
+    }
+
+    public function test_a_partial_save_keeps_stored_keys_in_their_places(): void
+    {
+        // The file as DataManager writes it (0.78): the type's fields, the id, the system keys.
+        $canonical = "{\n    \"title\": \"T\",\n    \"count\": 2,\n    \"tags\": [\n        \"a\"\n    ],\n    \"uuid\": \"r1\",\n    \"_version\": 1\n}\n";
+        $this->driver->save('items', 'r1', ['title' => 'T', 'count' => 2, 'tags' => ['a'], 'uuid' => 'r1', '_version' => 1]);
+        $this->assertSame($canonical, $this->recordFile('items', 'r1'));
+
+        $this->driver->save('items', 'r1', ['title' => 'T2', 'uuid' => 'r1', '_version' => 2]);
+
+        $expected = str_replace(['"T"', '"_version": 1'], ['"T2"', '"_version": 2'], $canonical);
+        $this->assertSame($expected, $this->recordFile('items', 'r1'), 'the same key order, the new values');
+
+        $this->driver->save('items', 'r1', $this->driver->findOne('items', 'r1') ?? $this->fail('record read'));
+        $this->assertSame($expected, $this->recordFile('items', 'r1'), 'saving the record again unchanged keeps its bytes');
+    }
+
+    public function test_keys_a_save_adds_follow_the_saves_order(): void
+    {
+        $this->driver->save('post', 'r1', ['a' => 1, 'c' => 3]);
+        $this->driver->save('post', 'r1', ['a' => 1, 'b' => 2, 'c' => 3]);
+        $this->assertSame(['a', 'b', 'c'], array_keys(json_decode($this->recordFile('post', 'r1'), true)));
+
+        $this->driver->save('post', 'r2', ['x' => 0, 'a' => 1]);
+        $this->driver->save('post', 'r2', ['a' => 2]);
+        $this->assertSame(['x' => 0, 'a' => 2], json_decode($this->recordFile('post', 'r2'), true));
+    }
+
+    public function test_a_save_over_an_unreadable_file_replaces_it(): void
+    {
+        mkdir($this->dataDir . '/post', 0755, true);
+        file_put_contents($this->dataDir . '/post/r1.json', '{oops');
+
+        $this->driver->save('post', 'r1', ['uuid' => 'r1', 'label' => 'One']);
+
+        $this->assertSame(['uuid' => 'r1', 'label' => 'One'], json_decode($this->recordFile('post', 'r1'), true), 'the saved data, as before 0.78');
+    }
+
+    /** Two processes, each with its own driver, save their own field of one record 25 times. */
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('pcntl')]
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('posix')]
+    public function test_concurrent_partial_saves_both_land(): void
+    {
+        $this->driver->save('post', 'r1', ['uuid' => 'r1', 'a' => 0, 'b' => 0]);
+        $children = [];
+        foreach (['a', 'b'] as $field) {
+            $pid = pcntl_fork();
+            if ($pid === -1) {
+                $this->fail('pcntl_fork() failed');
+            }
+            if ($pid === 0) {
+                try {
+                    $driver = new JsonFileDriver($this->dataDir);
+                    for ($n = 1; $n <= 25; $n++) {
+                        $driver->save('post', 'r1', ['uuid' => 'r1', $field => $n]);
+                    }
+                } finally {
+                    // No shutdown: PHPUnit's handlers belong to the parent.
+                    posix_kill(posix_getpid(), SIGKILL);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+        }
+
+        $this->assertSame(['uuid' => 'r1', 'a' => 25, 'b' => 25], json_decode($this->recordFile('post', 'r1'), true));
     }
 
     public function test_different_types_are_isolated(): void
@@ -612,8 +695,8 @@ final class JsonFileDriverTest extends TestCase
         }
 
         $this->assertSame($before, file_get_contents($staffFile));
-        $this->assertSame(['p1.json'], array_values(array_diff(scandir($this->dataDir . '/post'), ['.', '..'])));
-        $this->assertSame(['s1.json'], array_values(array_diff(scandir($this->dataDir . '/staff'), ['.', '..'])));
+        $this->assertSame(['p1.json'], array_values(array_diff(scandir($this->dataDir . '/post'), ['.', '..', '.lock'])), 'no file but the record (and the type\'s lock file)');
+        $this->assertSame(['s1.json'], array_values(array_diff(scandir($this->dataDir . '/staff'), ['.', '..', '.lock'])));
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('unsafeIds')]

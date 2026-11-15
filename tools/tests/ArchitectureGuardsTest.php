@@ -45,15 +45,12 @@ final class ArchitectureGuardsTest extends TestCase
     private const DRIVERS = '(?:Preflow\\\\Data\\\\Driver\\\\|Driver\\\\)?(PdoDriver|MysqlDriver|SqliteDriver|JsonFileDriver)';
 
     /**
-     * Driver class checks that a later step of the storage contracts removes. Each line must still
-     * be found exactly once; remove the entry when its line goes.
+     * A driver class check that must stay for a release names its file and line here; none since
+     * 0.78. Each line must be found exactly once; remove the entry when its line goes.
      *
      * @var array<string, list<string>>
      */
-    private const PENDING_DRIVER_CHECKS = [
-        // saveKeepingOtherColumns: decided by the storage contracts' section 4.
-        'data/src/DataManager.php' => ['if ($driver instanceof PdoDriver) {'],
-    ];
+    private const PENDING_DRIVER_CHECKS = [];
 
     private static function packages(): string
     {

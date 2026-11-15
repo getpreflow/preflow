@@ -27,7 +27,7 @@ final class NullAndLooseWithoutRegistryTest extends TestCase
     protected function tearDown(): void
     {
         foreach (glob($this->dir . '/*') ?: [] as $f) {
-            is_dir($f) ? array_map('unlink', glob($f . '/*') ?: []) + [rmdir($f)] : unlink($f);
+            is_dir($f) ? array_map('unlink', glob($f . '/{*,.lock}', GLOB_BRACE) ?: []) + [rmdir($f)] : unlink($f);
         }
         @rmdir($this->dir);
     }
