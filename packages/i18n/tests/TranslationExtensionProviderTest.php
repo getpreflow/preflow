@@ -131,6 +131,13 @@ final class TranslationExtensionProviderTest extends TestCase
         $this->assertSame('/--locale/de?to=%2Fde%2Ffaq', $switch('/faq', 'de'));
     }
 
+    public function test_locale_switch_url_encodes_a_non_ascii_target(): void
+    {
+        $switch = $this->fn($this->providerWith(new LocaleUrls(['en', 'de'], 'en', true, false, true)), 'locale_switch_url');
+
+        $this->assertSame('/--locale/de?to=%2Fde%2F%25C3%25BCber-uns', $switch('/über-uns', 'de'));
+    }
+
     public function test_locale_switch_url_is_locale_url_without_redirect_bare(): void
     {
         $switch = $this->fn($this->providerWith(new LocaleUrls(['en', 'de'], 'en')), 'locale_switch_url');

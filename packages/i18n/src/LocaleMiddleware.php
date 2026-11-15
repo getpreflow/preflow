@@ -6,6 +6,7 @@ namespace Preflow\I18n;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Http\IsHttps;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Core\Http\SafeReturnPath;
@@ -147,8 +148,9 @@ final class LocaleMiddleware implements MiddlewareInterface
         }
 
         // Remember the locale in a cookie only when enabled (off by default with the
-        // prefix strategy, where the URL already carries it) and only when it changed.
-        if ($this->cookie && ($request->getCookieParams()[$this->cookieName] ?? null) !== $locale) {
+        // prefix strategy, where the URL already carries it) and only when it changed. With
+        // redirect_bare the switch endpoint is the only writer (an explicit pick, never a page view).
+        if ($this->cookie && !$this->urls?->redirectBare && ($request->getCookieParams()[$this->cookieName] ?? null) !== $locale) {
             $response = $response->withHeader(
                 'Set-Cookie',
                 "{$this->cookieName}={$locale}; Path=/; SameSite=Lax; HttpOnly"
@@ -183,7 +185,7 @@ final class LocaleMiddleware implements MiddlewareInterface
         $location = SafeReturnPath::check(is_string($to) ? $to : null, ['/']) ?? $this->urls->path($code, '/');
 
         $cookie = "{$this->cookieName}={$code}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly";
-        if ($request->getUri()->getScheme() === 'https') {
+        if (IsHttps::request($request)) {
             $cookie .= '; Secure';
         }
 

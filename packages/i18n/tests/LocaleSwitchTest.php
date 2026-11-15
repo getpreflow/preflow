@@ -25,15 +25,15 @@ final class LocaleSwitchTest extends TestCase
         $this->handled = false;
     }
 
-    private function middleware(bool $redirectBare = true, bool $prefixDefault = true, string $cookieName = 'locale'): LocaleMiddleware
+    private function middleware(bool $redirectBare = true, bool $prefixDefault = true, string $cookieName = 'locale', bool $cookie = false, bool $prefixed = true): LocaleMiddleware
     {
         return new LocaleMiddleware(
             new Translator(sys_get_temp_dir() . '/preflow_locale_switch_none', 'en', 'en'),
             self::LOCALES,
             'en',
-            'prefix',
-            false,
-            urls: new LocaleUrls(self::LOCALES, 'en', true, $prefixDefault, $redirectBare),
+            $prefixed ? 'prefix' : 'none',
+            $cookie,
+            urls: new LocaleUrls(self::LOCALES, 'en', $prefixed, $prefixDefault && $prefixed, $redirectBare),
             cookieName: $cookieName,
             pageExists: static fn (string $locale, string $path): bool => true,
         );
@@ -169,5 +169,55 @@ final class LocaleSwitchTest extends TestCase
         $response = $this->call($this->middleware(prefixDefault: false), '/--locale/en');
 
         self::assertSame('/', $response->getHeaderLine('Location'));
+    }
+
+    public function test_secure_flag_behind_a_tls_proxy(): void
+    {
+        $response = $this->call($this->middleware(), '/--locale/de', headers: ['X-Forwarded-Proto' => 'https']);
+
+        self::assertStringEndsWith('; Secure', $response->getHeaderLine('Set-Cookie'));
+
+        $plain = $this->call($this->middleware(), '/--locale/de', headers: ['X-Forwarded-Proto' => 'http']);
+        self::assertStringEndsNotWith('; Secure', $plain->getHeaderLine('Set-Cookie'));
+    }
+
+    public function test_head_switch_is_handled(): void
+    {
+        $response = $this->call($this->middleware(), '/--locale/de?to=/de/faq', 'HEAD');
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertStringStartsWith('locale=de;', $response->getHeaderLine('Set-Cookie'));
+        self::assertFalse($this->handled);
+    }
+
+    public function test_switch_is_absent_on_a_site_without_url_prefixes(): void
+    {
+        $response = $this->call($this->middleware(prefixed: false), '/--locale/de?to=/faq');
+
+        self::assertTrue($this->handled);
+        self::assertSame('', $response->getHeaderLine('Set-Cookie'));
+    }
+
+    public function test_switch_keeps_an_encoded_non_ascii_target(): void
+    {
+        $response = $this->call($this->middleware(), '/--locale/de?to=' . rawurlencode('/de/%C3%BCber-uns'));
+
+        self::assertSame('/de/%C3%BCber-uns', $response->getHeaderLine('Location'));
+    }
+
+    public function test_the_page_view_cookie_writer_never_writes_with_redirect_bare(): void
+    {
+        $mw = $this->middleware(cookie: true);
+
+        self::assertSame('', $this->call($mw, '/de/faq')->getHeaderLine('Set-Cookie'));
+        self::assertSame('', $this->call($mw, '/faq', headers: ['Accept-Language' => 'de'])->getHeaderLine('Set-Cookie'));
+    }
+
+    public function test_without_a_cookie_the_accept_language_decides_the_bare_visit(): void
+    {
+        $response = $this->call($this->middleware(prefixDefault: false), '/faq', headers: ['Accept-Language' => 'de']);
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/de/faq', $response->getHeaderLine('Location'));
     }
 }

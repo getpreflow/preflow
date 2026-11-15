@@ -8,8 +8,11 @@ namespace Preflow\Core\Http;
  * Where a "next" or "return to" value may send the visitor after a sign-in or a form: a path on
  * this site under one of the allowed prefixes, never a URL. A prefix matches whole segments
  * (`/employer` covers `/employer` and `/employer/jobs`, not `/employerx`); a query string may
- * follow. Refused: another host or a scheme, a double slash, a backslash, a dot segment, a
- * control or non-ASCII character, also percent-encoded (decoded down to the fixed point).
+ * follow. Path segments may carry RFC 3986 sub-delims (`+ , : @ ( ) ; = ! $ ' *`) and
+ * percent-encoded UTF-8 ('/de/%C3%BCber-uns'). Refused: another host or a scheme, a double
+ * slash, a backslash, a `..` segment (a lone `.` is not refused), a control or space character,
+ * raw non-ASCII bytes, invalid UTF-8, a path starting '/@', each also percent-encoded (decoded
+ * down to the fixed point).
  */
 final class SafeReturnPath
 {
@@ -34,7 +37,11 @@ final class SafeReturnPath
         // Browsers decode %2e and friends before resolving dot segments: judge every decoded form, down to the fixed point.
         $seen = $next;
         for ($i = 0; $i < 5; $i++) {
-            if (str_contains($seen, '..') || str_contains($seen, '//') || str_contains($seen, '\\') || preg_match('/[^\x21-\x7E]/', $seen) === 1) {
+            // The raw value is plain ASCII; a decoded form may hold UTF-8 but no control or space byte.
+            $bad = $i === 0 ? '/[^\x21-\x7E]/' : '/[\x00-\x20\x7F]/';
+            if (str_contains($seen, '..') || str_contains($seen, '//') || str_contains($seen, '\\')
+                || preg_match($bad, $seen) === 1 || preg_match('//u', $seen) !== 1
+            ) {
                 return null;
             }
             $decoded = rawurldecode($seen);
@@ -47,6 +54,6 @@ final class SafeReturnPath
             return null;
         }
 
-        return preg_match('#^(?:' . implode('|', array_unique($bases)) . ')(/[A-Za-z0-9._~%/-]*)?(\?[\x21-\x7E]*)?$#D', $next) === 1 ? $next : null;
+        return preg_match('#^(?:' . implode('|', array_unique($bases)) . ')(?!/@)(/[A-Za-z0-9._~%/!$&\'()*+,;=:@-]*)?(\?[\x21-\x7E]*)?$#D', $next) === 1 ? $next : null;
     }
 }

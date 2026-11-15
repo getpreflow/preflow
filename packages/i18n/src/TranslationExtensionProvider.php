@@ -94,8 +94,18 @@ final class TranslationExtensionProvider implements TemplateExtensionProvider
         $url = $this->localeUrl($path, $locale);
 
         return $this->urls?->redirectBare === true
-            ? '/--locale/' . $locale . '?to=' . rawurlencode($url)
+            ? '/--locale/' . $locale . '?to=' . rawurlencode(self::encodePath($url))
             : $url;
+    }
+
+    /** Percent-encodes what a return target may not carry raw (non-ASCII, spaces); keeps '%' and path/query characters. */
+    private static function encodePath(string $url): string
+    {
+        return preg_replace_callback(
+            '#[^A-Za-z0-9._~%/?&!$\'()*+,;=:@-]#',
+            static fn (array $m): string => rawurlencode($m[0]),
+            $url,
+        ) ?? $url;
     }
 
     /**
