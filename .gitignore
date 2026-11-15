@@ -9,3 +9,6 @@ composer.lock
 .superpowers
 .claude/settings.local.json
 .env.mysql-test
+
+# Working papers (plans, specs, notes) live in a private repository
+/docs/superpowers
