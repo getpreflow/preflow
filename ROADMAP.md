@@ -1,6 +1,6 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-14 (v0.76.0)
+> Last updated: 2026-11-15 (v0.77.0)
 
 ## Current State
 
@@ -524,6 +524,56 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Folio proposals and the tag field (v0.77.0, released 2026-11-15):** this release ships the approved handoff proposals, the tag field and the 0.76 follow-ups. Every feature rests on a framework API that works without Folio.
+  - **Admin:**
+    - **⌘K palette.** Search or jump to screens, actions, records of every type you may view, and assets. A "Search or jump to…" entry in the sidebar and the rail, and the chords `g d`, `g a`, `g p`.
+    - **Block editing.** A "+" line between blocks inserts at that place; `/` opens the block picker.
+    - **AI "Write a draft"** in rich text. Brief, length and preview, then Insert or Replace. The cost is shown. New permission `ai.draft`.
+    - **Recent changes.** "Recent changes" on the dashboard and an "All activity" screen, with filters for type and person.
+    - **Tag field.** A new field type, `tags`.
+    - **Faster publish counts.** "Changes not live" counts no longer compare content.
+    - **Editors.** Editors without autosave count changes per value. Late field scripts can say when they are ready (`data-folio-settling` / `folio:settled`).
+  - **Framework APIs:**
+    - **core:**
+      - `ActivityLog`, `Activity` (with `$titleKey`), `ActivityKind`, `ActivityPage`, `ActivityActors` and `NullActivityLog`;
+      - the shortcut registry takes chords and `quietInMenus`.
+    - **data:**
+      - records and search: `RecordTitle` with `titleField` (schema, `#[Entity(titleField:)]`), `RecordSearch`;
+      - the activity log: `StoredActivityLog` (the `activity:prune` command, `config/activity.php`);
+      - capabilities a driver can implement: `BulkDeletes`, `Savepoints`, `ConditionalUpdates` (`updateFieldsIfVersion`), `DescribesColumns`, `VersionFields` (with `nonContent()`). A driver-author checklist in the data README lists what each capability gives and what happens without it.
+    - **publishing:**
+      - `Publisher::stateCounts()`;
+      - the `_published_version` snapshot key and the migrate step `publishing.published_versions`;
+      - `PersonalTypes`, `PublishActors`.
+    - **ai:** `DraftWriter`, `DraftRequest`, `DraftLength`, `Draft`, `ProjectTuning`.
+    - **i18n:** `Machine\WritesAs`.
+    - **media:** activity for uploads, replacements, edits and the bin.
+  - **Same behaviour on every driver** (JSON, SQLite, MySQL):
+    - `LIKE`, `CONTAINS` and `search()` ignore case in every alphabet and match inside lists;
+    - SQL stores JSON with unescaped slashes;
+    - shared contract tests in `preflow/testing` enforce this.
+  - **Upgrading:**
+    - **Packages.** Upgrade all `preflow/*` packages together (`composer update "preflow/*" -W`); the constraints refuse mixes.
+    - **Migrate.** Run `vendor/bin/preflow migrate` on every site, JSON sites included. It creates `preflow_activity` and `preflow_activity_last` and adds `_published_version`, and the step `publishing.published_versions` marks existing snapshots. Before migrate runs:
+      - activity writes are logged as warnings;
+      - `recent()` reads empty;
+      - publish counts fall back to the full compare.
+    - **Nightly cron:** `php preflow activity:prune`. `members:prune` also prunes. `activity.keep_days` defaults to 90 and `activity.keep_rows` to 10 000; JSON sites should lower `keep_rows`.
+    - **Permission `ai.draft`.** The admin role has it; grant it in Roles.
+    - **Reserved names.** `asset`, `redirect` and `activity` are reserved as type keys and screen paths.
+    - **Version numbers.** A save through DataManager bumps a publishing type's `_version` only when content changes, so app saves and imports that change content now read Changed. Raw SQL is out of reach. `states()`/`stateCounts()` compare versions; `state()` compares content.
+    - **Class models.** An `array` property whose stored value is not a JSON list throws `UnreadableValue`; convert legacy comma strings and plain ids first. A `tags` field on a class model is `#[Field(type: 'tags')] public ?array $x`, with no transform.
+    - **Empty lists** (tags, multiple relations, multiple assets) are stored as null, and `required` refuses an empty list.
+    - **SQLite.** A pattern with non-ASCII characters runs a Unicode `like` function, which is slower than native `LIKE` and can't use an index. ASCII patterns use native `LIKE`; the Kelvin sign and the dotted capital I follow native rules there.
+    - **Your own implementations:**
+      - an `ActivityLog` implementation adds `recent(by:)`, `people()`, `prune()` and `forget()`;
+      - a `VersionFields` implementation adds `nonContent()`;
+      - sites that hold personal data in their own types bind `PersonalTypes`.
+    - **Translation jobs.** `queued_by` holds the user id; older jobs keep a name.
+  - **Next:**
+    - the private harness: principles, decisions and the integrator for parallel work;
+    - the storage-contract release: RankedSearch; `rawQuery` as an optional SQL capability; one matching contract (accents); one rule for keys a save leaves out; a core rate limiter;
+    - then the render-context release.
 - **Folio redesign, part 3: settings, library, dashboard and ink (v0.76.0, released 2026-11-14):** the rest of Folio
   gets the redesign (plan `docs/superpowers/plans/2026-11-14-release-0.76-folio-redesign-settings-library-ink.md`,
   differences from the boards in `docs/superpowers/notes/2026-11-13-folio-redesign-deviations.md`).
