@@ -13,6 +13,8 @@ final readonly class TypeDefinition
      * @param list<list<string>> $indexes composite indexes, each the fields it covers in order
      * @param ?string $titleField the field that names a record (RecordTitle); null: the first string field
      *        that is not hidden. @since 0.77
+     * @param bool $fullText the type declares full-text search: on a server with full-text indexes the table
+     *        sync indexes its loosely searchable text fields (Search\LooseFields::text()). @since 0.78
      * @throws \InvalidArgumentException an index without fields, over a field the type does not have (or twice
      *         over one), over a translatable field, or named as another index (a field's own, a unique field's,
      *         another composite's); a titleField the type does not have
@@ -28,6 +30,7 @@ final readonly class TypeDefinition
         public Locales $locales = new Locales(['en'], 'en'),
         public array $indexes = [],
         public ?string $titleField = null,
+        public bool $fullText = false,
     ) {
         $this->assertIndexes();
         if ($titleField !== null && !isset($fields[$titleField])) {

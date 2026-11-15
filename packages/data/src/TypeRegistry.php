@@ -312,6 +312,19 @@ final class TypeRegistry
         return $indexes;
     }
 
+    /** Whether the type declares full-text search ("fullText": true); false when the model file says nothing. */
+    private static function fullText(mixed $value, string $key): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+        if (!is_bool($value)) {
+            throw new \InvalidArgumentException("Type \"{$key}\": \"fullText\" is true or false.");
+        }
+
+        return $value;
+    }
+
     /** The field that names a record ("titleField": "name"); null when the model file sets none. */
     private static function titleField(mixed $value, string $key): ?string
     {
@@ -382,6 +395,7 @@ final class TypeRegistry
             locales: $this->locales ?? Locales::single('en'),
             indexes: self::indexes($schema['indexes'] ?? null, (string) $schema['key']),
             titleField: self::titleField($schema['titleField'] ?? null, (string) $schema['key']),
+            fullText: self::fullText($schema['fullText'] ?? null, (string) $schema['key']),
         );
     }
 }

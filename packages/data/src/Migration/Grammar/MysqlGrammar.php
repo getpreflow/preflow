@@ -14,7 +14,7 @@ use Preflow\Data\Schema\ColumnSpec;
  * Ids and keys are utf8mb4_bin so they compare exactly, as on SQLite ('A', 'a' and 'ä' are three
  * rows, not one upsert target); value columns keep the case- and accent-insensitive table default.
  */
-final class MysqlGrammar implements SchemaGrammar
+final class MysqlGrammar implements SchemaGrammar, FullTextIndexes
 {
     use RecordIndexNames;
 
@@ -167,6 +167,24 @@ final class MysqlGrammar implements SchemaGrammar
     public function indexColumns(\PDO $pdo, string $table): array
     {
         $stmt = $pdo->prepare('SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY INDEX_NAME, SEQ_IN_INDEX');
+        $stmt->execute([$table]);
+        $result = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$name, $column]) {
+            $result[(string) $name][] = (string) $column;
+        }
+
+        return $result;
+    }
+
+    public function createFullTextIndex(string $name, string $table, array $columns): string
+    {
+        return 'CREATE FULLTEXT INDEX ' . $this->quote($name) . ' ON ' . $this->quote($table)
+            . ' (' . implode(', ', array_map($this->quote(...), $columns)) . ')';
+    }
+
+    public function fullTextIndexes(\PDO $pdo, string $table): array
+    {
+        $stmt = $pdo->prepare("SELECT INDEX_NAME, COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_TYPE = 'FULLTEXT' ORDER BY INDEX_NAME, SEQ_IN_INDEX");
         $stmt->execute([$table]);
         $result = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$name, $column]) {

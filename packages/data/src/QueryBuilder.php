@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data;
 
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Search\LooseFields;
 
 /**
  * @template T of Model
@@ -238,13 +239,14 @@ final class QueryBuilder
                     }
                 }
             }
+            $own = LooseFields::text($this->typeDef, $kinds);
             foreach ($this->typeDef->fields as $name => $def) {
-                if (!self::looselySearchable($def) || ($requested !== null && !in_array($name, $requested, true))) {
+                if (!LooseFields::searchable($def) || ($requested !== null && !in_array($name, $requested, true))) {
                     continue;
                 }
                 if (isset($relationFields[$name])) {
                     $relations[] = $relationFields[$name];
-                } elseif ($kinds->isText($def->type)) {
+                } elseif (in_array($name, $own, true)) {
                     $text[] = $name;
                 }
             }
@@ -261,19 +263,6 @@ final class QueryBuilder
         }
 
         return ['text' => $text, 'relations' => $relations];
-    }
-
-    /**
-     * Whether loose search may look at a type field: not when it says "searchable": false,
-     * and not when it is hidden unless it says "searchable": true.
-     */
-    private static function looselySearchable(TypeFieldDefinition $def): bool
-    {
-        if ($def->searchable !== null) {
-            return $def->searchable;
-        }
-
-        return ($def->config['hidden'] ?? false) !== true;
     }
 
     private function applyLooseSearches(): void
@@ -333,14 +322,14 @@ final class QueryBuilder
             }
         } else {
             foreach ($target->fields as $name => $def) {
-                if ($def->type === 'string' && self::looselySearchable($def)) {
+                if ($def->type === 'string' && LooseFields::searchable($def)) {
                     $names[] = $name;
                     break;
                 }
             }
         }
         foreach ($target->fields as $name => $def) {
-            if (self::looselySearchable($def) && $kinds->isText($def->type)) {
+            if (LooseFields::searchable($def) && $kinds->isText($def->type)) {
                 $names[] = $name;
             }
         }

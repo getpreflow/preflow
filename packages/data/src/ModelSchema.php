@@ -78,6 +78,9 @@ final class ModelSchema
         if ($entity->titleField !== null) {
             $schema['titleField'] = $entity->titleField;
         }
+        if ($entity->fullText) {
+            $schema['fullText'] = true;
+        }
 
         return $schema;
     }

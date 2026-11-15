@@ -58,6 +58,22 @@ final class TypeRegistryTest extends TestCase
         $this->assertSame(['title'], $type->searchableFields);
     }
 
+    public function test_full_text_is_read_from_the_model_file(): void
+    {
+        $this->writeSchema('post', ['key' => 'post', 'table' => 'post', 'fullText' => true, 'fields' => ['title' => ['type' => 'string']]]);
+        $this->writeSchema('note', ['key' => 'note', 'table' => 'note', 'fields' => ['title' => ['type' => 'string']]]);
+
+        $this->assertTrue($this->registry->get('post')->fullText);
+        $this->assertFalse($this->registry->get('note')->fullText);
+    }
+
+    public function test_full_text_is_read_from_the_entity_attribute(): void
+    {
+        $registry = new TypeRegistry($this->tmpDir, classes: ['ft_article' => FullTextArticle::class]);
+
+        $this->assertTrue($registry->get('ft_article')->fullText);
+    }
+
     public function test_resolves_transformers(): void
     {
         $this->writeSchema('article', [
@@ -216,4 +232,13 @@ final class TypeRegistryTest extends TestCase
         $this->assertArrayHasKey('headline', $fields);
         $this->assertArrayNotHasKey('title', $fields);
     }
+}
+
+#[\Preflow\Data\Attributes\Entity(table: 'ft_articles', type: 'ft_article', fullText: true)]
+final class FullTextArticle extends \Preflow\Data\Model
+{
+    #[\Preflow\Data\Attributes\Id]
+    public string $uuid = '';
+    #[\Preflow\Data\Attributes\Field]
+    public string $title = '';
 }

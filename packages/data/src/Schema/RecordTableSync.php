@@ -7,9 +7,11 @@ namespace Preflow\Data\Schema;
 use Preflow\Data\DataManager;
 use Preflow\Data\PdoConnection;
 use Preflow\Data\FieldKinds;
+use Preflow\Data\Migration\Grammar\FullTextIndexes;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
 use Preflow\Data\Migration\Schema;
+use Preflow\Data\Search\LooseFields;
 use Preflow\Data\TypeDefinition;
 
 /**
@@ -136,6 +138,50 @@ final class RecordTableSync
             $existing[$index->name] = $index->columns;
             $uniques[] = $index->name;
         }
+        array_push($lines, ...$this->fullText($def, $pdo, $grammar));
+
+        return $lines;
+    }
+
+    /**
+     * The FULLTEXT index of a type that declares full-text search, on a grammar that has them: over
+     * exactly the loosely searchable text fields (Search\LooseFields::text()), made when no FULLTEXT
+     * index covers that set of columns, replacing the one of the same name that covers another set
+     * (a text field was added or left out). Nothing is made for a type without text fields.
+     *
+     * @return list<string>
+     */
+    private function fullText(TypeDefinition $def, \PDO $pdo, SchemaGrammar $grammar): array
+    {
+        if (!$def->fullText || !$grammar instanceof FullTextIndexes) {
+            return [];
+        }
+        $columns = LooseFields::text($def, $this->dm->fieldKinds());
+        if ($columns === []) {
+            return [];
+        }
+        $name = $grammar->indexName('ft', $def->table, 'search');
+        $wanted = $columns;
+        sort($wanted);
+        $lines = [];
+        foreach ($grammar->fullTextIndexes($pdo, $def->table) as $existing => $over) {
+            sort($over);
+            if ($over === $wanted) {
+                return [];
+            }
+            if ($existing === $name) {
+                $pdo->exec($grammar->dropIndex($def->table, $name));
+                $lines[] = "dropped full-text index {$name}";
+            }
+        }
+        try {
+            $pdo->exec($grammar->createFullTextIndex($name, $def->table, $columns));
+        } catch (\PDOException $e) {
+            $lines[] = "warning: {$def->table}: no full-text index over " . implode(', ', $columns) . " (the server refused it: {$e->getMessage()}); see the data README";
+
+            return $lines;
+        }
+        $lines[] = "added full-text index {$name}";
 
         return $lines;
     }
