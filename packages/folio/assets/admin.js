@@ -1749,6 +1749,12 @@
     window.Folio = window.Folio || {};
     window.Folio.ownControls = ownControls;
 
+    // A field that is still settling (data-folio-settling, the settling protocol at initUnsavedStates):
+    // what it writes is its loading, not an edit.
+    function inSettling(el) {
+        return !!(el && el.closest && el.closest('[data-folio-settling]'));
+    }
+
     function formOf(el) {
         if (!el) { return null; }
         if (el.form && el.form.tagName === 'FORM') { return el.form; }
@@ -1771,7 +1777,7 @@
     }
 
     function onGuardEdit(e) {
-        if (!isEdit(e.target)) { return; }
+        if (!isEdit(e.target) || inSettling(e.target)) { return; }
         var form = formOf(e.target);
         if (form) { form._folioEdited = true; } // its unsaved count keeps the snapshot it has (initUnsavedStates)
         markDirty(form);
@@ -1830,15 +1836,18 @@
     // boot and again once every field script has run (DOMContentLoaded: after the deferred scripts),
     // unless the form was edited by then.
     // Folio.unsaved.count(form): how many field names hold other values than the snapshot, so a field
-    // kept in hidden inputs (rich text, blocks, relations, asset picks) counts, and a radio group or a
-    // checkbox list counts once.
+    // kept in hidden inputs (rich text, blocks, relations, asset picks) counts and a radio group counts
+    // once; a multi-value name ("permissions[]", a checkbox list) counts each value added or taken off,
+    // so the roles matrix says "3 unsaved changes" for three boxes.
     // Folio.unsaved.discard(form): when only visible controls changed, they go back to the page as
     // loaded (defaultValue, defaultChecked, defaultSelected; disabled ones too), the unsaved mark is
     // cleared, a bubbling "folio:discard" is sent on the form (a field with derived state, such as the
     // permissions matrix's locks, rebuilds it there) and fields.js's counters, dates and steppers sync
     // again. A change in hidden inputs (or a restore that does not reach the snapshot) reloads the edit
     // page instead, past the leave guard once: a form without autosave has no server draft, so that
-    // shows the saved state.
+    // shows the saved state. The page is the form's data-folio-edit-url, which the server renders on
+    // every form with Cancel; a form without one is left as it is, still unsaved (never the address bar:
+    // after a POST re-render that is the form's action).
     // form.twig renders [data-folio-unsaved-state="<form id>"] and [data-folio-discard="<form id>"]
     // (Cancel) beside Save on a framed form without autosave, and on the form data-folio-edit-url (the
     // page Cancel reloads) and, after a refused save, data-folio-refused: the form starts unsaved,
@@ -1903,12 +1912,31 @@
         return names.filter(function (n) { return JSON.stringify(a[n] || []) !== JSON.stringify(b[n] || []); });
     }
 
-    function changedNames(form) {
-        return form ? differing(valuesOf(form).values, snapshotOf(form).values) : [];
+    /** How many values of a multi-value name ("permissions[]") were added or taken off. */
+    function valuesChanged(now, then) {
+        var left = (then || []).slice();
+        var added = 0;
+        (now || []).forEach(function (v) {
+            var at = left.indexOf(v);
+            if (at >= 0) { left.splice(at, 1); } else { added++; }
+        });
+        return added + left.length;
+    }
+
+    /** Whether a field of the form (inside it or in a part naming it with form="…") is still settling. */
+    function settling(form) {
+        if (form.querySelector('[data-folio-settling]')) { return true; }
+        return !!form.id && !!document.querySelector('[form="' + form.id + '"][data-folio-settling], [form="' + form.id + '"] [data-folio-settling]');
     }
 
     function changedCount(form) {
-        return changedNames(form).length;
+        if (!form) { return 0; }
+        if (settling(form)) { takeSnapshot(form); return 0; } // its values are still the fields' loading
+        var now = valuesOf(form).values;
+        var then = snapshotOf(form).values;
+        return differing(now, then).reduce(function (n, name) {
+            return n + (/\[\]$/.test(name) ? Math.max(1, valuesChanged(now[name], then[name])) : 1);
+        }, 0);
     }
 
     /** Whether a hidden input of the form holds another value than the snapshot (Cancel cannot restore it). */
@@ -1916,15 +1944,21 @@
         return differing(valuesOf(form).hidden, snapshotOf(form).hidden).length > 0;
     }
 
+    /** The page the form is edited on (the server names it: data-folio-edit-url), or null. */
     function editUrlOf(form) {
-        return form.getAttribute('data-folio-edit-url') || window.location.href;
+        return form.getAttribute('data-folio-edit-url') || null;
     }
 
-    /** The edit page again, past the leave guard once. */
+    /**
+     * The edit page again, past the leave guard once. A form that does not name its page is left
+     * as it is (still unsaved): after a POST re-render the address is the form's action, not its page.
+     */
     function reloadForm(form) {
+        var url = editUrlOf(form);
+        if (!url) { refreshUnsavedStates(); return; }
         clearDirty(form);
         allowLeave();
-        navigateTo(editUrlOf(form));
+        navigateTo(url);
     }
 
     function discardForm(form) {
@@ -1986,6 +2020,43 @@
         return forms;
     }
 
+    // The settling protocol (README "Field scripts that write late"): a field whose script writes its
+    // value after the boot (a late editor normalising its content) carries data-folio-settling, from the
+    // server or set by its script before DOMContentLoaded, and says it is ready by removing the attribute
+    // or by sending a bubbling "folio:settled" from inside the field (admin.js then removes it). Until
+    // every settling field of a form is ready the snapshot is retaken instead of changes counted, and
+    // the field's own input and change events are no edit; once the last one is ready the snapshot is
+    // taken again, so what it wrote is the form as loaded.
+    function onSettled(e) {
+        var field = e.target && e.target.closest ? e.target.closest('[data-folio-settling]') : null;
+        if (field) { field.removeAttribute('data-folio-settling'); settledIn(field); }
+    }
+
+    /** A field's form: the form around it, else the one its part names (the side panel's form="…"). */
+    function fieldFormOf(node) {
+        var form = formOf(node);
+        if (form) { return form; }
+        var part = node.closest ? node.closest('[form]') : null;
+        return part ? document.getElementById(part.getAttribute('form')) : null;
+    }
+
+    function settledIn(node) {
+        var form = fieldFormOf(node);
+        if (!form || form.tagName !== 'FORM' || snapshotForms().indexOf(form) < 0 || settling(form)) { return; }
+        takeSnapshot(form);
+        refreshUnsavedStates();
+    }
+
+    function watchSettling() {
+        document.addEventListener('folio:settled', onSettled);
+        if (typeof window.MutationObserver !== 'function' || !document.body) { return; }
+        new window.MutationObserver(function (records) {
+            records.forEach(function (r) {
+                if (r.type === 'attributes' && r.target && !r.target.hasAttribute('data-folio-settling')) { settledIn(r.target); }
+            });
+        }).observe(document.body, { attributes: true, attributeFilter: ['data-folio-settling'], subtree: true });
+    }
+
     // Once the field scripts have run: the snapshot again (unless the form was edited already), and a
     // refused save's form is unsaved.
     function settleUnsavedStates() {
@@ -2004,6 +2075,7 @@
         // DOMContentLoaded comes after the deferred scripts; when it has passed already, the timer.
         document.addEventListener('DOMContentLoaded', settleUnsavedStates);
         setTimeout(settleUnsavedStates, 0);
+        watchSettling();
         if (!document.querySelector('[data-folio-unsaved-state]')) { return; }
         document.addEventListener('input', onUnsavedStateEdit);
         document.addEventListener('change', onUnsavedStateEdit);

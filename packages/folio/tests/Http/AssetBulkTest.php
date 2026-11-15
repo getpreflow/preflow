@@ -269,6 +269,30 @@ final class AssetBulkTest extends TestCase
         $this->assertStringNotContainsString('folio-assets-missing-alt', (string) $this->get('/folio/assets?kind=document')->getBody(), 'no image of that kind');
     }
 
+    public function test_with_unused_only_the_missing_alt_count_is_within_the_unused_set(): void
+    {
+        $this->media(['bin_dir' => $this->dir . '/storage/media-bin', 'cleanup' => ['enabled' => true, 'min_age_days' => 7]]);
+        $old = $this->lib()->upload($this->file($this->png(), 'old.png'), null);
+        $described = $this->lib()->upload($this->file($this->png(), 'described.png'), null);
+        $this->lib()->upload($this->file($this->png(), 'fresh.png'), null); // too young for cleanup: not unused
+        $this->lib()->update($described->id, ['alt' => ['en' => 'A barn']]);
+        $dm = $this->dm();
+        foreach ([$old->id, $described->id] as $id) {
+            $record = $dm->findIn($this->lib()->definition(), $id) ?? throw new \RuntimeException('missing ' . $id);
+            $record->set('created_at', '2020-01-01T00:00:00+00:00');
+            $dm->saveType($record, false);
+        }
+
+        $this->assertStringContainsString('Missing alt text · 2</a>', (string) $this->get('/folio/assets')->getBody(), 'every image');
+        $unused = (string) $this->get('/folio/assets?unused=1')->getBody();
+        $this->assertStringContainsString('Missing alt text · 1</a>', $unused, 'only the unused ones');
+        $both = (string) $this->get('/folio/assets?unused=1&missing_alt=1')->getBody();
+        $this->assertStringContainsString('aria-current="page">Missing alt text · 1</a>', $both, 'N equals what is shown');
+        $this->assertStringContainsString('old.png', $both);
+        $this->assertStringNotContainsString('fresh.png', $both);
+        $this->assertStringNotContainsString('described.png', $both);
+    }
+
     public function test_the_missing_alt_toggle_hides_when_every_image_has_one(): void
     {
         $asset = $this->lib()->upload($this->file($this->png(), 'photo.png'), null);

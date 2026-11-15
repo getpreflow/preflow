@@ -29,7 +29,7 @@ function el(w, parent, tag, attrs = {}, text = '') {
  * topbar's state and Cancel for it. formId/formClass: the record form ("folio-record" in .folio-form)
  * or the asset Details form.
  */
-function screen({ formId = 'folio-record', asset = false, refused = false, fields = false } = {}) {
+function screen({ formId = 'folio-record', asset = false, refused = false, fields = false, editUrl = '/folio/x/edit?locale=de' } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
     const doc = w.document;
     const topbar = el(w, doc.body, 'header', { class: 'folio-topbar' });
@@ -40,7 +40,7 @@ function screen({ formId = 'folio-record', asset = false, refused = false, field
     cancel.hidden = true;
     const save = el(w, topbar, 'button', { type: 'submit', form: formId, 'data-folio-save': '' }, 'Save');
     const host = asset ? doc.body : el(w, doc.body, 'div', { class: 'folio-form' });
-    const form = el(w, host, 'form', { method: 'post', action: '/folio/x', id: formId, 'data-folio-edit-url': '/folio/x/edit?locale=de', ...(asset ? { class: 'folio-asset-form' } : {}), ...(refused ? { 'data-folio-refused': '' } : {}) });
+    const form = el(w, host, 'form', { method: 'post', action: '/folio/x', id: formId, ...(editUrl ? { 'data-folio-edit-url': editUrl } : {}), ...(asset ? { class: 'folio-asset-form' } : {}), ...(refused ? { 'data-folio-refused': '' } : {}) });
     const c = {};
     c.csrf = el(w, form, 'input', { type: 'hidden', name: '_csrf_token', value: 't' });
     // A field kept in a hidden input (rich text) and its editor.
@@ -245,4 +245,90 @@ test('a refused save starts unsaved: "Not saved", the guard asks, and Cancel rel
     p.cancel.click();
     assert.equal(p.w.location.href, '/folio/x/edit?locale=de');
     assert.equal(p.c.title.value, 'Hello', 'not restored in place: the refused values are not the saved ones');
+});
+
+test('Cancel reloads only the page the form names: without data-folio-edit-url it never guesses from the address', async () => {
+    const p = screen({ editUrl: null });
+    await tick();
+    p.w.location.href = 'https://site.test/folio/x'; // a POST re-render's address: not the edit page
+    p.c.rich.value = '<p>Changed</p>';
+    p.c.rich.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    p.cancel.click();
+    assert.equal(p.w.location.href, 'https://site.test/folio/x', 'no navigation');
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true, 'the changes stay, still guarded');
+    assert.equal(p.text.textContent, '1 unsaved change');
+});
+
+// The settling protocol (0.77): a field script that writes its value later than the boot (a late editor)
+// marks its field data-folio-settling and says it is ready by removing the attribute or by sending a
+// bubbling "folio:settled" from inside the field. Until every settling field of a form is ready the
+// snapshot is retaken instead of changes counted, and the field's own writes are no edit.
+function lateField(p) {
+    const field = el(p.w, p.form, 'div', { class: 'form-group', 'data-folio-settling': '' });
+    const input = el(p.w, field, 'input', { type: 'hidden', name: 'late', value: '<p>raw</p>' });
+    const editor = el(p.w, field, 'div', { class: 'late-editor' });
+    return { field, input, editor };
+}
+
+test('a settling field writing late is no change; ready (attribute removed), its value is the snapshot', async () => {
+    const p = screen();
+    const late = lateField(p);
+    await tick(); // DOMContentLoaded and the timer have passed: the late field is still loading
+    late.input.value = '<p>normalised</p>';
+    late.input.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0, 'retaken while it settles');
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), false, 'its own write is no edit');
+    assert.equal(p.state.hidden, true);
+    late.input.value = '<p>normalised again</p>'; // a last write without an event, then ready
+    late.field.removeAttribute('data-folio-settling');
+    await tick();
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0, 'the snapshot holds what the field wrote');
+    late.input.value = '<p>typed</p>';
+    late.input.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1, 'once ready, an edit counts');
+    assert.equal(p.w.Folio.unsaved.isDirty(p.form), true);
+    assert.equal(p.text.textContent, '1 unsaved change');
+});
+
+test('"folio:settled" from inside the field marks it ready, and the form counts again', async () => {
+    const p = screen();
+    const late = lateField(p);
+    await tick();
+    late.input.value = '<p>normalised</p>';
+    late.editor.dispatchEvent(new p.w.CustomEvent('folio:settled', { bubbles: true }));
+    assert.equal(late.field.hasAttribute('data-folio-settling'), false);
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0);
+    edit(p.w, p.c.title, 'Hello!');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1);
+});
+
+test('two settling fields: the form counts only once both are ready', async () => {
+    const p = screen();
+    const one = lateField(p);
+    const two = lateField(p);
+    two.input.name = 'later';
+    two.input.setAttribute('name', 'later');
+    await tick();
+    one.field.removeAttribute('data-folio-settling');
+    await tick();
+    two.input.value = '<p>late write</p>';
+    two.input.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0, 'the second one still settles');
+    two.field.removeAttribute('data-folio-settling');
+    await tick();
+    edit(p.w, p.c.title, 'Hello!');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1);
+});
+
+test('a settling field in the side panel (a part naming the form) holds the count too', async () => {
+    const p = screen();
+    const part = el(p.w, p.doc.querySelector('.folio-side'), 'fieldset', { class: 'folio-side-fields', form: p.form.id });
+    const field = el(p.w, part, 'div', { 'data-folio-settling': '' });
+    const input = el(p.w, field, 'input', { type: 'text', name: 'seo', value: 'raw', form: p.form.id });
+    await tick();
+    input.value = 'normalised';
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0);
+    field.dispatchEvent(new p.w.CustomEvent('folio:settled', { bubbles: true }));
+    edit(p.w, input, 'typed');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1);
 });

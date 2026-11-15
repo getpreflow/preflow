@@ -18,6 +18,7 @@ use Preflow\Folio\Http\AdminFormat;
 use Preflow\Folio\Http\AdminNav;
 use Preflow\Folio\Users\AuthorNames;
 use Preflow\Publishing\Publisher;
+use Preflow\I18n\Labels;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -28,7 +29,8 @@ use Psr\Log\LoggerInterface;
  *
  * - a type of the catalog: {type}.view;
  * - "asset": assets.view (with a library); "redirect": redirects.manage (with redirects);
- * - an app's own subject ("invoice"): when the permission "{subject}.view" is declared and held.
+ * - an app's own subject ("invoice"): when the permission "{subject}.view" is declared and held;
+ *   its name is folio.activity.subjects.{subject} when the site gives that phrase, else readable.
  *
  * The reserved names (RESERVED: "asset", "redirect", "activity", and Folio's own paths, which no
  * type may take as its key) are never a type's or an app's subject: a declared "redirect.view"
@@ -104,7 +106,7 @@ final class RecentChanges
         }
         foreach ($this->appSubjects() as $subject) {
             if ($can($subject . '.view')) {
-                $subjects[] = ['key' => $subject, 'label' => self::humanize($subject)];
+                $subjects[] = ['key' => $subject, 'label' => self::subjectLabel($subject)];
             }
         }
 
@@ -221,7 +223,7 @@ final class RecentChanges
         [$family, $icon, $name, $url, $drawer] = match (true) {
             $item->subject === self::ASSET => [TypeFamily::Asset, 'ui-library', FolioText::get('folio.activity.asset'), $this->prefix . '/assets/' . rawurlencode($item->id), false],
             $item->subject === self::REDIRECT => [null, 'ui-redirect', FolioText::get('folio.activity.redirect'), $this->prefix . '/redirects/' . rawurlencode($item->id), true],
-            $listing === null => [null, 'ui-file', self::humanize($item->subject), null, false], // an app's own subject: no screen to link to
+            $listing === null => [null, 'ui-file', self::subjectLabel($item->subject), null, false], // an app's own subject: no screen to link to
             default => [
                 $listing->family,
                 $listing->glyph(),
@@ -352,6 +354,15 @@ final class RecentChanges
     }
 
     /** An app's subject as a name: "purchase_order" reads "Purchase order". */
+    /**
+     * An app's own subject by name: folio.activity.subjects.{subject} (the site's lang/{locale}/folio.php
+     * gives it, as any Folio phrase), else its readable name ("work_order": "Work order").
+     */
+    private static function subjectLabel(string $subject): string
+    {
+        return Labels::resolve(FolioText::translator(), 'folio.activity.subjects.' . $subject, null) ?? self::humanize($subject);
+    }
+
     private static function humanize(string $subject): string
     {
         return ucfirst(str_replace(['_', '-'], ' ', $subject));

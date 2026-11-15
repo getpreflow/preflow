@@ -205,7 +205,7 @@ test('"Allow everything" sends "*" alone, kept names included; off again, the re
     assert.deepEqual(posted(p), ['', 'page.publish', 'page.*', 'post.view']);
 });
 
-test('the editor counts the matrix as one field: any switch or box is a change of the permissions, back as loaded none', () => {
+test('the editor counts each changed permission: every box or switch posted differently is a change, back as loaded none', () => {
     const p = screen({ sections: CONTENT, selected: ['post.view'] });
     assert.equal(p.state.hidden, true);
     assert.equal(p.cancel.hidden, true);
@@ -214,13 +214,16 @@ test('the editor counts the matrix as one field: any switch or box is a change o
     assert.equal(p.state.hidden, false);
     assert.equal(p.cancel.hidden, false);
     assert.equal(p.count.textContent, '1 unsaved change');
-    click(p.w, p.rows.page.all);
+    click(p.w, p.rows.page.all); // page.*
     p.columns.Content.edit.click(); // post.edit and job.edit
-    assert.equal(p.count.textContent, '1 unsaved change', 'every box is the one permissions field (counted by name)');
+    assert.equal(p.count.textContent, '4 unsaved changes', 'permissions[] counts per value added or taken off');
     p.roleLabel.value = 'Editors';
     p.roleLabel.dispatchEvent(new p.w.Event('input', { bubbles: true }));
-    assert.equal(p.count.textContent, '2 unsaved changes');
-    assert.equal(p.w.Folio.unsaved.count(p.form), 2);
+    assert.equal(p.count.textContent, '5 unsaved changes', 'a single-value field counts once');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 5);
+    click(p.w, p.rows.post.cells.view); // a stored one taken off counts too
+    assert.equal(p.w.Folio.unsaved.count(p.form), 6);
+    click(p.w, p.rows.post.cells.view);
     click(p.w, p.rows.job.cells.view);
     click(p.w, p.rows.page.all);
     p.columns.Content.edit.click();

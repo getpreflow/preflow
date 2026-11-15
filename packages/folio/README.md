@@ -299,6 +299,9 @@ the date).
 Rows are filtered on the server: a type's rows for `{type}.view`, assets for `assets.view`,
 redirects for `redirects.manage`; nothing else is read. An app's own subject (`invoice`, recorded
 by its own code) shows for whoever holds its declared `invoice.view` permission, without a link.
+Its name in the rows and the type filter is the phrase `folio.activity.subjects.invoice`, which the
+site gives in its own `lang/{locale}/folio.php` (`['activity' => ['subjects' => ['invoice' =>
+'Bill']]]`), else its readable name ("work_order": "Work order"; since 0.77).
 `asset`, `redirect` and `activity` are reserved: no type may take them as its key (a boot error),
 and a declared `redirect.view` grants nothing. The screen asks `folio.dashboard`, as the dashboard
 does; there is no permission of its own. `Preflow\Folio\Dashboard\RecentChanges` builds the rows
@@ -1832,8 +1835,9 @@ the field scripts have run: what FormData would send for the form and the contro
 with `form="…"` (the side panel's), without controls marked `data-folio-no-edit` and names that
 start with `_` (`_csrf_token`, `_locale`, `_version`). `Folio.unsaved.count(form)` is the number of
 **field names** whose values differ from that snapshot, so a field kept in hidden inputs (rich
-text, blocks, relations, picked assets) counts, and a radio group or a checkbox list (the
-permissions matrix) counts once. While the form holds unsaved changes the state never hides: when
+text, blocks, relations, picked assets) counts and a radio group counts once. A multi-value name
+(`permissions[]`, a checkbox list) counts **each value** added or taken off, so ticking three boxes
+of the permissions matrix says "3 unsaved changes" (since 0.77). While the form holds unsaved changes the state never hides: when
 nothing is left to count it says **"Unsaved changes"** without a number.
 
 Cancel calls `Folio.unsaved.discard(form)`. When only visible controls changed, they go back to
@@ -1842,7 +1846,9 @@ the page as loaded in place (disabled ones too), the form's unsaved mark is clea
 follow (`Folio.initFields(root)`). When a hidden input changed (or the restore does not reach the
 snapshot), Cancel **reloads the edit page** (the form's `data-folio-edit-url`, in the content
 language) past the leave guard once: a form without autosave has no server draft, so that shows
-the saved state.
+the saved state. The server renders `data-folio-edit-url` on every form with Cancel (the record
+editor, an asset's Details form); a form without it is left as it is, still unsaved, rather than
+reloading the address bar's URL, which after a POST re-render is the form's action (since 0.77).
 
 A **refused save** (a 422 re-render with the posted values) carries `data-folio-refused` on the
 form: it starts unsaved, so leaving asks, the state says **"Not saved"** (or the count once
@@ -1856,6 +1862,23 @@ the leave guard see it as a click. A field whose visible controls have derived s
 previews) listens for `folio:discard` on its form and rebuilds that state from the restored
 controls; the permissions matrix (`rbac_permissions`) re-applies its locks there. A field kept in
 hidden inputs needs nothing: Cancel reloads the page for it.
+
+**Field scripts that write late: the settling protocol (since 0.77).** The snapshot is taken at
+boot and again once the deferred scripts have run (`DOMContentLoaded`). A field whose script writes
+its value later than that (an editor that loads asynchronously and normalises its content, a value
+fetched from the server) marks its field element **`data-folio-settling`**, rendered by the server
+or set by its script before `DOMContentLoaded`, and says it is ready in one of two ways:
+
+- it removes the attribute (`field.removeAttribute('data-folio-settling')`), or
+- it sends a bubbling **`folio:settled`** event from inside the field
+  (`el.dispatchEvent(new CustomEvent('folio:settled', {bubbles: true}))`); admin.js then removes
+  the attribute.
+
+Until every settling field of a form (inside it or in a part naming it with `form="…"`) is ready,
+the snapshot is **retaken instead of changes counted**, and the field's own `input` and `change`
+events mark nothing unsaved. Once the last one is ready the snapshot is taken again, so what the
+field wrote is the form as loaded and only the person's edits count from there. A field that
+never says it is ready keeps its form at no count: mark it only while it is really loading.
 
 ### Type customizations
 

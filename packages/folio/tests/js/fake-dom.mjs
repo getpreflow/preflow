@@ -2,7 +2,8 @@
 // ("tag#id.class[attr][attr=\"v\"]", descendants with a space, groups with a comma, a leading
 // ":scope >"), insertBefore, cloneNode, contains, events (bubbling on to the document and the window),
 // <dialog> with showModal(), close() and escape(),
-// form owners (form="…") and requestSubmit(), a MutationObserver for appended elements, and a
+// form owners (form="…") and requestSubmit(), a MutationObserver for appended elements and added or
+// removed attributes, and a
 // window that delivers postMessage events.
 // load(file) runs a browser script against it, on a page that has the admin's words (#folio-i18n) as
 // every admin layout does.
@@ -175,14 +176,14 @@ class Element {
         this.parentNode.children = this.parentNode.children.filter((c) => c !== this);
         this.parentNode = null;
     }
-    setAttribute(name, value) { this.attributes[name] = String(value); }
+    setAttribute(name, value) { const had = name in this.attributes; this.attributes[name] = String(value); if (!had) { notifyAttribute(this, name); } }
     getAttribute(name) {
         if (name in this.attributes) { return this.attributes[name]; }
         if (['value', 'name', 'type', 'src'].includes(name) && this[name] !== '') { return String(this[name]); }
         return null;
     }
     hasAttribute(name) { return this.getAttribute(name) !== null; }
-    removeAttribute(name) { delete this.attributes[name]; }
+    removeAttribute(name) { if (name in this.attributes) { delete this.attributes[name]; notifyAttribute(this, name); } }
     addEventListener(name, fn, options) { addListener(this, name, fn, options); }
     removeEventListener(name, fn, options) { removeListener(this, name, fn, options); }
     /**
@@ -293,6 +294,20 @@ function notifyAdded(parent, child) {
     });
 }
 
+/** MutationObserver attributes records for an attribute added or removed (observe(…, {attributes, attributeFilter?})). */
+function notifyAttribute(el, name) {
+    const observers = (el.ownerDocument && el.ownerDocument._observers) || [];
+    observers.forEach((o) => {
+        if (!o.options.attributes || (o.options.attributeFilter && !o.options.attributeFilter.includes(name))) { return; }
+        for (let node = el; node; node = node.parentNode) {
+            if (node === o.target && (node === el || o.options.subtree)) {
+                queueMicrotask(() => o.callback([{ type: 'attributes', target: el, attributeName: name }], o.observer));
+                return;
+            }
+        }
+    });
+}
+
 function matchesCompound(el, compound) {
     const re = /([a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[([\w-]+)(?:([*^$]?=)"([^"]*)")?\]/g;
     let m, seen = 0;
@@ -371,7 +386,7 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
             (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin, source }));
         },
         Event, CustomEvent, console, JSON, Math, Date, URL, URLSearchParams,
-        /** observe(target, {childList, subtree}): appended elements are reported (removals are not). */
+        /** observe(target, {childList, attributes, attributeFilter, subtree}): appended elements, and attributes added or removed, are reported (element removals and value changes are not). */
         MutationObserver: class {
             constructor(callback) { this.callback = callback; }
             observe(target, options = {}) { (document._observers = document._observers || []).push({ target, options, callback: this.callback, observer: this }); }

@@ -786,9 +786,11 @@ final class AssetLibraryController
         $missingAlt = !$picker && ($params['missing_alt'] ?? '') === '1';
         $stack = $picker && is_string($params['stack'] ?? null) ? $this->library->find($params['stack']) : null;
         $stack = $stack !== null && !$stack->isCopy() ? $stack : null;
+        // With "Unused only" the unused set is read once: its page and its missing-alt count.
+        $unusedSet = $unused ? $this->unused($kind, $q) : null;
         $result = match (true) {
             $stack !== null => $this->stack($stack, $private),
-            $unused => $this->unused($kind, $q, $page, $missingAlt),
+            $unusedSet !== null => self::pageOf($missingAlt ? array_values(array_filter($unusedSet, $this->missesAlt(...))) : $unusedSet, $page),
             default => $this->library->query($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]), $page, self::PER_PAGE, missingAlt: $missingAlt ?: null),
         };
         $total = $result->total;
@@ -811,8 +813,9 @@ final class AssetLibraryController
         foreach (['grid' => ['folio.assets.grid', 'ui-grid'], 'list' => ['folio.assets.list', 'ui-list']] as $v => [$label, $icon]) {
             $views[] = ['label' => FolioText::get($label), 'icon' => $icon, 'href' => $href(['view' => $v === 'list' ? 'list' : ''] + $here), 'current' => $view === $v];
         }
-        // "Missing alt text · N": the images the toggle would list with this kind, search and filters.
-        $missingCount = $picker ? 0 : $this->library->missingAltCount($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private]));
+        // "Missing alt text · N": the images the toggle would list with this kind, search and filters
+        // (with "Unused only", within the unused set: N is what the toggle shows).
+        $missingCount = $picker ? 0 : ($unusedSet !== null ? count(array_filter($unusedSet, $this->missesAlt(...))) : $this->library->missingAltCount($kind === '' ? null : $kind, $q, $filters + ($private === null ? [] : ['private' => $private])));
         $back = $this->prefix . '/assets?' . http_build_query(array_filter(['q' => $q, 'kind' => $kind, 'f' => $filters, 'unused' => $unused ? '1' : '', 'missing_alt' => $missingAlt ? '1' : '', 'view' => $view, 'page' => (string) $page], static fn ($v) => $v !== '' && $v !== []));
 
         return $this->html($this->engine->render('@folio/admin/assets/index.twig', [
@@ -893,27 +896,38 @@ final class AssetLibraryController
     }
 
     /**
-     * One page of what cleanup would bin (AssetCleanup::candidates(): unused, uploaded longer
+     * What cleanup would bin (AssetCleanup::candidates(): unused, uploaded longer
      * ago than min_age_days), oldest upload first, narrowed by kind and the search words (each
      * in the name, title or an alt text). The toolbar's extra filters don't apply here.
      * The usage sources are asked about every old enough asset on each request and the
-     * result is paged here, so pages are exact (cleanup's own chunks count checked assets,
+     * result is paged by pageOf(), so pages are exact (cleanup's own chunks count checked assets,
      * not candidates); on a very large library this page is slow, like media:cleanup.
      */
-    private function unused(string $kind, string $q, int $page, bool $missingAlt = false): AssetPage
+    /** @return list<Asset> */
+    private function unused(string $kind, string $q): array
     {
         $words = preg_split('/\s+/', mb_strtolower($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $assets = [];
         foreach ($this->cleanup->candidates($kind === '' ? [] : ['kind' => $kind]) as $candidate) {
             $asset = $candidate->asset;
-            if ($missingAlt && ($asset->kind() !== 'image' || ($asset->alt[$this->locales->default] ?? '') !== '')) {
-                continue; // as MediaLibrary::query(missingAlt: true): null or exactly '' (the library trims on save)
-            }
             $text = mb_strtolower($asset->originalName . ' ' . $asset->title . ' ' . implode(' ', $asset->alt));
             if (array_filter($words, static fn (string $w): bool => !str_contains($text, $w)) === []) {
                 $assets[] = $asset;
             }
         }
+
+        return $assets;
+    }
+
+    /** As MediaLibrary::query(missingAlt: true): an image whose default-locale alt text is null or exactly '' (the library trims on save). */
+    private function missesAlt(Asset $asset): bool
+    {
+        return $asset->kind() === 'image' && ($asset->alt[$this->locales->default] ?? '') === '';
+    }
+
+    /** @param list<Asset> $assets one page of them; a page past the end gives the last page */
+    private static function pageOf(array $assets, int $page): AssetPage
+    {
         $pages = max(1, (int) ceil(count($assets) / self::PER_PAGE));
         $page = min($page, $pages);
 

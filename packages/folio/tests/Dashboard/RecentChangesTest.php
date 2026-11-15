@@ -211,6 +211,28 @@ final class RecentChangesTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_an_app_subject_takes_its_label_from_folio_activity_subjects_else_its_readable_name(): void
+    {
+        // The site's own phrase (lang/en/folio.php), as for any Folio text.
+        $this->write('lang/en/folio.php', "<?php\nreturn ['activity' => ['subjects' => ['invoice' => 'Billing']]];\n");
+        $app = $this->app();
+        $c = $app->container();
+        $log = $c->get(ActivityLog::class);
+        $log->record(new Activity('invoice', 'i1', 'Invoice 2026-17', ActivityKind::Created, by: 'u1'));
+        $log->record(new Activity('work_order', 'w1', 'Order 5', ActivityKind::Created, by: 'u1'));
+        $recent = $this->recentChanges($c, $log, ['invoice.view', 'work_order.view']);
+        $can = static fn (string $p): bool => true;
+        $previous = \Preflow\Folio\FolioText::use($c->get(\Preflow\I18n\Translator::class)); // as an admin request does
+
+        $labels = array_column(array_filter($recent->subjects($can), static fn (array $s): bool => in_array($s['key'], ['invoice', 'work_order'], true)), 'label', 'key');
+        $this->assertSame(['invoice' => 'Billing', 'work_order' => 'Work order'], $labels, 'the filter options');
+        $what = array_column($recent->page($can, 10)['rows'], 'what', 'title');
+        $this->assertSame('Billing · created', $what['Invoice 2026-17'], 'the row');
+        $this->assertSame('Work order · created', $what['Order 5'], 'no phrase: the readable name');
+        \Preflow\Folio\FolioText::use($previous);
+    }
+
+    #[RunInSeparateProcess]
     public function test_markers_show_their_label_and_an_erased_person_none(): void
     {
         $app = $this->app();

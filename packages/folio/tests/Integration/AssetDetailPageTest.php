@@ -291,6 +291,8 @@ final class AssetDetailPageTest extends TestCase
         foreach (['', '/replace', '/delete'] as $suffix) {
             $this->assertStringContainsString('action="/folio/assets/' . $asset->id . $suffix . $enc . '"', $body);
         }
+        // The Details form names its page (0.77): Cancel reloads it, never whatever URL the browser shows after a POST.
+        $this->assertStringContainsString('id="folio-asset-form" data-folio-edit-url="/folio/assets/' . $asset->id . $enc . '"', $body);
     }
 
     #[RunInSeparateProcess]

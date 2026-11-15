@@ -57,7 +57,7 @@
             {% for button in ai_translate|default([]) %}
                 {% include '@folio/admin/partials/ai-translate-dialog.twig' with {ai_translate: button} %}
             {% endfor %}
-            <form method="post" action="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}" class="folio-asset-form" id="folio-asset-form">
+            <form method="post" action="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}" class="folio-asset-form" id="folio-asset-form" data-folio-edit-url="{{ prefix }}/assets/{{ asset.id }}{{ back_q }}">
                 <fieldset class="folio-fields"{% if not can('assets.edit') %} disabled{% endif %}>
                 <input type="hidden" name="_csrf_token" value="{{ csrf }}">
                 <input type="hidden" name="focal_x" value="{{ asset.focal_x }}">
