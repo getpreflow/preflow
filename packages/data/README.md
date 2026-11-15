@@ -135,6 +135,34 @@ Grammars::register('pgsql', new PgsqlGrammar()); // a SchemaGrammar; in the driv
 
 Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/testing).
 
+#### Driver-author checklist
+
+**Must:** implement `Preflow\Data\StorageDriver` (`findOne`, `findMany`, `save`, `delete`,
+`exists`, `lastInsertId`, `rawQuery`) with the query semantics `StorageDriverContract` states
+(case-insensitive `LIKE` in every alphabet, `CONTAINS` in list values, null handling, numbers as
+numbers), and pass that contract. That is enough for a driver to work everywhere: DataManager has
+a fallback for every capability below except aggregates.
+
+**Should, for production:** `VersionedStorage`, `ConditionalUpdates` and `ExclusiveWrites`. Without
+them the fallbacks work but are not atomic, so two concurrent writers can both pass a check (an
+`E_USER_NOTICE` says so for the version checks, once per driver class). Implement
+`AggregatingStorage` if the site uses Folio or any aggregate query. The rest is optional.
+
+| Capability | What it gives | Without it, DataManager… | Atomic? |
+|---|---|---|---|
+| `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
+| `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
+| `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
+| `AggregatingStorage::aggregate()` | Group, count, sum, avg, min, max (`AggregateQuery`): Folio's dashboard and not-found counts, publish states, the activity people filter. | `AggregateQuery::get()` throws (never wrong numbers); `Publisher::states()` and `StoredActivityLog::people()` read the records instead. | Read only. |
+| `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
+| `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable (the activity log). | runs the writes as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
+| `DescribesColumns::hasColumn()` (0.77) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet). | takes any column as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
+| `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed (`changeToken()`: the activity people filter). | reuses nothing: computes every time. | Read only. |
+
+A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `BulkDeletes`,
+`Savepoints`, `DescribesColumns` and `AggregatingStorage` from it and implements `exclusive()`
+itself (as `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`.
+
 ### Migrations
 
 ```php
@@ -989,6 +1017,9 @@ return [
   `members:prune`), never while recording or reading.
 
 ### Capabilities a driver may offer (0.77)
+
+The full list, with what DataManager does without each, is the driver-author checklist under
+"Your own storage driver".
 
 - `BulkDeletes::deleteMany($type, $ids, $idField)`: `DataManager::deleteManyIn($def, $ids)`
   uses it (SQL: `DELETE … WHERE id IN (…)` in chunks of 500; JSON: one cache generation for
