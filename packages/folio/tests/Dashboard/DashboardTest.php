@@ -110,8 +110,10 @@ final class DashboardTest extends TestCase
         $dm = $c->get(DataManager::class);
         $post = static fn (array $data): \Preflow\Data\DynamicRecord => \Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('post'), ['uuid' => 'p1'] + $data);
         $dm->saveType($working = $post(['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]), false);
-        $published = $c->get(\Preflow\Publishing\Publisher::class)->publish($working, 'test');
-        $dm->saveType($post(['title' => ['en' => 'Hello again'], 'slug' => ['en' => 'hello'], '_version' => $published->get('_version')]), false);
+        $publisher = $c->get(\Preflow\Publishing\Publisher::class);
+        $publisher->publish($working, 'test');
+        // Edited as an editor saves: a new working version (the counts compare versions).
+        $publisher->saveDraft($post(['title' => ['en' => 'Hello again'], 'slug' => ['en' => 'hello']]), null);
         $notFound = $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class);
         $notFound->record('/old-page', 'en', new \DateTimeImmutable('-10 minutes'));
         $notFound->record('/old-page', 'en', new \DateTimeImmutable('-5 minutes'));

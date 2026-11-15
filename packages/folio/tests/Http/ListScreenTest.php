@@ -56,7 +56,8 @@ final class ListScreenTest extends TestCase
     private function changed(string $id, string $title): void
     {
         $this->published($id, $title);
-        $this->working('post', $id, ['title' => ['en' => $title . ' (edited)'], 'slug' => ['en' => strtolower($title)]]);
+        // Edited as an editor saves: a new working version (the status counts compare versions).
+        $this->publisher()->saveDraft(\Preflow\Data\DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('post'), ['uuid' => $id, 'title' => ['en' => $title . ' (edited)'], 'slug' => ['en' => strtolower($title)]]), null);
     }
 
     private function draft(string $id, string $title): void

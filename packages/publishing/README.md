@@ -41,6 +41,8 @@ $publisher = $container->get(Publisher::class);
 $publisher->saveDraft($record, $loadedVersion);  // no rules; VersionConflict when someone saved in between
 $publisher->publish($record, $userId);           // checks, then copies the working copy to the snapshot
 $publisher->state($record);                      // PublishState::Draft, Published or Changed
+$publisher->states('post');                      // every record's state, from the versions: [id => PublishState]
+$publisher->stateCounts('post');                 // (since 0.77) ['draft' => 3, 'published' => 40, 'changed' => 2]
 $publisher->changes($record);                    // (since 0.75) what a publish would change: ['title', '_locales']
 $publisher->live('post', $id);                   // what the site shows: the snapshot
 $publisher->query('post');                       // a QueryBuilder over the snapshots
@@ -52,6 +54,20 @@ $publisher->restore('post', $id, $revisionId);   // into the working copy; publi
 
 `enabled($type)` says whether a type publishes. A type that does not publish is its own live copy:
 `live()` and `query()` read the record itself.
+
+**States of many records** (since 0.77): a snapshot keeps the working `_version` it was published
+from, as `_published_version`. `states($type)` (or `states($type, $ids)`) and `stateCounts($type)`
+read only those two versions, not the content: no snapshot is Draft, the same version is
+Published, another is Changed. On storage that groups (`AggregatingStorage`: the SQL and JSON
+drivers) that is one aggregate query per table, over the id and the version; on other storage the
+records are read. A discard, and a restore of the content that is live, mark the snapshot as
+published from the new version. An edit undone by hand reads Changed there, while `state($record)`,
+which compares the content, says Published, and a save that changes the content but keeps
+`_version` (an app's own `DataManager::save()` of a model) still reads Published there. A snapshot
+published before 0.77 has no `_published_version`; that record is compared in full until the
+`publishing.published_versions` step of `preflow migrate` (right after `publishing.tables`, which
+adds the column) or `markPublishedVersions($type)` marks it: with the working version when the
+content is the published one, else -1. A second run marks nothing.
 
 **What changed** (since 0.75): `changes($working)` lists the top-level keys whose working value
 differs from the published one: the type's fields first, in field order, then the other content
@@ -229,7 +245,7 @@ would claim the same address. Its `$overrides` (field => value, or => `[locale =
 set values of the copy before the address is freed, e.g. a title marked as a copy; an overridden
 address field still takes a free value. An override is refused (`InvalidArgumentException`, nothing
 written) when it names no field of the type, a key the copy's system sets (the id, `_version`,
-`_publish_at`, `_share_token`, `_published_at`, `_published_by`, `_order`, or the created and
+`_publish_at`, `_share_token`, `_published_at`, `_published_by`, `_published_version`, `_order`, or the created and
 updated values of a `#[Timestamps]` model), a language the type does not have, or gives a
 translatable field anything but a locale map (or `null`, which empties it).
 

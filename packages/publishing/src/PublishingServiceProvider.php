@@ -80,6 +80,19 @@ final class PublishingServiceProvider extends ServiceProvider
         }
         if ($container->bound(MigrationRegistry::class)) {
             $container->get(MigrationRegistry::class)->afterMigrate('publishing.tables', static fn (): array => $container->get(PublishingTables::class)->sync());
+            // After the tables have the column: snapshots from before 0.77 get the version they were published from.
+            $container->get(MigrationRegistry::class)->afterMigrate('publishing.published_versions', static function () use ($container): array {
+                $lines = [];
+                $publisher = $container->get(Publisher::class);
+                foreach ($container->get(PublishingTypes::class)->publishing() as $type) {
+                    $marked = $publisher->markPublishedVersions($type);
+                    if ($marked > 0) {
+                        $lines[] = "marked {$marked} published copies of {$type} with their version";
+                    }
+                }
+
+                return $lines;
+            });
         }
         // The one write and delete path for records (an admin, a translation run, an app's own code).
         $container->singleton(RecordWriter::class, static fn (Container $c): RecordWriter => new RecordWriter(

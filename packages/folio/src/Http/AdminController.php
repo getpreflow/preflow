@@ -326,8 +326,9 @@ final class AdminController
         $extraColumns = $this->customized($type)['columns'];
 
         $multilingual = $typeDef->translatableFields() !== [];
+        // From the versions (Publisher::states(): the working and published versions, no content).
         $states = $this->publishes($type) ? $this->publisher->states($type) : null;
-        // Records per state over the whole type: the status links' counts (ListQuery::STATUSES).
+        // Records per state over the whole type: the status links' counts (ListQuery::STATUSES), as Publisher::stateCounts() gives them, from the states the rows need anyway.
         $statusCounts = null;
         if ($states !== null) {
             $statusCounts = array_fill_keys(ListQuery::STATUSES, 0);
@@ -348,7 +349,17 @@ final class AdminController
         // Relation columns (only when "list.columns" names them): the page's labels in one query per target.
         $relationColumns = array_values(array_filter(array_keys($columns), static fn (string $name) => $typeDef->fields[$name]->type === 'relation'));
         $relationLabels = $relationColumns === [] ? [] : $relations->forRecords($typeDef, $relationColumns, $records);
-        $menu = $this->rowMenu($type, $typeDef, $records, $states);
+        // The page's snapshots, read once: the rows' badges compare the content (Publisher::stateWith(),
+        // exact also after a save that kept the version), the row menu links what is live.
+        $snapshots = null;
+        if ($states !== null) {
+            $snapshots = [];
+            $ids = array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records);
+            foreach ($ids === [] ? [] : $this->publisher->query($type)->byIds($ids)->get()->items() as $snapshot) {
+                $snapshots[(string) $snapshot->getId()] = $snapshot;
+            }
+        }
+        $menu = $this->rowMenu($type, $typeDef, $records, $snapshots);
         $route = $this->frontend->routeFor($type);
         $uncheckedUrl = $this->prefix . '/' . $type . '?unchecked=1';
 
@@ -385,7 +396,7 @@ final class AdminController
                 }, $extraColumns),
                 'languages' => $multilingual ? $this->languageStates($typeDef, $record) : [],
                 'unchecked_url' => $uncheckedUrl,
-                'state' => $stateOf !== null ? $stateOf($record) : null,
+                'state' => $snapshots !== null ? $this->publisher->stateWith($record, $snapshots[$id] ?? null) : null,
                 // The frontend route's home record: "The home page · slug “home”" under its title.
                 'home' => $home !== null ? FolioText::get('folio.list.home_page', ['field' => $route->paramNames[0], 'value' => $home]) : null,
                 // Its address in the default language, as the router sees it ("/", "/about").
@@ -468,31 +479,25 @@ final class AdminController
      * link" (publishing types with a frontend, for those who may edit, as the editor offers it).
      *
      * @param list<DynamicRecord>                 $records
-     * @param array<string, PublishState>|null    $states
+     * @param array<string, DynamicRecord>|null   $snapshots the page's snapshots by id (null: the type does not publish)
      * @return array<string, array{view_url: ?string, unpublish_url: ?string, unpublish_addresses: int, share_url: ?string}>
      */
-    private function rowMenu(string $type, TypeDefinition $typeDef, array $records, ?array $states): array
+    private function rowMenu(string $type, TypeDefinition $typeDef, array $records, ?array $snapshots): array
     {
         $route = $this->frontend->routeFor($type);
         $ids = array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records);
         $default = $typeDef->locales->default;
-        $live = [];
-        if ($states !== null && $route !== null && $ids !== []) {
-            foreach ($this->publisher->query($type)->byIds($ids)->get()->items() as $snapshot) {
-                // The snapshot as a record of the type itself, so its address is the type's route.
-                $live[(string) $snapshot->getId()] = DynamicRecord::fromArray($typeDef, $snapshot->toArray());
-            }
-        }
-        $mayPublish = $states !== null && $this->can($type . '.publish');
+        $mayPublish = $snapshots !== null && $this->can($type . '.publish');
         $addresses = $mayPublish ? ($this->addresses?->counts($type, $ids) ?? []) : [];
-        $share = $states !== null && $route !== null && $this->previewLinks?->enabled() === true && $this->can($type . '.edit');
+        $share = $snapshots !== null && $route !== null && $this->previewLinks?->enabled() === true && $this->can($type . '.edit');
 
         $menu = [];
         foreach ($records as $record) {
             $id = (string) $record->getId();
             $base = $this->prefix . '/' . $type . '/' . rawurlencode($id);
-            $isLive = $states !== null && ($states[$id] ?? PublishState::Draft) !== PublishState::Draft;
-            $shown = $states === null ? $record : ($live[$id] ?? null);
+            $isLive = isset($snapshots[$id]);
+            // The snapshot as a record of the type itself, so its address is the type's route.
+            $shown = $snapshots === null ? $record : (isset($snapshots[$id]) ? DynamicRecord::fromArray($typeDef, $snapshots[$id]->toArray()) : null);
             $menu[$id] = [
                 'view_url' => $route !== null && $shown !== null ? $this->frontend->urlFor($shown, $default) : null,
                 'unpublish_url' => $mayPublish && $isLive ? $base . '/unpublish' : null,
@@ -625,7 +630,7 @@ final class AdminController
         } else {
             // The list's own view: its status and "not checked" narrowing too, as the list shows it.
             $query = ListQuery::fromRequest($request, $typeDef, $listConfig, $typeDef->locales->default, $this->publishes($type));
-            // The states only when a status is asked for (they read every snapshot of the type).
+            // The states only when a status is asked for (they read the versions of every record of the type).
             $states = $query->status !== null ? $this->publisher->states($type) : null;
             $records = $exporter->records($type, $query, $query->narrowing(
                 $typeDef->translatableFields() !== [] ? fn (DynamicRecord $record): bool => $this->hasUnchecked($typeDef, $record) : null,

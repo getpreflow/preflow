@@ -1312,11 +1312,13 @@ preflow/data).
 **States in your own code:** `->state($working)` reads the snapshot; `->stateWith($working,
 $snapshot)` compares with a snapshot you already have (`null`: nothing published) and reads
 nothing. `->states($type)` gives every working copy's state, `->states($type, $ids)` those of
-some ids, each with one snapshot query (one per 500 ids).
+some ids, and `->stateCounts($type)` (since 0.77) how many are in each: these read only the working
+`_version` and the snapshot's `_published_version` (see preflow/publishing), so an edit undone by
+hand reads Changed there.
 
 **SQL storage:**
-- Create `{table}__published` with the type's columns plus `_published_at` and
-  `_published_by` (TEXT).
+- Create `{table}__published` with the type's columns plus `_published_at`,
+  `_published_by` and `_published_version` (since 0.77) (TEXT).
 - Create `{table}__revisions` with `uuid` (primary key), `record_id`, `seq` (INTEGER),
   `data`, `changed`, `created_at` and `created_by`.
 - Add `_version` (INTEGER), `_publish_at` and `_share_token` (TEXT) to the type's own

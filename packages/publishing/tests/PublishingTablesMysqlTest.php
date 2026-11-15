@@ -14,6 +14,7 @@ use Preflow\Data\TypeRegistry;
 use Preflow\Publishing\NoRecordChecks;
 use Preflow\Publishing\NoRecordColumns;
 use Preflow\Publishing\Publisher;
+use Preflow\Publishing\PublishState;
 use Preflow\Publishing\PublishingTables;
 use Preflow\Publishing\SchemaPublishingTypes;
 use Preflow\Testing\MysqlTestDatabase;
@@ -99,6 +100,45 @@ final class PublishingTablesMysqlTest extends TestCase
         }
         $this->assertSame(['PRIMARY'], $schema->indexes('article__revisions'));
         $this->assertSame([], array_values(array_filter($tables->sync(), static fn (string $l): bool => !str_starts_with($l, 'warning: '))), 'a second run adds nothing');
+    }
+
+    /** The states from the versions on MySQL (an aggregate over two columns), and a pre-0.77 snapshot compared in full. */
+    public function test_states_come_from_the_published_version(): void
+    {
+        (new PublishingTables($this->dm, new SchemaPublishingTypes($this->dm), new NoRecordColumns()))->sync();
+        $this->assertArrayHasKey('_published_version', (new Schema($this->pdo))->columnTypes('article__published'));
+        $p = new Publisher($this->dm, new SchemaPublishingTypes($this->dm), new NoRecordChecks());
+        $def = $this->dm->getTypeRegistry()->get('article');
+        foreach (['a1', 'a2', 'a3', 'd1'] as $id) {
+            $p->saveDraft(DynamicRecord::fromArray($def, ['uuid' => $id, 'title' => 'One', 'views' => 1]), null);
+        }
+        foreach (['a1', 'a2', 'a3'] as $id) {
+            $p->publish($this->stored($id), 'ana', 1);
+        }
+        $edited = $this->stored('a2');
+        $edited->set('title', 'Two');
+        $p->saveDraft($edited, 1);
+        $this->assertSame(1, (int) $p->snapshot('article', 'a1')?->get('_published_version'));
+
+        $expected = ['a1' => PublishState::Published, 'a2' => PublishState::Changed, 'a3' => PublishState::Published, 'd1' => PublishState::Draft];
+        $states = $p->states('article');
+        ksort($states, SORT_STRING);
+        $this->assertSame($expected, $states);
+        $this->assertSame(['a3' => PublishState::Published], $p->states('article', ['a3']));
+        $this->assertSame(['draft' => 1, 'published' => 2, 'changed' => 1], $p->stateCounts('article'));
+
+        $p->discard('article', 'a2');
+        $this->assertSame(PublishState::Published, $p->states('article', ['a2'])['a2']);
+
+        // Published before 0.77: no version, compared in full.
+        $this->pdo->exec('UPDATE article__published SET _published_version = NULL');
+        $this->pdo->exec("UPDATE article SET title = 'Elsewhere' WHERE uuid = 'a3'");
+        $this->assertSame(['draft' => 1, 'published' => 2, 'changed' => 1], $p->stateCounts('article'));
+        $this->assertSame(PublishState::Changed, $p->states('article', ['a3'])['a3']);
+        $this->assertSame(3, $p->markPublishedVersions('article'));
+        $this->assertSame(-1, (int) $p->snapshot('article', 'a3')?->get('_published_version'));
+        $this->assertSame(['draft' => 1, 'published' => 2, 'changed' => 1], $p->stateCounts('article'));
+        $this->assertSame(0, $p->markPublishedVersions('article'));
     }
 
     private function stored(string $id): DynamicRecord

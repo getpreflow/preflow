@@ -266,7 +266,8 @@ final class Dashboard
                     continue;
                 }
                 try {
-                    $changed = count(array_filter($this->publisher->states($listing->key), static fn (PublishState $state): bool => $state === PublishState::Changed));
+                    // From the versions (Publisher::stateCounts()): no record content is read.
+                    $changed = $this->publisher->stateCounts($listing->key)[PublishState::Changed->value];
                 } catch (\Throwable) {
                     continue;
                 }

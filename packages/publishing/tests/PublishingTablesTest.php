@@ -47,6 +47,7 @@ final class PublishingTablesTest extends PublishingAppTestCase
         $this->assertNotSame([], $first);
         $this->assertArrayHasKey('_version', $schema->columnTypes('article'));
         $this->assertArrayHasKey('_published_by', $schema->columnTypes('article__published'));
+        $this->assertArrayHasKey('_published_version', $schema->columnTypes('article__published'));
         $this->assertSame('numeric', $schema->columnTypes('article__published')['views']);
         $this->assertSame([], $this->migrate(), 'a second migrate is a no-op');
 

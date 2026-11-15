@@ -6,11 +6,13 @@ namespace Preflow\Publishing;
 
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
+use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\TypeDefinition;
+use Preflow\Data\TypeFieldDefinition;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 use Psr\Log\LoggerInterface;
@@ -18,7 +20,9 @@ use Psr\Log\LoggerInterface;
 /**
  * Working copy (what the admin edits, the type's own table) and published
  * snapshot (what the public site reads, {table}__published). States are
- * derived by comparing content; system keys in META never count as content.
+ * derived by comparing content; system keys in META never count as content. A snapshot keeps the
+ * working `_version` it was published from (`_published_version`, @since 0.77), so states() and
+ * stateCounts() compare two versions instead of the content (state() still compares the content).
  *
  * What an app adds comes in through interfaces (the provider binds a default for each the app
  * leaves open): which types publish (PublishingTypes), the rules a publish checks
@@ -33,7 +37,8 @@ use Psr\Log\LoggerInterface;
  */
 final class Publisher
 {
-    public const array META = ['_version', '_publish_at', '_share_token', '_published_at', '_published_by', '_order'];
+    /** System keys, never content. `_published_version` (@since 0.77): the snapshot's working version. */
+    public const array META = ['_version', '_publish_at', '_share_token', '_published_at', '_published_by', '_order', '_published_version'];
 
     /** Working-copy-only keys that are not copied into a snapshot. */
     private const array WORKING_ONLY = ['_version', '_publish_at', '_share_token'];
@@ -150,8 +155,15 @@ final class Publisher
     }
 
     /**
-     * States of a type's working copies, with one snapshot query: every working copy, or
-     * the ones with these ids (ids that do not exist are left out; one query per 500 ids).
+     * States of a type's working copies: every working copy, or the ones with these ids (ids
+     * that do not exist are left out; two queries per 500 ids).
+     *
+     * From the versions (@since 0.77): reads only the working copies' `_version` and the
+     * snapshots' `_published_version` (an aggregate query on storage that groups,
+     * AggregatingStorage; the records otherwise). No snapshot is Draft, the version it was
+     * published from is Published, another is Changed. So an edit undone by hand reads Changed
+     * here while state() (the full compare) says Published. A snapshot without the key (published
+     * before 0.77) is compared in full, as state() does, until it is published again.
      *
      * @param list<string>|null $ids
      * @return array<string, PublishState> keyed by id
@@ -168,7 +180,139 @@ final class Publisher
         $chunks = $only === null ? [null] : array_chunk($only, self::STATES_CHUNK);
 
         $states = [];
+        $legacy = [];
         foreach ($chunks as $chunk) {
+            $published = $this->versions($shadow, '_published_version', $chunk);
+            foreach ($this->versions($def, '_version', $chunk) as $id => $version) {
+                $id = (string) $id;
+                // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
+                if ($chunk !== null && !in_array($id, $chunk, true)) {
+                    continue;
+                }
+                if (!array_key_exists($id, $published)) {
+                    $states[$id] = PublishState::Draft;
+                } elseif ($published[$id] === null) {
+                    $legacy[] = $id;
+                    $states[$id] = PublishState::Changed; // replaced below, keeps the order
+                } else {
+                    $states[$id] = $published[$id] === ($version ?? 0) ? PublishState::Published : PublishState::Changed;
+                }
+            }
+        }
+
+        return $legacy === [] ? $states : array_replace($states, $this->compared($def, $legacy));
+    }
+
+    /**
+     * How many working copies of the type are in each state, from states() (the versions): every
+     * PublishState value as a key, 0 when none is.
+     *
+     * @since 0.77
+     *
+     * @return array<string, int> keyed by PublishState value
+     */
+    public function stateCounts(string $type): array
+    {
+        $counts = array_fill_keys(array_map(static fn (PublishState $state): string => $state->value, PublishState::cases()), 0);
+        foreach ($this->states($type) as $state) {
+            $counts[$state->value]++;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Gives each snapshot published before 0.77 (no `_published_version`) the version it was
+     * published from, as far as the content tells: the working version when the working copy
+     * holds the published content (the full compare), else -1 (an older one), so states() no longer
+     * compares that record in full. Snapshots that have the key, and those whose working copy is
+     * gone, are left alone; a second run marks nothing. Run by the `publishing.published_versions`
+     * migrate step.
+     *
+     * @since 0.77
+     *
+     * @return int how many snapshots were marked
+     */
+    public function markPublishedVersions(string $type): int
+    {
+        $def = $this->definition($type);
+        $shadow = ShadowTypes::published($def);
+        $legacy = [];
+        foreach ($this->versions($shadow, '_published_version', null) as $id => $version) {
+            if ($version === null) {
+                $legacy[] = (string) $id;
+            }
+        }
+
+        $marked = 0;
+        foreach (array_chunk($legacy, self::STATES_CHUNK) as $chunk) {
+            $working = [];
+            foreach ($this->among($this->dm->queryIn($def), $def, $chunk)->get()->items() as $record) {
+                $working[(string) $record->getId()] = $record;
+            }
+            foreach ($this->among($this->dm->queryIn($shadow), $shadow, $chunk)->get()->items() as $snapshot) {
+                $id = (string) $snapshot->getId();
+                // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
+                if (!in_array($id, $chunk, true) || !isset($working[$id]) || $snapshot->get('_published_version') !== null) {
+                    continue;
+                }
+                $version = self::compare($working[$id], $snapshot) === PublishState::Published ? (int) ($working[$id]->get('_version') ?? 0) : -1;
+                // Only while it has none (a publish in between wrote its own).
+                if ($this->dm->saveTypeIfVersion($snapshot, 0, $version, '_published_version', validate: false)) {
+                    $marked++;
+                }
+            }
+        }
+
+        return $marked;
+    }
+
+    /**
+     * One version column of a type's records by id, null where none is stored: an aggregate
+     * grouped by the id and the column when the storage groups (only these two are read),
+     * else the records.
+     *
+     * @param list<string>|null $ids
+     * @return array<string, ?int>
+     */
+    private function versions(TypeDefinition $def, string $column, ?array $ids): array
+    {
+        $narrow = new TypeDefinition(
+            key: $def->key,
+            table: $def->table,
+            storage: $def->storage,
+            fields: [$column => new TypeFieldDefinition($column, 'string')],
+            idField: $def->idField,
+        );
+        $query = $this->among($this->dm->queryIn($narrow), $narrow, $ids);
+        $version = static fn (mixed $value): ?int => $value === null || $value === '' ? null : (int) $value;
+
+        $versions = [];
+        if ($this->dm->driver($def->storage) instanceof AggregatingStorage) {
+            foreach ($query->aggregate()->groupBy($def->idField, $column)->get() as $row) {
+                $versions[(string) $row[$def->idField]] = $version($row[$column] ?? null);
+            }
+
+            return $versions;
+        }
+        foreach ($query->get()->items() as $record) {
+            $versions[(string) $record->getId()] = $version($record->get($column));
+        }
+
+        return $versions;
+    }
+
+    /**
+     * States by the full compare (state()) of these working copies, one snapshot query per 500 ids.
+     *
+     * @param list<string> $ids
+     * @return array<string, PublishState>
+     */
+    private function compared(TypeDefinition $def, array $ids): array
+    {
+        $shadow = ShadowTypes::published($def);
+        $states = [];
+        foreach (array_chunk($ids, self::STATES_CHUNK) as $chunk) {
             $snapshots = [];
             foreach ($this->among($this->dm->queryIn($shadow), $shadow, $chunk)->get()->items() as $snapshot) {
                 $snapshots[(string) $snapshot->getId()] = $snapshot;
@@ -176,7 +320,7 @@ final class Publisher
             foreach ($this->among($this->dm->queryIn($def), $def, $chunk)->get()->items() as $working) {
                 $id = (string) $working->getId();
                 // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
-                if ($chunk !== null && !in_array($id, $chunk, true)) {
+                if (!in_array($id, $chunk, true)) {
                     continue;
                 }
                 $states[$id] = self::compare($working, $snapshots[$id] ?? null);
@@ -367,7 +511,8 @@ final class Publisher
         $stamp = ($this->now)()->format(DATE_ATOM);
         $snapshot = DynamicRecord::fromArray($shadow, array_merge(
             array_diff_key($working->toArray(), array_flip(self::WORKING_ONLY)),
-            ['_published_at' => $stamp, '_published_by' => $by],
+            // The version it was published from: states() compares it with the working copy's.
+            ['_published_at' => $stamp, '_published_by' => $by, '_published_version' => (int) ($working->get('_version') ?? 0)],
         ));
         $this->dm->saveType($snapshot, false);
         $this->appendRevision($def, $snapshot, $previous, $stamp, $by);
@@ -470,6 +615,7 @@ final class Publisher
             return null;
         }
         $working = $this->replaceContent($type, $id, $snapshot->toArray(), $loadedVersion, $publishAt);
+        $this->relink($working, $snapshot);
         $this->activity->note($working, ActivityKind::Discarded, [], $by);
 
         return $working;
@@ -501,6 +647,7 @@ final class Publisher
         foreach ($this->revisions($type, $id) as $revision) {
             if ($revision->id === $revisionId) {
                 $restored = $this->replaceContent($type, $id, $revision->data, $loadedVersion, $publishAt);
+                $this->relink($restored, $this->snapshot($type, $id));
                 $this->activity->note($restored, ActivityKind::Restored, [], $by);
 
                 return $restored;
@@ -508,6 +655,21 @@ final class Publisher
         }
 
         return null;
+    }
+
+    /**
+     * After a discard or restore (a new working version): when the working copy now holds the
+     * published content (the full compare), its snapshot is marked as published from that version,
+     * so states() reads Published as state() does.
+     */
+    private function relink(DynamicRecord $working, ?DynamicRecord $snapshot): void
+    {
+        $version = (int) ($working->get('_version') ?? 0);
+        if ($snapshot === null || (int) ($snapshot->get('_published_version') ?? -1) === $version || self::compare($working, $snapshot) !== PublishState::Published) {
+            return;
+        }
+        // Only while the snapshot still holds the version read (a publish in between wrote its own).
+        $this->dm->saveTypeIfVersion($snapshot, (int) ($snapshot->get('_published_version') ?? 0), $version, '_published_version', validate: false);
     }
 
     /** @return list<Revision> */
