@@ -6,8 +6,8 @@ namespace Preflow\Auth\Remember;
 
 use Preflow\Auth\Support\FileLock;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\RunsSql;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 
@@ -101,7 +101,7 @@ final class RememberMe
         [, $selector, $validator] = $m;
         $driver = $this->dm->driver($this->storage);
 
-        if ($driver instanceof PdoDriver) {
+        if ($driver instanceof RunsSql) {
             $record = $this->dm->findIn($this->type, $selector);
             if ($record === null) {
                 return null;
@@ -167,7 +167,7 @@ final class RememberMe
         $selector = $m[1];
         $driver = $this->dm->driver($this->storage);
 
-        if ($driver instanceof PdoDriver) {
+        if ($driver instanceof RunsSql) {
             $dialect = $driver->dialect();
             $this->dm->execute(
                 'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE)
@@ -195,49 +195,15 @@ final class RememberMe
     /** Delete every row of $userId on $guard. Returns how many were deleted. */
     public function revokeAll(string $guard, string $userId): int
     {
-        $driver = $this->dm->driver($this->storage);
-        if ($driver instanceof PdoDriver) {
-            $dialect = $driver->dialect();
-
-            return $this->dm->execute(
-                'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE)
-                    . ' WHERE ' . $dialect->quoteIdentifier('guard') . ' = ? AND ' . $dialect->quoteIdentifier('user_id') . ' = ?',
-                [$guard, $userId],
-                $this->storage,
-            );
-        }
-
-        $count = 0;
-        foreach ($this->dm->queryIn($this->type)->where('guard', $guard)->where('user_id', $userId)->get() as $record) {
-            $this->dm->deleteIn($this->type, (string) $record->getId());
-            $count++;
-        }
-
-        return $count;
+        return $this->deleteAll($this->dm->queryIn($this->type)->where('guard', $guard)->where('user_id', $userId)->get());
     }
 
     /** Delete expired rows. Returns how many were deleted. */
     public function prune(): int
     {
         $now = ($this->clock)();
-        $driver = $this->dm->driver($this->storage);
-        if ($driver instanceof PdoDriver) {
-            $dialect = $driver->dialect();
 
-            return $this->dm->execute(
-                'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE) . ' WHERE ' . $dialect->quoteIdentifier('expires_at') . ' <= ?',
-                [$now],
-                $this->storage,
-            );
-        }
-
-        $count = 0;
-        foreach ($this->dm->queryIn($this->type)->where('expires_at', '<=', $now)->get() as $record) {
-            $this->dm->deleteIn($this->type, (string) $record->getId());
-            $count++;
-        }
-
-        return $count;
+        return $this->deleteAll($this->dm->queryIn($this->type)->where('expires_at', '<=', $now)->get());
     }
 
     /**
@@ -274,5 +240,22 @@ final class RememberMe
     private static function random(int $bytes): string
     {
         return rtrim(strtr(base64_encode(random_bytes($bytes)), '+/', '-_'), '=');
+    }
+
+    /**
+     * Deletes the found $records, in as few statements as the storage allows
+     * (DataManager::deleteManyIn()); returns how many.
+     *
+     * @param iterable<DynamicRecord> $records
+     */
+    private function deleteAll(iterable $records): int
+    {
+        $ids = [];
+        foreach ($records as $record) {
+            $ids[] = (string) $record->getId();
+        }
+        $this->dm->deleteManyIn($this->type, $ids);
+
+        return count($ids);
     }
 }

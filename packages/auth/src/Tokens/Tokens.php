@@ -6,8 +6,8 @@ namespace Preflow\Auth\Tokens;
 
 use Preflow\Auth\Support\FileLock;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\RunsSql;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 
@@ -75,7 +75,7 @@ final class Tokens
         $id = hash('sha256', $token);
         $driver = $this->dm->driver($this->storage);
 
-        if ($driver instanceof PdoDriver) {
+        if ($driver instanceof RunsSql) {
             $record = $this->dm->findIn($this->type, $id);
             if ($record === null) {
                 return null;
@@ -118,48 +118,31 @@ final class Tokens
     /** Delete every token of $purpose for $subject. Returns how many were deleted. */
     public function revokeAll(string $purpose, string $subject): int
     {
-        $driver = $this->dm->driver($this->storage);
-        if ($driver instanceof PdoDriver) {
-            $dialect = $driver->dialect();
-
-            return $this->dm->execute(
-                'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE)
-                    . ' WHERE ' . $dialect->quoteIdentifier('purpose') . ' = ? AND ' . $dialect->quoteIdentifier('subject') . ' = ?',
-                [$purpose, $subject],
-                $this->storage,
-            );
-        }
-
-        $count = 0;
-        foreach ($this->dm->queryIn($this->type)->where('purpose', $purpose)->where('subject', $subject)->get() as $record) {
-            $this->dm->deleteIn($this->type, (string) $record->getId());
-            $count++;
-        }
-
-        return $count;
+        return $this->deleteAll($this->dm->queryIn($this->type)->where('purpose', $purpose)->where('subject', $subject)->get());
     }
 
     /** Delete expired tokens. Returns how many were deleted. */
     public function prune(): int
     {
         $now = ($this->clock)();
-        $driver = $this->dm->driver($this->storage);
-        if ($driver instanceof PdoDriver) {
-            $dialect = $driver->dialect();
 
-            return $this->dm->execute(
-                'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE) . ' WHERE ' . $dialect->quoteIdentifier('expires_at') . ' <= ?',
-                [$now],
-                $this->storage,
-            );
+        return $this->deleteAll($this->dm->queryIn($this->type)->where('expires_at', '<=', $now)->get());
+    }
+
+    /**
+     * Deletes the found $records, in as few statements as the storage allows
+     * (DataManager::deleteManyIn()); returns how many.
+     *
+     * @param iterable<DynamicRecord> $records
+     */
+    private function deleteAll(iterable $records): int
+    {
+        $ids = [];
+        foreach ($records as $record) {
+            $ids[] = (string) $record->getId();
         }
+        $this->dm->deleteManyIn($this->type, $ids);
 
-        $count = 0;
-        foreach ($this->dm->queryIn($this->type)->where('expires_at', '<=', $now)->get() as $record) {
-            $this->dm->deleteIn($this->type, (string) $record->getId());
-            $count++;
-        }
-
-        return $count;
+        return count($ids);
     }
 }

@@ -21,6 +21,7 @@ use Preflow\Data\UniqueViolation;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\Exporter;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Testing\PlainDriver;
 
 /**
  * A temp app with Folio and the codes extension enabled (a fake vendor/composer/installed.json
@@ -401,6 +402,27 @@ final class CodesTest extends TestCase
         $id = (string) $first->codeId;
         $this->assertSame(1, (int) $this->app()->container()->get(DataManager::class)->findType('code', $id)->get('uses'));
         $this->assertCount(1, $a->redemptions($id));
+    }
+
+    public function test_max_uses_holds_on_a_driver_without_runs_sql(): void
+    {
+        $c = $this->app()->container();
+        $dm = $c->get(DataManager::class);
+        $drivers = [];
+        foreach ($dm->driverNames() as $name) {
+            $drivers[$name] = $name === 'codes' ? new PlainDriver($dm->driver($name)) : $dm->driver($name);
+        }
+        $codes = new Codes(
+            new DataManager($drivers, 'json', $dm->getTypeRegistry()),
+            $c->get(Throttle::class),
+            require $this->dir . '/config/codes.php',
+            fn (): \DateTimeImmutable => $this->now,
+            $this->dir . '/storage/locks',
+        );
+        $codes->issue('members.book', [], 'ONLYONCE', maxUses: 1);
+
+        $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
+        $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
     }
 
     public function test_json_storage_counts_under_file_lock(): void

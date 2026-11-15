@@ -12,6 +12,7 @@ use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\DataTestCase;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Testing\PlainDriver;
 
 final class TokensTest extends DataTestCase
 {
@@ -54,6 +55,15 @@ final class TokensTest extends DataTestCase
         parent::tearDown();
     }
 
+    /** Tokens on SQLite seen through a driver with no capabilities: neither JSON nor SQL to the code. */
+    private function plainTokens(): Tokens
+    {
+        $lockDir = sys_get_temp_dir() . '/preflow_tokens_locks_' . uniqid();
+        $this->lockDirs[] = $lockDir;
+
+        return new Tokens(new DataManager(['plain' => new PlainDriver($this->getSqliteDriver())]), 'plain', fn (): int => $this->now, $lockDir);
+    }
+
     private function tokens(string $storage = 'default', ?\Closure $clock = null): Tokens
     {
         $lockDir = sys_get_temp_dir() . '/preflow_tokens_locks_' . uniqid();
@@ -73,6 +83,35 @@ final class TokensTest extends DataTestCase
             $this->assertNull($t->consume($token, 'confirm'), $storage);
             $this->assertNull($t->consume('not-a-token', 'confirm'), $storage);
         }
+    }
+
+    public function test_issue_and_consume_once_on_a_driver_without_runs_sql(): void
+    {
+        $t = $this->plainTokens();
+        $token = $t->issue('confirm', 'user-1', 3600);
+
+        $this->assertSame('user-1', $t->consume($token, 'confirm'));
+        $this->assertNull($t->consume($token, 'confirm'));
+        $this->assertNull($t->consume('not-a-token', 'confirm'));
+        $this->assertSame([], $this->dataManager()->raw('SELECT * FROM auth_tokens'));
+    }
+
+    public function test_revoke_all_and_prune_on_a_driver_without_runs_sql(): void
+    {
+        $t = $this->plainTokens();
+        $a = $t->issue('reset', 'user-1', 3600);
+        $b = $t->issue('reset', 'user-1', 3600);
+        $other = $t->issue('confirm', 'user-1', 3600);
+        $t->issue('reset', 'user-2', 10);
+
+        $this->assertSame(2, $t->revokeAll('reset', 'user-1'));
+        $this->assertNull($t->consume($a, 'reset'));
+        $this->assertNull($t->consume($b, 'reset'));
+        $this->assertSame(0, $t->revokeAll('reset', 'user-1'));
+
+        $this->now += 20;
+        $this->assertSame(1, $t->prune());
+        $this->assertSame('user-1', $t->consume($other, 'confirm'));
     }
 
     public function test_expired_token_rejected(): void

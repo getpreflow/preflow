@@ -6,8 +6,8 @@ namespace Preflow\Codes;
 
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\RunsSql;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -349,7 +349,7 @@ final class Codes
             ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
         $driver = $this->dm->driver($type->storage);
 
-        if ($driver instanceof PdoDriver) {
+        if ($driver instanceof RunsSql) {
             [$table, $id, $uses, $count, $limit] = $this->sql($driver, $type);
 
             return $this->dm->execute(
@@ -382,7 +382,7 @@ final class Codes
             ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
         $driver = $this->dm->driver($type->storage);
 
-        if ($driver instanceof PdoDriver) {
+        if ($driver instanceof RunsSql) {
             [$table, $id, $uses, $count] = $this->sql($driver, $type);
             $this->dm->execute(
                 "UPDATE {$table} SET {$uses} = {$count} - 1 WHERE {$id} = ? AND {$count} > 0",
@@ -413,7 +413,7 @@ final class Codes
      *
      * @return array{0: string, 1: string, 2: string, 3: string, 4: string} table, id, uses, count, limit (NULL for none)
      */
-    private function sql(PdoDriver $driver, TypeDefinition $type): array
+    private function sql(RunsSql $driver, TypeDefinition $type): array
     {
         $dialect = $driver->dialect();
         $uses = $dialect->quoteIdentifier('uses');
@@ -471,14 +471,14 @@ final class Codes
      *
      * @param array<string, string|int|null> $values column => value
      * @param \Closure(DynamicRecord): bool $applies
-     * @param (\Closure(PdoDriver, TypeDefinition): array{0: string, 1: list<mixed>})|null $extra SQL condition (starting with " AND ") and its parameters
+     * @param (\Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>})|null $extra SQL condition (starting with " AND ") and its parameters
      */
     private function writeColumns(string $codeId, array $values, \Closure $applies, ?\Closure $extra = null): bool
     {
         $type = $this->codeType();
         $driver = $this->dm->driver($type->storage);
 
-        if ($driver instanceof PdoDriver) {
+        if ($driver instanceof RunsSql) {
             $dialect = $driver->dialect();
             $table = $dialect->quoteIdentifier($type->table);
             $id = $dialect->quoteIdentifier($type->idField);
@@ -631,11 +631,11 @@ final class Codes
      * The conditions of a write to a code that is still live: not revoked, not used up and, with
      * $maxUses, the uses so far within it (see writeColumns()).
      *
-     * @return \Closure(PdoDriver, TypeDefinition): array{0: string, 1: list<mixed>}
+     * @return \Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>}
      */
     private static function liveGuard(?int $maxUses): \Closure
     {
-        return static function (PdoDriver $driver, TypeDefinition $type) use ($maxUses): array {
+        return static function (RunsSql $driver, TypeDefinition $type) use ($maxUses): array {
             $dialect = $driver->dialect();
             $uses = $dialect->quoteIdentifier('uses');
             $count = 'COALESCE(' . $dialect->wholeNumber($uses) . ', 0)';

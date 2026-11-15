@@ -28,10 +28,12 @@ use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouterInterface;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Http\Session\SessionMiddleware;
+use Preflow\Data\DataManager;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\ArraySession;
 use Preflow\Testing\DataTestCase;
+use Preflow\Testing\PlainDriver;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -100,6 +102,15 @@ final class RememberMeTest extends DataTestCase
         $this->lockDirs[] = $lockDir;
 
         return new RememberMe($this->dataManager(), $storage, $clock ?? fn (): int => $this->now, $lockDir);
+    }
+
+    /** RememberMe on SQLite seen through a driver with no capabilities: neither JSON nor SQL to the code. */
+    private function plainRemember(): RememberMe
+    {
+        $lockDir = sys_get_temp_dir() . '/preflow_remember_locks_' . uniqid();
+        $this->lockDirs[] = $lockDir;
+
+        return new RememberMe(new DataManager(['plain' => new PlainDriver($this->getSqliteDriver())]), 'plain', fn (): int => $this->now, $lockDir);
     }
 
     private function guard(?RememberMe $remember, array $config = self::CONFIG, ?CookieQueue $queue = null): SessionGuard
@@ -251,6 +262,25 @@ final class RememberMeTest extends DataTestCase
         }
     }
 
+    public function test_cookie_restores_user_and_rotates_on_a_driver_without_runs_sql(): void
+    {
+        $remember = $this->plainRemember();
+        $cookie = $remember->issue('member', 'user-1');
+        [$selector] = explode(':', $cookie);
+
+        [$response, $authManager] = $this->handle($this->guard($remember), ['ss_member' => $cookie], session: new ArraySession());
+
+        $this->assertSame('user-1', $authManager->user()?->getAuthId());
+        $rotated = self::cookieValue($response);
+        $this->assertStringStartsWith($selector . ':', $rotated);
+        $this->assertNotSame($cookie, $rotated);
+
+        $next = $remember->resolve('member', $rotated);
+        $this->assertSame('user-1', $next['userId'] ?? null);
+        $this->assertStringStartsWith($selector . ':', $next['cookie'] ?? '');
+        $this->assertNull($remember->resolve('staff', $remember->issue('member', 'user-2')));
+    }
+
     public function test_the_signed_in_marker_lasts_as_long_as_the_remember_cookie(): void
     {
         $remember = $this->remember();
@@ -334,6 +364,19 @@ final class RememberMeTest extends DataTestCase
             $this->assertSame('user-1', $remember->resolve('member', $kept)['userId'] ?? null, $storage);
             $this->assertNotNull($captured, $storage);
         }
+    }
+
+    public function test_logout_clears_the_row_on_a_driver_without_runs_sql(): void
+    {
+        $remember = $this->plainRemember();
+        $cookie = $remember->issue('member', 'user-1');
+        $kept = $remember->issue('member', 'user-1');
+
+        $remember->forget('member', $cookie);
+
+        $this->assertNull($remember->resolve('member', $cookie));
+        $this->assertSame('user-1', $remember->resolve('member', $kept)['userId'] ?? null);
+        $this->assertCount(1, $this->rows());
     }
 
     public function test_guard_without_remember_config_unchanged(): void
