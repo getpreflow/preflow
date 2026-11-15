@@ -8,6 +8,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Publishing\Publisher;
 use Preflow\Publishing\ShadowTypes;
 use Preflow\Folio\Translations\StoredOverrides;
 use Preflow\Media\MediaConfig;
@@ -37,6 +38,8 @@ final class ContentSet
         private readonly array $rowChecks = [],
         /** @var array<string, \Closure(array<string, mixed>): bool> table => whether an export leaves the row out */
         private readonly array $exportSkips = [],
+        /** @var array<string, array<string, mixed>> table => the values an imported row gets for the keys it lacks (@since 0.77) */
+        private readonly array $importDefaults = [],
     ) {}
 
     public static function fromApp(Application $app): self
@@ -44,6 +47,7 @@ final class ContentSet
         $c = $app->container();
         $registry = $c->get(DataManager::class)->getTypeRegistry();
         $tables = [];
+        $defaults = [];
         foreach ($c->get(TypeCatalog::class)->all() as $listing) {
             if (!$listing->transfer) {
                 continue; // user types and opted-out types stay on the server
@@ -54,6 +58,8 @@ final class ContentSet
                 foreach ([ShadowTypes::published($def), ShadowTypes::revisions($def)] as $shadow) {
                     $tables[$shadow->table] = $shadow;
                 }
+                // A snapshot from an archive made before 0.77 has no published version: it gets none.
+                $defaults[ShadowTypes::published($def)->table] = [Publisher::PUBLISHED_VERSION => null];
             }
         }
         $assets = $c->get(MediaLibrary::class)->definition();
@@ -85,6 +91,7 @@ final class ContentSet
             [StoredOverrides::TABLE => $overrides->importProblem(...)],
             // The bin is local to a server: a binned asset's files are not in the archive, so elsewhere it could never be restored.
             [$assets->table => static fn (array $row): bool => (string) ($row['binned_at'] ?? '') !== ''],
+            $defaults,
         );
     }
 
@@ -106,6 +113,17 @@ final class ContentSet
     public function rowProblem(string $table, string $id, array $row): ?string
     {
         return isset($this->rowChecks[$table]) ? ($this->rowChecks[$table])($id, $row) : null;
+    }
+
+    /**
+     * The values an imported row of the table gets for the keys it lacks (an older archive's):
+     * a snapshot's `_published_version` is null, never the local row's.
+     *
+     * @return array<string, mixed>
+     */
+    public function importDefaults(string $table): array
+    {
+        return $this->importDefaults[$table] ?? [];
     }
 
     /**

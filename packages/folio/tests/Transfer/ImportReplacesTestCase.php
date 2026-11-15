@@ -205,6 +205,31 @@ abstract class ImportReplacesTestCase extends TestCase
         $this->assertContains('game', $observer->writes, 'written straight through the driver: reported by the importer');
     }
 
+    /**
+     * A snapshot from an archive made before 0.77 has no _published_version: the imported snapshot
+     * has none either (never the local one's), so the record's state is the full compare.
+     */
+    public function test_an_archived_snapshot_without_its_version_is_compared_in_full(): void
+    {
+        $driver = $this->dm()->driver($this->storage());
+        $driver->save('note', 'n1', ['uuid' => 'n1', 'name' => 'Local', '_version' => 3], 'uuid');
+        $driver->save('note__published', 'n1', ['uuid' => 'n1', 'name' => 'Local', '_published_version' => 3], 'uuid');
+        $driver->save('note__published', 'n2', ['uuid' => 'n2', 'name' => 'Two', '_published_version' => 1], 'uuid');
+        $publisher = $this->app()->container()->get(\Preflow\Publishing\Publisher::class);
+        $this->assertSame('published', $publisher->states('note', ['n1'])['n1']->value);
+
+        $this->import($this->archive([
+            'note' => ['n1' => ['name' => 'Archived', '_version' => 3], 'n2' => ['name' => 'Two', '_version' => 1]],
+            'note__published' => ['n1' => ['name' => 'Older'], 'n2' => ['name' => 'Two', '_published_version' => 1]],
+        ]));
+
+        $this->assertNull($this->dm()->driver($this->storage())->findOne('note__published', 'n1', 'uuid')['_published_version'] ?? null);
+        $this->assertSame(1, (int) ($this->dm()->driver($this->storage())->findOne('note__published', 'n2', 'uuid')['_published_version'] ?? 0), 'a version in the archive is kept');
+        $states = $publisher->states('note');
+        $this->assertSame('changed', $states['n1']->value, 'the full compare: the archived snapshot differs');
+        $this->assertSame('published', $states['n2']->value);
+    }
+
     public function test_a_slug_on_another_id_replaces_the_local_record(): void
     {
         $this->setGames(['b' => ['title' => 'Live', 'slug' => 'x']]);

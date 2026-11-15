@@ -115,6 +115,9 @@ final class Importer
                     if (!is_array($row)) {
                         throw new TransferException("Broken record in the export: {$table}/{$id}");
                     }
+                    // Keys an older archive lacks get their stated value, never the local row's
+                    // (a snapshot's published version: none, so its record is compared in full).
+                    $row += $this->set->importDefaults($table);
                     // As saveType() writes it: no empty text in number, yes/no or date columns.
                     $rows[$id] = $this->dm->storageValues($def, $row);
                 }
@@ -295,7 +298,7 @@ final class Importer
                     $skipped[basename($file, '.json')] = true;
                     continue;
                 }
-                $incoming[basename($file, '.json')] = $row;
+                $incoming[basename($file, '.json')] = $row + $this->set->importDefaults($table);
             }
             $local = [];
             foreach ($this->dm->driver($def->storage)->findMany($table, new Query())->items() as $row) {
