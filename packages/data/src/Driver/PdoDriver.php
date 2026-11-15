@@ -11,7 +11,7 @@ use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -316,9 +316,47 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
      * Whether a transaction is open on the connection: one opened through PDO, or one the
      * driver opened itself (SqliteDriver::exclusive()).
      */
-    protected function inTransaction(): bool
+    public function inTransaction(): bool
     {
         return $this->pdo->inTransaction();
+    }
+
+    /**
+     * $fn in a transaction on the connection; inside an open one, joined (its owner commits or
+     * rolls back). A failed commit is rolled back where the connection still holds the
+     * transaction, and rethrown. @since 0.78
+     */
+    public function transaction(\Closure $fn): mixed
+    {
+        if ($this->inTransaction()) {
+            return $fn();
+        }
+        $this->pdo->beginTransaction();
+        try {
+            $result = $fn();
+        } catch (\Throwable $e) {
+            $this->rollBackQuietly();
+            throw $e;
+        }
+        try {
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->rollBackQuietly();
+            throw $e;
+        }
+
+        return $result;
+    }
+
+    /** Rolls back the transaction the connection still holds; a failure to do so is not the error that matters. */
+    private function rollBackQuietly(): void
+    {
+        try {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+        } catch (\PDOException) {
+        }
     }
 
     /** An integral number or numeric string as its canonical integer string ('05', 5.0: '5'); anything else as it is. */

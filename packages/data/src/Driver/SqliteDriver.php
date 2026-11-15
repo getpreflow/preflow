@@ -67,7 +67,7 @@ final class SqliteDriver extends PdoDriver
         return array_map(static fn (mixed $v): mixed => is_bool($v) ? (int) $v : $v, $bindings);
     }
 
-    protected function inTransaction(): bool
+    public function inTransaction(): bool
     {
         return $this->immediate || parent::inTransaction();
     }

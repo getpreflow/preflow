@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Folio\Transfer;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\PartialCommit;
 use Preflow\Data\Query;
 use Preflow\Data\StorageDriver;
+use Preflow\Data\Transactions;
 
 /**
  * Reads a content archive into a temporary directory, validating every entry
@@ -132,24 +133,19 @@ final class Importer
             return;
         }
 
-        /** @var array<int, \PDO> $began */
-        $began = [];
-        $committed = 0;
+        $storages = [];
         $joined = false; // a transaction the caller opened: its rollback is the caller's
+        foreach ($work as [$def, $driver]) {
+            $storages[] = $def->storage;
+            if ($driver instanceof Transactions && $driver->inTransaction()) {
+                $joined = true;
+            }
+        }
         /** @var list<array{0: StorageDriver, 1: string, 2: string, 3: list<string>, 4: array<string, array<string, mixed>>}> $undo */
         $undo = [];
         try {
             foreach ($work as $table => [$def, $driver, $diff]) {
-                if ($driver instanceof PdoDriver) {
-                    $pdo = $driver->pdo();
-                    if (!isset($began[spl_object_id($pdo)])) {
-                        if ($pdo->inTransaction()) {
-                            $joined = true;
-                        } else {
-                            $pdo->beginTransaction();
-                            $began[spl_object_id($pdo)] = $pdo;
-                        }
-                    }
+                if ($driver instanceof Transactions) {
                     continue;
                 }
                 // No transaction: keep the rows this import replaces or removes, to write them back.
@@ -163,41 +159,24 @@ final class Importer
                 $undo[] = [$driver, $table, $def->idField, $diff['added'], $before];
             }
 
-            foreach ($work as $table => [$def, $driver, $diff, $rows]) {
-                // Deleted first: a unique value the archive gives another id is free when it is written.
-                foreach ([...$diff['removed'], ...$diff['changed']] as $id) {
-                    $driver->delete($table, $id, $def->idField);
+            $this->dm->transaction(array_values(array_unique($storages)), static function () use ($work): void {
+                foreach ($work as $table => [$def, $driver, $diff, $rows]) {
+                    // Deleted first: a unique value the archive gives another id is free when it is written.
+                    foreach ([...$diff['removed'], ...$diff['changed']] as $id) {
+                        $driver->delete($table, $id, $def->idField);
+                    }
+                    foreach ($rows as $id => $row) {
+                        $driver->save($table, (string) $id, $row, $def->idField);
+                    }
                 }
-                foreach ($rows as $id => $row) {
-                    $driver->save($table, (string) $id, $row, $def->idField);
-                }
-            }
+            });
+        } catch (PartialCommit $e) {
+            $failure = $e->getPrevious() ?? $e;
+            self::undo($undo, $failure->getMessage(), $e);
 
-            foreach ($began as $pdo) {
-                $pdo->commit();
-                $committed++;
-            }
+            throw new TransferException('another database was already committed: ' . $failure->getMessage(), 0, $e);
         } catch (\Throwable $e) {
-            foreach ($began as $pdo) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-            }
-            try {
-                foreach ($undo as [$driver, $table, $idField, $added, $before]) {
-                    foreach ([...$added, ...array_keys($before)] as $id) {
-                        $driver->delete($table, (string) $id, $idField);
-                    }
-                    foreach ($before as $id => $row) {
-                        $driver->save($table, (string) $id, $row, $idField);
-                    }
-                }
-            } catch (\Throwable $undoFailed) {
-                throw new TransferException('its records could not be put back (' . $undoFailed->getMessage() . '): ' . $e->getMessage(), 0, $e);
-            }
-            if ($committed > 0) {
-                throw new TransferException('another database was already committed: ' . $e->getMessage(), 0, $e);
-            }
+            self::undo($undo, $e->getMessage(), $e);
 
             // In the caller's transaction the rows are still written until the caller rolls back.
             throw new TransferException($e->getMessage(), $joined ? 0 : self::RECORDS_UNCHANGED, $e);
@@ -209,6 +188,28 @@ final class Importer
             }
         }
         $this->set->imported($changed);
+    }
+
+    /**
+     * Writes back what an import replaced or removed on storage without transactions, and
+     * deletes what it added there.
+     *
+     * @param list<array{0: StorageDriver, 1: string, 2: string, 3: list<string>, 4: array<string, array<string, mixed>>}> $undo
+     */
+    private static function undo(array $undo, string $failure, \Throwable $e): void
+    {
+        try {
+            foreach ($undo as [$driver, $table, $idField, $added, $before]) {
+                foreach ([...$added, ...array_keys($before)] as $id) {
+                    $driver->delete($table, (string) $id, $idField);
+                }
+                foreach ($before as $id => $row) {
+                    $driver->save($table, (string) $id, $row, $idField);
+                }
+            }
+        } catch (\Throwable $undoFailed) {
+            throw new TransferException('its records could not be put back (' . $undoFailed->getMessage() . '): ' . $failure, 0, $e);
+        }
     }
 
     /**

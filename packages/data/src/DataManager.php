@@ -537,6 +537,62 @@ final class DataManager
         }
     }
 
+    /**
+     * Runs $fn in one transaction per storage driver among $storages that has Transactions
+     * (names aliasing one driver count once), nested in the given order: the first is
+     * outermost, so the last commits first. A storage without transactions (JSON files) simply
+     * runs the writes. A storage already in a transaction joins it: commit and rollback stay
+     * with its owner. When $fn throws, every transaction this call began rolls back and the
+     * failure is rethrown.
+     *
+     * A commit that fails after another storage this call began has committed throws
+     * PartialCommit (naming the committed storages, the failure as previous): those writes stay.
+     *
+     * @template T
+     * @param list<string> $storages storage names as configured
+     * @param \Closure(): T $fn
+     * @return T
+     * @throws PartialCommit
+     * @since 0.78
+     */
+    public function transaction(array $storages, \Closure $fn): mixed
+    {
+        /** @var array<int, array{0: string, 1: Transactions}> $drivers by driver object, first name kept */
+        $drivers = [];
+        foreach ($storages as $name) {
+            $driver = $this->resolveDriver($name);
+            if ($driver instanceof Transactions) {
+                $drivers[spl_object_id($driver)] ??= [$name, $driver];
+            }
+        }
+
+        /** @var list<string> $committed */
+        $committed = [];
+        $run = $fn;
+        foreach (array_reverse($drivers) as [$name, $driver]) {
+            $inner = $run;
+            $run = static function () use ($name, $driver, $inner, &$committed): mixed {
+                if ($driver->inTransaction()) {
+                    return $driver->transaction($inner); // joined: the owner commits
+                }
+                $result = $driver->transaction($inner);
+                $committed[] = $name;
+
+                return $result;
+            };
+        }
+
+        try {
+            return $run();
+        } catch (\Throwable $e) {
+            // Only a commit can fail once an inner storage has committed ($fn has returned by then).
+            if ($committed !== []) {
+                throw new PartialCommit($committed, $e);
+            }
+            throw $e;
+        }
+    }
+
     private function sql(string $storage, string $needs): RunsSql
     {
         $driver = $this->resolveDriver($storage);

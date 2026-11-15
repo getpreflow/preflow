@@ -6,7 +6,6 @@ namespace Preflow\Folio\Permissions;
 
 use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -129,26 +128,15 @@ final class KnownPermissions
     }
 
     /**
-     * Writes the whole baseline in one pass, in one transaction on SQL storage: a failure
-     * part-way leaves the list empty, so the next call starts the baseline over instead of
-     * announcing what the missing rows would have covered.
+     * Writes the whole baseline in one pass, in one transaction where the storage has them
+     * (DataManager::transaction()): a failure part-way leaves the list empty, so the next call
+     * starts the baseline over instead of announcing what the missing rows would have covered.
      *
      * @param list<string> $names
      */
     private function baseline(array $names): void
     {
-        $driver = $this->dm->driver(self::definition()->storage);
-        $pdo = $driver instanceof PdoDriver && !$driver->pdo()->inTransaction() ? $driver->pdo() : null;
-        $pdo?->beginTransaction();
-        try {
-            $this->markKnown($names);
-            $pdo?->commit();
-        } catch (\Throwable $e) {
-            if ($pdo?->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $e;
-        }
+        $this->dm->transaction([self::definition()->storage], fn () => $this->markKnown($names));
     }
 
     private function save(string $name, string $at): void

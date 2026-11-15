@@ -8,7 +8,6 @@ use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
 use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\TypeDefinition;
@@ -470,9 +469,9 @@ final class Publisher
      * With $loadedVersion (the _version the editor loaded), the working copy is written only if
      * it is still stored with that version, checked in the write as saveDraft() does; a stale
      * one throws VersionConflict (with the stored version) before any snapshot is written, and
-     * the record is left as it was. On SQL storage the working copy and the snapshot are written
-     * in one transaction (a caller's open transaction is used as it is); JSON writes the working
-     * copy first.
+     * the record is left as it was. On storage with transactions the working copy and the
+     * snapshot are written in one transaction (a caller's open transaction is used as it is);
+     * JSON writes the working copy first.
      *
      * Without it (null) the working copy is written unchecked, as the scheduler, the CLI and
      * importers (records built without _version) need.
@@ -509,7 +508,7 @@ final class Publisher
     /**
      * publish() after the checks: the working copy (checked against the version expected: the loaded
      * one, else the one just read, tried again when another save got in between) and the snapshot,
-     * in one transaction on SQL storage. On storage without transactions (JSON) a failed snapshot
+     * in one transaction (DataManager::transaction()). On storage without transactions (JSON) a failed snapshot
      * write puts the stored schedule back, so a scheduled record is tried again on the next run.
      */
     private function write(DynamicRecord $working, ?string $by, ?int $loadedVersion): DynamicRecord
@@ -530,7 +529,7 @@ final class Publisher
             $previous = null;
             $wrote = false;
             try {
-                $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $id, $by, $expected, $next, &$previous, &$wrote): ?DynamicRecord {
+                $snapshot = $this->dm->transaction([$def->storage, $shadow->storage], function () use ($working, $shadow, $id, $by, $expected, $next, &$previous, &$wrote): ?DynamicRecord {
                     // The schedule is cleared: '' is "no schedule", as a cancelled one (RecordWriter) is stored.
                     $working->set('_publish_at', '');
                     if (!$this->dm->saveTypeIfVersion($working, $expected, $next, validate: false)) {
@@ -629,47 +628,6 @@ final class Publisher
         $this->appendRevision($def, $snapshot, $previous, $stamp, $by);
 
         return $snapshot;
-    }
-
-    /**
-     * Run $writes in one transaction per SQL connection the types are stored on (one already
-     * open is left to its owner); rolled back on any error. JSON storage has none.
-     *
-     * @template T
-     * @param list<TypeDefinition> $types
-     * @param \Closure(): T $writes
-     * @return T
-     */
-    private function transaction(array $types, \Closure $writes): mixed
-    {
-        /** @var array<int, \PDO> $began */
-        $began = [];
-        try {
-            foreach ($types as $type) {
-                $driver = $this->dm->driver($type->storage);
-                if (!$driver instanceof PdoDriver) {
-                    continue;
-                }
-                $pdo = $driver->pdo();
-                if (!isset($began[spl_object_id($pdo)]) && !$pdo->inTransaction()) {
-                    $pdo->beginTransaction();
-                    $began[spl_object_id($pdo)] = $pdo;
-                }
-            }
-            $result = $writes();
-            foreach ($began as $pdo) {
-                $pdo->commit();
-            }
-
-            return $result;
-        } catch (\Throwable $e) {
-            foreach ($began as $pdo) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-            }
-            throw $e;
-        }
     }
 
     /**

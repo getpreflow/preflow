@@ -11,6 +11,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\RunsSql;
 use Preflow\Data\SortDirection;
 use Preflow\Data\StorageDriver;
+use Preflow\Data\Transactions;
 
 /**
  * What every StorageDriver does, as tests. Extend it, implement the two hooks, and run it with
@@ -70,6 +71,7 @@ use Preflow\Data\StorageDriver;
  *
  * Capabilities are claimed by implementing their interface, and their tests are skipped otherwise:
  * - RunsSql (@since 0.78): rawQuery(), execute() and dialect() tests.
+ * - Transactions (@since 0.78): transaction() commits, rolls back and rethrows, joins an open one.
  */
 abstract class StorageDriverContract extends TestCase
 {
@@ -265,6 +267,83 @@ abstract class StorageDriverContract extends TestCase
         }
 
         return $this->driver;
+    }
+
+    // --- transactions (Transactions, @since 0.78) ----------------------------------------------
+
+    private function transactions(): Transactions
+    {
+        if (!$this->driver instanceof Transactions) {
+            $this->markTestSkipped('The driver does not implement Transactions.');
+        }
+        $this->createRecords();
+
+        return $this->driver;
+    }
+
+    public function test_transaction_commits_what_the_closure_wrote(): void
+    {
+        $driver = $this->transactions();
+
+        $result = $driver->transaction(function () use ($driver): string {
+            $driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One']);
+
+            return 'done';
+        });
+
+        $this->assertSame('done', $result, 'the closure\'s result is returned');
+        $this->assertFalse($driver->inTransaction());
+        $this->assertSame('One', $this->record('r1')['label']);
+    }
+
+    public function test_transaction_rolls_back_and_rethrows(): void
+    {
+        $driver = $this->transactions();
+        $failure = new \RuntimeException('boom');
+
+        try {
+            $driver->transaction(function () use ($driver, $failure): void {
+                $driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One']);
+
+                throw $failure;
+            });
+            $this->fail('Expected the failure.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame($failure, $e);
+        }
+
+        $this->assertFalse($driver->inTransaction());
+        $this->assertNull($driver->findOne('records', 'r1'), 'rolled back');
+    }
+
+    public function test_a_nested_transaction_joins_the_open_one(): void
+    {
+        $driver = $this->transactions();
+
+        $driver->transaction(function () use ($driver): void {
+            try {
+                $driver->transaction(function () use ($driver): void {
+                    $driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'Inner']);
+
+                    throw new \RuntimeException('inner');
+                });
+            } catch (\RuntimeException) {
+                // Joined, no savepoint: the inner write stays part of the outer transaction.
+            }
+            $this->assertTrue($driver->inTransaction(), 'the inner failure leaves the outer transaction open');
+        });
+
+        $this->assertSame('Inner', $this->record('r1')['label'], 'committed with the outer transaction');
+    }
+
+    public function test_in_transaction_is_true_only_inside(): void
+    {
+        $driver = $this->transactions();
+
+        $this->assertFalse($driver->inTransaction());
+        $inside = $driver->transaction(static fn (): bool => $driver->inTransaction());
+        $this->assertTrue($inside);
+        $this->assertFalse($driver->inTransaction());
     }
 
     // --- findMany ----------------------------------------------------------------------------
