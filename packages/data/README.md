@@ -976,7 +976,13 @@ return [
 - **People:** `people()` groups the rows by person (`AggregatingStorage`, every built-in
   driver); on a storage without aggregates it reads them 1000 at a time. On JSON storage the
   grouping itself reads every row of the log (as `recent()` does there), so an admin asks for it
-  on its own screen (Folio's All activity), never on every page.
+  on its own screen (Folio's All activity), never on every page. There the answer is kept with the
+  log's change token (`ChangeTokens`, the JSON driver's cache generation) and reused while nothing
+  writes the log, in the same process.
+- **JSON-stored sites:** every page of the log, the people filter and `prune()` read the whole log
+  on JSON storage, so keep it short there: `'keep_rows' => 2000` (or less on a busy site) in
+  `config/activity.php`, and the nightly `php preflow activity:prune`. SQL storage reads by
+  index and is fine with the default 10000.
 - **Retention:** `prune()` deletes rows older than `keep_days` and beyond the newest
   `keep_rows`, 1000 at a time with one `DELETE … IN (…)` each (`DataManager::deleteManyIn()`),
   and the newest-row entries pointing at them. It runs from `php preflow activity:prune` (and
@@ -990,6 +996,10 @@ return [
 - `Savepoints::savepoint(\Closure $fn)`: inside an open transaction, `$fn` under a savepoint
   (released, or rolled back to when it throws); without one, `$fn` as it is. The SQL drivers
   implement it; a storage without transactions need not.
+- `ChangeTokens::changeToken($type)`: a token that moves with every write of the type through a
+  driver, so a reader may reuse what it computed while it stays (`DataManager::changeToken($def)`;
+  `StoredActivityLog::people()` does). The JSON driver gives its cache generation (null without a
+  cache directory); SQL drivers need not.
 
 ## JSON storage cache
 

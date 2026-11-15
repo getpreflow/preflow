@@ -81,6 +81,19 @@ final class DataManager
     }
 
     /**
+     * A token that moves with every write of $def's records through a driver (ChangeTokens), read
+     * before the records it guards; null when the storage has none or cannot tell (reuse nothing).
+     *
+     * @since 0.77
+     */
+    public function changeToken(TypeDefinition $def): ?string
+    {
+        $driver = $this->resolveDriver($def->storage);
+
+        return $driver instanceof ChangeTokens ? $driver->changeToken($def->table) : null;
+    }
+
+    /**
      * Write $fields, and only those, to the record $id of $def while its $versionField holds
      * $expected (a whole number; null: none yet, never 0 for that) — the compare-and-set
      * ConditionalUpdates gives, the same on every built-in driver. $fields may set $versionField

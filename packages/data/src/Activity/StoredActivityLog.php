@@ -272,7 +272,10 @@ final class StoredActivityLog implements ActivityLog
 
     /**
      * Each person once, by their latest event. A storage that aggregates (AggregatingStorage, the
-     * built-in drivers) groups the rows; any other is read BATCH rows at a time.
+     * built-in drivers) groups the rows; any other is read BATCH rows at a time. On a storage with
+     * change tokens (ChangeTokens: the JSON driver, which groups in PHP over every row) the answer
+     * is kept with the log table's token and reused while no write moved it (its reads reported
+     * again, DataManager::replayReads()).
      */
     public function people(?array $subjects = null): array
     {
@@ -280,11 +283,36 @@ final class StoredActivityLog implements ActivityLog
             return [];
         }
         $subjects = $subjects === null ? null : array_values(array_unique(array_map(strval(...), $subjects)));
-
-        return $this->whenStored(fn (): array => $this->guarded(fn (): array => $this->dm->driver($this->type->storage) instanceof AggregatingStorage
+        $read = fn (): array => $this->whenStored(fn (): array => $this->guarded(fn (): array => $this->dm->driver($this->type->storage) instanceof AggregatingStorage
             ? $this->groupedPeople($subjects)
             : $this->scannedPeople($subjects)), []);
+
+        // Read before the rows: a write after this point moves it, so the memo is never newer than it says.
+        $token = $this->dm->changeToken($this->type);
+        if ($token === null) {
+            return $read();
+        }
+        $key = $subjects === null ? '*' : implode("\0", $subjects);
+        $memo = $this->people[$key] ?? null;
+        if ($memo !== null && $memo['token'] === $token) {
+            $this->dm->replayReads($memo['reads']);
+
+            return $memo['people'];
+        }
+        [$people, $reads] = $this->dm->captureReads($read);
+        if (count($this->people) >= self::PEOPLE_MEMOS) {
+            $this->people = [];
+        }
+        $this->people[$key] = ['token' => $token, 'people' => $people, 'reads' => $reads];
+
+        return $people;
     }
+
+    /** How many subject lists people() keeps an answer for. */
+    private const int PEOPLE_MEMOS = 32;
+
+    /** @var array<string, array{token: string, people: list<string>, reads: list<array<int, mixed>>}> people() answers by subject list */
+    private array $people = [];
 
     /** @param list<string>|null $subjects @return list<string> */
     private function groupedPeople(?array $subjects): array

@@ -285,6 +285,34 @@ final class JsonFileDriverTest extends TestCase
         clearstatcache();
     }
 
+    /** The change token stays while nothing writes and moves with every write through a driver. */
+    public function test_change_token_moves_with_every_write(): void
+    {
+        [$driver, $cacheDir] = $this->cached();
+        $this->assertInstanceOf(\Preflow\Data\ChangeTokens::class, $driver);
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'One', 'v' => 1]);
+        $tokens = [$driver->changeToken('post')];
+        $this->assertNotNull($tokens[0]);
+        $this->assertSame($tokens[0], $driver->changeToken('post'), 'no write, same token');
+        $driver->findMany('post', new Query());
+        $this->assertSame($tokens[0], $driver->changeToken('post'), 'a read moves nothing');
+
+        $driver->save('post', 'p1', ['uuid' => 'p1', 'title' => 'Two', 'v' => 1]);
+        $tokens[] = $driver->changeToken('post');
+        $driver->updateIfVersion('post', 'p1', ['title' => 'Three'], 'v', 1);
+        $tokens[] = $driver->changeToken('post');
+        $driver->save('post', 'p2', ['uuid' => 'p2', 'title' => 'x']);
+        (new JsonFileDriver($this->dataDir, $cacheDir))->delete('post', 'p2'); // another driver (process) on the same data
+        $tokens[] = $driver->changeToken('post');
+        $driver->deleteMany('post', ['p1']);
+        $tokens[] = $driver->changeToken('post');
+
+        $this->assertCount(5, array_unique($tokens), 'each write moved it');
+        $this->assertNotSame($driver->changeToken('page'), $driver->changeToken('post'), 'per type');
+        $this->assertNull((new JsonFileDriver($this->dataDir))->changeToken('post'), 'without a cache directory it cannot tell');
+        $this->deleteDir($cacheDir);
+    }
+
     public function test_cache_second_query_reads_the_cache(): void
     {
         [$driver, $cacheDir] = $this->cached();

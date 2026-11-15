@@ -14,7 +14,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens
 {
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
@@ -124,6 +124,22 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         } catch (\Throwable) {
             // Without a generation file the signature and clearCache() still apply.
         }
+    }
+
+    /**
+     * The type's change token (ChangeTokens): its generation, which every save and delete through
+     * a driver moves, with the directory's mtime (records added or removed outside one), as the
+     * query cache's cheap check reads them. Null without a cache directory (no generation is kept).
+     *
+     * @since 0.77
+     */
+    public function changeToken(string $type): ?string
+    {
+        if ($this->cacheDir === null || !self::safeName($type)) {
+            return null;
+        }
+
+        return implode('|', $this->quickSignature($this->generation($type), $this->typeDir($type)));
     }
 
     /**
