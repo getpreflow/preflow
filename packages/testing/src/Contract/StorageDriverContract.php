@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Testing\Contract;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\ConditionalUpdates;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
@@ -54,6 +55,9 @@ use Preflow\Data\StorageDriver;
  * - Numbers compare and sort as numbers. `where()` binds tighter than `orWhere()`, as AND before
  *   OR in SQL. `total()` counts every match, ignoring limit and offset.
  * - save() of an existing id updates that record; delete() of a missing id does nothing.
+ * - A driver with ConditionalUpdates (@since 0.77) writes only the named fields, and only while the
+ *   version field holds the expected whole number (as text or number; null: none, NULL or '', and
+ *   never 0); a match that changes no value is still a match.
  * - An empty id is '', 0 or '0' (as PdoDriver and DataManager treat it): save() with one inserts
  *   a record whose id the store generates, and lastInsertId() returns it.
  *
@@ -396,6 +400,59 @@ abstract class StorageDriverContract extends TestCase
     }
 
     // --- helpers ----------------------------------------------------------------------------
+
+    // --- conditional updates (ConditionalUpdates, @since 0.77) ----------------------------------
+
+    private function conditional(): ConditionalUpdates
+    {
+        if (!$this->driver instanceof ConditionalUpdates) {
+            $this->markTestSkipped('The driver does not implement ConditionalUpdates (DataManager reads, compares and writes instead).');
+        }
+        $this->createType('versioned', ['uuid' => 'string', 'label' => 'string', 'amount' => 'number', 'version' => 'string']);
+
+        return $this->driver;
+    }
+
+    public function test_update_if_version_writes_only_the_named_fields_while_the_version_matches(): void
+    {
+        $driver = $this->conditional();
+        $driver->save('versioned', 'v1', ['uuid' => 'v1', 'label' => 'One', 'amount' => 1, 'version' => '3']);
+
+        $this->assertTrue($driver->updateIfVersion('versioned', 'v1', ['label' => 'Two', 'version' => '4'], 'version', 3));
+        $row = $driver->findOne('versioned', 'v1') ?? [];
+        $this->assertSame('Two', $row['label']);
+        $this->assertNumber(1, $row['amount'] ?? null, 'a field not named stays as stored');
+        $this->assertSame('4', (string) $row['version']);
+
+        $this->assertFalse($driver->updateIfVersion('versioned', 'v1', ['label' => 'Stale'], 'version', 3), 'another version: nothing written');
+        $this->assertSame('Two', ($driver->findOne('versioned', 'v1') ?? [])['label']);
+        $this->assertFalse($driver->updateIfVersion('versioned', 'missing', ['label' => 'X'], 'version', 0), 'no such record');
+        $this->assertNull($driver->findOne('versioned', 'missing'), 'and none is made');
+    }
+
+    public function test_update_if_version_with_unchanged_values_still_matches(): void
+    {
+        $driver = $this->conditional();
+        $driver->save('versioned', 'v1', ['uuid' => 'v1', 'label' => 'One', 'amount' => 1, 'version' => '3']);
+
+        $this->assertTrue($driver->updateIfVersion('versioned', 'v1', ['label' => 'One'], 'version', 3), 'a match that changes nothing is a match');
+    }
+
+    public function test_update_if_version_null_expects_no_version(): void
+    {
+        $driver = $this->conditional();
+        $driver->save('versioned', 'none', ['uuid' => 'none', 'label' => 'A', 'amount' => 1, 'version' => null]);
+        $driver->save('versioned', 'empty', ['uuid' => 'empty', 'label' => 'A', 'amount' => 1, 'version' => '']);
+        $driver->save('versioned', 'zero', ['uuid' => 'zero', 'label' => 'A', 'amount' => 1, 'version' => '0']);
+
+        $this->assertTrue($driver->updateIfVersion('versioned', 'none', ['version' => '-1'], 'version', null));
+        $this->assertTrue($driver->updateIfVersion('versioned', 'empty', ['version' => '5'], 'version', null));
+        $this->assertFalse($driver->updateIfVersion('versioned', 'zero', ['version' => '5'], 'version', null), '0 is a version, not none');
+        $this->assertFalse($driver->updateIfVersion('versioned', 'none', ['version' => '7'], 'version', null), 'it has one now');
+        $this->assertTrue($driver->updateIfVersion('versioned', 'none', ['version' => '7'], 'version', -1));
+        $this->assertFalse($driver->updateIfVersion('versioned', 'empty', ['label' => 'B'], 'version', 0), "'' is no version 0");
+        $this->assertSame('7', (string) ($driver->findOne('versioned', 'none') ?? [])['version']);
+    }
 
     private function createRecords(): void
     {

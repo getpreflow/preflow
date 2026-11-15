@@ -14,7 +14,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates
 {
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
@@ -537,6 +537,33 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
             return true;
         });
+    }
+
+    /** A read, compare and write of the stored record under the type's lock (exclusive()). */
+    public function updateIfVersion(string $type, string|int $id, array $fields, string $versionField, ?int $expected, string $idField = 'uuid'): bool
+    {
+        self::assertSafe($type, $id);
+        if ($fields === [] || array_key_exists($idField, $fields)) {
+            throw new \InvalidArgumentException('updateIfVersion() needs the fields to write, without the id.');
+        }
+
+        return $this->exclusive($type, function () use ($type, $id, $fields, $versionField, $expected, $idField): bool {
+            $stored = $this->findOne($type, $id, $idField);
+            if ($stored === null || !self::holdsVersion($stored[$versionField] ?? null, $expected)) {
+                return false;
+            }
+            $this->save($type, $id, array_replace($stored, $fields), $idField);
+
+            return true;
+        });
+    }
+
+    /** As SQL compares it: no value (null, '') only for null, else the canonical text of the number. */
+    private static function holdsVersion(mixed $stored, ?int $expected): bool
+    {
+        $none = $stored === null || $stored === '';
+
+        return $expected === null ? $none : !$none && is_scalar($stored) && (string) $stored === (string) $expected;
     }
 
     /**

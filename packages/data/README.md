@@ -376,6 +376,38 @@ if (!$dm->saveTypeIfVersion($record, $loaded)) {
 Folio's `Publisher::saveDraft()` uses it, and throws `VersionConflict` instead of returning
 `false`.
 
+### Version fields: every save bumps the version (0.77)
+
+A `VersionFields` set with `$dm->useVersionFields($fields)` names the types whose records keep a
+version (`$fields->of($def)`: the field, or null). preflow/publishing sets one: the working copies
+of the types that publish keep `_version`.
+
+- Every `saveType()`, and `save()` / `insert()` / `update()` of a class-backed type, writes that
+  field as the stored version + 1 (the record holds the version written). The write is checked:
+  a save landing in between makes it try again on the newer version, and a record busy on every
+  try is written anyway. So an app's own save or an import never stores new content under an old
+  version, and an editor holding the old one conflicts.
+- The checked writes write the version they are given: `saveTypeIfVersion()` (its `$next`) and
+  `updateFieldsIfVersion()` (below).
+- Out of reach: raw SQL through `execute()` and drivers called directly. Seed or restore rows that
+  way when a version must stay as it is.
+- `$dm->versionFieldOf($def)` tells the field.
+
+### Writing some fields while the version matches (0.77)
+
+`$dm->updateFieldsIfVersion($def, $id, ['_order' => 3], '_version', $expected)` writes only those
+fields, and only while `$versionField` holds `$expected`: a whole number, or `null` for none yet
+(`NULL`, `''`; never 0 for that). It returns `false` when the record is missing or holds another
+version. The fields may set the version field itself; nothing is bumped. Drivers implement
+`ConditionalUpdates::updateIfVersion()` the same way: SQL as one `UPDATE` of the named columns
+`WHERE id = ? AND version = ?` (in a transaction; a match that changes no value is still a match),
+JSON as a read, compare and write under the type's lock. Without it, DataManager reads, compares and
+writes (with the `E_USER_NOTICE` above). `StorageDriverContract` tests it.
+
+`$dm->hasColumn($def, $column)` asks a storage with a schema (`DescribesColumns`, the SQL drivers)
+whether the type's table has the column; a storage without one (JSON) takes any key (true). A
+missing column is asked again on the next call, as a migrate may add it.
+
 ### Saving null clears a column
 
 `save()` writes every key it is given, `null` included: `$record->set('expires_at', null)`

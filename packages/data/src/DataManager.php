@@ -35,6 +35,87 @@ final class DataManager
 
     private ?DataObserver $observer = null;
 
+    private ?VersionFields $versionFields = null;
+
+    /** @var array<string, true> "storage|table|column" found (a missing column is asked again: a migrate may add it) */
+    private array $columns = [];
+
+    /**
+     * Which types keep a version field that every save bumps (VersionFields); null: none.
+     *
+     * @since 0.77
+     */
+    public function useVersionFields(?VersionFields $fields): void
+    {
+        $this->versionFields = $fields;
+    }
+
+    /**
+     * The version field records of $def keep (VersionFields), or null.
+     *
+     * @since 0.77
+     */
+    public function versionFieldOf(TypeDefinition $def): ?string
+    {
+        return $this->versionFields?->of($def);
+    }
+
+    /**
+     * Whether the table of $def has $column: asked of a storage with a schema (DescribesColumns);
+     * one without (JSON files) takes any key, so true.
+     *
+     * @since 0.77
+     */
+    public function hasColumn(TypeDefinition $def, string $column): bool
+    {
+        $key = $def->storage . '|' . $def->table . '|' . $column;
+        if (isset($this->columns[$key])) {
+            return true;
+        }
+        $driver = $this->resolveDriver($def->storage);
+        if ($driver instanceof DescribesColumns && !$driver->hasColumn($def->table, $column)) {
+            return false;
+        }
+
+        return $this->columns[$key] = true;
+    }
+
+    /**
+     * Write $fields, and only those, to the record $id of $def while its $versionField holds
+     * $expected (a whole number; null: none yet, never 0 for that) — the compare-and-set
+     * ConditionalUpdates gives, the same on every built-in driver. $fields may set $versionField
+     * itself; nothing else is bumped. Values are stored as saveType() stores them (storageValues()).
+     * A driver without ConditionalUpdates gets a read, compare and write, which is not atomic (an
+     * E_USER_NOTICE says so, once per driver class).
+     *
+     * @since 0.77
+     *
+     * @param array<string, mixed> $fields not empty; never the id field
+     * @return bool false when the record is missing or holds another version (nothing written)
+     */
+    public function updateFieldsIfVersion(TypeDefinition $def, string|int $id, array $fields, string $versionField, ?int $expected): bool
+    {
+        $driver = $this->resolveDriver($def->storage);
+        $fields = $this->storageValues($def, $fields);
+        if ($driver instanceof ConditionalUpdates) {
+            $written = $driver->updateIfVersion($def->table, $id, $fields, $versionField, $expected, $def->idField);
+        } else {
+            self::noticeNotVersioned($driver);
+            $stored = $driver->findOne($def->table, $id, $def->idField);
+            $value = $stored[$versionField] ?? null;
+            $none = $value === null || $value === '';
+            $written = $stored !== null && ($expected === null ? $none : !$none && is_scalar($value) && (string) $value === (string) $expected);
+            if ($written) {
+                $driver->save($def->table, $id, array_replace($stored, $fields), $def->idField);
+            }
+        }
+        if ($written) {
+            $this->reportWrite($def->storage, $def->table, (string) $id);
+        }
+
+        return $written;
+    }
+
     /**
      * Report every read and write through this manager to $observer (the page cache); null
      * stops reporting. Writes made around the manager, straight through driver(), are reported
@@ -708,9 +789,16 @@ final class DataManager
         }
 
         $data = $this->storageData($record);
-        $this->guarded($record, function () use ($driver, $def, $id, $data): void {
+        $versionField = $this->versionFieldOf($def);
+        $this->guarded($record, function () use ($driver, $def, $id, $data, $versionField): void {
             if (self::emptyId($id)) {
-                $driver->save($def->table, 0, $data, $def->idField); // an auto-increment id: the storage gives it
+                // An auto-increment id: the storage gives it (a first write, version 1).
+                $driver->save($def->table, 0, $versionField === null ? $data : [...$data, $versionField => 1], $def->idField);
+
+                return;
+            }
+            if ($versionField !== null) {
+                $this->saveClassBumped($driver, $def, $id, $data, $versionField);
 
                 return;
             }
@@ -722,6 +810,32 @@ final class DataManager
         }
         $this->forgetSkipped($model, array_keys($values));
         $this->wroteModel($meta, $model);
+    }
+
+    /**
+     * A class-backed save of a type with a version field: its fields written over the stored record
+     * (the other columns kept) with the stored version + 1, checked in the write (ConditionalUpdates)
+     * and tried again when another save got in between; a first write is version 1. As saveBumped(),
+     * a record busy on every try is written anyway.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function saveClassBumped(StorageDriver $driver, TypeDefinition $def, string|int $id, array $data, string $versionField): void
+    {
+        for ($attempt = 1; ; $attempt++) {
+            $stored = $driver->findOne($def->table, $id, $def->idField);
+            if ($stored === null || !$driver instanceof ConditionalUpdates || $attempt >= self::BUMP_ATTEMPTS) {
+                $this->saveKeepingOtherColumns($driver, $def, $id, [...$data, $versionField => (int) ($stored[$versionField] ?? 0) + 1]);
+
+                return;
+            }
+            $value = $stored[$versionField] ?? null;
+            $current = $value === null || $value === '' ? null : (int) $value;
+            $fields = array_diff_key([...$data, $versionField => ($current ?? 0) + 1], [$def->idField => true]);
+            if ($driver->updateIfVersion($def->table, $id, $fields, $versionField, $current, $def->idField)) {
+                return;
+            }
+        }
     }
 
     /**
@@ -1050,8 +1164,46 @@ final class DataManager
             throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
         }
 
-        $this->guarded($record, fn () => $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField));
+        $versionField = $this->versionFieldOf($typeDef);
+        if ($versionField === null) {
+            $this->guarded($record, fn () => $driver->save($typeDef->table, $id, $this->storageData($record), $typeDef->idField));
+        } else {
+            $this->guarded($record, fn () => $this->saveBumped($driver, $record, $id, $versionField));
+        }
         $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
+    }
+
+    /** How often a bumping save tries the stored version + 1 before it writes over a busy record. */
+    private const int BUMP_ATTEMPTS = 3;
+
+    /**
+     * saveType() of a type with a version field (VersionFields): written as the stored version + 1,
+     * checked in the write (VersionedStorage) and tried again when another save got in between;
+     * the record holds the version written. A record saved by others on every try is written
+     * anyway (with their version + 1): a save never fails for being busy.
+     */
+    private function saveBumped(StorageDriver $driver, DynamicRecord $record, string|int $id, string $versionField): void
+    {
+        $def = $record->getType();
+        $had = array_key_exists($versionField, $record->toArray());
+        $before = $record->get($versionField);
+        try {
+            for ($attempt = 1; ; $attempt++) {
+                $current = (int) ($driver->findOne($def->table, $id, $def->idField)[$versionField] ?? 0);
+                $record->set($versionField, $current + 1);
+                if (!$driver instanceof VersionedStorage || $attempt >= self::BUMP_ATTEMPTS) {
+                    $driver->save($def->table, $id, $this->storageData($record), $def->idField);
+
+                    return;
+                }
+                if ($driver->saveIfVersion($def->table, $id, $this->storageData($record), $versionField, $current, $def->idField)) {
+                    return;
+                }
+            }
+        } catch (\Throwable $e) {
+            $had ? $record->set($versionField, $before) : $record->remove($versionField);
+            throw $e;
+        }
     }
 
     /**

@@ -11,7 +11,7 @@ use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -249,6 +249,67 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
             }
             throw $e;
         }
+    }
+
+    /**
+     * One UPDATE of the named columns WHERE the id and the version match. MySQL without FOUND_ROWS
+     * counts changed rows only, so a match that changed nothing is confirmed by a locking read in the
+     * same transaction.
+     */
+    public function updateIfVersion(string $type, string|int $id, array $fields, string $versionField, ?int $expected, string $idField = 'uuid'): bool
+    {
+        if ($fields === [] || array_key_exists($idField, $fields)) {
+            throw new \InvalidArgumentException('updateIfVersion() needs the fields to write, without the id.');
+        }
+        if ($id === '' || $id === 0 || $id === '0') {
+            throw new \InvalidArgumentException('updateIfVersion() needs the record id.');
+        }
+        $values = [];
+        $set = [];
+        foreach ($fields as $name => $value) {
+            $set[] = $this->dialect->quoteIdentifier($name) . ' = ?';
+            $values[] = match (true) {
+                is_array($value) => json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+                $name === $versionField => self::canonicalVersion($value),
+                default => $value,
+            };
+        }
+        $table = $this->dialect->quoteIdentifier($type);
+        $version = $this->dialect->quoteIdentifier($versionField);
+        $col = $this->dialect->quoteIdentifier($idField);
+        $matches = $expected === null ? $this->dialect->wholeNumber($version) . ' IS NULL' : "{$version} = ?";
+        $bindings = $expected === null ? [$id] : [$id, (string) $expected];
+
+        $own = !$this->inTransaction();
+        if ($own) {
+            $this->pdo->beginTransaction();
+        }
+        try {
+            $update = 'UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$col} = ? AND {$matches}";
+            $written = $this->write($type, $update, [...$values, ...$bindings], $idField)->rowCount() > 0;
+            if (!$written) {
+                $select = "SELECT 1 FROM {$table} WHERE {$col} = ? AND {$matches} LIMIT 1" . $this->dialect->lockingRead();
+                $written = $this->read($type, $select, $bindings)->fetchColumn() !== false;
+            }
+            if ($own) {
+                $this->pdo->commit();
+            }
+
+            return $written;
+        } catch (\Throwable $e) {
+            if ($own && $this->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            if ($own && $e instanceof \PDOException && self::isLostRace($e)) {
+                return false;
+            }
+            throw $e;
+        }
+    }
+
+    public function hasColumn(string $type, string $column): bool
+    {
+        return in_array($column, (new \Preflow\Data\Migration\Schema($this->pdo))->columns($type), true);
     }
 
     /**
