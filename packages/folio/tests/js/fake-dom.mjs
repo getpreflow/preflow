@@ -308,8 +308,29 @@ function notifyAttribute(el, name) {
     });
 }
 
+/** A quoted CSS string's value: backslash escapes (\\" \\\\, hex as CSS.escape writes them) read back. */
+function unescapeCss(text) {
+    return text.replace(/\\([0-9a-fA-F]{1,6}) ?|\\(.)/g, (all, hex, ch) => (hex ? String.fromCodePoint(parseInt(hex, 16)) : ch));
+}
+
+/** CSS.escape() as the CSSOM spec defines it (browsers have it; node does not). */
+export function cssEscape(value) {
+    const s = String(value);
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c === 0) { out += '\uFFFD'; continue; }
+        if ((c >= 1 && c <= 31) || c === 127 || (i === 0 && c >= 48 && c <= 57) || (i === 1 && c >= 48 && c <= 57 && s.charCodeAt(0) === 45)) { out += '\\' + c.toString(16) + ' '; continue; }
+        if (i === 0 && c === 45 && s.length === 1) { out += '\\' + s[i]; continue; }
+        if (c >= 128 || c === 45 || c === 95 || (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122)) { out += s[i]; continue; }
+        out += '\\' + s[i];
+    }
+    return out;
+}
+
 function matchesCompound(el, compound) {
-    const re = /([a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[([\w-]+)(?:([*^$]?=)"([^"]*)")?\]/g;
+    // A quoted attribute value takes CSS escapes (\\" for a quote); an unescaped quote inside one is an unsupported (invalid) selector.
+    const re = /([a-zA-Z][\w-]*)|#([\w-]+)|\.([\w-]+)|\[([\w-]+)(?:([*^$]?=)"((?:[^"\\]|\\.)*)")?\]/g;
     let m, seen = 0;
     while ((m = re.exec(compound)) !== null) {
         seen += m[0].length;
@@ -318,11 +339,12 @@ function matchesCompound(el, compound) {
         if (m[3] && !el.className.split(/\s+/).includes(m[3])) { return false; }
         if (m[4]) {
             const v = el.getAttribute(m[4]);
+            const want = m[6] === undefined ? undefined : unescapeCss(m[6]);
             if (v === null) { return false; }
-            if (m[5] === '=' && v !== m[6]) { return false; }
-            if (m[5] === '*=' && !v.includes(m[6])) { return false; }
-            if (m[5] === '^=' && !v.startsWith(m[6])) { return false; }
-            if (m[5] === '$=' && !v.endsWith(m[6])) { return false; }
+            if (m[5] === '=' && v !== want) { return false; }
+            if (m[5] === '*=' && !v.includes(want)) { return false; }
+            if (m[5] === '^=' && !v.startsWith(want)) { return false; }
+            if (m[5] === '$=' && !v.endsWith(want)) { return false; }
         }
     }
     if (seen !== compound.length) { throw new Error('fake-dom: unsupported selector ' + compound); }
@@ -366,7 +388,7 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
             if (event.bubbles && document.defaultView) { (document.defaultView.listeners[event.type] || []).slice().forEach((fn) => fn(event)); }
             return !event.defaultPrevented;
         },
-        getElementById: (id) => document.documentElement.querySelector('#' + id),
+        getElementById: (id) => document.documentElement.descendants().find((el) => el.id === id) || null,
         querySelector: (s) => document.documentElement.querySelector(s),
         querySelectorAll: (s) => document.documentElement.querySelectorAll(s),
     };
@@ -386,6 +408,7 @@ export function createWindow({ origin = 'https://site.test', body = {} } = {}) {
             (window.listeners.message || []).forEach((fn) => fn({ data, origin: fromOrigin, source }));
         },
         Event, CustomEvent, console, JSON, Math, Date, URL, URLSearchParams,
+        CSS: { escape: cssEscape },
         /** observe(target, {childList, attributes, attributeFilter, subtree}): appended elements, and attributes added or removed, are reported (element removals and value changes are not). */
         MutationObserver: class {
             constructor(callback) { this.callback = callback; }

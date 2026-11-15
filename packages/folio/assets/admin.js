@@ -1856,7 +1856,7 @@
     function controlsOf(form) {
         var list = Array.prototype.slice.call(form.querySelectorAll('input, select, textarea'));
         if (form.id) {
-            Array.prototype.slice.call(document.querySelectorAll('[form="' + form.id + '"]')).forEach(function (el) {
+            Array.prototype.slice.call(document.querySelectorAll('[form="' + CSS.escape(form.id) + '"]')).forEach(function (el) {
                 if (list.indexOf(el) < 0) { list.push(el); }
             });
         }
@@ -2052,7 +2052,8 @@
     function settlingFields(form) {
         var list = Array.prototype.slice.call(form.querySelectorAll('[data-folio-settling]'));
         if (form.id) {
-            Array.prototype.slice.call(document.querySelectorAll('[form="' + form.id + '"][data-folio-settling], [form="' + form.id + '"] [data-folio-settling]')).forEach(function (el) {
+            var named = '[form="' + CSS.escape(form.id) + '"]';
+            Array.prototype.slice.call(document.querySelectorAll(named + '[data-folio-settling], ' + named + ' [data-folio-settling]')).forEach(function (el) {
                 if (list.indexOf(el) < 0) { list.push(el); }
             });
         }

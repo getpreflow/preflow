@@ -333,6 +333,21 @@ test('a settling field in the side panel (a part naming the form) holds the coun
     assert.equal(p.w.Folio.unsaved.count(p.form), 1);
 });
 
+test('a form id a selector must escape (a quote, a backslash) still finds its side panel fields', async () => {
+    const p = screen({ formId: 'record"1\\b' });
+    const part = el(p.w, p.doc.querySelector('.folio-side'), 'fieldset', { class: 'folio-side-fields', form: p.form.id });
+    const field = el(p.w, part, 'div', { 'data-folio-settling': '' });
+    const input = el(p.w, field, 'input', { type: 'text', name: 'seo', value: 'raw', form: p.form.id });
+    await tick();
+    input.value = 'normalised';
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0, 'the outside field settles');
+    field.dispatchEvent(new p.w.CustomEvent('folio:settled', { bubbles: true }));
+    edit(p.w, input, 'typed');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1);
+    edit(p.w, p.c.label, 'Side panel');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 2, 'and the side field naming the form counts');
+});
+
 test('an edit to another field while one settles still counts, and Cancel restores it', async () => {
     const p = screen();
     const late = lateField(p);
