@@ -1925,13 +1925,12 @@
 
     /** Whether a field of the form (inside it or in a part naming it with form="…") is still settling. */
     function settling(form) {
-        if (form.querySelector('[data-folio-settling]')) { return true; }
-        return !!form.id && !!document.querySelector('[form="' + form.id + '"][data-folio-settling], [form="' + form.id + '"] [data-folio-settling]');
+        return settlingFields(form).length > 0;
     }
 
     function changedCount(form) {
         if (!form) { return 0; }
-        if (settling(form)) { takeSnapshot(form); return 0; } // its values are still the fields' loading
+        if (settling(form)) { retakeSettling(form); } // the settling fields' values are still their loading
         var now = valuesOf(form).values;
         var then = snapshotOf(form).values;
         return differing(now, then).reduce(function (n, name) {
@@ -2024,9 +2023,67 @@
     // value after the boot (a late editor normalising its content) carries data-folio-settling, from the
     // server or set by its script before DOMContentLoaded, and says it is ready by removing the attribute
     // or by sending a bubbling "folio:settled" from inside the field (admin.js then removes it). Until
-    // every settling field of a form is ready the snapshot is retaken instead of changes counted, and
-    // the field's own input and change events are no edit; once the last one is ready the snapshot is
-    // taken again, so what it wrote is the form as loaded.
+    // every settling field of a form is ready, the settling fields' names are retaken into the snapshot
+    // (the person's edits to other fields still count), and the field's own input and change events are
+    // no edit; when a field is ready its names are retaken once more, so what it wrote is the form as
+    // loaded. A field still settling after SETTLE_MS (10 s) is taken as settled, with a console warning.
+    var SETTLE_MS = 10000;
+
+    /** The names the controls under node give (node itself when it is one), for the form. */
+    function namesUnder(form, node) {
+        return controlsOf(form).filter(function (el) { return el === node || (node.contains && node.contains(el)); })
+            .map(function (el) { return String(el.name || el.getAttribute('name') || ''); })
+            .filter(function (name) { return name !== ''; });
+    }
+
+    /** The snapshot takes the current values of these names only; every other name keeps its snapshot. */
+    function mergeSnapshot(form, names) {
+        if (!names.length) { return; }
+        var snap = snapshotOf(form);
+        var now = valuesOf(form);
+        names.forEach(function (name) {
+            ['values', 'hidden'].forEach(function (part) {
+                if (now[part][name]) { snap[part][name] = now[part][name]; } else { delete snap[part][name]; }
+            });
+        });
+    }
+
+    /** The settling fields of the form: elements inside it, or in a part naming it with form="…". */
+    function settlingFields(form) {
+        var list = Array.prototype.slice.call(form.querySelectorAll('[data-folio-settling]'));
+        if (form.id) {
+            Array.prototype.slice.call(document.querySelectorAll('[form="' + form.id + '"][data-folio-settling], [form="' + form.id + '"] [data-folio-settling]')).forEach(function (el) {
+                if (list.indexOf(el) < 0) { list.push(el); }
+            });
+        }
+        return list;
+    }
+
+    /** While fields settle: their names are retaken into the snapshot, the person's edits elsewhere still count. */
+    function retakeSettling(form) {
+        var names = [];
+        settlingFields(form).forEach(function (field) {
+            waitForSettling(field);
+            namesUnder(form, field).forEach(function (n) { if (names.indexOf(n) < 0) { names.push(n); } });
+        });
+        mergeSnapshot(form, names);
+    }
+
+    // A field never settles for longer than SETTLE_MS: then it is taken as settled, with a warning.
+    function waitForSettling(field) {
+        if (field._folioSettleTimer) { return; }
+        field._folioSettleTimer = setTimeout(function () {
+            if (!field.hasAttribute('data-folio-settling')) { return; }
+            var control = field.querySelector ? field.querySelector('[name]') : null;
+            var label = field.id || (control ? control.getAttribute('name') : '') || field.tagName;
+            if (window.console && typeof window.console.warn === 'function') {
+                window.console.warn('Folio: the field "' + label + '" did not settle within ' + (SETTLE_MS / 1000) + ' s (data-folio-settling); its changes count from now on.');
+            }
+            field.removeAttribute('data-folio-settling');
+            settledIn(field);
+        }, SETTLE_MS);
+    }
+
     function onSettled(e) {
         var field = e.target && e.target.closest ? e.target.closest('[data-folio-settling]') : null;
         if (field) { field.removeAttribute('data-folio-settling'); settledIn(field); }
@@ -2040,15 +2097,19 @@
         return part ? document.getElementById(part.getAttribute('form')) : null;
     }
 
+    // A field is ready: its names take their current values in the snapshot (the whole snapshot again
+    // when the form was not edited yet, as settleUnsavedStates does), so the person's edits still count.
     function settledIn(node) {
         var form = fieldFormOf(node);
-        if (!form || form.tagName !== 'FORM' || snapshotForms().indexOf(form) < 0 || settling(form)) { return; }
-        takeSnapshot(form);
+        if (!form || form.tagName !== 'FORM' || snapshotForms().indexOf(form) < 0) { return; }
+        mergeSnapshot(form, namesUnder(form, node));
+        if (!settling(form) && !form._folioEdited) { takeSnapshot(form); }
         refreshUnsavedStates();
     }
 
     function watchSettling() {
         document.addEventListener('folio:settled', onSettled);
+        snapshotForms().forEach(function (form) { settlingFields(form).forEach(waitForSettling); });
         if (typeof window.MutationObserver !== 'function' || !document.body) { return; }
         new window.MutationObserver(function (records) {
             records.forEach(function (r) {

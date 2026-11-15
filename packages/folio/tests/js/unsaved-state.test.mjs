@@ -7,7 +7,7 @@
 // bubbling "folio:discard" and resyncs fields.js's counters; a hidden-input change (or a refused save)
 // reloads the edit page past the leave guard instead.
 // Run: node --test 'packages/folio/tests/js/*.test.mjs'
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { createWindow, load } from './fake-dom.mjs';
@@ -331,4 +331,47 @@ test('a settling field in the side panel (a part naming the form) holds the coun
     field.dispatchEvent(new p.w.CustomEvent('folio:settled', { bubbles: true }));
     edit(p.w, input, 'typed');
     assert.equal(p.w.Folio.unsaved.count(p.form), 1);
+});
+
+test('an edit to another field while one settles still counts, and Cancel restores it', async () => {
+    const p = screen();
+    const late = lateField(p);
+    await tick();
+    edit(p.w, p.c.title, 'Hello!'); // the person, during the settling window
+    late.input.value = '<p>normalised</p>';
+    late.input.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1, 'only the settling field is retaken');
+    assert.equal(p.text.textContent, '1 unsaved change');
+    late.field.removeAttribute('data-folio-settling');
+    await tick();
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1, 'ready: the edit is still counted');
+    p.cancel.click();
+    assert.equal(p.c.title.value, 'Hello');
+    assert.equal(p.w.Folio.unsaved.count(p.form), 0);
+    assert.equal(p.w.Folio.unsaved.isDirty(), false);
+});
+
+test('a field that has not settled after 10 s is taken as settled, with a warning naming it', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const p = screen();
+        const late = lateField(p);
+        late.field.id = 'late-story';
+        const warned = [];
+        p.w.console = { ...console, warn: (...args) => warned.push(args.join(' ')) };
+        mock.timers.tick(1); // the boot's timer: the field is still loading
+        late.input.value = '<p>normalised</p>';
+        assert.equal(p.w.Folio.unsaved.count(p.form), 0);
+        mock.timers.tick(9998);
+        assert.equal(late.field.hasAttribute('data-folio-settling'), true);
+        mock.timers.tick(10);
+        assert.equal(late.field.hasAttribute('data-folio-settling'), false, 'no longer settling');
+        assert.equal(warned.length, 1);
+        assert.match(warned[0], /late-story/);
+        late.input.value = '<p>typed</p>';
+        late.input.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+        assert.equal(p.w.Folio.unsaved.count(p.form), 1, 'counting is on again');
+    } finally {
+        mock.timers.reset();
+    }
 });

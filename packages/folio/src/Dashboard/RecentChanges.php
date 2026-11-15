@@ -353,7 +353,6 @@ final class RecentChanges
         $this->logger !== null ? $this->logger->warning($message, ['exception' => $e]) : error_log($message);
     }
 
-    /** An app's subject as a name: "purchase_order" reads "Purchase order". */
     /**
      * An app's own subject by name: folio.activity.subjects.{subject} (the site's lang/{locale}/folio.php
      * gives it, as any Folio phrase), else its readable name ("work_order": "Work order").
@@ -363,6 +362,7 @@ final class RecentChanges
         return Labels::resolve(FolioText::translator(), 'folio.activity.subjects.' . $subject, null) ?? self::humanize($subject);
     }
 
+    /** An app's subject as a name: "purchase_order" reads "Purchase order". */
     private static function humanize(string $subject): string
     {
         return ucfirst(str_replace(['_', '-'], ' ', $subject));

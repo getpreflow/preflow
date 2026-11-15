@@ -272,3 +272,13 @@ test('the roles form is under Folio.unsaved: a column toggle marks it, Save clea
     p.form.requestSubmit(p.save);
     assert.equal(p.w.Folio.unsaved.isDirty(), false);
 });
+
+test('a name[] list in another order with the same values counts once', () => {
+    const p = screen({ sections: CONTENT, selected: ['post.view', 'job.view'] });
+    const field = p.field;
+    const first = p.rows.post.cells.view;
+    first.remove();
+    field.appendChild(first); // the same boxes, posted in another order
+    p.form.dispatchEvent(new p.w.Event('change', { bubbles: true }));
+    assert.equal(p.w.Folio.unsaved.count(p.form), 1);
+});

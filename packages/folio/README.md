@@ -1836,9 +1836,10 @@ with `form="…"` (the side panel's), without controls marked `data-folio-no-edi
 start with `_` (`_csrf_token`, `_locale`, `_version`). `Folio.unsaved.count(form)` is the number of
 **field names** whose values differ from that snapshot, so a field kept in hidden inputs (rich
 text, blocks, relations, picked assets) counts and a radio group counts once. A multi-value name
-(`permissions[]`, a checkbox list) counts **each value** added or taken off, so ticking three boxes
-of the permissions matrix says "3 unsaved changes" (since 0.77). While the form holds unsaved changes the state never hides: when
-nothing is left to count it says **"Unsaved changes"** without a number.
+counts **each value** added or taken off: every `name[]` list does, the permissions matrix
+(`permissions[]`), relations, tags, multi-selects and checkbox lists, so ticking three boxes of the
+matrix says "3 unsaved changes"; the same values in another order count once (since 0.77).
+While the form holds unsaved changes the state never hides: when nothing is left to count it says **"Unsaved changes"** without a number.
 
 Cancel calls `Folio.unsaved.discard(form)`. When only visible controls changed, they go back to
 the page as loaded in place (disabled ones too), the form's unsaved mark is cleared, a bubbling
@@ -1874,11 +1875,13 @@ or set by its script before `DOMContentLoaded`, and says it is ready in one of t
   (`el.dispatchEvent(new CustomEvent('folio:settled', {bubbles: true}))`); admin.js then removes
   the attribute.
 
-Until every settling field of a form (inside it or in a part naming it with `form="…"`) is ready,
-the snapshot is **retaken instead of changes counted**, and the field's own `input` and `change`
-events mark nothing unsaved. Once the last one is ready the snapshot is taken again, so what the
-field wrote is the form as loaded and only the person's edits count from there. A field that
-never says it is ready keeps its form at no count: mark it only while it is really loading.
+Until a settling field of a form (inside it or in a part naming it with `form="…"`) is ready,
+**its names are retaken into the snapshot** instead of counted, and its own `input` and `change`
+events mark nothing unsaved; the person's edits to the form's other fields count (and Cancel
+restores them) as always. When the field is ready its names are retaken once more, so what it
+wrote is the form as loaded. A field still settling after **10 seconds** is taken as settled:
+admin.js removes the attribute, warns in the console naming the field, and its changes count from
+then on, so counting is never off for long. Mark a field only while it is really loading.
 
 ### Type customizations
 

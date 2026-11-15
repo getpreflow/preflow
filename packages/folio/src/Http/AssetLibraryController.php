@@ -787,7 +787,7 @@ final class AssetLibraryController
         $stack = $picker && is_string($params['stack'] ?? null) ? $this->library->find($params['stack']) : null;
         $stack = $stack !== null && !$stack->isCopy() ? $stack : null;
         // With "Unused only" the unused set is read once: its page and its missing-alt count.
-        $unusedSet = $unused ? $this->unused($kind, $q) : null;
+        $unusedSet = $unused && $stack === null ? $this->unused($kind, $q) : null;
         $result = match (true) {
             $stack !== null => $this->stack($stack, $private),
             $unusedSet !== null => self::pageOf($missingAlt ? array_values(array_filter($unusedSet, $this->missesAlt(...))) : $unusedSet, $page),
@@ -902,8 +902,9 @@ final class AssetLibraryController
      * The usage sources are asked about every old enough asset on each request and the
      * result is paged by pageOf(), so pages are exact (cleanup's own chunks count checked assets,
      * not candidates); on a very large library this page is slow, like media:cleanup.
+     *
+     * @return list<Asset>
      */
-    /** @return list<Asset> */
     private function unused(string $kind, string $q): array
     {
         $words = preg_split('/\s+/', mb_strtolower($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
