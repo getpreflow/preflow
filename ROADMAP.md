@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-15 (v0.77.0)
+> Last updated: 2026-11-15 (v0.77.1)
 
 ## Current State
 
-**v0.77.0** — 8181 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.77.1** — 8185 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -524,6 +524,14 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Fixes from the 0.77 rollout (v0.77.1, released 2026-11-15):**
+  - **`preflow migrate` on JSON-only sites.** Migrate used to stop before any step on a site without SQL storage, so `publishing.published_versions` never ran there. Now it runs the steps registered for any storage. `MigrationRegistry::afterMigrate()` takes `sqlOnly` (default `true`); `publishing.published_versions`, `rbac.seed`, `folio.permissions` and `folio.addresses` pass `sqlOnly: false`. Schema migrations and table syncs stay SQL-only.
+  - **starter-folio's demo content.** Recent changes and All activity showed the seeded rows as "Former user". The starter now registers its `seed` marker with `ActivityActors` as "Demo content" (English, German, French). The starter without Folio writes no activity, so it needs nothing.
+  - **Upgrading:**
+    - devtools, publishing, rbac and folio need data 0.77.1; upgrade all `preflow/*` packages together.
+    - JSON sites run `vendor/bin/preflow migrate` once (again) to mark their snapshots.
+    - Projects made from starter-folio may copy `app/Support/SeedActor.php`, `resources/lang/*/demo.php` and the lines in `AppServiceProvider::boot()`.
+    - A package's own post-migrate step that works through `DataManager` can pass `sqlOnly: false` to run on JSON sites.
 - **Folio proposals and the tag field (v0.77.0, released 2026-11-15):** this release ships the approved handoff proposals, the tag field and the 0.76 follow-ups. Every feature rests on a framework API that works without Folio.
   - **Admin:**
     - **⌘K palette.** Search or jump to screens, actions, records of every type you may view, and assets. A "Search or jump to…" entry in the sidebar and the rail, and the chords `g d`, `g a`, `g p`.
@@ -554,7 +562,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - shared contract tests in `preflow/testing` enforce this.
   - **Upgrading:**
     - **Packages.** Upgrade all `preflow/*` packages together (`composer update "preflow/*" -W`); the constraints refuse mixes.
-    - **Migrate.** Run `vendor/bin/preflow migrate` on every site, JSON sites included. It creates `preflow_activity` and `preflow_activity_last` and adds `_published_version`, and the step `publishing.published_versions` marks existing snapshots. Before migrate runs:
+    - **Migrate.** Run `vendor/bin/preflow migrate` on every site, JSON sites included. It creates `preflow_activity` and `preflow_activity_last` and adds `_published_version`, and the step `publishing.published_versions` marks existing snapshots (on JSON sites from 0.77.1 on). Before migrate runs:
       - activity writes are logged as warnings;
       - `recent()` reads empty;
       - publish counts fall back to the full compare.
@@ -568,7 +576,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - **Your own implementations:**
       - an `ActivityLog` implementation adds `recent(by:)`, `people()`, `prune()` and `forget()`;
       - a `VersionFields` implementation adds `nonContent()`;
-      - sites that hold personal data in their own types bind `PersonalTypes`.
+      - sites that hold personal data in their own types bind `PersonalTypes`;
+      - a third-party storage driver that runs `preflow/testing`'s `StorageDriverContract` must now implement the `LIKE`, `search()` and `whereAny()` `CONTAINS` behaviour to pass: case-insensitive matching in every alphabet (`test_like_ignores_case_in_every_alphabet`) and search inside list values (`test_search_finds_a_term_in_text_and_in_list_values`).
     - **Translation jobs.** `queued_by` holds the user id; older jobs keep a name.
   - **Next:**
     - the private harness: principles, decisions and the integrator for parallel work;
