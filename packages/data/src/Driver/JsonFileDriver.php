@@ -657,11 +657,6 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return '';
     }
 
-    public function rawQuery(string $sql, array $bindings = []): array
-    {
-        throw new \RuntimeException('Raw SQL queries are not supported by the JSON file driver.');
-    }
-
     /**
      * A type or id that can be one segment of a file path: not "." or "..",
      * and without "/", "\\" or NUL. Anything else would leave the type's folder.

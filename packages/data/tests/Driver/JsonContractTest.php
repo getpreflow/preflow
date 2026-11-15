@@ -31,11 +31,6 @@ final class JsonContractTest extends StorageDriverContract
         return false; // the caller gives every id
     }
 
-    protected function supportsRawQuery(): bool
-    {
-        return false;
-    }
-
     protected function tearDown(): void
     {
         if (isset($this->dataDir) && is_dir($this->dataDir)) {

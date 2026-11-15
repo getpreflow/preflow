@@ -503,7 +503,7 @@ final class DataManager
      */
     public function raw(string $sql, array $bindings = [], string $storage = 'default'): array
     {
-        $driver = $this->resolveDriver($storage);
+        $driver = $this->sql($storage, 'raw() needs a storage that runs SQL');
         if ($this->observer === null && $this->captures === []) {
             return $driver->rawQuery($sql, $bindings);
         }
@@ -521,23 +521,30 @@ final class DataManager
     }
 
     /**
-     * Execute a raw SQL write (UPDATE, DELETE, an upsert) and return the
-     * affected rows. Only PDO drivers run SQL; any other driver is a LogicException.
+     * Execute a raw SQL write (UPDATE, DELETE, an upsert) and return the affected rows. A storage
+     * that does not implement RunsSql throws UnsupportedStorage (a LogicException).
      *
      * @param array<int|string, mixed> $bindings Parameter bindings
      */
     public function execute(string $sql, array $bindings = [], string $storage = 'default'): int
     {
-        $driver = $this->resolveDriver($storage);
-        if (!$driver instanceof Driver\PdoDriver) {
-            throw new \LogicException("Storage driver [{$storage}] does not run SQL; execute() needs a PDO driver.");
-        }
+        $driver = $this->sql($storage, 'execute() needs a storage that runs SQL');
 
         try {
             return $driver->execute($sql, $bindings);
         } finally {
             $this->observer?->rawWrote($this->storageKey($storage), $sql); // also after a failure: part may be written
         }
+    }
+
+    private function sql(string $storage, string $needs): RunsSql
+    {
+        $driver = $this->resolveDriver($storage);
+        if (!$driver instanceof RunsSql) {
+            throw new UnsupportedStorage($storage, RunsSql::class, $needs);
+        }
+
+        return $driver;
     }
 
     /**

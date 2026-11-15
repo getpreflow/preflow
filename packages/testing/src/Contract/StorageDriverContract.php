@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\ConditionalUpdates;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
+use Preflow\Data\RunsSql;
 use Preflow\Data\SortDirection;
 use Preflow\Data\StorageDriver;
 
@@ -66,7 +67,9 @@ use Preflow\Data\StorageDriver;
  * - supportsAutoIds() (default true): false skips the test that saves with each empty id ('',
  *   0, '0') and reads the new id from lastInsertId() (the JSON file driver needs the id from
  *   the caller).
- * - supportsRawQuery() (default true): false skips the rawQuery() test (SQL drivers only).
+ *
+ * Capabilities are claimed by implementing their interface, and their tests are skipped otherwise:
+ * - RunsSql (@since 0.78): rawQuery(), execute() and dialect() tests.
  */
 abstract class StorageDriverContract extends TestCase
 {
@@ -82,12 +85,6 @@ abstract class StorageDriverContract extends TestCase
 
     /** Whether save() with an empty id makes the store generate one, read with lastInsertId(). */
     protected function supportsAutoIds(): bool
-    {
-        return true;
-    }
-
-    /** Whether rawQuery() runs SQL against the store. */
-    protected function supportsRawQuery(): bool
     {
         return true;
     }
@@ -234,14 +231,40 @@ abstract class StorageDriverContract extends TestCase
 
     public function test_raw_query(): void
     {
-        if (!$this->supportsRawQuery()) {
-            $this->markTestSkipped('The driver runs no raw SQL (supportsRawQuery() is false).');
-        }
+        $sql = $this->runsSql();
         $this->seedItems();
 
-        $rows = $this->driver->rawQuery('SELECT title FROM items WHERE uuid = ?', ['2']);
+        $rows = $sql->rawQuery('SELECT title FROM items WHERE uuid = ?', ['2']);
 
         $this->assertSame([['title' => 'Banana']], $rows);
+    }
+
+    public function test_execute_returns_the_affected_rows(): void
+    {
+        $sql = $this->runsSql();
+        $this->seedItems();
+
+        $this->assertSame(2, $sql->execute('UPDATE items SET title = ? WHERE uuid IN (?, ?)', ['x', '1', '2']));
+    }
+
+    public function test_dialect_quotes_identifiers_the_store_accepts(): void
+    {
+        $sql = $this->runsSql();
+        $this->seedItems();
+        $q = $sql->dialect()->quoteIdentifier(...);
+
+        $rows = $sql->rawQuery('SELECT ' . $q('title') . ' FROM ' . $q('items') . ' WHERE uuid = ?', ['2']);
+
+        $this->assertSame([['title' => 'Banana']], $rows);
+    }
+
+    private function runsSql(): RunsSql
+    {
+        if (!$this->driver instanceof RunsSql) {
+            $this->markTestSkipped('The driver does not implement RunsSql.');
+        }
+
+        return $this->driver;
     }
 
     // --- findMany ----------------------------------------------------------------------------

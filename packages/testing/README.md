@@ -158,7 +158,7 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
 | `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)` |
-| `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `supportsRawQuery()` |
+| `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`; capability tests (`RunsSql`) run when the driver implements the interface |
 | `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |
 
 ```php
