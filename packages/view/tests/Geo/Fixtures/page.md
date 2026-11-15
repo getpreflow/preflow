@@ -4,7 +4,7 @@ A Made-up Framework
 
 Six forces, one question: **what holds** when the ground moves?
 
-Read the paper → [About the author](https://smart-stack.test/about)
+Read the paper → [About the author](https://example-shop.test/about)
 
 ### The field
 
@@ -51,6 +51,6 @@ Read it if you:
 
 ### Contact
 
-Write to [hello@example.test](mailto:hello@example.test) or see the [privacy notice](https://smart-stack.test/privacy).
+Write to [hello@example.test](mailto:hello@example.test) or see the [privacy notice](https://example-shop.test/privacy).
 
-![Portrait of the author](https://smart-stack.test/media/portrait.jpg)
+![Portrait of the author](https://example-shop.test/media/portrait.jpg)

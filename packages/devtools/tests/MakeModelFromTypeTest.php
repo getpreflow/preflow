@@ -44,8 +44,8 @@ final class MakeModelFromTypeTest extends TestCase
     public static function types(): array
     {
         return [
-            'holz-objekte object' => [__DIR__ . '/Fixtures/types/object.json', 'WoodObject'],
-            'bggenius game' => [__DIR__ . '/Fixtures/types/game.json', 'Game'],
+            'atlas-objects object' => [__DIR__ . '/Fixtures/types/object.json', 'WoodObject'],
+            'example game' => [__DIR__ . '/Fixtures/types/game.json', 'Game'],
             'translatable, matrix, blocks, scoped unique, label map, composite indexes' => [__DIR__ . '/Fixtures/types/article.json', 'Article'],
         ];
     }

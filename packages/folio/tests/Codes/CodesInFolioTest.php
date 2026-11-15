@@ -172,7 +172,7 @@ final class CodesInFolioTest extends TestCase
     /** @return array<string, mixed> a create form post */
     private function create(array $over = []): array
     {
-        return $over + ['purpose' => 'members.book', 'code' => 'smart-stack 2026', 'label' => 'Book', 'max_uses' => '3'];
+        return $over + ['purpose' => 'members.book', 'code' => 'example-club 2026', 'label' => 'Book', 'max_uses' => '3'];
     }
 
     public function test_codes_admin_is_built_in_when_codes_installed(): void
@@ -346,8 +346,8 @@ final class CodesInFolioTest extends TestCase
 
         // Only the table body: the debug toolbar's query log also shows the code.
         $rows = fn (string $uri): string => preg_match('#<tbody.*?</tbody>#s', (string) $this->send('GET', $uri)->getBody(), $m) === 1 ? $m[0] : '';
-        $this->assertStringContainsString('SMARTSTACK2026', $rows('/folio/code?f[form]=readable'));
-        $this->assertStringNotContainsString('SMARTSTACK2026', $rows('/folio/code?f[form]=random'));
+        $this->assertStringContainsString('EXAMPLECLUB2026', $rows('/folio/code?f[form]=readable'));
+        $this->assertStringNotContainsString('EXAMPLECLUB2026', $rows('/folio/code?f[form]=random'));
     }
 
     #[RunInSeparateProcess]
@@ -358,14 +358,14 @@ final class CodesInFolioTest extends TestCase
 
         $res = $this->send('POST', '/folio/code', $this->create());
         $this->assertSame(302, $res->getStatusCode());
-        $record = $this->stored($this->idOf('SMARTSTACK2026'));
+        $record = $this->stored($this->idOf('EXAMPLECLUB2026'));
         $this->assertSame('readable', $record->get('form'));
         $this->assertSame(0, (int) $record->get('uses'));
         $this->assertSame('', (string) $record->get('revoked_at'));
         $this->assertSame('members.book', $record->get('purpose'));
 
         // The issued code works like one from Codes::issue().
-        $this->assertTrue($this->codes()->check('Smart Stack 2026', 'members.book')->ok);
+        $this->assertTrue($this->codes()->check('example club 2026', 'members.book')->ok);
     }
 
     #[RunInSeparateProcess]
@@ -388,7 +388,7 @@ final class CodesInFolioTest extends TestCase
         $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['purpose' => 'members.trial', 'code' => 'trial 2027', 'expires_at' => '2031-05-06T07:08']))->getStatusCode());
         $this->assertSame('2031-05-06T07:08', (string) $this->stored($this->idOf('TRIAL2027'))->get('expires_at'));
         $this->assertSame(302, $this->send('POST', '/folio/code', $this->create())->getStatusCode());
-        $this->assertSame('', (string) ($this->stored($this->idOf('SMARTSTACK2026'))->get('expires_at') ?? ''));
+        $this->assertSame('', (string) ($this->stored($this->idOf('EXAMPLECLUB2026'))->get('expires_at') ?? ''));
     }
 
     #[RunInSeparateProcess]
@@ -453,7 +453,7 @@ final class CodesInFolioTest extends TestCase
         $this->login();
 
         $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['max_uses' => '3.0']))->getStatusCode());
-        $id = $this->idOf('SMARTSTACK2026');
+        $id = $this->idOf('EXAMPLECLUB2026');
         $this->assertSame('3', (string) $this->stored($id)->get('max_uses')); // a typed column reads back 3
 
         $this->assertSame(302, $this->send('POST', "/folio/code/{$id}", ['label' => 'Book', 'max_uses' => ' 5.0 '])->getStatusCode());
@@ -491,7 +491,7 @@ final class CodesInFolioTest extends TestCase
         $this->login();
 
         $this->assertSame(302, $this->send('POST', '/folio/code', $this->create())->getStatusCode());
-        $res = $this->send('POST', '/folio/code', $this->create(['code' => 'SMARTSTACK2026']));
+        $res = $this->send('POST', '/folio/code', $this->create(['code' => 'EXAMPLECLUB2026']));
         $this->assertSame(422, $res->getStatusCode());
         $this->assertStringContainsString('already exists', (string) $res->getBody());
         $this->assertCount(1, $this->dm()->queryType('code')->get()->items());
@@ -557,7 +557,7 @@ final class CodesInFolioTest extends TestCase
 
         // A payload typed into a create post is ignored.
         $this->assertSame(302, $this->send('POST', '/folio/code', $this->create(['payload' => '{"grant":"all"}']))->getStatusCode());
-        $this->assertSame([], $this->codes()->check('Smart Stack 2026', 'members.book')->payload);
+        $this->assertSame([], $this->codes()->check('example club 2026', 'members.book')->payload);
     }
 
     #[RunInSeparateProcess]

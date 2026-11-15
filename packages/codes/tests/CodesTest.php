@@ -141,10 +141,10 @@ final class CodesTest extends TestCase
     public function test_issue_readable_and_redeem(): void
     {
         $codes = $this->codes();
-        $code = $codes->issue('members.book', ['edition' => 1], 'SMARTSTACK2026', 'Book, first edition');
+        $code = $codes->issue('members.book', ['edition' => 1], 'EXAMPLECLUB2026', 'Book, first edition');
 
-        $this->assertSame('SMARTSTACK2026', $code);
-        $result = $codes->redeem('SMARTSTACK2026', 'members.book', 'member-1');
+        $this->assertSame('EXAMPLECLUB2026', $code);
+        $result = $codes->redeem('EXAMPLECLUB2026', 'members.book', 'member-1');
         $this->assertTrue($result->ok);
         $this->assertNull($result->reason);
         $this->assertSame(['edition' => 1], $result->payload);
@@ -159,39 +159,39 @@ final class CodesTest extends TestCase
     public function test_readable_code_with_unicode_dashes_and_spaces(): void
     {
         $codes = $this->codes();
-        $codes->issue('members.book', [], 'SMART-STACK 2026');
+        $codes->issue('members.book', [], 'EXAMPLE-CLUB 2026');
 
         foreach ([
-            "SMART\u{2013}STACK 2026",            // en dash
-            "SMART\u{2011}STACK\u{00A0}2026",     // non-breaking hyphen, non-breaking space
-            "SMART\u{200B}STACK\u{2014}2026",     // zero-width space, em dash
-            "\u{FEFF}smart stack\u{2009}2026\u{2060}", // BOM, thin space, word joiner
+            "EXAMPLE\u{2013}CLUB 2026",            // en dash
+            "EXAMPLE\u{2011}CLUB\u{00A0}2026",     // non-breaking hyphen, non-breaking space
+            "EXAMPLE\u{200B}CLUB\u{2014}2026",     // zero-width space, em dash
+            "\u{FEFF}example club\u{2009}2026\u{2060}", // BOM, thin space, word joiner
         ] as $typed) {
             $this->assertTrue($codes->check($typed, 'members.book')->ok, bin2hex($typed));
         }
-        $this->assertSame('SMARTSTACK2026', Codes::normalizeReadable("SMART\u{2013}STACK\u{2011}\u{00A0}\u{200B}2026"));
+        $this->assertSame('EXAMPLECLUB2026', Codes::normalizeReadable("EXAMPLE\u{2013}CLUB\u{2011}\u{00A0}\u{200B}2026"));
     }
 
     public function test_readable_code_with_minus_sign_and_soft_hyphen(): void
     {
         $codes = $this->codes();
-        $codes->issue('members.book', [], 'SMART-STACK 2026');
+        $codes->issue('members.book', [], 'EXAMPLE-CLUB 2026');
 
         // Copied from a PDF or an ebook: U+2212 minus sign, U+00AD soft hyphen.
-        $this->assertTrue($codes->check("SMART\u{2212}STACK 2026", 'members.book')->ok);
-        $this->assertTrue($codes->check("SMART\u{00AD}STACK 2026", 'members.book')->ok);
-        $this->assertSame('SMARTSTACK2026', Codes::normalizeReadable("SMART\u{2212}STA\u{00AD}CK 2026"));
+        $this->assertTrue($codes->check("EXAMPLE\u{2212}CLUB 2026", 'members.book')->ok);
+        $this->assertTrue($codes->check("EXAMPLE\u{00AD}CLUB 2026", 'members.book')->ok);
+        $this->assertSame('EXAMPLECLUB2026', Codes::normalizeReadable("EXAMPLE\u{2212}CLU\u{00AD}B 2026"));
     }
 
     public function test_readable_code_normalised(): void
     {
         $codes = $this->codes();
-        $this->assertSame('SMARTSTACK2026', $codes->issue('members.book', [], ' smart-stack 2026 '));
+        $this->assertSame('EXAMPLECLUB2026', $codes->issue('members.book', [], ' example-club 2026 '));
 
-        foreach (['smartstack2026', ' Smart-Stack 2026 ', "smart\tstack-2026\n", 'SMART-STACK-2026'] as $typed) {
+        foreach (['exampleclub2026', ' Example-Club 2026 ', "example\tclub-2026\n", 'EXAMPLE-CLUB-2026'] as $typed) {
             $this->assertTrue($codes->check($typed, 'members.book')->ok, $typed);
         }
-        $this->assertSame('unknown', $codes->check('SMARTSTACK2027', 'members.book')->reason);
+        $this->assertSame('unknown', $codes->check('EXAMPLECLUB2027', 'members.book')->reason);
 
         // A random code pasted from a URL with surrounding whitespace matches, but stays case-sensitive.
         $random = $codes->issue('forcemap.round');

@@ -12,7 +12,7 @@ use Preflow\Members\MembersConfig;
 use Preflow\Members\MembersDefaults;
 use Preflow\Members\Tests\Support\MembersScaffold;
 
-/** config/members.php: every key optional, defaults as smart-stack runs today; the provider reads the site's file. */
+/** config/members.php: every key optional, defaults as the example site runs today; the provider reads the site's file. */
 final class MembersConfigTest extends TestCase
 {
     use MembersScaffold;

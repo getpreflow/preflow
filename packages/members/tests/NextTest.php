@@ -96,8 +96,8 @@ final class NextTest extends TestCase
         (new MembersConfig(['next' => ['allow' => [$entry]]]))->nextAllow();
     }
 
-    /** smart-stack.works' sign-in cases (tests/Integration/MemberLoginTest::nextCases), on its config. */
-    public static function smartStackCases(): iterable
+    /** the example site's sign-in cases (tests/Integration/MemberLoginTest::nextCases), on its config. */
+    public static function exampleSiteCases(): iterable
     {
         foreach (['//evil.test', 'https://evil.test', '/\\evil.test', '/tools/../folio', '/toolsfoo', 'javascript:alert(1)', '', "/tools\nSet-Cookie: x=1", '/tools//x', '/tools\\x', '/tools/%2e%2e/folio', '/tools/.%2E/%2e%2e/folio', '/tools/%252e%252e/folio', '/tools?a%00', "/tools?a\x00", '/tools/%2f/x', '/tools/%5cx'] as $bad) {
             yield 'reject ' . json_encode($bad) => [$bad, '/tools'];
@@ -108,7 +108,7 @@ final class NextTest extends TestCase
         }
     }
 
-    #[DataProvider('smartStackCases')]
+    #[DataProvider('exampleSiteCases')]
     public function test_smart_stack_works_sign_in_cases_hold(string $next, string $expected, string $locale = 'en'): void
     {
         $safe = $this->safe(['path' => '/tools', 'register' => '/tools']);

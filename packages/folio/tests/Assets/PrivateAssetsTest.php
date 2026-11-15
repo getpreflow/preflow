@@ -93,7 +93,7 @@ final class PrivateAssetsTest extends TestCase
         $this->removeScaffold();
     }
 
-    /** config/folio.php with these "assets" settings on top of the private route of the smart-stack setup. */
+    /** config/folio.php with these "assets" settings on top of the private route of the example site setup. */
     private function folioConfig(array $assets): void
     {
         $this->write('config/folio.php', "<?php\nreturn " . var_export([

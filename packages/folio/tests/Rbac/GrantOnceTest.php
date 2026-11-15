@@ -149,7 +149,7 @@ final class GrantOnceTest extends TestCase
     }
 
     /**
-     * A site that added the field itself before it was built in (holz-objekte.org) must delete
+     * A site that added the field itself before it was built in (atlas-objects) must delete
      * its extends file when it upgrades: Folio refuses a field the extension already defines.
      */
     #[RunInSeparateProcess]

@@ -100,7 +100,7 @@
             "label": "Created",
             "hidden": true,
             "searchable": false,
-            "help": "When the game was created in the old admin, UTC ISO 8601 (set by php preflow bggenius:migrate)."
+            "help": "When the game was created in the old admin, UTC ISO 8601 (set by php preflow app:migrate)."
         },
         "seed_hash": {
             "type": "string",

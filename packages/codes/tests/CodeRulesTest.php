@@ -14,8 +14,8 @@ final class CodeRulesTest extends CodesAppTestCase
     {
         $codes = $this->codes();
 
-        $this->assertSame('SMARTSTACK2026', $codes->checkReadable('p', ' smart-stack 2026 '));
-        $this->assertSame('SMARTSTACK2026', $codes->issue('p', code: ' smart-stack 2026 '));
+        $this->assertSame('EXAMPLECLUB2026', $codes->checkReadable('p', ' example-club 2026 '));
+        $this->assertSame('EXAMPLECLUB2026', $codes->issue('p', code: ' example-club 2026 '));
 
         $refusals = [
             ['nope', 'ABCD1234', CodeRefused::UNKNOWN_PURPOSE],
@@ -23,7 +23,7 @@ final class CodeRulesTest extends CodesAppTestCase
             ['p', 'ab', CodeRefused::FORMAT],
             ['p', ' - ', CodeRefused::FORMAT],
             ['p', "\xff\xfe", CodeRefused::FORMAT],
-            ['p', 'smart stack-2026', CodeRefused::TAKEN],
+            ['p', 'example club-2026', CodeRefused::TAKEN],
         ];
         foreach ($refusals as [$purpose, $code, $reason]) {
             $messages = [];

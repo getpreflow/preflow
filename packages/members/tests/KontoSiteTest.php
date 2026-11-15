@@ -13,7 +13,7 @@ use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Members\MemberRoles;
 
 /**
- * A second site, not smart-stack: the members under /konto, German (default) and French, everyone
+ * A second site, not the first example site: the members under /konto, German (default) and French, everyone
  * accepted on confirmation. Register, confirm from the mail, signed in, account: French copy and
  * /fr/konto URLs throughout.
  */

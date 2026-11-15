@@ -25,7 +25,7 @@ final class MembersViewTest extends TestCase
         $this->removeScaffold();
     }
 
-    /** A site with a minimal layout (what smart-stack's _site.twig is for the real one). */
+    /** A site with a minimal layout (what the example site's _site.twig is for the real one). */
     private function site(string $members = '[]', array $locales = ['en', 'de', 'fr'], bool $i18nConfig = true): void
     {
         $this->flow = null;

@@ -11,7 +11,7 @@ use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
 
 /**
- * A guest album as on holz-objekte: the cookie "album" holds the guest's item numbers ("1_2").
+ * A guest album as on a collection site: the cookie "album" holds the guest's item numbers ("1_2").
  * album_count() and in_album(n) read the visitor's request (RequestContext), so they belong in
  * live parts; album_numbers() is for the test that forgets that.
  */

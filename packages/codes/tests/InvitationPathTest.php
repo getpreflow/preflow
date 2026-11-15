@@ -22,7 +22,7 @@ final class InvitationPathTest extends CodesAppTestCase
         parent::setUp();
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key', 'url' => 'https://site.test'];\n");
         $this->write('config/codes.php', "<?php\nreturn " . var_export([
-            'purposes' => ['bggenius.invite' => ['label' => 'Invitation', 'readable' => false, 'ttl' => 30]],
+            'purposes' => ['example.invite' => ['label' => 'Invitation', 'readable' => false, 'ttl' => 30]],
             'throttle' => ['max' => 10, 'window' => 900],
         ], true) . ";\n");
         $this->write('app/pages/index.twig', 'HOME');
@@ -34,54 +34,54 @@ final class InvitationPathTest extends CodesAppTestCase
         $codes = $c->get(Codes::class);
         $c->get(CodeEvents::class)->on(CodeEvents::REDEEMED, function (array $e): void {
             $this->groups[$e['payload']['group']][] = (string) $e['redeemer'];
-        }, 'bggenius.invite');
+        }, 'example.invite');
 
         // 1. The host invites Anna (the app mails the personal link).
-        $code = $codes->issue('bggenius.invite', ['group' => 'g1'], recipient: ' Anna@Example.org ');
-        $record = $codes->record($code, 'bggenius.invite');
+        $code = $codes->issue('example.invite', ['group' => 'g1'], recipient: ' Anna@Example.org ');
+        $record = $codes->record($code, 'example.invite');
         $this->assertNotNull($record);
         $this->assertSame('anna@example.org', $record->recipient);
         $this->assertNotNull($record->expiresAt, 'the purpose ttl applies');
         $this->assertSame(1, $record->maxUses);
 
         // 2. The click: check without an address tells whom the code is for.
-        $check = $codes->check($code, 'bggenius.invite');
+        $check = $codes->check($code, 'example.invite');
         $this->assertTrue($check->ok);
         $this->assertSame('anna@example.org', $check->recipient);
 
         // Signed in with another address: refused, no use spent, nobody added.
-        $wrong = $codes->redeem($code, 'bggenius.invite', 'bob', recipient: 'bob@example.org');
+        $wrong = $codes->redeem($code, 'example.invite', 'bob', recipient: 'bob@example.org');
         $this->assertFalse($wrong->ok);
         $this->assertSame('wrong_recipient', $wrong->reason);
         $this->assertSame([], $this->groups);
 
         // 3. The right address redeems; the app's listener adds her to the group.
-        $this->assertCount(1, $codes->forRecipient('anna@example.org', 'bggenius.invite'));
-        $ok = $codes->redeem($code, 'bggenius.invite', 'anna', recipient: 'Anna@example.org');
+        $this->assertCount(1, $codes->forRecipient('anna@example.org', 'example.invite'));
+        $ok = $codes->redeem($code, 'example.invite', 'anna', recipient: 'Anna@example.org');
         $this->assertTrue($ok->ok);
         $this->assertSame(['g1' => ['anna']], $this->groups);
 
         // 4. Her profile: nothing open any more; the code is used up.
-        $this->assertSame([], $codes->forRecipient('anna@example.org', 'bggenius.invite'));
-        $this->assertSame('used_up', $codes->check($code, 'bggenius.invite')->reason);
+        $this->assertSame([], $codes->forRecipient('anna@example.org', 'example.invite'));
+        $this->assertSame('used_up', $codes->check($code, 'example.invite')->reason);
     }
 
     public function test_revoked_and_renewed_invitations(): void
     {
         $codes = $this->app()->container()->get(Codes::class);
 
-        $revoked = $codes->issue('bggenius.invite', ['group' => 'g2'], recipient: 'carl@example.org');
-        $codes->revoke((string) $codes->record($revoked, 'bggenius.invite')?->id);
-        $this->assertSame('revoked', $codes->check($revoked, 'bggenius.invite')->reason);
-        $this->assertSame([], $codes->forRecipient('carl@example.org', 'bggenius.invite'));
+        $revoked = $codes->issue('example.invite', ['group' => 'g2'], recipient: 'carl@example.org');
+        $codes->revoke((string) $codes->record($revoked, 'example.invite')?->id);
+        $this->assertSame('revoked', $codes->check($revoked, 'example.invite')->reason);
+        $this->assertSame([], $codes->forRecipient('carl@example.org', 'example.invite'));
 
-        $expired = $codes->issue('bggenius.invite', ['group' => 'g3'], expiresAt: new \DateTimeImmutable('-1 day'), recipient: 'dora@example.org');
-        $id = (string) $codes->record($expired, 'bggenius.invite')?->id;
-        $this->assertSame('expired', $codes->check($expired, 'bggenius.invite')->reason);
+        $expired = $codes->issue('example.invite', ['group' => 'g3'], expiresAt: new \DateTimeImmutable('-1 day'), recipient: 'dora@example.org');
+        $id = (string) $codes->record($expired, 'example.invite')?->id;
+        $this->assertSame('expired', $codes->check($expired, 'example.invite')->reason);
 
         $codes->renew($id, new \DateTimeImmutable('+30 days'));
-        $this->assertTrue($codes->check($expired, 'bggenius.invite')->ok);
-        $this->assertTrue($codes->redeem($expired, 'bggenius.invite', 'dora', recipient: 'dora@example.org')->ok);
+        $this->assertTrue($codes->check($expired, 'example.invite')->ok);
+        $this->assertTrue($codes->redeem($expired, 'example.invite', 'dora', recipient: 'dora@example.org')->ok);
     }
 
     public function test_a_failing_listener_leaves_the_invitation_open(): void
@@ -91,16 +91,16 @@ final class InvitationPathTest extends CodesAppTestCase
         $c->get(CodeEvents::class)->on(CodeEvents::REDEEMED, static function (): void {
             throw new \RuntimeException('group is full');
         });
-        $code = $codes->issue('bggenius.invite', [], recipient: 'eve@example.org');
+        $code = $codes->issue('example.invite', [], recipient: 'eve@example.org');
 
         try {
-            $codes->redeem($code, 'bggenius.invite', 'eve', 'client-1', 'eve@example.org');
+            $codes->redeem($code, 'example.invite', 'eve', 'client-1', 'eve@example.org');
             $this->fail('The listener exception reaches the caller.');
         } catch (\RuntimeException) {
             $this->addToAssertionCount(1);
         }
 
-        $this->assertTrue($codes->check($code, 'bggenius.invite')->ok);
+        $this->assertTrue($codes->check($code, 'example.invite')->ok);
         $this->assertCount(1, $codes->forRecipient('eve@example.org'));
     }
 }

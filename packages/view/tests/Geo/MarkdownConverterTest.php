@@ -337,7 +337,7 @@ final class MarkdownConverterTest extends TestCase
 
         $markdown = (new MarkdownConverter())->convert(
             (string) file_get_contents($dir . '/page.html'),
-            'https://smart-stack.test',
+            'https://example-shop.test',
         );
 
         $this->assertSame(rtrim((string) file_get_contents($dir . '/page.md')), $markdown);

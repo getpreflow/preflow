@@ -435,7 +435,7 @@ final class PageCacheAppTest extends TestCase
     }
 
     // -----------------------------------------------------------------------
-    // Live parts (a guest album as on holz-objekte: the cookie holds the item numbers)
+    // Live parts (a guest album as on a collection site: the cookie holds the item numbers)
     // -----------------------------------------------------------------------
 
     #[RunInSeparateProcess]

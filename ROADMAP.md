@@ -4,7 +4,7 @@
 
 ## Current State
 
-**v0.76.0** — 7837 tests, 27 packages, production-validated via BGGenius stress test (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.76.0** — 7837 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -12,16 +12,16 @@ The validation package has been stress-tested end-to-end: model attributes, stan
 
 ## Next Up
 
-### BG Genius move into Folio — framework work, in this order (owner, 2026-10-26)
+### The app-like site's move into Folio — framework work, in this order (owner, 2026-10-26)
 
-BG Genius's Phase 1 is live; lists (0.29), screen assets (0.30), cache (0.33) and media (0.34–0.36) are done.
+The app-like site's Phase 1 is live; lists (0.29), screen assets (0.30), cache (0.33) and media (0.34–0.36) are done.
 What its Phases 3–5 still need from the framework, with the matching follow-ups from the
-holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port" below):
+collection-site port folded in (see "Follow-ups from the collection-site port" below):
 
-1. ~~**Members split into a core and a Folio adapter**, together with the members follow-ups BG Genius needs:
+1. ~~**Members split into a core and a Folio adapter**, together with the members follow-ups the app-like site needs:
    `next` through registration and confirmation (host invitation → register → confirm → into the group), a
    landing page at `/konto` (base of the member area / host group view), rehash on sign-in (members and Folio
-   staff; migrated BG Genius admin users), member self-deletion through the delete plan or hooks (progress, group
+   staff; migrated admin users of the app-like site), member self-deletion through the delete plan or hooks (progress, group
    memberships, certificates), a primary link (`action`) for the mail layout, the admission composing the name~~
    — done in 0.38 (prepared, not released). The audit of members against the rule below is in
    `docs/superpowers/plans/2026-10-26-release-0.38-checklist.md`; its open findings wait for the owner
@@ -50,7 +50,7 @@ holz-objekte.org port folded in (see "Follow-ups from the holz-objekte.org port"
    Later, from this step:
    - **Aggregates by time period** (group by day, month, year of a date field)
    - **Grouping by multiple relations** (refused today)
-   - **holz-objekte.org album on the PDF part** (site work, not framework: `app/Album/AlbumPdf.php` still uses mPDF
+   - **collection-site album on the PDF part** (site work, not framework: `app/Album/AlbumPdf.php` still uses mPDF
      directly; `PdfRenderer` exists since 0.44)
    - **Blade shared-finder partial-name collision** (partly fixed: an entry template renders by absolute path, so it
      no longer collides; still open: an `@include` by bare name can pick the same-named partial of another directory,
@@ -90,7 +90,7 @@ a feature one project needs is built in that project on top of them. A package's
 (as media's library does); custom admin needs use userland Folio extensions. Steps 1 and 2 include an audit of
 members and codes against this rule.
 
-**Audit of all packages against this rule** (after the BG Genius steps, or alongside when a package is touched):
+**Audit of all packages against this rule** (after the app-like site steps, or alongside when a package is touched):
 go through every package (Folio, media, rbac, i18n, auth, data, notify, validation, devtools, …) for features that
 came from one project's needs, and turn each into a hook, a config option or an extension example, or move it into
 the project; note breaking changes for the consumers. Status (checked 2026-11-11): members was audited in 0.38
@@ -102,7 +102,7 @@ all of it: spec `docs/superpowers/specs/2026-11-12-package-audit-fixes-design.md
 write path) → 0.72 (done: gaps the starters fill).
 **Order (owner, 2026-11-11):** docs phase 3 → 0.66.0 → this audit → docs phase 4 (shorter READMEs + reference descriptions) → the external scripts/CSP release.
 
-Useful during BG Genius Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
+Useful during the app-like site Phase 3, not blocking: route order by specificity (partly done, see "Routing, core and
 i18n"), controller discovery beyond `app/Controllers`, ~~CSRF without a session~~ (done, see "Security and data integrity"), staff mails in the
 site's mail layout.
 
@@ -311,9 +311,9 @@ DataManager itself, with listeners that can refuse, for code outside Folio.
 
 ---
 
-## Follow-ups from the holz-objekte.org port
+## Follow-ups from the collection-site port
 
-Found while porting holz-objekte.org (2026-10-26). Each has a site-local workaround there, described in its
+Found while porting a collection site (2026-10-26). Each has a site-local workaround there, described in its
 `docs/framework-followups.md` with how to remove it once the framework has the feature. Checked against v0.37.0:
 all of these are still open. Already done: the expired-session CSRF handler (0.31) and the copyright hook
 (`#[AfterSave]` on an extension type, no framework change needed).
@@ -321,7 +321,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 ### Security and data integrity
 
 - ~~**Rehash on sign-in (members, Folio staff login):**~~ done in 0.38 (`PasswordRehash`, `UpdatesPasswordHash`): after a successful `verify()`, call `needsRehash()` and store a fresh hash (old `$1$` MD5-crypt and low-cost bcrypt hashes are never upgraded today). `needsRehash()` exists in `NativePasswordHasher`; no login calls it
-- ~~**CSRF without a session (core):**~~ done (`CsrfMiddleware` checks every POST, PUT, PATCH and DELETE: the browser's origin first (`Sec-Fetch-Site`, else `Origin`, else `Referer`; a refused origin is refused with any token), then the session token, or without a session a stateless token signed with `app.key` (24-hour slots, current and previous) that `csrf_field()` / `csrf_token()` print on public pages; `#[CsrfExempt('why')]` on controllers and routes; `config/csrf.php` `exempt`, `trusted_origins`, `sign_in_paths`; a sign-in form left open past the session's end still signs in (Folio's and members' logins register themselves), any other expired form is sent back with a warning and its fields kept (`OldInput`), never applied). **Upgrading:** unsafe requests without a session were unchecked until now. Sites with server-to-server POSTs (webhooks, payment providers, cron over HTTP) mark the route `#[CsrfExempt('…')]`, or list file routes and paths outside the router in `csrf.exempt`, before upgrading; browser POSTs coming from other sites (a payment provider's return URL that posts back, OAuth/SAML `form_post` callbacks) carry `Sec-Fetch-Site: cross-site` and are refused now even on public paths, so such routes need `#[CsrfExempt('…')]` too; behind a TLS-terminating proxy set `app.url`, and set a real `app.key`. Release checklist, by hand: smeyer.me's contact form, holz-objekte's like and contact forms, and every site's payment return and OAuth/SAML callback routes (cross-site POSTs). holz-objekte can then replace its `App\Http\FormToken` with `csrf_field()`
+- ~~**CSRF without a session (core):**~~ done (`CsrfMiddleware` checks every POST, PUT, PATCH and DELETE: the browser's origin first (`Sec-Fetch-Site`, else `Origin`, else `Referer`; a refused origin is refused with any token), then the session token, or without a session a stateless token signed with `app.key` (24-hour slots, current and previous) that `csrf_field()` / `csrf_token()` print on public pages; `#[CsrfExempt('why')]` on controllers and routes; `config/csrf.php` `exempt`, `trusted_origins`, `sign_in_paths`; a sign-in form left open past the session's end still signs in (Folio's and members' logins register themselves), any other expired form is sent back with a warning and its fields kept (`OldInput`), never applied). **Upgrading:** unsafe requests without a session were unchecked until now. Sites with server-to-server POSTs (webhooks, payment providers, cron over HTTP) mark the route `#[CsrfExempt('…')]`, or list file routes and paths outside the router in `csrf.exempt`, before upgrading; browser POSTs coming from other sites (a payment provider's return URL that posts back, OAuth/SAML `form_post` callbacks) carry `Sec-Fetch-Site: cross-site` and are refused now even on public paths, so such routes need `#[CsrfExempt('…')]` too; behind a TLS-terminating proxy set `app.url`, and set a real `app.key`. Release checklist, by hand: the personal site's contact form, the collection site's like and contact forms, and every site's payment return and OAuth/SAML callback routes (cross-site POSTs). the collection site can then replace its `App\Http\FormToken` with `csrf_field()`
 - **Translation params in one pass (i18n):** `Translator::replaceParams` substitutes sequentially (`str_replace` per param), so a value containing `:other` is replaced again; use one `strtr` pass. Also a plain-text variant of `t()` (not html-safe, params unescaped) for values passed to functions that escape themselves (e.g. `media_image(…, {alt: …})`)
 - ~~**Saving null clears SQL columns (data):**~~ done in 0.42 (`save()` writes nulls; a partial save leaves the other columns alone; SQLite upserts on the primary key, MySQL updates)
 - ~~**Unique fields and typed columns (data/Folio):**~~ done in 0.42 (`unique`, `index` and `length` field options, `Unique` rule plus the database guard, typed record tables, `RecordTables`, the conversion script)
@@ -358,7 +358,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 - ~~**Primary link to the mail layout:**~~ done in 0.38 (`action` for confirm, reset and existing): `MemberMailer` passes only lang, subject, accent and paragraphs; pass `action: {label, url}` for confirm, reset and "existing account" mails
 - **Italian (`it`) texts:** the package ships en, de and fr
 - ~~**Member lock, sessions and sign-in info (after the split):**~~ done in 0.39 (`Members::lock()`, `unlock()`, `isLocked()`, `endSessions()`, `resendConfirmation()`, `locked_at`, `last_login_at`; Folio: Locked pill, Lock / Unlock / Resend confirmation in the Decision panel): `Members::lock()`, `unlock()` and `isLocked()` with a readonly `locked_at` (a lock covers every sign-in path and shows a "Gesperrt" pill, never "declined"); `Members::endSessions()` (`auth_epoch` + 1 and `RememberMe::revokeAll()`); `Members::resendConfirmation()` (the public resend shares its code path); a readonly `last_login_at` set on sign-in, reset and confirmation
-- **Folio hook bridge for member self-deletion:** a member's own deletion runs `MemberEvents` but not Folio's record hooks on `member` (Folio already unpublishes the member's snapshots on `DELETED`, `PublishedMemberDeletion`). Bridge them in Folio's members adapter: `DELETING` runs `#[BeforeSave]`/`#[BeforeDelete]` and can refuse, `DELETED` runs `#[AfterSave]`/`#[AfterDelete]`. Before holz-objekte.org drops its workaround
+- **Folio hook bridge for member self-deletion:** a member's own deletion runs `MemberEvents` but not Folio's record hooks on `member` (Folio already unpublishes the member's snapshots on `DELETED`, `PublishedMemberDeletion`). Bridge them in Folio's members adapter: `DELETING` runs `#[BeforeSave]`/`#[BeforeDelete]` and can refuse, `DELETED` runs `#[AfterSave]`/`#[AfterDelete]`. Before the collection site drops its workaround
 
 ### codes
 
@@ -376,8 +376,8 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
   with rbac, *Settings → Roles* announces every new permission to whoever may edit roles (notice with "Add to role" and
   "Dismiss", sidebar count, dashboard line); see `packages/rbac/README.md` and `packages/folio/README.md`).
   **Upgrading:** SQL sites run `preflow migrate`, which creates `folio_known_permissions`; until then the notice shows
-  nothing. Extensions that seed roles in `install()` move that to `seed()`; BG Genius moves its `ensure()` calls there.
-  holz-objekte.org can drop `grantOnce()` and delete its `rbac_role.json` extension in the same commit as the upgrade
+  nothing. Extensions that seed roles in `install()` move that to `seed()`; the app-like site moves its `ensure()` calls there.
+  The collection site can drop `grantOnce()` and delete its `rbac_role.json` extension in the same commit as the upgrade
   (a site's own `extends` file adding `seeded_permissions` to `rbac_role` stops the boot, with an error naming the
   field); its stored records carry over. Check each seeded role once: a permission listed before 0.53 that never reached
   the role stays missing, because a role without a record is assumed to have had its seed list already. A seeded role
@@ -480,8 +480,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   skipped or weakened. See "Fast suites" in `packages/testing/README.md`). **Upgrading:** nothing changes unless a site opts in.
   Sites add `brianium/paratest` to require-dev, the `test` (paratest) and `test:serial` composer scripts, and call
   `SetupSnapshots::bootstrap()` from `tests/bootstrap.php`. Measured full suites, before → `composer test` (6 workers) /
-  `composer test:serial`: holz-objekte.org ~33 min → 3:02 / 5:55 (MySQL; 950 tests), BG Genius 6:15 → 0:59 / 3:49,
-  smart-stack.works 87 s → 16 s / 72 s (paratest `--functional`), smeyer.me 59 s → 4.6 s / 12.5 s; no test skipped.
+  `composer test:serial`: the collection site ~33 min → 3:02 / 5:55 (MySQL; 950 tests), the app-like site 6:15 → 0:59 / 3:49,
+  the member site 87 s → 16 s / 72 s (paratest `--functional`), the personal site 59 s → 4.6 s / 12.5 s; no test skipped.
   0.56.1: the JSON storage query cache is kept per data path (`json-{type}-{path hash}.json` / `.gen`), so tests with
   their own data path and parallel workers sharing `storage/cache/data` never read each other's records; `cache:clear` still clears them all.
 - ~~**Performance step 1, quick wins (0.58):**~~ done in 0.58.0 (owner, 2026-11-07: "as fast as possible"; evidence
@@ -500,7 +500,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - Test runs keep their JSON caches under their temp root (`DATA_CACHE_PATH`, `Testing\Fast\TestDataPaths`), and
       `cache:clear` removes orphaned cache files. 0.58.1: it also removes other data paths' `.gen` files and keeps only
       the app's own (core needs `preflow/data` 0.58.1 for `JsonFileDriver::pathKey()`).
-  - **Measured on languagecorner** (Apache, OPcache, one request at a time), 0.57 → 0.58:
+  - **Measured on the language site** (Apache, OPcache, one request at a time), 0.57 → 0.58:
 
     | Page | 0.57 | 0.58 |
     |---|---|---|
@@ -933,9 +933,9 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     and `EMPLOYER_PASSWORD` are public; `EmployerAuthController` takes `#[Config('app.debug')]`.
   - **Fix:** `Application::installedPackages()` could register the `composer` cache source twice (a `LogicException`)
     when called more than once without a boot manifest.
-  - **Upgrading:** nothing to do for the six sites (checked, read only: smeyer.me, smart-stack.works, holz-objekte.org,
-    bggenius-preflow, languagecorner-preflow, preflow-website). Their `config/auth.php` use only `SessionGuard` (built
-    as before) and `NativePasswordHasher`; BG Genius's `config/ai.php` names `'claude'` (unchanged: switch + key), the
+  - **Upgrading:** nothing to do for the six sites (checked, read only: the personal site, the member site, the collection site,
+    the app-like site, the language site, preflow-website). Their `config/auth.php` use only `SessionGuard` (built
+    as before) and `NativePasswordHasher`; the app-like site's `config/ai.php` names `'claude'` (unchanged: switch + key), the
     others have none (default `'claude'`, off); BG's one Folio field type returns no rules; BG's `app/Rules/` are
     registered as before (now before the data layer, same factory); none has `app/pages/_errors/` or a package with
     `extra.folio` field types or blocks. Check only, for other apps:
@@ -1318,7 +1318,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - auth: a custom hasher's first unknown address per guard instance costs hash + verify (about twice a wrong
       password); only the native hasher gets the ready dummy hash.
     - core: an app error template convention. No code renders `_error.twig` / `_404.twig` (demodemo, folio-demo,
-      smeyer.me, time0-web have one), so visitors see the generic page.
+      the personal site, another small site have one), so visitors see the generic page.
     - core: a production JSON 404 still says `No route matches [GET /api/x]` (the client's own method and path; kept
       under the 0.62 JSON contract).
     - ~~core: the `RequestContext` docblock says `$request` is null in an internal render, but `handle()` always binds
@@ -1396,7 +1396,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       class list.
     - Relative `data.model_paths` entries are under the app's base path (not the working directory).
   - **Follow-ups:**
-    - Move holz-objekte.org's objects and BG Genius's games to classes, later and per type (`make:model --from-type`).
+    - Move the collection site's objects and the app-like site's games to classes, later and per type (`make:model --from-type`).
     - Type-level `matrixable` and `views` cannot be expressed on a class yet; the generator refuses such types.
     - Public `readonly` properties are never hydrated (undocumented before this note); a clone of a read-only object
       is writable.
@@ -1451,7 +1451,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
   - **Folio:**
     - The Cache screen gets "Refresh a page" and "Refresh everything" (`folio.cache`).
     - Detail pages depend on their record and their address, not on the whole type.
-  - **Measured on languagecorner, locally:** `/home` 4.8 ms with the cache off, 2.4 ms on a hit. A hit costs 0.28 ms
+  - **Measured on the language site, locally:** `/home` 4.8 ms with the cache off, 2.4 ms on a hit. A hit costs 0.28 ms
     of PHP in `handle()`. Live numbers follow with each site's switch-on.
   - **Upgrading:**
     - All `preflow/*` packages must be at 0.60 together; composer enforces it.
@@ -1511,7 +1511,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - The manifest is read only in web mode, with the live `app.debug` off, and while `.env`,
       `config/folio/extensions.json` and `vendor/composer/installed.json` are unchanged (checked per request).
       Otherwise the request boots live, as in 0.58. The console never reads it. Data-stored settings are never in it.
-  - **Measured on languagecorner** (Apache, OPcache, one request at a time, 1000 requests, average):
+  - **Measured on the language site** (Apache, OPcache, one request at a time, 1000 requests, average):
 
     | Page | 0.57 | 0.58 | 0.59 live boot | 0.59 with manifest |
     |---|---|---|---|---|
@@ -1543,7 +1543,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       clock (`AdminController::stale()`); pin the clock.
     - A web-mode test lane for the whole suite; more COUNT skips in `findMany`.
     - Toggling an extension in Folio removes the manifest; the site boots live until the next deploy or `optimize`.
-    - holz-objekte.org `/album`: batch `Catalog::object` per album item (site work).
+    - the collection site `/album`: batch `Catalog::object` per album item (site work).
     - Next: step 3, a page cache with rebuild on publish.
 - ~~**Folio sidebar sections (0.57):**~~ done in 0.57.0 (owner, 2026-11-07: the sidebar "can get quite long"). Every
   section with a heading opens and closes (`<details>`, keyboard and no-JS friendly); the state is saved per person in
@@ -1726,7 +1726,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
 
 ### v0.26.0
 
-- **New package `preflow/members`:** member accounts for a Preflow + Folio site, extracted from smart-stack.works. The `member` type in Folio with a waiting badge, a State column and a Decision panel (accept or decline with an editable message, the mail goes out first), the `pending` / `member` / `rejected` roles, registration with e-mail confirmation, sign-in with a remember cookie, forgot/reset, resend and an account page (password change, delete), all in `en`, `de` and `fr` with locale-prefixed routes; no account enumeration, throttled, no session cookie on public pages
+- **New package `preflow/members`:** member accounts for a Preflow + Folio site, extracted from the member site. The `member` type in Folio with a waiting badge, a State column and a Decision panel (accept or decline with an editable message, the mail goes out first), the `pending` / `member` / `rejected` roles, registration with e-mail confirmation, sign-in with a remember cookie, forgot/reset, resend and an account page (password change, delete), all in `en`, `de` and `fr` with locale-prefixed routes; no account enumeration, throttled, no session cookie on public pages
 - **Pluggable admission:** `Admission` decides after the e-mail is confirmed (`afterConfirm($member, $request)` returns `Decision::Accept` or `Decision::Pending`; `validate($input, $request, $baseErrors)` on every post (costly checks skip while the base fields fail), `recordValues()`, `details()` for the panel and the owner's notice, `confirmNotice()` for a line after confirming); `AcceptOnConfirm` and `OwnerApproval` (default) ship
 - **Sites make it theirs:** `config/members.php` (path, landing, register, layout, mail, admission, throttle, retention, privacy_url...), template overrides in `resources/members/` (`@members-package` to extend the original, blocks for the admission and extra fields), single copy keys from the site's `lang/<locale>/members.php`, extra member fields through `config/models/member.json`; `members:prune` for cron
 - **Folio: site model files can extend an extension's type** (`"extends": true`): fields are appended (or placed with `after`), `list.columns` replace, `storage`/`table`/`users`/`id_field` are locked, redefining a field or any other key is a boot error naming the file; works for extension settings singletons too; disabling what a patch extends is refused (admin and CLI), and the boot error names the file and the `folio:extensions:enable` command

@@ -81,7 +81,7 @@ final class MembersGroundworkTest extends TestCase
 
     public function test_install_over_roles_of_an_earlier_version_adds_only_whats_missing(): void
     {
-        // smart-stack's own extension (members 1.1.0) created the roles already; one is gone.
+        // the example site's own extension (members 1.1.0) created the roles already; one is gone.
         $this->migrateAndApply();
         $c = $this->container();
         $state = $c->get(ExtensionState::class);
