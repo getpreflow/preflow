@@ -1,0 +1,56 @@
+{# "Write a draft" (since 0.77): one dialog per edit form, for all its rich-text fields. ai-draft.js adds the button
+   at the right of every Trix toolbar (block cards added later too) and opens this dialog for that field. Rendered
+   only while the draft writer is available and the user has ai.draft and may edit the type (ai_draft); form.twig
+   includes it right after the form's end, on the same line, so the brief is never posted and the form's markup without
+   it stays byte for byte the same. #}
+<div class="folio-ai-draft" data-ai-draft
+     data-url="{{ ai_draft.url }}"
+     data-type="{{ ai_draft.type }}"
+     data-language="{{ ai_draft.language }}"
+     data-title="{{ ai_draft.title }}"
+     data-icon="{{ folio_asset('icons.svg') }}#ui-spark"
+     data-msg-button="{{ t('folio.ai_draft.button') }}"
+     data-msg-for-field="{{ t('folio.ai_draft.for_field') }}"
+     data-msg-writing="{{ t('folio.ai_draft.writing') }}"
+     data-msg-cost="{{ t('folio.ai_draft.cost') }}"
+     data-msg-cost-unknown="{{ t('folio.ai_draft.cost_unknown') }}"
+     data-msg-error="{{ t('folio.ai_draft.error') }}"
+     data-msg-inserted="{{ t('folio.ai_draft.inserted') }}"
+     data-msg-replaced="{{ t('folio.ai_draft.replaced') }}">
+    <dialog class="folio-ai-draft-dialog" data-ai-draft-dialog aria-labelledby="folio-ai-draft-title" aria-describedby="folio-ai-draft-field">
+        <div class="folio-ai-draft-head">
+            <span class="folio-ai-draft-tile" aria-hidden="true"><svg class="folio-icon"><use href="{{ folio_asset('icons.svg') }}#ui-spark"></use></svg></span>
+            <div>
+                <h2 class="folio-ai-draft-title" id="folio-ai-draft-title">{{ t('folio.ai_draft.title') }}</h2>
+                <p class="folio-ai-draft-field" id="folio-ai-draft-field" data-ai-draft-field></p>
+            </div>
+        </div>
+        <label class="folio-ai-draft-brief">
+            <span>{{ t('folio.ai_draft.brief') }}</span>
+            <textarea rows="3" maxlength="{{ ai_draft.brief_max }}" placeholder="{{ t('folio.ai_draft.brief_placeholder') }}" data-ai-draft-brief></textarea>
+        </label>
+        <fieldset class="folio-ai-draft-length">
+            <legend>{{ t('folio.ai_draft.length') }}</legend>
+            <div class="folio-segmented folio-segmented-choice" role="radiogroup" aria-label="{{ t('folio.ai_draft.length') }}">
+                {% for value in ['short', 'medium', 'long'] %}<label class="folio-segment"><input type="radio" name="folio_ai_draft_length" value="{{ value }}"{% if value == 'medium' %} checked{% endif %}><span>{{ t('folio.ai_draft.' ~ value) }}</span></label>{% endfor %}
+            </div>
+        </fieldset>
+        <section class="folio-ai-draft-result" data-ai-draft-result aria-labelledby="folio-ai-draft-preview-label" hidden>
+            <h3 class="folio-ai-draft-preview-label" id="folio-ai-draft-preview-label">{{ t('folio.ai_draft.preview') }}</h3>
+            <div class="folio-ai-draft-preview" data-ai-draft-preview tabindex="0"></div>
+            <p class="folio-ai-draft-note">{{ t('folio.ai_draft.ai_text') }}</p>
+            <p class="folio-ai-draft-cost" data-ai-draft-cost></p>
+        </section>
+        <p class="folio-ai-draft-status folio-sr" data-ai-draft-status role="status"></p>
+        <p class="folio-ai-draft-error" data-ai-draft-error role="alert" hidden></p>
+        <div class="folio-ai-draft-footer">
+            <button type="button" class="btn btn-ghost" data-ai-draft-cancel>{{ t('folio.ai_draft.cancel') }}</button>
+            <span class="folio-ai-draft-spacer"></span>
+            <button type="button" class="btn btn-secondary" data-ai-draft-again hidden>{{ t('folio.ai_draft.again') }}</button>
+            <button type="button" class="btn btn-secondary" data-ai-draft-replace hidden>{{ t('folio.ai_draft.replace') }}</button>
+            <button type="button" class="btn btn-primary" data-ai-draft-insert hidden>{{ t('folio.ai_draft.insert') }}</button>
+            <button type="button" class="btn btn-primary" data-ai-draft-write disabled>{{ t('folio.ai_draft.write') }}</button>
+        </div>
+    </dialog>
+    <p class="folio-sr" data-ai-draft-announce role="status"></p>
+</div>

@@ -140,11 +140,12 @@ final class NotFoundPageTest extends TestCase
     /**
      * A status in a variable could be a 404 that escapes NotFound. These are the known ones, none of
      * them ever a 404 to a page: each renders its own page at 200 or a validation/limit status, except
-     * AiTranslateController::json, the JSON API whose 404 is JSON its callers parse.
+     * AiTranslateController::json and AiDraftController::json, JSON APIs whose 404 is JSON their callers parse.
      */
     private const array VARIABLE_STATUS = [
         'AccountController::page',            // the account page: 200 or 422
         'AdminController::form',              // the record form: 200 or 422
+        'AiDraftController::json',            // "Write a draft" JSON for fetch(), its 404s included (it parses the JSON)
         'AiSettingsController::render',       // Settings → AI pages: 200 or 422
         'AiTranslateController::json',        // JSON for fetch() callers, its 404s included (they parse the JSON)
         'AiTranslateController::page',        // the run screen: 200, 409 or 422

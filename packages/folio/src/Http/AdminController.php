@@ -96,6 +96,8 @@ final class AdminController
         private readonly ?string $siteUrl = null,
         // The dashboard's data (since 0.76); null builds one from the catalog and the data manager alone.
         private readonly ?\Preflow\Folio\Dashboard\Dashboard $dashboard = null,
+        // "Write a draft" in rich text (since 0.77): asked whether it can write now; null: never.
+        private readonly ?\Preflow\Ai\Draft\DraftWriter $draftWriter = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -222,7 +224,7 @@ final class AdminController
                 'languages' => implode(', ', array_map(self::languageName(...), $job->locales)),
                 'done' => count($job->items) - count($job->pending()),
                 'total' => count($job->items),
-                'cost' => $job->costUnknown ? '—' : AiTranslateController::cost($job->costUsd),
+                'cost' => $job->costUnknown ? '—' : \Preflow\Folio\Ai\CostFormat::usd($job->costUsd),
                 'state' => $job->state,
                 'message' => $job->state === 'stopped' ? $job->message : null,
                 'by' => $job->queuedBy,
@@ -1551,6 +1553,10 @@ final class AdminController
         if ($aiTranslate !== null) {
             $editorAssets += ['ai-translate.css' => true, 'ai-translate-core.js' => true, 'ai-translate.js' => true];
         }
+        $aiDraft = isset($editorAssets['trix.js']) ? $this->aiDraft($type, $values, $locale, $locales) : null;
+        if ($aiDraft !== null) {
+            $editorAssets += ['ai-draft-core.js' => true, 'ai-draft.js' => true];
+        }
         $aiPending = $isNew ? [] : $this->aiPending($type, $typeDef, $values);
         // A type without translations keeps its share texts under the default language (DraftRecordFactory).
         $seoSection = $this->seoSection($type, $values, $locale, $multilingual ? $locale : $locales->default, $errors[SeoSection::KEY] ?? [], $locales);
@@ -1604,6 +1610,7 @@ final class AdminController
             'page_assets' => $panelAssets,
             'ai_translate' => $aiTranslate,
             'ai_pending' => $aiPending,
+            'ai_draft' => $aiDraft,
             'seo_section' => $seoSection,
             'old_addresses' => $isNew ? null : $this->oldAddressesNote($type, (string) ($values[$typeDef->idField] ?? '')),
             // The editor frame (0.75): topbar, main column rows and the side panel.
@@ -1814,6 +1821,38 @@ final class AdminController
             'intro' => FolioText::get('folio.ai_queue.intro'),
             // Without publishing the texts go live: the dialog asks for that confirmation.
             'live' => !$this->publishes($type),
+        ];
+    }
+
+    /**
+     * "Write a draft" for the form's rich-text fields (ai-draft.js adds the button to each toolbar, also
+     * to those of block cards added later): while the draft writer is available, for a user with
+     * ai.draft who may edit the type. The draft is written in the form's language; the record's title
+     * in that language (else the default one) goes along as context. Null: no button.
+     *
+     * @param array<string, mixed> $values
+     * @return array{url: string, type: string, language: string, title: string, brief_max: int}|null
+     */
+    private function aiDraft(string $type, array $values, string $locale, \Preflow\Data\Locales $locales): ?array
+    {
+        if (!($this->draftWriter?->available() ?? false) || !$this->can('ai.draft') || !$this->can($type . '.edit')) {
+            return null;
+        }
+        $title = '';
+        foreach (['title', 'name', 'label', 'heading'] as $field) {
+            $text = self::plain(LocaleValue::pick($values[$field] ?? null, $locales, $locale) ?? LocaleValue::default($values[$field] ?? null, $locales));
+            if ($text !== '') {
+                $title = mb_substr($text, 0, 80);
+                break;
+            }
+        }
+
+        return [
+            'url' => $this->prefix . '/_ai/draft',
+            'type' => $type,
+            'language' => $locale,
+            'title' => $title,
+            'brief_max' => AiDraftController::BRIEF_MAX,
         ];
     }
 

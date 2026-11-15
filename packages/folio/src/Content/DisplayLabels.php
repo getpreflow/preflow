@@ -152,7 +152,7 @@ final class DisplayLabels
     public function permissionGroup(string $group, string $permission): string
     {
         $prefix = explode('.', $permission, 2)[0];
-        if (($group === 'Folio' && in_array($prefix, ['folio', 'translations'], true)) || ($group === 'Assets' && $prefix === 'assets')) {
+        if (($group === 'Folio' && in_array($prefix, ['folio', 'translations'], true)) || ($group === 'Assets' && $prefix === 'assets') || ($group === 'AI' && $prefix === 'ai')) {
             return FolioText::get('folio.permissions.groups.' . strtolower($group));
         }
         $listing = $this->catalog->get($prefix);

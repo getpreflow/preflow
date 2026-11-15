@@ -55,6 +55,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'AiTranslateController@start' => '{type}.edit',
         'AiTranslateController@step' => '{type}.edit',
         'AiTranslateController@stop' => '{type}.edit',
+        'AiDraftController@draft' => 'ai.draft', // then the posted type's edit permission (in the controller)
         'AdminController@recordAction' => '{type}.edit', // then the action's own permission (in the controller)
         'AdminController@destroy' => '{type}.delete',
         'AdminController@deletePlan' => '{type}.delete',

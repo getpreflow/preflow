@@ -165,7 +165,7 @@
                 {% endif %}
             </div>
         {% endif %}
-        {{ form_end()|raw }}
+        {{ form_end()|raw }}{% if ai_draft|default(null) %}{% include '@folio/admin/partials/ai-draft-dialog.twig' %}{% endif %}
         {% if extras is not empty %}
         <section class="folio-form-extras" aria-label="{{ t('folio.form.more') }}">
         {% for panel in extras|filter(p => p.position == 'before') %}<section class="folio-panel"><h2 class="folio-panel-title">{{ panel.label }}</h2><div class="folio-panel-body">{{ panel.html|raw }}</div></section>{% endfor %}

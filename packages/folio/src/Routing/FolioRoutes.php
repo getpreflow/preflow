@@ -31,15 +31,17 @@ final class FolioRoutes
     private const NAV_PREFS = 'Preflow\\Folio\\Http\\NavPreferenceController';
     private const AI = 'Preflow\\Folio\\Http\\AiTranslateController';
     private const AI_SETTINGS = 'Preflow\\Folio\\Http\\AiSettingsController';
+    private const AI_DRAFT = 'Preflow\\Folio\\Http\\AiDraftController';
     private const SEARCH = 'Preflow\\Folio\\Http\\SearchController';
 
     /**
      * @param bool $passwords the forgot-password and set-password pages and the own account page (record users behind the staff guard)
      * @param bool $ai the AI translation endpoints (only while AI is on: otherwise they do not exist and answer 404)
      * @param bool $aiSettings the Settings → AI screens (while AI is switched on or a key is present)
+     * @param bool $aiDraft "Write a draft" in rich text (only while the draft writer is available; since 0.77)
      * @return RouteEntry[]
      */
-    public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false, bool $ai = false, bool $aiSettings = false): array
+    public static function admin(string $prefix, bool $authEnabled = false, bool $passwords = false, bool $ai = false, bool $aiSettings = false, bool $aiDraft = false): array
     {
         $prefix = '/' . trim($prefix, '/');
 
@@ -167,6 +169,14 @@ final class FolioRoutes
             $defs[] = ['POST', $prefix . '/{type}/_ai/jobs/{job}/start', 'start',   self::AI];
             $defs[] = ['POST', $prefix . '/{type}/_ai/jobs/{job}/step',  'step',    self::AI];
             $defs[] = ['POST', $prefix . '/{type}/_ai/jobs/{job}/stop',  'stop',    self::AI];
+        }
+
+        if ($aiDraft) {
+            // A literal path, so it wins over POST {type}/{id} (which "_ai/draft" would match).
+            $at = array_search(['GET',  $prefix . '/translations',        'index', self::TRANSLATIONS], $defs, true);
+            array_splice($defs, $at === false ? count($defs) : $at, 0, [
+                ['POST', $prefix . '/_ai/draft', 'draft', self::AI_DRAFT],
+            ]);
         }
 
         $entries = [];

@@ -63,4 +63,10 @@ return [
         // built by the container. Default: Preflow\I18n\Machine\AiTranslator, through the provider above.
         // 'translator' => \App\Translation\MyTranslator::class,
     ],
+
+    'draft' => [
+        // "Write a draft" in rich text (Folio, since 0.77): the class of a Preflow\Ai\Draft\DraftWriter,
+        // built by the container. Default: Preflow\Ai\Draft\AiDraftWriter, through the provider above.
+        // 'writer' => \App\Drafts\MyDraftWriter::class,
+    ],
 ];

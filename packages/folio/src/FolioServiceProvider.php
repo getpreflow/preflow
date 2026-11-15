@@ -674,6 +674,7 @@ final class FolioServiceProvider extends ServiceProvider
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             translator: $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
+            draftWriter: $c->get(\Preflow\Ai\Draft\DraftWriter::class),
             jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
@@ -716,6 +717,13 @@ final class FolioServiceProvider extends ServiceProvider
             $locales ?? \Preflow\Data\Locales::single('en'),
             $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
             new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
+        ));
+        $container->bind(\Preflow\Folio\Http\AiDraftController::class, fn (Container $c) => new \Preflow\Folio\Http\AiDraftController(
+            $c->get(\Preflow\Ai\Draft\DraftWriter::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            \Preflow\Folio\Field\LazyHtmlSanitizer::standard(),
+            $c->get(\Preflow\Auth\Access\Access::class),
         ));
         $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
             $c->get(\Preflow\Ai\Ai::class),
@@ -1794,6 +1802,8 @@ final class FolioServiceProvider extends ServiceProvider
                         // The translate endpoints exist only while the machine translator is available (AiTranslator: AI is on).
                         $container->get(\Preflow\I18n\Machine\MachineTranslator::class)->available(),
                         self::aiSettingsVisible($container),
+                        // "Write a draft" exists only while the draft writer is available (AiDraftWriter: AI is on).
+                        $container->get(\Preflow\Ai\Draft\DraftWriter::class)->available(),
                     ),
                 ]);
             }
@@ -2019,6 +2029,7 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('seo.audit.run', 'Run the SEO audit', 'Folio');
         // Declared with AI off too, so roles may list them before AI is switched on.
         $registry->declare('ai.translate', 'Use AI translation', 'AI');
+        $registry->declare('ai.draft', 'Write drafts with AI', 'AI');
         $registry->declare('ai.settings', 'AI settings', 'AI');
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
@@ -2217,6 +2228,9 @@ final class FolioServiceProvider extends ServiceProvider
             'ai-translate.css' => 'ai-translate.css',
             'ai-translate-core.js' => 'ai-translate-core.js',
             'ai-translate.js' => 'ai-translate.js',
+            // "Write a draft" in every rich-text toolbar (forms with rich text, while AI is on; since 0.77).
+            'ai-draft-core.js' => 'ai-draft-core.js',
+            'ai-draft.js' => 'ai-draft.js',
             'editor-frame.js' => 'editor-frame.js',
             // The blocks editor's picker, card menus and Collapse all (with a blocks field only).
             'blocks.js' => 'blocks.js',

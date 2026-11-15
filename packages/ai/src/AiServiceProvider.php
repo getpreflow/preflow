@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Ai;
 
+use Preflow\Ai\Draft\AiDraftWriter;
+use Preflow\Ai\Draft\DraftWriter;
 use Preflow\Ai\Settings\AiSettingsStore;
 use Preflow\Ai\Settings\FileAiSettingsStore;
 use Preflow\Ai\Usage\FileUsageLog;
@@ -15,9 +17,9 @@ use Preflow\Core\Container\ServiceProvider;
 use Preflow\I18n\Translator;
 
 /**
- * Binds the AI service, usage log, pricing and settings store from config/ai.php. A missing file
- * means AI is off (enabled defaults to false), so listing this provider is harmless. An unknown
- * `provider` stops the boot. The
+ * Binds the AI service, usage log, pricing, settings store and draft writer from config/ai.php. A
+ * missing file means AI is off (enabled defaults to false), so listing this provider is harmless.
+ * An unknown `provider`, or a `draft.writer` that names no DraftWriter, stops the boot. The
  * ai:check and ai:usage commands are listed in composer.json (extra.preflow.commands).
  */
 final class AiServiceProvider extends ServiceProvider
@@ -47,10 +49,23 @@ final class AiServiceProvider extends ServiceProvider
                 error_log($message);
             },
         ));
+
+        // config/ai.php draft.writer: the class of a DraftWriter of the app's own, built by the container
+        // (so it may take services); without it, AiDraftWriter through the AI provider (since 0.77).
+        $container->singleton(DraftWriter::class, static function (Container $c): DraftWriter {
+            $class = self::draftWriterClass($c);
+            if ($class !== null) {
+                return $c->get($class);
+            }
+
+            return new AiDraftWriter($c->get(Ai::class), static fn (): Tuning => self::projectTuning($c));
+        });
     }
 
     public function boot(Container $container): void
     {
+        self::draftWriterClass($container);
+
         // A provider name config/ai.php can't mean stops the boot, naming the accepted forms.
         $provider = self::config($container)['provider'] ?? 'claude';
         Ai::factoryClass(is_string($provider) && $provider !== '' ? $provider : 'claude');
@@ -59,6 +74,55 @@ final class AiServiceProvider extends ServiceProvider
         if ($container->has(Translator::class)) {
             $container->get(Translator::class)->addDefaultsIfMissing('ai', dirname(__DIR__) . '/lang', 'admin');
         }
+    }
+
+    /**
+     * config/ai.php draft.writer, or null for the default AiDraftWriter.
+     *
+     * @return class-string<DraftWriter>|null
+     * @throws \InvalidArgumentException when it names no DraftWriter class
+     */
+    private static function draftWriterClass(Container $c): ?string
+    {
+        $draft = self::config($c)['draft'] ?? [];
+        $class = is_array($draft) ? ($draft['writer'] ?? null) : null;
+        if ($class === null || $class === '') {
+            return null;
+        }
+        $class = is_string($class) ? ltrim($class, '\\') : '';
+        if ($class === '' || !class_exists($class) || !is_subclass_of($class, DraftWriter::class)) {
+            throw new \InvalidArgumentException('config/ai.php draft.writer: ' . ($class !== '' ? $class : 'the value') . ' is not the class of a ' . DraftWriter::class . '.');
+        }
+
+        return $class;
+    }
+
+    /**
+     * The project's own instructions for every AI request: their edit in Settings → AI (the stored
+     * "tuning" section's "project" level) when there is one, else config/ai.php `tuning`.
+     */
+    private static function projectTuning(Container $c): Tuning
+    {
+        $stored = self::lines($c->get(AiSettingsStore::class)->get('tuning')['project'] ?? []);
+
+        return new Tuning($stored !== [] ? $stored : self::lines(self::config($c)['tuning'] ?? []));
+    }
+
+    /**
+     * A string or a list of strings as trimmed, non-empty lines.
+     *
+     * @return list<string>
+     */
+    private static function lines(mixed $value): array
+    {
+        $out = [];
+        foreach (is_array($value) ? $value : [$value] as $line) {
+            if (is_string($line) && trim($line) !== '') {
+                $out[] = trim($line);
+            }
+        }
+
+        return $out;
     }
 
     /** @return array<string, mixed> config/ai.php */

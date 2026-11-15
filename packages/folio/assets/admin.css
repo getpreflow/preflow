@@ -2593,6 +2593,90 @@ html trix-editor {
 html trix-editor:focus { outline: none; box-shadow: 0 0 0 3px var(--c-accent-soft); border-color: var(--c-accent); }
 html trix-toolbar:has(+ trix-editor:focus) { border-color: var(--c-accent); border-bottom-color: var(--c-border); }
 .has-error :is(trix-toolbar, trix-editor) { border-color: var(--c-danger); }
+/* "Write a draft" (ai-draft.js, since 0.77): the AI action at the right of the toolbar, an accent text
+   button with the spark; below 600px only the spark (the name stays its title and accessible name). */
+html trix-toolbar .folio-ai-draft-group { margin-left: auto; }
+html trix-toolbar .trix-button.folio-ai-draft-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 9px 0 7px;
+  color: var(--c-accent-text);
+  font-weight: 550;
+  white-space: nowrap;
+}
+html trix-toolbar .trix-button.folio-ai-draft-button:not(:disabled):hover { background: var(--c-accent-soft); color: var(--c-accent-text); }
+.folio-ai-draft-button .folio-icon { width: 16px; height: 16px; flex: none; }
+@media (max-width: 600px) {
+  .folio-ai-draft-button-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  html trix-toolbar .trix-button.folio-ai-draft-button { padding: 0; width: 28px; justify-content: center; }
+}
+.folio-ai-draft [hidden] { display: none !important; }
+.folio-ai-draft-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 20px 22px;
+  overflow: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-xl);
+  background: var(--c-surface-raised);
+  color: var(--c-text);
+  box-shadow: var(--shadow-lg);
+}
+.folio-ai-draft-dialog[open] { animation: folio-dialog-in .16s ease-out; }
+.folio-ai-draft-dialog::backdrop { background: var(--c-overlay); }
+.folio-ai-draft-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+.folio-ai-draft-tile {
+  display: grid; place-items: center; flex: none; width: 36px; height: 36px;
+  border-radius: 10px; background: var(--c-accent-soft); color: var(--c-accent-text);
+}
+.folio-ai-draft-tile .folio-icon { width: 18px; height: 18px; }
+.folio-ai-draft-title { margin: 1px 0 0; font-size: 15.5px; font-weight: 650; line-height: 1.35; }
+.folio-ai-draft-field { margin: 2px 0 0; color: var(--c-text-muted); font-size: 13px; overflow-wrap: anywhere; }
+.folio-ai-draft-field:empty { display: none; }
+.folio-ai-draft-brief { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 13px; font-weight: 620; }
+.folio-ai-draft-brief textarea { width: 100%; min-height: 76px; resize: vertical; font: inherit; font-weight: 400; }
+.folio-ai-draft-length { margin: 0; padding: 0; border: 0; min-width: 0; }
+.folio-ai-draft-length legend { margin-bottom: 6px; padding: 0; font-size: 13px; font-weight: 620; }
+.folio-ai-draft-length .folio-segmented-choice { max-width: 320px; }
+.folio-ai-draft-result { margin-top: 16px; }
+.folio-ai-draft-preview-label { margin: 0 0 6px; font-size: 13px; font-weight: 620; }
+.folio-ai-draft-preview {
+  max-height: min(320px, 40dvh);
+  overflow-y: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--c-accent);
+  border-radius: var(--r-sm);
+  background: var(--c-input);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.folio-ai-draft-preview:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.folio-ai-draft-preview > :first-child { margin-top: 0; }
+.folio-ai-draft-preview > :last-child { margin-bottom: 0; }
+.folio-ai-draft-preview :is(p, ul, ol) { margin: 0 0 .7em; }
+.folio-ai-draft-preview :is(h2, h3) { margin: 1em 0 .4em; font-weight: 650; line-height: 1.3; }
+.folio-ai-draft-preview h2 { font-size: 16px; }
+.folio-ai-draft-preview h3 { font-size: 14.5px; }
+.folio-ai-draft-preview :is(ul, ol) { padding-left: 1.4em; }
+.folio-ai-draft-preview a { color: var(--c-accent-text); }
+.folio-ai-draft-note, .folio-ai-draft-cost { margin: 8px 0 0; font-size: 12.5px; color: var(--c-text-muted); }
+.folio-ai-draft-cost { margin-top: 2px; font-variant-numeric: tabular-nums; }
+.folio-ai-draft-error { margin: 14px 0 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--c-danger-soft); color: var(--c-danger); font-size: 13px; overflow-wrap: anywhere; }
+.folio-ai-draft-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+.folio-ai-draft-spacer { flex: 1 1 auto; }
+@media (max-width: 480px) {
+  .folio-ai-draft-dialog { padding: 16px; }
+  .folio-ai-draft-footer { flex-direction: column-reverse; align-items: stretch; }
+  .folio-ai-draft-footer .btn { width: 100%; justify-content: center; }
+  .folio-ai-draft-spacer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .folio-ai-draft-dialog[open] { animation: none; } }
 html trix-toolbar .trix-dialog {
   color: var(--c-text);
   background: var(--c-surface-raised);

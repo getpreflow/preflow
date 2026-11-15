@@ -10,6 +10,7 @@ use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
+use Preflow\Folio\Ai\CostFormat;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Data\Locales;
 use Preflow\Folio\FolioText;
@@ -151,7 +152,7 @@ final class AiTranslateController
             'texts' => FolioText::choice('folio.ai_run.texts', $estimate->units),
             'requests' => FolioText::choice('folio.ai_run.requests', $estimate->requests),
         ];
-        $cost = self::cost($estimate->costUsd);
+        $cost = CostFormat::usd($estimate->costUsd);
 
         return $this->page($request, $type, $form + ['summary' => [
             'text' => $cost === null
@@ -661,7 +662,7 @@ final class AiTranslateController
             'done' => count($finished),
             'total' => count($job->items),
             // A request without a price makes the total unknown: "—", never a misleading $0.00.
-            'cost' => $job->costUnknown ? '—' : self::cost($job->costUsd),
+            'cost' => $job->costUnknown ? '—' : CostFormat::usd($job->costUsd),
             'rows' => array_map(static fn (string $id, array $item): array => $row($id, $item), array_map('strval', array_keys($shown)), $shown),
             'recent_only' => $running && count($finished) > count($shown),
             'problems' => $problems,
@@ -690,16 +691,6 @@ final class AiTranslateController
     private static function ids(mixed $ids): array
     {
         return is_array($ids) ? array_values(array_unique(array_filter($ids, static fn (mixed $id): bool => is_string($id) && $id !== ''))) : [];
-    }
-
-    /** USD as the edit form's estimate shows it; null when the model has no price. */
-    public static function cost(?float $usd): ?string
-    {
-        if ($usd === null) {
-            return null;
-        }
-
-        return $usd > 0 && $usd < 0.01 ? '< $0.01' : '$' . number_format($usd, 2);
     }
 
     private static function csrf(ServerRequestInterface $request): string

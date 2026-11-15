@@ -127,6 +127,8 @@ final class TwoRolesTest extends TestCase
             // Past the permission check (and ai.translate, which content_admin lacks): a group this site does not have (422), an asset that does not exist (404).
             ['POST /folio/translations/_ai/suggest', '/folio/translations/_ai/suggest', ['group' => 'nothing', 'locale' => 'de', 'scope' => 'needed'], [422, 403, 403]],
             ['POST /folio/assets/{id}/_ai/suggest', '/folio/assets/missing/_ai/suggest', ['locale' => 'de'], [404, 403, 403]],
+            // ai.draft for the route (content_admin lacks it), then the type's edit permission: a type this site does not have (404), no request.
+            ['POST /folio/_ai/draft', '/folio/_ai/draft', ['type' => 'nothing', 'field' => 'Body', 'brief' => 'x', 'length' => 'short', 'language' => 'en'], [404, 403, 403]],
             ['GET /folio/queue', '/folio/queue', [], [200, 200, 403]],
             ['POST /folio/queue/{id}/approve', '/folio/queue/m1/approve', [], [302, 302, 403]],
             // rbac's new-permissions actions (rbac_role.edit): back to the Roles list; names not new change nothing.

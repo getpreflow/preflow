@@ -2751,6 +2751,35 @@ Background translation. See `docs/superpowers/plans/2026-10-30-release-0.48-chec
   screen's Stop, or set `"state": "stopped"` in the job's JSON file).
 - No new SQL columns; `preflow migrate` is not needed for this release.
 
+### Write a draft with AI
+
+*Since 0.77.* With AI on, every rich-text toolbar has **Write a draft** at its right, also in
+block cards added later, for users with the `ai.draft` permission ("Write drafts with AI") and
+the type's edit permission. The seeded admin role (`*`) has it; other roles get it on the Roles
+screen. With AI off there is no button, no script and the form's markup is unchanged, and
+`POST {prefix}/_ai/draft` does not exist.
+
+The dialog asks **What should it say?** and the length (**Short**, **Medium**, **Long**), then
+**Write** shows the draft, read only, with what it cost ("This draft cost < $0.01.", or that the
+cost is unknown when the model has no price). **Insert at cursor** puts it where the caret was,
+**Replace text** replaces the field's text, **Try again** writes anew, **Cancel** (or Escape)
+leaves the field as it was, as does a failure. Insert and Replace are ordinary edits: Trix's
+own parser takes the HTML as one undo step, and the unsaved state and autosave see them; nothing
+is saved behind your back. A draft written on a language tab is not marked as machine
+translated: it is your text once you insert it.
+
+- The draft is written in the tab's language; the record's title, the field's label and the
+  type go along as context, quoted as data.
+- The server sanitises the answer (`LazyHtmlSanitizer::standard()`, as rich text on save) before
+  it reaches the page, and the dialog copies it into the preview element by element.
+- The writer is `Preflow\Ai\Draft\DraftWriter` from `preflow/ai` (see "Drafts" there), so it
+  works with any provider and a site can swap it (`config/ai.php` `draft.writer`); the button
+  shows while the writer says it is available. Drafts are listed apart in `ai:usage` (purpose
+  `draft`).
+- The endpoint takes `type`, `field` (the label), `brief` (up to 2000 characters), `length`,
+  `language` and `title`, and answers `{html, cost}`; 403 without the permissions, 422 for bad
+  input, 502 when the draft failed (cut off, refused, empty), 503 when AI cannot be used at all.
+
 ## Admin languages
 
 Folio's own screens, the staff mails and the admin parts of rbac, members and codes come in

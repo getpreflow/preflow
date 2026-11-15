@@ -168,6 +168,40 @@ echo $response->text;
 
 `Ai::client()` returns a client that writes the usage log for you.
 
+## Drafts
+
+*Since 0.77.* A `DraftWriter` writes a first draft of a text from a short brief; Folio's
+"Write a draft" in rich text uses it. The contract is provider-neutral, so it works with any
+provider `Ai` supports, and a site can swap the whole writer.
+
+```php
+use Preflow\Ai\Draft\{DraftWriter, DraftRequest, DraftLength};
+
+$writer = $container->get(DraftWriter::class);
+if ($writer->available()) {
+    $draft = $writer->write(new DraftRequest(
+        brief: 'Our opening hours over the holidays',
+        language: 'de',
+        length: DraftLength::Short,              // Short, Medium (default), Long
+        context: ['Title' => 'Holidays', 'Field' => 'Body'],
+    ));
+    $draft->html;     // the answer: sanitise it before you show it
+    $draft->costUsd;  // null when the model has no price
+}
+```
+
+- `available()` is cheap and never throws; `write()` throws `AiUnavailable` when the writer cannot be
+  used at all, and `DraftFailed` when this one draft failed (no answer, cut off, refused, empty).
+- The default `AiDraftWriter` sends one request through `Ai::client()`. Its instructions name the
+  language and allow only `p, h2, h3, ul, ol, li, strong, em, a`. The brief and the context go into
+  the prompt as one JSON document, so text from the site is quoted data, never instructions. It
+  uses purpose `draft`, so `ai:usage` lists drafts apart, and bounds the output per length
+  (Short 600, Medium 1500, Long 3000 tokens, with low reasoning so thinking does not eat the
+  bound). The project's `tuning` (or its edit in Settings → AI) is added after its rules.
+- Your own writer: implement `DraftWriter` and name it in `config/ai.php`:
+  `'draft' => ['writer' => App\Drafts\MyDraftWriter::class]`. The container builds it, so it may
+  take services. A class that is no `DraftWriter` stops the boot.
+
 ## Pricing and token usage
 
 Cost is worked out from a price table in USD per million tokens (input, output):

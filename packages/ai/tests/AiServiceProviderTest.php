@@ -164,6 +164,39 @@ final class AiServiceProviderTest extends TestCase
         $this->assertTrue($this->app()->container()->get(Ai::class)->enabled());
     }
 
+    public function test_the_draft_writer_is_the_ai_one_by_default(): void
+    {
+        $c = $this->app()->container();
+
+        $writer = $c->get(\Preflow\Ai\Draft\DraftWriter::class);
+        $this->assertInstanceOf(\Preflow\Ai\Draft\AiDraftWriter::class, $writer);
+        $this->assertSame($writer, $c->get(\Preflow\Ai\Draft\DraftWriter::class));
+        $this->assertFalse($writer->available(), 'AI is off');
+    }
+
+    public function test_config_names_the_draft_writer_class(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['draft' => ['writer' => \\" . CannedDraftWriter::class . "::class]];\n");
+        $writer = $this->app()->container()->get(\Preflow\Ai\Draft\DraftWriter::class);
+
+        $this->assertInstanceOf(CannedDraftWriter::class, $writer);
+        $this->assertTrue($writer->available(), 'no AI needed');
+        $this->assertSame('<p>Canned</p>', $writer->write(new \Preflow\Ai\Draft\DraftRequest('x', 'en'))->html);
+    }
+
+    public function test_a_draft_writer_that_is_none_stops_the_boot(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['draft' => ['writer' => \\stdClass::class]];\n");
+
+        try {
+            $this->app();
+            $this->fail('expected the boot to stop');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('draft.writer', $e->getMessage());
+            $this->assertStringContainsString('stdClass', $e->getMessage());
+        }
+    }
+
     public function test_a_factory_class_is_built_by_the_container_after_the_providers(): void
     {
         file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => \\" . ContainerBuiltFactory::class . "::class, 'storage' => 'var/ai'];\n");
@@ -173,6 +206,20 @@ final class AiServiceProviderTest extends TestCase
         $ai = $c->get(Ai::class);
         $this->assertTrue($ai->enabled());
         $this->assertSame('Ai at http://127.0.0.1:11434', $ai->client()->complete(new \Preflow\Ai\AiRequest('x', 'y'))->text);
+    }
+}
+
+/** A draft writer that is no AI: what a site would bind through config/ai.php draft.writer. */
+final class CannedDraftWriter implements \Preflow\Ai\Draft\DraftWriter
+{
+    public function available(): bool
+    {
+        return true;
+    }
+
+    public function write(\Preflow\Ai\Draft\DraftRequest $request): \Preflow\Ai\Draft\Draft
+    {
+        return new \Preflow\Ai\Draft\Draft('<p>Canned</p>', null, 'canned', 'none');
     }
 }
 

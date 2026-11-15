@@ -71,6 +71,8 @@ trait AiScaffold
         $translator = new AiTranslator($ai, $c->get(TranslationSettings::class));
         $c->instance(MachineTranslator::class, $translator);
         $c->instance(Estimator::class, new Estimator($translator));
+        // The draft writer too (bound at boot from the real config): it must never reach a real provider.
+        $c->instance(\Preflow\Ai\Draft\DraftWriter::class, new \Preflow\Ai\Draft\AiDraftWriter($ai));
 
         return $app;
     }
@@ -90,13 +92,15 @@ trait AiScaffold
     /**
      * Folio with sign-in and roles, signed in as $role; later requests go through $this->session
      * (the login lives in-process). Roles: editor (post edit, no AI), reader (AI, no post edit),
-     * translator (post edit and AI), aiadmin (AI settings only).
+     * translator (post edit and AI), aiadmin (AI settings only), plus $more (name => permissions).
+     *
+     * @param array<string, list<string>> $more
      */
-    private function staff(string $role): void
+    private function staff(string $role, array $more = []): void
     {
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $users = [];
-        foreach (['editor', 'reader', 'translator', 'aiadmin'] as $name) {
+        foreach (['editor', 'reader', 'translator', 'aiadmin', ...array_keys($more)] as $name) {
             $users[] = ['email' => "{$name}@site.test", 'password_hash' => $hash, 'roles' => [$name]];
         }
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -110,7 +114,7 @@ trait AiScaffold
             'reader' => ['folio.dashboard', 'post.view', 'ai.translate'],
             'translator' => ['folio.dashboard', 'post.view', 'post.edit', 'ai.translate'],
             'aiadmin' => ['folio.dashboard', 'ai.settings'],
-        ]], true) . ";\n");
+        ] + $more], true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Roles\\RolesServiceProvider::class];\n");
 
         $this->session = $this->aiApp();
