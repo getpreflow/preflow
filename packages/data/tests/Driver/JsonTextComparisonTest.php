@@ -5,14 +5,21 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Driver;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Attributes\Entity;
+use Preflow\Data\Attributes\Field;
+use Preflow\Data\Attributes\Id;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
+use Preflow\Data\Model;
 use Preflow\Data\Query;
 use Preflow\Data\SortDirection;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
+use Preflow\Validation\RuleFactory;
+use Preflow\Validation\ValidationException;
+use Preflow\Validation\ValidatorFactory;
 
 /**
  * Exact comparisons on JSON storage through DataManager: =, !=, IN, NOT IN, range comparisons,
@@ -27,7 +34,7 @@ final class JsonTextComparisonTest extends TestCase
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/json_text_' . bin2hex(random_bytes(4));
-        $this->dm = new DataManager(['json' => new JsonFileDriver($this->dir, $this->dir . '/.cache')], 'json');
+        $this->dm = new DataManager(['json' => new JsonFileDriver($this->dir, $this->dir . '/.cache')], 'json', null, new ValidatorFactory(new RuleFactory()));
     }
 
     protected function tearDown(): void
@@ -196,4 +203,75 @@ final class JsonTextComparisonTest extends TestCase
 
         $this->assertSame(['g1', 'g2'], $this->ids($def, fn ($q) => $q->whereAny([['field' => 'name', 'operator' => 'HAS', 'value' => ['ÜBER']]])), 'HAS on a text field');
     }
+
+    /** R33: a list field (tags) compares exactly, HAS too, even when its kind is also registered as text. */
+    public function test_list_fields_stay_exact(): void
+    {
+        $this->dm->fieldKinds()->text('tags');
+        $this->dm->fieldKinds()->list('tags');
+        $def = new TypeDefinition('posts', 'posts', 'json', [
+            'title' => new TypeFieldDefinition('title', 'string'),
+            'tags' => new TypeFieldDefinition('tags', 'tags'),
+        ], idField: 'id');
+        $this->seed($def, ['t1' => ['title' => 'One', 'tags' => ['Folio', 'Über']]]);
+
+        $this->assertSame([], $this->ids($def, fn ($q) => $q->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['folio']]])));
+        $this->assertSame([], $this->ids($def, fn ($q) => $q->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['ÜBER']]])));
+        $this->assertSame(['t1'], $this->ids($def, fn ($q) => $q->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['Folio']]])));
+    }
+
+    private function plain(string $uuid, string $name, string $apiKey = ''): void
+    {
+        $person = new PlainTextPerson();
+        $person->uuid = $uuid;
+        $person->name = $name;
+        $person->apiKey = $apiKey;
+        $this->dm->save($person);
+    }
+
+    /** @return list<string> */
+    private function plainIds(\Closure $filter): array
+    {
+        return array_map(static fn (PlainTextPerson $p): string => $p->uuid, $filter($this->dm->query(PlainTextPerson::class))->get()->items());
+    }
+
+    /** A plain model class (#[Entity] without a type) compares its string fields by the rule too. */
+    public function test_a_plain_model_compares_its_text_fields_by_the_rule(): void
+    {
+        $this->plain('a', 'Zebra', 'Key');
+        $this->plain('b', 'äpfel', 'other');
+        $this->plain('c', 'Apfel');
+
+        $this->assertSame(['b'], $this->plainIds(fn ($q) => $q->where('name', 'ÄPFEL')));
+        $this->assertSame(['c', 'b', 'a'], $this->plainIds(fn ($q) => $q->orderBy('name')));
+        $this->assertSame([], $this->plainIds(fn ($q) => $q->where('apiKey', 'key')), 'an exact field stays exact');
+        $this->assertSame(['a'], $this->plainIds(fn ($q) => $q->where('apiKey', 'Key')));
+    }
+
+    public function test_a_plain_models_unique_check_refuses_a_case_variant(): void
+    {
+        $this->plain('a', 'MÜLLER', 'Ab');
+        $this->plain('c', 'Muller', 'aB');
+
+        try {
+            $this->plain('b', 'Müller');
+            $this->fail('a case variant of a unique text field is a duplicate');
+        } catch (ValidationException $e) {
+            $this->assertSame(['name'], array_keys($e->errors()));
+        }
+        $this->assertSame(['a', 'c'], $this->plainIds(fn ($q) => $q->orderBy('uuid')));
+    }
+}
+
+#[Entity(table: 'plain_people', storage: 'json')]
+final class PlainTextPerson extends Model
+{
+    #[Id]
+    public string $uuid = '';
+
+    #[Field(unique: true)]
+    public string $name = '';
+
+    #[Field(unique: true, exact: true)]
+    public string $apiKey = '';
 }

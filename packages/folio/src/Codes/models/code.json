@@ -11,7 +11,11 @@
     },
     "fields": {
         "purpose": {
-            "type": "codes_purpose"
+            "type": "codes_purpose",
+            "exact": true
+        },
+        "code": {
+            "exact": true
         },
         "expires_at": {
             "help": "Empty: never expires."
@@ -23,11 +27,13 @@
             "readonly": true
         },
         "revoked_at": {
-            "readonly": true
+            "readonly": true,
+            "exact": true
         },
         "payload": {
             "hidden": true,
-            "searchable": false
+            "searchable": false,
+            "exact": true
         },
         "form": {
             "readonly": true

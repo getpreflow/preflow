@@ -7,14 +7,14 @@
     "publishing": false,
     "transfer": false,
     "fields": {
-        "purpose": { "type": "string", "label": "Purpose", "validate": ["required"] },
-        "code": { "type": "string", "label": "Code", "unique": ["purpose"] },
+        "purpose": { "type": "string", "label": "Purpose", "validate": ["required"], "exact": true },
+        "code": { "type": "string", "label": "Code", "unique": ["purpose"], "exact": true },
         "label": { "type": "string", "label": "Label" },
         "expires_at": { "type": "date", "label": "Expires at", "time": true },
         "max_uses": { "type": "number", "label": "Max uses" },
         "uses": { "type": "number", "label": "Uses" },
-        "revoked_at": { "type": "string", "label": "Revoked at" },
-        "payload": { "type": "string", "label": "Payload (JSON)" },
+        "revoked_at": { "type": "string", "label": "Revoked at", "exact": true },
+        "payload": { "type": "string", "label": "Payload (JSON)", "exact": true },
         "form": { "type": "select", "label": "Form", "options": { "readable": "Readable", "random": "Random" }, "validate": ["required", "in:readable,random"] },
         "recipient": { "type": "string", "label": "Recipient", "index": true, "length": 320 },
         "created_at": { "type": "number", "label": "Created at" }

@@ -496,12 +496,20 @@ final class QueryBuilder
 
     /**
      * The query with the loose searches resolved, translatable fields compared in the locale and
-     * text fields compared by the text rule (TextColumns).
+     * text fields compared by the text rule (TextColumns: a type's, or a plain model class's).
+     * Which field types are text comes from the DataManager's field kinds; a builder made without
+     * one (forType($driver, $def)) knows only the built-in ones (string, text), not the text
+     * kinds an extension registers.
      */
     private function prepared(): Query
     {
         $this->applyLooseSearches();
+        $kinds = $this->dataManager?->fieldKinds() ?? new FieldKinds();
         if ($this->typeDef === null) {
+            if ($this->meta !== null) {
+                $this->query->compareAsText(TextColumns::ofModel($this->meta, $kinds));
+            }
+
             return $this->query;
         }
         $translatable = $this->typeDef->translatableFields();
@@ -509,7 +517,7 @@ final class QueryBuilder
             $default = $this->typeDef->locales->default;
             $this->query->localize($translatable, $this->locale ?? $default, $default, $this->typeDef->locales->available);
         }
-        $this->query->compareAsText(TextColumns::of($this->typeDef, $this->dataManager?->fieldKinds() ?? new FieldKinds()));
+        $this->query->compareAsText(TextColumns::of($this->typeDef, $kinds));
 
         return $this->query;
     }

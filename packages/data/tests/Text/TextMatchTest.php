@@ -226,4 +226,29 @@ final class TextMatchTest extends TestCase
             }
         }
     }
+
+    public function test_equality_forms_are_equal_exactly_when_texts_are(): void
+    {
+        foreach (self::equalityPairs() as [$a, $b, $equal]) {
+            $this->assertSame($equal, TextMatch::equalityForm($a) === TextMatch::equalityForm($b), "form({$a}) = form({$b})");
+        }
+    }
+
+    /** Short texts keep their key for the next row; a long one is not cached (it would hold the cache's memory). */
+    public function test_only_short_texts_have_their_key_cached(): void
+    {
+        $keys = new \ReflectionProperty(TextMatch::class, 'keys');
+        $short = 'Short text ' . bin2hex(random_bytes(4));
+        $long = str_repeat('Lang ', 100) . bin2hex(random_bytes(4));
+        $this->assertGreaterThan(TextMatch::CACHED_KEY_BYTES, strlen($long));
+
+        $shortKey = TextMatch::key($short);
+        $longKey = TextMatch::key($long);
+
+        $cached = $keys->getValue();
+        $this->assertSame($shortKey, $cached[$short] ?? null);
+        $this->assertArrayNotHasKey($long, $cached);
+        $this->assertSame($longKey, TextMatch::key($long), 'the same key without the cache');
+        $this->assertSame(TextMatch::key(strtoupper($long)), $longKey);
+    }
 }

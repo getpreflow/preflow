@@ -924,6 +924,13 @@ $dm->queryIn($typeDef)->whereAny([
 | `IN` | The field equals one of the listed values. An empty list matches nothing. |
 | `HAS` | The field, an id string or a JSON array string, holds at least one of the listed ids. |
 
+Since 0.78 `=`, `IN` and `HAS` on a type's text fields (a single value: `string`, `text`, rich
+text, select; not `"exact": true`) ignore case and respect accents, as `where()` does. List fields
+(tags) are not text fields: their values, and `HAS` on them, compare exactly on every driver
+("Folio" does not find the tag "folio"). A query built without a `DataManager`
+(`QueryBuilder::forType($driver, $def)`) knows only the built-in text kinds (`string`, `text`);
+text kinds an extension registers need the `DataManager`'s field kinds (`$dm->queryIn()`).
+
 `LIKE`, `CONTAINS` and `search()` follow one text-matching rule on every driver: case and width
 are ignored, accents count (see "Text matching").
 `CONTAINS` and `search()` find a term in a list value (an array field) when one of its values

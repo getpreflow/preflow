@@ -46,7 +46,17 @@ final class TextMatch
 
     private static ?\Collator $collator = null;
 
-    /** @var array<string, string> text => key(), for the texts of one query (IN lists, sorting) */
+    /**
+     * Texts up to this many bytes have their key() remembered: names, titles, slugs and list
+     * values repeat across the rows of one query (sorting, grouping, IN). A longer text (a body,
+     * JSON) rarely repeats and would make the cache hold up to CACHED_KEYS times its size.
+     */
+    public const int CACHED_KEY_BYTES = 256;
+
+    /** At most this many keys are remembered (then the cache starts over). */
+    public const int CACHED_KEYS = 4096;
+
+    /** @var array<string, string> text => key(), for texts of at most CACHED_KEY_BYTES */
     private static array $keys = [];
 
     /**
@@ -119,23 +129,31 @@ final class TextMatch
         if (isset(self::$keys[$text])) {
             return self::$keys[$text];
         }
-        if (count(self::$keys) >= 4096) {
-            self::$keys = [];
-        }
         $form = self::equalityForm($text);
         $sortKey = self::collator()->getSortKey($form);
         if (!is_string($sortKey)) {
             throw new \RuntimeException('The text collator failed: ' . intl_get_error_message());
         }
 
-        return self::$keys[$text] = $sortKey . "\0" . $form;
+        $key = $sortKey . "\0" . $form;
+        if (strlen($text) <= self::CACHED_KEY_BYTES) {
+            if (count(self::$keys) >= self::CACHED_KEYS) {
+                self::$keys = [];
+            }
+            self::$keys[$text] = $key;
+        }
+
+        return $key;
     }
 
     /**
      * The text as "=" sees it: each character folded (fold()), a character the collation ignores
-     * left out, one it takes as its decomposition replaced by it (equality-table.php).
+     * left out, one it takes as its decomposition replaced by it (equality-table.php). Two texts
+     * are equal (equals()) exactly when their forms are: for comparing one text with many.
+     *
+     * @since 0.78
      */
-    private static function equalityForm(string $text): string
+    public static function equalityForm(string $text): string
     {
         if (preg_match('/[^\x20-\x7E]/', $text) !== 1) {
             return strtolower($text);

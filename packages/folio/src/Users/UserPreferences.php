@@ -34,7 +34,7 @@ final class UserPreferences
             table: self::TABLE,
             storage: 'default',
             fields: [
-                'locale' => new \Preflow\Data\TypeFieldDefinition('locale', 'string'),
+                'locale' => new \Preflow\Data\TypeFieldDefinition('locale', 'string', exact: true),
                 'nav' => new \Preflow\Data\TypeFieldDefinition('nav', 'json'),
             ],
             idField: 'id',

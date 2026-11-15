@@ -71,4 +71,21 @@ final class CodeUniqueTest extends CodesAppTestCase
         $this->expectException(ValidationException::class);
         $dm->saveType(DynamicRecord::fromArray($type, ['uuid' => 'x', 'purpose' => 'q', 'code' => 'same-code-1234567890ab', 'form' => 'random']), false);
     }
+
+    /** Codes, purposes and payloads are machine values: case counts (the text rule does not apply). */
+    public function test_codes_differing_only_by_case_are_two_codes(): void
+    {
+        $draws = ['Case-Code-1234567890ab', 'case-code-1234567890ab'];
+        $codes = $this->drawing($draws);
+
+        $this->assertSame('Case-Code-1234567890ab', $codes->issue('q'));
+        $this->assertSame('case-code-1234567890ab', $codes->issue('q'), 'not a duplicate: drawn once, not again');
+        $this->assertSame([], $draws);
+
+        $type = $this->app()->container()->get(DataManager::class)->getTypeRegistry()->get('code');
+        foreach (['code', 'purpose', 'payload', 'revoked_at'] as $field) {
+            $this->assertTrue($type->fields[$field]->exact, $field);
+        }
+        $this->assertFalse($type->fields['recipient']->exact, 'an e-mail address is text');
+    }
 }

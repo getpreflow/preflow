@@ -78,7 +78,8 @@ final class ShadowTypes
     {
         $fields = [];
         foreach (['record_id' => 'string', 'seq' => 'number', 'data' => 'text', 'changed' => 'text', 'created_at' => 'string', 'created_by' => 'string'] as $name => $type) {
-            $fields[$name] = new TypeFieldDefinition($name, $type);
+            // Ids and times compare exactly; the snapshot (data, changed) is JSON text, never compared.
+            $fields[$name] = new TypeFieldDefinition($name, $type, exact: in_array($name, ['record_id', 'created_at', 'created_by'], true));
         }
 
         return new TypeDefinition(

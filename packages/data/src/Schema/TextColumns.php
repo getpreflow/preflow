@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Schema;
 
 use Preflow\Data\FieldKinds;
+use Preflow\Data\ModelMetadata;
 use Preflow\Data\TypeDefinition;
 
 /**
@@ -32,5 +33,38 @@ final class TextColumns
         }
 
         return $text;
+    }
+
+    /**
+     * The text fields of a plain model class (#[Entity] without a type): its #[Field] properties
+     * whose field type (#[Field(type: …)], else "string" for a string property, as ModelSchema
+     * infers it) is text, by the same rule as of(). A class marked #[Entity(type: …)] is its
+     * type's definition: use of() with it.
+     *
+     * @return list<string>
+     */
+    public static function ofModel(ModelMetadata $meta, FieldKinds $kinds): array
+    {
+        $text = [];
+        foreach ($meta->fields as $name => $field) {
+            $name = (string) $name;
+            $type = $field->type ?? self::propertyType($meta->modelClass, $name);
+            if ($type !== null && $name !== $meta->idField && !$field->exact && $kinds->isText($type) && !$kinds->isList($type)) {
+                $text[] = $name;
+            }
+        }
+
+        return $text;
+    }
+
+    /** "string" for a property typed string (or ?string), else null (not text). */
+    private static function propertyType(string $class, string $property): ?string
+    {
+        if (!property_exists($class, $property)) {
+            return null;
+        }
+        $type = (new \ReflectionProperty($class, $property))->getType();
+
+        return $type instanceof \ReflectionNamedType && $type->getName() === 'string' ? 'string' : null;
     }
 }

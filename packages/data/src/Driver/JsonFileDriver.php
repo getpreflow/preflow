@@ -778,11 +778,17 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             return $items;
         }
 
-        return array_values(array_filter($items, function (array $item) use ($wheres, $query) {
+        // A text field's given values in their equality form, once per query (not per row).
+        $given = [];
+        foreach ($wheres as $i => $where) {
+            $given[$i] = ($query?->comparesAsText($where['field']) ?? false) ? self::givenForms($where['value']) : null;
+        }
+
+        return array_values(array_filter($items, function (array $item) use ($wheres, $query, $given) {
             $result = true;
 
             foreach ($wheres as $i => $where) {
-                $match = $this->evaluateCondition($item, $where, $query);
+                $match = $this->evaluateCondition($item, $where, $query, $given[$i]);
 
                 if ($i === 0) {
                     $result = $match;
@@ -817,11 +823,12 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         );
     }
 
-    private function evaluateCondition(array $item, array $where, ?Query $query = null): bool
+    /** @param array{one: ?string, set: array<string, true>}|null $given a text field's given forms (givenForms()), null for any other field */
+    private function evaluateCondition(array $item, array $where, ?Query $query = null, ?array $given = null): bool
     {
         $fieldValue = $this->value($item, $where['field'], $query);
         $condValue = $where['value'];
-        $text = $query?->comparesAsText($where['field']) ?? false;
+        $text = $given !== null;
 
         $operator = $where['operator'];
         if ($operator === 'IN' || $operator === 'NOT IN') {
@@ -832,7 +839,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             if (!is_scalar($fieldValue)) {
                 return false;
             }
-            $listed = self::listed($fieldValue, (array) $condValue, $text);
+            $listed = self::listed($fieldValue, (array) $condValue, $given);
 
             return $operator === 'IN' ? $listed : !$listed;
         }
@@ -852,9 +859,9 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         }
 
         return match ($operator) {
-            '=' => self::equalsAs($text, $fieldValue, $condValue),
+            '=' => self::equalsAs($given, $fieldValue, $condValue),
             // As SQL: != null is IS NOT NULL, and a NULL field is never "not equal" to a value.
-            '!=', '<>' => $condValue === null ? $fieldValue !== null : $fieldValue !== null && !self::equalsAs($text, $fieldValue, $condValue),
+            '!=', '<>' => $condValue === null ? $fieldValue !== null : $fieldValue !== null && !self::equalsAs($given, $fieldValue, $condValue),
             '>' => $fieldValue > $condValue,
             '>=' => $fieldValue >= $condValue,
             '<' => $fieldValue < $condValue,
@@ -907,35 +914,51 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     }
 
     /**
-     * "=" on a field: for a text field (Query::compareAsText()) where both values are text, by the
-     * text rule (TextMatch::equals()); else as SQL compares (sqlEquals()).
+     * A text field's given value(s) in their equality form (TextMatch::equalityForm()): "one" for
+     * a text given to = or !=, "set" for the listed values of IN, NOT IN and HAS (as text,
+     * listText()).
+     *
+     * @return array{one: ?string, set: array<string, true>}
      */
-    private static function equalsAs(bool $text, mixed $stored, mixed $given): bool
+    private static function givenForms(mixed $value): array
     {
-        return $text && is_string($stored) && is_string($given) ? TextMatch::equals($stored, $given) : self::sqlEquals($stored, $given);
+        $set = [];
+        foreach (is_array($value) ? $value : [] as $listed) {
+            if (is_scalar($listed)) {
+                $set[TextMatch::equalityForm(self::listText($listed))] = true;
+            }
+        }
+
+        return ['one' => is_string($value) ? TextMatch::equalityForm($value) : null, 'set' => $set];
+    }
+
+    /**
+     * "=" on a field: for a text field ($given, see givenForms()) where both values are text, by
+     * the text rule (as TextMatch::equals()); else as SQL compares (sqlEquals()).
+     *
+     * @param array{one: ?string, set: array<string, true>}|null $given
+     */
+    private static function equalsAs(?array $given, mixed $stored, mixed $value): bool
+    {
+        return $given !== null && $given['one'] !== null && is_string($stored)
+            ? TextMatch::equalityForm($stored) === $given['one']
+            : self::sqlEquals($stored, $value);
     }
 
     /**
      * Whether a scalar stored value is in the list (IN): compared as text (listText()), by the
-     * text rule for a text field's text.
+     * text rule for a text field's text ($given, see givenForms()).
      *
      * @param array<mixed> $list
+     * @param array{one: ?string, set: array<string, true>}|null $given
      */
-    private static function listed(bool|int|float|string $stored, array $list, bool $text): bool
+    private static function listed(bool|int|float|string $stored, array $list, ?array $given): bool
     {
-        $list = array_map(self::listText(...), array_filter($list, 'is_scalar'));
-        if ($text && is_string($stored)) {
-            $key = TextMatch::key($stored);
-            foreach ($list as $value) {
-                if (TextMatch::key($value) === $key) {
-                    return true;
-                }
-            }
-
-            return false;
+        if ($given !== null && is_string($stored)) {
+            return isset($given['set'][TextMatch::equalityForm($stored)]);
         }
 
-        return in_array(self::listText($stored), $list, true);
+        return in_array(self::listText($stored), array_map(self::listText(...), array_filter($list, 'is_scalar')), true);
     }
 
     /** A value as IN compares it: as text, a yes/no value as '1' or '0' (as SQL stores it). */
@@ -951,9 +974,13 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     private function applyAnyGroups(array $items, Query $query): array
     {
         foreach ($query->getAnyGroups() as $group) {
-            $items = array_values(array_filter($items, function (array $item) use ($group, $query) {
-                foreach ($group as $condition) {
-                    if ($this->matchesAny($this->value($item, $condition['field'], $query), $condition, $query->comparesAsText($condition['field']))) {
+            $given = [];
+            foreach ($group as $c => $condition) {
+                $given[$c] = $query->comparesAsText($condition['field']) ? self::givenForms($condition['value']) : null;
+            }
+            $items = array_values(array_filter($items, function (array $item) use ($group, $query, $given) {
+                foreach ($group as $c => $condition) {
+                    if ($this->matchesAny($this->value($item, $condition['field'], $query), $condition, $given[$c])) {
                         return true;
                     }
                 }
@@ -966,17 +993,17 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
     /**
      * @param array{field: string, operator: string, value: mixed} $condition
-     * @param bool $text the field is a text field (Query::compareAsText())
+     * @param array{one: ?string, set: array<string, true>}|null $given a text field's given forms (givenForms()), null for any other field
      */
-    private function matchesAny(mixed $fieldValue, array $condition, bool $text = false): bool
+    private function matchesAny(mixed $fieldValue, array $condition, ?array $given = null): bool
     {
         $value = $condition['value'];
 
         return match ($condition['operator']) {
             'CONTAINS' => self::containsText($fieldValue, (string) $value),
-            'IN' => is_scalar($fieldValue) && self::listed($fieldValue, (array) $value, $text),
-            'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value), $text),
-            default => self::equalsAs($text, $fieldValue, $value),
+            'IN' => is_scalar($fieldValue) && self::listed($fieldValue, (array) $value, $given),
+            'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value), $given),
+            default => self::equalsAs($given, $fieldValue, $value),
         };
     }
 
@@ -1001,29 +1028,29 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     }
 
     /**
-     * HAS: the stored id, or one of the stored list's ids, is one of $ids; by the text rule on a
-     * text field ($text).
+     * HAS: the stored id, or one of the stored list's ids, is one of $ids. A text field's single
+     * value ($given) compares by the text rule, as its column does on SQL; a list (tags, a JSON
+     * array) compares exactly on every driver.
      *
      * @param list<string> $ids
+     * @param array{one: ?string, set: array<string, true>}|null $given a text field's forms of $ids (givenForms())
      */
-    private function holdsAny(mixed $stored, array $ids, bool $text = false): bool
+    private function holdsAny(mixed $stored, array $ids, ?array $given = null): bool
     {
         if ($ids === [] || $stored === null || $stored === '') {
             return false;
+        }
+        $decoded = is_string($stored) ? json_decode($stored, true) : null;
+        if ($given !== null && is_string($stored) && !is_array($decoded)) {
+            return isset($given['set'][TextMatch::equalityForm($stored)]);
         }
         if (is_array($stored)) {
             $held = array_map('strval', array_filter($stored, 'is_scalar'));
         } else {
             $held = [(string) $stored];
-            $decoded = is_string($stored) ? json_decode($stored, true) : null;
             if (is_array($decoded)) {
                 $held = array_map('strval', array_filter($decoded, 'is_scalar'));
             }
-        }
-
-        if ($text) {
-            $ids = array_map(TextMatch::key(...), $ids);
-            $held = array_map(TextMatch::key(...), $held);
         }
 
         return array_intersect($ids, $held) !== [];

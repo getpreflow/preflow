@@ -82,11 +82,12 @@ final class Unique implements ValidationRule
             $query = $this->dm->query($def);
             $idField = $meta->idField;
             $translatable = false;
-            // A class marked #[Entity(type: …)] is its type's definition (as DataManager::query() reads it).
+            // A class marked #[Entity(type: …)] is its type's definition (as DataManager::query()
+            // reads it); a plain model class has its #[Field] properties.
             $registry = $this->dm->getTypeRegistry();
             $text = $meta->type !== null && $registry !== null && $registry->has($meta->type)
                 ? TextColumns::of($registry->get($meta->type), $this->dm->fieldKinds())
-                : [];
+                : TextColumns::ofModel($meta, $this->dm->fieldKinds());
         }
         $same = static fn (string $name, mixed $stored, string $given): bool => is_scalar($stored)
             && (in_array($name, $text, true) && is_string($stored) ? TextMatch::equals($stored, $given) : (string) $stored === $given);
