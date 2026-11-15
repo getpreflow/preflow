@@ -72,6 +72,60 @@ final class DebugToolbar
             margin-left: auto;
             color: #666;
         }
+        #preflow-debug-toolbar button {
+            font: inherit;
+            color: inherit;
+            background: none;
+            border: 0;
+            padding: 0;
+            cursor: pointer;
+        }
+        #preflow-debug-toolbar button:focus-visible {
+            outline: 2px solid #e94560;
+            outline-offset: 2px;
+        }
+        #preflow-debug-toolbar .pdt-collapse {
+            color: #e94560;
+            font-weight: bold;
+            font-size: 18px;
+            line-height: 1;
+            padding: 2px 6px;
+            margin: -2px 0 -2px -4px;
+        }
+        @media (max-width: 600px) {
+            #preflow-debug-toolbar .pdt-bar {
+                flex-wrap: wrap;
+                gap: 4px 10px;
+            }
+            #preflow-debug-toolbar .pdt-bar > span {
+                white-space: nowrap;
+            }
+            #preflow-debug-toolbar .pdt-separator {
+                display: none;
+            }
+        }
+        #preflow-debug-toolbar .pdt-tab {
+            display: none;
+            align-items: center;
+            padding: 5px 10px;
+            color: #e94560;
+            font-weight: bold;
+            background: #1a1a2e;
+            border: 1px solid #e94560;
+            border-left: 0;
+            border-bottom: 0;
+            border-radius: 0 6px 0 0;
+        }
+        #preflow-debug-toolbar.pdt-collapsed {
+            right: auto;
+        }
+        #preflow-debug-toolbar.pdt-collapsed .pdt-bar,
+        #preflow-debug-toolbar.pdt-collapsed .pdt-panel {
+            display: none;
+        }
+        #preflow-debug-toolbar.pdt-collapsed .pdt-tab {
+            display: inline-flex;
+        }
         #preflow-debug-toolbar .pdt-panel {
             display: none;
             max-height: 50vh;
@@ -162,6 +216,7 @@ final class DebugToolbar
 
         return <<<HTML
         <div class="pdt-bar">
+        <button type="button" class="pdt-collapse" aria-label="Collapse the Preflow toolbar" aria-expanded="true">&lsaquo;</button>
         <span class="pdt-badge">&#9889; Preflow</span>
         {$sep}
         <span>{$componentCount} components</span>
@@ -171,8 +226,11 @@ final class DebugToolbar
         <span>{$assets['css_count']} CSS / {$assets['js_count']} JS</span>
         {$sep}
         <span>{$totalTime}ms</span>
-        {$deprecations}<span class="pdt-toggle">&#9650; expand</span>
+        {$deprecations}<button type="button" class="pdt-toggle" aria-label="Show the Preflow toolbar details" aria-expanded="false">&#9650; expand</button>
         </div>
+        <button type="button" class="pdt-tab" aria-label="Expand the Preflow toolbar" aria-expanded="false">
+        &#9889; Preflow
+        </button>
         HTML;
     }
 
@@ -359,11 +417,49 @@ final class DebugToolbar
         return <<<'JS'
         <script>
         (function() {
+            var KEY = 'preflow.toolbar';
             var toolbar = document.getElementById('preflow-debug-toolbar');
             var bar = toolbar.querySelector('.pdt-bar');
+            var collapse = toolbar.querySelector('.pdt-collapse');
+            var tab = toolbar.querySelector('.pdt-tab');
+            var toggle = toolbar.querySelector('.pdt-toggle');
+
+            function remember(state) {
+                try { localStorage.setItem(KEY, state); } catch (e) {}
+            }
+            function recall() {
+                var state = null;
+                try { state = localStorage.getItem(KEY); } catch (e) {}
+                return state === 'collapsed' ? 'collapsed' : 'bar';
+            }
+            function show(state) {
+                var collapsed = state === 'collapsed';
+                toolbar.classList.toggle('pdt-collapsed', collapsed);
+                if (collapsed) {
+                    toolbar.classList.remove('expanded');
+                }
+                collapse.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                tab.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                toggle.setAttribute('aria-expanded', toolbar.classList.contains('expanded') ? 'true' : 'false');
+            }
+
             bar.addEventListener('click', function() {
                 toolbar.classList.toggle('expanded');
+                toggle.setAttribute('aria-expanded', toolbar.classList.contains('expanded') ? 'true' : 'false');
             });
+            collapse.addEventListener('click', function(event) {
+                event.stopPropagation();
+                show('collapsed');
+                remember('collapsed');
+                tab.focus();
+            });
+            tab.addEventListener('click', function(event) {
+                event.stopPropagation();
+                show('bar');
+                remember('bar');
+                collapse.focus();
+            });
+            show(recall());
         })();
         </script>
         JS;
