@@ -24,7 +24,7 @@ final class LocaleUrlsDefaultsBootTest extends TestCase
         mkdir($this->dir . '/app/pages', 0777, true);
         file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'k','locale'=>'en'];\n");
         file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'url_strategy'=>'prefix'];\n");
-        $page = '<html><head></head><body>locale={{ current_locale() }}|{{ locale_url(\'/about\', \'en\') }}</body></html>';
+        $page = '<html><head></head><body>locale={{ current_locale() }}|{{ locale_url(\'/about\', \'en\') }}|{{ locale_url(\'/about\', \'de\') }}|{{ locale_url(\'/\', \'de\') }}|{{ locale_url(\'/x\', \'fr\') }}</body></html>';
         file_put_contents($this->dir . '/app/pages/index.twig', $page);
         file_put_contents($this->dir . '/app/pages/about.twig', $page);
     }
@@ -47,19 +47,22 @@ final class LocaleUrlsDefaultsBootTest extends TestCase
             '/' => $root = $this->get('/'),
             '/de' => $de = $this->get('/de'),
             '/en/about' => $enAbout = $this->get('/en/about'),
+            '/de/' => $deSlash = $this->get('/de/'),
             '/about/' => $slash = $this->get('/about/'),
             '/about (de)' => $accept = $this->get('/about', ['Accept-Language' => 'de']),
         ];
 
         $this->assertSame(200, $root->getStatusCode());
-        $this->assertStringContainsString('locale=en|/about', (string) $root->getBody());
+        $this->assertStringContainsString('locale=en|/about|/de/about|/de|/fr/x', (string) $root->getBody());
         $this->assertSame(200, $de->getStatusCode());
-        $this->assertStringContainsString('locale=de|/about', (string) $de->getBody());
+        $this->assertStringContainsString('locale=de|/about|/de/about|/de|/fr/x', (string) $de->getBody());
         $this->assertSame(200, $enAbout->getStatusCode());
-        $this->assertStringContainsString('locale=en|/about', (string) $enAbout->getBody());
+        $this->assertStringContainsString('locale=en|/about|/de/about|/de|/fr/x', (string) $enAbout->getBody());
+        $this->assertSame(200, $deSlash->getStatusCode());
+        $this->assertStringContainsString('locale=de|/about|/de/about|/de|/fr/x', (string) $deSlash->getBody());
         $this->assertSame(200, $slash->getStatusCode());
         $this->assertSame(200, $accept->getStatusCode());
-        $this->assertStringContainsString('locale=en|/about', (string) $accept->getBody());
+        $this->assertStringContainsString('locale=en|/about|/de/about|/de|/fr/x', (string) $accept->getBody());
 
         foreach ($responses as $uri => $response) {
             $this->assertFalse($response->hasHeader('Set-Cookie'), "{$uri} sets a cookie");
