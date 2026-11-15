@@ -8,6 +8,8 @@ use Preflow\Data\DataManager;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\Model;
 use Preflow\Data\ModelMetadata;
+use Preflow\Data\Schema\TextColumns;
+use Preflow\Data\Text\TextMatch;
 use Preflow\Data\TypeDefinition;
 use Preflow\Validation\Message;
 use Preflow\Validation\ValidationContext;
@@ -23,8 +25,11 @@ use Preflow\Validation\ValidationRule;
  * (['purpose' => 'invite']). $exceptId is the record being saved, never its own duplicate. With
  * $locale the value is compared with that locale's value of a translatable field.
  *
- * Values compare exactly (case and accents count), as the unique index does on every database.
- * Empty values (null, '') are never duplicates, nor is a value whose scope holds a null.
+ * A text field's values compare by the text rule (TextColumns, TextMatch::equals(): case is
+ * ignored, accents count: "Müller" is a duplicate of "MÜLLER", "Muller" is not), as the column's
+ * unique index does on SQL storage; other fields (ids, exact fields, numbers) compare exactly.
+ * Each scope field compares by its own kind. Empty values (null, '') are never duplicates, nor
+ * is a value whose scope holds a null.
  */
 final class Unique implements ValidationRule
 {
@@ -70,17 +75,25 @@ final class Unique implements ValidationRule
             $query = $this->dm->queryIn($def);
             $idField = $def->idField;
             $translatable = in_array($this->field, $def->translatableFields(), true);
+            $text = TextColumns::of($def, $this->dm->fieldKinds());
         } else {
             /** @var class-string<Model> $def */
             $meta = ModelMetadata::for($def);
             $query = $this->dm->query($def);
             $idField = $meta->idField;
             $translatable = false;
+            // A class marked #[Entity(type: …)] is its type's definition (as DataManager::query() reads it).
+            $registry = $this->dm->getTypeRegistry();
+            $text = $meta->type !== null && $registry !== null && $registry->has($meta->type)
+                ? TextColumns::of($registry->get($meta->type), $this->dm->fieldKinds())
+                : [];
         }
+        $same = static fn (string $name, mixed $stored, string $given): bool => is_scalar($stored)
+            && (in_array($name, $text, true) && is_string($stored) ? TextMatch::equals($stored, $given) : (string) $stored === $given);
 
         // The query narrows the rows down on every storage: IN compares as text (a number stored
-        // as "5" is a duplicate of 5) and a column without exact collation may match more. The
-        // comparison below decides.
+        // as "5" is a duplicate of 5), by the text rule on a text field, and a column with
+        // another collation may match more. The comparison below decides.
         $query->where($this->field, 'IN', [$value]);
         foreach ($scope as $name => $scoped) {
             $query->where($name, 'IN', [(string) $scoped]);
@@ -97,12 +110,11 @@ final class Unique implements ValidationRule
             $stored = $translatable && $def instanceof TypeDefinition
                 ? LocaleValue::pick($data[$this->field] ?? null, $def->locales, $this->locale ?? $def->locales->default)
                 : ($data[$this->field] ?? null);
-            if (!is_scalar($stored) || (string) $stored !== $value) {
+            if (!$same($this->field, $stored, $value)) {
                 continue;
             }
             foreach ($scope as $name => $scoped) {
-                $other = $data[$name] ?? null;
-                if (!is_scalar($other) || (string) $other !== (string) $scoped) {
+                if (!$same((string) $name, $data[$name] ?? null, (string) $scoped)) {
                     continue 2;
                 }
             }

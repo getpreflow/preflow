@@ -55,7 +55,7 @@ final class Throttle
             table: self::TABLE,
             storage: $storage,
             fields: [
-                'purpose' => new TypeFieldDefinition('purpose', 'string'),
+                'purpose' => new TypeFieldDefinition('purpose', 'string', exact: true),
                 'hits' => new TypeFieldDefinition('hits', 'number'),
                 'window_start' => new TypeFieldDefinition('window_start', 'number'),
             ],

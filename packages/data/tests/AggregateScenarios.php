@@ -43,7 +43,8 @@ trait AggregateScenarios
             'correct' => new TypeFieldDefinition('correct', 'boolean'),
             'tries' => new TypeFieldDefinition('tries', 'number'),
             'seconds' => new TypeFieldDefinition('seconds', 'number'),
-            'grade' => new TypeFieldDefinition('grade'),
+            // An exact field (case counts): its groups are pinned here; a text field's follow the text rule.
+            'grade' => new TypeFieldDefinition('grade', exact: true),
             'topic' => new TypeFieldDefinition('topic', translatable: true),
             'extra' => new TypeFieldDefinition('extra', 'json'),
         ], locales: new Locales(['de', 'en'], 'de'));
@@ -320,8 +321,8 @@ trait AggregateScenarios
         ], $rows);
     }
 
-    /** 'a' and 'A' are two groups, ordered by their bytes, on every storage. */
-    public function test_text_groups_are_case_sensitive(): void
+    /** On an exact field 'a' and 'A' are two groups, ordered by their bytes, on every storage. */
+    public function test_exact_text_groups_are_case_sensitive(): void
     {
         $answer = $this->answers();
         $rows = $this->dm->queryIn($answer)->aggregate()->groupBy('grade')->count()->get();

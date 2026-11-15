@@ -12,6 +12,9 @@ final readonly class TypeFieldDefinition
      * @param array<string, string> $labels the label per language when the model file gives a map ("label": {"en": …, "de": …}); $label is then its "en" entry, else the first
      * @param array<string, string> $helps  the same for the help text
      * @param bool|list<string> $unique true, or the names of the fields that scope the uniqueness
+     * @param bool $exact a text field compared exactly (case counts), for a case-significant machine
+     *                    value such as an API key; other text fields ignore case and respect accents
+     *                    (TextColumns, since 0.78)
      */
     public function __construct(
         public string $name,
@@ -28,6 +31,7 @@ final readonly class TypeFieldDefinition
         public bool|array $unique = false,
         public bool $index = false,
         public ?int $length = null,
+        public bool $exact = false,
     ) {}
 
     /** This field marked indexed (a unique field's scope field is stored as an indexed one). */
@@ -36,6 +40,7 @@ final readonly class TypeFieldDefinition
         return new self(
             $this->name, $this->type, $this->searchable, $this->transform, $this->validate, $this->label, $this->help,
             $this->config, $this->translatable, $this->labels, $this->helps, $this->unique, true, $this->length,
+            $this->exact,
         );
     }
 }

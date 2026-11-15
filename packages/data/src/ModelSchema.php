@@ -29,7 +29,7 @@ final class ModelSchema
      */
     public const array SCHEMA_FIELD_KEYS = [
         'type', 'validate', 'translatable', 'unique', 'index', 'length', 'searchable',
-        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields', 'multiple',
+        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields', 'multiple', 'exact',
     ];
 
     /**
@@ -215,6 +215,9 @@ final class ModelSchema
         }
         if ($field->searchable !== null) {
             $out['searchable'] = $field->searchable;
+        }
+        if ($field->exact) {
+            $out['exact'] = true;
         }
         if ($field->transform !== null) {
             $out['transform'] = $field->transform;

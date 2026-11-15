@@ -56,6 +56,7 @@ final class ShadowTypes
                 $f->name, $f->type, $f->searchable, $f->transform, $f->validate, $f->label, $f->help, $f->config,
                 $f->translatable, $f->labels, $f->helps, unique: false,
                 index: $f->index || (!$f->translatable && !in_array([$name], $def->indexes, true)), length: $f->length,
+                exact: $f->exact,
             );
         }
 

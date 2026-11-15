@@ -25,9 +25,9 @@ final class AddressTable
             table: self::TABLE,
             storage: 'default',
             fields: [
-                'type' => new TypeFieldDefinition('type', 'string'),
-                'record_id' => new TypeFieldDefinition('record_id', 'string'),
-                'locale' => new TypeFieldDefinition('locale', 'string'),
+                'type' => new TypeFieldDefinition('type', 'string', exact: true),
+                'record_id' => new TypeFieldDefinition('record_id', 'string', exact: true),
+                'locale' => new TypeFieldDefinition('locale', 'string', exact: true),
                 'path' => new TypeFieldDefinition('path', 'string'),
             ],
             idField: 'id',

@@ -210,4 +210,15 @@ final class QueryTest extends TestCase
             $this->assertStringContainsString('a\"\nb', $e->getMessage());
         }
     }
+
+    public function test_compare_as_text_names_fields(): void
+    {
+        $this->assertFalse((new Query())->comparesAsText('title'), 'a query that names none compares exactly');
+
+        $q = new Query();
+        $q->compareAsText(['title']);
+
+        $this->assertTrue($q->comparesAsText('title'));
+        $this->assertFalse($q->comparesAsText('code'));
+    }
 }

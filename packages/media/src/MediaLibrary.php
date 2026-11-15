@@ -179,7 +179,8 @@ final class MediaLibrary
         }
         $fields = [];
         foreach (Asset::TEXT_COLUMNS as $name) {
-            $fields[$name] = new TypeFieldDefinition($name, 'string', translatable: $name === 'alt');
+            // People's text compares by the text rule (case ignored); paths, ids, types and JSON compare exactly.
+            $fields[$name] = new TypeFieldDefinition($name, 'string', translatable: $name === 'alt', exact: !in_array($name, Asset::PEOPLES_TEXT, true));
         }
         $fields['private'] = new TypeFieldDefinition('private', 'boolean'); // missing on older records: public
         $fields['derived_version'] = new TypeFieldDefinition('derived_version', 'number'); // a copy's original file version; NULL for an original
@@ -215,7 +216,8 @@ final class MediaLibrary
                 validate: array_values(array_filter((array) ($schema['validate'] ?? []), 'is_string')),
                 label: is_string($schema['label'] ?? null) ? $schema['label'] : null,
                 help: is_string($schema['help'] ?? null) ? $schema['help'] : null,
-                config: array_diff_key($schema, array_flip(['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable'])),
+                config: array_diff_key($schema, array_flip(['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable', 'exact'])),
+                exact: ($schema['exact'] ?? false) === true,
             );
         }
 

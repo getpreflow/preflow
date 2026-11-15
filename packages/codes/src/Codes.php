@@ -807,9 +807,9 @@ final class Codes
             // Beside the code type: its storage is "codes" or, without that alias, "default".
             storage: $this->dm->getTypeRegistry()?->get('code')?->storage ?? self::STORAGE,
             fields: [
-                'code_id' => new TypeFieldDefinition('code_id', 'string'),
-                'purpose' => new TypeFieldDefinition('purpose', 'string'),
-                'redeemer' => new TypeFieldDefinition('redeemer', 'string'),
+                'code_id' => new TypeFieldDefinition('code_id', 'string', exact: true),
+                'purpose' => new TypeFieldDefinition('purpose', 'string', exact: true),
+                'redeemer' => new TypeFieldDefinition('redeemer', 'string', exact: true),
                 'redeemed_at' => new TypeFieldDefinition('redeemed_at', 'number'),
             ],
             idField: 'id',

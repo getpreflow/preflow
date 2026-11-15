@@ -43,7 +43,7 @@ final class KnownPermissions
             table: self::TABLE,
             storage: 'default',
             fields: [
-                'known_at' => new TypeFieldDefinition('known_at', 'string'),
+                'known_at' => new TypeFieldDefinition('known_at', 'string', exact: true),
             ],
             idField: 'name',
         );

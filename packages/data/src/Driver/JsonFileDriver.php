@@ -326,8 +326,9 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     /**
      * Groups and computes in PHP what SQL's GROUP BY does, with the same rules (see
      * AggregateQuery): missing values form one group, measures skip them, number fields count
-     * as numbers (numeric text too), other values compare as stored; having, then the orders,
-     * then limit and offset.
+     * as numbers (numeric text too), the query's text fields (Query::compareAsText()) by the text
+     * rule ("Über" and "über" are one group, shown as the first one met; COUNT(DISTINCT), MIN and
+     * MAX alike), other values as stored; having, then the orders, then limit and offset.
      */
     public function aggregate(AggregateQuery $aggregate): array
     {
@@ -340,11 +341,13 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         $groups = [];
         foreach ($items as $item) {
             $values = [];
+            $identity = [];
             foreach ($aggregate->groups() as $field) {
                 $value = $this->aggregateValue($item, $field, $query);
                 $values[$field] = isset($numeric[$field]) ? self::numberOrAsStored($value) : $value;
+                $identity[] = self::groupIdentity($values[$field], $query->comparesAsText($field));
             }
-            $key = self::key(array_values($values));
+            $key = self::key($identity);
             $groups[$key] ??= ['values' => $values, 'items' => []];
             $groups[$key]['items'][] = $item;
         }
@@ -363,10 +366,18 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             }
         }
 
+        // Group fields and MIN/MAX of a text field order by the text rule.
+        $textNames = [];
+        foreach ($aggregate->groups() as $field) {
+            $textNames[$field] = $query->comparesAsText($field);
+        }
+        foreach ($aggregate->measures() as $measure) {
+            $textNames[$measure['as']] = in_array($measure['fn'], ['min', 'max'], true) && $query->comparesAsText((string) $measure['field']);
+        }
         $orders = $aggregate->orders();
-        usort($rows, static function (array $a, array $b) use ($orders): int {
+        usort($rows, static function (array $a, array $b) use ($orders, $textNames): int {
             foreach ($orders as $order) {
-                $cmp = self::compareNullsFirst($a[$order['name']], $b[$order['name']]);
+                $cmp = self::compareNullsFirst($a[$order['name']], $b[$order['name']], $textNames[$order['name']] ?? false);
                 if ($cmp !== 0) {
                     return $order['direction'] === SortDirection::Desc ? -$cmp : $cmp;
                 }
@@ -397,6 +408,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             return count($items);
         }
         $asNumbers = $numericField || in_array($measure['fn'], ['sum', 'avg'], true);
+        $text = !$asNumbers && $query->comparesAsText((string) $measure['field']);
         $values = [];
         foreach ($items as $item) {
             $value = $this->aggregateValue($item, (string) $measure['field'], $query);
@@ -407,11 +419,11 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         }
 
         return match ($measure['fn']) {
-            'countDistinct' => count(array_unique(array_map(static fn (mixed $v): string => self::key([$v]), $values))),
+            'countDistinct' => count(array_unique(array_map(static fn (mixed $v): string => self::key([self::groupIdentity($v, $text)]), $values))),
             'sum' => array_sum($values),
             'avg' => $values === [] ? null : array_sum($values) / count($values),
-            'min' => $values === [] ? null : array_reduce($values, static fn ($carry, $v) => $carry === null || self::compare($v, $carry) < 0 ? $v : $carry),
-            'max' => $values === [] ? null : array_reduce($values, static fn ($carry, $v) => $carry === null || self::compare($v, $carry) > 0 ? $v : $carry),
+            'min' => $values === [] ? null : array_reduce($values, static fn ($carry, $v) => $carry === null || self::compare($v, $carry, $text) < 0 ? $v : $carry),
+            'max' => $values === [] ? null : array_reduce($values, static fn ($carry, $v) => $carry === null || self::compare($v, $carry, $text) > 0 ? $v : $carry),
             default => throw new \InvalidArgumentException(sprintf('Unknown aggregate function "%s".', $measure['fn'])),
         };
     }
@@ -458,6 +470,15 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return json_encode($values, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 
+    /**
+     * What tells a group value apart: the value, or for a text field's text its key under the
+     * text rule (TextMatch::key(), as hex in a list so it never meets a stored value).
+     */
+    private static function groupIdentity(mixed $value, bool $text): mixed
+    {
+        return $text && is_string($value) ? [bin2hex(TextMatch::key($value))] : $value;
+    }
+
     /** A number field's group value: its number, but '' and non-scalar values as stored. */
     private static function numberOrAsStored(mixed $value): mixed
     {
@@ -493,20 +514,23 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     }
 
     /** Ascending order with null first, as SQLite and MySQL sort it. */
-    private static function compareNullsFirst(mixed $a, mixed $b): int
+    private static function compareNullsFirst(mixed $a, mixed $b, bool $text = false): int
     {
         if ($a === null || $b === null) {
             return ($a !== null) <=> ($b !== null);
         }
 
-        return self::compare($a, $b);
+        return self::compare($a, $b, $text);
     }
 
-    /** Numbers by value, text by its bytes (as SQL's binary comparison), anything else by PHP's order. */
-    private static function compare(mixed $a, mixed $b): int
+    /**
+     * Numbers by value, text by its bytes (as SQL's binary comparison), or by the text rule for a
+     * text field ($text), anything else by PHP's order.
+     */
+    private static function compare(mixed $a, mixed $b, bool $text = false): int
     {
         if (is_string($a) && is_string($b)) {
-            return strcmp($a, $b) <=> 0;
+            return $text ? TextMatch::compare($a, $b) : strcmp($a, $b) <=> 0;
         }
 
         return $a <=> $b;
@@ -797,6 +821,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     {
         $fieldValue = $this->value($item, $where['field'], $query);
         $condValue = $where['value'];
+        $text = $query?->comparesAsText($where['field']) ?? false;
 
         $operator = $where['operator'];
         if ($operator === 'IN' || $operator === 'NOT IN') {
@@ -807,7 +832,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             if (!is_scalar($fieldValue)) {
                 return false;
             }
-            $listed = in_array(self::listText($fieldValue), array_map(self::listText(...), array_filter((array) $condValue, 'is_scalar')), true);
+            $listed = self::listed($fieldValue, (array) $condValue, $text);
 
             return $operator === 'IN' ? $listed : !$listed;
         }
@@ -815,10 +840,21 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             return false; // as SQL: only (not) equal to NULL matches anything
         }
 
+        if ($text && is_string($fieldValue) && is_string($condValue) && in_array($operator, ['>', '>=', '<', '<='], true)) {
+            $order = TextMatch::compare($fieldValue, $condValue);
+
+            return match ($operator) {
+                '>' => $order > 0,
+                '>=' => $order >= 0,
+                '<' => $order < 0,
+                default => $order <= 0,
+            };
+        }
+
         return match ($operator) {
-            '=' => self::sqlEquals($fieldValue, $condValue),
+            '=' => self::equalsAs($text, $fieldValue, $condValue),
             // As SQL: != null is IS NOT NULL, and a NULL field is never "not equal" to a value.
-            '!=', '<>' => $condValue === null ? $fieldValue !== null : $fieldValue !== null && !self::sqlEquals($fieldValue, $condValue),
+            '!=', '<>' => $condValue === null ? $fieldValue !== null : $fieldValue !== null && !self::equalsAs($text, $fieldValue, $condValue),
             '>' => $fieldValue > $condValue,
             '>=' => $fieldValue >= $condValue,
             '<' => $fieldValue < $condValue,
@@ -870,6 +906,38 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return false;
     }
 
+    /**
+     * "=" on a field: for a text field (Query::compareAsText()) where both values are text, by the
+     * text rule (TextMatch::equals()); else as SQL compares (sqlEquals()).
+     */
+    private static function equalsAs(bool $text, mixed $stored, mixed $given): bool
+    {
+        return $text && is_string($stored) && is_string($given) ? TextMatch::equals($stored, $given) : self::sqlEquals($stored, $given);
+    }
+
+    /**
+     * Whether a scalar stored value is in the list (IN): compared as text (listText()), by the
+     * text rule for a text field's text.
+     *
+     * @param array<mixed> $list
+     */
+    private static function listed(bool|int|float|string $stored, array $list, bool $text): bool
+    {
+        $list = array_map(self::listText(...), array_filter($list, 'is_scalar'));
+        if ($text && is_string($stored)) {
+            $key = TextMatch::key($stored);
+            foreach ($list as $value) {
+                if (TextMatch::key($value) === $key) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return in_array(self::listText($stored), $list, true);
+    }
+
     /** A value as IN compares it: as text, a yes/no value as '1' or '0' (as SQL stores it). */
     private static function listText(bool|int|float|string $value): string
     {
@@ -885,7 +953,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         foreach ($query->getAnyGroups() as $group) {
             $items = array_values(array_filter($items, function (array $item) use ($group, $query) {
                 foreach ($group as $condition) {
-                    if ($this->matchesAny($this->value($item, $condition['field'], $query), $condition)) {
+                    if ($this->matchesAny($this->value($item, $condition['field'], $query), $condition, $query->comparesAsText($condition['field']))) {
                         return true;
                     }
                 }
@@ -896,16 +964,19 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return $items;
     }
 
-    /** @param array{field: string, operator: string, value: mixed} $condition */
-    private function matchesAny(mixed $fieldValue, array $condition): bool
+    /**
+     * @param array{field: string, operator: string, value: mixed} $condition
+     * @param bool $text the field is a text field (Query::compareAsText())
+     */
+    private function matchesAny(mixed $fieldValue, array $condition, bool $text = false): bool
     {
         $value = $condition['value'];
 
         return match ($condition['operator']) {
             'CONTAINS' => self::containsText($fieldValue, (string) $value),
-            'IN' => is_scalar($fieldValue) && in_array(self::listText($fieldValue), array_map(self::listText(...), array_filter((array) $value, 'is_scalar')), true),
-            'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value)),
-            default => self::sqlEquals($fieldValue, $value),
+            'IN' => is_scalar($fieldValue) && self::listed($fieldValue, (array) $value, $text),
+            'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value), $text),
+            default => self::equalsAs($text, $fieldValue, $value),
         };
     }
 
@@ -929,8 +1000,13 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return is_scalar($fieldValue) && TextMatch::contains((string) $fieldValue, $term);
     }
 
-    /** @param list<string> $ids */
-    private function holdsAny(mixed $stored, array $ids): bool
+    /**
+     * HAS: the stored id, or one of the stored list's ids, is one of $ids; by the text rule on a
+     * text field ($text).
+     *
+     * @param list<string> $ids
+     */
+    private function holdsAny(mixed $stored, array $ids, bool $text = false): bool
     {
         if ($ids === [] || $stored === null || $stored === '') {
             return false;
@@ -943,6 +1019,11 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             if (is_array($decoded)) {
                 $held = array_map('strval', array_filter($decoded, 'is_scalar'));
             }
+        }
+
+        if ($text) {
+            $ids = array_map(TextMatch::key(...), $ids);
+            $held = array_map(TextMatch::key(...), $held);
         }
 
         return array_intersect($ids, $held) !== [];
@@ -989,14 +1070,29 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             return $items;
         }
 
-        usort($items, function (array $a, array $b) use ($orderBy, $query) {
-            foreach ($orderBy as $order) {
-                $field = $order['field'];
-                $aVal = $this->value($a, $field, $query) ?? '';
-                $bVal = $this->value($b, $field, $query) ?? '';
-                $cmp = is_numeric($aVal) && is_numeric($bVal)
-                    ? $aVal <=> $bVal
-                    : strcmp((string)$aVal, (string)$bVal);
+        // Each row's sort values once: a text field (Query::compareAsText(), not numeric) by its
+        // key under the text rule, null and missing as '' (first); others as stored.
+        $values = [];
+        $keys = [];
+        foreach ($items as $i => $item) {
+            foreach ($orderBy as $o => $order) {
+                $value = $this->value($item, $order['field'], $query) ?? '';
+                $values[$i][$o] = $value;
+                if (!($order['numeric'] ?? false) && is_scalar($value) && ($query?->comparesAsText($order['field']) ?? false)) {
+                    $keys[$i][$o] = TextMatch::key((string) $value);
+                }
+            }
+        }
+        $indexes = array_keys($items);
+        usort($indexes, static function (int|string $a, int|string $b) use ($orderBy, $values, $keys): int {
+            foreach ($orderBy as $o => $order) {
+                $aVal = $values[$a][$o];
+                $bVal = $values[$b][$o];
+                $cmp = match (true) {
+                    isset($keys[$a][$o], $keys[$b][$o]) => strcmp($keys[$a][$o], $keys[$b][$o]) <=> 0,
+                    is_numeric($aVal) && is_numeric($bVal) => $aVal <=> $bVal,
+                    default => strcmp((string) $aVal, (string) $bVal),
+                };
 
                 if ($cmp !== 0) {
                     return $order['direction'] === SortDirection::Desc ? -$cmp : $cmp;
@@ -1005,6 +1101,6 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             return 0;
         });
 
-        return $items;
+        return array_map(static fn (int|string $i): array => $items[$i], $indexes);
     }
 }

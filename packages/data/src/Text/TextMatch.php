@@ -17,6 +17,17 @@ namespace Preflow\Data\Text;
  * Which characters are taken as which is the fold table (fold-table.php), derived from the
  * server's collation by bin/text-fold-table and checked against it by the MySQL test suite.
  *
+ * Exact comparisons (=, !=, IN, NOT IN, unique checks, ORDER BY on text fields: equals(),
+ * compare(), key()) follow the same rule over the whole text, as "=" does under the server's NO
+ * PAD collation: case is ignored and accents count as in fold(), and further a decomposed "Ü" is
+ * "Ü", a ligature or other compatibility character is the text it stands for ("ﬁ" is "fi"),
+ * characters the collation ignores (the soft hyphen) are left out, and a trailing space counts.
+ * What "=" needs beyond the fold table is equality-table.php, derived from the same server by
+ * bin/text-fold-table. Texts are ordered by the Unicode Collation Algorithm (ICU's root order,
+ * intl Collator at secondary strength) and, where it sees no difference but "=" does (a Hangul
+ * syllable and its letters, combining marks in another order, characters newer than the server's
+ * Unicode version), by their equality form's bytes: compare() is 0 exactly when equals() holds.
+ *
  * @since 0.78
  */
 final class TextMatch
@@ -29,6 +40,14 @@ final class TextMatch
 
     /** @var array<string, string> escape and pattern => regular expression */
     private static array $patterns = [];
+
+    /** @var array{ignore: array<string, true>, expand: array<string, string>}|null */
+    private static ?array $equality = null;
+
+    private static ?\Collator $collator = null;
+
+    /** @var array<string, string> text => key(), for the texts of one query (IN lists, sorting) */
+    private static array $keys = [];
 
     /**
      * The text with each character replaced by the one the rule takes it as (A by a, ａ by a, ẞ by
@@ -58,6 +77,109 @@ final class TextMatch
     public static function contains(string $text, string $term): bool
     {
         return str_contains(self::fold($text), self::fold($term));
+    }
+
+    /**
+     * Whether two texts are equal under the rule, as "=" compares them under the server's
+     * accent-sensitive, case-insensitive NO PAD collation: "über" = "ÜBER", "Straße" = "STRAẞE",
+     * the Kelvin sign = k, "U" with a combining diaeresis = "Ü", "a­b" (soft hyphen) = "ab"; but
+     * "uber" ≠ "über", "Straße" ≠ "STRASSE", "istanbul" ≠ "İstanbul", "abc" ≠ "abc ".
+     *
+     * @since 0.78
+     */
+    public static function equals(string $a, string $b): bool
+    {
+        return $a === $b || self::equalityForm($a) === self::equalityForm($b);
+    }
+
+    /**
+     * The order of two texts under the rule: -1, 0 or 1. Accented letters sort with their base
+     * letter ("Apfel", "äpfel", "eagle", "Émile", "Zebra"), digits as text ("10" before "9");
+     * 0 exactly when equals().
+     *
+     * @throws \RuntimeException when intl's Collator fails
+     * @since 0.78
+     */
+    public static function compare(string $a, string $b): int
+    {
+        return $a === $b ? 0 : strcmp(self::key($a), self::key($b)) <=> 0;
+    }
+
+    /**
+     * A key for the text: two keys are equal exactly when the texts are (equals()), and keys
+     * compared byte by byte (strcmp) order as compare() does. For grouping, sets and sorting many
+     * texts. The collator's sort key (secondary strength) of the text's equality form, then the
+     * form itself.
+     *
+     * @throws \RuntimeException when intl's Collator fails
+     * @since 0.78
+     */
+    public static function key(string $text): string
+    {
+        if (isset(self::$keys[$text])) {
+            return self::$keys[$text];
+        }
+        if (count(self::$keys) >= 4096) {
+            self::$keys = [];
+        }
+        $form = self::equalityForm($text);
+        $sortKey = self::collator()->getSortKey($form);
+        if (!is_string($sortKey)) {
+            throw new \RuntimeException('The text collator failed: ' . intl_get_error_message());
+        }
+
+        return self::$keys[$text] = $sortKey . "\0" . $form;
+    }
+
+    /**
+     * The text as "=" sees it: each character folded (fold()), a character the collation ignores
+     * left out, one it takes as its decomposition replaced by it (equality-table.php).
+     */
+    private static function equalityForm(string $text): string
+    {
+        if (preg_match('/[^\x20-\x7E]/', $text) !== 1) {
+            return strtolower($text);
+        }
+        $table = self::table();
+        self::$equality ??= self::equalityTable();
+        ['ignore' => $ignore, 'expand' => $expand] = self::$equality;
+        $form = preg_replace_callback('/[^\x20-\x40\x5B-\x7E]/u', static function (array $m) use ($table, $ignore, $expand): string {
+            if (isset($ignore[$m[0]])) {
+                return '';
+            }
+            $fold = $table[$m[0]] ?? $m[0];
+
+            return $expand[$fold] ?? $fold;
+        }, $text);
+
+        return $form ?? self::equalityForm(mb_scrub($text, 'UTF-8'));
+    }
+
+    /** @return array{ignore: array<string, true>, expand: array<string, string>} */
+    private static function equalityTable(): array
+    {
+        $table = require __DIR__ . '/equality-table.php';
+
+        return ['ignore' => array_fill_keys($table['ignore'], true), 'expand' => $table['expand']];
+    }
+
+    /** One collator per process: the root order at secondary strength, normalizing. */
+    private static function collator(): \Collator
+    {
+        if (self::$collator === null) {
+            if (!class_exists(\Collator::class)) {
+                throw new \RuntimeException('preflow/data compares text with intl\'s Collator: install the PHP extension intl.');
+            }
+            $collator = \Collator::create('root');
+            if (!$collator instanceof \Collator
+                || !$collator->setStrength(\Collator::SECONDARY)
+                || !$collator->setAttribute(\Collator::NORMALIZATION_MODE, \Collator::ON)) {
+                throw new \RuntimeException('The text collator could not be set up: ' . intl_get_error_message());
+            }
+            self::$collator = $collator;
+        }
+
+        return self::$collator;
     }
 
     /**

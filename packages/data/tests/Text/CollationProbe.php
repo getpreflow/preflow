@@ -21,14 +21,17 @@ final class CollationProbe
     }
 
     /**
-     * Every assigned code point but controls, surrogates and private use (ICU's character
-     * database), up to $max.
+     * Every assigned code point but surrogates, private use and (unless $controls) controls (ICU's
+     * character database), up to $max.
      *
      * @return list<int>
      */
-    public static function codePoints(int $max = 0x10FFFF): array
+    public static function codePoints(int $max = 0x10FFFF, bool $controls = false): array
     {
-        $skip = [\IntlChar::CHAR_CATEGORY_CONTROL_CHAR, \IntlChar::CHAR_CATEGORY_SURROGATE, \IntlChar::CHAR_CATEGORY_PRIVATE_USE_CHAR, \IntlChar::CHAR_CATEGORY_UNASSIGNED];
+        $skip = [\IntlChar::CHAR_CATEGORY_SURROGATE, \IntlChar::CHAR_CATEGORY_PRIVATE_USE_CHAR, \IntlChar::CHAR_CATEGORY_UNASSIGNED];
+        if (!$controls) {
+            $skip[] = \IntlChar::CHAR_CATEGORY_CONTROL_CHAR;
+        }
         $points = [];
         for ($cp = 0; $cp <= $max; $cp++) {
             if (!in_array(\IntlChar::charType($cp), $skip, true)) {
@@ -208,6 +211,151 @@ final class CollationProbe
             $answers[(int) $id] = (int) $match === 1;
         }
         $this->pdo->exec('DROP TEMPORARY TABLE preflow_probe_pairs');
+
+        return $answers;
+    }
+
+    /**
+     * The NO PAD form of a collation (MariaDB's utf8mb4_uca1400_as_ci pads, its
+     * utf8mb4_uca1400_nopad_as_ci does not; MySQL's 0900 collations never pad): what "=" compares
+     * with, so a trailing space counts and a lone space is no ignorable character.
+     */
+    public static function noPad(string $collation): string
+    {
+        return str_contains($collation, 'uca1400_') && !str_contains($collation, 'nopad')
+            ? str_replace('uca1400_', 'uca1400_nopad_', $collation)
+            : $collation;
+    }
+
+    /**
+     * What "=" needs beyond the fold table (TextMatch::equals()): the characters the collation
+     * ignores entirely (no weights: the soft hyphen, most controls), and the characters "=" takes
+     * as another text where LIKE does not (their canonical, else compatibility decomposition: "Ü"
+     * as "U" and a combining diaeresis, "ǆ" as "dž", "ﬁ" as "fi", a Kangxi radical as its
+     * ideograph; or a character ICU's root order takes as equal), where the server says so. Each
+     * expansion is keyed by the character's fold and given in folded, expanded form.
+     *
+     * @param array<string, string> $folds TextMatch's fold table
+     * @return array{ignore: list<string>, expand: array<string, string>}
+     */
+    public function equalityTable(array $folds, string $collation): array
+    {
+        $collation = self::noPad($collation);
+        $points = self::codePoints(controls: true);
+        $ignore = [];
+        foreach ($this->weights($points, $collation) as $cp => $weight) {
+            if ($weight === '') {
+                $ignore[mb_chr($cp, 'UTF-8')] = true;
+            }
+        }
+
+        $icu = \Collator::create('root');
+        $icu->setStrength(\Collator::SECONDARY);
+        $icu->setAttribute(\Collator::NORMALIZATION_MODE, \Collator::ON);
+        $firstByKey = [];
+        $candidates = [];
+        foreach ($points as $cp) {
+            $char = mb_chr($cp, 'UTF-8');
+            if (isset($ignore[$char])) {
+                continue;
+            }
+            foreach ([\Normalizer::FORM_D, \Normalizer::FORM_KD] as $form) {
+                $decomposed = \Normalizer::normalize($char, $form);
+                if (is_string($decomposed) && $decomposed !== $char && $decomposed !== '') {
+                    $candidates[$char][] = $decomposed;
+                }
+            }
+            // A character ICU takes as an earlier one ("=" may too where LIKE does not, as for
+            // the Kangxi radicals and their ideographs).
+            $first = $firstByKey[(string) $icu->getSortKey($char)] ??= $char;
+            if ($first !== $char) {
+                $candidates[$char][] = $first;
+            }
+        }
+        $pairs = [];
+        foreach ($candidates as $char => $forms) {
+            foreach (array_unique($forms) as $form) {
+                $pairs[] = [(string) $char, $form];
+            }
+        }
+        $equal = [];
+        foreach ($this->equalities($pairs, $collation) as $i => $same) {
+            if ($same) {
+                $equal[$pairs[$i][0]] ??= $pairs[$i][1]; // canonical first
+            }
+        }
+
+        $expand = [];
+        $canon = static function (string $text) use (&$expand, $ignore, $folds): string {
+            $out = '';
+            foreach (mb_str_split($text, 1, 'UTF-8') as $char) {
+                if (isset($ignore[$char])) {
+                    continue;
+                }
+                $fold = $folds[$char] ?? $char;
+                $out .= $expand[$fold] ?? $fold;
+            }
+
+            return $out;
+        };
+        // Decompositions hold no character that decomposes further; two rounds settle a fold
+        // that lands on an expanded character.
+        for ($round = 0; $round < 2; $round++) {
+            foreach ($equal as $char => $decomposed) {
+                $fold = $folds[(string) $char] ?? (string) $char;
+                $form = $canon($decomposed);
+                if ($form !== $fold) { // a decomposition whose other characters the collation ignores
+                    $expand[$fold] = $form;
+                }
+            }
+        }
+        uksort($expand, static fn (string $a, string $b): int => mb_ord($a, 'UTF-8') <=> mb_ord($b, 'UTF-8'));
+
+        // Every character must equal its canonical form on the server.
+        $check = [];
+        foreach ($points as $cp) {
+            $char = mb_chr($cp, 'UTF-8');
+            $form = $canon($char);
+            if ($form !== $char && $form !== '') {
+                $check[] = [$char, $form];
+            }
+        }
+        $refused = [];
+        foreach ($this->equalities($check, $collation) as $i => $same) {
+            if (!$same) {
+                $refused[] = sprintf('U+%04X', mb_ord($check[$i][0], 'UTF-8'));
+            }
+        }
+        if ($refused !== []) {
+            throw new \RuntimeException('"=" does not take these characters as their canonical form: ' . implode(', ', array_slice($refused, 0, 50)));
+        }
+
+        return ['ignore' => array_map('strval', array_keys($ignore)), 'expand' => $expand];
+    }
+
+    /**
+     * The server's answer to "a = b" for each pair under the collation (both sides taken as
+     * written, no padding with a NO PAD collation).
+     *
+     * @param list<array{string, string}> $pairs
+     * @return list<bool>
+     */
+    public function equalities(array $pairs, string $collation): array
+    {
+        $this->pdo->exec('DROP TEMPORARY TABLE IF EXISTS preflow_probe_equal');
+        $this->pdo->exec('CREATE TEMPORARY TABLE preflow_probe_equal (id INT PRIMARY KEY, a VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, b VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL)');
+        foreach (array_chunk($pairs, self::BATCH, true) as $chunk) {
+            $values = [];
+            foreach ($chunk as $id => [$a, $b]) {
+                array_push($values, $id, $a, $b);
+            }
+            $this->pdo->prepare('INSERT INTO preflow_probe_equal VALUES ' . implode(',', array_fill(0, count($chunk), '(?, ?, ?)')))->execute($values);
+        }
+        $answers = array_fill(0, count($pairs), false);
+        foreach ($this->pdo->query("SELECT id, (a COLLATE {$collation}) = (b COLLATE {$collation}) FROM preflow_probe_equal")->fetchAll(\PDO::FETCH_NUM) as [$id, $same]) {
+            $answers[(int) $id] = (int) $same === 1;
+        }
+        $this->pdo->exec('DROP TEMPORARY TABLE preflow_probe_equal');
 
         return $answers;
     }

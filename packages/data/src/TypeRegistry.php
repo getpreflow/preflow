@@ -325,6 +325,16 @@ final class TypeRegistry
         return $value;
     }
 
+    /** A field's "exact": true or false (a case-significant machine value compares exactly). */
+    private static function exact(mixed $value, string $key, string $field): bool
+    {
+        if (!is_bool($value)) {
+            throw new \InvalidArgumentException("Type \"{$key}\": \"exact\" on the field \"{$field}\" is true or false.");
+        }
+
+        return $value;
+    }
+
     /** The field that names a record ("titleField": "name"); null when the model file sets none. */
     private static function titleField(mixed $value, string $key): ?string
     {
@@ -352,7 +362,7 @@ final class TypeRegistry
             [$label, $labels] = self::text($fieldDef['label'] ?? null);
             [$help, $helps] = self::text($fieldDef['help'] ?? null);
             $config = array_diff_key($fieldDef, array_flip(
-                ['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable', 'unique', 'index', 'length'],
+                ['type', 'searchable', 'transform', 'validate', 'label', 'help', 'translatable', 'unique', 'index', 'length', 'exact'],
             ));
 
             $fields[$name] = new TypeFieldDefinition(
@@ -370,6 +380,7 @@ final class TypeRegistry
                 unique: self::unique($fieldDef['unique'] ?? false),
                 index: (bool) ($fieldDef['index'] ?? false),
                 length: isset($fieldDef['length']) ? (int) $fieldDef['length'] : null,
+                exact: self::exact($fieldDef['exact'] ?? false, (string) $schema['key'], (string) $name),
             );
 
             if ($searchable) {

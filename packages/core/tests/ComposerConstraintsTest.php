@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which Throttle gives its purpose field).
  * Since 0.74: view 0.74 (Audits, which bootAudit binds) and notify 0.74 (Notifier::discardingQueued(),
  * which every internal render runs in, so mail a render queues is dropped; with an older notify it would be sent).
  *
@@ -46,7 +47,7 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/auth' => '<0.66',
             'preflow/components' => '<0.60',
-            'preflow/data' => '<0.66.1',
+            'preflow/data' => '<0.78',
             'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.67',
             'preflow/routing' => '<0.62',

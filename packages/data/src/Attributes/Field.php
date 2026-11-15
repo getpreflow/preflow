@@ -22,5 +22,7 @@ final class Field
         /** @var array<string, mixed> kind-specific settings (options, accept, ...), written at field level as a JSON file does */
         public readonly array $config = [],
         public readonly mixed $default = null,
+        /** A text field compared exactly (case counts): a case-significant machine value such as an API key (since 0.78). */
+        public readonly bool $exact = false,
     ) {}
 }

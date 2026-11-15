@@ -305,7 +305,7 @@ final class Publisher
             key: $def->key,
             table: $def->table,
             storage: $def->storage,
-            fields: [$column => new TypeFieldDefinition($column, 'string')],
+            fields: [$column => new TypeFieldDefinition($column, 'string', exact: true)],
             idField: $def->idField,
         );
         $query = $this->among($this->dm->queryIn($narrow), $narrow, $ids);

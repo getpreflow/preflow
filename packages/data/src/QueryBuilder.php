@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data;
 
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\TextColumns;
 use Preflow\Data\Search\LooseFields;
 
 /**
@@ -493,15 +494,22 @@ final class QueryBuilder
         };
     }
 
-    /** The query with the loose searches resolved and translatable fields compared in the locale. */
+    /**
+     * The query with the loose searches resolved, translatable fields compared in the locale and
+     * text fields compared by the text rule (TextColumns).
+     */
     private function prepared(): Query
     {
         $this->applyLooseSearches();
-        $translatable = $this->typeDef?->translatableFields() ?? [];
+        if ($this->typeDef === null) {
+            return $this->query;
+        }
+        $translatable = $this->typeDef->translatableFields();
         if ($translatable !== []) {
             $default = $this->typeDef->locales->default;
             $this->query->localize($translatable, $this->locale ?? $default, $default, $this->typeDef->locales->available);
         }
+        $this->query->compareAsText(TextColumns::of($this->typeDef, $this->dataManager?->fieldKinds() ?? new FieldKinds()));
 
         return $this->query;
     }

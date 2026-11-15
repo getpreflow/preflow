@@ -212,6 +212,29 @@ final class Query
         return ['locale' => $this->localization['locale'], 'default' => $this->localization['default'], 'available' => $this->localization['available']];
     }
 
+    /** @var array<string, true> */
+    private array $textFields = [];
+
+    /**
+     * Compare these fields by the text rule (ignore case, respect accents; TextMatch): =, !=,
+     * IN, NOT IN, range comparisons, ORDER BY and grouping. For storage whose columns do not carry
+     * the rule themselves (JSON); QueryBuilder names a type's text fields (TextColumns). A query
+     * that names none compares every field exactly.
+     *
+     * @param list<string> $fields
+     * @since 0.78
+     */
+    public function compareAsText(array $fields): void
+    {
+        $this->textFields = array_fill_keys(array_map('strval', $fields), true);
+    }
+
+    /** @since 0.78 */
+    public function comparesAsText(string $field): bool
+    {
+        return isset($this->textFields[$field]);
+    }
+
     public function getWheres(): array { return $this->wheres; }
 
     /** @return array<int, array{field: string, direction: SortDirection}> */

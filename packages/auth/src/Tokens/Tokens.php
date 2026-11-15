@@ -43,8 +43,8 @@ final class Tokens
             table: self::TABLE,
             storage: $storage,
             fields: [
-                'purpose' => new TypeFieldDefinition('purpose', 'string'),
-                'subject' => new TypeFieldDefinition('subject', 'string'),
+                'purpose' => new TypeFieldDefinition('purpose', 'string', exact: true),
+                'subject' => new TypeFieldDefinition('subject', 'string', exact: true),
                 'expires_at' => new TypeFieldDefinition('expires_at', 'number'),
             ],
             idField: 'id',

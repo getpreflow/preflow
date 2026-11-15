@@ -136,7 +136,7 @@ final class RecordUserProvider implements UserProviderInterface, ClaimsCredentia
             return [];
         }
         $email = mb_strtolower(trim($email));
-        // The database may compare loosely (MySQL collations ignore case and accents): only the exact
+        // The database may ignore case (the text rule of e-mail fields, a MySQL collation): only the exact
         // stored value counts, and a look-alike or duplicate never picks an account.
         $exact = [];
         foreach ($this->dm->queryIn($this->definition)->where($this->emailField, $email)->get() as $record) {
