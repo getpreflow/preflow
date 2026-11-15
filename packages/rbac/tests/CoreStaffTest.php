@@ -262,6 +262,7 @@ final class CoreStaffTest extends TestCase
         $this->assertTrue($managers()->hasTable(), 'JSON before the first staff write');
     }
 
+    #[RunInSeparateProcess]
     public function test_install_create_password_then_sign_in_and_can_follows_the_stored_role(): void
     {
         $this->assertSame(0, $this->command('migrate')[0]);
