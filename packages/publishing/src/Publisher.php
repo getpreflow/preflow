@@ -173,8 +173,9 @@ final class Publisher
      * From the versions (@since 0.77): reads only the working copies' `_version` and the
      * snapshots' `_published_version` (an aggregate query on storage that groups,
      * AggregatingStorage; the records otherwise). No snapshot is Draft, the version it was
-     * published from is Published, another is Changed. So an edit undone by hand reads Changed
-     * here while state() (the full compare) says Published. A snapshot without the key (published
+     * published from is Published, another is Changed. A draft save whose content equals the
+     * snapshot's (an edit undone by hand) marks the snapshot with its version, so both agree there;
+     * a write past Publisher that changes content keeping the version is out of their reach. A snapshot without the key (published
      * before 0.77) is compared in full, as state() does, until it is published again.
      *
      * @param list<string>|null $ids
@@ -391,9 +392,13 @@ final class Publisher
             }
             if ($this->dm->saveTypeIfVersion($working, $current, $current + 1, validate: false)) {
                 // A save without a content change (a schedule set or cancelled, the same text again)
-                // keeps a published record Published in states(): its snapshot moves to the new version.
-                if ($stored !== null && self::comparable($working) === self::comparable($stored)) {
-                    $this->carryForward($working, $current);
+                // keeps a published record Published in states(): its snapshot moves to the new version
+                // (the fast path: no snapshot read when it stood for the version replaced). Otherwise,
+                // a save whose content equals the snapshot's (an edit undone by hand, a snapshot edited
+                // to the working content) marks the snapshot with the new version too.
+                $same = $stored !== null && self::comparable($working) === self::comparable($stored);
+                if (!$same || !$this->carryForward($working, $current)) {
+                    $this->relinkSaved($working);
                 }
                 $this->index?->refresh($working);
 
@@ -409,17 +414,41 @@ final class Publisher
      * The snapshot published from version $from now stands for the working copy's new version (its
      * content is the same): a checked write of _published_version, so a publish in between keeps its
      * own. Never fails the save; a failure is logged.
+     *
+     * @return bool whether the snapshot was marked (false: none published from $from, the table not
+     *              migrated, or the write failed)
      */
-    private function carryForward(DynamicRecord $working, int $from): void
+    private function carryForward(DynamicRecord $working, int $from): bool
     {
         $shadow = ShadowTypes::published($working->getType());
         try {
-            if ($this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
-                $this->dm->updateFieldsIfVersion($shadow, (string) $working->getId(), [self::PUBLISHED_VERSION => (int) $working->get('_version')], self::PUBLISHED_VERSION, $from);
-            }
+            return $this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)
+                && $this->dm->updateFieldsIfVersion($shadow, (string) $working->getId(), [self::PUBLISHED_VERSION => (int) $working->get('_version')], self::PUBLISHED_VERSION, $from);
         } catch (\Throwable $e) {
             $this->logger?->warning('Publishing: could not carry the published version of {type}/{id} forward: {message}', ['type' => $working->getType()->key, 'id' => (string) $working->getId(), 'message' => $e->getMessage(), 'exception' => $e]);
+
+            return false;
         }
+    }
+
+    /**
+     * After a draft save the fast path did not cover: one snapshot read; when the saved content
+     * equals the snapshot's (the full compare), relink() marks the snapshot with the new version.
+     */
+    private function relinkSaved(DynamicRecord $working): void
+    {
+        $shadow = ShadowTypes::published($working->getType());
+        try {
+            if (!$this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
+                return;
+            }
+            $snapshot = $this->dm->findIn($shadow, (string) $working->getId());
+        } catch (\Throwable $e) {
+            $this->logger?->warning('Publishing: could not read the snapshot of {type}/{id}: {message}', ['type' => $working->getType()->key, 'id' => (string) $working->getId(), 'message' => $e->getMessage(), 'exception' => $e]);
+
+            return;
+        }
+        $this->relink($working, $snapshot);
     }
 
     private function storedVersion(DynamicRecord $working): int
@@ -786,10 +815,10 @@ final class Publisher
     }
 
     /**
-     * After a discard or restore (a new working version): when the working copy now holds the
+     * After a discard, a restore or a draft save (a new working version): when the working copy now holds the
      * published content (the full compare), its snapshot is marked as published from that version,
      * so states() reads Published as state() does. A checked write of that key only (a publish in
-     * between keeps its own); a failure is logged and never fails the discard or restore.
+     * between keeps its own); a failure is logged and never fails the write.
      */
     private function relink(DynamicRecord $working, ?DynamicRecord $snapshot): void
     {

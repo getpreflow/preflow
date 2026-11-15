@@ -172,4 +172,44 @@ final class MemberSelfDeletionPublishedTest extends TestCase
         $this->assertNotNull($this->flow->container()->get(Members::class)->find((string) $m->getId()));
         $this->assertSame((string) $m->getId(), (string) $this->publisher()->snapshot('order', 'o1')?->get('member'));
     }
+
+    /** After the detach and the scrub, the counts (the versions) say what state() (the full compare) says: Published. */
+    #[RunInSeparateProcess]
+    public function test_the_counts_agree_with_the_state_after_a_detach(): void
+    {
+        $this->site('detach');
+        $m = $this->makeMember();
+        $this->publishedOrder('o1', $m);
+        $this->assertSame(['o1' => 'published'], array_map(static fn ($s) => $s->value, $this->publisher()->states('order')), 'before');
+
+        $this->assertTrue($this->flow->container()->get(Members::class)->delete($m)->deleted);
+
+        $working = $this->flow->container()->get(DataManager::class)->findType('order', 'o1') ?? throw new \RuntimeException('gone');
+        $this->assertSame('published', $this->publisher()->state($working)->value, 'the full compare');
+        $this->assertSame(['o1' => 'published'], array_map(static fn ($s) => $s->value, $this->publisher()->states('order')), 'the versions');
+        $this->assertSame(['draft' => 0, 'published' => 1, 'changed' => 0], $this->publisher()->stateCounts('order'));
+    }
+
+    /** An order edited and edited back by hand reads Published in the counts as in state(); a member deletion after that keeps it so. */
+    #[RunInSeparateProcess]
+    public function test_an_edit_undone_by_hand_reads_published_before_and_after_a_detach(): void
+    {
+        $this->site('detach');
+        $m = $this->makeMember();
+        $order = $this->publishedOrder('o1', $m);
+        $dm = $this->flow->container()->get(DataManager::class);
+        $order = $dm->findType('order', 'o1') ?? throw new \RuntimeException('gone');
+        $order->set('title', 'Changed');
+        $this->publisher()->saveDraft($order, (int) $order->get('_version'));
+        $this->assertSame(['changed' => 1], array_filter($this->publisher()->stateCounts('order')));
+        $order->set('title', 'Order o1');
+        $this->publisher()->saveDraft($order, (int) $order->get('_version'));
+        $this->assertSame(['published' => 1], array_filter($this->publisher()->stateCounts('order')), 'undone');
+
+        $this->assertTrue($this->flow->container()->get(Members::class)->delete($m)->deleted);
+
+        $working = $dm->findType('order', 'o1') ?? throw new \RuntimeException('gone');
+        $this->assertSame('published', $this->publisher()->state($working)->value);
+        $this->assertSame(['published' => 1], array_filter($this->publisher()->stateCounts('order')), 'after the detach');
+    }
 }

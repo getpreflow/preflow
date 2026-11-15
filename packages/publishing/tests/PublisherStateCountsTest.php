@@ -230,6 +230,63 @@ final class PublisherStateCountsTest extends PublishingAppTestCase
         $this->assertSame(PublishState::Changed, $p->state($this->stored($type, 'a')));
     }
 
+    /** An edit undone by hand: the save whose content equals the snapshot's again marks the snapshot with its version. */
+    #[DataProvider('storages')]
+    public function test_an_edit_undone_by_hand_reads_published(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $this->edit('a', 'Two');
+        $this->assertSame(['a' => PublishState::Changed], $p->states($type), 'edited');
+
+        $this->edit('a', 'One');
+
+        $this->assertSame(3, (int) $this->stored($type, 'a')->get('_version'));
+        $this->assertSame(3, (int) $p->snapshot($type, 'a')?->get('_published_version'), 'the snapshot stands for the undone version');
+        $this->assertSame(PublishState::Published, $p->state($this->stored($type, 'a')));
+        $this->assertSame(['a' => PublishState::Published], $p->states($type));
+        $this->assertSame(['draft' => 0, 'published' => 1, 'changed' => 0], $p->stateCounts($type));
+    }
+
+    /**
+     * A data-layer save changes the content (as a member deletion detaches a relation), the snapshot
+     * is edited to the same content (the pointer scrubbed), then the record is saved again through
+     * saveDraft(): the counts read Published, as state() does.
+     */
+    #[DataProvider('storages')]
+    public function test_a_snapshot_edited_to_the_working_content_reads_published_after_the_next_save(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $this->dm()->saveType($this->with('a', ['title' => $this->title('Two')]), false);
+        $snapshot = $p->snapshot($type, 'a') ?? throw new \RuntimeException('no snapshot');
+        $snapshot->set('title', $this->title('Two'));
+        $this->dm()->saveType($snapshot, false);
+        $this->assertSame(['a' => PublishState::Changed], $p->states($type), 'the snapshot still holds version 1');
+
+        $p->saveDraft($this->stored($type, 'a'), 2);
+
+        $this->assertSame(PublishState::Published, $p->state($this->stored($type, 'a')));
+        $this->assertSame(['a' => PublishState::Published], $p->states($type));
+        $this->assertSame((int) $this->stored($type, 'a')->get('_version'), (int) $p->snapshot($type, 'a')?->get('_published_version'));
+    }
+
+    /** A save whose content differs from the snapshot's leaves the snapshot's version alone. */
+    #[DataProvider('storages')]
+    public function test_a_save_unlike_the_snapshot_keeps_its_version(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $this->edit('a', 'Two');
+        $this->edit('a', 'Three');
+
+        $this->assertSame(1, (int) $p->snapshot($type, 'a')?->get('_published_version'));
+        $this->assertSame(['a' => PublishState::Changed], $p->states($type));
+    }
+
     /** A new position and a new share token are written without a new version: the state stays. */
     #[DataProvider('storages')]
     public function test_system_keys_keep_the_version(string $type): void

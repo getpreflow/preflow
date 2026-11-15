@@ -1316,8 +1316,9 @@ preflow/data).
 $snapshot)` compares with a snapshot you already have (`null`: nothing published) and reads
 nothing. `->states($type)` gives every working copy's state, `->states($type, $ids)` those of
 some ids, and `->stateCounts($type)` (since 0.77) how many are in each: these read only the working
-`_version` and the snapshot's `_published_version` (see preflow/publishing), so an edit undone by
-hand reads Changed there.
+`_version` and the snapshot's `_published_version` (see preflow/publishing); an editor save that
+brings the content back to the published one (an edit undone by hand) marks the snapshot again, so
+it reads Published there as in `state()`.
 
 **SQL storage:**
 - Create `{table}__published` with the type's columns plus `_published_at`,

@@ -61,8 +61,9 @@ read only those two versions, not the content: no snapshot is Draft, the same ve
 Published, another is Changed. On storage that groups (`AggregatingStorage`: the SQL and JSON
 drivers) that is one aggregate query per table, over the id and the version; on other storage the
 records are read. A discard, and a restore of the content that is live, mark the snapshot as
-published from the new version. An edit undone by hand reads Changed there, while `state($record)`,
-which compares the content, says Published. A save of a working copy through DataManager that
+published from the new version, and so does a draft save (`saveDraft()`) whose content equals the
+snapshot's (an edit undone by hand; a snapshot edited to the working content, as a member deletion
+scrubs a pointer): that save reads the snapshot once and marks it. A save of a working copy through DataManager that
 changes content (an app's own model save, an import, a reference the data layer clears) bumps
 `_version` (`PublishingVersionFields`, the data layer's `VersionFields`), so it reads Changed; one
 that changes no content keeps the version and stays Published. Raw SQL and direct driver writes
