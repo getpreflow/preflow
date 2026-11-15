@@ -146,10 +146,6 @@ final class ArchitectureGuardsTest extends TestCase
 
     public function test_storage_no_driver_class_checks(): void
     {
-        $patterns = [
-            '/\\binstanceof\\s+\\\\?' . self::DRIVERS . '\\b/',
-            '/[(,]\\s*\\??\\\\?' . self::DRIVERS . '\\s+\\$/',
-        ];
         $driverDir = self::packages() . '/data/src/Driver/';
         $sources = [];
         foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
@@ -176,11 +172,8 @@ final class ArchitectureGuardsTest extends TestCase
                         continue;
                     }
                     foreach (file($file) ?: [] as $n => $line) {
-                        foreach ($patterns as $pattern) {
-                            if (preg_match($pattern, $line) === 1) {
-                                $hits[] = [$this->relativeToRepo($file), $n + 1, trim($line)];
-                                break;
-                            }
+                        if (self::checksDriverClass($line)) {
+                            $hits[] = [$this->relativeToRepo($file), $n + 1, trim($line)];
                         }
                     }
                 }
@@ -211,6 +204,98 @@ final class ArchitectureGuardsTest extends TestCase
                 );
             }
         }
+    }
+
+    /**
+     * Each spelling the guard must catch, and lines it must leave alone (building a driver,
+     * naming one in a comment, a capability check).
+     */
+    public function test_storage_driver_class_check_patterns(): void
+    {
+        $caught = [
+            'instanceof' => 'if ($driver instanceof PdoDriver) {',
+            'instanceof, fully qualified' => 'return $d instanceof \Preflow\Data\Driver\MysqlDriver;',
+            'instanceof, Driver\\' => '$ok = $d instanceof Driver\SqliteDriver;',
+            'parameter' => 'public function run(PdoDriver $driver): void',
+            'nullable parameter' => 'function f(int $a, ?JsonFileDriver $d = null) {}',
+            'parameter on its own line' => '        PdoDriver $driver,',
+            'nullable parameter on its own line' => '        ?\Preflow\Data\Driver\MysqlDriver $driver = null,',
+            'promoted parameter' => '        private readonly PdoDriver $driver,',
+            'public promoted parameter' => 'public function __construct(public PdoDriver $d) {}',
+            'promoted nullable parameter' => '        protected ?SqliteDriver $driver = null,',
+            'union type' => 'function f(int|PdoDriver $d) {}',
+            'union type, driver first' => 'function f(PdoDriver|string $d) {}',
+            'intersection type' => 'function f(RunsSql&PdoDriver $d) {}',
+            'by reference' => 'function f(PdoDriver &$d) {}',
+            'variadic' => 'function f(PdoDriver ...$d) {}',
+            'is_a' => 'if (is_a($driver, PdoDriver::class)) {',
+            'is_a, fully qualified' => 'if (is_a($driver, \Preflow\Data\Driver\SqliteDriver::class, true)) {',
+            'is_subclass_of' => 'if (is_subclass_of($driver, Driver\PdoDriver::class)) {',
+            '::class ===' => 'if ($driver::class === MysqlDriver::class) {',
+            '=== ::class' => 'if (MysqlDriver::class === $driver::class) {',
+            '!== ::class' => 'if ($driver::class !== JsonFileDriver::class) {',
+            'get_class ===' => 'if (get_class($driver) === SqliteDriver::class) {',
+            'get_class ==' => 'if (get_class($driver) == SqliteDriver::class) {',
+        ];
+        foreach ($caught as $spelling => $line) {
+            $this->assertTrue(self::checksDriverClass($line), "caught: {$spelling}: {$line}");
+        }
+
+        $allowed = [
+            'building a driver' => '$x = new PdoDriver($pdo, $dialect);',
+            'building one, fully qualified' => 'return new \Preflow\Data\Driver\MysqlDriver($pdo);',
+            'a driver class in config' => "'driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class,",
+            'a use statement' => 'use Preflow\Data\Driver\PdoDriver;',
+            'a docblock' => '     * @param PdoDriver $driver the driver',
+            'a nullable docblock type' => '     * @param ?PdoDriver $driver',
+            'a line comment' => '        // $driver instanceof PdoDriver was the old check',
+            'a hash comment' => '        # is_a($d, PdoDriver::class)',
+            'a block comment line' => '/* function f(PdoDriver $d) */',
+            'a capability check' => 'if ($driver instanceof RunsSql) {',
+            'a longer class name' => 'function f(PdoDriverFactory $f) {}',
+            'a capability parameter' => 'function f(PdoConnection $driver) {}',
+            // preflow/testing builds its drivers and keeps them in typed properties
+            'a property holding a built driver' => '    private ?SqliteDriver $sqliteDriver = null;',
+            'a property without a default' => '    private MysqlDriver $driver;',
+        ];
+        foreach ($allowed as $spelling => $line) {
+            $this->assertFalse(self::checksDriverClass($line), "not caught: {$spelling}: {$line}");
+        }
+    }
+
+    /**
+     * Whether a source line asks a built-in storage driver for its class: `instanceof`, a parameter
+     * type (on any line, promoted or not, nullable, union or intersection, by reference, variadic),
+     * `is_a()`, `is_subclass_of()`, or a `::class` / `get_class()` comparison. Comment lines,
+     * `new …` and a property that holds a driver the class built (preflow/testing) are not checks.
+     */
+    private static function checksDriverClass(string $line): bool
+    {
+        $code = ltrim($line);
+        if ($code === '' || str_starts_with($code, '*') || str_starts_with($code, '/*') || str_starts_with($code, '//')
+            || (str_starts_with($code, '#') && !str_starts_with($code, '#['))) {
+            return false;
+        }
+        $driver = '\\\\?' . self::DRIVERS;
+        $patterns = [
+            // instanceof
+            '/\binstanceof\s+' . $driver . '\b/',
+            // a parameter type: after "(", ",", "|", "&", "?", a modifier (promoted) or the start of the
+            // line, before "$", "&$" or "...$"; not a property ("$name;" or "$name = …;")
+            '/(?:^|[(,|&?]|\b(?:public|protected|private|readonly|var|static))\s*\??' . $driver
+                . '\s*(?:[|&]\s*\??\\\\?[\w\\\\]+\s*)*(?:&\s*)?(?:\.\.\.\s*)?\$\w++(?!\s*(?:=[^,)]*)?;)/',
+            // is_a() / is_subclass_of() against a driver class
+            '/\b(?:is_a|is_subclass_of)\s*\(.*' . $driver . '::class\b/',
+            // a ::class or get_class() comparison
+            '/' . $driver . '::class\s*[!=]==?|[!=]==?\s*' . $driver . '::class\b/',
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $line) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return list<string> every file below $dir */

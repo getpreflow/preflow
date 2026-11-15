@@ -13,7 +13,8 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
-          extensions: pdo_sqlite, mbstring, intl
+          # Every extension the lock file requires (composer check-platform-reqs --lock), plus intl.
+          extensions: ctype, dom, fileinfo, filter, gd, iconv, intl, json, libxml, mbstring, pcre, pdo, pdo_sqlite, phar, sodium, tokenizer, xml, xmlreader, xmlwriter, zip, zlib
           coverage: none
 
       - run: composer install --no-interaction --no-progress --prefer-dist
