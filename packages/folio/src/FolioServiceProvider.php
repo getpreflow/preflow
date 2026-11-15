@@ -506,7 +506,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
-            authors: new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
+            authors: new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
         ));
 
         self::isolatePageCacheRenders($container);
@@ -671,7 +671,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Publishing\PreviewLinks::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->get(Customizations::class),
-            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
+            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
             pageAssets: $c->get(\Preflow\Folio\Extension\Screen\PageAssets::class),
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
@@ -955,7 +955,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             $c->get(DataManager::class),
             $prefix,
-            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
+            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
             $c->get(\Preflow\Publishing\Publisher::class),
             // Of the rows' assets, the ones still in the library (a binned or deleted one: no link).
             $c->bound(\Preflow\Media\MediaLibrary::class) ? static function (array $ids) use ($c): array {
@@ -964,11 +964,30 @@ final class FolioServiceProvider extends ServiceProvider
 
                 return array_values(array_filter($ids, static fn (string $id): bool => $library->find($id) !== null));
             } : null,
+            // Of the rows' redirects, the ones that still exist, each with its current target: a URL, or the page's label.
             $c->bound(\Preflow\Folio\Redirects\RedirectEntries::class) ? static function (array $ids) use ($c): array {
                 $entries = $c->get(\Preflow\Folio\Redirects\RedirectEntries::class);
+                $labeler = new \Preflow\Folio\Content\RecordLabeler();
+                $found = [];
+                foreach ($ids as $id) {
+                    $entry = $entries->find($id);
+                    if ($entry === null) {
+                        continue;
+                    }
+                    $target = $entry['target_url'] ?? null;
+                    if ($target === null && $entry['target_type'] !== null && $entry['target_id'] !== null && $c->bound(\Preflow\Folio\Redirects\LiveRecords::class)) {
+                        $record = $c->get(\Preflow\Folio\Redirects\LiveRecords::class)->find($entry['target_type'], $entry['target_id']);
+                        $target = $record === null ? null : $labeler->label($record);
+                    }
+                    $found[$id] = $target;
+                }
 
-                return array_values(array_filter($ids, static fn (string $id): bool => $entries->find($id) !== null));
+                return $found;
             } : null,
+            new \Preflow\Folio\Http\AdminFormat(),
+            // An app's own subjects: its declared "{subject}.view" permissions.
+            $c->bound(\Preflow\Auth\Access\PermissionRegistry::class) ? static fn (): array => array_keys($c->get(\Preflow\Auth\Access\PermissionRegistry::class)->all()) : null,
+            $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\ActivityController::class, fn (Container $c) => new \Preflow\Folio\Http\ActivityController(
             $c->get(\Preflow\Folio\Dashboard\RecentChanges::class),

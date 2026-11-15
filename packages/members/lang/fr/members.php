@@ -155,4 +155,6 @@ return [
             'listener' => 'le site a refusé la suppression.',
         ],
     ],
+    // Who the activity log names for the changes a member's account deletion causes.
+    'activity' => ['account_deletion' => 'Suppression du compte'],
 ];

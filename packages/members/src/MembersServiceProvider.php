@@ -149,6 +149,10 @@ final class MembersServiceProvider extends ServiceProvider
         MemberType::define($container);
         self::access($container);
         self::routes($container);
+        // The deletion marker in the activity log reads as "Account deletion", not as a person (core 0.77+).
+        if (class_exists(\Preflow\Core\Activity\ActivityActors::class) && $container->bound(\Preflow\Core\Activity\ActivityActors::class)) {
+            $container->get(\Preflow\Core\Activity\ActivityActors::class)->register(MemberEvents::DELETION_ACTOR, 'members.activity.account_deletion');
+        }
         // CSRF sign-in paths: a login form left open past the session's end still signs in, and a
         // public page's registration form (stateless token) may post there. Neither uses a member's authority.
         if ($container->bound(CsrfSignInPaths::class)) {

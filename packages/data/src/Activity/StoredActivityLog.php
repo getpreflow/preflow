@@ -245,24 +245,23 @@ final class StoredActivityLog implements ActivityLog
             $rows = array_slice($rows, 0, $limit);
             $next = (string) $rows[$limit - 1]->get('seq');
         }
-        $person = $by;
         $items = [];
         foreach ($rows as $row) {
             $kind = ActivityKind::tryFrom((string) $row->get('kind'));
             if ($kind === null) {
                 continue; // a kind of a later version: left out, the cursor still counts it
             }
-            if ($person !== null && $row->get('actor') !== $person) {
+            $actor = $row->get('actor');
+            if ($by !== null && $actor !== $by) {
                 continue; // a text column may compare case-insensitively (MySQL): exact matches only
             }
-            $by = $row->get('actor');
             $items[] = new Activity(
                 (string) $row->get('subject'),
                 (string) $row->get('record_id'),
                 (string) $row->get('title'),
                 $kind,
                 self::changed($row->get('changed')),
-                is_string($by) && $by !== '' ? $by : null,
+                is_string($actor) && $actor !== '' ? $actor : null,
                 (string) $row->get('at'),
                 is_string($key = $row->get('title_key')) && $key !== '' ? $key : null,
             );

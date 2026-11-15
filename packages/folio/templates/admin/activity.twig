@@ -2,13 +2,16 @@
 {# All activity (ActivityController::index(), GET {prefix}/activity): the activity log the user may see,
    newest first, PER_PAGE rows a page ("Older" follows the log's cursor, "Newest" goes back to the
    start), filtered by type and person (a GET form; with script a changed select applies at once).
-   Nothing changed yet: the ink empty state; a filter or page without rows: a plain line. #}
+   Nothing changed yet: the ink empty state; a filter or page without rows: a plain line; a log that
+   failed to read (logged): a plain line saying so. #}
 {% import '@folio/admin/partials/_activity_row.twig' as activity %}
 {% block title %}Folio — {{ t('folio.activity.title') }}{% endblock %}
 {% block page_title %}{{ t('folio.activity.title') }}{% endblock %}
 {% block subtitle %}{{ t('folio.activity.subtitle') }}{% endblock %}
 {% block content %}
-    {% if rows is empty and not filtered %}
+    {% if failed %}
+        <div class="folio-empty folio-no-matches" role="status"><p>{{ t('folio.activity.load_failed_screen') }}</p></div>
+    {% elseif rows is empty and not filtered %}
         {% include '@folio/admin/partials/_empty.twig' with {
             screen: 'activity',
             title: t('folio.activity.empty'),

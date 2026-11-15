@@ -119,4 +119,20 @@ final class ActivityTest extends TestCase
         $tables = array_map(static fn (array $e): string => $e['def']->table, $app->container()->get(\Preflow\Data\Schema\RecordTables::class)->all());
         $this->assertContains('preflow_activity', $tables);
     }
+
+    public function test_actor_markers_have_labels(): void
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+        $actors = $app->container()->get(\Preflow\Core\Activity\ActivityActors::class);
+        $this->assertSame($actors, $app->container()->get(\Preflow\Core\Activity\ActivityActors::class));
+
+        $actors->register('nightly-import', 'imports.activity.nightly');
+        $this->assertSame('imports.activity.nightly', $actors->label('nightly-import'));
+        $this->assertNull($actors->label('u1'), 'anything else is a person');
+        $this->assertSame(['nightly-import' => 'imports.activity.nightly'], $actors->all());
+
+        $this->expectException(\InvalidArgumentException::class);
+        $actors->register('', 'x');
+    }
 }

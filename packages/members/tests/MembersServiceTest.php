@@ -270,4 +270,15 @@ final class MembersServiceTest extends TestCase
     {
         return $this->container()->get(Members::class);
     }
+
+    public function test_the_deletion_marker_reads_as_account_deletion(): void
+    {
+        $c = $this->container();
+        $this->assertSame('members.activity.account_deletion', $c->get(\Preflow\Core\Activity\ActivityActors::class)->label(\Preflow\Members\MemberEvents::DELETION_ACTOR));
+        $translator = $c->get(\Preflow\I18n\Translator::class);
+        $this->assertSame('Account deletion', $translator->get('members.activity.account_deletion'));
+        foreach (['de' => 'Kontolöschung', 'fr' => 'Suppression du compte'] as $locale => $text) {
+            $this->assertSame($text, (require dirname(__DIR__) . "/lang/{$locale}/members.php")['activity']['account_deletion']);
+        }
+    }
 }

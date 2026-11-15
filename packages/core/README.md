@@ -396,6 +396,10 @@ $people = $log->people(['page', 'post']);                // who did something, t
   `RecordWriter`, `RecordDeleter` and `Publisher`, media's `MediaLibrary`, Folio's redirects)
   catch what `record()` throws and log it as a warning (`Psr\Log\LoggerInterface`, when bound).
   Your own writers should do the same.
+- `ActivityActors` (in the container) names the markers written as `by` where no person acted:
+  `$actors->register('member-deletion', 'members.activity.account_deletion')` (a translation key
+  or text) by the package that writes the marker; a reader asks `label($by)` before looking the
+  value up as a user. members registers its account-deletion marker.
 - `recent()` and `people()` check no permission: show a person only the subjects they may read.
 
 ### Cookie queue

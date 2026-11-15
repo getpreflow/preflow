@@ -44,3 +44,23 @@ test('a changed type or person submits the activity filters at once, without the
     p.loose.dispatchEvent(new p.w.Event('change', { bubbles: true }));
     assert.deepEqual(sent, ['activity', 'activity']);
 });
+
+test('a dashboard part whose request fails leaves the row, so the content gets its width back', () => {
+    const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
+    const doc = w.document;
+    const split = doc.body.appendChild(doc.createElement('div'));
+    split.className = 'folio-dash-split';
+    const content = split.appendChild(doc.createElement('section'));
+    content.className = 'folio-dash-section folio-dash-content';
+    const later = split.appendChild(doc.createElement('div'));
+    later.className = 'folio-dash-later folio-dash-recent-later';
+    const other = doc.body.appendChild(doc.createElement('form'));
+    load(w, ADMIN_JS);
+
+    other.dispatchEvent(new w.Event('htmx:responseError', { bubbles: true }));
+    assert.equal(content.parentNode, split, 'another element\'s error changes nothing');
+    assert.equal(later.parentNode, split);
+    later.dispatchEvent(new w.Event('htmx:responseError', { bubbles: true }));
+    assert.equal(later.parentNode, null, 'the placeholder is gone');
+    assert.deepEqual(split.children, [content]);
+});

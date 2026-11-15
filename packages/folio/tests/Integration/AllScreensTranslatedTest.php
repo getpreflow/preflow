@@ -100,6 +100,8 @@ final class AllScreensTranslatedTest extends TestCase
                 $walked[] = $part;
             }
         }
+        // members' deletion marker by its label, in the user's language.
+        $this->assertStringContainsString(['de' => 'Kontolöschung', 'fr' => 'Suppression du compte'][$locale], (string) $this->request('GET', '/folio/activity')->getBody());
         foreach (['/folio/activity?type=post', '/folio/activity?by=nobody'] as $filtered) {
             $this->assertScreen($filtered, $this->request('GET', $filtered), $locale, $english);
         }
@@ -394,6 +396,8 @@ final class AllScreensTranslatedTest extends TestCase
         foreach (\Preflow\Core\Activity\ActivityKind::cases() as $i => $kind) {
             $log->record(new \Preflow\Core\Activity\Activity('post', 'po1', 'First', $kind, ['title', 'kind', 'related'], 'sf1', (new \DateTimeImmutable('-' . ($i * 7) . ' hours'))->format(DATE_ATOM)));
         }
+        // A save a member's deletion caused: its marker reads "Account deletion" in the user's language (members' text).
+        $log->record(new \Preflow\Core\Activity\Activity('post', 'po1', 'First', \Preflow\Core\Activity\ActivityKind::Saved, ['related'], \Preflow\Members\MemberEvents::DELETION_ACTOR, (new \DateTimeImmutable('-1 minute'))->format(DATE_ATOM)));
         $log->record(new \Preflow\Core\Activity\Activity('page', 'gone', 'Gone page', \Preflow\Core\Activity\ActivityKind::Deleted, by: 'sf1', at: (new \DateTimeImmutable('-3 days'))->format(DATE_ATOM)));
 
         return $ids;

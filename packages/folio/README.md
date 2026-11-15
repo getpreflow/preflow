@@ -297,10 +297,20 @@ changed fields by their labels), who (`AuthorNames`) and when ("5 minutes ago", 
 the date).
 
 Rows are filtered on the server: a type's rows for `{type}.view`, assets for `assets.view`,
-redirects for `redirects.manage`; nothing else is read. The screen asks `folio.dashboard`, as the
-dashboard does; there is no permission of its own. A subject that is neither a type key nor
-`asset`/`redirect` (an app's own events) is not shown. `Preflow\Folio\Dashboard\RecentChanges`
-builds the rows for both.
+redirects for `redirects.manage`; nothing else is read. An app's own subject (`invoice`, recorded
+by its own code) shows for whoever holds its declared `invoice.view` permission, without a link.
+`asset`, `redirect` and `activity` are reserved: no type may take them as its key (a boot error),
+and a declared `redirect.view` grants nothing. The screen asks `folio.dashboard`, as the dashboard
+does; there is no permission of its own. `Preflow\Folio\Dashboard\RecentChanges` builds the rows
+for both.
+
+- **Titles:** an event's `titleKey` translated when it has a text in the interface language, else
+  its stored `title` (a private file reads "Private file", never its name). A redirect reads
+  "old → target" while it exists.
+- **Who:** `AuthorNames`; a marker registered with core's `ActivityActors` (members'
+  `member-deletion`) shows its label ("Account deletion"); an erased person shows no one.
+- **A log that fails to read** is logged as a warning; the dashboard says "Couldn’t load recent
+  changes." and All activity a line of its own, never "Nothing changed yet".
 
 ## Overriding the dashboard
 

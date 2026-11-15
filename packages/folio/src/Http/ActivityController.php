@@ -55,6 +55,7 @@ final class ActivityController
             'type' => $type,
             'by' => $by,
             'filtered' => $filters !== [] || $before !== '',
+            'failed' => $page['failed'],
             'newest_url' => $before !== '' ? $this->url($filters) : null,
             'older_url' => $page['next'] !== null ? $this->url($filters + ['before' => $page['next']]) : null,
         ]));

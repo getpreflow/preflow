@@ -14,7 +14,9 @@ use Preflow\Data\DynamicRecord;
  * Who a stored "created by" value is: the id of a record user of the staff guard shows that
  * record's name (else its e-mail), as does the id of another user its provider finds (a model's
  * public name or email, or getName()/getEmail()); an e-mail (config era) or an id nobody has any more shows as
- * stored. A disabled account still resolves, since it did the work.
+ * stored. A disabled account still resolves, since it did the work. A marker registered with
+ * core's ActivityActors ("member-deletion") is no person: it shows its label, translated
+ * (since 0.77).
  */
 final class AuthorNames
 {
@@ -33,12 +35,17 @@ final class AuthorNames
         private readonly DataManager $dm,
         private readonly \Closure $providers,
         private readonly ?\Closure $users = null,
+        private readonly ?\Preflow\Core\Activity\ActivityActors $actors = null,
     ) {}
 
     public function label(?string $by): ?string
     {
         if ($by === null || $by === '' || str_contains($by, '@')) {
             return $by;
+        }
+        $marker = $this->actors?->label($by);
+        if ($marker !== null) {
+            return \Preflow\Folio\FolioText::label($marker);
         }
         if (isset($this->known[$by])) {
             $this->dm->replayReads($this->reads[$by] ?? []); // still a read (page cache)

@@ -22,8 +22,12 @@ use Preflow\Routing\RouteEntry;
  */
 final class ScreenRegistry
 {
-    /** First path segments Folio uses under its prefix (FolioRoutes::admin) or keeps for itself. */
-    public const array RESERVED = ['login', 'logout', '_assets', '_uploads', '_blocks', 'media', 'extensions', 'blocks', 'preview', 'upload', 'assets'];
+    /**
+     * First path segments Folio uses under its prefix (FolioRoutes::admin) or keeps for itself; no
+     * type may take one as its key (TypeCatalog). "asset" and "redirect" name the activity log's
+     * own subjects and "activity" is All activity's path (since 0.77).
+     */
+    public const array RESERVED = ['login', 'logout', '_assets', '_uploads', '_blocks', 'media', 'extensions', 'blocks', 'preview', 'upload', 'assets', 'asset', 'redirect', 'activity'];
 
     private const string AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
     private const string LOCALE_MW = 'Preflow\\Folio\\Http\\AdminLocaleMiddleware';

@@ -378,6 +378,8 @@ final class Application
 
         // The activity log keeps nothing until the data layer binds its stored one (a provider may bind its own).
         $this->container->singleton(\Preflow\Core\Activity\ActivityLog::class, static fn (): \Preflow\Core\Activity\ActivityLog => new \Preflow\Core\Activity\NullActivityLog());
+        // The labels of the markers written as an event's person where no person acted ("member-deletion").
+        $this->container->instance(\Preflow\Core\Activity\ActivityActors::class, new \Preflow\Core\Activity\ActivityActors());
 
         // Auto-discover installed packages and wire them up
         $this->bootValidators();

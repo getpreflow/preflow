@@ -34,7 +34,9 @@ final class PublishedMemberDeletion
 {
     /**
      * Who the detached records' saves are by in the activity log (@since 0.77): the deletion, not
-     * the member, whose id must not outlive the account there.
+     * the member, whose id must not outlive the account there. The same marker as members'
+     * MemberEvents::DELETION_ACTOR, which registers its label ("Account deletion") with core's
+     * ActivityActors (Folio only suggests preflow/members, so the value is repeated here).
      */
     public const string BY = 'member-deletion';
 

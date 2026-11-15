@@ -138,7 +138,7 @@ final class AdminController
         if ($part === 'recent') {
             $recent = $dashboard->recent($can);
 
-            return $this->html($recent === null ? '' : $this->engine->render('@folio/admin/partials/dashboard-recent.twig', ['prefix' => $this->prefix, 'rows' => $recent]));
+            return $this->html($recent === null ? '' : $this->engine->render('@folio/admin/partials/dashboard-recent.twig', ['prefix' => $this->prefix, 'rows' => $recent['rows'], 'failed' => $recent['failed']]));
         }
         if ($part === 'cache') {
             $cache = $dashboard->cache($can);

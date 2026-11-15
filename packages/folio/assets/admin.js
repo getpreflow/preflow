@@ -4060,6 +4060,14 @@
         if (typeof form.requestSubmit === 'function') { form.requestSubmit(); } else { form.submit(); }
     }
 
+    // A dashboard part loaded after the page (.folio-dash-later: "Needs you", "Recent changes") whose request
+    // failed (a server error, no connection) goes away instead of holding its place: the content beside
+    // "Recent changes" takes the row's full width again.
+    function onDashPartError(e) {
+        var t = e.target;
+        if (t && t.matches && t.matches('.folio-dash-later') && t.parentNode) { t.parentNode.removeChild(t); }
+    }
+
     function assetsInput(root) {
         return root ? root.querySelector('[data-folio-assets-files]') : null;
     }
@@ -4233,6 +4241,8 @@
         document.addEventListener('change', onAssetsToolbarChange);
         initAutosubmit(document);
         document.addEventListener('change', onAutosubmitChange);
+        document.addEventListener('htmx:responseError', onDashPartError);
+        document.addEventListener('htmx:sendError', onDashPartError);
         document.addEventListener('change', onAssetsFileChange);
         document.addEventListener('click', onAssetsChooseClick);
         document.addEventListener('dragover', onAssetsDragOver);

@@ -932,7 +932,9 @@ return [
   id where it stands as the person, ending that person's open sessions.
 - **Titles by key:** `Activity::$titleKey` is stored (`title_key`) next to `title`.
 - **People:** `people()` groups the rows by person (`AggregatingStorage`, every built-in
-  driver); on a storage without aggregates it reads them 1000 at a time.
+  driver); on a storage without aggregates it reads them 1000 at a time. On JSON storage the
+  grouping itself reads every row of the log (as `recent()` does there), so an admin asks for it
+  on its own screen (Folio's All activity), never on every page.
 - **Retention:** `prune()` deletes rows older than `keep_days` and beyond the newest
   `keep_rows`, 1000 at a time with one `DELETE … IN (…)` each (`DataManager::deleteManyIn()`),
   and the newest-row entries pointing at them. It runs from `php preflow activity:prune` (and

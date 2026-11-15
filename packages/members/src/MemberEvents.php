@@ -45,6 +45,13 @@ final class MemberEvents
     public const string DELETED = 'members.deleted';
     public const string DELETION_REFUSED = 'members.deletion_refused';
 
+    /**
+     * Who the saves a member's deletion causes are by in the activity log (@since 0.77): the
+     * deletion, never the member, whose id must not outlive the account there. Registered with
+     * core's ActivityActors as "Account deletion" (members.activity.account_deletion).
+     */
+    public const string DELETION_ACTOR = 'member-deletion';
+
     public const array ALL = [
         self::REGISTERED, self::CONFIRMED, self::DECIDED, self::SIGNED_IN,
         self::DELETING, self::DELETED, self::DELETION_REFUSED,

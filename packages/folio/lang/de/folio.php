@@ -85,6 +85,8 @@ return [
         'empty' => 'Noch nichts geändert',
         'empty_short' => 'Noch nichts geändert.',
         'empty_line' => 'Hier erscheinen Änderungen, Uploads und Veröffentlichungen.',
+        'load_failed' => 'Die letzten Änderungen konnten nicht geladen werden.',
+        'load_failed_screen' => 'Die Aktivität konnte nicht geladen werden. Versuche es später noch einmal.',
         'no_matches' => 'Keine Aktivität passt zu diesen Filtern.',
         'type' => 'Typ',
         'all_types' => 'Alle Typen',
@@ -94,7 +96,6 @@ return [
         'newest' => 'Neueste',
         'asset' => 'Datei',
         'redirect' => 'Weiterleitung',
-        'private_file' => 'Private Datei',
         'edited' => ':fields bearbeitet|:fields bearbeitet',
         'fields_more' => ':fields und :count weiteres|:fields und :count weitere',
         'kinds' => [

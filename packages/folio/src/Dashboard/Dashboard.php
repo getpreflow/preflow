@@ -82,22 +82,21 @@ final class Dashboard
 
     /**
      * "Recent changes": the RECENT_ROWS newest rows of the activity log the user may see
-     * (RecentChanges), or null when there is nothing they may see (no section). The log is read
-     * here, in its own request after the page: on JSON storage it reads the whole log.
+     * (RecentChanges) and whether the log failed (logged there; the section says so), or null when
+     * there is nothing they may see (no section). The log is read here, in its own request after
+     * the page: on JSON storage it reads the whole log.
      *
      * @param \Closure(string): bool $can
-     * @return list<array<string, mixed>>|null
+     * @return array{rows: list<array<string, mixed>>, failed: bool}|null
      */
     public function recent(\Closure $can): ?array
     {
         if ($this->recent === null || $this->recent->subjects($can) === []) {
             return null;
         }
-        try {
-            return $this->recent->page($can, self::RECENT_ROWS)['rows'];
-        } catch (\Throwable) {
-            return []; // a broken log never breaks the dashboard
-        }
+        $page = $this->recent->page($can, self::RECENT_ROWS);
+
+        return ['rows' => $page['rows'], 'failed' => $page['failed']];
     }
 
     /**

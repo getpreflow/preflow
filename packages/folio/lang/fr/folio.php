@@ -85,6 +85,8 @@ return [
         'empty' => 'Rien n’a encore changé',
         'empty_short' => 'Rien n’a encore changé.',
         'empty_line' => 'Les modifications, téléversements et publications apparaissent ici.',
+        'load_failed' => 'Impossible de charger les modifications récentes.',
+        'load_failed_screen' => 'Impossible de charger l’activité. Réessayez plus tard.',
         'no_matches' => 'Aucune activité ne correspond à ces filtres.',
         'type' => 'Type',
         'all_types' => 'Tous les types',
@@ -94,7 +96,6 @@ return [
         'newest' => 'Plus récentes',
         'asset' => 'Fichier',
         'redirect' => 'Redirection',
-        'private_file' => 'Fichier privé',
         'edited' => '{0} :fields modifié|{1} :fields modifié|[2,*] :fields modifiés',
         'fields_more' => '{0} :fields et :count autre|{1} :fields et :count autre|[2,*] :fields et :count autres',
         'kinds' => [

@@ -99,7 +99,7 @@ final class RecentChangesTest extends TestCase
         $this->assertStringContainsString('Private file', $body, 'a private file is named by its kind, never its name');
         $this->assertStringNotContainsString('passport', $body);
         $this->assertStringNotContainsString('media.activity', $body, 'no raw key');
-        $this->assertStringContainsString('/old-spring', $body);
+        $this->assertStringContainsString('/old-spring → /spring', $body, 'a redirect: old → its current target');
         $this->assertStringNotContainsString('Old announcement', $body, 'five rows: the oldest is the sixth');
         $this->assertStringContainsString('Old announcement', $this->screen('/folio/activity'));
     }
@@ -165,6 +165,133 @@ final class RecentChangesTest extends TestCase
         $this->assertMatchesRegularExpression('/@media \(min-width: 1280px\) \{\s*\.folio-dash-split:has\(> :nth-child\(2\)\) \{[^}]*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.4fr\);/', $css);
         $this->assertMatchesRegularExpression('/\.folio-activity-title \{[^}]*overflow-wrap: anywhere;/', $css, 'long titles wrap at 375');
         $this->assertMatchesRegularExpression('/\.folio-activity-main \{[^}]*min-width: 0;/', $css);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_type_keyed_like_a_reserved_subject_is_a_boot_error(): void
+    {
+        foreach (['redirect', 'asset', 'activity'] as $key) {
+            $this->assertContains($key, \Preflow\Folio\Extension\Screen\ScreenRegistry::RESERVED);
+        }
+        $this->writeModel('redirect', ['label' => 'Redirect notes', 'fields' => ['name' => ['type' => 'string']]]);
+
+        $this->expectException(\Preflow\Folio\Content\FrontendConfigException::class);
+        $this->expectExceptionMessage('Type "redirect": the key is a path Folio uses itself');
+        $this->app();
+    }
+
+    #[RunInSeparateProcess]
+    public function test_reserved_names_are_granted_only_by_their_own_permissions_and_app_subjects_by_theirs(): void
+    {
+        $app = $this->app();
+        $c = $app->container();
+        $log = $c->get(ActivityLog::class);
+        $log->record(new Activity('invoice', 'i1', 'Invoice 2026-17', ActivityKind::Created, by: 'u1'));
+        $log->record(new Activity('redirect', 'r9', '/sneaky', ActivityKind::Created, by: 'u1'));
+        $log->record(new Activity('secret', 's1', 'Secret plan', ActivityKind::Created, by: 'u1'));
+        $declared = ['invoice.view', 'redirect.view', 'asset.view', 'activity.view', 'secret.view', 'post.view'];
+        $recent = $this->recentChanges($c, $log, $declared, redirects: true);
+
+        // Every declared permission held but redirects.manage: "redirect.view" grants nothing.
+        $can = static fn (string $p): bool => $p !== 'redirects.manage' && $p !== 'secret.view';
+        $keys = array_column($recent->subjects($can), 'key');
+        $this->assertContains('invoice', $keys, 'an app\'s own subject with its declared {subject}.view');
+        $this->assertContains('post', $keys);
+        foreach (['redirect', 'asset', 'activity', 'secret'] as $not) {
+            $this->assertNotContains($not, $keys);
+        }
+        $rows = $recent->page($can, 10)['rows'];
+        $this->assertSame(['Invoice 2026-17'], array_column($rows, 'title'));
+        $this->assertSame(['what' => 'Invoice · created', 'url' => null], ['what' => $rows[0]['what'], 'url' => $rows[0]['url']], 'no screen to link to');
+
+        // redirects.manage alone grants "redirect".
+        $rows = $recent->page(static fn (string $p): bool => $p === 'redirects.manage', 10)['rows'];
+        $this->assertSame(['/sneaky'], array_column($rows, 'title'), 'gone: the stored title, no target');
+        $this->assertNull($rows[0]['url']);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_markers_show_their_label_and_an_erased_person_none(): void
+    {
+        $app = $this->app();
+        $c = $app->container();
+        $c->get(\Preflow\Core\Activity\ActivityActors::class)->register('nightly-import', 'Nightly import');
+        $log = $c->get(ActivityLog::class);
+        $log->record(new Activity('post', 'p1', 'Imported', ActivityKind::Created, by: 'nightly-import'));
+        $log->record(new Activity('post', 'p2', 'Erased', ActivityKind::Created, by: ''));
+        $log->record(new Activity('post', 'p3', 'Fallback title', ActivityKind::Created, by: 'u-9', titleKey: 'nowhere.activity.no_text'));
+        $recent = $this->recentChanges($c, $log, []);
+        $can = static fn (string $p): bool => $p === 'post.view';
+
+        $rows = array_column($recent->page($can, 10)['rows'], null, 'title');
+        $this->assertSame('Nightly import', $rows['Imported']['who'], 'a marker is no person: its label');
+        $this->assertNull($rows['Erased']['who'], 'an erased person shows no one');
+        $this->assertArrayHasKey('Fallback title', $rows, 'a titleKey without a text: the stored title');
+        $this->assertSame([['id' => 'u-9', 'label' => 'u-9'], ['id' => 'nightly-import', 'label' => 'Nightly import']], $recent->people($can));
+        $this->assertSame(\Preflow\Members\MemberEvents::DELETION_ACTOR, \Preflow\Folio\Members\PublishedMemberDeletion::BY, 'Folio writes the marker members names');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_broken_log_is_logged_and_said(): void
+    {
+        $this->signIn(['folio.dashboard', 'post.view']);
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<string> */
+            public array $lines = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->lines[] = $level . ': ' . $message;
+            }
+        };
+        $c = $this->session->container();
+        $c->instance(\Psr\Log\LoggerInterface::class, $logger);
+        $c->instance(ActivityLog::class, new class implements ActivityLog {
+            public function record(Activity $activity): void {}
+
+            public function recent(int $limit, ?array $subjects = null, ?string $before = null, ?string $by = null): \Preflow\Core\Activity\ActivityPage
+            {
+                throw new \RuntimeException('disk on fire');
+            }
+
+            public function people(?array $subjects = null): array
+            {
+                throw new \RuntimeException('disk on fire');
+            }
+
+            public function prune(): int
+            {
+                return 0;
+            }
+
+            public function forget(string $subject, string $id): void {}
+        });
+
+        $body = $this->part();
+        $this->assertStringContainsString('<p class="folio-dash-recent-empty is-failed" role="status">Couldn’t load recent changes.</p>', $body);
+        $this->assertStringNotContainsString('Nothing changed yet', $body);
+        $screen = $this->screen('/folio/activity');
+        $this->assertStringContainsString('Couldn’t load the activity. Try again later.', $screen);
+        $this->assertStringNotContainsString('folio-ink-empty', $screen);
+        $this->assertContains('warning: Folio: could not read the activity log: disk on fire', $logger->lines);
+    }
+
+    /** @param list<string> $declared */
+    private function recentChanges(\Preflow\Core\Container\Container $c, ActivityLog $log, array $declared, bool $redirects = false): \Preflow\Folio\Dashboard\RecentChanges
+    {
+        return new \Preflow\Folio\Dashboard\RecentChanges(
+            $log,
+            $c->get(\Preflow\Folio\Content\TypeCatalog::class),
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
+            $c->get(\Preflow\Data\DataManager::class),
+            '/folio',
+            new \Preflow\Folio\Users\AuthorNames($c->get(\Preflow\Data\DataManager::class), static fn (): array => [], null, $c->get(\Preflow\Core\Activity\ActivityActors::class)),
+            null,
+            null,
+            $redirects ? static fn (array $ids): array => [] : null,
+            new AdminFormat(),
+            static fn (): array => $declared,
+        );
     }
 
     private function part(): string

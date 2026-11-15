@@ -94,6 +94,8 @@ return [
         'empty' => 'Nothing changed yet',
         'empty_short' => 'Nothing changed yet.',
         'empty_line' => 'Edits, uploads and publishes show up here.',
+        'load_failed' => 'Couldn’t load recent changes.',
+        'load_failed_screen' => 'Couldn’t load the activity. Try again later.',
         'no_matches' => 'No activity matches these filters.',
         'type' => 'Type',
         'all_types' => 'All types',
@@ -103,7 +105,6 @@ return [
         'newest' => 'Newest',
         'asset' => 'Asset',
         'redirect' => 'Redirect',
-        'private_file' => 'Private file',
         // "Title, Body edited"; with more fields "Title, Body and 2 more edited".
         'edited' => ':fields edited|:fields edited',
         'fields_more' => ':fields and :count more|:fields and :count more',
