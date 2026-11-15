@@ -223,12 +223,10 @@ class QueryCompiler
             };
         }
         $bindings[] = $value;
-        // LIKE matches case-insensitively, with the dialect's operator for it.
-        $operator = match ($operator) {
-            'LIKE' => $this->dialect->likeOperator(),
-            'NOT LIKE' => 'NOT ' . $this->dialect->likeOperator(),
-            default => $operator,
-        };
+        // LIKE matches case-insensitively, as the dialect writes it.
+        if ($operator === 'LIKE' || $operator === 'NOT LIKE') {
+            return $this->like($column, (string) $value, $operator === 'NOT LIKE');
+        }
 
         return "{$column} {$operator} ?";
     }
@@ -291,8 +289,9 @@ class QueryCompiler
 
         switch ($condition['operator']) {
             case 'CONTAINS':
-                $bindings[] = '%' . strtr((string) $value, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
-                return "{$column} {$this->dialect->likeOperator()} ? ESCAPE '!'";
+                $pattern = '%' . strtr((string) $value, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
+                $bindings[] = $pattern;
+                return $this->like($column, $pattern, false, '!');
             case 'IN':
                 $ids = array_values((array) $value);
                 if ($ids === []) {
@@ -329,11 +328,25 @@ class QueryCompiler
 
         $parts = [];
         foreach ($fields as $field) {
-            $parts[] = $this->column($field, $query) . ' ' . $this->dialect->likeOperator() . ' ?';
-            $bindings[] = '%' . $term . '%';
+            $pattern = '%' . $term . '%';
+            $parts[] = $this->like($this->column($field, $query), $pattern, false);
+            $bindings[] = $pattern;
         }
 
         return '(' . implode(' OR ', $parts) . ')';
+    }
+
+    /**
+     * A case-insensitive match of $column against one bound pattern: the dialect's own SQL for it
+     * (PatternMatching, which sees the pattern), else its operator.
+     */
+    private function like(string $column, string $pattern, bool $not, ?string $escape = null): string
+    {
+        if ($this->dialect instanceof PatternMatching) {
+            return $this->dialect->likeSql($column, $pattern, $not, $escape);
+        }
+
+        return $column . ($not ? ' NOT ' : ' ') . $this->dialect->likeOperator() . ' ?' . ($escape === null ? '' : " ESCAPE '{$escape}'");
     }
 
     private function compileOrderBy(Query $query): string

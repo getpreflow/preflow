@@ -46,6 +46,39 @@ final class DialectMatchingTest extends TestCase
         $this->assertSame('SELECT * FROM "posts" WHERE ("title" ILIKE ?) AND ("body" ILIKE ? ESCAPE \'!\')', $sql);
     }
 
+    /** SQLite's native LIKE folds ASCII case: a pattern of ASCII characters only uses it, any other the Unicode ulike(). */
+    public function test_sqlite_uses_native_like_for_ascii_patterns_and_ulike_otherwise(): void
+    {
+        $compiler = new QueryCompiler(new SqliteDialect());
+
+        [$sql, $bindings] = $compiler->compile('posts', (new Query())->where('title', 'like', 'a%')->where('body', 'not like', '%b'));
+        $this->assertSame('SELECT * FROM "posts" WHERE "title" LIKE ? AND "body" NOT LIKE ?', $sql);
+        $this->assertSame(['a%', '%b'], $bindings);
+
+        [$sql, $bindings] = $compiler->compile('posts', (new Query())->where('title', 'like', 'ü%')->where('body', 'not like', '%É'));
+        $this->assertSame('SELECT * FROM "posts" WHERE ulike(?, "title") AND NOT ulike(?, "body")', $sql);
+        $this->assertSame(['ü%', '%É'], $bindings);
+
+        [$sql] = $compiler->compile('posts', (new Query())->search('über', ['title'])->whereAny([['field' => 'body', 'operator' => 'CONTAINS', 'value' => 'x']]));
+        $this->assertSame('SELECT * FROM "posts" WHERE (ulike(?, "title")) AND ("body" LIKE ? ESCAPE \'!\')', $sql);
+
+        [$sql] = $compiler->compile('posts', (new Query())->search('x', ['title'])->whereAny([['field' => 'body', 'operator' => 'CONTAINS', 'value' => 'é']]));
+        $this->assertSame('SELECT * FROM "posts" WHERE ("title" LIKE ?) AND (ulike(?, "body", \'!\'))', $sql);
+    }
+
+    /** SQLite's own like() stays as it is: prepare() adds ulike() and replaces nothing. */
+    public function test_sqlite_prepare_registers_ulike_and_keeps_like(): void
+    {
+        $pdo = \PDO::connect('sqlite::memory:');
+        SqliteDialect::prepare($pdo);
+
+        $this->assertSame(1, (int) $pdo->query("SELECT ulike('%ÜBER%', 'Über uns')")->fetchColumn());
+        $this->assertSame(1, (int) $pdo->query("SELECT ulike('a!%%', 'A% off', '!')")->fetchColumn());
+        $this->assertNull($pdo->query("SELECT ulike('x', NULL)")->fetchColumn());
+        $this->assertSame(0, (int) $pdo->query("SELECT 'Über' LIKE 'über'")->fetchColumn(), 'native LIKE folds ASCII only');
+        $this->assertSame(1, (int) $pdo->query("SELECT 'ABC' LIKE 'abc'")->fetchColumn());
+    }
+
     public function test_the_dialect_names_a_missing_column(): void
     {
         $sqlite = new SqliteDialect();

@@ -123,7 +123,8 @@ providers ran, so its constructor may take services a provider binds. The class 
 keys are checked at boot.
 
 For another SQL database, a `PdoDriver` subclass supplies a `Dialect` (every method of the interface, see "Raw writes"; `likeOperator()` decides
-the case-insensitive match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`;
+the case-insensitive match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`, or,
+since 0.77, the optional `PatternMatching::likeSql()` writes it per pattern;
 `numericOrder()` the numeric sort; `missingColumn(\PDOException)` reads the column a failed write
 names, so the "run `preflow migrate`" message works on that database) and registers its schema grammar for its PDO driver name, so
 `Schema`, `RecordTableSync` and `preflow migrate` work:
@@ -847,9 +848,12 @@ $dm->queryIn($typeDef)->whereAny([
 `LIKE`, `CONTAINS` and `search()` ignore case in every alphabet on every shipped driver
 ("über" finds "Über", `_` matches one character, an umlaut too): the JSON driver compares with
 Unicode-aware functions (`mb_stripos`, `preg_match` with `/iu`); since 0.77 `SqliteDriver`
-replaces SQLite's `like()`, which folds ASCII only, on its connection with one that folds with
-`mb_strtolower` (`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`,
-as the app opens it, and on a plain `PDO`); MySQL/MariaDB follow the column's collation, so an
+registers a Unicode `ulike()` on its connection, which folds with `mb_strtolower`
+(`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`, as the app
+opens it, and on a plain `PDO`). The dialect uses it only for a pattern with other than ASCII
+characters ("über"); a pattern of ASCII characters only ("bar%") keeps SQLite's native `LIKE`,
+which folds ASCII case and is about 7× faster on a scan. A non-ASCII term costs a PHP call per row
+compared (a dialect that writes its match per pattern implements `PatternMatching`); MySQL/MariaDB follow the column's collation, so an
 accent-insensitive collation matches more than the other drivers do ("uber" finds "Über").
 `CONTAINS` and `search()` find a term in a list value (an array field) when one of its values
 holds it: SQL storage keeps the list as JSON text, written with umlauts and slashes as they are

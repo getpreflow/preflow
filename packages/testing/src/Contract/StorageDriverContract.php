@@ -45,7 +45,8 @@ use Preflow\Data\StorageDriver;
  *
  * Query semantics a driver implements (as SQLite and MySQL do):
  * - `LIKE` / `NOT LIKE` ignore case in every alphabet ("über" finds "Über"; PostgreSQL needs
- *   ILIKE, SQLite a Unicode like(), see SqliteDialect::prepare()); `%` matches any text, `_` one
+ *   ILIKE, SQLite a Unicode ulike() for patterns with other than ASCII characters, see
+ *   SqliteDialect::prepare()); `%` matches any text, `_` one
  *   character (an umlaut is one).
  * - search() and the `CONTAINS` of whereAny() find a term in a text, and in a list (a `json`
  *   field saved as a list) when one of its values holds it, slashes and umlauts as they are.
@@ -300,6 +301,15 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame(['e'], $this->wordIds((new Query())->where('title', 'LIKE', 'été')));
         $this->assertSame(['u'], $this->wordIds((new Query())->where('title', 'LIKE', '_ber uns')), '_ is one character, an umlaut too');
         $this->assertSame(['e', 'k'], $this->wordIds((new Query())->where('title', 'NOT LIKE', '%ÜBER%')));
+        // A pattern of ASCII characters only, against values with other letters.
+        $this->assertSame(['u'], $this->wordIds((new Query())->where('title', 'LIKE', '%BER UNS')), 'ASCII letters ignore case next to an umlaut');
+        $this->assertSame(['u'], $this->wordIds((new Query())->where('title', 'LIKE', '_BER%')), '_ takes an umlaut in an ASCII pattern too');
+        $this->assertSame(['e'], $this->wordIds((new Query())->where('title', 'LIKE', '_t_')));
+        $this->assertSame(['e', 'u'], $this->wordIds((new Query())->where('title', 'NOT LIKE', 'k%')));
+        // CONTAINS (an escaped pattern) with and without other letters.
+        $this->assertSame(['k', 'u'], $this->wordIds((new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'R']])));
+        $this->assertSame(['u'], $this->wordIds((new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'üBER']])));
+        $this->assertSame([], $this->wordIds((new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'Ü_ber']])), '_ is literal in CONTAINS');
     }
 
     public function test_search_finds_a_term_in_text_and_in_list_values(): void

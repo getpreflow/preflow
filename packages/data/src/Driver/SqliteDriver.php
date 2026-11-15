@@ -13,7 +13,7 @@ final class SqliteDriver extends PdoDriver
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
     }
 
-    /** As PdoDriver's, and LIKE ignores case in every alphabet (SqliteDialect::prepare()). */
+    /** As PdoDriver's, and the Unicode ulike() for LIKE that ignores case in every alphabet (SqliteDialect::prepare()). */
     protected function configure(\PDO $pdo): void
     {
         parent::configure($pdo);

@@ -6,8 +6,11 @@ namespace Preflow\Data\Driver;
 
 use Preflow\Data\UniqueViolation;
 
-final class SqliteDialect implements Dialect
+final class SqliteDialect implements Dialect, PatternMatching
 {
+    /** The Unicode LIKE function prepare() registers on a connection: ulike(pattern, value[, escape]). @since 0.77 */
+    public const string LIKE_FUNCTION = 'ulike';
+
     public function quoteIdentifier(string $name): string
     {
         return '"' . str_replace('"', '""', $name) . '"';
@@ -129,9 +132,8 @@ final class SqliteDialect implements Dialect
     }
 
     /**
-     * LIKE, which ignores case for every letter ("über" finds "Über", as MySQL's utf8mb4
-     * collations do): SQLite's own folds ASCII only, so prepare() replaces its like() function on
-     * each connection SqliteDriver opens.
+     * The operator of SQLite's native LIKE, which folds ASCII case only; likeSql() (what
+     * QueryCompiler uses) adds the Unicode match where a pattern needs it.
      */
     public function likeOperator(): string
     {
@@ -139,10 +141,26 @@ final class SqliteDialect implements Dialect
     }
 
     /**
-     * Readies a connection: LIKE (and so CONTAINS and loose search) matches case-insensitively in
-     * Unicode (like()). A Pdo\Sqlite (PDO::connect('sqlite:…')) registers it through
-     * createFunction(); a plain PDO only through sqliteCreateFunction(), deprecated since PHP 8.5,
-     * whose deprecation is kept out of this one call.
+     * LIKE that ignores case for every letter ("über" finds "Über", as MySQL's utf8mb4 collations
+     * do): a pattern of ASCII characters only takes SQLite's native LIKE (it folds ASCII case, and
+     * its _ takes one character, an umlaut too), any other the PHP function ulike() that prepare()
+     * registers, which costs a PHP call per row compared.
+     */
+    public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string
+    {
+        $escapeSql = $escape === null ? null : "'" . str_replace("'", "''", $escape) . "'";
+        if (preg_match('/[^\x00-\x7F]/', $pattern) !== 1) {
+            return $column . ($not ? ' NOT LIKE ?' : ' LIKE ?') . ($escapeSql === null ? '' : " ESCAPE {$escapeSql}");
+        }
+
+        return ($not ? 'NOT ' : '') . self::LIKE_FUNCTION . "(?, {$column}" . ($escapeSql === null ? '' : ", {$escapeSql}") . ')';
+    }
+
+    /**
+     * Readies a connection: registers ulike() (LIKE_FUNCTION, like()), the Unicode match likeSql()
+     * uses for patterns with other than ASCII characters; SQLite's own like() stays. A Pdo\Sqlite
+     * (PDO::connect('sqlite:…')) registers it through createFunction(); a plain PDO only through
+     * sqliteCreateFunction(), deprecated since PHP 8.5, whose deprecation is kept out of this one call.
      *
      * @since 0.77
      */
@@ -150,13 +168,13 @@ final class SqliteDialect implements Dialect
     {
         $like = self::like(...);
         if ($pdo instanceof \Pdo\Sqlite) {
-            $pdo->createFunction('like', $like, -1, \Pdo\Sqlite::DETERMINISTIC);
+            $pdo->createFunction(self::LIKE_FUNCTION, $like, -1, \Pdo\Sqlite::DETERMINISTIC);
 
             return;
         }
         set_error_handler(static fn (int $level): bool => $level === E_DEPRECATED, E_DEPRECATED);
         try {
-            $pdo->sqliteCreateFunction('like', $like, -1, \PDO::SQLITE_DETERMINISTIC);
+            $pdo->sqliteCreateFunction(self::LIKE_FUNCTION, $like, -1, \PDO::SQLITE_DETERMINISTIC);
         } finally {
             restore_error_handler();
         }
@@ -166,7 +184,7 @@ final class SqliteDialect implements Dialect
     private static array $patterns = [];
 
     /**
-     * SQL LIKE as SQLite calls it, like(pattern, value[, escape]): % any text, _ one character,
+     * SQL LIKE as ulike(pattern, value[, escape]) is called: % any text, _ one character,
      * the escape character takes the next one literally; letters compared after mb_strtolower(),
      * so case is ignored for every alphabet. NULL when the value or the pattern is NULL.
      *
