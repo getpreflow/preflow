@@ -23,7 +23,7 @@ use Preflow\Media\MediaLibrary;
  * saved since units() read it (compare-and-set under the asset's lock): the memory of what was read lives in this instance, which
  * TextSources keeps for the request a run step runs in.
  */
-final class AltTextSource implements TextSource
+final class AltTextSource implements TextSource, \Preflow\I18n\Machine\WritesAs
 {
     public const string COLLECTION = 'media_alt';
 
@@ -92,6 +92,12 @@ final class AltTextSource implements TextSource
 
     public function write(string $id, string $to, array $texts): WriteOutcome
     {
+        return $this->writeAs($id, $to, $texts, null);
+    }
+
+    /** As write(), Saved in the activity log by $by (who queued the job, @since 0.77). */
+    public function writeAs(string $id, string $to, array $texts, ?string $by): WriteOutcome
+    {
         $text = trim($texts['alt.' . $to] ?? '');
         $asset = $this->media->find($id);
         if ($asset === null) {
@@ -101,7 +107,7 @@ final class AltTextSource implements TextSource
             return new WriteOutcome(WriteOutcomeStatus::Skipped, 'Nothing to write.');
         }
         // Compared and saved under the asset's lock: a text saved since units() read it wins.
-        if (!$this->media->setAltIfUnchanged($id, $to, $this->seen[$id . '|' . $to] ?? '', $text)) {
+        if (!$this->media->setAltIfUnchanged($id, $to, $this->seen[$id . '|' . $to] ?? '', $text, $by)) {
             return new WriteOutcome(WriteOutcomeStatus::Conflict, 'Changed since it was read, left alone: alt.' . $to . '.', false, ['alt.' . $to]);
         }
 

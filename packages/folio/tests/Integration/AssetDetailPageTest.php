@@ -144,6 +144,10 @@ final class AssetDetailPageTest extends TestCase
 
         $this->send('POST', '/folio/assets/' . $asset->id, ['alt' => ['en' => 'Four colours']]);
         $this->assertSame('Four colours', $this->lib()->find($asset->id)?->alt['en'] ?? null);
+        // The details save is Saved in the activity log, by the signed-in person, naming the alt text.
+        $row = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class)->recent(1, ['asset'])->items[0] ?? null;
+        $this->assertSame(['saved', $asset->id, ['alt']], [$row?->kind->value, $row?->id, $row?->changed]);
+        $this->assertNotNull($row?->by, 'who saved it');
         $this->assertStringNotContainsString('folio-alt-missing', (string) $this->send('GET', '/folio/assets/' . $asset->id)->getBody());
     }
 

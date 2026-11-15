@@ -811,8 +811,12 @@ and replace.
 ## Activity (0.77)
 
 `MediaLibrary` tells the activity log (core README, "Activity log") of `upload()` and `importFile()` (`Uploaded`),
-`replace()` (`Replaced`), `restore()` of an earlier file (`Restored`) and `delete($id, $by)`
-(`Deleted`, binned or for good), subject `asset`, titled by the file name, with the `by` passed.
+`replace()` (`Replaced`), `restore()` of an earlier file (`Restored`), `delete($id, $by)`
+(`Deleted`, binned or for good) and a details save, `update($id, $meta, $by)` and
+`setAltIfUnchanged(…, $by)` (`Saved`, with the fields it changed: `alt`, `title`, `focal_x`,
+`focal_y`, `poster`, extra fields; a save that changes nothing tells nothing), subject `asset`,
+titled by the file name, with the `by` passed. `AltTextSource` writes as whoever queued the
+translation job (i18n `WritesAs`).
 A private file is never named: its rows have the title "Private file" (`PRIVATE_TITLE`) and the
 `titleKey` `media.activity.private_file` (`PRIVATE_TITLE_KEY`; the package's translation group
 `media`), which readers show translated.

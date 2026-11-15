@@ -73,16 +73,69 @@ final class ActivityUploadTest extends TestCase
         $log = $this->storedLog();
         $library = $this->lib($log, ['bin_dir' => $this->assetRoot . '/bin']);
         $asset = $library->upload($this->upload($this->png(40, 30), 'Beach.png'), 'ana');
-        $library->update($asset->id, ['title' => 'A day at the sea']);
+        $library->update($asset->id, ['title' => 'A day at the sea'], 'ana');
         $library->replace($asset->id, $this->upload($this->png(30, 40), 'Beach-2.png'), 'ben');
         $library->delete($asset->id, 'cleo');
 
         $this->assertSame([
             'deleted asset:Beach-2.png cleo',
             'replaced asset:Beach-2.png ben',
+            'saved asset:Beach.png ana',
             'uploaded asset:Beach.png ana',
         ], self::rows($log));
         $this->assertSame([$asset->id], array_values(array_unique(array_map(static fn (Activity $a): string => $a->id, $log->recent(5)->items))));
+    }
+
+    /** A details save (alt text, title, focal point, extra fields) is Saved, naming the fields it changed; an unchanged one says nothing. */
+    public function test_a_details_save_is_saved_with_its_fields(): void
+    {
+        $log = $this->storedLog();
+        $library = $this->lib($log);
+        $asset = $library->upload($this->upload($this->png(40, 30), 'Beach.png'), 'ana');
+
+        $library->update($asset->id, ['alt' => ['en' => 'Sand and sea'], 'title' => 'A day at the sea', 'focal_x' => 50], 'ben');
+        $row = $log->recent(1)->items[0];
+        $this->assertSame(['saved', 'ben', ['alt', 'title']], [$row->kind->value, $row->by, $row->changed], 'focal_x 50 is the stored default');
+
+        $library->update($asset->id, ['alt' => ['en' => 'Sand and sea'], 'title' => 'A day at the sea'], 'cleo');
+        $this->assertSame('ben', $log->recent(1)->items[0]->by, 'nothing changed: no row');
+        $this->assertCount(2, $log->recent(10)->items);
+
+        $library->update($asset->id, ['focal_y' => 20], 'ben');
+        $this->assertSame(['alt', 'title', 'focal_y'], $log->recent(1)->items[0]->changed, 'the same session: merged');
+
+        $this->assertTrue($library->setAltIfUnchanged($asset->id, 'de', '', 'Sand und Meer', 'dora'));
+        $row = $log->recent(1)->items[0];
+        $this->assertSame(['saved', 'dora', ['alt']], [$row->kind->value, $row->by, $row->changed]);
+        $this->assertFalse($library->setAltIfUnchanged($asset->id, 'de', 'stale', 'Anders', 'dora'));
+        $this->assertCount(3, $log->recent(10)->items);
+    }
+
+    /** A machine-translated alt text is Saved by whoever queued the job (WritesAs). */
+    public function test_a_translated_alt_text_is_saved_by_who_queued_it(): void
+    {
+        $log = $this->storedLog();
+        $library = $this->lib($log);
+        $asset = $library->upload($this->upload($this->png(40, 30), 'Door.png'), 'ana');
+        $library->update($asset->id, ['alt' => ['en' => 'A red door']], 'ana');
+        $source = new \Preflow\Media\Translation\AltTextSource($library, new Locales(['en', 'de'], 'en'));
+        $this->assertInstanceOf(\Preflow\I18n\Machine\WritesAs::class, $source);
+        $source->units($asset->id, 'de', \Preflow\I18n\Machine\Scope::Needed);
+
+        $source->writeAs($asset->id, 'de', ['alt.de' => 'Eine rote Tür'], 'ben');
+
+        $row = $log->recent(1)->items[0];
+        $this->assertSame(['saved', 'ben', ['alt']], [$row->kind->value, $row->by, $row->changed]);
+    }
+
+    public function test_a_details_save_of_a_private_file_never_names_it(): void
+    {
+        $log = $this->storedLog();
+        $library = $this->lib($log, ['private_dir' => $this->assetRoot . '/private']);
+        $asset = $library->upload($this->upload($this->png(40, 30), 'salary-2026-jane.png'), 'ana', private: true);
+        $library->update($asset->id, ['title' => 'Jane'], 'ana');
+
+        $this->assertSame('saved asset:Private file ana', self::rows($log)[0]);
     }
 
     public function test_a_delete_for_good_is_deleted_too(): void

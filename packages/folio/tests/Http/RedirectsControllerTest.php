@@ -212,17 +212,28 @@ final class RedirectsControllerTest extends TestCase
         $this->assertSame(404, $this->fetch('/folio/redirects/' . $entry['id'])->getStatusCode());
     }
 
-    public function test_a_new_entry_tells_the_activity_log(): void
+    public function test_new_edited_and_deleted_entries_tell_the_activity_log(): void
     {
         $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
         $this->send('/folio/redirects', ['address' => '/old-about/', 'target' => 'page:p1', 'status' => '301']);
         $entry = $this->entries()->at('en', '/old-about');
-        // Editing it is no new entry.
-        $this->send('/folio/redirects/' . $entry['id'], ['address' => '/old-about', 'target' => '/elsewhere', 'status' => '302']);
-
-        $items = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class)->recent(10, ['redirect'])->items;
+        $log = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class);
+        $items = $log->recent(10, ['redirect'])->items;
         $this->assertCount(1, $items);
         $this->assertSame(['redirect', $entry['id'], '/old-about', 'created'], [$items[0]->subject, $items[0]->id, $items[0]->title, $items[0]->kind->value]);
+        $by = $items[0]->by;
+
+        // An edit is Saved (no new entry), naming what changed.
+        $this->send('/folio/redirects/' . $entry['id'], ['address' => '/old-about', 'target' => '/elsewhere', 'status' => '302']);
+        $items = $log->recent(10, ['redirect'])->items;
+        $this->assertCount(2, $items);
+        $this->assertSame(['redirect', $entry['id'], '/old-about', 'saved', $by], [$items[0]->subject, $items[0]->id, $items[0]->title, $items[0]->kind->value, $items[0]->by]);
+        $this->assertSame(['target_type', 'target_id', 'target_url', 'status'], $items[0]->changed);
+
+        $this->send('/folio/redirects/' . $entry['id'] . '/delete');
+        $items = $log->recent(10, ['redirect'])->items;
+        $this->assertCount(3, $items);
+        $this->assertSame(['redirect', $entry['id'], '/old-about', 'deleted', $by], [$items[0]->subject, $items[0]->id, $items[0]->title, $items[0]->kind->value, $items[0]->by]);
     }
 
     public function test_address_prefill_only_takes_a_path(): void

@@ -311,6 +311,9 @@ for both.
 - **Titles:** an event's `titleKey` translated when it has a text in the interface language, else
   its stored `title` (a private file reads "Private file", never its name). A redirect reads
   "old → target" while it exists.
+- **What is recorded here:** besides the record writers (preflow/publishing) and the media
+  library (an asset's details save is `Saved`, naming its fields), the redirects screen records a
+  new entry (`Created`), an edit (`Saved`, with the keys it changed) and a delete (`Deleted`).
 - **Who:** `AuthorNames::person()`; a marker registered with core's `ActivityActors` (members'
   `member-deletion`, publishing's `scheduler` and `cli`) shows its label ("Account deletion",
   "Scheduled publishing"); an id no provider finds (a deleted staff account) shows as "Former

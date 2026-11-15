@@ -279,16 +279,20 @@ final class MediaLibrary
         return $asset;
     }
 
-    /** Tells the activity log; a failing log is logged, never thrown. */
-    private function tell(Asset $asset, ActivityKind $kind, ?string $by): void
+    /**
+     * Tells the activity log; a failing log is logged, never thrown.
+     *
+     * @param list<string> $changed the fields a Saved changed
+     */
+    private function tell(Asset $asset, ActivityKind $kind, ?string $by, array $changed = []): void
     {
         if ($this->activity === null) {
             return;
         }
         try {
             $this->activity->record($asset->private
-                ? new Activity(self::ACTIVITY_SUBJECT, $asset->id, self::PRIVATE_TITLE, $kind, by: $by, titleKey: self::PRIVATE_TITLE_KEY)
-                : new Activity(self::ACTIVITY_SUBJECT, $asset->id, $asset->originalName, $kind, by: $by));
+                ? new Activity(self::ACTIVITY_SUBJECT, $asset->id, self::PRIVATE_TITLE, $kind, $changed, by: $by, titleKey: self::PRIVATE_TITLE_KEY)
+                : new Activity(self::ACTIVITY_SUBJECT, $asset->id, $asset->originalName, $kind, $changed, by: $by));
         } catch (\Throwable $e) {
             $this->logger?->warning("Activity log: \"{$kind->value}\" of asset {$asset->id} not recorded: {$e->getMessage()}", ['exception' => $e]);
         }
@@ -943,43 +947,63 @@ final class MediaLibrary
      * poster (an image asset id; anything else clears it) and the configured extra
      * fields (a value that does not fit its field is cleared; other keys are ignored).
      *
+     * The activity log (@since 0.77) hears of a save that changed something: Saved, by $by, with
+     * the fields it changed (alt, title, focal_x, focal_y, poster, extra fields).
+     *
      * @param array<string, mixed> $meta
      */
-    public function update(string $id, array $meta): Asset
+    public function update(string $id, array $meta, ?string $by = null): Asset
     {
         $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
 
         // Read and saved under the asset's lock: a replace running now is never undone.
-        return $this->guarded($id, fn (): Asset => $this->applyMeta($id, $meta));
+        $changed = [];
+        $saved = $this->guarded($id, function () use ($id, $meta, &$changed): Asset {
+            return $this->applyMeta($id, $meta, $changed);
+        });
+        if ($changed !== []) {
+            $this->tell($saved, ActivityKind::Saved, $by, $changed);
+        }
+
+        return $saved;
     }
 
     /**
      * Sets the alt text of one locale only if it is still $expected (trimmed; '' for none), checked
      * and saved under the asset's lock. False when it changed meanwhile (nothing is written) or the
-     * asset or locale is unknown.
+     * asset or locale is unknown. A changed text is Saved in the activity log, by $by (@since 0.77).
      */
-    public function setAltIfUnchanged(string $id, string $locale, string $expected, string $text): bool
+    public function setAltIfUnchanged(string $id, string $locale, string $expected, string $text, ?string $by = null): bool
     {
         if ($this->find($id) === null || !$this->locales->has($locale)) {
             return false;
         }
 
-        return $this->guarded($id, function () use ($id, $locale, $expected, $text): bool {
+        $changed = [];
+        $saved = $this->guarded($id, function () use ($id, $locale, $expected, $text, &$changed): ?Asset {
             $asset = $this->find($id);
             if ($asset === null || trim($asset->alt[$locale] ?? '') !== trim($expected)) {
-                return false;
+                return null;
             }
-            $this->applyMeta($id, ['alt' => [$locale => $text]]);
 
-            return true;
+            return $this->applyMeta($id, ['alt' => [$locale => $text]], $changed);
         });
+        if ($saved !== null && $changed !== []) {
+            $this->tell($saved, ActivityKind::Saved, $by, $changed);
+        }
+
+        return $saved !== null;
     }
 
-    /** @param array<string, mixed> $meta */
-    private function applyMeta(string $id, array $meta): Asset
+    /**
+     * @param array<string, mixed> $meta
+     * @param list<string> $changed set to the fields whose stored value the save changed
+     */
+    private function applyMeta(string $id, array $meta, array &$changed = []): Asset
     {
         $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
         $data = $asset->toData();
+        $before = $data;
 
         if (is_array($meta['alt'] ?? null)) {
             $alt = $asset->alt;
@@ -1012,8 +1036,30 @@ final class MediaLibrary
         if ([$saved->focalX, $saved->focalY] !== [$asset->focalX, $asset->focalY]) {
             $this->removeBoxes($saved); // their cut follows the focal point
         }
+        $after = $saved->toData();
+        $changed = [];
+        foreach (['alt', 'title', 'focal_x', 'focal_y', 'poster', ...array_keys($this->extraFields())] as $field) {
+            if (self::comparable($before[$field] ?? null) !== self::comparable($after[$field] ?? null)) {
+                $changed[] = $field;
+            }
+        }
 
         return $saved;
+    }
+
+    /** A details value as compared for the activity log: empty values alike, maps by key, numbers as text. */
+    private static function comparable(mixed $value): string
+    {
+        if (is_array($value)) {
+            $value = array_filter($value, static fn (mixed $v): bool => $v !== null && $v !== '' && $v !== []);
+            if (!array_is_list($value)) {
+                ksort($value);
+            }
+
+            return $value === [] ? '' : (string) json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+
+        return is_bool($value) ? ($value ? '1' : '') : (string) $value;
     }
 
     /** True for a public JPEG, PNG, WebP or AVIF image: only those can be cropped, turned and mirrored. */

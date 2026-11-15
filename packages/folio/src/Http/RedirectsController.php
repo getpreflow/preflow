@@ -64,17 +64,29 @@ final class RedirectsController
         private readonly ?\Psr\Log\LoggerInterface $logger = null,
     ) {}
 
+    /** The entry's keys an edit names in the activity log when they change. */
+    private const array LOGGED_KEYS = ['path', 'locale', 'area', 'mode', 'target_type', 'target_id', 'target_url', 'status'];
+
     /**
-     * Tells the activity log of a new entry (subject "redirect", titled by its old address); a
-     * failing log is logged, the entry stays.
+     * Tells the activity log of a new, edited (with the keys it changed) or deleted entry (subject
+     * "redirect", titled by its old address); a failing log is logged, the entry stays.
+     *
+     * @param list<string> $changed
      */
-    private function created(string $id, string $path, ?string $by): void
+    private function tell(\Preflow\Core\Activity\ActivityKind $kind, string $id, string $path, ?string $by, array $changed = []): void
     {
         try {
-            $this->activity?->record(new \Preflow\Core\Activity\Activity('redirect', $id, $path, \Preflow\Core\Activity\ActivityKind::Created, by: $by));
+            $this->activity?->record(new \Preflow\Core\Activity\Activity('redirect', $id, $path, $kind, $changed, by: $by));
         } catch (\Throwable $e) {
-            $this->logger?->warning("Activity log: \"created\" of redirect {$id} not recorded: {$e->getMessage()}", ['exception' => $e]);
+            $this->logger?->warning("Activity log: \"{$kind->value}\" of redirect {$id} not recorded: {$e->getMessage()}", ['exception' => $e]);
         }
+    }
+
+    private static function userId(ServerRequestInterface $request): ?string
+    {
+        $user = $request->getAttribute(Authenticatable::class);
+
+        return $user instanceof Authenticatable ? (string) $user->getAuthId() : null;
     }
 
     /** GET {prefix}/redirects?q=…&record=type:id (q: the old or the new address), or ?tab=not-found */
@@ -176,6 +188,7 @@ final class RedirectsController
                 return self::unknown($request);
             }
             $this->entries->delete($entry['id']);
+            $this->tell(\Preflow\Core\Activity\ActivityKind::Deleted, $entry['id'], (string) $entry['path'], self::userId($request));
             self::flash($request, FolioText::get('folio.redirects.deleted'));
 
             return new Response(302, ['Location' => $this->prefix . '/redirects']);
@@ -343,8 +356,7 @@ final class RedirectsController
                 $row[$kept] = $entry[$kept];
             }
         } else {
-            $user = $request->getAttribute(Authenticatable::class);
-            $row['created_by'] = $user instanceof Authenticatable ? (string) $user->getAuthId() : null;
+            $row['created_by'] = self::userId($request);
         }
         try {
             // Also forgets the address on the not-found list.
@@ -359,7 +371,11 @@ final class RedirectsController
             $this->entries->delete($entry['id']);
         }
         if ($entry === null) {
-            $this->created($id, $path, $row['created_by']);
+            $this->tell(\Preflow\Core\Activity\ActivityKind::Created, $id, $path, $row['created_by']);
+        } else {
+            $value = static fn (mixed $v, string $key): string => $key === 'area' ? (in_array($v, [true, 1, '1'], true) ? '1' : '') : (string) ($v ?? '');
+            $changed = array_values(array_filter(self::LOGGED_KEYS, static fn (string $key): bool => $value($row[$key] ?? null, $key) !== $value($entry[$key] ?? null, $key)));
+            $this->tell(\Preflow\Core\Activity\ActivityKind::Saved, $id, $path, self::userId($request), $changed);
         }
 
         // The row the entry was made from leaves the not-found list too.

@@ -192,7 +192,7 @@ final class AssetLibraryController
                 $meta[$name] = $this->fieldTypes->get($field->type)->normalizeInput($body[$name] ?? null, $field->config);
             }
         }
-        $this->library->update($asset->id, $meta);
+        $this->library->update($asset->id, $meta, self::by($request));
 
         return $this->backToPanel($request, $asset, 'saved=1');
     }
@@ -343,7 +343,7 @@ final class AssetLibraryController
             if ($asset === null || $asset->kind() !== 'image') {
                 continue;
             }
-            $this->library->update($asset->id, ['alt' => [$default => $text]]);
+            $this->library->update($asset->id, ['alt' => [$default => $text]], self::by($request));
             $saved++;
         }
         if (($body['_drawer'] ?? '') === '1') {
