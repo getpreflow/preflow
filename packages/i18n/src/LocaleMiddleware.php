@@ -25,7 +25,8 @@ final class LocaleMiddleware implements MiddlewareInterface
      *        page path ('/faq') answers 302 to the visitor's language ('/de/faq')
      * @param string   $cookieName the cookie the locale is read from and written to
      * @param (\Closure(string $locale, string $path): bool)|null $pageExists whether $path is a
-     *        page in $locale; a bare path that is none is not redirected (null: every path is)
+     *        page in $locale; a bare path that is none is not redirected. Fails closed: without
+     *        it no bare path is redirected, so redirect_bare acts only once the app supplies its page lookup
      * @param NonPublicPaths|null $nonPublic paths that are never redirected (admin, APIs)
      */
     public function __construct(
@@ -94,7 +95,7 @@ final class LocaleMiddleware implements MiddlewareInterface
             if (!$this->urls->prefixDefault && $preferred === $this->defaultLocale) {
                 // Served as it is, in the default locale, but the answer depended on the visitor.
                 $vary = true;
-            } elseif ($this->pageExists === null || ($this->pageExists)($preferred, $path)) {
+            } elseif ($this->pageExists !== null && ($this->pageExists)($preferred, $path)) {
                 $location = $this->urls->path($preferred, $path);
                 $query = $request->getUri()->getQuery();
 

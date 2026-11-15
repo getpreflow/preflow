@@ -38,7 +38,12 @@ final class BareRedirectTest extends TestCase
         ?\Closure $pageExists = null,
         ?NonPublicPaths $nonPublic = null,
         bool $cookie = false,
+        bool $withPageLookup = true,
     ): LocaleMiddleware {
+        if ($withPageLookup) {
+            $pageExists ??= static fn (string $locale, string $path): bool => true;
+        }
+
         return new LocaleMiddleware(
             $this->translator,
             self::LOCALES,
@@ -269,10 +274,20 @@ final class BareRedirectTest extends TestCase
             'prefix',
             urls: new LocaleUrls(self::LOCALES, 'en', true, true, true),
             cookieName: 'lang',
+            pageExists: static fn (string $locale, string $path): bool => true,
         );
 
         $this->assertRedirect('/fr/faq', $this->dispatch($mw, $this->request('/faq', ['Accept-Language' => 'de'], ['lang' => 'fr'])));
         $this->handled = false;
         $this->assertRedirect('/de/faq', $this->dispatch($mw, $this->request('/faq', ['Accept-Language' => 'de'], ['locale' => 'fr'])));
+    }
+
+    public function test_without_page_lookup_no_bare_path_is_redirected(): void
+    {
+        $response = $this->dispatch($this->middleware(withPageLookup: false), $this->request('/faq', ['Accept-Language' => 'de']));
+
+        $this->assertServed($response);
+        $this->assertSame('en', $this->captured?->getAttribute('locale'));
+        $this->assertFalse($response->hasHeader('Location'));
     }
 }
