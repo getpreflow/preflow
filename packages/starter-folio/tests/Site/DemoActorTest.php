@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Site;
 
-use App\Seeds\SeedActor;
+use App\Support\SeedActor;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Activity\ActivityActors;
 use Preflow\I18n\Translator;

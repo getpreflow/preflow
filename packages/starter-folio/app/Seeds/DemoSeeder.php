@@ -7,6 +7,7 @@ namespace App\Seeds;
 use App\Models\Company;
 use App\Models\Job;
 use App\Models\User;
+use App\Support\SeedActor;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Seeds;
 
+use App\Support\SeedActor;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Publishing\Publisher;

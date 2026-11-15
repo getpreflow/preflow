@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Seeds\SeedActor;
+use App\Support\SeedActor;
 use App\Support\Markdown;
 use Preflow\Core\Activity\ActivityActors;
 use Preflow\Core\Container\Container;

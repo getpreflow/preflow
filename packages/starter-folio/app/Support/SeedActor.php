@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Seeds;
+namespace App\Support;
 
 /**
  * The marker the seeders write where a person would be named (an activity log row's "by", a
