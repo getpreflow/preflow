@@ -306,6 +306,13 @@ final class ThrottleTest extends DataTestCase
         }
     }
 
+    public function test_has_key_is_false_for_an_empty_or_the_default_key(): void
+    {
+        $this->assertTrue($this->throttle()->hasKey());
+        $this->assertFalse((new Throttle($this->dataManager(), Throttle::DEFAULT_KEY))->hasKey());
+        $this->assertFalse((new Throttle($this->dataManager(), ''))->hasKey());
+    }
+
     #[\PHPUnit\Framework\Attributes\DataProvider('storages')]
     public function test_hit_returns_the_count_in_the_window(string $storage = 'sqlite'): void
     {

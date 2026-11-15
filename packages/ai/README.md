@@ -224,8 +224,13 @@ account cannot run up the bill. `config/ai.php`:
 
 - `draft` counts drafts; `translate` counts translated items: a record of a job, a set of labels,
   an image's alt text. What costs money counts, not the requests around it: estimates and plans
-  count nothing. `max` 0 turns a limit off; a value that is not a whole number in range stops the
-  boot, naming the setting (`ai.limits.draft.max`).
+  count nothing. A counted call that then fails stays counted: the provider may have charged for
+  it. Settings → AI's Test button counts as a draft. `max` 0 turns a limit off; a value that is not
+  a whole number in range stops the boot, naming the setting (`ai.limits.draft.max`).
+- A limit that is on needs `APP_KEY` (`app.key`, not empty and not the default) wherever AI can
+  run (`enabled` true, or a `translation.translator` or `draft.writer` of the app's own): without
+  it the boot stops and says so. Set the key, or set every `max` to 0. A missing key never means
+  "unlimited"; with AI off there is nothing to limit and the app boots without one.
 - `Preflow\Ai\Limits\AiLimits` is the guard: `take($action, $authId)` counts one and throws
   `AiLimitReached` when it passes the limit; `check()` only asks whether budget is left (before
   queueing work that is counted later); `limit()` gives `['max', 'per']`, or null when off.

@@ -56,16 +56,12 @@ final class AiLimitsTest extends DataTestCase
         return ['json' => ['json'], 'sqlite' => ['sqlite']];
     }
 
+    /** The throttle rows stored, read straight from the storage (any purpose, any person). */
     private function rows(): int
     {
-        $count = 0;
-        foreach (['p1', 'p2'] as $person) {
-            foreach (['draft', 'translate'] as $action) {
-                $count += $this->throttle()->retryAfter('ai.' . $action, $this->throttle()->forPerson($person), 3600) > 0 ? 1 : 0;
-            }
-        }
+        $type = (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle());
 
-        return $count;
+        return count($this->dataManager()->queryIn($type)->get());
     }
 
     #[DataProvider('storages')]
@@ -107,6 +103,10 @@ final class AiLimitsTest extends DataTestCase
 
         $this->assertNull($limits->limit(AiLimits::DRAFT));
         $this->assertSame(0, $this->rows(), 'no throttle row written');
+
+        // The count reads real rows: one take of a limit that is on writes one.
+        $this->limits(['draft' => ['max' => 5]])->take(AiLimits::DRAFT, 'p1');
+        $this->assertSame(1, $this->rows());
     }
 
     #[DataProvider('storages')]
@@ -141,6 +141,28 @@ final class AiLimitsTest extends DataTestCase
 
         $this->expectException(AiLimitReached::class);
         $limits->take(AiLimits::TRANSLATE, 'p1');
+    }
+
+    public function test_a_limit_that_is_on_needs_the_app_key(): void
+    {
+        foreach ([Throttle::DEFAULT_KEY, ''] as $key) {
+            $throttle = new Throttle($this->dataManager(), $key, $this->storage, fn (): int => $this->now);
+            $message = null;
+            try {
+                new AiLimits($throttle, ['draft' => ['max' => 0]]);
+            } catch (\RuntimeException $e) {
+                $message = $e->getMessage();
+            }
+            $this->assertNotNull($message, "key \"{$key}\"");
+            $this->assertStringContainsString('APP_KEY', $message);
+            $this->assertStringContainsString('ai.limits.translate.max', $message, 'names the limit that is on');
+            $this->assertStringNotContainsString('ai.limits.draft.max', $message);
+
+            // Every limit off: no key needed, nothing limited.
+            $off = new AiLimits($throttle, ['draft' => ['max' => 0], 'translate' => ['max' => 0]]);
+            $off->take(AiLimits::TRANSLATE, 'p1');
+            $this->assertSame(0, $this->rows());
+        }
     }
 
     public function test_an_invalid_limit_names_the_setting(): void

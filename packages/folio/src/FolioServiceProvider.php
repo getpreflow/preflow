@@ -743,6 +743,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),

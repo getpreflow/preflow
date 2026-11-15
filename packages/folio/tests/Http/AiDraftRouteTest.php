@@ -318,8 +318,8 @@ final class AiDraftRouteTest extends TestCase
         $this->assertCount(1, $this->fake->requests());
     }
 
-    #[RunInSeparateProcess]
-    public function test_a_draft_over_the_limit_answers_429_with_retry_after_and_the_message(): void
+    /** AI on with a draft limit of one. */
+    private function oneDraftAllowed(): void
     {
         $this->write('config/ai.php', "<?php\nreturn " . var_export([
             'enabled' => true,
@@ -328,6 +328,25 @@ final class AiDraftRouteTest extends TestCase
             'keys' => ['claude' => self::aiKeyEnv()],
             'limits' => ['draft' => ['max' => 1]],
         ], true) . ";\n");
+    }
+
+    /** A counted draft that then fails stays counted: the provider may have charged for it. */
+    #[RunInSeparateProcess]
+    public function test_a_failed_draft_still_uses_the_limit(): void
+    {
+        $this->oneDraftAllowed();
+        $this->script = [self::answer('<p>half', StopReason::Truncated), self::answer('<p>Two</p>')];
+        $this->staff('drafter', ['drafter' => self::DRAFTER]);
+
+        $this->logged(fn () => $this->assertSame(502, $this->draft()->getStatusCode()));
+        $this->assertSame(429, $this->draft()->getStatusCode());
+        $this->assertCount(1, $this->fake->requests());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_draft_over_the_limit_answers_429_with_retry_after_and_the_message(): void
+    {
+        $this->oneDraftAllowed();
         $this->script = [self::answer('<p>One</p>'), self::answer('<p>Two</p>')];
         $this->staff('drafter', ['drafter' => self::DRAFTER]);
 

@@ -66,7 +66,11 @@
             return fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
                 .then(function (res) {
                     return res.json().catch(function () { return {}; }).then(function (data) {
-                        if (!res.ok) { throw new Error(data && data.error ? data.error : res.status + ' ' + res.statusText); }
+                        if (!res.ok) {
+                            var failure = new Error(data && data.error ? data.error : res.status + ' ' + res.statusText);
+                            failure.status = res.status;
+                            throw failure;
+                        }
                         return data;
                     });
                 });
@@ -95,7 +99,7 @@
                     startBtn.disabled = data.units === 0;
                 })
                 .catch(function (e) {
-                    if (mine === estimateRequest) { estimateEl.textContent = ''; showError(msg('error', { message: e.message })); }
+                    if (mine === estimateRequest) { estimateEl.textContent = ''; showError(core.failureText(e, root.getAttribute('data-msg-error') || '')); }
                 });
         }
 
@@ -124,7 +128,7 @@
         function failed(e) {
             startBtn.disabled = false;
             estimateEl.textContent = '';
-            showError(msg('error', { message: e.message }));
+            showError(core.failureText(e, root.getAttribute('data-msg-error') || ''));
         }
 
         function translate() {

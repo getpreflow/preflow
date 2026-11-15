@@ -155,7 +155,7 @@
                 if (mine !== request) { return; }
                 busy(false);
                 var failure = e && typeof e.status === 'number' ? e : { status: 500, error: '' }; // anything else: told as generic
-                showError(msg('error', { message: core.errorText(failure, { offline: msg('offline'), forbidden: msg('forbidden'), generic: msg('generic') }) }));
+                showError(core.failureLine(failure, { offline: msg('offline'), forbidden: msg('forbidden'), generic: msg('generic') }, root.getAttribute('data-msg-error') || ''));
             });
         }
 

@@ -117,5 +117,16 @@
         return true;
     }
 
-    return { pathToName: pathToName, queue: queue, limitSwap: limitSwap, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
+    /**
+     * What the dialog shows for a failed request (error: an Error whose message is the server's
+     * text, with its HTTP status): a 429 (the person's AI limit) says when to try again on its own,
+     * as it is; anything else inside the dialog's prefix (":message").
+     */
+    function failureText(error, prefix) {
+        var message = error && error.message ? String(error.message) : '';
+        if (error && error.status === 429 && message !== '') { return message; }
+        return format(prefix, { message: message });
+    }
+
+    return { pathToName: pathToName, queue: queue, limitSwap: limitSwap, failureText: failureText, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
 }));

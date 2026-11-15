@@ -68,7 +68,10 @@ final class AiServiceProvider extends ServiceProvider
         });
 
         // Per-person limits count through the Throttle, which needs the data layer: without it nothing is limited.
-        if ($container->bound(Throttle::class)) {
+        // Without an app key they cannot count; that stops the boot (AiLimits' constructor, built in boot())
+        // wherever AI work can run. Where none can (AI off, no translator or draft writer of the app's
+        // own), there is nothing to limit and the site boots without a key, as before 0.78.
+        if ($container->bound(Throttle::class) && ($container->get(Throttle::class)->hasKey() || self::aiCanWork($container))) {
             $container->singleton(AiLimits::class, static function (Container $c): AiLimits {
                 $limits = self::config($c)['limits'] ?? [];
 
@@ -114,6 +117,20 @@ final class AiServiceProvider extends ServiceProvider
         }
 
         return $class;
+    }
+
+    /**
+     * Whether config/ai.php lets any AI work run: the switch is on, or a translator or draft writer
+     * of the app's own is named (they need not go through the switch).
+     */
+    private static function aiCanWork(Container $c): bool
+    {
+        $config = self::config($c);
+        $named = static fn (mixed $section, string $key): bool => is_array($section) && is_string($section[$key] ?? null) && $section[$key] !== '';
+
+        return ($config['enabled'] ?? false) === true
+            || $named($config['translation'] ?? null, 'translator')
+            || $named($config['draft'] ?? null, 'writer');
     }
 
     /** @return array<string, mixed> config/ai.php */

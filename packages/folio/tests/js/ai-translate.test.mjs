@@ -87,3 +87,13 @@ test('limit_swap lets a 429 inside the run screen swap', () => {
         assert.equal(detail.isError, true);
     }
 });
+
+test('failure_text shows a 429 as it is, anything else in the prefix', () => {
+    const limit = Object.assign(new Error('You have reached your limit of 100 AI translations. You can translate again in 12 min.'), { status: 429 });
+    assert.equal(core.failureText(limit, 'The translation failed: :message'), 'You have reached your limit of 100 AI translations. You can translate again in 12 min.');
+
+    const other = Object.assign(new Error('Provider said no'), { status: 503 });
+    assert.equal(core.failureText(other, 'The translation failed: :message'), 'The translation failed: Provider said no');
+    assert.equal(core.failureText(new Error('offline'), 'The translation failed: :message'), 'The translation failed: offline', 'no status');
+    assert.equal(core.failureText(Object.assign(new Error(''), { status: 429 }), 'The translation failed: :message'), 'The translation failed: ');
+});

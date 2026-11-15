@@ -91,9 +91,20 @@ final class Throttle
         return hash_hmac('sha256', 'person|' . $authId, $this->key);
     }
 
+    /**
+     * Whether the app key can salt client and person hashes (not empty, not the default): without
+     * it client() and forPerson() throw. Lets a caller refuse at boot instead of per request.
+     *
+     * @since 0.78
+     */
+    public function hasKey(): bool
+    {
+        return $this->key !== '' && $this->key !== self::DEFAULT_KEY;
+    }
+
     private function assertKey(): void
     {
-        if ($this->key === '' || $this->key === self::DEFAULT_KEY) {
+        if (!$this->hasKey()) {
             throw new \RuntimeException('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.');
         }
     }

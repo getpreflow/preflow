@@ -78,12 +78,52 @@ final class JobRunnerTest extends TestCase
     }
 
     /** Limits counted on a JSON storage in the test's folder (removed with it). */
-    private function limits(int $translateMax): AiLimits
+    private function limits(int $translateMax, ?\Closure $clock = null): AiLimits
+    {
+        return new AiLimits($this->limitThrottle($clock), ['translate' => ['max' => $translateMax]]);
+    }
+
+    private ?Throttle $limitThrottle = null;
+
+    private function limitThrottle(?\Closure $clock = null): Throttle
     {
         $data = $this->dir . '/limits';
         $this->limitDirs[] = $data;
 
-        return new AiLimits(new Throttle(new DataManager(['default' => new JsonFileDriver($data)]), 'secret'), ['translate' => ['max' => $translateMax]]);
+        return $this->limitThrottle ??= new Throttle(new DataManager(['default' => new JsonFileDriver($data)]), 'secret', 'default', $clock);
+    }
+
+    public function test_a_waiting_job_goes_on_after_the_window_and_counts_each_item_once(): void
+    {
+        $now = 1_000_000;
+        $runner = $this->runner([self::echo(), self::echo(), self::echo()], limits: $this->limits(1, static function () use (&$now): int {
+            return $now;
+        }));
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($job->id, false, 'u1');
+        $person = $this->limitThrottle()->forPerson('u1');
+        $counted = fn (): int => $this->limitThrottle()->tooMany('ai.translate', $person, 2, 3600) ? 2 : ($this->limitThrottle()->tooMany('ai.translate', $person, 1, 3600) ? 1 : 0);
+
+        $this->assertSame('done', $runner->step($job->id)->items['1']['status']);
+        $this->assertSame(1, $counted());
+        foreach (['2', '3'] as $id) {
+            try {
+                $runner->step($job->id);
+                $this->fail("item {$id}: expected the job to wait");
+            } catch (AiLimitReached $e) {
+                $this->assertSame(3600 - ($now - 1_000_000) % 3600, $e->retryAfter);
+            }
+            $this->assertSame('pending', (new FileJobStore($this->dir))->get($job->id)->items[$id]['status'], 'waits');
+
+            $now += 3600; // the window has ended
+            $stepped = $runner->step($job->id);
+            $this->assertSame('done', $stepped->items[$id]['status'], "item {$id} goes on");
+            $this->assertSame(1, $counted(), "item {$id} is the only one counted in its window");
+        }
+
+        $this->assertSame('done', $stepped->state);
+        $this->assertCount(3, $this->fake->requests(), 'every item translated once');
+        $this->assertSame(['u1', 'u1', 'u1'], $this->source->writtenBy);
     }
 
     /** @var list<string> */

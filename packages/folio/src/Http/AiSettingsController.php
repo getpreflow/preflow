@@ -8,6 +8,9 @@ use Nyholm\Psr7\Response;
 use Preflow\Ai\Ai;
 use Preflow\Ai\AiCheck;
 use Preflow\Ai\AiCheckResult;
+use Preflow\Ai\Limits\AiLimitReached;
+use Preflow\Ai\Limits\AiLimits;
+use Preflow\Auth\Authenticatable;
 use Preflow\Ai\Usage\UsageLog;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\ContentLocale;
@@ -43,6 +46,7 @@ final class AiSettingsController
         private readonly ContentLocale $contentLocale,
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
+        private readonly ?AiLimits $limits = null,
     ) {}
 
     /** GET {prefix}/ai */
@@ -56,6 +60,15 @@ final class AiSettingsController
     {
         if ($off = $this->guard($request)) {
             return $off;
+        }
+        // A test is a paid request: it counts against the person's draft limit (since 0.78), only when AI would be asked.
+        $person = $request->getAttribute(Authenticatable::class);
+        if ($this->limits !== null && $person instanceof Authenticatable && $this->ai->enabled()) {
+            try {
+                $this->limits->take(AiLimits::DRAFT, $person->getAuthId());
+            } catch (AiLimitReached $e) {
+                return $this->statusPage($request, ['ok' => false, 'text' => FolioText::get($e->textKey(), $e->textParams())], 429, ['Retry-After' => (string) $e->retryAfter]);
+            }
         }
         $result = (new AiCheck($this->ai))->run();
         $params = ['message' => (string) $result->message];
@@ -191,8 +204,11 @@ final class AiSettingsController
         return null;
     }
 
-    /** @param array{ok: bool, text: string}|null $test */
-    private function statusPage(ServerRequestInterface $request, ?array $test = null): ResponseInterface
+    /**
+     * @param array{ok: bool, text: string}|null $test
+     * @param array<string, string> $headers more headers (Retry-After)
+     */
+    private function statusPage(ServerRequestInterface $request, ?array $test = null, int $code = 200, array $headers = []): ResponseInterface
     {
         $status = $this->ai->status();
         $now = new \DateTimeImmutable('first day of this month 00:00:00');
@@ -212,7 +228,7 @@ final class AiSettingsController
             'active' => $status->enabled,
             'test' => $test,
             'months' => $months,
-        ]);
+        ], $code, $headers);
     }
 
     /**
@@ -380,9 +396,9 @@ final class AiSettingsController
     }
 
     /** @param array<string, mixed> $view */
-    private function render(string $template, ServerRequestInterface $request, array $view, int $status = 200): ResponseInterface
+    private function render(string $template, ServerRequestInterface $request, array $view, int $status = 200, array $headers = []): ResponseInterface
     {
-        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/ai/' . $template . '.twig', $view + [
+        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'] + $headers, $this->engine->render('@folio/admin/ai/' . $template . '.twig', $view + [
             'prefix' => $this->prefix,
             'csrf' => $request->getAttribute(\Preflow\Core\Http\Csrf\CsrfToken::class)?->getValue() ?? '',
             'tab' => $template,
