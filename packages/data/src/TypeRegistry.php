@@ -25,21 +25,27 @@ final class TypeRegistry
         private readonly array $classes = [],
         private readonly ?\Preflow\Core\Boot\BootManifest $manifest = null,
     ) {
-        $this->assertOneDefinitionPerKey();
         if ($this->manifest === null) {
+            $this->assertOneDefinitionPerKey();
             $this->assertTitleFields();
         } else {
-            // Checked when the manifest is built (and live while none is loaded); a loaded one skips the scan.
+            // Checked when the manifest is built (and live while none is loaded); a loaded one skips the scans.
+            $sources = $this->manifest->isRecording() ? $this->checkSources() : [];
+            $this->manifest->remember('data.one_definition_per_key', function (): bool {
+                $this->assertOneDefinitionPerKey();
+
+                return true;
+            }, $sources);
             $this->manifest->remember('data.title_fields', function (): bool {
                 $this->assertTitleFields();
 
                 return true;
-            }, $this->manifest->isRecording() ? $this->titleFieldSources() : []);
+            }, $sources);
         }
     }
 
-    /** @return list<string> what the titleField check reads: the model files and the model classes' files */
-    private function titleFieldSources(): array
+    /** @return list<string> what the boot checks read: the model files and the model classes' files */
+    private function checkSources(): array
     {
         $sources = [$this->modelsPath];
         foreach ($this->classes as $class) {
@@ -101,7 +107,9 @@ final class TypeRegistry
      * A class-backed key whose model file also defines schema is an error when the registry is
      * built (at boot), not when a request first uses the type. Reads only the files of class
      * keys (decoded once per process, as the type's first use reads them anyway); the full
-     * overlay (a file entry for a field the class lacks) still runs on first use.
+     * overlay (a file entry for a field the class lacks) still runs on first use. With a boot
+     * manifest it runs when the manifest is built, as the titleField check does, so a loaded one
+     * reads no admin file for it.
      */
     private function assertOneDefinitionPerKey(): void
     {

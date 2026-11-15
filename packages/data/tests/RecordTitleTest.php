@@ -235,11 +235,43 @@ final class RecordTitleTest extends TestCase
 
         ParsedJsonFiles::reset();
         $loaded = BootManifest::fromData(['catalogs' => $recorded['catalogs']]);
-        // The class key's admin file is still read by the one-definition check; the plain model file is not.
+        // Neither the plain model file nor the class key's admin file is read: both boot checks ran when the manifest was built.
         new TypeRegistry($this->dir, null, [], $loaded);
         $this->assertSame(0, ParsedJsonFiles::decodeCount());
         new TypeRegistry($this->dir, null, $classes, $loaded);
-        $this->assertSame(1, ParsedJsonFiles::decodeCount(), 'only assertOneDefinitionPerKey reads the class key file');
+        $this->assertSame(0, ParsedJsonFiles::decodeCount(), 'the one-definition check is in the manifest too');
+    }
+
+    public function test_the_one_definition_check_runs_with_the_boot_manifest(): void
+    {
+        file_put_contents($this->dir . '/untitled_book.json', json_encode(['label' => 'Books']));
+        $classes = ['untitled_book' => UntitledBook::class];
+
+        $recording = BootManifest::recording();
+        new TypeRegistry($this->dir, null, $classes, $recording);
+        $recorded = $recording->recorded();
+        $this->assertTrue($recorded['catalogs']['data.one_definition_per_key']);
+        $this->assertContains($this->dir, $recorded['sources'], 'a new or changed model file makes the manifest stale');
+        $this->assertContains((string) (new \ReflectionClass(UntitledBook::class))->getFileName(), $recorded['sources']);
+
+        ParsedJsonFiles::reset();
+        new TypeRegistry($this->dir, null, $classes, BootManifest::fromData(['catalogs' => $recorded['catalogs']]));
+        $this->assertSame(0, ParsedJsonFiles::decodeCount(), 'a loaded manifest reads no admin file for it');
+
+        // Without a manifest, as before: every boot reads the class key's file.
+        ParsedJsonFiles::reset();
+        new TypeRegistry($this->dir, null, $classes);
+        $this->assertGreaterThanOrEqual(1, ParsedJsonFiles::decodeCount());
+    }
+
+    public function test_an_admin_file_defining_schema_fails_when_the_manifest_is_built(): void
+    {
+        file_put_contents($this->dir . '/untitled_book.json', json_encode(['table' => 'books']));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Model file untitled_book.json sets "table"');
+
+        new TypeRegistry($this->dir, null, ['untitled_book' => UntitledBook::class], BootManifest::recording());
     }
 
     public function test_a_bad_title_field_fails_when_the_manifest_is_built(): void

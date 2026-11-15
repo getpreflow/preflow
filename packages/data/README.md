@@ -1131,7 +1131,9 @@ The registry finds marked classes in `app/Models` (set `data.model_paths` in `co
 other directories; a relative entry is under the app's base path). `preflow optimize` stores the
 list in the boot manifest, so a class costs a request no more than a JSON type. A class and a JSON
 file that both define the schema of one key (fields, table, storage, id field, `matrixable`,
-`views`) is a boot error (the registry checks it when it is built), never a silent override. A
+`views`) is a boot error (the registry checks it when it is built; with a boot manifest, when
+`preflow optimize` builds it, so a production boot reads no admin file for it), never a silent
+override. A
 class marked with a key the registry does not know (it is outside `data.model_paths`) is a
 `LogicException` on its first read or write, never a silent fall back to a plain model.
 
