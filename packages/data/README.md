@@ -96,8 +96,15 @@ convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_
 | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. A hand-written
 file gets this form on its next save; nothing is migrated. SQL storage keeps lists as JSON text in
 their columns. A direct `driver()->save()` keeps its caller's key order; `storageValues()` gives
-the canonical row to callers that write rows themselves (an import). In JSON files `IN` reads a
-yes/no value as `'1'` or `'0'`, as SQL stores it.
+the canonical row to callers that write rows themselves (an import). `updateFieldsIfVersion()`
+writes its fields into the stored file as it is: the stored key order stays, a new key comes last;
+the next full save (`saveType()`, a model's `save()`) writes the canonical order.
+
+Since JSON files now hold numbers and `true`/`false`, the JSON driver compares them as SQL compares
+its number and 1/0 columns: `=`, `!=`/`<>`, `IN`/`NOT IN` and `whereAny()`'s `=` match a number given
+as numeric text of the same value (`'2'`, `'02'`, `'2.5'`) and a yes/no value given as `1`/`'1'`
+(or `'true'`) and `0`/`'0'` (or `''`, `'false'`). Text never equals text that differs, and text that
+is no number never equals a number. A NULL field is never `!=` a value, as in SQL.
 
 **Lazy connection (0.59).** `SqliteDriver`, `MysqlDriver` and any `PdoDriver` subclass take a
 `\PDO` or a `\Closure(): \PDO`. Given a closure, the driver opens the connection on its first

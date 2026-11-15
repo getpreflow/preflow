@@ -778,8 +778,9 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         }
 
         return match ($operator) {
-            '=' => $fieldValue === $condValue,
-            '!=', '<>' => $fieldValue !== $condValue,
+            '=' => self::sqlEquals($fieldValue, $condValue),
+            // As SQL: != null is IS NOT NULL, and a NULL field is never "not equal" to a value.
+            '!=', '<>' => $condValue === null ? $fieldValue !== null : $fieldValue !== null && !self::sqlEquals($fieldValue, $condValue),
             '>' => $fieldValue > $condValue,
             '>=' => $fieldValue >= $condValue,
             '<' => $fieldValue < $condValue,
@@ -788,6 +789,47 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             'NOT LIKE' => $fieldValue !== null && !$this->matchLike((string) $fieldValue, (string) $condValue),
             default => false,
         };
+    }
+
+    /**
+     * Whether a stored value equals a given one as SQL compares a stored 1/0 or number with a
+     * parameter (0.78: JSON files hold true/false and numbers): a yes/no value equals 1, '1' and
+     * 'true' (true) or 0, '0', '' and 'false' (false); a number equals a number or numeric text of
+     * the same value ('2' = 2, '2.5' = 2.5, '02' = 2). Text to text stays byte for byte, and text
+     * that is no number never equals a number. null equals only null (where(field, null) is IS NULL).
+     */
+    private static function sqlEquals(mixed $stored, mixed $given): bool
+    {
+        if ($stored === $given) {
+            return true;
+        }
+        if ($stored === null || $given === null) {
+            return false;
+        }
+        if (is_bool($stored) || is_bool($given)) {
+            [$bool, $other] = is_bool($stored) ? [$stored, $given] : [$given, $stored];
+            if (is_bool($other)) {
+                return false;
+            }
+            if (is_int($other) || is_float($other)) {
+                return $other == ($bool ? 1 : 0);
+            }
+
+            return in_array($other, $bool ? ['1', 'true'] : ['0', '', 'false'], true);
+        }
+        $storedNumber = is_int($stored) || is_float($stored);
+        $givenNumber = is_int($given) || is_float($given);
+        if ($storedNumber && $givenNumber) {
+            return $stored == $given;
+        }
+        if ($storedNumber && is_string($given)) {
+            return is_numeric($given) && (float) $stored === (float) $given;
+        }
+        if ($givenNumber && is_string($stored)) {
+            return is_numeric($stored) && (float) $stored === (float) $given;
+        }
+
+        return false;
     }
 
     /** A value as IN compares it: as text, a yes/no value as '1' or '0' (as SQL stores it). */
@@ -825,7 +867,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             'CONTAINS' => self::containsText($fieldValue, (string) $value),
             'IN' => is_scalar($fieldValue) && in_array(self::listText($fieldValue), array_map(self::listText(...), array_filter((array) $value, 'is_scalar')), true),
             'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value)),
-            default => $fieldValue === $value,
+            default => self::sqlEquals($fieldValue, $value),
         };
     }
 

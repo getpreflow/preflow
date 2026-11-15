@@ -46,7 +46,9 @@ final class CanonicalJsonSaveTest extends TestCase
                 'count' => ['type' => 'number'],
                 'tags' => ['type' => 'tags'],
                 'note' => ['type' => 'text'],
+                'flag' => ['type' => 'boolean'],
             ],
+            'list' => ['columns' => ['title', 'count', 'flag'], 'filters' => ['flag']],
         ]));
     }
 
@@ -71,20 +73,48 @@ final class CanonicalJsonSaveTest extends TestCase
         $app = $this->app();
         $dm = $app->container()->get(DataManager::class);
         $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('item'), [
-            'note' => 'n/a', 'tags' => '["a","Übersetzung"]', 'uuid' => 'cli', 'count' => '2', 'title' => 'Grüße',
+            'flag' => '0', 'note' => 'n/a', 'tags' => '["a","Übersetzung"]', 'uuid' => 'cli', 'count' => '2', 'title' => 'Grüße',
         ]));
 
         // 3. A hand-written file (keys in any order, a comma string, a number as text), saved through RecordWriter.
-        file_put_contents($this->dir . '/storage/data/item/hand.json', '{"count":"2","uuid":"hand","tags":"a, Übersetzung","note":"n/a","title":"Grüße"}');
+        file_put_contents($this->dir . '/storage/data/item/hand.json', '{"count":"2","uuid":"hand","flag":0,"tags":"a, Übersetzung","note":"n/a","title":"Grüße"}');
         $app = $this->app();
         $dm = $app->container()->get(DataManager::class);
         $app->container()->get(RecordWriter::class)->save($dm->findType('item', 'hand') ?? $this->fail('hand-written file read'));
 
         $this->assertStringEndsWith("\n", $folio);
         $this->assertStringContainsString('"Übersetzung"', $folio, 'umlauts readable');
-        $this->assertSame(['title', 'count', 'tags', 'note', 'uuid'], array_keys(json_decode($folio, true)));
+        $this->assertSame(['title', 'count', 'tags', 'note', 'flag', 'uuid'], array_keys(json_decode($folio, true)));
         $this->assertSame($folio, str_replace('"cli"', '"' . $folioId . '"', $this->file('cli')), 'a CLI save');
         $this->assertSame($folio, str_replace('"hand"', '"' . $folioId . '"', $this->file('hand')), 'a hand-written file after its next save');
+    }
+
+    public function test_a_filter_on_a_number_and_a_yes_no_field_finds_a_record_saved_canonically(): void
+    {
+        // Written before 0.78: the number and the yes/no value as text. The save stores 2 and true.
+        @mkdir($this->dir . '/storage/data/item', 0777, true);
+        file_put_contents($this->dir . '/storage/data/item/r1.json', '{"uuid":"r1","title":"Quokkaone","count":"2","flag":"1"}');
+        file_put_contents($this->dir . '/storage/data/item/r2.json', '{"uuid":"r2","title":"Zebratwo","count":"3","flag":"0"}');
+        $app = $this->app();
+        $dm = $app->container()->get(DataManager::class);
+        foreach (['r1', 'r2'] as $id) {
+            $dm->saveType($dm->findType('item', $id) ?? $this->fail('hand-written file read'), false);
+        }
+        $saved = json_decode($this->file('r1'), true);
+        $this->assertSame([2, true], [$saved['count'], $saved['flag']], 'stored canonically');
+
+        $get = fn (string $uri): string => (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', $uri))->getBody();
+        // Folio's list filters take yes/no, select, relation and date fields; a number is filtered by
+        // callers (an extension, a site's page) that pass the value as text.
+        $byNumber = $dm->queryType('item')->where('count', '2')->get()->items();
+        $this->assertSame(['r1'], array_map(static fn ($r): string => (string) $r->getId(), $byNumber));
+        $this->assertCount(1, $dm->queryType('item')->where('flag', '1')->get()->items());
+        $yes = $get('/folio/item?f%5Bflag%5D=1');
+        $this->assertStringContainsString('Quokkaone', $yes);
+        $this->assertStringNotContainsString('Zebratwo', $yes);
+        $no = $get('/folio/item?f%5Bflag%5D=0');
+        $this->assertStringContainsString('Zebratwo', $no);
+        $this->assertStringNotContainsString('Quokkaone', $no);
     }
 
     private function file(string $id): string

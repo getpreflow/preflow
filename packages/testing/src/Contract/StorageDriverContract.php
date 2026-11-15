@@ -168,6 +168,71 @@ abstract class StorageDriverContract extends TestCase
         $this->assertBoolean(false, $this->record('no')['active'] ?? null);
     }
 
+    /** @return list<string> the ids of records matching $query, sorted */
+    private function recordIds(Query $query): array
+    {
+        $ids = array_map(static fn (array $row): string => (string) $row['uuid'], $this->driver->findMany('records', $query)->items());
+        sort($ids);
+
+        return $ids;
+    }
+
+    /** A number equals the same value given as text, as SQL compares a number column (0.78). */
+    public function test_equality_matches_a_number_given_as_text(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'two', ['uuid' => 'two', 'amount' => 2]);
+        $this->driver->save('records', 'half', ['uuid' => 'half', 'amount' => 2.5]);
+        $this->driver->save('records', 'none', ['uuid' => 'none', 'amount' => null]);
+
+        $this->assertSame(['two'], $this->recordIds((new Query())->where('amount', '2')));
+        $this->assertSame(['two'], $this->recordIds((new Query())->where('amount', '02')));
+        $this->assertSame(['two'], $this->recordIds((new Query())->where('amount', 2)));
+        $this->assertSame(['half'], $this->recordIds((new Query())->where('amount', '2.5')));
+        $this->assertSame(['two'], $this->recordIds((new Query())->whereAny([['field' => 'amount', 'operator' => '=', 'value' => '2']])));
+        $this->assertSame(['half', 'two'], $this->recordIds((new Query())->where('amount', '9')->orWhere('amount', '2')->orWhere('amount', '2.5')));
+        $this->assertSame([], $this->recordIds((new Query())->where('amount', '7')));
+    }
+
+    public function test_inequality_of_a_number_given_as_text(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'two', ['uuid' => 'two', 'amount' => 2]);
+        $this->driver->save('records', 'half', ['uuid' => 'half', 'amount' => 2.5]);
+        $this->driver->save('records', 'none', ['uuid' => 'none', 'amount' => null]);
+
+        $this->assertSame(['half'], $this->recordIds((new Query())->where('amount', '!=', '2')), 'a NULL field is never "not equal"');
+        $this->assertSame(['two'], $this->recordIds((new Query())->where('amount', '<>', '2.5')));
+        $this->assertSame(['half', 'two'], $this->recordIds((new Query())->where('amount', '!=', '7')));
+    }
+
+    /** A yes/no value equals 1/0 given as a number or as text, as SQL compares its stored 1/0 (0.78). */
+    public function test_equality_matches_a_boolean_given_as_one_or_zero(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'yes', ['uuid' => 'yes', 'active' => true]);
+        $this->driver->save('records', 'no', ['uuid' => 'no', 'active' => false]);
+
+        foreach (['1', 1, true] as $given) {
+            $this->assertSame(['yes'], $this->recordIds((new Query())->where('active', $given)), var_export($given, true));
+        }
+        foreach (['0', 0, false] as $given) {
+            $this->assertSame(['no'], $this->recordIds((new Query())->where('active', $given)), var_export($given, true));
+        }
+        $this->assertSame(['yes'], $this->recordIds((new Query())->whereAny([['field' => 'active', 'operator' => '=', 'value' => '1']])));
+        $this->assertSame(['no', 'yes'], $this->recordIds((new Query())->where('active', '1')->orWhere('active', '0')));
+    }
+
+    public function test_inequality_of_a_boolean_given_as_one_or_zero(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'yes', ['uuid' => 'yes', 'active' => true]);
+        $this->driver->save('records', 'no', ['uuid' => 'no', 'active' => false]);
+
+        $this->assertSame(['no'], $this->recordIds((new Query())->where('active', '!=', '1')));
+        $this->assertSame(['yes'], $this->recordIds((new Query())->where('active', '<>', 0)));
+    }
+
     /** A yes/no value is in a list as '1' or '0', as SQL stores it (0.78: JSON files hold true/false). */
     public function test_a_boolean_is_in_a_list_as_one_or_zero(): void
     {
