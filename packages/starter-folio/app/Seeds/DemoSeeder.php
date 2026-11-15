@@ -75,7 +75,7 @@ final class DemoSeeder
             $company->summary = $row['summary'];
             $logo = self::LOGOS . '/' . $company->slug . '.png';
             if ($images && is_file($logo) && ($company->logo === null || $this->media->find($company->logo) === null)) {
-                $company->logo = $this->media->importFile($logo, basename($logo), 'seed')->id;
+                $company->logo = $this->media->importFile($logo, basename($logo), SeedActor::MARKER)->id;
             }
             $data->save($company);
             $this->publish($data, 'company', $uuid);
@@ -117,7 +117,7 @@ final class DemoSeeder
             $current = is_string($current) && str_starts_with($current, '[') ? (json_decode($current, true)[0] ?? null) : $current;
             $image = self::NEWS_IMAGES . '/' . $row['slug'] . '.png';
             if ($images && is_file($image) && (!is_string($current) || $current === '' || $this->media->find($current) === null)) {
-                $asset = $this->media->importFile($image, basename($image), 'seed');
+                $asset = $this->media->importFile($image, basename($image), SeedActor::MARKER);
                 $this->media->update($asset->id, ['alt' => ['en' => $row['alt']]]);
                 $post->set('image', $asset->id);
             }
@@ -165,7 +165,7 @@ final class DemoSeeder
     {
         $record = $data->findType($type, $id);
         if ($record !== null && $this->publisher->state($record) !== PublishState::Published) {
-            $this->publisher->publish($record, 'seed');
+            $this->publisher->publish($record, SeedActor::MARKER);
         }
     }
 }

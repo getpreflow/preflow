@@ -38,7 +38,7 @@ final class ContentSeeder
     public function run(DataManager $data): void
     {
         if ($data->findType('page', self::HOME) === null) {
-            $this->publisher->publish(DynamicRecord::fromArray($data->getTypeRegistry()->get('page'), self::home()), 'seed');
+            $this->publisher->publish(DynamicRecord::fromArray($data->getTypeRegistry()->get('page'), self::home()), SeedActor::MARKER);
         }
 
         foreach (self::PARTS as $type => $values) {
@@ -47,7 +47,7 @@ final class ContentSeeder
             }
             // A singleton's one record has the type key as its id.
             $record = DynamicRecord::fromArray($data->getTypeRegistry()->get($type), ['uuid' => $type] + $values);
-            $this->publisher->publish($record, 'seed');
+            $this->publisher->publish($record, SeedActor::MARKER);
         }
     }
 
