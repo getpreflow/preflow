@@ -10,7 +10,10 @@ use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 
-/** Boots the app, runs every registered migration path, then the post-migrate steps. */
+/**
+ * Boots the app, runs every registered migration path, then the post-migrate steps. A site
+ * without SQL storage runs only the steps registered for any storage (sqlOnly: false).
+ */
 final class MigrateCommand implements CommandInterface
 {
     /** @param (\Closure(): Application)|null $appFactory returns a booted application */
@@ -37,12 +40,22 @@ final class MigrateCommand implements CommandInterface
             $app = $this->app();
             $container = $app->container();
 
-            // Without --storage, a site with no SQL storage (JSON only, or no config/data.php)
-            // has nothing to migrate: that is success, so a shared deploy step can always run it.
-            // (The DataManager is bound only with config/data.php; has() is true for any class.)
+            // Without --storage, a site with no SQL storage has no schema to migrate: that is
+            // success, so a shared deploy step can always run it. A JSON-only site still runs the
+            // steps registered for any storage (sqlOnly: false); without config/data.php there is
+            // no DataManager for them. (The DataManager is bound only with config/data.php; has()
+            // is true for any class.)
             $dm = is_file($app->basePath('config/data.php')) ? $container->get(DataManager::class) : null;
             if ($storage === null && !$this->hasSqlStorage($dm)) {
-                echo "Nothing to migrate: no SQL storage configured.\n";
+                if ($dm === null) {
+                    echo "Nothing to migrate: no SQL storage configured.\n";
+                    return 0;
+                }
+                echo "No SQL storage configured: no schema migrations.\n";
+                if (!$pretend) {
+                    $this->runSteps($container->get(MigrationRegistry::class)->steps(sql: false));
+                    echo "Done.\n";
+                }
                 return 0;
             }
             if ($dm === null) {
@@ -74,11 +87,7 @@ final class MigrateCommand implements CommandInterface
             }
 
             if (!$pretend) {
-                foreach ($registry->steps() as $name => $step) {
-                    foreach ($step() as $line) {
-                        echo "[{$name}] {$line}\n";
-                    }
-                }
+                $this->runSteps($registry->steps(sql: true));
                 echo "Done.\n";
             }
 
@@ -107,6 +116,16 @@ final class MigrateCommand implements CommandInterface
         }
 
         return count($sql) === 1 ? array_key_first($sql) : null;
+    }
+
+    /** @param array<string, \Closure(): list<string>> $steps */
+    private function runSteps(array $steps): void
+    {
+        foreach ($steps as $name => $step) {
+            foreach ($step() as $line) {
+                echo "[{$name}] {$line}\n";
+            }
+        }
     }
 
     private function hasSqlStorage(?DataManager $dm): bool

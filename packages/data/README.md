@@ -260,12 +260,15 @@ their service provider:
 $registry = $container->get(\Preflow\Data\Migration\MigrationRegistry::class);
 $registry->addPath(__DIR__ . '/../migrations');        // a missing directory is ignored
 $registry->afterMigrate('mypkg.tables', fn (): array => ['created table x']); // lines to print
+$registry->afterMigrate('mypkg.marks', fn (): array => [], sqlOnly: false); // runs on JSON-only sites too
 ```
 
 The app's `migrations/` and core's own (the `preflow_throttle` table) are registered by
 the application. A post-migrate step runs on **every** `preflow migrate`, so it must be
 idempotent (`hasTable()` / `columns()` before changing anything); registering the same step
-name twice throws.
+name twice throws. A step is SQL-only by default: on a site whose storage is JSON only,
+migrate runs just the steps registered with `sqlOnly: false` (work through `DataManager`, no
+SQL; since 0.77.1). `steps(sql: false)` lists those, `isSqlOnly($name)` tells one step.
 
 Related behaviour: a storage name that is not configured is an error, never a silent
 fallback to the default; a record key with no column fails with a message naming

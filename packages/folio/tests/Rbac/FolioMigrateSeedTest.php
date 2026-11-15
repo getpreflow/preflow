@@ -60,4 +60,39 @@ final class FolioMigrateSeedTest extends TestCase
         $this->assertFalse($resolver->allows(new TestUser(roles: []), 'staff', 'page.edit', null), 'installed: no bootstrap');
         $this->assertFalse($resolver->allows(new TestUser(roles: ['editor']), 'staff', 'rbac_role.edit', null));
     }
+
+    /**
+     * JSON storage only: no schema to migrate, but the storage-neutral steps run (@since 0.77.1):
+     * where rbac is installed (its rbac_role directory), migrate seeds config/roles.php.
+     */
+    #[RunInSeparateProcess]
+    public function test_migrate_on_json_storage_only_seeds_the_roles_and_skips_the_table_steps(): void
+    {
+        $this->write('config/data.php', "<?php\nreturn " . var_export([
+            'default' => 'json',
+            'models_path' => $this->dir . '/config/models',
+            'drivers' => [
+                'json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => $this->dir . '/storage/data'],
+            ],
+        ], true) . ";\n");
+        mkdir($this->dir . '/storage/data/rbac_role', 0777, true); // installed (rbac:install's first write makes it)
+        ob_start();
+        try {
+            $code = (new MigrateCommand(fn () => $this->session ??= $this->app()))->execute([]);
+        } finally {
+            $out = (string) ob_get_clean();
+        }
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('No SQL storage configured: no schema migrations.', $out);
+        $this->assertStringContainsString('seeded 2 rbac roles', $out);
+        $this->assertSame(['admin' => ['*'], 'editor' => ['page.*']], $this->container()->get(RoleStore::class)->rolesFor('staff'));
+
+        $registry = $this->container()->get(\Preflow\Data\Migration\MigrationRegistry::class);
+        foreach (['folio.tables', 'activity.table'] as $sqlOnly) {
+            $this->assertTrue($registry->isSqlOnly($sqlOnly), $sqlOnly);
+        }
+        foreach (['rbac.seed', 'folio.permissions', 'folio.addresses'] as $anyStorage) {
+            $this->assertFalse($registry->isSqlOnly($anyStorage), $anyStorage);
+        }
+    }
 }

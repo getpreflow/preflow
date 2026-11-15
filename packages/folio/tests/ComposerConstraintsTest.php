@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.77.1: data 0.77.1 (MigrationRegistry::afterMigrate()'s sqlOnly, which folio.permissions and folio.addresses pass).
  * Since 0.77: core 0.77 (Activity\ActivityLog and ActivityActors, for the dashboard's recent changes and AuthorNames); data 0.77 (RecordTitle, which RecordLabeler uses); ai 0.77 (Draft\DraftWriter, behind "Write a draft"); i18n 0.77 (Machine\WritesAs, which FolioTextSource implements); media 0.77 (activity recording of asset changes); publishing 0.77 (Publisher::stateCounts() for the dashboard and status links, PersonalTypes, which MemberPersonalTypes implements); members 0.77 (raised in step with the release; members is only suggested, and records its activity through core's ActivityLog); devtools 0.77 (raised in step with the release; src calls no 0.77-only devtools API).
  *
  * Since 0.76: data 0.76 (Query::localize() with the type's locales, which the missing-alt filter relies on on JSON storage), i18n 0.76
@@ -69,7 +70,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.77', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.77', 'preflow/data' => '<0.77', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.77', 'preflow/media' => '<0.77', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.77', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.77', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.77', 'preflow/data' => '<0.77.1', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.77', 'preflow/media' => '<0.77', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.77', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.70', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members, codes and rbac are suggested, not required.

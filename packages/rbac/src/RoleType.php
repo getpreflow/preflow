@@ -61,7 +61,7 @@ final class RoleType
             }
         }
         if ($c->bound(MigrationRegistry::class)) {
-            $c->get(MigrationRegistry::class)->afterMigrate('rbac.seed', static fn (): array => self::seed($c));
+            $c->get(MigrationRegistry::class)->afterMigrate('rbac.seed', static fn (): array => self::seed($c), sqlOnly: false);
         }
     }
 

@@ -23,4 +23,17 @@ final class MigrationRegistryTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $registry->afterMigrate('sync', fn (): array => []);
     }
+
+    public function test_a_step_is_sql_only_unless_registered_for_any_storage(): void
+    {
+        $registry = new MigrationRegistry();
+        $registry->afterMigrate('tables', fn (): array => ['created table x']);
+        $registry->afterMigrate('marks', fn (): array => ['marked 2 rows'], sqlOnly: false);
+
+        $this->assertSame(['tables', 'marks'], array_keys($registry->steps()));
+        $this->assertSame(['tables', 'marks'], array_keys($registry->steps(sql: true)));
+        $this->assertSame(['marks'], array_keys($registry->steps(sql: false)), 'a site without SQL storage runs only the storage-neutral steps');
+        $this->assertTrue($registry->isSqlOnly('tables'));
+        $this->assertFalse($registry->isSqlOnly('marks'));
+    }
 }

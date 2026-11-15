@@ -336,6 +336,7 @@ final class FolioServiceProvider extends ServiceProvider
                 static fn (): array => $container->get(TypeCatalog::class)->has('rbac_role')
                     ? $container->get(\Preflow\Folio\Permissions\KnownPermissions::class)->migrateLines()
                     : [],
+                sqlOnly: false,
             );
         }
         // Redirects and the not-found list (the routing core's RedirectMiddleware switches on with the
@@ -395,6 +396,7 @@ final class FolioServiceProvider extends ServiceProvider
             $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
                 'folio.addresses',
                 static fn (): array => $container->get(\Preflow\Folio\Redirects\RecordAddresses::class)->seed(),
+                sqlOnly: false,
             );
             $container->bind(\Preflow\Routing\Redirect\RedirectStore::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\RedirectEntries::class));
             $container->bind(\Preflow\Routing\Redirect\NotFoundLog::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\NotFoundEntries::class));

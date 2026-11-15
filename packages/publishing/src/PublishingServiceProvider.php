@@ -92,7 +92,7 @@ final class PublishingServiceProvider extends ServiceProvider
                 }
 
                 return $lines;
-            });
+            }, sqlOnly: false); // through DataManager: JSON-only sites have pre-0.77 snapshots too
         }
         // The one write and delete path for records (an admin, a translation run, an app's own code).
         $container->singleton(RecordWriter::class, static fn (Container $c): RecordWriter => new RecordWriter(

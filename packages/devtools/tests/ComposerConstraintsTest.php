@@ -7,6 +7,7 @@ namespace Preflow\DevTools\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.77.1: data 0.77.1 (MigrationRegistry::steps(sql:), which migrate calls on a JSON-only site).
  * Since 0.77: core 0.77 (Activity\ActivityLog::prune(), which the activity:prune command calls).
  *
  * "^0.54 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
@@ -20,7 +21,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame('^0.77 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame('^0.75 || @dev', $composer['require']['preflow/data'] ?? null);
-        $this->assertSame(['preflow/auth' => '<0.62', 'preflow/core' => '<0.77', 'preflow/data' => '<0.75'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.77.1 || @dev', $composer['require']['preflow/data'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.62', 'preflow/core' => '<0.77', 'preflow/data' => '<0.77.1'], $composer['conflict'] ?? null);
     }
 }

@@ -75,6 +75,7 @@ final class MigrateCommandTest extends TestCase
                     $registry = $container->get(MigrationRegistry::class);
                     $registry->addPath($this->pkg);
                     $registry->afterMigrate('seed', static fn (): array => ['seeded 3 rows']);
+                    $registry->afterMigrate('marks', static fn (): array => ['marked 2 rows'], sqlOnly: false);
                 }
             });
             $app->boot();
@@ -125,7 +126,8 @@ final class MigrateCommandTest extends TestCase
         [$code, $out] = $this->migrate();
 
         $this->assertSame(0, $code);
-        $this->assertStringContainsString('seeded 3 rows', $out);
+        $this->assertStringContainsString('[seed] seeded 3 rows', $out);
+        $this->assertStringContainsString('[marks] marked 2 rows', $out, 'a storage-neutral step runs on SQL too');
     }
 
     public function test_pretend_runs_nothing(): void
@@ -138,18 +140,23 @@ final class MigrateCommandTest extends TestCase
         $this->assertStringContainsString('2026_01_01_000001_create_apps.php', $out);
         $this->assertStringContainsString('2026_01_01_000002_create_pkgs.php', $out);
         $this->assertStringNotContainsString('seeded', $out);
+        $this->assertStringNotContainsString('marked', $out);
         $this->assertNotContains('apps', $this->tables());
     }
 
-    public function test_json_only_site_exits_0(): void
+    public function test_json_only_site_runs_the_storage_neutral_steps_and_exits_0(): void
     {
         file_put_contents($this->dir . '/config/data.php', '<?php return ["default" => "json", "drivers" => ["json" => ["path" => ' . var_export($this->dir . '/data', true) . ']]];');
 
         [$code, $out] = $this->migrate();
 
         $this->assertSame(0, $code);
-        $this->assertSame("Nothing to migrate: no SQL storage configured.\n", $out);
+        // No schema migrations and no SQL-only step (seed); the step registered with sqlOnly: false runs.
+        $this->assertSame("No SQL storage configured: no schema migrations.\n[marks] marked 2 rows\nDone.\n", $out);
         $this->assertFileDoesNotExist($this->dir . '/app.sqlite');
+
+        [$code, $out] = $this->migrate(['--pretend']);
+        $this->assertSame([0, "No SQL storage configured: no schema migrations.\n"], [$code, $out], '--pretend runs no step');
 
         unlink($this->dir . '/config/data.php'); // no data configuration at all: no SQL storage either
         $this->assertSame([0, "Nothing to migrate: no SQL storage configured.\n"], $this->migrate());
