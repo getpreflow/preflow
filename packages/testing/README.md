@@ -158,7 +158,7 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
 | `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)` |
-| `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`; capability tests (`RunsSql`) run when the driver implements the interface |
+| `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `reopenDriver()` (0.78), `declareFullText(string $type, array $fields)` (0.78); capability tests run when the driver implements the interface |
 | `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |
 
 ```php
@@ -202,8 +202,19 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
 - **StorageDriverContract** checks the round trip of each field kind (null and Unicode too),
   updates, `exists`, `delete`, a custom id field, generated ids, and `findMany()` with every
   `where` operator, `IN` / `NOT IN` (empty lists too), `where(field, null)`, `orWhere`, ordering,
-  limit, offset and `total()`. Search, `whereAny()` groups and the optional interfaces
-  (`VersionedStorage`, `AggregatingStorage`, `ExclusiveWrites`) are not part of it yet.
+  limit, offset and `total()`. A capability's tests run when the driver implements its interface
+  and are skipped otherwise: `RunsSql` (`rawQuery()`, `execute()`, `dialect()`), `Transactions`
+  (commit, rollback, joining an open one), `DescribesColumns::hasTable()`, `ConditionalUpdates`,
+  `AtomicCounters` (also from four processes at once) and `RankedSearch`. Two optional hooks serve
+  them: `reopenDriver()` returns a second driver on the same store, made in a forked child process
+  (null, the default, skips the tests that write from several processes); `declareFullText()`
+  makes a type's fields scorable together as the store needs it (MySQL: a FULLTEXT index), called
+  after `createType()`. Since 0.78 there is no `supportsRawQuery()` hook: remove an override of it;
+  the raw SQL tests run for `RunsSql` drivers only. `search()` is checked in text and list values;
+  `whereAny()` groups and `VersionedStorage`, `AggregatingStorage`, `ExclusiveWrites` are not part
+  of the contract yet.
+  `Preflow\Testing\PlainDriver` (0.78) wraps any driver and hides its capabilities, to test what
+  a caller does on a storage with the bare minimum.
 - **DialectContract** runs a `Dialect`'s SQL on its real database: `wholeNumber()` inside an `UPDATE` on a number
   column and on a text column holding numbers, `''` and other text, and `insertOrUpdateSql()` inserting a row and then
   updating it by its id with expressions that read the existing row through table-qualified columns (as preflow/core's

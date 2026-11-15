@@ -29,10 +29,31 @@ use PHPUnit\Framework\TestCase;
  *    folio.mail.*, members.php's members.mail.*).
  * Mail-sending classes (MemberMailer, StaffMail, Folio's StaffMailer, notify's BasicMailLayout)
  * take every word from these keys and add markup only, so their PHP is not scanned.
+ *
+ * storage.no-driver-class-checks: outside packages/data/src/Driver/ no source asks a storage driver
+ * for its class: no `instanceof` and no parameter type naming PdoDriver, MysqlDriver, SqliteDriver
+ * or JsonFileDriver (short, `Driver\…` or fully qualified). Code that needs an ability asks for its
+ * capability interface (RunsSql, PdoConnection, Transactions, AtomicCounters, UniqueIndexes,
+ * RankedSearch, DescribesColumns), so a new driver gets the same treatment by implementing it.
+ * Building a driver (`new …`) is allowed (core's factory, preflow/testing). Scanned: every
+ * package's psr-4 source roots and tools/Convert.
  */
 final class ArchitectureGuardsTest extends TestCase
 {
     private const FOLIO = 'preflow/folio';
+
+    private const DRIVERS = '(?:Preflow\\\\Data\\\\Driver\\\\|Driver\\\\)?(PdoDriver|MysqlDriver|SqliteDriver|JsonFileDriver)';
+
+    /**
+     * Driver class checks that a later step of the storage contracts removes. Each line must still
+     * be found exactly once; remove the entry when its line goes.
+     *
+     * @var array<string, list<string>>
+     */
+    private const PENDING_DRIVER_CHECKS = [
+        // saveKeepingOtherColumns: decided by the storage contracts' section 4.
+        'data/src/DataManager.php' => ['if ($driver instanceof PdoDriver) {'],
+    ];
 
     private static function packages(): string
     {
@@ -123,6 +144,75 @@ final class ArchitectureGuardsTest extends TestCase
         $this->assertSame([], $hits, 'mails must not say Folio');
     }
 
+    public function test_storage_no_driver_class_checks(): void
+    {
+        $patterns = [
+            '/\\binstanceof\\s+\\\\?' . self::DRIVERS . '\\b/',
+            '/[(,]\\s*\\??\\\\?' . self::DRIVERS . '\\s+\\$/',
+        ];
+        $driverDir = self::packages() . '/data/src/Driver/';
+        $sources = [];
+        foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
+            $dir = dirname($composerFile);
+            $composer = json_decode((string) file_get_contents($composerFile), true, flags: JSON_THROW_ON_ERROR);
+            $roots = array_values((array) ($composer['autoload']['psr-4'] ?? []));
+            $roots = $roots === [] ? ['src/'] : $roots;
+            foreach ($roots as $root) {
+                foreach ((array) $root as $path) {
+                    $sourceDir = $dir . '/' . rtrim($path, '/');
+                    if (is_dir($sourceDir)) {
+                        $sources[basename($dir)][] = $sourceDir;
+                    }
+                }
+            }
+        }
+        $sources['tools/Convert'] = [dirname(__DIR__) . '/Convert'];
+
+        $hits = [];
+        foreach ($sources as $sourceDirs) {
+            foreach ($sourceDirs as $sourceDir) {
+                foreach ($this->files($sourceDir) as $file) {
+                    if (str_starts_with($file, $driverDir) || !str_ends_with($file, '.php')) {
+                        continue;
+                    }
+                    foreach (file($file) ?: [] as $n => $line) {
+                        foreach ($patterns as $pattern) {
+                            if (preg_match($pattern, $line) === 1) {
+                                $hits[] = [$this->relativeToRepo($file), $n + 1, trim($line)];
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $unexpected = [];
+        $pendingSeen = [];
+        foreach ($hits as [$file, $lineNo, $text]) {
+            $pendingFile = str_starts_with($file, 'packages/') ? substr($file, strlen('packages/')) : $file;
+            if (in_array($text, self::PENDING_DRIVER_CHECKS[$pendingFile] ?? [], true)) {
+                $pendingSeen[$pendingFile . ': ' . $text] = ($pendingSeen[$pendingFile . ': ' . $text] ?? 0) + 1;
+                continue;
+            }
+            $unexpected[] = $file . ':' . $lineNo . ': ' . $text;
+        }
+
+        foreach (['auth', 'core', 'folio', 'data', 'tools/Convert'] as $package) {
+            $this->assertArrayHasKey($package, $sources, 'a scanned source');
+        }
+        $this->assertSame([], $unexpected, 'ask for a capability interface, not a driver class');
+        foreach (self::PENDING_DRIVER_CHECKS as $file => $lines) {
+            foreach ($lines as $text) {
+                $this->assertSame(
+                    1,
+                    $pendingSeen[$file . ': ' . $text] ?? 0,
+                    "pending driver check {$file}: {$text} must be found exactly once (remove a stale entry)",
+                );
+            }
+        }
+    }
+
     /** @return list<string> every file below $dir */
     private function files(string $dir): array
     {
@@ -141,5 +231,10 @@ final class ArchitectureGuardsTest extends TestCase
     private function relative(string $file): string
     {
         return substr($file, strlen(self::packages()) + 1);
+    }
+
+    private function relativeToRepo(string $file): string
+    {
+        return substr($file, strlen(dirname(__DIR__, 2)) + 1);
     }
 }

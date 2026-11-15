@@ -159,11 +159,17 @@ Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/te
 #### Driver-author checklist
 
 **Must:** implement `Preflow\Data\StorageDriver` (`findOne`, `findMany`, `save`, `delete`,
-`exists`, `lastInsertId`, `rawQuery`) with the query semantics `StorageDriverContract` states
-(case-insensitive `LIKE` in every alphabet, `CONTAINS` in list values, null handling, numbers as
-numbers), and pass that contract. That is enough for a driver to work everywhere: DataManager, or the
-capability's consumer (`StoredActivityLog` for `Savepoints` and `ChangeTokens`), has a fallback
-for every capability below except aggregates.
+`exists`, `lastInsertId`; since 0.78 no `rawQuery`, which moved to `RunsSql`) with the query
+semantics `StorageDriverContract` states (case-insensitive `LIKE` in every alphabet, `CONTAINS` in
+list values, null handling, numbers as numbers), and pass that contract. That is enough for a driver
+to work everywhere: DataManager, or the capability's consumer (`StoredActivityLog` for `Savepoints`
+and `ChangeTokens`), has a fallback for every capability below except aggregates and raw SQL, and
+those throw rather than give a different result.
+
+Since 0.78 nothing in the framework checks a driver's class (an architecture guard keeps it so):
+every ability is asked for by its interface below, so a new driver gets exactly what a built-in
+one with the same interfaces gets. `Preflow\Testing\PlainDriver` wraps any driver and hides every
+capability, for tests of the bare-minimum path.
 
 **Should, for production:** `VersionedStorage`, `ConditionalUpdates` and `ExclusiveWrites`. Without
 them the fallbacks work but are not atomic, so two concurrent writers can both pass a check (an
@@ -175,16 +181,25 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
+| `Transactions::transaction()`, `inTransaction()` (0.78) | Writes that commit together or not at all; inside an open transaction (whoever opened it) `transaction()` joins it. `DataManager::transaction()` spans storages: it begins on each storage with it once (aliases of one driver count once), commits the innermost first, and throws `PartialCommit` (a `RuntimeException`, the failed commit as previous) when a commit fails after another storage committed (publishing, deletes, the permission sync). | `DataManager::transaction()` runs the writes as they come: a failure part-way leaves the earlier writes stored (JSON files). | Yes with it. |
+| `UniqueIndexes` (0.78, a marker) | Says `save()` refuses a duplicate in every unique index the table sync made (`UniqueViolation`, nothing written). DataManager then checks before the write only the unique fields no index can hold (translatable ones). | DataManager checks every unique field before the write, under the type's lock (`ExclusiveWrites`) where the driver has one, else without. | Yes with it or `ExclusiveWrites`; the plain check is not. |
 | `AtomicCounters::increment()` (0.78) | Counts on a row in one step: inserts it, adds to it, or restarts it when a `CounterReset` field is below a bound (`incrementIn()`: the throttle's fixed windows). The contract tests it, also with four processes at once. | reads, adds and writes under the type's lock (`ExclusiveWrites`) when the driver has one, else plainly. | Yes with it or `ExclusiveWrites`; the plain fallback is not. |
 | `AggregatingStorage::aggregate()` | Group, count, sum, avg, min, max (`AggregateQuery`): Folio's dashboard and not-found counts, publish states, the activity people filter. | `AggregateQuery::get()` throws (never wrong numbers); `Publisher::states()` and `StoredActivityLog::people()` read the records instead. | Read only. |
 | `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
 | `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
+| `RankedSearch::canScore()`, `score()` (0.78) | Scores the hits loose search found, so ⌘K puts a type's best matches first (`DataManager::canScore()`, `scoreIn()`; only for a type with `"fullText": true`). It orders, it never finds: the hits are the same on every driver. `MysqlDriver` scores with `MATCH … AGAINST` over the FULLTEXT index `migrate` adds. | hits stay in storage order; `scoreIn()` throws `UnsupportedStorage`. | Read only. |
+| `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`; the auth tokens, remember-me and codes use it for their conditional single-statement writes. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result; tokens, remember-me and codes read and write under their own lock instead. | As the SQL runs. |
+| `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `BulkDeletes`,
-`Savepoints`, `DescribesColumns`, `AtomicCounters` and `AggregatingStorage` from it and implements `exclusive()`
-itself (as `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`.
+`Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
+`RunsSql`), `Transactions` and `UniqueIndexes` from it and implements `exclusive()` itself (as
+`SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
+`RankedSearch`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`,
+`ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
+`AggregatingStorage`.
 
 ### Migrations
 

@@ -525,6 +525,34 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Storage contracts (v0.78.0, not released):** every storage driver keeps the same contract, and nothing above the drivers asks which driver it is. A new driver implements `StorageDriver` and opts into named capabilities; the shared `StorageDriverContract` proves each one on JSON, SQLite and MySQL.
+  - **Capabilities (data):**
+    - `RunsSql` (`rawQuery()`, `execute()`, `dialect()`) and `PdoConnection` (`pdo()`, for migrations). `rawQuery()` left `StorageDriver`.
+    - `Transactions` (`transaction()`, `inTransaction()`) and `DataManager::transaction()` across storages (`PartialCommit` when a later commit fails).
+    - `AtomicCounters` (`increment()`, `CounterReset`) and `DataManager::incrementIn()`. Throttle counts through it and no longer writes lock files.
+    - `RankedSearch` (`canScore()`, `score()`) and `DataManager::canScore()`, `scoreIn()`. ⌘K orders a type's hits by relevance on storage that scores (MySQL with a FULLTEXT index); the set of hits is the same on every driver. `RecordSearch` scores a type's first `CANDIDATES` (200) hits; `RecordHit::$score` carries the score.
+    - `DescribesColumns::hasTable()`; the JSON driver now implements `DescribesColumns`.
+    - `UniqueIndexes`, a marker for storage whose unique indexes refuse duplicates. Unique checks and asset usage are found the same way on every driver.
+    - `Preflow\Testing\PlainDriver` hides a driver's capabilities, to test the bare-minimum path.
+  - **Full-text search per type:** `"fullText": true` in a model file or `#[Entity(fullText: true)]`. On MySQL, `migrate` then adds a FULLTEXT index over the type's searchable text fields (`LooseFields::text()`; a schema grammar opts in with `FullTextIndexes`).
+  - **JSON record files have one format:** fields in the type's order, then system keys, then other keys; tags as a list; numbers as numbers; readable Unicode; a final newline. Saving an unchanged record gives the same bytes, whether Folio, the CLI or a script saves it. Files change on their next save only; there is no migration. Field kinds that store a list say so (`FieldKinds::list()`, `isList()`; Folio's `StoresList`).
+  - **JSON cache:** a JSON storage entry in `config/data.php` takes `'cache' => false` for files that change outside the app (a `git pull`).
+  - **CI:** the architecture guards run on every push; a new guard fails on driver class checks outside the drivers.
+  - **Upgrading:**
+    - Upgrade all `preflow/*` packages together.
+    - Code that called `$driver->rawQuery()` on a `StorageDriver` checks `instanceof RunsSql` or calls `DataManager::raw()` (unchanged). `raw()` and `execute()` on storage without SQL throw `UnsupportedStorage` (a `LogicException`, as `execute()` threw before).
+    - A third-party driver keeps working: its `rawQuery()` is now an extra method. A third-party contract test drops its `supportsRawQuery()` override; the raw SQL tests run for `RunsSql` drivers only.
+    - A third-party class that implements `DescribesColumns` adds `hasTable(string $table): bool`.
+    - Writes across storages (publishing, record deletes, the delete planner, the permission sync) now commit the innermost storage first. A commit that fails after another storage committed throws `PartialCommit` (a `RuntimeException`, the failure as previous) instead of the raw `PDOException`; Folio's importer wraps it as before.
+    - A MySQL site that wants ranked ⌘K sets `fullText` on its types and runs `vendor/bin/preflow migrate`.
+    - `Throttle`'s `lockDir` parameter is ignored (deprecated). Its count now reaches data observers as a record write; on JSON storage all throttle hits share the type's lock.
+    - Auth tokens' and remember-me's `revokeAll()` and `prune()` delete through `deleteManyIn()` and return the number of rows found.
+    - A driver without locks now runs the unique check too (before the write, not atomic). `PdoDriver::findMany()` without limit or offset no longer runs a COUNT query.
+    - JSON queries compare as SQL does: `=`, `!=`, `IN` and `NOT IN` match a number given as text and a yes/no value given as 1/0, and `!=` leaves out records whose field is empty (NULL).
+    - On a JSON site, the first publish after the upgrade may list tag and number fields as changed once: their stored form changes on the next save. `updateFieldsIfVersion()` keeps a file's key order until its next full save.
+    - The convert tool (`tools/convert-typed-columns.php`) needs preflow/data 0.78 on the site.
+    - Folio's tag field hands DataManager a list instead of JSON text; SQL columns hold the same text as before.
+  - **Follow-ups:** multiple relations and assets still store their lists as JSON text on JSON storage.
 - **Fixes from the 0.77 rollout (v0.77.1, released 2026-11-15):**
   - **`preflow migrate` on JSON-only sites.** Migrate used to stop before any step on a site without SQL storage, so `publishing.published_versions` never ran there. Now it runs the steps registered for any storage. `MigrationRegistry::afterMigrate()` takes `sqlOnly` (default `true`); `publishing.published_versions`, `rbac.seed`, `folio.permissions` and `folio.addresses` pass `sqlOnly: false`. Schema migrations and table syncs stay SQL-only.
   - **starter-folio's demo content.** Recent changes and All activity showed the seeded rows as "Former user". The starter now registers its `seed` marker with `ActivityActors` as "Demo content" (English, German, French). The starter without Folio writes no activity, so it needs nothing.
