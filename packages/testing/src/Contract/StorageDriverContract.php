@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Testing\Contract;
 
 use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\RequiresPhpExtension;
+use Preflow\Data\AtomicCounters;
 use Preflow\Data\ConditionalUpdates;
+use Preflow\Data\CounterReset;
 use Preflow\Data\DescribesColumns;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
@@ -69,10 +72,16 @@ use Preflow\Data\Transactions;
  * - supportsAutoIds() (default true): false skips the test that saves with each empty id ('',
  *   0, '0') and reads the new id from lastInsertId() (the JSON file driver needs the id from
  *   the caller).
+ * - reopenDriver() (default null): a second driver on the same store, made in a forked child
+ *   process (its own connection or file handles), for the tests that write from several
+ *   processes at once; null skips them (an in-memory store cannot be shared).
  *
  * Capabilities are claimed by implementing their interface, and their tests are skipped otherwise:
  * - RunsSql (@since 0.78): rawQuery(), execute() and dialect() tests.
  * - Transactions (@since 0.78): transaction() commits, rolls back and rethrows, joins an open one.
+ * - AtomicCounters (@since 0.78): increment() inserts a missing row, adds to a stored one,
+ *   restarts when the CounterReset field is below its bound (exactly at the boundary too), and
+ *   concurrent increments lose no count (with reopenDriver(), pcntl and posix).
  */
 abstract class StorageDriverContract extends TestCase
 {
@@ -90,6 +99,15 @@ abstract class StorageDriverContract extends TestCase
     protected function supportsAutoIds(): bool
     {
         return true;
+    }
+
+    /**
+     * A second driver on the same store as createDriver()'s, for a forked child process; null
+     * (the default) skips the tests that need one. Called in the child, after the fork.
+     */
+    protected function reopenDriver(): ?StorageDriver
+    {
+        return null;
     }
 
     private StorageDriver $driver;
@@ -359,6 +377,126 @@ abstract class StorageDriverContract extends TestCase
         $inside = $driver->transaction(static fn (): bool => $driver->inTransaction());
         $this->assertTrue($inside);
         $this->assertFalse($driver->inTransaction());
+    }
+
+    // --- atomic counters (AtomicCounters, @since 0.78) ---------------------------------------
+
+    private function counters(): AtomicCounters
+    {
+        if (!$this->driver instanceof AtomicCounters) {
+            $this->markTestSkipped('The driver does not implement AtomicCounters (DataManager reads, adds and writes instead).');
+        }
+        $this->createType('counters', ['id' => 'string', 'purpose' => 'string', 'hits' => 'number', 'window_start' => 'number']);
+
+        return $this->driver;
+    }
+
+    /** A window of 60 seconds at $now: restart when the stored start is below now - 60 + 1. */
+    private static function window(int $now): CounterReset
+    {
+        return new CounterReset('window_start', $now - 60 + 1, ['window_start' => $now]);
+    }
+
+    public function test_increment_inserts_a_missing_row(): void
+    {
+        $driver = $this->counters();
+
+        $this->assertSame(1, $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 100], null, 'id'));
+        $row = $driver->findOne('counters', 'c1', 'id') ?? [];
+        $this->assertSame('p', $row['purpose'] ?? null);
+        $this->assertNumber(100, $row['window_start'] ?? null);
+        $this->assertNumber(1, $row['hits'] ?? null);
+    }
+
+    public function test_increment_adds_to_a_stored_row(): void
+    {
+        $driver = $this->counters();
+
+        $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 100], null, 'id');
+        $this->assertSame(2, $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 150], null, 'id'));
+        $row = $driver->findOne('counters', 'c1', 'id') ?? [];
+        $this->assertNumber(2, $row['hits'] ?? null);
+        $this->assertNumber(100, $row['window_start'] ?? null, 'the insert values only make a missing row');
+    }
+
+    public function test_increment_restarts_when_the_reset_field_is_below(): void
+    {
+        $driver = $this->counters();
+        $driver->save('counters', 'c1', ['id' => 'c1', 'purpose' => 'p', 'hits' => 5, 'window_start' => 100], 'id');
+
+        $this->assertSame(1, $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 200], new CounterReset('window_start', 161, ['window_start' => 200]), 'id'));
+        $row = $driver->findOne('counters', 'c1', 'id') ?? [];
+        $this->assertNumber(1, $row['hits'] ?? null);
+        $this->assertNumber(200, $row['window_start'] ?? null);
+    }
+
+    /** A window of 60 started at 100 has ended at 160: the hit at 160 starts a new one. */
+    public function test_increment_restarts_exactly_at_the_boundary(): void
+    {
+        $driver = $this->counters();
+        $driver->save('counters', 'c1', ['id' => 'c1', 'purpose' => 'p', 'hits' => 5, 'window_start' => 100], 'id');
+
+        $this->assertSame(6, $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 159], self::window(159), 'id'), 'one second before the end it counts on');
+        $this->assertSame(1, $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 160], self::window(160), 'id'));
+        $this->assertNumber(160, ($driver->findOne('counters', 'c1', 'id') ?? [])['window_start'] ?? null);
+    }
+
+    public function test_increment_keeps_counting_when_the_reset_field_is_not_below(): void
+    {
+        $driver = $this->counters();
+        $driver->save('counters', 'c1', ['id' => 'c1', 'purpose' => 'p', 'hits' => 5, 'window_start' => 100], 'id');
+
+        $this->assertSame(6, $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 200], new CounterReset('window_start', 100, ['window_start' => 200]), 'id'));
+        $this->assertSame(9, $driver->increment('counters', 'c1', 'hits', 3, ['purpose' => 'p', 'window_start' => 200], new CounterReset('window_start', 100, ['window_start' => 200]), 'id'));
+        $row = $driver->findOne('counters', 'c1', 'id') ?? [];
+        $this->assertNumber(9, $row['hits'] ?? null);
+        $this->assertNumber(100, $row['window_start'] ?? null);
+    }
+
+    /**
+     * Four processes, each with its own driver on the store, increment one row 25 times each.
+     * reopenDriver() is called only in the children (in the parent it could take over a shared
+     * connection the children then close); a child that gets null says so in a file.
+     */
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
+    public function test_concurrent_increments_lose_no_count(): void
+    {
+        $driver = $this->counters();
+        $noDriver = tempnam(sys_get_temp_dir(), 'preflow_contract_');
+        $children = [];
+        for ($i = 0; $i < 4; $i++) {
+            $pid = pcntl_fork();
+            if ($pid === -1) {
+                $this->fail('pcntl_fork() failed');
+            }
+            if ($pid === 0) {
+                try {
+                    $child = $this->reopenDriver();
+                    if ($child === null) {
+                        file_put_contents($noDriver, 'none');
+                    } elseif ($child instanceof AtomicCounters) {
+                        for ($n = 0; $n < 25; $n++) {
+                            $child->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 100], self::window(100), 'id');
+                        }
+                    }
+                } finally {
+                    // Even after a throw: no shutdown, PHPUnit's handlers and the inherited connection belong to the parent.
+                    posix_kill(posix_getpid(), SIGKILL);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+        }
+        $skipped = file_get_contents($noDriver) === 'none';
+        unlink($noDriver);
+        if ($skipped) {
+            $this->markTestSkipped('reopenDriver() gives no second driver on the store (an in-memory store cannot be shared).');
+        }
+
+        $this->assertNumber(100, ($driver->findOne('counters', 'c1', 'id') ?? [])['hits'] ?? null);
     }
 
     // --- findMany ----------------------------------------------------------------------------

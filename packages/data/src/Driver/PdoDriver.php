@@ -11,7 +11,7 @@ use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -551,6 +551,53 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         $this->executeWithLogging($stmt, $sql, [$id]);
 
         return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * One insert-or-update statement of the dialect (AtomicCounters, @since 0.78), then a read of
+     * the counter. The expressions read the stored row through table-qualified columns (PostgreSQL
+     * finds a bare name ambiguous with EXCLUDED's), and the reset field is assigned last: MySQL
+     * reads a column assigned earlier in the statement as its new value. A dialect without such a
+     * statement counts with a read and a write under exclusive().
+     */
+    public function increment(string $table, string|int $id, string $field, int $by, array $insert, ?\Preflow\Data\CounterReset $reset = null, string $idField = 'uuid'): int
+    {
+        \Preflow\Data\Counters::assertArguments($field, $insert, $reset, $idField);
+        $q = $this->dialect->quoteIdentifier(...);
+        $column = static fn (string $name): string => $q($table) . '.' . $q($name);
+        $counter = $column($field);
+
+        $set = [];
+        $bindings = [$id, ...array_values($insert), $by];
+        if ($reset === null) {
+            $set[$field] = "COALESCE({$counter}, 0) + ?";
+            $bindings[] = $by;
+        } else {
+            $restart = $column($reset->field) . ' < ?';
+            $set[$field] = "CASE WHEN {$restart} THEN ? ELSE COALESCE({$counter}, 0) + ? END";
+            array_push($bindings, $reset->below, $by, $by);
+            $assigned = $reset->set;
+            if (array_key_exists($reset->field, $assigned)) {
+                // Last: the CASEs before it must read the stored value.
+                $own = $assigned[$reset->field];
+                unset($assigned[$reset->field]);
+                $assigned[$reset->field] = $own;
+            }
+            foreach ($assigned as $name => $value) {
+                $set[$name] = "CASE WHEN {$restart} THEN ? ELSE " . $column($name) . ' END';
+                array_push($bindings, $reset->below, $value);
+            }
+        }
+
+        $sql = $this->dialect->insertOrUpdateSql($table, [$idField, ...array_keys($insert), $field], $idField, $set);
+        if ($sql === null) {
+            return $this->exclusive($table, fn (): int => \Preflow\Data\Counters::step($this, $table, $id, $field, $by, $insert, $reset, $idField));
+        }
+        $this->execute($sql, $bindings);
+
+        $read = 'SELECT ' . $q($field) . ' FROM ' . $q($table) . ' WHERE ' . $q($idField) . ' = ? LIMIT 1';
+
+        return (int) $this->read($table, $read, [$id])->fetchColumn();
     }
 
     public function rawQuery(string $sql, array $bindings = []): array

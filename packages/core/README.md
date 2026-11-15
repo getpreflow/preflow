@@ -339,9 +339,11 @@ $throttle->hit('login', $client, windowSeconds: 600);     // after a failed atte
 $throttle->clear('login', $client);                       // after a success
 ```
 
-- **Atomic hits.** Concurrent requests never lose a hit. On SQL, `hit()` is one upsert
-  (`DataManager::execute()`) that counts the attempt or restarts an expired window; on the
-  JSON driver an exclusive file lock in `storage/locks` guards the read-modify-write.
+- **Atomic hits.** Concurrent requests never lose a hit. `hit()` counts through
+  `DataManager::incrementIn()` with a `CounterReset` that restarts an expired window: on SQL one
+  upsert, on the JSON driver the type's own lock (no lock directory since 0.78; the
+  constructor's `$lockDir` is ignored). On a third-party storage without `AtomicCounters` it is
+  a read and a write, under the type's lock when the storage has `ExclusiveWrites`.
   The limit itself is still a fixed window, so a burst at a window's edge can double.
 - **Windows must be much shorter than a day.** The client hash rotates at 00:00 UTC, so a
   window spanning midnight starts over.

@@ -33,6 +33,11 @@ final class MysqlContractTest extends StorageDriverContract
         self::createContractTable($this->mysql, $type, $fields, 'BIGINT AUTO_INCREMENT PRIMARY KEY');
     }
 
+    protected function reopenDriver(): ?StorageDriver
+    {
+        return new MysqlDriver(MysqlTestDatabase::reconnect());
+    }
+
     protected function tearDown(): void
     {
         if (isset($this->mysql)) {

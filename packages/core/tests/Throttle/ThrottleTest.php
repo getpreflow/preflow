@@ -19,6 +19,7 @@ use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\DataTestCase;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Testing\PlainDriver;
 use Preflow\Data\UniqueViolation;
 
 final class ThrottleTest extends DataTestCase
@@ -238,7 +239,7 @@ final class ThrottleTest extends DataTestCase
         }
     }
 
-    /** A dialect without a single insert-or-update statement counts under the lock instead. */
+    /** A dialect without a single insert-or-update statement counts under the driver's exclusive lock instead. */
     public function test_a_dialect_without_insert_or_update_counts_under_the_lock(): void
     {
         $driver = new ThirdPartyDriver($this->getPdo(), new ThirdPartyDialect(insertOrUpdate: false));
@@ -328,13 +329,26 @@ final class ThrottleTest extends DataTestCase
         $this->test_window_expires_exactly_at_boundary();
     }
 
-    /** Four processes, each on its own connection, hit one key 25 times: the upsert loses none. */
+    /** Four processes, each on its own connection, hit one key 25 times: the increment loses none. */
     #[Group('mysql')]
     #[RequiresPhpExtension('pcntl')]
     #[RequiresPhpExtension('posix')]
     public function test_concurrent_hits_are_all_counted_on_mysql(): void
     {
         $this->onMysql();
+        $this->hitConcurrently('default', static fn (): DataManager => new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]));
+
+        $this->assertSame(['hits' => 100, 'window_start' => $this->now], $this->storedRow($this->dataManager(), 'login', 'c1'));
+    }
+
+    /**
+     * Four forked processes hit login/c1 25 times each, through the DataManager $dm makes in
+     * the child (its own connection).
+     *
+     * @param \Closure(): DataManager $dm
+     */
+    private function hitConcurrently(string $storage, \Closure $dm): void
+    {
         $children = [];
         for ($i = 0; $i < 4; $i++) {
             $pid = pcntl_fork();
@@ -343,8 +357,7 @@ final class ThrottleTest extends DataTestCase
             }
             if ($pid === 0) {
                 try {
-                    $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
-                    $t = new Throttle($dm, 'secret', 'default', fn (): int => $this->now);
+                    $t = new Throttle($dm(), 'secret', $storage, fn (): int => $this->now);
                     for ($n = 0; $n < 25; $n++) {
                         $t->hit('login', 'c1', 60);
                     }
@@ -358,8 +371,6 @@ final class ThrottleTest extends DataTestCase
         foreach ($children as $pid) {
             pcntl_waitpid($pid, $status);
         }
-
-        $this->assertSame(['hits' => 100, 'window_start' => $this->now], $this->storedRow($this->dataManager(), 'login', 'c1'));
     }
 
     /** @var list<string> */
@@ -461,37 +472,48 @@ final class ThrottleTest extends DataTestCase
         $this->assertSame(['hits' => 2, 'window_start' => $this->now], $this->storedRow($dm, 'login', 'c1'));
     }
 
-    public function test_json_hit_locks(): void
+    /** Four processes, each with its own JSON driver on the data folder, hit one key 25 times: the type's lock loses none. */
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
+    public function test_concurrent_hits_are_all_counted_on_json(): void
+    {
+        $this->hitConcurrently('json', fn (): DataManager => new DataManager(['json' => $this->getJsonDriver()]));
+
+        $t = $this->throttle('json');
+        $this->assertTrue($t->tooMany('login', 'c1', 100, 60));
+        $this->assertFalse($t->tooMany('login', 'c1', 101, 60));
+    }
+
+    /** A driver with none of the capabilities: DataManager reads, adds and writes (not atomic, but counted). */
+    public function test_throttle_counts_through_a_driver_without_atomic_counters(): void
+    {
+        $t = new Throttle(new DataManager(['default' => new PlainDriver($this->getSqliteDriver())]), 'secret', 'default', fn (): int => $this->now);
+
+        $t->hit('code', 'c1', 60);
+        $t->hit('code', 'c1', 60);
+        $t->hit('code', 'c1', 60);
+        $this->assertTrue($t->tooMany('code', 'c1', 3, 60));
+        $this->assertFalse($t->tooMany('code', 'c1', 4, 60));
+
+        $this->now += 60;
+        $t->hit('code', 'c1', 60);
+        $this->assertTrue($t->tooMany('code', 'c1', 1, 60));
+        $this->assertFalse($t->tooMany('code', 'c1', 2, 60), 'the window restarted at one hit');
+    }
+
+    /** The lock directory is ignored since 0.78: the JSON driver's own type lock guards the count. */
+    public function test_throttle_no_longer_writes_lock_files(): void
     {
         $lockDir = sys_get_temp_dir() . '/preflow_throttle_locks_' . uniqid();
+        mkdir($lockDir);
         $this->tempFiles[] = $lockDir;
-        $lockFile = $lockDir . '/throttle-' . hash('sha256', 'login|c1') . '.lock';
-        $heldDuringHit = [];
-        $t = new Throttle($this->dataManager(), 'secret', 'json', function () use ($lockFile, &$heldDuringHit): int {
-            if (is_file($lockFile)) {
-                $probe = fopen($lockFile, 'c');
-                $heldDuringHit[] = !flock($probe, LOCK_EX | LOCK_NB);
-                fclose($probe);
-            }
-
-            return $this->now;
-        }, $lockDir);
+        $t = new Throttle($this->dataManager(), 'secret', 'json', fn (): int => $this->now, $lockDir);
 
         $t->hit('login', 'c1', 60);
         $t->hit('login', 'c1', 60);
-        $t->hit('login', 'c1', 60);
 
-        $this->assertFileExists($lockFile);
-        $this->assertNotEmpty($heldDuringHit);
-        $this->assertNotContains(false, $heldDuringHit, 'the lock is held while hit() reads and writes');
-        // Released afterwards.
-        $probe = fopen($lockFile, 'c');
-        $this->assertTrue(flock($probe, LOCK_EX | LOCK_NB));
-        flock($probe, LOCK_UN);
-        fclose($probe);
-
-        $this->assertTrue($t->tooMany('login', 'c1', 3, 60));
-        $this->assertFalse($t->tooMany('login', 'c1', 4, 60));
+        $this->assertSame([], glob($lockDir . '/*') ?: []);
+        $this->assertTrue($t->tooMany('login', 'c1', 2, 60));
     }
 }
 

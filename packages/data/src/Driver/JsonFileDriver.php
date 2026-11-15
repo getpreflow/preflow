@@ -14,7 +14,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters
 {
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
@@ -572,6 +572,14 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
             return true;
         });
+    }
+
+    /** A read, an addition and a write under the type's lock (exclusive()). AtomicCounters, @since 0.78. */
+    public function increment(string $table, string|int $id, string $field, int $by, array $insert, ?\Preflow\Data\CounterReset $reset = null, string $idField = 'uuid'): int
+    {
+        self::assertSafe($table, $id);
+
+        return $this->exclusive($table, fn (): int => \Preflow\Data\Counters::step($this, $table, $id, $field, $by, $insert, $reset, $idField));
     }
 
     /** As SQL compares it: no value (null, '') only for null, else the canonical text of the number. */

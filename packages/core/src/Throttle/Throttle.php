@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Throttle;
 
+use Preflow\Data\CounterReset;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -17,11 +17,12 @@ use Psr\Http\Message\ServerRequestInterface;
  * daily; a raw IP is never stored.
  *
  * Windows should be much shorter than a day: the client hash rotates at 00:00
- * UTC, so a window spanning midnight starts over. hit() is atomic: on SQL one
- * upsert counts the attempt (or restarts an expired window), on the JSON driver
- * an exclusive file lock in $lockDir guards the read-modify-write, so
- * concurrent requests never lose a hit. Rows of earlier days are orphaned by
- * the rotation; hit() prunes them (see prune()).
+ * UTC, so a window spanning midnight starts over. hit() counts through
+ * DataManager::incrementIn(): on a storage with AtomicCounters (every built-in
+ * driver: one upsert on SQL, the type's lock on JSON) concurrent requests never
+ * lose a hit; on another storage the count is a read and a write, under the
+ * type's lock when the storage has ExclusiveWrites. Rows of earlier days are
+ * orphaned by the rotation; hit() prunes them (see prune()).
  *
  * client() refuses an empty or the well-known default key: a hash salted with a
  * public key could be brute-forced back to the IP.
@@ -34,9 +35,12 @@ final class Throttle
 
     private readonly TypeDefinition $type;
     private readonly \Closure $clock;
-    private readonly string $lockDir;
     private bool $pruned = false;
 
+    /**
+     * @param string|null $lockDir @deprecated ignored since 0.78: the storage guards the count
+     *        (AtomicCounters, ExclusiveWrites); kept so existing calls keep working
+     */
     public function __construct(
         private readonly DataManager $dm,
         private readonly string $key,
@@ -45,7 +49,6 @@ final class Throttle
         ?string $lockDir = null,
     ) {
         $this->clock = $clock ?? static fn (): int => time();
-        $this->lockDir = $lockDir ?? sys_get_temp_dir();
         $this->type = new TypeDefinition(
             key: self::TABLE,
             table: self::TABLE,
@@ -99,93 +102,26 @@ final class Throttle
         return (int) $record->get('hits') >= $max;
     }
 
+    /**
+     * Counts an attempt: the first of a window starts it at now, one at window_start +
+     * $windowSeconds or later starts a new window (as tooMany() sees it expired). A hit that
+     * starts a window prunes old rows, once per instance.
+     */
     public function hit(string $purpose, string $client, int $windowSeconds): void
     {
-        $id = $this->id($purpose, $client);
-        $driver = $this->dm->driver($this->type->storage);
-
-        if ($driver instanceof PdoDriver) {
-            if (!$this->pruned) {
-                $record = $this->dm->findIn($this->type, $id);
-                if ($record === null || $this->expired($record, $windowSeconds)) {
-                    $this->pruned = true;
-                    $this->prune();
-                }
-            }
-            if ($this->upsert($driver, $id, $purpose, $windowSeconds)) {
-                return;
-            }
-        }
-
-        $this->locked($id, function () use ($id, $purpose, $windowSeconds): void {
-            $record = $this->dm->findIn($this->type, $id);
-
-            if ($record === null || $this->expired($record, $windowSeconds)) {
-                $record = new DynamicRecord($this->type, [
-                    'id' => $id,
-                    'purpose' => $purpose,
-                    'hits' => 1,
-                    'window_start' => ($this->clock)(),
-                ]);
-                if (!$this->pruned) {
-                    $this->pruned = true;
-                    $this->prune();
-                }
-            } else {
-                $record->set('hits', (int) $record->get('hits') + 1);
-            }
-
-            $this->dm->saveType($record, validate: false);
-        });
-    }
-
-    /**
-     * One statement the driver's Dialect writes: insert the row, or count the hit on it,
-     * restarting the window when it has expired. The expressions read the existing row through
-     * table-qualified columns (PostgreSQL finds a bare name ambiguous with EXCLUDED's), and neither
-     * reads a column assigned before it (MySQL would read the new value). False when the dialect
-     * has no such statement.
-     */
-    private function upsert(PdoDriver $driver, string $id, string $purpose, int $windowSeconds): bool
-    {
-        $dialect = $driver->dialect();
-        $table = $dialect->quoteIdentifier(self::TABLE);
-        $hits = $table . '.' . $dialect->quoteIdentifier('hits');
-        $start = $table . '.' . $dialect->quoteIdentifier('window_start');
-        $sql = $dialect->insertOrUpdateSql(self::TABLE, ['id', 'purpose', 'hits', 'window_start'], 'id', [
-            'hits' => "CASE WHEN ? >= {$start} + ? THEN 1 ELSE {$hits} + 1 END",
-            'window_start' => "CASE WHEN ? >= {$start} + ? THEN ? ELSE {$start} END",
-        ]);
-        if ($sql === null) {
-            return false;
-        }
         $now = ($this->clock)();
-
-        $this->dm->execute(
-            $sql,
-            [$id, $purpose, 1, $now, $now, $windowSeconds, $now, $windowSeconds, $now],
-            $this->type->storage,
+        $hits = $this->dm->incrementIn(
+            $this->type,
+            $this->id($purpose, $client),
+            'hits',
+            1,
+            ['purpose' => $purpose, 'window_start' => $now],
+            new CounterReset('window_start', $now - $windowSeconds + 1, ['window_start' => $now]),
         );
 
-        return true;
-    }
-
-    /** Runs $fn holding an exclusive lock on throttle-{id}.lock in the lock directory. */
-    private function locked(string $id, \Closure $fn): void
-    {
-        if (!is_dir($this->lockDir) && !@mkdir($this->lockDir, 0755, true) && !is_dir($this->lockDir)) {
-            throw new \RuntimeException("Throttle lock directory {$this->lockDir} cannot be created.");
-        }
-        $path = $this->lockDir . '/throttle-' . $id . '.lock';
-        $handle = fopen($path, 'c');
-        if ($handle === false || !flock($handle, LOCK_EX)) {
-            throw new \RuntimeException("Throttle lock {$path} cannot be taken.");
-        }
-        try {
-            $fn();
-        } finally {
-            flock($handle, LOCK_UN);
-            fclose($handle);
+        if ($hits === 1 && !$this->pruned) {
+            $this->pruned = true;
+            $this->prune();
         }
     }
 

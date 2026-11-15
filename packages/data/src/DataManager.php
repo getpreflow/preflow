@@ -1471,6 +1471,34 @@ final class DataManager
     }
 
     /**
+     * Counts on the row $id of a type in one step: inserts it as [$idField => $id] + $insert +
+     * [$field => $by] when missing, restarts it when $reset matches (writes $reset->set and
+     * $field = $by), else adds $by (see AtomicCounters::increment()). Returns the counter as read
+     * right after the write. Writes the named columns only: no validation, no version bump.
+     *
+     * Atomic on a storage with AtomicCounters (the built-in drivers). On another, a read, an
+     * addition and a write: under the type's lock when the storage has ExclusiveWrites, else
+     * plainly, which is not atomic (two concurrent increments may count once).
+     *
+     * @param array<string, scalar|null> $insert the other columns of a new row
+     * @throws \InvalidArgumentException when $insert names $field or the id, or $reset->set names $field
+     * @since 0.78
+     */
+    public function incrementIn(TypeDefinition $def, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset = null): int
+    {
+        $driver = $this->resolveDriver($def->storage);
+        if ($driver instanceof AtomicCounters) {
+            $value = $driver->increment($def->table, $id, $field, $by, $insert, $reset, $def->idField);
+        } else {
+            $step = static fn (): int => Counters::step($driver, $def->table, $id, $field, $by, $insert, $reset, $def->idField);
+            $value = $driver instanceof ExclusiveWrites ? $driver->exclusive($def->table, $step) : $step();
+        }
+        $this->reportWrite($def->storage, $def->table, (string) $id);
+
+        return $value;
+    }
+
+    /**
      * Deletes many records of a type: in a few statements on a storage that implements
      * BulkDeletes (the built-in drivers), one by one on any other. Repeated ids count once.
      *
