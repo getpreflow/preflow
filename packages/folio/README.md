@@ -2755,7 +2755,7 @@ Background translation. See `docs/superpowers/plans/2026-10-30-release-0.48-chec
 
 *Since 0.77.* With AI on, every rich-text toolbar has **Write a draft** at its right, also in
 block cards added later, for users with the `ai.draft` permission ("Write drafts with AI") and
-the type's edit permission. The seeded admin role (`*`) has it; other roles get it on the Roles
+the type's edit permission (on the create form: its create permission). The seeded admin role (`*`) has it; other roles get it on the Roles
 screen. With AI off there is no button, no script and the form's markup is unchanged, and
 `POST {prefix}/_ai/draft` does not exist.
 
@@ -2768,17 +2768,24 @@ own parser takes the HTML as one undo step, and the unsaved state and autosave s
 is saved behind your back. A draft written on a language tab is not marked as machine
 translated: it is your text once you insert it.
 
-- The draft is written in the tab's language; the record's title, the field's label and the
-  type go along as context, quoted as data.
+- The draft is written in the tab's language; the record's title (`RecordTitle`: the type's
+  `titleField`, in that language), the field's label and the type go along as context, quoted as
+  data.
+- It asks only for the elements Folio's Trix editor keeps (`RichTextFieldType::EDITOR_ELEMENTS`:
+  `p, h1, blockquote, pre, ul, ol, li, strong, em, del, a, br`), so a heading arrives as Trix's
+  heading, not as bold text.
 - The server sanitises the answer (`LazyHtmlSanitizer::standard()`, as rich text on save) before
   it reaches the page, and the dialog copies it into the preview element by element.
 - The writer is `Preflow\Ai\Draft\DraftWriter` from `preflow/ai` (see "Drafts" there), so it
   works with any provider and a site can swap it (`config/ai.php` `draft.writer`); the button
   shows while the writer says it is available. Drafts are listed apart in `ai:usage` (purpose
   `draft`).
-- The endpoint takes `type`, `field` (the label), `brief` (up to 2000 characters), `length`,
-  `language` and `title`, and answers `{html, cost}`; 403 without the permissions, 422 for bad
-  input, 502 when the draft failed (cut off, refused, empty), 503 when AI cannot be used at all.
+- The endpoint takes `type`, `id` (the record's; empty with `new=1` on the create form),
+  `field` (the label), `brief` (up to 2000 characters), `length`, `language` and `title`, and
+  answers `{html, cost}`; 403 without the permissions, 404 for an unknown type or record, 422 for
+  bad input, 502 when the draft failed (cut off, refused, empty), 503 when AI cannot be used at
+  all. Errors carry Folio's own text in the admin's language; what the provider said goes to the
+  log (the app's PSR-3 logger, else the PHP log).
 
 ## Admin languages
 

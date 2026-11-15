@@ -61,7 +61,8 @@ test('apply drops the line breaks between blocks, which Trix would keep as empty
 
 test('params trim the brief and take the field label without its star', () => {
     assert.deepEqual(core.params({ type: 'article', field: ' Body  * ', brief: '  Hours \n', length: 'short', language: 'de', title: 'Hallo' }),
-        { type: 'article', field: 'Body', brief: 'Hours', length: 'short', language: 'de', title: 'Hallo' });
+        { type: 'article', id: '', new: '0', field: 'Body', brief: 'Hours', length: 'short', language: 'de', title: 'Hallo' });
+    assert.deepEqual({ ...core.params({ id: '', isNew: true }) }.new, '1', 'the create form says so');
     assert.equal(core.params({}).length, 'medium');
 });
 
@@ -139,6 +140,26 @@ test('copySafe keeps the allowed elements and text, nothing that runs', () => {
     assert.equal(target.descendants().find((e) => e.tagName === 'A').getAttribute('href'), 'https://example.com/');
 });
 
+test('copySafe keeps only the elements the editor keeps, when given', () => {
+    const w = createWindow();
+    const doc = w.document;
+    const body = tree(doc, ['body', {}, ['h1', {}, 'Big'], ['h2', {}, 'Small'], ['p', {}, ['em', {}, 'x']]]);
+    const target = doc.createElement('div');
+
+    core.copySafe(doc, body, target, ['p', 'h1', 'strong']);
+
+    assert.deepEqual(target.children.map(shape), [['h1', {}, ['Big']], ['p', {}, ['x']]]);
+    assert.match(target.textContent, /Small/, 'an element the editor lacks leaves its text');
+});
+
+test('the error a person sees: the server\'s own text, else one by what happened', () => {
+    const texts = { offline: 'Offline.', forbidden: 'Not allowed.', generic: 'Something went wrong.' };
+    assert.equal(core.errorText({ status: 503, error: 'AI can’t be used right now.' }, texts), 'AI can’t be used right now.');
+    assert.equal(core.errorText({ status: 403, error: '' }, texts), 'Not allowed.', 'the CSRF refusal is a page, not JSON');
+    assert.equal(core.errorText({ status: 500 }, texts), 'Something went wrong.');
+    assert.equal(core.errorText({ status: 0 }, texts), 'Offline.', 'no answer at all');
+});
+
 /**
  * The edit form as the page has it: a rich-text field (label, hidden input, toolbar, editor), the
  * draft dialog (partials/ai-draft-dialog.twig), fetch answering from answers (in order; an Error rejects).
@@ -174,7 +195,8 @@ function page({ answers = [{ status: 200, data: { html: '<p>Draft</p>', cost: '<
     const body = field(fields, 'body', 'Body');
 
     const root = el(doc.body, 'div', {
-        'data-ai-draft': '', 'data-url': '/folio/_ai/draft', 'data-type': 'article', 'data-language': 'de', 'data-title': 'Hallo',
+        'data-ai-draft': '', 'data-url': '/folio/_ai/draft', 'data-type': 'article', 'data-id': 'a1', 'data-new': '0', 'data-language': 'de', 'data-title': 'Hallo',
+        'data-elements': 'p,h1,strong,em,a,ul,li,br', 'data-msg-offline': 'Offline.', 'data-msg-forbidden': 'Not allowed.', 'data-msg-generic': 'Something went wrong.',
         'data-icon': '/folio/_assets/icons.svg#ui-spark', 'data-msg-button': 'Write a draft', 'data-msg-for-field': 'For :field',
         'data-msg-writing': 'Writing…', 'data-msg-cost': 'This draft cost :cost.', 'data-msg-cost-unknown': 'Unknown cost.',
         'data-msg-error': 'The draft could not be written: :message', 'data-msg-inserted': 'Draft inserted.', 'data-msg-replaced': 'Text replaced.',
@@ -205,7 +227,7 @@ function page({ answers = [{ status: 200, data: { html: '<p>Draft</p>', cost: '<
         sent.push({ url, body: init.body.entries });
         const next = queue.length > 1 ? queue.shift() : queue[0];
         if (next instanceof Error) { return Promise.reject(next); }
-        return Promise.resolve({ ok: next.status < 400, status: next.status, statusText: '', json: () => Promise.resolve(next.data) });
+        return Promise.resolve({ ok: next.status < 400, status: next.status, statusText: '', json: () => (next.data === null ? Promise.reject(new SyntaxError('not JSON')) : Promise.resolve(next.data)) });
     };
     // The inert parse of the answer: a body with one <p> holding the text between the tags.
     w.DOMParser = class {
@@ -278,7 +300,7 @@ test('write, then insert at the caret the field had', async () => {
     await settle();
 
     assert.deepEqual(sent, [{ url: '/folio/_ai/draft', body: {
-        type: 'article', field: 'Body', brief: 'Our opening hours', length: 'short', language: 'de', title: 'Hallo', _csrf_token: 'tok',
+        type: 'article', id: 'a1', new: '0', field: 'Body', brief: 'Our opening hours', length: 'short', language: 'de', title: 'Hallo', _csrf_token: 'tok',
     } }]);
     assert.equal(ui.result.hidden, false);
     assert.equal(ui.preview.textContent, 'Draft');
@@ -330,7 +352,11 @@ test('try again writes anew with the brief as it is now', async () => {
 });
 
 test('a failure leaves the field unchanged and says why', async () => {
-    for (const answer of [{ status: 503, data: { error: 'The provider has no credit left.' } }, new Error('Failed to fetch')]) {
+    for (const [answer, shown] of [
+        [{ status: 503, data: { error: 'AI can’t be used right now.' } }, 'AI can’t be used right now.'],
+        [{ status: 403, data: null }, 'Not allowed.'],
+        [new Error('Failed to fetch'), 'Offline.'],
+    ]) {
         const { body, ui, dialog, w } = page({ answers: [answer] });
         buttonOf(body.row).click();
         ui.brief.value = 'x';
@@ -339,7 +365,7 @@ test('a failure leaves the field unchanged and says why', async () => {
         await settle();
 
         assert.equal(ui.error.hidden, false);
-        assert.match(ui.error.textContent, /^The draft could not be written: (The provider has no credit left\.|Failed to fetch)$/);
+        assert.equal(ui.error.textContent, 'The draft could not be written: ' + shown);
         assert.equal(ui.insert.hidden, true, 'nothing to insert');
         assert.equal(ui.write.disabled, false, 'may try again');
         assert.equal(dialog.open, true);

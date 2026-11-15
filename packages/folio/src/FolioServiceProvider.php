@@ -723,7 +723,9 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(TypeRegistry::class),
             \Preflow\Folio\Field\LazyHtmlSanitizer::standard(),
+            $c->get(DataManager::class),
             $c->get(\Preflow\Auth\Access\Access::class),
+            $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
             $c->get(\Preflow\Ai\Ai::class),

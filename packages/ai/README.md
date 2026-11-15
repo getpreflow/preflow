@@ -184,6 +184,7 @@ if ($writer->available()) {
         language: 'de',
         length: DraftLength::Short,              // Short, Medium (default), Long
         context: ['Title' => 'Holidays', 'Field' => 'Body'],
+        elements: ['p', 'h1', 'ul', 'li', 'strong', 'em', 'a'], // what your editor keeps
     ));
     $draft->html;     // the answer: sanitise it before you show it
     $draft->costUsd;  // null when the model has no price
@@ -192,12 +193,19 @@ if ($writer->available()) {
 
 - `available()` is cheap and never throws; `write()` throws `AiUnavailable` when the writer cannot be
   used at all, and `DraftFailed` when this one draft failed (no answer, cut off, refused, empty).
+- `elements` names the HTML elements the caller's editor keeps, so the draft uses only those (a
+  heading your editor lacks would arrive flattened). The default is a generic set,
+  `DraftRequest::ELEMENTS` (`p, h2, h3, ul, ol, li, strong, em, a`).
 - The default `AiDraftWriter` sends one request through `Ai::client()`. Its instructions name the
-  language and allow only `p, h2, h3, ul, ol, li, strong, em, a`. The brief and the context go into
+  language and allow only the request's elements (subheadings for Long only when a heading is
+  among them). The brief and the context go into
   the prompt as one JSON document, so text from the site is quoted data, never instructions. It
   uses purpose `draft`, so `ai:usage` lists drafts apart, and bounds the output per length
   (Short 600, Medium 1500, Long 3000 tokens, with low reasoning so thinking does not eat the
-  bound). The project's `tuning` (or its edit in Settings → AI) is added after its rules.
+  bound). The project's instructions are added after its rules.
+- `Preflow\Ai\Settings\ProjectTuning` is the one reader of the project's instructions for every
+  AI request (translations and drafts): the Settings → AI edit of the "project" level when there
+  is one, else `config/ai.php` `tuning`.
 - Your own writer: implement `DraftWriter` and name it in `config/ai.php`:
   `'draft' => ['writer' => App\Drafts\MyDraftWriter::class]`. The container builds it, so it may
   take services. A class that is no `DraftWriter` stops the boot.

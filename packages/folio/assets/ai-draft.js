@@ -51,13 +51,14 @@
             Object.keys(params).forEach(function (k) { body.append(k, params[k]); });
             var token = document.querySelector('input[name="_csrf_token"]');
             if (token) { body.append('_csrf_token', token.value); }
+            // A failure rejects with {status, error}: status 0 when nothing answered; error, the server's own text.
             return fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
                 .then(function (res) {
                     return res.json().catch(function () { return {}; }).then(function (data) {
-                        if (!res.ok) { throw new Error(data && data.error ? data.error : res.status + ' ' + res.statusText); }
+                        if (!res.ok) { throw { status: res.status || 0, error: data && typeof data.error === 'string' ? data.error : '' }; }
                         return data;
                     });
-                });
+                }, function () { throw { status: 0, error: '' }; });
         }
 
         function labelOf(element) {
@@ -134,6 +135,8 @@
             busy(true);
             var params = core.params({
                 type: root.getAttribute('data-type'),
+                id: root.getAttribute('data-id'),
+                isNew: root.getAttribute('data-new') === '1',
                 field: labelOf(state.element),
                 brief: brief.value,
                 length: length(),
@@ -151,7 +154,8 @@
             }).catch(function (e) {
                 if (mine !== request) { return; }
                 busy(false);
-                showError(msg('error', { message: e && e.message ? e.message : String(e) }));
+                var failure = e && typeof e.status === 'number' ? e : { status: 500, error: '' }; // anything else: told as generic
+                showError(msg('error', { message: core.errorText(failure, { offline: msg('offline'), forbidden: msg('forbidden'), generic: msg('generic') }) }));
             });
         }
 
@@ -160,7 +164,7 @@
             preview.textContent = '';
             if (typeof DOMParser !== 'function') { preview.textContent = html.replace(/<[^>]*>/g, ' '); return; }
             var parsed = new DOMParser().parseFromString(html, 'text/html');
-            core.copySafe(document, parsed.body, preview);
+            core.copySafe(document, parsed.body, preview, (root.getAttribute('data-elements') || '').split(',').filter(Boolean));
         }
 
         function put(mode) {

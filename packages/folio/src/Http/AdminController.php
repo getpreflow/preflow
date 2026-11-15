@@ -1553,7 +1553,7 @@ final class AdminController
         if ($aiTranslate !== null) {
             $editorAssets += ['ai-translate.css' => true, 'ai-translate-core.js' => true, 'ai-translate.js' => true];
         }
-        $aiDraft = isset($editorAssets['trix.js']) ? $this->aiDraft($type, $values, $locale, $locales) : null;
+        $aiDraft = isset($editorAssets['trix.js']) ? $this->aiDraft($type, $typeDef, $values, $locale, $isNew) : null;
         if ($aiDraft !== null) {
             $editorAssets += ['ai-draft-core.js' => true, 'ai-draft.js' => true];
         }
@@ -1827,32 +1827,36 @@ final class AdminController
     /**
      * "Write a draft" for the form's rich-text fields (ai-draft.js adds the button to each toolbar, also
      * to those of block cards added later): while the draft writer is available, for a user with
-     * ai.draft who may edit the type. The draft is written in the form's language; the record's title
-     * in that language (else the default one) goes along as context. Null: no button.
+     * ai.draft who may edit the type, or create it on the create form. The draft is written in the
+     * form's language; the record's title (RecordTitle: the type's titleField, in that language) goes
+     * along as context. Null: no button.
      *
      * @param array<string, mixed> $values
-     * @return array{url: string, type: string, language: string, title: string, brief_max: int}|null
+     * @return array{url: string, type: string, id: string, new: bool, language: string, title: string, brief_max: int, elements: list<string>}|null
      */
-    private function aiDraft(string $type, array $values, string $locale, \Preflow\Data\Locales $locales): ?array
+    private function aiDraft(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew): ?array
     {
-        if (!($this->draftWriter?->available() ?? false) || !$this->can('ai.draft') || !$this->can($type . '.edit')) {
+        if (!($this->draftWriter?->available() ?? false) || !$this->can('ai.draft') || !$this->can($type . ($isNew ? '.create' : '.edit'))) {
             return null;
         }
-        $title = '';
-        foreach (['title', 'name', 'label', 'heading'] as $field) {
-            $text = self::plain(LocaleValue::pick($values[$field] ?? null, $locales, $locale) ?? LocaleValue::default($values[$field] ?? null, $locales));
-            if ($text !== '') {
-                $title = mb_substr($text, 0, 80);
-                break;
-            }
+        $id = $isNew ? '' : (string) ($values[$typeDef->idField] ?? '');
+        if (!$isNew && $id === '') {
+            return null;
         }
+        $record = DynamicRecord::fromArray($typeDef, $values);
+        $title = \Preflow\Data\RecordTitle::of($record, $locale);
+        // RecordTitle names a record without a title by its id: no title to give as context then.
+        $title = $title === (string) $record->getId() ? '' : mb_substr(self::plain($title), 0, 80);
 
         return [
             'url' => $this->prefix . '/_ai/draft',
             'type' => $type,
+            'id' => $id,
+            'new' => $isNew,
             'language' => $locale,
             'title' => $title,
             'brief_max' => AiDraftController::BRIEF_MAX,
+            'elements' => \Preflow\Folio\Field\Types\RichTextFieldType::EDITOR_ELEMENTS,
         ];
     }
 

@@ -8,6 +8,7 @@ use Preflow\Ai\Draft\AiDraftWriter;
 use Preflow\Ai\Draft\DraftWriter;
 use Preflow\Ai\Settings\AiSettingsStore;
 use Preflow\Ai\Settings\FileAiSettingsStore;
+use Preflow\Ai\Settings\ProjectTuning;
 use Preflow\Ai\Usage\FileUsageLog;
 use Preflow\Ai\Usage\Pricing;
 use Preflow\Ai\Usage\UsageLog;
@@ -31,6 +32,7 @@ final class AiServiceProvider extends ServiceProvider
         ));
         $container->singleton(UsageLog::class, static fn (Container $c): UsageLog => new FileUsageLog(self::storage($c)));
         $container->singleton(AiSettingsStore::class, static fn (Container $c): AiSettingsStore => new FileAiSettingsStore(self::storage($c)));
+        $container->singleton(ProjectTuning::class, static fn (Container $c): ProjectTuning => new ProjectTuning(self::config($c), $c->get(AiSettingsStore::class)));
         // The provider's factory (a built-in or config/ai.php's class) is built by the container on first
         // use, after every provider ran, so its constructor may take their services and #[Config] values.
         $container->singleton(Ai::class, static fn (Container $c): Ai => new Ai(
@@ -58,7 +60,7 @@ final class AiServiceProvider extends ServiceProvider
                 return $c->get($class);
             }
 
-            return new AiDraftWriter($c->get(Ai::class), static fn (): Tuning => self::projectTuning($c));
+            return new AiDraftWriter($c->get(Ai::class), static fn (): Tuning => $c->get(ProjectTuning::class)->tuning());
         });
     }
 
@@ -95,34 +97,6 @@ final class AiServiceProvider extends ServiceProvider
         }
 
         return $class;
-    }
-
-    /**
-     * The project's own instructions for every AI request: their edit in Settings → AI (the stored
-     * "tuning" section's "project" level) when there is one, else config/ai.php `tuning`.
-     */
-    private static function projectTuning(Container $c): Tuning
-    {
-        $stored = self::lines($c->get(AiSettingsStore::class)->get('tuning')['project'] ?? []);
-
-        return new Tuning($stored !== [] ? $stored : self::lines(self::config($c)['tuning'] ?? []));
-    }
-
-    /**
-     * A string or a list of strings as trimmed, non-empty lines.
-     *
-     * @return list<string>
-     */
-    private static function lines(mixed $value): array
-    {
-        $out = [];
-        foreach (is_array($value) ? $value : [$value] as $line) {
-            if (is_string($line) && trim($line) !== '') {
-                $out[] = trim($line);
-            }
-        }
-
-        return $out;
     }
 
     /** @return array<string, mixed> config/ai.php */

@@ -11,7 +11,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
-    /** The elements a draft's preview keeps (what the writer may use, plus line breaks). */
+    /** The elements a draft's preview keeps when the page names none (the dialog's data-elements does). */
     var ALLOWED = ['P', 'H2', 'H3', 'UL', 'OL', 'LI', 'STRONG', 'EM', 'A', 'BR'];
     /** Elements dropped with everything in them (the rest of an unknown element is kept as its text). */
     var DROPPED = ['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'SVG', 'MATH', 'TEXTAREA', 'SELECT', 'BUTTON', 'IMG', 'VIDEO', 'AUDIO'];
@@ -34,6 +34,8 @@
     function params(input) {
         return {
             type: String(input.type || ''),
+            id: String(input.id || ''),
+            new: input.isNew ? '1' : '0',
             field: fieldLabel(input.field),
             brief: String(input.brief || '').trim(),
             length: String(input.length || 'medium'),
@@ -44,12 +46,13 @@
 
     /**
      * Asks for a draft: post(url, params) answers the JSON (or rejects with the server's error).
-     * Resolves {html, cost}; an answer without HTML rejects, so nothing reaches the field.
+     * Resolves {html, cost}; an answer without HTML rejects ({status, error}, as post's own failures),
+     * so nothing reaches the field.
      */
     function write(post, url, body) {
         return post(url, body).then(function (data) {
             var html = data && typeof data.html === 'string' ? data.html : '';
-            if (html.trim() === '') { throw new Error(data && data.error ? String(data.error) : 'No draft came back.'); }
+            if (html.trim() === '') { throw { status: 500, error: data && typeof data.error === 'string' ? data.error : '' }; }
             return { html: html, cost: data.cost === null || data.cost === undefined ? null : String(data.cost) };
         });
     }
@@ -57,6 +60,18 @@
     /** The dialog's cost line: the server's formatted cost, or that it is unknown. */
     function costLine(cost, texts) {
         return cost === null || cost === undefined || cost === '' ? String(texts.unknown) : format(texts.known, { cost: cost });
+    }
+
+    /**
+     * What a failed request tells the person: the server's own (translated) error, else by what
+     * happened: no answer at all (status 0), a refusal without JSON (403: the CSRF check), anything else.
+     */
+    function errorText(failure, texts) {
+        if (failure && typeof failure.error === 'string' && failure.error !== '') { return failure.error; }
+        var status = failure && failure.status ? failure.status : 0;
+        if (status === 0) { return String(texts.offline); }
+        if (status === 403) { return String(texts.forbidden); }
+        return String(texts.generic);
     }
 
     /** A link the preview may keep: http(s), mailto, tel, a path or an anchor; anything else (javascript:, data:) is null. */
@@ -69,12 +84,14 @@
     }
 
     /**
-     * Copies source's children into target, keeping only text and the allowed elements (links with
+     * Copies source's children into target, keeping only text and the allowed elements (allowed:
+     * lower- or upper-case names, default ALLOWED; links with
      * a safe href and nothing else); a dropped element goes with its content, any other unknown
      * one leaves its text. No attribute but href survives. Builds with doc.createElement and
      * createTextNode, so no markup is ever parsed into the page.
      */
-    function copySafe(doc, source, target) {
+    function copySafe(doc, source, target, allowed) {
+        var keep = (allowed && allowed.length ? allowed : ALLOWED).map(function (t) { return String(t).toUpperCase(); });
         var nodes = source.childNodes || [];
         for (var i = 0; i < nodes.length; i++) {
             var node = nodes[i];
@@ -85,16 +102,16 @@
             if (node.nodeType !== 1) { continue; }
             var tag = String(node.tagName || '').toUpperCase();
             if (DROPPED.indexOf(tag) >= 0) { continue; }
-            if (ALLOWED.indexOf(tag) < 0) { copySafe(doc, node, target); continue; }
+            if (keep.indexOf(tag) < 0) { copySafe(doc, node, target, keep); continue; }
             var el = doc.createElement(tag.toLowerCase());
             if (tag === 'A') {
                 var href = safeHref(node.getAttribute('href'));
-                if (href === null) { copySafe(doc, node, target); continue; }
+                if (href === null) { copySafe(doc, node, target, keep); continue; }
                 el.setAttribute('href', href);
                 el.setAttribute('rel', 'noopener');
                 el.setAttribute('target', '_blank');
             }
-            copySafe(doc, node, el);
+            copySafe(doc, node, el, keep);
             target.appendChild(el);
         }
         return target;
@@ -129,5 +146,5 @@
         return mode === 'replace' ? 'replace' : 'insert';
     }
 
-    return { ALLOWED: ALLOWED, format: format, fieldLabel: fieldLabel, params: params, write: write, costLine: costLine, safeHref: safeHref, copySafe: copySafe, compact: compact, apply: apply };
+    return { ALLOWED: ALLOWED, format: format, fieldLabel: fieldLabel, params: params, write: write, costLine: costLine, errorText: errorText, safeHref: safeHref, copySafe: copySafe, compact: compact, apply: apply };
 }));

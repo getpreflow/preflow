@@ -13,6 +13,8 @@ use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\StopReason;
 use Preflow\Ai\TokenUsage;
 use Preflow\Folio\Content\TranslationStatus;
+use Preflow\Folio\FolioText;
+use Preflow\Folio\Http\AiDraftController;
 use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
@@ -70,7 +72,7 @@ final class AiDraftRouteTest extends TestCase
     /** @param array<string, mixed> $body */
     private function draft(array $body = []): ResponseInterface
     {
-        $body += ['type' => 'article', 'field' => 'Body', 'brief' => 'Our opening hours', 'length' => 'short', 'language' => 'en', 'title' => 'Hello'];
+        $body += ['type' => 'article', 'id' => 'a1', 'field' => 'Body', 'brief' => 'Our opening hours', 'length' => 'short', 'language' => 'en', 'title' => 'Hello'];
         $request = (new Psr17Factory())->createServerRequest('POST', '/folio/_ai/draft')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody($body + ['_csrf_token' => $this->token]);
 
         return ($this->session ?? $this->aiApp())->handle($request);
@@ -152,44 +154,107 @@ final class AiDraftRouteTest extends TestCase
         $this->assertNull($data['cost'], 'unknown, never $0.00');
     }
 
-    public function test_unavailable_answers_503(): void
+    /** The answer's error, which is Folio's own text; the provider's words go to the log only. */
+    private function refusal(ResponseInterface $res, int $status, string $key, ?string $hidden = null): void
+    {
+        $this->assertSame($status, $res->getStatusCode(), (string) $res->getBody());
+        $error = self::json($res)['error'];
+        $this->assertSame(FolioText::get('folio.ai_draft.errors.' . $key, ['max' => AiDraftController::BRIEF_MAX]), $error);
+        $this->assertNotSame('folio.ai_draft.errors.' . $key, $error, 'a text exists');
+        if ($hidden !== null) {
+            $this->assertStringNotContainsString($hidden, (string) $res->getBody());
+        }
+        $this->assertArrayNotHasKey('html', self::json($res));
+    }
+
+    /** Runs $fn with the PHP log in a file and answers what was logged. */
+    private function logged(\Closure $fn): string
+    {
+        $file = $this->dir . '/php-error.log';
+        $before = ini_set('error_log', $file);
+        try {
+            $fn();
+        } finally {
+            ini_set('error_log', (string) $before);
+        }
+
+        return is_file($file) ? (string) file_get_contents($file) : '';
+    }
+
+    public function test_unavailable_answers_503_without_the_provider_s_words(): void
     {
         $this->script = [new AiUnavailable('The provider has no credit left.')];
 
-        $res = $this->draft();
-        $this->assertSame(503, $res->getStatusCode());
-        $this->assertStringContainsString('no credit', self::json($res)['error']);
+        $log = $this->logged(fn () => $this->refusal($this->draft(), 503, 'unavailable', 'no credit'));
+        $this->assertStringContainsString('no credit', $log, 'the detail is logged on the server');
     }
 
-    public function test_a_failed_draft_answers_502_with_the_reason(): void
+    public function test_a_failed_draft_answers_502_without_the_provider_s_words(): void
     {
         $this->script = [self::answer('<p>half', StopReason::Truncated)];
 
-        $res = $this->draft();
-        $this->assertSame(502, $res->getStatusCode());
-        $this->assertStringContainsString('cut off', self::json($res)['error']);
-        $this->assertArrayNotHasKey('html', self::json($res));
+        $log = $this->logged(fn () => $this->refusal($this->draft(), 502, 'failed', 'cut off'));
+        $this->assertStringContainsString('cut off', $log);
     }
 
     public function test_an_answer_with_nothing_left_after_sanitising_fails(): void
     {
         $this->script = [self::answer('<script>alert(1)</script>')];
 
-        $this->assertSame(502, $this->draft()->getStatusCode());
+        $this->refusal($this->draft(), 502, 'empty');
     }
 
     public function test_bad_input_is_refused_before_any_request(): void
     {
         foreach ([
-            [422, ['brief' => '   '], 'no brief'],
-            [422, ['brief' => str_repeat('x', 2001)], 'too long'],
-            [422, ['length' => 'huge'], 'no such length'],
-            [422, ['language' => 'fr'], 'not a language of the type'],
-            [404, ['type' => 'nope'], 'no such type'],
-        ] as [$status, $body, $why]) {
-            $this->assertSame($status, $this->draft($body)->getStatusCode(), $why);
-            $this->assertCount(0, $this->fake->requests(), $why);
+            [422, ['brief' => '   '], 'brief'],
+            [422, ['brief' => str_repeat('x', 2001)], 'brief'],
+            [422, ['length' => 'huge'], 'length'],
+            [422, ['language' => 'fr'], 'language'],
+            [404, ['type' => 'nope'], 'unknown_type'],
+            [404, ['id' => 'missing'], 'not_found'],
+            [422, ['id' => ''], 'no_record'],
+            [422, ['new' => '1'], 'new_with_id'],
+        ] as [$status, $body, $key]) {
+            $this->refusal($this->draft($body), $status, $key);
+            $this->assertCount(0, $this->fake->requests(), $key);
         }
+    }
+
+    public function test_the_route_resolves_to_the_draft_controller_before_the_type_routes(): void
+    {
+        $route = $this->aiApp()->container()->get(\Preflow\Core\Routing\RouterInterface::class)
+            ->match((new Psr17Factory())->createServerRequest('POST', '/folio/_ai/draft'));
+
+        $this->assertSame(AiDraftController::class . '@draft', $route->handler);
+    }
+
+    public function test_the_editor_s_elements_are_asked_for_and_kept_in_the_preview(): void
+    {
+        $this->draft();
+        $system = $this->fake->requests()[0]->tuning->system();
+
+        $this->assertStringContainsString('only these tags: ' . implode(', ', \Preflow\Folio\Field\Types\RichTextFieldType::EDITOR_ELEMENTS) . '.', $system);
+        $this->assertStringContainsString('h1', $system, 'Trix keeps h1 as its heading');
+        $this->assertStringNotContainsString('h2', $system, 'which Trix would turn into bold text');
+        $this->assertStringContainsString('data-elements="' . implode(',', \Preflow\Folio\Field\Types\RichTextFieldType::EDITOR_ELEMENTS) . '"', $this->editForm('/folio/article/a1/edit'));
+    }
+
+    public function test_the_title_is_the_record_title_in_the_tab_s_language(): void
+    {
+        $this->writeModel('event', [
+            'label' => 'Events',
+            'titleField' => 'headline',
+            'fields' => [
+                'code' => ['type' => 'string'],
+                'headline' => ['type' => 'string', 'translatable' => true],
+                'body' => ['type' => 'richtext', 'translatable' => true],
+            ],
+        ]);
+        $this->working('event', 'e1', ['code' => 'EV-7', 'headline' => ['en' => 'Summer party', 'de' => 'Sommerfest']]);
+
+        $this->assertStringContainsString('data-title="Sommerfest"', $this->editForm('/folio/event/e1/edit?locale=de'));
+        $this->assertStringContainsString('data-title="Summer party"', $this->editForm('/folio/event/e1/edit'));
     }
 
     public function test_route_does_not_exist_while_ai_is_off(): void
@@ -271,6 +336,30 @@ final class AiDraftRouteTest extends TestCase
         $this->assertSame(403, $this->draft()->getStatusCode());
         $this->assertStringNotContainsString('ai-draft', $this->editForm('/folio/article/a1/edit'));
         $this->assertCount(0, $this->fake->requests());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_on_a_new_record_create_is_asked_not_edit(): void
+    {
+        $this->staff('creator', ['creator' => ['folio.dashboard', 'article.view', 'article.create', 'ai.draft']]);
+
+        $html = $this->editForm('/folio/article/new');
+        $this->assertStringContainsString('data-ai-draft', $html, 'create is enough on the create form');
+        $this->assertStringContainsString('data-new="1"', $html);
+        $this->assertSame(200, $this->draft(['id' => '', 'new' => '1'])->getStatusCode());
+        $this->refusal($this->draft(), 403, 'forbidden'); // an existing record asks edit
+        $this->assertStringNotContainsString('data-ai-draft', $this->editForm('/folio/article/a1/edit'));
+        $this->assertCount(1, $this->fake->requests());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_edit_alone_does_not_draft_on_a_new_record(): void
+    {
+        $this->staff('editor2', ['editor2' => ['folio.dashboard', 'article.view', 'article.edit', 'ai.draft']]);
+
+        $this->refusal($this->draft(['id' => '', 'new' => '1']), 403, 'forbidden');
+        $this->assertSame(200, $this->draft()->getStatusCode());
+        $this->assertStringContainsString('data-new="0"', $this->editForm('/folio/article/a1/edit'));
     }
 
     #[RunInSeparateProcess]

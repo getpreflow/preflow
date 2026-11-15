@@ -310,6 +310,22 @@ return [
         'error' => 'Der Entwurf konnte nicht geschrieben werden: :message',
         'inserted' => 'Entwurf eingefügt.',
         'replaced' => 'Text durch den Entwurf ersetzt.',
+        // Answers of POST {prefix}/_ai/draft, and what the dialog says when there is none.
+        'errors' => [
+            'forbidden' => 'Du darfst für diesen Inhalt keine Entwürfe schreiben.',
+            'unknown_type' => 'Diesen Inhaltstyp gibt es nicht.',
+            'not_found' => 'Den Eintrag gibt es nicht mehr.',
+            'no_record' => 'Der Entwurf braucht den Eintrag, für den er ist.',
+            'new_with_id' => 'Ein neuer Eintrag hat noch keine ID.',
+            'brief' => 'Sag in höchstens :max Zeichen, was im Entwurf stehen soll.',
+            'length' => 'Wähle Kurz, Mittel oder Lang.',
+            'language' => 'Diese Sprache gehört nicht zu diesem Inhalt.',
+            'unavailable' => 'KI ist gerade nicht verfügbar. Versuch es später noch einmal oder frag, wer die Website betreut.',
+            'failed' => 'Die KI hat keinen brauchbaren Entwurf geliefert. Versuch es noch einmal, vielleicht mit einer kürzeren Länge.',
+            'empty' => 'Der Entwurf enthielt keinen Text, der ins Feld passt. Versuch es noch einmal.',
+            'offline' => 'Die Website hat nicht geantwortet. Prüf deine Verbindung und versuch es noch einmal.',
+            'generic' => 'Etwas ist schiefgelaufen. Versuch es noch einmal.',
+        ],
     ],
     // The edit form's Translate button queues a background job (AI).
     'ai_queue' => [
@@ -766,7 +782,7 @@ return [
         'tokens_out' => 'Tokens heraus',
         'cost' => 'Kosten (USD)',
         'saved' => 'Gespeichert.',
-        'tuning_intro' => 'Anweisungen für die Übersetzungen, eine pro Zeile. Jede Ebene ergänzt die vorherigen; der graue Text ist der Standard aus config/ai.php. Ein leeres Feld bringt den Standard zurück.',
+        'tuning_intro' => 'Anweisungen für die KI, eine pro Zeile. Die Projektebene gilt für jede KI-Anfrage (Übersetzungen und Entwürfe); die weiteren Ebenen ergänzen sie für Übersetzungen. Der graue Text ist der Standard aus config/ai.php. Ein leeres Feld bringt den Standard zurück.',
         'level_project' => 'Ganzes Projekt',
         'level_language' => 'Nach :language',
         'level_type' => 'Typ :type',

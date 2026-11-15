@@ -6,6 +6,9 @@
 <div class="folio-ai-draft" data-ai-draft
      data-url="{{ ai_draft.url }}"
      data-type="{{ ai_draft.type }}"
+     data-id="{{ ai_draft.id }}"
+     data-new="{{ ai_draft.new ? '1' : '0' }}"
+     data-elements="{{ ai_draft.elements|join(',') }}"
      data-language="{{ ai_draft.language }}"
      data-title="{{ ai_draft.title }}"
      data-icon="{{ folio_asset('icons.svg') }}#ui-spark"
@@ -15,6 +18,9 @@
      data-msg-cost="{{ t('folio.ai_draft.cost') }}"
      data-msg-cost-unknown="{{ t('folio.ai_draft.cost_unknown') }}"
      data-msg-error="{{ t('folio.ai_draft.error') }}"
+     data-msg-offline="{{ t('folio.ai_draft.errors.offline') }}"
+     data-msg-forbidden="{{ t('folio.ai_draft.errors.forbidden') }}"
+     data-msg-generic="{{ t('folio.ai_draft.errors.generic') }}"
      data-msg-inserted="{{ t('folio.ai_draft.inserted') }}"
      data-msg-replaced="{{ t('folio.ai_draft.replaced') }}">
     <dialog class="folio-ai-draft-dialog" data-ai-draft-dialog aria-labelledby="folio-ai-draft-title" aria-describedby="folio-ai-draft-field">

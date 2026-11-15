@@ -115,6 +115,10 @@ final class FolioRoutes
             ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes
             ['GET',  $prefix . '/_search',             'search', self::SEARCH], // the ⌘K palette's records; before the generic {type} routes
+        ], $aiDraft ? [
+            // "Write a draft" (only while the draft writer is available); before POST {type}/{id}, which "_ai/draft" would match.
+            ['POST', $prefix . '/_ai/draft',           'draft', self::AI_DRAFT],
+        ] : [], [
             ['GET',  $prefix . '/{type}',              'list'],
             ['GET',  $prefix . '/{type}/new',          'createForm'],
             ['GET',  $prefix . '/{type}/_export',      'export'],
@@ -169,14 +173,6 @@ final class FolioRoutes
             $defs[] = ['POST', $prefix . '/{type}/_ai/jobs/{job}/start', 'start',   self::AI];
             $defs[] = ['POST', $prefix . '/{type}/_ai/jobs/{job}/step',  'step',    self::AI];
             $defs[] = ['POST', $prefix . '/{type}/_ai/jobs/{job}/stop',  'stop',    self::AI];
-        }
-
-        if ($aiDraft) {
-            // A literal path, so it wins over POST {type}/{id} (which "_ai/draft" would match).
-            $at = array_search(['GET',  $prefix . '/translations',        'index', self::TRANSLATIONS], $defs, true);
-            array_splice($defs, $at === false ? count($defs) : $at, 0, [
-                ['POST', $prefix . '/_ai/draft', 'draft', self::AI_DRAFT],
-            ]);
         }
 
         $entries = [];

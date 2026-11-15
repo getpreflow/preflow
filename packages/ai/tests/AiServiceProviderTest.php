@@ -174,6 +174,16 @@ final class AiServiceProviderTest extends TestCase
         $this->assertFalse($writer->available(), 'AI is off');
     }
 
+    public function test_project_tuning_is_one_service_read_from_the_config(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['tuning' => ['Say \"we\".'], 'storage' => 'var/ai'];\n");
+        $c = $this->app()->container();
+
+        $this->assertSame(['Say "we".'], $c->get(\Preflow\Ai\Settings\ProjectTuning::class)->instructions());
+        $c->get(AiSettingsStore::class)->put('tuning', ['project' => ['Say "you".']]);
+        $this->assertSame(['Say "you".'], $c->get(\Preflow\Ai\Settings\ProjectTuning::class)->instructions(), 'the Settings → AI edit wins');
+    }
+
     public function test_config_names_the_draft_writer_class(): void
     {
         file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['draft' => ['writer' => \\" . CannedDraftWriter::class . "::class]];\n");

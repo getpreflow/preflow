@@ -321,6 +321,22 @@ return [
         'error' => 'The draft could not be written: :message',
         'inserted' => 'Draft inserted.',
         'replaced' => 'Text replaced with the draft.',
+        // Answers of POST {prefix}/_ai/draft, and what the dialog says when there is none.
+        'errors' => [
+            'forbidden' => 'You may not write drafts for this content.',
+            'unknown_type' => 'This content type does not exist.',
+            'not_found' => 'The record no longer exists.',
+            'no_record' => 'The draft needs the record it is for.',
+            'new_with_id' => 'A new record has no id yet.',
+            'brief' => 'Say in up to :max characters what the draft should say.',
+            'length' => 'Choose Short, Medium or Long.',
+            'language' => 'This language is not one of this content’s.',
+            'unavailable' => 'AI can’t be used right now. Try again later, or ask whoever runs the site.',
+            'failed' => 'The AI gave no usable draft. Try again, perhaps with a shorter length.',
+            'empty' => 'The draft held no text that can go into the field. Try again.',
+            'offline' => 'The site did not answer. Check your connection and try again.',
+            'generic' => 'Something went wrong. Try again.',
+        ],
     ],
     // The edit form's Translate button queues a background job (AI).
     'ai_queue' => [
@@ -786,7 +802,7 @@ return [
         'tokens_out' => 'Tokens out',
         'cost' => 'Cost (USD)',
         'saved' => 'Saved.',
-        'tuning_intro' => 'Instructions for the translations, one per line. Each level adds to the ones before it; the text in grey is the default from config/ai.php. Emptying a field brings the default back.',
+        'tuning_intro' => 'Instructions for the AI, one per line. The project level applies to every AI request (translations and drafts); the other levels add to it for translations. The text in grey is the default from config/ai.php. Emptying a field brings the default back.',
         'level_project' => 'Whole project',
         'level_language' => 'Into :language',
         'level_type' => 'Type :type',

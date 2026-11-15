@@ -17,6 +17,16 @@ use Symfony\Component\HtmlSanitizer\HtmlSanitizerInterface;
  */
 final class RichTextFieldType implements FieldType, \Preflow\Folio\Field\SearchableText
 {
+    /**
+     * The HTML elements the vendored Trix editor keeps when it takes HTML in (its block and text
+     * attributes: paragraphs as blocks, heading1 h1, quote blockquote, code pre, the two lists,
+     * bold strong, italic em, strike del, href a, and line breaks). Anything else it flattens, an
+     * h2 into bold text. "Write a draft" asks for these only.
+     *
+     * @since 0.77
+     */
+    public const array EDITOR_ELEMENTS = ['p', 'h1', 'blockquote', 'pre', 'ul', 'ol', 'li', 'strong', 'em', 'del', 'a', 'br'];
+
     public function __construct(
         private readonly HtmlSanitizerInterface $sanitizer,
         private readonly FieldRenderer $renderer = new FieldRenderer(),

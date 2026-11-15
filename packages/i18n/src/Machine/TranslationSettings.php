@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\I18n\Machine;
 
 use Preflow\Ai\Settings\AiSettingsStore;
+use Preflow\Ai\Settings\ProjectTuning;
 use Preflow\Ai\Tuning;
 
 /**
@@ -18,7 +19,7 @@ use Preflow\Ai\Tuning;
  */
 final class TranslationSettings
 {
-    private const TUNING = 'tuning';
+    private const TUNING = ProjectTuning::SECTION;
     private const GLOSSARY = 'glossary';
 
     /** @param array<string,mixed> $aiConfig the config/ai.php array */
@@ -31,12 +32,13 @@ final class TranslationSettings
     public function tuning(string $to, ?string $type = null): Tuning
     {
         $stored = $this->stored();
-        $keys = ['project', 'lang:' . $to];
+        $keys = ['lang:' . $to];
         if ($type !== null && $type !== '') {
             $keys[] = $type;
         }
 
-        $instructions = [];
+        // The project level is preflow/ai's ProjectTuning, the same for every AI request.
+        $instructions = $this->project()->instructions();
         foreach ($keys as $key) {
             array_push($instructions, ...$this->level($key, $this->configDefault($key), $stored));
         }
@@ -122,7 +124,7 @@ final class TranslationSettings
     public function levels(): array
     {
         $stored = $this->stored();
-        $levels = ['project' => $this->level('project', $this->configDefault('project'), $stored)];
+        $levels = [ProjectTuning::LEVEL => $this->project()->instructions()];
 
         $translation = $this->translationConfig();
         foreach (['lang:' => 'languages', '' => 'types'] as $prefix => $section) {
@@ -195,8 +197,8 @@ final class TranslationSettings
     /** @return list<string> the config/ai.php default of a system level */
     private function configDefault(string $key): array
     {
-        if ($key === 'project') {
-            return self::lines($this->aiConfig['tuning'] ?? []);
+        if ($key === ProjectTuning::LEVEL) {
+            return $this->project()->defaults();
         }
 
         $translation = $this->translationConfig();
@@ -209,6 +211,12 @@ final class TranslationSettings
         $types = is_array($translation['types'] ?? null) ? $translation['types'] : [];
 
         return self::lines($types[$key] ?? []);
+    }
+
+    /** The project level: one rule for every AI request (preflow/ai), not repeated here. */
+    private function project(): ProjectTuning
+    {
+        return new ProjectTuning($this->aiConfig, $this->store);
     }
 
     /** @return array<string,mixed> */
@@ -249,13 +257,6 @@ final class TranslationSettings
      */
     private static function lines(mixed $value): array
     {
-        $out = [];
-        foreach (is_array($value) ? $value : [$value] as $line) {
-            if (is_string($line) && trim($line) !== '') {
-                $out[] = trim($line);
-            }
-        }
-
-        return $out;
+        return ProjectTuning::lines($value);
     }
 }

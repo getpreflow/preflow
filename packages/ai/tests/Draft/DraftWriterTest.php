@@ -130,8 +130,38 @@ final class DraftWriterTest extends TestCase
         if (class_exists(\Locale::class)) {
             $this->assertStringContainsString('German', $system, 'and its name');
         }
-        $this->assertStringContainsString('p, h2, h3, ul, ol, li, strong, em, a', $system);
+        $this->assertStringContainsString('only these tags: p, h2, h3, ul, ol, li, strong, em, a.', $system);
         $this->assertStringNotContainsString('Öffnungszeiten', $system, 'the brief is no instruction');
+    }
+
+    public function test_the_caller_names_the_elements_its_editor_keeps(): void
+    {
+        $this->assertSame(['p', 'h2', 'h3', 'ul', 'ol', 'li', 'strong', 'em', 'a'], (new DraftRequest('x', 'en'))->elements, 'the generic set by default');
+
+        $this->writer([self::answer('<p>x</p>')])->write(new DraftRequest('x', 'en', DraftLength::Long, [], ['p', 'H1', 'blockquote', 'ul', 'li', 'strong', 'p', '<script>', 'a']));
+        $system = $this->request()->tuning->system();
+
+        $this->assertStringContainsString('only these tags: p, h1, blockquote, ul, li, strong, a.', $system, 'lower case, each once, names only');
+        $this->assertStringNotContainsString('h2', $system);
+        $this->assertStringNotContainsString('script', $system);
+        $this->assertStringContainsString('subheadings (h1)', $system, 'the long length uses the headings the editor has');
+    }
+
+    public function test_without_headings_or_links_the_instructions_ask_for_none(): void
+    {
+        $this->writer([self::answer('<p>x</p>')])->write(new DraftRequest('x', 'en', DraftLength::Long, [], ['p', 'strong']));
+        $system = $this->request()->tuning->system();
+
+        $this->assertStringContainsString('only these tags: p, strong.', $system);
+        $this->assertStringNotContainsString('subheadings', $system);
+        $this->assertStringNotContainsString('href', $system);
+    }
+
+    public function test_an_empty_or_unusable_set_falls_back_to_the_generic_one(): void
+    {
+        $this->writer([self::answer('<p>x</p>')])->write(new DraftRequest('x', 'en', DraftLength::Short, [], ['<b>', '']));
+
+        $this->assertStringContainsString('only these tags: p, h2, h3, ul, ol, li, strong, em, a.', $this->request()->tuning->system());
     }
 
     public function test_purpose_is_draft_and_the_usage_log_says_so(): void

@@ -310,6 +310,22 @@ return [
         'error' => 'Le brouillon n’a pas pu être rédigé : :message',
         'inserted' => 'Brouillon inséré.',
         'replaced' => 'Texte remplacé par le brouillon.',
+        // Answers of POST {prefix}/_ai/draft, and what the dialog says when there is none.
+        'errors' => [
+            'forbidden' => 'Vous ne pouvez pas rédiger de brouillons pour ce contenu.',
+            'unknown_type' => 'Ce type de contenu n’existe pas.',
+            'not_found' => 'Cette entrée n’existe plus.',
+            'no_record' => 'Le brouillon a besoin de l’entrée à laquelle il est destiné.',
+            'new_with_id' => 'Une nouvelle entrée n’a pas encore d’identifiant.',
+            'brief' => 'Dites en :max caractères au plus ce que le brouillon doit dire.',
+            'length' => 'Choisissez Court, Moyen ou Long.',
+            'language' => 'Cette langue n’est pas l’une de celles de ce contenu.',
+            'unavailable' => 'L’IA n’est pas disponible pour le moment. Réessayez plus tard ou adressez-vous à la personne qui gère le site.',
+            'failed' => 'L’IA n’a pas fourni de brouillon utilisable. Réessayez, peut-être avec une longueur plus courte.',
+            'empty' => 'Le brouillon ne contenait aucun texte utilisable dans le champ. Réessayez.',
+            'offline' => 'Le site n’a pas répondu. Vérifiez votre connexion et réessayez.',
+            'generic' => 'Une erreur s’est produite. Réessayez.',
+        ],
     ],
     // The edit form's Translate button queues a background job (AI).
     'ai_queue' => [
@@ -766,7 +782,7 @@ return [
         'tokens_out' => 'Tokens out',
         'cost' => 'Cost (USD)',
         'saved' => 'Saved.',
-        'tuning_intro' => 'Instructions for the translations, one per line. Each level adds to the ones before it; the text in grey is the default from config/ai.php. Emptying a field brings the default back.',
+        'tuning_intro' => 'Instructions pour l’IA, une par ligne. Le niveau projet s’applique à chaque requête IA (traductions et brouillons) ; les autres niveaux le complètent pour les traductions. Le texte en gris est la valeur par défaut de config/ai.php. Vider un champ rétablit la valeur par défaut.',
         'level_project' => 'Whole project',
         'level_language' => 'Into :language',
         'level_type' => 'Type :type',

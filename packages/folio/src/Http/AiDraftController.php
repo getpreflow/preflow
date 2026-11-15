@@ -11,24 +11,33 @@ use Preflow\Ai\Draft\DraftLength;
 use Preflow\Ai\Draft\DraftRequest;
 use Preflow\Ai\Draft\DraftWriter;
 use Preflow\Auth\Access\Access;
+use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Ai\CostFormat;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Folio\Field\Types\RichTextFieldType;
+use Preflow\Folio\FolioText;
+use Psr\Log\LoggerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Symfony\Component\HtmlSanitizer\HtmlSanitizerInterface;
 
 /**
- * "Write a draft" in rich text (ai-draft.js): POST {prefix}/_ai/draft with type, field (the field's
- * label as the form shows it), brief, length (short|medium|long), language and title (optional).
- * Answers {html, cost}: the draft, sanitised here, since model HTML is never trusted, and its cost
- * as Folio shows it (null: unknown). Nothing is saved: the editor puts the draft into the field, an
- * ordinary edit the person saves (or autosave sends) as any other.
+ * "Write a draft" in rich text (ai-draft.js): POST {prefix}/_ai/draft with type, id (the record's;
+ * empty with new=1 on the create form), field (the field's label as the form shows it), brief,
+ * length (short|medium|long), language and title (optional). Answers {html, cost}: the draft,
+ * sanitised here, since model HTML is never trusted, and its cost as Folio shows it (null: unknown).
+ * The draft asks only for the elements Folio's Trix editor keeps (RichTextFieldType::EDITOR_ELEMENTS).
+ * Nothing is saved: the editor puts the draft into the field, an ordinary edit the person saves
+ * (or autosave sends) as any other.
  *
  * The route exists only while the draft writer is available (FolioRoutes); the check here covers a
  * writer that became unavailable after boot. The route asks ai.draft (FolioPermissionMiddleware);
- * this controller adds the posted type's edit permission. 503 when the writer cannot be used at all
- * (AiUnavailable), 502 when this draft failed, 422 for bad input.
+ * this controller adds the type's edit permission for an existing record, its create permission
+ * for a new one (new=1 with no id; an id must name a record). Errors carry Folio's own text
+ * (folio.ai_draft.errors.*): 503 when the writer cannot be used at all (AiUnavailable), 502 when
+ * this draft failed, 422 for bad input, 404 for an unknown type or record. What the provider said
+ * goes to the log (the app's PSR-3 logger, else the PHP log), never to the page.
  *
  * @since 0.77
  */
@@ -48,7 +57,9 @@ final class AiDraftController
         private readonly TypeCatalog $catalog,
         private readonly TypeRegistry $registry,
         private readonly HtmlSanitizerInterface $sanitizer,
+        private readonly DataManager $dm,
         private readonly ?Access $access = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {}
 
     public function draft(ServerRequestInterface $request): ResponseInterface
@@ -61,22 +72,33 @@ final class AiDraftController
         $type = self::text($body, 'type');
         $listing = $this->catalog->get($type);
         if ($listing === null) {
-            return self::json(404, ['error' => 'Unknown type.']);
+            return self::error(404, 'unknown_type');
         }
-        if (!($this->access?->can('ai.draft') ?? true) || !($this->access?->can($type . '.edit') ?? true)) {
-            return self::json(403, ['error' => 'Forbidden.']);
+        $id = self::text($body, 'id');
+        $new = self::text($body, 'new') === '1';
+        if ($new && $id !== '') {
+            return self::error(422, 'new_with_id');
+        }
+        if (!$new && $id === '') {
+            return self::error(422, 'no_record');
+        }
+        if (!($this->access?->can('ai.draft') ?? true) || !($this->access?->can($type . ($new ? '.create' : '.edit')) ?? true)) {
+            return self::error(403, 'forbidden');
+        }
+        if (!$new && $this->dm->findType($type, $id) === null) {
+            return self::error(404, 'not_found');
         }
         $brief = trim(self::text($body, 'brief'));
         if ($brief === '' || mb_strlen($brief) > self::BRIEF_MAX) {
-            return self::json(422, ['error' => 'Say in up to ' . self::BRIEF_MAX . ' characters what the draft should say.']);
+            return self::error(422, 'brief', ['max' => self::BRIEF_MAX]);
         }
         $length = DraftLength::tryFrom(self::text($body, 'length'));
         if ($length === null) {
-            return self::json(422, ['error' => 'The length is "short", "medium" or "long".']);
+            return self::error(422, 'length');
         }
         $language = self::text($body, 'language');
         if (!$this->registry->get($type)->locales->has($language)) {
-            return self::json(422, ['error' => 'Choose a language of this content type.']);
+            return self::error(422, 'language');
         }
 
         LongRequest::allow($request, self::TIME_LIMIT);
@@ -85,19 +107,41 @@ final class AiDraftController
                 'Content type' => $listing->label,
                 'Title' => self::short(self::text($body, 'title')),
                 'Field' => self::short(self::text($body, 'field')),
-            ]));
+            ], RichTextFieldType::EDITOR_ELEMENTS));
         } catch (AiUnavailable $e) {
-            return self::json(503, ['error' => $e->getMessage()]);
+            $this->log('AI is not available: ' . $e->getMessage());
+
+            return self::error(503, 'unavailable');
         } catch (DraftFailed $e) {
-            return self::json(502, ['error' => $e->getMessage()]);
+            $this->log('the draft failed: ' . $e->getMessage());
+
+            return self::error(502, 'failed');
         }
 
         $html = trim($this->sanitizer->sanitize($draft->html));
         if (trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8')) === '') {
-            return self::json(502, ['error' => 'The answer held no text that can go into the field.']);
+            return self::error(502, 'empty');
         }
 
         return self::json(200, ['html' => $html, 'cost' => CostFormat::usd($draft->costUsd)]);
+    }
+
+    /** What the provider said, for whoever runs the site. */
+    private function log(string $message): void
+    {
+        $message = 'Folio "Write a draft": ' . $message;
+        if ($this->logger !== null) {
+            $this->logger->warning($message);
+
+            return;
+        }
+        error_log($message);
+    }
+
+    /** @param array<string, scalar> $params */
+    private static function error(int $status, string $key, array $params = []): ResponseInterface
+    {
+        return self::json($status, ['error' => FolioText::get('folio.ai_draft.errors.' . $key, $params)]);
     }
 
     /** @param array<string, mixed> $body */

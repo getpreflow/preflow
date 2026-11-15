@@ -197,7 +197,7 @@ final class ShellTest extends TestCase
             '/folio/redirects' => 'Old addresses that send visitors on',
             '/folio/redirects?tab=not-found' => 'Addresses visitors asked for',
             '/folio/ai/glossary' => 'Terms that are always translated',
-            '/folio/ai/tuning' => 'Instructions for the translations',
+            '/folio/ai/tuning' => 'Instructions for the AI',
             '/folio/seo-audit' => 'The last run of the SEO audit',
         ];
         foreach ($pages as $uri => $start) {
