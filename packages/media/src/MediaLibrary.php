@@ -136,16 +136,20 @@ final class MediaLibrary
     public const string ACTIVITY_SUBJECT = 'asset';
 
     /**
-     * The title of a private file's rows in the activity log: a translation key (group "media",
-     * "Private file"), never the file name, which may say what the file is. @since 0.77
+     * A private file's rows in the activity log never carry its name, which may say what the file
+     * is: their title is this neutral text, their titleKey PRIVATE_TITLE_KEY (group "media"),
+     * which readers show translated. @since 0.77
      */
-    public const string PRIVATE_TITLE = 'media.activity.private_file';
+    public const string PRIVATE_TITLE = 'Private file';
+
+    /** @since 0.77 */
+    public const string PRIVATE_TITLE_KEY = 'media.activity.private_file';
 
     /**
      * @param array<string, mixed> $config MediaConfig::toArray() (storage, max_bytes, allow_svg, private_dir, private_url, …)
-     * @param ActivityLog|null $activity (@since 0.77) hears of upload() (Uploaded), replace() (Replaced),
+     * @param ActivityLog|null $activity (@since 0.77) hears of upload() and importFile() (Uploaded), replace() (Replaced),
      *        restore() of an earlier file (Restored) and delete() (Deleted, binned or for good), subject
-     *        "asset", titled by the file name (a private file: PRIVATE_TITLE); discard() forgets the
+     *        "asset", titled by the file name (a private file: PRIVATE_TITLE, PRIVATE_TITLE_KEY); discard() forgets the
      *        asset's rows. A failing log is logged as a warning to $logger and never fails the change
      */
     public function __construct(
@@ -282,8 +286,9 @@ final class MediaLibrary
             return;
         }
         try {
-            $title = $asset->private ? self::PRIVATE_TITLE : $asset->originalName;
-            $this->activity->record(new Activity(self::ACTIVITY_SUBJECT, $asset->id, $title, $kind, by: $by));
+            $this->activity->record($asset->private
+                ? new Activity(self::ACTIVITY_SUBJECT, $asset->id, self::PRIVATE_TITLE, $kind, by: $by, titleKey: self::PRIVATE_TITLE_KEY)
+                : new Activity(self::ACTIVITY_SUBJECT, $asset->id, $asset->originalName, $kind, by: $by));
         } catch (\Throwable $e) {
             $this->logger?->warning("Activity log: \"{$kind->value}\" of asset {$asset->id} not recorded: {$e->getMessage()}", ['exception' => $e]);
         }
@@ -297,7 +302,10 @@ final class MediaLibrary
      */
     public function importFile(string $absPath, string $originalName, ?string $by, bool $private = false): Asset
     {
-        return $this->store($this->readFile($absPath, $originalName), $originalName, $by, $private);
+        $asset = $this->store($this->readFile($absPath, $originalName), $originalName, $by, $private);
+        $this->tell($asset, ActivityKind::Uploaded, $by);
+
+        return $asset;
     }
 
     /**

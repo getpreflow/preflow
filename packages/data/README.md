@@ -922,8 +922,15 @@ return [
   `ExclusiveWrites::exclusive()` (all built-in drivers), so concurrent saves never open two rows
   for one session; a third-party driver without it may, rarely.
 - **Transactions:** inside a caller's open transaction, on a storage with `Savepoints` (the SQL
-  drivers), a recording runs under a savepoint: its rows commit or roll back with the caller's
-  transaction, and a failing recording leaves that transaction usable (PostgreSQL-safe).
+  drivers), a recording (and `recent()`, `people()`, `prune()`, `forget()`) runs under a
+  savepoint: its rows commit or roll back with the caller's transaction, and a failure leaves
+  that transaction usable (PostgreSQL-safe). The lock does not cover the caller's commit: two
+  sessions saving one record inside long MySQL transactions may get two rows. A log on another
+  storage (the `activity` alias on a different connection) does not join the caller's
+  transaction.
+- **Erasure:** `forget()` deletes the record's rows (and its newest-row entry) and clears its
+  id where it stands as the person, ending that person's open sessions.
+- **Titles by key:** `Activity::$titleKey` is stored (`title_key`) next to `title`.
 - **People:** `people()` groups the rows by person (`AggregatingStorage`, every built-in
   driver); on a storage without aggregates it reads them 1000 at a time.
 - **Retention:** `prune()` deletes rows older than `keep_days` and beyond the newest

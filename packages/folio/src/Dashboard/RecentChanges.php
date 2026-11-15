@@ -153,7 +153,7 @@ final class RecentChanges
                 false,
             ],
         };
-        $title = $item->subject === self::ASSET && $item->title === self::PRIVATE_TITLE ? $this->privateTitle() : $item->title;
+        $title = $item->subject === self::ASSET && ($item->titleKey ?? $item->title) === self::PRIVATE_TITLE ? $this->privateTitle() : $item->title;
 
         return [
             'subject' => $item->subject,

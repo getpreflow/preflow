@@ -12,6 +12,7 @@ use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\ExclusiveWrites;
+use Preflow\Data\QueryBuilder;
 use Preflow\Data\Savepoints;
 use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\SortDirection;
@@ -26,8 +27,8 @@ use Psr\Log\LoggerInterface;
  * "activity.table"). It is stored on the storage alias "activity" when the site has one, else on
  * "default".
  *
- * - preflow_activity: the rows. Index (subject, record_id) for forget(), index on seq for order,
- *   index on actor for the person filter.
+ * - preflow_activity: the rows (title_key: Activity::$titleKey). Index (subject, record_id) for
+ *   forget(), index on seq for order, index on actor for the person filter and erasure.
  * - preflow_activity_last: each record's newest row (id: a hash of subject and id; the row's id,
  *   kind, person and time), so record() reads and writes single rows by id and costs the same
  *   however long the log is, on every driver.
@@ -45,11 +46,22 @@ use Psr\Log\LoggerInterface;
  * keeps saving and closes after 10 minutes without a save. Any other event in between starts a
  * new row. The read and write run inside ExclusiveWrites::exclusive() where the storage offers
  * it (the built-in drivers do), so two concurrent saves never both start a row; a storage
- * without it may, rarely, get two rows for one session.
+ * without it may, rarely, get two rows for one session. Inside a caller's open transaction the
+ * lock does not cover the commit: MySQL's GET_LOCK is released when the recording returns, and
+ * under REPEATABLE READ another connection may read the newest-row entry as it was before the
+ * caller commits. Two such sessions saving the same record at once may then get two rows; no
+ * row is lost and the order stays right.
  *
  * Transactions: on a storage with Savepoints (SQL), a recording inside a caller's open
  * transaction runs under a savepoint: its rows become visible when the caller commits and are
  * dropped when it rolls back, and a failing recording leaves the caller's transaction usable.
+ * recent(), people(), prune() and forget() run under one too, so a failure is rolled back to it
+ * before the missing-table check reads. A log kept on another storage (the "activity" alias on a
+ * different connection) does not join the caller's transaction: its rows stay even when the
+ * caller rolls back.
+ *
+ * Erasure: forget() deletes a record's rows and clears the record's id where it stands as the
+ * person ($by), so a member's account leaves no trace by id either.
  *
  * Retention: prune() (`php preflow activity:prune`, also run by `members:prune`; never record()
  * or recent()) deletes rows older than $keepDays and beyond the newest $keepRows, in batches;
@@ -78,6 +90,9 @@ final class StoredActivityLog implements ActivityLog
 
     /** How many rows prune() and forget() read and delete at a time. */
     public const int BATCH = 1000;
+
+    /** The most ids one IN list names. */
+    private const int IN_CHUNK = 500;
 
     /** A cursor: as seq() writes it. */
     private const string SEQ = '/^\d{8}T\d{6}\.\d{6}Z[0-9a-f]{16}$/D';
@@ -115,6 +130,7 @@ final class StoredActivityLog implements ActivityLog
                 'subject' => new TypeFieldDefinition('subject', 'string', length: 64),
                 'record_id' => new TypeFieldDefinition('record_id', 'string', length: 191),
                 'title' => new TypeFieldDefinition('title', 'text'),
+                'title_key' => new TypeFieldDefinition('title_key', 'string'),
                 'kind' => new TypeFieldDefinition('kind', 'string'),
                 'changed' => new TypeFieldDefinition('changed', 'text'),
                 // Indexed: the person filter (recent(by:)) reads by it, and an indexed column compares exactly on every driver.
@@ -177,6 +193,7 @@ final class StoredActivityLog implements ActivityLog
                     }
                 }
                 $row->set('title', $activity->title);
+                $row->set('title_key', $activity->titleKey ?? '');
                 $row->set('changed', json_encode($changed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
                 $row->set('at', self::atom($at));
                 $row->set('seq', self::seq($at, (string) $row->getId()));
@@ -187,6 +204,7 @@ final class StoredActivityLog implements ActivityLog
                     'subject' => $activity->subject,
                     'record_id' => $activity->id,
                     'title' => $activity->title,
+                    'title_key' => $activity->titleKey,
                     'kind' => $activity->kind->value,
                     'changed' => json_encode(array_values($activity->changed), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                     'actor' => $activity->by,
@@ -221,7 +239,7 @@ final class StoredActivityLog implements ActivityLog
             $query->where('seq', '<', $before);
         }
 
-        $rows = $this->whenStored(static fn (): array => array_values($query->get()->items()), []);
+        $rows = $this->whenStored(fn (): array => $this->guarded(static fn (): array => array_values($query->get()->items())), []);
         $next = null;
         if (count($rows) > $limit) {
             $rows = array_slice($rows, 0, $limit);
@@ -246,6 +264,7 @@ final class StoredActivityLog implements ActivityLog
                 self::changed($row->get('changed')),
                 is_string($by) && $by !== '' ? $by : null,
                 (string) $row->get('at'),
+                is_string($key = $row->get('title_key')) && $key !== '' ? $key : null,
             );
         }
 
@@ -263,9 +282,9 @@ final class StoredActivityLog implements ActivityLog
         }
         $subjects = $subjects === null ? null : array_values(array_unique(array_map(strval(...), $subjects)));
 
-        return $this->whenStored(fn (): array => $this->dm->driver($this->type->storage) instanceof AggregatingStorage
+        return $this->whenStored(fn (): array => $this->guarded(fn (): array => $this->dm->driver($this->type->storage) instanceof AggregatingStorage
             ? $this->groupedPeople($subjects)
-            : $this->scannedPeople($subjects), []);
+            : $this->scannedPeople($subjects)), []);
     }
 
     /** @param list<string>|null $subjects @return list<string> */
@@ -315,7 +334,7 @@ final class StoredActivityLog implements ActivityLog
      */
     public function prune(): int
     {
-        return $this->whenStored($this->pruneStored(...), 0);
+        return $this->whenStored(fn (): int => $this->guarded($this->pruneStored(...)), 0);
     }
 
     private function pruneStored(): int
@@ -338,17 +357,62 @@ final class StoredActivityLog implements ActivityLog
         return $deleted;
     }
 
+    /**
+     * Removes the record's rows and its newest-row entry, and clears the person from every row
+     * they did ($by equal to $id: a member's account is a person), under the log's lock.
+     */
     public function forget(string $subject, string $id): void
     {
-        $this->whenStored(fn () => $this->exclusive(function () use ($subject, $id): void {
-            do {
-                $rows = $this->dm->queryIn($this->type)->where('subject', $subject)->where('record_id', $id)->limit(self::BATCH)->get()->items();
-                // A text column may compare case- or accent-insensitively (MySQL): exact matches only.
-                $exact = array_values(array_filter($rows, static fn (DynamicRecord $r): bool => (string) $r->get('subject') === $subject && (string) $r->get('record_id') === $id));
-                $this->dm->deleteManyIn($this->type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $exact));
-            } while ($exact !== [] && count($rows) === self::BATCH);
+        $this->whenStored(fn () => $this->guarded(fn () => $this->exclusive(function () use ($subject, $id): void {
+            $this->eachExact(
+                $this->type,
+                static fn (QueryBuilder $q): QueryBuilder => $q->where('subject', $subject)->where('record_id', $id),
+                static fn (DynamicRecord $r): bool => (string) $r->get('subject') === $subject && (string) $r->get('record_id') === $id,
+                fn (array $rows) => $this->dm->deleteManyIn($this->type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $rows)),
+            );
             $this->dm->deleteIn($this->last, self::headId($subject, $id));
-        }), null);
+            $this->eachExact(
+                $this->type,
+                static fn (QueryBuilder $q): QueryBuilder => $q->where('actor', $id),
+                static fn (DynamicRecord $r): bool => $r->get('actor') === $id,
+                function (array $rows): void {
+                    foreach ($rows as $row) {
+                        // '' rather than null: SQL drivers skip null values, so null would never clear it.
+                        $row->set('actor', '');
+                        $this->dm->saveType($row, validate: false);
+                    }
+                },
+            );
+            // Their open sessions end: the next save of those records starts a row of its own.
+            $this->eachExact(
+                $this->last,
+                static fn (QueryBuilder $q): QueryBuilder => $q->where('actor', $id),
+                static fn (DynamicRecord $r): bool => $r->get('actor') === $id,
+                fn (array $heads) => $this->dm->deleteManyIn($this->last, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $heads)),
+            );
+        })), null);
+    }
+
+    /**
+     * Hands $handle every row $where finds that $exact accepts, BATCH at a time. $handle changes
+     * or deletes them, so they leave the query; rows only a case- or accent-insensitive column
+     * matched (MySQL) stay and are stepped over, never handed on and never stopping the loop.
+     *
+     * @param \Closure(QueryBuilder): QueryBuilder $where
+     * @param \Closure(DynamicRecord): bool $exact
+     * @param \Closure(list<DynamicRecord>): void $handle
+     */
+    private function eachExact(TypeDefinition $def, \Closure $where, \Closure $exact, \Closure $handle): void
+    {
+        $skipped = 0;
+        do {
+            $rows = array_values($where($this->dm->queryIn($def))->orderBy($def->idField)->offset($skipped)->limit(self::BATCH)->get()->items());
+            $mine = array_values(array_filter($rows, $exact));
+            $skipped += count($rows) - count($mine);
+            if ($mine !== []) {
+                $handle($mine);
+            }
+        } while (count($rows) === self::BATCH);
     }
 
     /**
@@ -384,7 +448,11 @@ final class StoredActivityLog implements ActivityLog
             return 0;
         }
         $this->exclusive(function () use ($ids): void {
-            $heads = $this->ids($this->dm->queryIn($this->last)->where('row_id', 'IN', $ids));
+            $heads = [];
+            // IN lists of at most IN_CHUNK ids, as deleteMany() sends them (older SQLite allows 999 parameters).
+            foreach (array_chunk($ids, self::IN_CHUNK) as $chunk) {
+                array_push($heads, ...$this->ids($this->dm->queryIn($this->last)->where('row_id', 'IN', $chunk)));
+            }
             $this->dm->deleteManyIn($this->type, $ids);
             $this->dm->deleteManyIn($this->last, $heads);
         });
@@ -418,11 +486,19 @@ final class StoredActivityLog implements ActivityLog
         return $row !== null && (string) $row->get('subject') === $activity->subject && (string) $row->get('record_id') === $activity->id ? $row : null;
     }
 
-    /** $fn under a savepoint when the storage has them (see the class). */
-    private function guarded(\Closure $fn): void
+    /**
+     * $fn under a savepoint when the storage has them (see the class): a failure inside is
+     * rolled back to the savepoint before anything (whenStored()'s table check) reads again.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    private function guarded(\Closure $fn): mixed
     {
         $driver = $this->dm->driver($this->type->storage);
-        $driver instanceof Savepoints ? $driver->savepoint($fn) : $fn();
+
+        return $driver instanceof Savepoints ? $driver->savepoint($fn) : $fn();
     }
 
     /** $fn holding the log's lock when the storage offers one (see the class). */

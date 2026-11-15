@@ -165,6 +165,25 @@ final class ActivityWritersTest extends PublishingAppTestCase
         $this->assertNull($this->dm()->findType('post', 'p1'));
     }
 
+    public function test_deleting_a_person_is_erasure(): void
+    {
+        $container = $this->app()->container();
+        $container->singleton(\Preflow\Publishing\PersonalTypes::class, static fn () => new class implements \Preflow\Publishing\PersonalTypes {
+            public function personal(string $type): bool
+            {
+                return $type === 'note';
+            }
+        });
+        $writer = $this->writer();
+        $writer->create($this->record('note', 'n1', ['title' => ['en' => 'Jane Doe']]), new SaveOptions(by: 'staff'));
+        $writer->create($this->record('post', 'p1', ['title' => ['en' => 'By Jane']]), new SaveOptions(by: 'n1'));
+
+        $container->get(RecordDeleter::class)->delete('note', ['n1'], null, 'staff');
+
+        $this->assertSame(['created post:p1 - title'], $this->rows(), 'the account is forgotten, also as the person');
+        $this->assertNull($this->dm()->findType('note', 'n1'));
+    }
+
     public function test_failing_log_does_not_fail_the_save(): void
     {
         $failing = new class implements ActivityLog {

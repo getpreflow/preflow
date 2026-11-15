@@ -35,7 +35,9 @@ use Psr\Log\LoggerInterface;
  *
  * The activity log (@since 0.77) hears of every deleted record (cascaded ones too: Deleted, its
  * title as it was, delete()'s $by) once the writes are done; a detach is no activity of its own.
- * Earlier rows of a deleted record stay. A failing log is logged and never fails the delete.
+ * Earlier rows of a deleted record stay. A delete of a person's record (PersonalTypes: a
+ * member's account) is erasure instead: the log forgets every deleted record, the person among
+ * them. A failing log is logged and never fails the delete.
  */
 final class RecordDeleter
 {
@@ -53,6 +55,7 @@ final class RecordDeleter
         private readonly ?RecordAddresses $addresses = null,
         ?ActivityLog $activity = null,
         ?LoggerInterface $logger = null,
+        private readonly PersonalTypes $personal = new NoPersonalTypes(),
     ) {
         $this->store = new RecordStore($dm, $publisher, $hooks, $index, $addresses);
         $this->activity = new ActivityNotes($activity, $logger);
@@ -152,10 +155,13 @@ final class RecordDeleter
                 }
             }
         });
+        $erasure = $this->personal->personal($type) || array_any($deletes, fn (DynamicRecord $r): bool => $this->personal->personal($r->getType()->key));
         foreach ($deletes as $record) {
             $this->index?->forget($record->getType()->key, (string) $record->getId());
             $this->addresses?->removed($record->getType()->key, (string) $record->getId(), $target);
-            $this->activity->note($record, ActivityKind::Deleted, [], $by);
+            $erasure
+                ? $this->activity->forget($record->getType()->key, (string) $record->getId())
+                : $this->activity->note($record, ActivityKind::Deleted, [], $by);
         }
         foreach ($saves as $record) {
             if (!$this->publishes($record->getType()->key)) {

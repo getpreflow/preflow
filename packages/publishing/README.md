@@ -139,7 +139,10 @@ The writers tell the activity log (core README, "Activity log") what they stored
   something was live), `Restored` (`restore(..., $by)`) and `Discarded` (`discard(..., $by)`;
   `RecordWriter::restore()` and `discard()` pass `SaveOptions::$by`).
 - `RecordDeleter`: `Deleted` for every deleted record, cascaded ones too
-  (`delete($type, $ids, $target, $by)`). The record's earlier rows stay.
+  (`delete($type, $ids, $target, $by)`). The record's earlier rows stay. A delete of a person's
+  record (a type the bound `PersonalTypes` names; Folio binds the members package's type) is
+  erasure instead: the log forgets every deleted record and clears that person from the rows
+  they did (`ActivityLog::forget()`).
 
 Titles come from `RecordTitle::of()` in the default language, at the time of the event. A
 failing log is logged as a warning and never fails a write. With the log on, a save reads the

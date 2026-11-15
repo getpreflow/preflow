@@ -57,7 +57,8 @@ interface ActivityLog
 
     /**
      * Removes every event of one record (erasure for privacy: a member's account and what was
-     * deleted with it). Its title is no longer kept anywhere in the log.
+     * deleted with it). Its title is no longer kept anywhere in the log, and where its id stands
+     * as the person ($by: the record is an account), those events lose their person (null).
      */
     public function forget(string $subject, string $id): void;
 }

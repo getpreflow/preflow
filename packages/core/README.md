@@ -371,7 +371,9 @@ $people = $log->people(['page', 'post']);                // who did something, t
 
 - `Activity`: `subject` (a type key, `asset`, `redirect`), `id`, `title` (as it was at the time,
   so a deleted record still reads by name), `kind`, `changed` (field names), `by` (null: the
-  system), `at` (DATE_ATOM; `''` lets the log set the time).
+  system), `at` (DATE_ATOM; `''` lets the log set the time), `titleKey` (a translation key that
+  names the subject instead: a reader shows it translated and falls back to `title`, e.g. a
+  private file: title "Private file", key `media.activity.private_file`).
 - `ActivityKind` (stored as lower-case strings): `Created`, `Saved`, `Published`, `Unpublished`,
   `Scheduled`, `Restored`, `Discarded`, `Deleted`, `Uploaded`, `Replaced`.
 - `recent($limit, $subjects, $before)`: `$subjects` null is all, `[]` none; `$before` is the
@@ -383,8 +385,11 @@ $people = $log->people(['page', 'post']);                // who did something, t
   the one with the latest event first: a person filter's options.
 - `prune(): int` applies the retention; it never runs while recording or reading. Run
   `php preflow activity:prune` nightly from cron (`members:prune` runs it too).
-- `forget($subject, $id)` removes every event of a record (erasure for privacy). The members
-  package calls it for a deleted account and everything deleted with it.
+- `forget($subject, $id)` removes every event of a record (erasure for privacy) and clears the
+  person (`by`) of every event where that id stands as the person. The members package calls it
+  for a deleted account and everything deleted with it; publishing's `RecordDeleter` does the
+  same for a type `PersonalTypes` names (Folio: the member type), so a staff delete of an
+  account is erasure too.
 - Core binds `NullActivityLog` (keeps nothing). With `config/data.php` the data layer binds its
   `StoredActivityLog` (see the data README). A provider may bind its own implementation.
 - **A write never fails because of the log.** The framework's writers (publishing's

@@ -80,8 +80,13 @@ final class PruneMembersCommand implements CommandInterface
             $c->get(RememberMe::class)->prune();
             $c->get(Throttle::class)->prune();
             // The activity log's retention too (@since 0.77; activity:prune runs it on its own).
+            // A failing log is a warning: the members' own pruning above stands and is reported.
             if ($c->bound(\Preflow\Core\Activity\ActivityLog::class)) {
-                $c->get(\Preflow\Core\Activity\ActivityLog::class)->prune();
+                try {
+                    $c->get(\Preflow\Core\Activity\ActivityLog::class)->prune();
+                } catch (\Throwable $e) {
+                    fwrite(STDERR, 'members:prune — the activity log was not pruned: ' . $e->getMessage() . "\n");
+                }
             }
         } finally {
             flock($lock, LOCK_UN);

@@ -114,10 +114,19 @@ final class ActivityUploadTest extends TestCase
         $asset = $library->upload($this->upload($this->png(40, 30), 'salary-2026-jane.png'), 'ana', private: true);
         $library->delete($asset->id, 'ana');
 
-        $this->assertSame([
-            'deleted asset:' . MediaLibrary::PRIVATE_TITLE . ' ana',
-            'uploaded asset:' . MediaLibrary::PRIVATE_TITLE . ' ana',
-        ], self::rows($log));
+        $this->assertSame(['deleted asset:Private file ana', 'uploaded asset:Private file ana'], self::rows($log));
+        $this->assertSame(['media.activity.private_file', 'media.activity.private_file'], array_map(static fn (Activity $a): ?string => $a->titleKey, $log->recent(5)->items));
+    }
+
+    public function test_an_imported_file_is_uploaded(): void
+    {
+        $log = $this->storedLog();
+        $library = $this->lib($log);
+        $file = $this->assetRoot . '/import.png';
+        file_put_contents($file, $this->png(40, 30));
+        $library->importFile($file, 'Imported.png', 'cli');
+
+        $this->assertSame(['uploaded asset:Imported.png cli'], self::rows($log));
     }
 
     public function test_a_discarded_upload_leaves_no_row(): void

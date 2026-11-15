@@ -719,7 +719,6 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Media\MediaLibrary::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
             $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
-            new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c)),
         ));
         $container->bind(\Preflow\Folio\Http\AiDraftController::class, fn (Container $c) => new \Preflow\Folio\Http\AiDraftController(
             $c->get(\Preflow\Ai\Draft\DraftWriter::class),
@@ -2014,6 +2013,10 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeCatalog::class),
                 static fn (): ?FrontendResolver => $c->get(FrontendResolver::class),
             ));
+        }
+        // A member's account is a person: deleting one is erasure for the activity log.
+        if (!$container->bound(\Preflow\Publishing\PersonalTypes::class)) {
+            $container->singleton(\Preflow\Publishing\PersonalTypes::class, static fn (): \Preflow\Publishing\PersonalTypes => new \Preflow\Folio\Members\MemberPersonalTypes());
         }
         if (!$container->bound(\Preflow\Publishing\PublishSkips::class)) {
             $container->singleton(\Preflow\Publishing\PublishSkips::class, static fn (Container $c): \Preflow\Publishing\PublishSkips => new \Preflow\Folio\Publishing\FolioPublishSkips(

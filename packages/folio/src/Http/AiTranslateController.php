@@ -15,7 +15,6 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Data\Locales;
 use Preflow\Folio\FolioText;
 use Preflow\Folio\Translations\LabelUnits;
-use Preflow\Folio\Users\AuthorNames;
 use Preflow\I18n\Machine\Estimator;
 use Preflow\I18n\Machine\Job;
 use Preflow\I18n\Machine\JobRunner;
@@ -76,7 +75,6 @@ final class AiTranslateController
         private readonly ?MediaLibrary $media = null,
         private readonly ?Locales $mediaLocales = null,
         private readonly ?TranslationWorker $worker = null,
-        private readonly ?AuthorNames $authors = null,
     ) {}
 
     /** GET {type}/_ai/run?ids[]=…: languages, scope and note; without ids the whole type. */

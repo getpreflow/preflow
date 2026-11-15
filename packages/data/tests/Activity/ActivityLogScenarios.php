@@ -350,6 +350,57 @@ trait ActivityLogScenarios
     }
 
     #[DataProvider('storages')]
+    public function test_forget_clears_the_person_from_their_rows(string $storage): void
+    {
+        $log = $this->log($storage);
+        $log->record(new Activity('order', 'o1', 'Order', ActivityKind::Saved, ['title'], 'm1'));
+        $this->tick();
+        $log->record(new Activity('page', 'p1', 'Page', ActivityKind::Saved, ['title'], 'staff'));
+        $this->tick();
+        $log->record(new Activity('order', 'o2', 'Order 2', ActivityKind::Created, by: 'M1'));
+
+        $log->forget('member', 'm1');
+
+        $this->assertSame(['M1', 'staff', null], array_map(static fn (Activity $a): ?string => $a->by, $log->recent(10)->items));
+        $this->assertSame([], $log->recent(10, by: 'm1')->items);
+        $this->assertNotContains('m1', $log->people());
+        // The cleared row no longer coalesces with a later save by nobody in particular.
+        $this->tick();
+        $log->record(new Activity('order', 'o1', 'Order', ActivityKind::Saved, ['body']));
+        $this->assertCount(4, $log->recent(10)->items);
+    }
+
+    #[DataProvider('storages')]
+    public function test_forget_matches_the_id_exactly(string $storage): void
+    {
+        $log = $this->log($storage);
+        $log->record(new Activity('member', 'M1', 'Upper', ActivityKind::Created));
+        $this->tick();
+        $log->record(new Activity('member', 'm1', 'Lower', ActivityKind::Created));
+
+        $log->forget('member', 'm1');
+
+        $this->assertSame(['Upper'], array_map(static fn (Activity $a): string => $a->title, $log->recent(10)->items));
+    }
+
+    #[DataProvider('storages')]
+    public function test_a_title_key_is_kept(string $storage): void
+    {
+        $log = $this->log($storage);
+        $log->record(new Activity('asset', 'f1', 'Private file', ActivityKind::Uploaded, titleKey: 'media.activity.private_file'));
+        $this->tick();
+        $log->record(new Activity('asset', 'f2', 'photo.jpg', ActivityKind::Uploaded));
+        $this->tick();
+        $log->record(new Activity('page', 'p1', 'Home', ActivityKind::Saved, by: 'u1', titleKey: 'x.key'));
+        $this->tick();
+        $log->record(new Activity('page', 'p1', 'Home', ActivityKind::Saved, by: 'u1'));
+
+        $items = $log->recent(10)->items;
+        $this->assertSame([null, null, 'media.activity.private_file'], array_map(static fn (Activity $a): ?string => $a->titleKey, $items));
+        $this->assertSame('Private file', $items[2]->title);
+    }
+
+    #[DataProvider('storages')]
     public function test_paging_while_a_row_coalesces(string $storage): void
     {
         $log = $this->log($storage);

@@ -15,6 +15,9 @@ namespace Preflow\Core\Activity;
  * - $changed: the fields that changed, in order (empty when nothing says).
  * - $by: who did it (a user id), null for the system (the scheduler, a script without a user).
  * - $at: when, as DATE_ATOM; '' lets the log set the time it records it.
+ * - $titleKey: a translation key that names the subject instead of $title (a private file:
+ *   "media.activity.private_file"). A reader shows the key translated in the reader's language
+ *   and falls back to $title (then a plain neutral text) where the key has no translation.
  *
  * @since 0.77
  */
@@ -29,5 +32,6 @@ final readonly class Activity
         public array $changed = [],
         public ?string $by = null,
         public string $at = '',
+        public ?string $titleKey = null,
     ) {}
 }

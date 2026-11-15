@@ -810,11 +810,12 @@ and replace.
 
 ## Activity (0.77)
 
-`MediaLibrary` tells the activity log (core README, "Activity log") of `upload()` (`Uploaded`),
+`MediaLibrary` tells the activity log (core README, "Activity log") of `upload()` and `importFile()` (`Uploaded`),
 `replace()` (`Replaced`), `restore()` of an earlier file (`Restored`) and `delete($id, $by)`
 (`Deleted`, binned or for good), subject `asset`, titled by the file name, with the `by` passed.
-A private file is never named: its rows carry the translation key `MediaLibrary::PRIVATE_TITLE`
-(`media.activity.private_file`, "Private file"; the package's translation group `media`).
+A private file is never named: its rows have the title "Private file" (`PRIVATE_TITLE`) and the
+`titleKey` `media.activity.private_file` (`PRIVATE_TITLE_KEY`; the package's translation group
+`media`), which readers show translated.
 `discard()` (an upload a field refused) forgets the asset's rows, so it leaves none. The service provider passes the log the
 container binds; a failing log is logged as a warning and never fails the change.
 

@@ -102,6 +102,7 @@ final class PublishingServiceProvider extends ServiceProvider
             $c->get(RecordAddresses::class),
             self::activity($c),
             self::logger($c),
+            $c->get(PersonalTypes::class),
         ));
         // Signed with the app key: without a real one, share previews are off (PreviewLinks::enabled()).
         $container->singleton(PreviewLinks::class, static fn (Container $c): PreviewLinks => new PreviewLinks(
@@ -151,6 +152,9 @@ final class PublishingServiceProvider extends ServiceProvider
         }
         if (!$container->bound(SaveHooks::class)) {
             $container->singleton(SaveHooks::class, static fn (): SaveHooks => new NoSaveHooks());
+        }
+        if (!$container->bound(PersonalTypes::class)) {
+            $container->singleton(PersonalTypes::class, static fn (): PersonalTypes => new NoPersonalTypes());
         }
         if (!$container->bound(RecordTypes::class)) {
             $container->singleton(RecordTypes::class, static fn (): RecordTypes => new NoRecordTypes());

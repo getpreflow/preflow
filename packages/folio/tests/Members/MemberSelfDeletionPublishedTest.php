@@ -60,6 +60,22 @@ final class MemberSelfDeletionPublishedTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_a_staff_delete_of_a_member_is_erasure_in_the_activity_log(): void
+    {
+        $this->site('detach');
+        $m = $this->makeMember();
+        $id = (string) $m->getId();
+        $log = $this->flow->container()->get(\Preflow\Core\Activity\ActivityLog::class);
+        $log->record(new \Preflow\Core\Activity\Activity('member', $id, 'Ada Lovelace', \Preflow\Core\Activity\ActivityKind::Saved, by: 'staff'));
+        $log->record(new \Preflow\Core\Activity\Activity('page', 'p1', 'A page', \Preflow\Core\Activity\ActivityKind::Saved, by: $id));
+
+        $this->flow->container()->get(\Preflow\Publishing\RecordDeleter::class)->delete('member', [$id], null, 'staff');
+
+        $rows = array_map(static fn (\Preflow\Core\Activity\Activity $a): string => $a->subject . ':' . ($a->by ?? '-'), $log->recent(10)->items);
+        $this->assertSame(['page:-'], $rows);
+    }
+
+    #[RunInSeparateProcess]
     public function test_detach_clears_the_pointer_in_the_snapshot_too(): void
     {
         $this->site('detach');

@@ -15,7 +15,7 @@ namespace Preflow\Data;
  *
  * @since 0.77
  */
-interface Savepoints
+interface Savepoints extends StorageDriver
 {
     /**
      * Runs $fn. When a transaction is open on the storage, under a savepoint: released when $fn
