@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Members;
 
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Data\Locales;
 
 /**
@@ -15,12 +16,16 @@ final class Links
 {
     private readonly string $base;
 
-    /** @param bool $prefixed whether the URLs carry the locale (url_strategy "prefix") */
+    /**
+     * @param bool $prefixed whether the URLs carry the locale (url_strategy "prefix")
+     * @param ?LocaleUrls $urls the site's locale URL rule (prefix_default); when set it decides the prefix
+     */
     public function __construct(
         string $baseUrl,
         private readonly string $path,
         private readonly Locales $locales,
         private readonly bool $prefixed = true,
+        private readonly ?LocaleUrls $urls = null,
     ) {
         $this->base = rtrim($baseUrl, '/');
     }
@@ -35,9 +40,7 @@ final class Links
     public function local(string $locale, string $path = ''): string
     {
         $locale = $this->locales->has($locale) ? $locale : $this->locales->default;
-        $prefix = $this->prefixed && $locale !== $this->locales->default ? '/' . $locale : '';
-
-        return $prefix . $this->path . $path;
+        return $this->prefix($locale) . $this->path . $path;
     }
 
     /** The locale prefix of a site path ("/de/start" for "/start"), none for the default locale. */
@@ -45,7 +48,16 @@ final class Links
     {
         $locale = $this->locales->has($locale) ? $locale : $this->locales->default;
 
-        return ($this->prefixed && $locale !== $this->locales->default ? '/' . $locale : '') . $path;
+        return $this->prefix($locale) . $path;
+    }
+
+    private function prefix(string $locale): string
+    {
+        if ($this->urls !== null) {
+            return $this->urls->prefix($locale);
+        }
+
+        return $this->prefixed && $locale !== $this->locales->default ? '/' . $locale : '';
     }
 
     /** @return list<string> the site's locales, in the order config/i18n.php lists them */

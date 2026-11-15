@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Members\Tests;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Data\Locales;
 use Preflow\Members\Links;
 
@@ -32,5 +33,35 @@ final class LinksTest extends TestCase
         $this->assertSame('/start', $this->links()->localize('en', '/start'));
         $this->assertSame('/start', $this->links(false)->localize('de', '/start'), 'no prefix without the prefix strategy');
         $this->assertSame('/konto/login', $this->links(false)->local('de', '/login'));
+    }
+
+    public function test_default_locale_link_carries_prefix_with_prefix_default(): void
+    {
+        $links = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), true, new LocaleUrls(['en', 'de'], 'en', true, true));
+
+        $this->assertSame('https://site.test/en/members/login', $links->url('en', '/login'));
+        $this->assertSame('/de/members/login', $links->local('de', '/login'));
+        $this->assertSame('/en/members', $links->local('xx'), 'an unknown locale gets the default, with its prefix');
+        $this->assertSame('/en/start', $links->localize('en', '/start'));
+        $this->assertSame('/de/start', $links->localize('de', '/start'));
+    }
+
+    public function test_links_unchanged_without_locale_urls(): void
+    {
+        $plain = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), true);
+        $default = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), true, new LocaleUrls(['en', 'de'], 'en'));
+
+        foreach ([$plain, $default] as $links) {
+            $this->assertSame('https://site.test/members/login', $links->url('en', '/login'));
+            $this->assertSame('/de/members/login', $links->local('de', '/login'));
+            $this->assertSame('/start', $links->localize('en', '/start'));
+        }
+    }
+
+    public function test_url_strategy_none_gives_no_prefix_with_locale_urls(): void
+    {
+        $links = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), false, new LocaleUrls(['en', 'de'], 'en', false));
+
+        $this->assertSame('/members/login', $links->local('de', '/login'));
     }
 }

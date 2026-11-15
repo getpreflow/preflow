@@ -17,6 +17,7 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Http\Csrf\CsrfSignInPaths;
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Core\Http\OldInput;
 use Preflow\Data\DataManager;
@@ -245,6 +246,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->get(MembersConfig::class)->path(),
             $c->get(Locales::class),
             ($i18n['url_strategy'] ?? 'prefix') === 'prefix',
+            $c->bound(LocaleUrls::class) ? $c->get(LocaleUrls::class) : null,
         );
     }
 
