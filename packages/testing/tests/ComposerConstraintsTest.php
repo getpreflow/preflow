@@ -7,6 +7,8 @@ namespace Preflow\Testing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.77: data 0.77 (ConditionalUpdates, which StorageDriverContract tests, and the Unicode LIKE behaviour it documents).
+ *
  * "^0.58 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing testing with a release that lacks what it relies on: core 0.60
  * (Application::setPageCacheVerify(), with which WebApplication verifies every stored page; since 0.58 it reads
@@ -20,7 +22,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.60', 'preflow/data' => '<0.25', 'preflow/htmx' => '<0.65'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.60', 'preflow/data' => '<0.77', 'preflow/htmx' => '<0.65'], $composer['conflict'] ?? null);
         $this->assertSame('^0.60 || @dev', $composer['require']['preflow/core'] ?? null);
     }
 }

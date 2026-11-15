@@ -7,6 +7,8 @@ namespace Preflow\Publishing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.77: core 0.77 (Activity\ActivityLog and ActivityActors, which ActivityNotes, Publisher and PublishActors use); data 0.77 (RecordTitle, which ActivityNotes uses; VersionFields, which PublishingVersionFields implements; updateFieldsIfVersion(), which Publisher calls).
+ *
  * "^0.70 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing publishing with a release that lacks the APIs it calls: core 0.70
  * (Application::configFile() and hasConfigFile(), the service providers), data 0.72
@@ -23,8 +25,8 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame([
-            'preflow/core' => '<0.70',
-            'preflow/data' => '<0.72',
+            'preflow/core' => '<0.77',
+            'preflow/data' => '<0.77',
             'preflow/devtools' => '<0.26',
             'preflow/folio' => '<0.72',
             'preflow/validation' => '<0.70',

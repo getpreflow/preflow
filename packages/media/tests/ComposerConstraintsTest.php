@@ -7,6 +7,8 @@ namespace Preflow\Media\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.77: core 0.77 (Activity\ActivityLog, which MediaLibrary writes upload, replace and alt-text changes to); i18n 0.77 (Machine\WritesAs, which AltTextSource implements); data 0.77 (raised in step with the release; no 0.77-only data API is called from src).
+ *
  * "^0.54 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing media with a release that lacks what it calls: core 0.54 (InternalRender,
  * honoured by VariantController), data 0.76 (a JSON-stored locale map without the queried locale reads as null, which
@@ -20,7 +22,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/core' => '<0.54', 'preflow/data' => '<0.76', 'preflow/i18n' => '<0.47', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
+            ['preflow/core' => '<0.77', 'preflow/data' => '<0.77', 'preflow/i18n' => '<0.77', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; i18n is only suggested.

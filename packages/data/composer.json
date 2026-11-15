@@ -7,11 +7,11 @@
         "php": ">=8.4",
         "ext-pdo": "*",
         "ext-pdo_sqlite": "*",
-        "preflow/core": "^0.58 || @dev",
+        "preflow/core": "^0.77 || @dev",
         "preflow/validation": "^0.52 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.58",
+        "preflow/core": "<0.77",
         "preflow/validation": "<0.52",
         "preflow/folio": "<0.67",
         "preflow/publishing": "<0.72"
