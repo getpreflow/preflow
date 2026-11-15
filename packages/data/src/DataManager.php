@@ -814,9 +814,10 @@ final class DataManager
 
     /**
      * A class-backed save of a type with a version field: its fields written over the stored record
-     * (the other columns kept) with the stored version + 1, checked in the write (ConditionalUpdates)
-     * and tried again when another save got in between; a first write is version 1. As saveBumped(),
-     * a record busy on every try is written anyway.
+     * (the other columns kept) with the stored version + 1 when a value differs (contentChanged()),
+     * else with the stored version; checked in the write (ConditionalUpdates) and tried again when
+     * another save got in between; a first write is version 1. As saveBumped(), a record busy on
+     * every try is written anyway.
      *
      * @param array<string, mixed> $data
      */
@@ -824,14 +825,17 @@ final class DataManager
     {
         for ($attempt = 1; ; $attempt++) {
             $stored = $driver->findOne($def->table, $id, $def->idField);
+            $value = $stored[$versionField] ?? null;
+            $current = $value === null || $value === '' ? null : (int) $value;
+            $changed = $stored === null || $this->contentChanged($def, $data, $stored, $versionField);
+            // Unchanged: the stored version stays (none stays none).
+            $version = $changed ? [$versionField => ($current ?? 0) + 1] : ($current === null ? [] : [$versionField => $current]);
             if ($stored === null || !$driver instanceof ConditionalUpdates || $attempt >= self::BUMP_ATTEMPTS) {
-                $this->saveKeepingOtherColumns($driver, $def, $id, [...$data, $versionField => (int) ($stored[$versionField] ?? 0) + 1]);
+                $this->saveKeepingOtherColumns($driver, $def, $id, [...$data, ...$version]);
 
                 return;
             }
-            $value = $stored[$versionField] ?? null;
-            $current = $value === null || $value === '' ? null : (int) $value;
-            $fields = array_diff_key([...$data, $versionField => ($current ?? 0) + 1], [$def->idField => true]);
+            $fields = array_diff_key([...$data, ...$version], [$def->idField => true]);
             if ($driver->updateIfVersion($def->table, $id, $fields, $versionField, $current, $def->idField)) {
                 return;
             }
@@ -1173,14 +1177,70 @@ final class DataManager
         $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
     }
 
+    /**
+     * Whether a value $data writes differs from the stored row: the keys written, but the id, the
+     * version field and the type's other keys that are no content (VersionFields::nonContent()).
+     * Compared as stored, the same on every driver: JSON text decoded, empty values (null, '', an
+     * empty list) alike, numbers of number fields by value, yes/no fields by their truth, other
+     * scalars as text.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $stored
+     */
+    private function contentChanged(TypeDefinition $def, array $data, array $stored, string $versionField): bool
+    {
+        $skip = array_flip([$def->idField, $versionField, ...($this->versionFields?->nonContent($def) ?? [])]);
+        foreach (array_diff_key($data, $skip) as $key => $value) {
+            $kind = isset($def->fields[$key]) ? $this->fieldKinds()->columnKindOf($def->fields[$key]) : null;
+            if (self::asStored($value, $kind) !== self::asStored($stored[$key] ?? null, $kind)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** A value as contentChanged() compares it. */
+    private static function asStored(mixed $value, ?ColumnKind $kind): mixed
+    {
+        if (is_string($value) && $value !== '' && ($value[0] === '[' || $value[0] === '{')) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : $value;
+        }
+        if ($kind === ColumnKind::Boolean) {
+            return in_array($value, [true, 1, '1'], true);
+        }
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+        if (is_array($value)) {
+            $value = array_map(static fn (mixed $item): mixed => self::asStored($item, null), $value);
+            if (!array_is_list($value)) {
+                ksort($value);
+            }
+
+            return $value;
+        }
+        if ($kind === ColumnKind::Number && is_numeric($value)) {
+            return (float) $value;
+        }
+
+        return match (true) {
+            is_bool($value) => $value ? '1' : '0',
+            is_scalar($value) => (string) $value,
+            default => $value,
+        };
+    }
+
     /** How often a bumping save tries the stored version + 1 before it writes over a busy record. */
     private const int BUMP_ATTEMPTS = 3;
 
     /**
-     * saveType() of a type with a version field (VersionFields): written as the stored version + 1,
-     * checked in the write (VersionedStorage) and tried again when another save got in between;
-     * the record holds the version written. A record saved by others on every try is written
-     * anyway (with their version + 1): a save never fails for being busy.
+     * saveType() of a type with a version field (VersionFields): written as the stored version + 1
+     * when a written value differs from the stored one (contentChanged()), else with the stored
+     * version; checked in the write (VersionedStorage) and tried again when another save got in
+     * between; the record holds the version written. A record saved by others on every try is
+     * written anyway (deciding on what is stored then): a save never fails for being busy.
      */
     private function saveBumped(StorageDriver $driver, DynamicRecord $record, string|int $id, string $versionField): void
     {
@@ -1189,8 +1249,10 @@ final class DataManager
         $before = $record->get($versionField);
         try {
             for ($attempt = 1; ; $attempt++) {
-                $current = (int) ($driver->findOne($def->table, $id, $def->idField)[$versionField] ?? 0);
-                $record->set($versionField, $current + 1);
+                $stored = $driver->findOne($def->table, $id, $def->idField);
+                $current = (int) ($stored[$versionField] ?? 0);
+                $changed = $stored === null || $this->contentChanged($def, $this->storageData($record), $stored, $versionField);
+                $record->set($versionField, $changed ? $current + 1 : $current);
                 if (!$driver instanceof VersionedStorage || $attempt >= self::BUMP_ATTEMPTS) {
                     $driver->save($def->table, $id, $this->storageData($record), $def->idField);
 

@@ -71,6 +71,11 @@ final class VersionFieldsTest extends TestCase
                 {
                     return in_array($def->table, ['notes', 'job'], true) ? '_version' : null;
                 }
+
+                public function nonContent(TypeDefinition $def): array
+                {
+                    return ['_extra'];
+                }
             });
         }
 
@@ -83,7 +88,7 @@ final class VersionFieldsTest extends TestCase
     }
 
     #[DataProvider('storages')]
-    public function test_every_save_bumps_the_stored_version(string $storage): void
+    public function test_a_changed_save_bumps_the_stored_version(string $storage): void
     {
         $dm = $this->dm($storage);
         $first = $this->note($dm, ['title' => 'A']);
@@ -95,6 +100,54 @@ final class VersionFieldsTest extends TestCase
         $this->assertSame(2, $stale->get('_version'), 'the stored version + 1, not the one the record held');
         $this->assertSame(2, (int) $dm->findType('note', 'n1')?->get('_version'));
         $this->assertSame('B', $dm->findType('note', 'n1')?->get('title'));
+    }
+
+    /** A save that changes no value (an import re-saving its records) keeps the version; one that changes only non-content keys too. */
+    #[DataProvider('storages')]
+    public function test_an_unchanged_save_keeps_the_version(string $storage): void
+    {
+        $dm = $this->dm($storage);
+        $dm->saveType($this->note($dm, ['title' => 'A']), false);
+
+        $again = $this->note($dm, ['title' => 'A']);
+        $dm->saveType($again, false);
+        $this->assertSame(1, $again->get('_version'), 'the record holds the version kept');
+        $reread = $dm->findType('note', 'n1');
+        $dm->saveType($reread, false);
+        $this->assertSame(1, (int) $dm->findType('note', 'n1')?->get('_version'), 'as read back');
+
+        $dm->saveType($this->note($dm, ['title' => 'A', '_extra' => 'moved']), false);
+        $this->assertSame(1, (int) $dm->findType('note', 'n1')?->get('_version'), 'a non-content key only');
+        $this->assertSame('moved', $dm->findType('note', 'n1')?->get('_extra'), 'and it is written');
+
+        $dm->saveType($this->note($dm, ['title' => 'B']), false);
+        $this->assertSame(2, (int) $dm->findType('note', 'n1')?->get('_version'));
+    }
+
+    /** A class-backed model saved again with the same values (numbers and yes/no as SQL returns them) keeps its version. */
+    #[DataProvider('storages')]
+    public function test_an_unchanged_class_backed_save_keeps_the_version(string $storage): void
+    {
+        $dm = $this->dm($storage);
+        $job = new Job();
+        $job->uuid = 'j1';
+        $job->title = 'Carpenter';
+        $job->salary_from = 5000;
+        $job->open = true;
+        $dm->save($job, false);
+
+        $same = new Job();
+        $same->uuid = 'j1';
+        $same->title = 'Carpenter';
+        $same->salary_from = 5000;
+        $same->open = true;
+        $dm->save($same, false);
+        $dm->save($dm->find(Job::class, 'j1'), false);
+        $this->assertSame(1, (int) $dm->findType('job', 'j1')?->get('_version'));
+
+        $same->open = false;
+        $dm->save($same, false);
+        $this->assertSame(2, (int) $dm->findType('job', 'j1')?->get('_version'));
     }
 
     #[DataProvider('storages')]

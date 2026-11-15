@@ -376,14 +376,20 @@ if (!$dm->saveTypeIfVersion($record, $loaded)) {
 Folio's `Publisher::saveDraft()` uses it, and throws `VersionConflict` instead of returning
 `false`.
 
-### Version fields: every save bumps the version (0.77)
+### Version fields: a content change bumps the version (0.77)
 
 A `VersionFields` set with `$dm->useVersionFields($fields)` names the types whose records keep a
-version (`$fields->of($def)`: the field, or null). preflow/publishing sets one: the working copies
-of the types that publish keep `_version`.
+version (`$fields->of($def)`: the field, or null) and their keys that are no content
+(`nonContent($def)`). preflow/publishing sets one: the working copies of the types that publish
+keep `_version`, and the publishing keys (schedule, position, share token…) are no content.
 
-- Every `saveType()`, and `save()` / `insert()` / `update()` of a class-backed type, writes that
-  field as the stored version + 1 (the record holds the version written). The write is checked:
+- A `saveType()`, or `save()` / `insert()` / `update()` of a class-backed type, that writes a value
+  differing from the stored one writes that field as the stored version + 1 (the record holds the
+  version written). A save that changes nothing, or only non-content keys, keeps the stored version,
+  so an import or sync job re-saving unchanged records moves nothing on. Values are compared as
+  stored, the same on every driver: JSON text decoded, empty values (null, '', an empty list)
+  alike, numbers of number fields by value, yes/no fields by their truth, other values as text;
+  only the keys the save writes count. The write is checked:
   a save landing in between makes it try again on the newer version, and a record busy on every
   try is written anyway. So an app's own save or an import never stores new content under an old
   version, and an editor holding the old one conflicts.

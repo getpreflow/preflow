@@ -155,7 +155,7 @@ final class RecordWriterTest extends PublishingAppTestCase
         // A save landing between the draft and the publish: the publish's version check fails.
         $this->recorder->failChecks = function (DynamicRecord $record): void {
             $other = $this->stored('post', (string) $record->getId());
-            $other->set('_version', (int) $other->get('_version') + 1);
+            $other->set('title', ['en' => 'Theirs']); // a content change: the save moves the version on
             $this->dm()->saveType($other, false);
         };
 

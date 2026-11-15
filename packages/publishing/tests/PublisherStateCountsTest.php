@@ -147,6 +147,22 @@ final class PublisherStateCountsTest extends PublishingAppTestCase
         $this->assertSame(PublishState::Changed, $p->state($this->stored($type, 'a')));
     }
 
+    /** An app re-saving an unchanged record (an import, a sync job) keeps its version: it stays Published. */
+    #[DataProvider('storages')]
+    public function test_an_unchanged_app_save_stays_published(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $this->dm()->saveType($this->stored($type, 'a'), false);
+        $this->dm()->saveType($this->record('a', 'One'), false);
+        $this->dm()->saveType($this->with('a', ['_order' => 4]), false);
+
+        $this->assertSame(1, (int) $this->stored($type, 'a')->get('_version'));
+        $this->assertSame(['draft' => 0, 'published' => 1, 'changed' => 0], $p->stateCounts($type));
+        $this->assertSame(PublishState::Published, $p->state($this->stored($type, 'a')));
+    }
+
     /** What they read is the two versions, not the content: a driver write past DataManager (keeping the version) is out of their reach. */
     #[DataProvider('storages')]
     public function test_counts_read_the_versions_not_the_content(string $type): void

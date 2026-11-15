@@ -889,7 +889,7 @@ final class Publisher
      * $publishAt is given) and bumping its version (so open editors see a conflict).
      *
      * @param array<string, mixed> $content
-     * @throws VersionConflict when $loadedVersion is given and stale
+     * @throws VersionConflict when $loadedVersion is stale, or (without one) a save landed since the read
      * @throws ValidationException when the storage refuses the content
      */
     private function replaceContent(string $type, string $id, array $content, ?int $loadedVersion = null, ?string $publishAt = null): DynamicRecord
@@ -923,9 +923,9 @@ final class Publisher
         $record = DynamicRecord::fromArray($def, $data);
         // A revision may hold a unique value another record has taken since, or one longer than its column.
         $this->dm->validateStorable($record);
-        if ($loadedVersion === null) {
-            $this->dm->saveType($record, false);
-        } elseif (!$this->dm->saveTypeIfVersion($record, $loadedVersion, validate: false)) {
+        // Always a new version (a plain save keeps it when the content is the same): checked against
+        // the loaded one, else the one just read.
+        if (!$this->dm->saveTypeIfVersion($record, $loadedVersion ?? (int) ($working?->get('_version') ?? 0), validate: false)) {
             throw new VersionConflict($this->storedVersion($record));
         }
         $this->index?->refresh($record);

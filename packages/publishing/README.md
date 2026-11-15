@@ -62,11 +62,12 @@ Published, another is Changed. On storage that groups (`AggregatingStorage`: the
 drivers) that is one aggregate query per table, over the id and the version; on other storage the
 records are read. A discard, and a restore of the content that is live, mark the snapshot as
 published from the new version. An edit undone by hand reads Changed there, while `state($record)`,
-which compares the content, says Published. Every save of a working copy through DataManager (an
-app's own model save, an import, a reference the data layer clears) bumps `_version`
-(`PublishingVersionFields`, the data layer's `VersionFields`), so it reads Changed; raw SQL and
-direct driver writes are out of reach. Saves that change no content (a schedule set or cancelled,
-the same text again) carry the snapshot's version forward and stay Published. A new position or
+which compares the content, says Published. A save of a working copy through DataManager that
+changes content (an app's own model save, an import, a reference the data layer clears) bumps
+`_version` (`PublishingVersionFields`, the data layer's `VersionFields`), so it reads Changed; one
+that changes no content keeps the version and stays Published. Raw SQL and direct driver writes
+are out of reach. Editor saves without a content change (a schedule set or cancelled, the same text
+again) get a new version and carry the snapshot's version forward, so they stay Published too. A new position or
 share token is written without a new version: `saveSystemKeys($type, $id, ['_order' => 3])`. On
 tables not migrated yet (no `_published_version` column) every record is compared in full and
 publishing leaves the key out. A snapshot

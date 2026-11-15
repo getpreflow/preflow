@@ -77,7 +77,7 @@ final class DemoSeeder
             if ($images && is_file($logo) && ($company->logo === null || $this->media->find($company->logo) === null)) {
                 $company->logo = $this->media->importFile($logo, basename($logo), 'seed')->id;
             }
-            $this->saveIfChanged($data, $company);
+            $data->save($company);
             $this->publish($data, 'company', $uuid);
         }
 
@@ -96,7 +96,7 @@ final class DemoSeeder
             // Fixed dates, so the seed gives the same rows, in the same order, every time.
             $job->createdAt = $job->updatedAt = $row['publishedAt'] ?? '2026-10-20 10:00:00';
             $job->postedOn = $row['publishedAt'] === null ? null : substr($row['publishedAt'], 0, 10);
-            $this->saveIfChanged($data, $job);
+            $data->save($job);
 
             // A draft stays a working copy: saved, never published.
             if ($row['status'] === 'published') {
@@ -121,9 +121,7 @@ final class DemoSeeder
                 $this->media->update($asset->id, ['alt' => ['en' => $row['alt']]]);
                 $post->set('image', $asset->id);
             }
-            if ($data->findType('news', $uuid)?->toArray() != $post->toArray()) {
-                $data->saveType($post); // only a change: every save moves the record's version on
-            }
+            $data->saveType($post);
             $this->publish($data, 'news', $uuid);
         }
 
@@ -156,18 +154,6 @@ final class DemoSeeder
         echo 'Demo employer: ' . self::EMPLOYER_EMAIL . ' / ' . self::EMPLOYER_PASSWORD . " (sign in at /employer)\n";
         foreach (self::STAFF as $email => [$password, $roles]) {
             echo 'Demo ' . $roles[0] . ': ' . $email . ' / ' . $password . " (sign in at /folio)\n";
-        }
-    }
-
-    /**
-     * Saves the model unless the stored one already holds the same values: every save of a type that
-     * publishes moves its version on, which the list counts read as a change that is not live.
-     */
-    private function saveIfChanged(DataManager $data, Company|Job $model): void
-    {
-        $stored = $data->find($model::class, (string) $model->uuid);
-        if ($stored === null || $stored->toArray() != $model->toArray()) {
-            $data->save($model);
         }
     }
 

@@ -107,6 +107,7 @@ final class PublishingTablesMysqlTest extends TestCase
     {
         (new PublishingTables($this->dm, new SchemaPublishingTypes($this->dm), new NoRecordColumns()))->sync();
         $this->assertArrayHasKey('_published_version', (new Schema($this->pdo))->columnTypes('article__published'));
+        $this->dm->useVersionFields(new \Preflow\Publishing\PublishingVersionFields(fn (): SchemaPublishingTypes => new SchemaPublishingTypes($this->dm), $this->dm));
         $p = new Publisher($this->dm, new SchemaPublishingTypes($this->dm), new NoRecordChecks());
         $def = $this->dm->getTypeRegistry()->get('article');
         foreach (['a1', 'a2', 'a3', 'd1'] as $id) {
@@ -126,6 +127,17 @@ final class PublishingTablesMysqlTest extends TestCase
         $this->assertSame($expected, $states);
         $this->assertSame(['a3' => PublishState::Published], $p->states('article', ['a3']));
         $this->assertSame(['draft' => 1, 'published' => 2, 'changed' => 1], $p->stateCounts('article'));
+
+        // An unchanged re-save (an import) keeps the version; a changed one bumps it.
+        $this->dm->saveType($this->stored('a1'), false);
+        $this->assertSame(1, (int) $this->stored('a1')->get('_version'));
+        $this->assertSame(PublishState::Published, $p->states('article', ['a1'])['a1']);
+        $this->assertSame(PublishState::Published, $p->state($this->stored('a1')));
+        $changed = $this->stored('a1');
+        $changed->set('views', 2);
+        $this->dm->saveType($changed, false);
+        $this->assertSame(2, (int) $this->stored('a1')->get('_version'));
+        $p->publish($this->stored('a1'), 'ana', 2);
 
         $p->discard('article', 'a2');
         $this->assertSame(PublishState::Published, $p->states('article', ['a2'])['a2']);
