@@ -1080,6 +1080,9 @@ is used after it; a cache is not written when the signature moved while the reco
 Edge case: a record file edited by hand in place, outside the driver (an editor, `sed`, a deploy that
 overwrites a file), changes neither the generation nor the directory's mtime and is not noticed until the
 next save of that type or `preflow cache:clear`. Adding or removing a file by hand is noticed.
+For a site whose files change outside the app (a `git pull` of the data folder), turn the cache off
+on that storage in `config/data.php`: `'json' => ['path' => ..., 'cache' => false]`. Every query then
+reads the record files; the default is on.
 A cache that cannot be written only costs
 speed. Core's `Application` passes `storage/cache/data`.
 

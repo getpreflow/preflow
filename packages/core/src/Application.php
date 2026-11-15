@@ -776,7 +776,8 @@ final class Application
                 'mysql' => $this->createMysqlDriver($driverConfig, $collector),
                 'json' => $jsonDriver = new \Preflow\Data\Driver\JsonFileDriver(
                     $driverConfig['path'] ?? $this->basePath('storage/data'),
-                    cacheDir: $this->dataCachePath(),
+                    // 'cache' => false: no read cache, for files that change outside the app (a git pull).
+                    cacheDir: ($driverConfig['cache'] ?? true) === false ? null : $this->dataCachePath(),
                 ),
                 default => $this->createStorageDriver((string) $name, $kind, $driverConfig),
             };

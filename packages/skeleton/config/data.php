@@ -9,6 +9,7 @@ return [
         'json' => [
             'driver' => \Preflow\Data\Driver\JsonFileDriver::class,
             'path' => __DIR__ . '/../storage/data',
+            // 'cache' => false, // no read cache, for files that change outside the app (a git pull)
         ],
         // 'mysql' => [
         //     'driver' => \Preflow\Data\Driver\MysqlDriver::class,
