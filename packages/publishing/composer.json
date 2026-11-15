@@ -38,6 +38,9 @@
     },
     "extra": {
         "preflow": {
+            "translations": {
+                "publishing": { "path": "lang", "scope": "admin" }
+            },
             "commands": [
                 "Preflow\\Publishing\\Console\\PublishCommand",
                 "Preflow\\Publishing\\Console\\PublishScheduledCommand"

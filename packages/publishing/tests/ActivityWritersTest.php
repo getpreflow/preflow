@@ -47,6 +47,25 @@ final class ActivityWritersTest extends PublishingAppTestCase
         );
     }
 
+    /** The scheduler's and the command line's markers are no people: publishing names them (translated) with core's ActivityActors. */
+    public function test_the_scheduler_and_cli_markers_have_labels(): void
+    {
+        $c = $this->app()->container();
+        $actors = $c->get(\Preflow\Core\Activity\ActivityActors::class);
+
+        $this->assertSame('publishing.activity.scheduler', $actors->label(\Preflow\Publishing\PublishActors::SCHEDULER));
+        $this->assertSame('publishing.activity.cli', $actors->label(\Preflow\Publishing\PublishActors::CLI));
+        $this->assertSame('scheduler', \Preflow\Publishing\PublishActors::SCHEDULER, 'the value rows already hold');
+        $this->assertSame('cli', \Preflow\Publishing\PublishActors::CLI);
+        $translator = $c->get(\Preflow\I18n\Translator::class);
+        $this->assertSame('Scheduled publishing', $translator->get('publishing.activity.scheduler'));
+        $this->assertSame('Command line', $translator->get('publishing.activity.cli'));
+        foreach (['de' => ['Geplante Veröffentlichung', 'Kommandozeile'], 'fr' => ['Publication planifiée', 'Ligne de commande']] as $locale => [$scheduler, $cli]) {
+            $this->assertSame($scheduler, $translator->get('publishing.activity.scheduler', [], $locale));
+            $this->assertSame($cli, $translator->get('publishing.activity.cli', [], $locale));
+        }
+    }
+
     public function test_the_app_keeps_a_stored_log(): void
     {
         $this->assertInstanceOf(StoredActivityLog::class, $this->log());

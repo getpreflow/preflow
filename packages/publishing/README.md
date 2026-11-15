@@ -168,6 +168,11 @@ The writers tell the activity log (core README, "Activity log") what they stored
   erasure instead: the log forgets every deleted record and clears that person from the rows
   they did (`ActivityLog::forget()`).
 
+Where no person acted, the rows (and revisions) are `by` a marker, `PublishActors::SCHEDULER`
+(`scheduler`) or `PublishActors::CLI` (`cli`, the `publish` command); the provider registers their
+labels ("Scheduled publishing", "Command line"; `lang/{en,de,fr}/publishing.php`) with core's
+`ActivityActors`, so readers never show them as a person.
+
 Titles come from `RecordTitle::of()` in the default language, at the time of the event. A
 failing log is logged as a warning and never fails a write. With the log on, a save reads the
 stored record once more (by id) to name the changed fields.

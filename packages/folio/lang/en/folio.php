@@ -101,6 +101,8 @@ return [
         'all_types' => 'All types',
         'person' => 'Person',
         'everyone' => 'Everyone',
+        // Who: an account that no longer exists.
+        'former_user' => 'Former user',
         'older' => 'Older',
         'newest' => 'Newest',
         'asset' => 'Asset',

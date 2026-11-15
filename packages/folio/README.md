@@ -283,7 +283,8 @@ id for any other. `Preflow\Folio\Users\AuthorNames` shows an id as the account's
 name (else its e-mail), a disabled account included: a record user's from its record, any other
 user from the staff guard's provider (`findById()`; its `name`/`email`, as public properties or
 `getName()`/`getEmail()`, so a model behind `DataManagerUserProvider` shows by name too). It shows
-an e-mail or an unknown value as stored.
+an e-mail or an unknown value as stored (older rows hold names); `person()`, which the activity
+log uses, shows an unknown id as "Former user" (`folio.activity.former_user`).
 
 ## Recent changes and All activity (0.77)
 
@@ -310,8 +311,10 @@ for both.
 - **Titles:** an event's `titleKey` translated when it has a text in the interface language, else
   its stored `title` (a private file reads "Private file", never its name). A redirect reads
   "old → target" while it exists.
-- **Who:** `AuthorNames`; a marker registered with core's `ActivityActors` (members'
-  `member-deletion`) shows its label ("Account deletion"); an erased person shows no one.
+- **Who:** `AuthorNames::person()`; a marker registered with core's `ActivityActors` (members'
+  `member-deletion`, publishing's `scheduler` and `cli`) shows its label ("Account deletion",
+  "Scheduled publishing"); an id no provider finds (a deleted staff account) shows as "Former
+  user", in the row and in the person filter, never as its raw id; an erased person shows no one.
 - **A log that fails to read** is logged as a warning; the dashboard says "Couldn’t load recent
   changes." and All activity a line of its own, never "Nothing changed yet".
 

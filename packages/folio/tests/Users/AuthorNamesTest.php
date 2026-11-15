@@ -50,6 +50,23 @@ final class AuthorNamesTest extends TestCase
         $this->assertSame('old@site.test', $names->label('old@site.test'));
     }
 
+    /** person() (the activity log's people): an id no provider finds is a former user; markers, e-mails and found ids as label(). */
+    public function test_person_names_an_id_nobody_has_any_more_former_user(): void
+    {
+        $actors = new \Preflow\Core\Activity\ActivityActors();
+        $actors->register('nightly-import', 'Nightly import');
+        $names = new AuthorNames(new DataManager([]), static fn (): array => [], fn (): UserProviderInterface => $this->provider(), $actors);
+
+        $this->assertSame('Grace Hopper', $names->person('u1'));
+        $this->assertSame('Former user', $names->person('gone'));
+        $this->assertSame('Former user', $names->person('gone'), 'again, from memory');
+        $this->assertSame('Nightly import', $names->person('nightly-import'), 'a registered marker wins');
+        $this->assertSame('old@site.test', $names->person('old@site.test'));
+        $this->assertNull($names->person(''));
+        $this->assertNull($names->person(null));
+        $this->assertSame('gone', $names->label('gone'), 'label() keeps showing a stored value as it is (older rows hold names)');
+    }
+
     public function test_without_a_provider_ids_show_as_stored(): void
     {
         $this->assertSame('u1', (new AuthorNames(new DataManager([]), static fn (): array => []))->label('u1'));

@@ -268,12 +268,14 @@ final class RecentChanges
         return $item->title !== '' ? $item->title : $item->id;
     }
 
-    /** A person's name (AuthorNames: a registered marker by its label), else as stored. */
+    /** A person's name (AuthorNames::person(): a registered marker by its label, a deleted account "Former user"); null for none. */
     private function who(string $by): ?string
     {
-        $label = $this->authors?->label($by) ?? $by;
+        if ($this->authors !== null) {
+            return $this->authors->person($by);
+        }
 
-        return $label !== '' ? $label : null;
+        return $by !== '' ? $by : null;
     }
 
     /** "Title, Body edited", "Title, Body and 3 more edited"; '' when nothing says or the kind names no fields. */

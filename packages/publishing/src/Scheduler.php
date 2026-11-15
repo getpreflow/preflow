@@ -34,7 +34,7 @@ final class Scheduler
                 }
                 $key = $type . '/' . $working->getId();
                 try {
-                    $this->publisher->publish($working, 'scheduler');
+                    $this->publisher->publish($working, PublishActors::SCHEDULER);
                     $published[] = $key;
                 } catch (ValidationException $e) {
                     $failed[$key] = self::firstMessage($e);

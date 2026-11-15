@@ -141,6 +141,18 @@ final class PublishingServiceProvider extends ServiceProvider
         // Read at boot: a bad 'revisions' stops the boot, not the first publish.
         $container->get(PublishingConfig::class);
 
+        // The scheduler's and the command line's markers read as what they are, never as a person.
+        if ($container->bound(\Preflow\Core\Activity\ActivityActors::class)) {
+            $actors = $container->get(\Preflow\Core\Activity\ActivityActors::class);
+            foreach (PublishActors::LABELS as $marker => $label) {
+                $actors->register($marker, $label);
+            }
+        }
+        // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer metadata doesn't list the package.
+        if (class_exists(\Preflow\I18n\Translator::class) && $container->has(\Preflow\I18n\Translator::class)) {
+            $container->get(\Preflow\I18n\Translator::class)->addDefaultsIfMissing('publishing', dirname(__DIR__) . '/lang', 'admin');
+        }
+
         // The defaults, where no provider (the app's, Folio) bound its own in register().
         if (!$container->bound(PublishingTypes::class)) {
             $container->singleton(PublishingTypes::class, static fn (Container $c): PublishingTypes => new SchemaPublishingTypes($c->get(DataManager::class)));

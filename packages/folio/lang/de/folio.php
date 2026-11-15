@@ -92,6 +92,8 @@ return [
         'all_types' => 'Alle Typen',
         'person' => 'Person',
         'everyone' => 'Alle Personen',
+        // Who: an account that no longer exists.
+        'former_user' => 'Ehemaliges Teammitglied',
         'older' => 'Ältere',
         'newest' => 'Neueste',
         'asset' => 'Datei',

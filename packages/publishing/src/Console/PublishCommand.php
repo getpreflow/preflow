@@ -64,7 +64,7 @@ final class PublishCommand implements CommandInterface
                 continue;
             }
             try {
-                $publisher->publish($record, 'cli');
+                $publisher->publish($record, \Preflow\Publishing\PublishActors::CLI);
                 echo "Published {$key}\n";
             } catch (ValidationException $e) {
                 $failed = true;

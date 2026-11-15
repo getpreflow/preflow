@@ -125,7 +125,8 @@ final class RecentChangesTest extends TestCase
         // Deleted: its stored title, no link.
         $this->assertMatchesRegularExpression('#<span class="folio-activity-title is-gone">Old announcement</span><span class="folio-activity-what">Post · deleted</span>#', $body);
         $this->assertStringNotContainsString('/folio/post/gone', $body);
-        $this->assertStringContainsString('ghost-id', $body, 'an author nobody has any more shows as stored');
+        $this->assertStringContainsString('<span class="folio-activity-who">Former user</span>', $body, 'an author nobody has any more: a neutral label');
+        $this->assertStringNotContainsString('ghost-id', $body, 'never the raw id');
         // Newest first.
         $this->assertLessThan(strpos($body, 'Summer fair'), strpos($body, 'Spring launch'));
         $this->assertLessThan(strpos($body, 'Old announcement'), strpos($body, 'Summer fair'));
@@ -249,7 +250,8 @@ final class RecentChangesTest extends TestCase
         $this->assertSame('Nightly import', $rows['Imported']['who'], 'a marker is no person: its label');
         $this->assertNull($rows['Erased']['who'], 'an erased person shows no one');
         $this->assertArrayHasKey('Fallback title', $rows, 'a titleKey without a text: the stored title');
-        $this->assertSame([['id' => 'u-9', 'label' => 'u-9'], ['id' => 'nightly-import', 'label' => 'Nightly import']], $recent->people($can));
+        $this->assertSame('Former user', $rows['Fallback title']['who'], 'an id no provider finds');
+        $this->assertSame([['id' => 'u-9', 'label' => 'Former user'], ['id' => 'nightly-import', 'label' => 'Nightly import']], $recent->people($can));
         $this->assertSame(\Preflow\Members\MemberEvents::DELETION_ACTOR, \Preflow\Folio\Members\PublishedMemberDeletion::BY, 'Folio writes the marker members names');
     }
 
