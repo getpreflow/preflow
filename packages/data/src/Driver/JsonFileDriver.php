@@ -12,6 +12,7 @@ use Preflow\Data\Locales;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
+use Preflow\Data\Text\TextMatch;
 use Preflow\Data\VersionedStorage;
 
 final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters
@@ -872,9 +873,9 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     }
 
     /**
-     * CONTAINS, ignoring case in every alphabet: a text (or number) that holds the term, or a list
-     * any of whose values does (a tags field a model saved as an array). SQL storage keeps such a
-     * list as JSON text and finds the same records (since 0.77).
+     * CONTAINS under the text-matching rule (TextMatch): a text (or number) that holds the term,
+     * or a list any of whose values does (a tags field a model saved as an array). SQL storage
+     * keeps such a list as JSON text and finds the same records (since 0.77).
      */
     private static function containsText(mixed $fieldValue, string $term): bool
     {
@@ -888,7 +889,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             return false;
         }
 
-        return is_scalar($fieldValue) && mb_stripos((string) $fieldValue, $term) !== false;
+        return is_scalar($fieldValue) && TextMatch::contains((string) $fieldValue, $term);
     }
 
     /** @param list<string> $ids */
@@ -910,23 +911,10 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return array_intersect($ids, $held) !== [];
     }
 
+    /** LIKE under the text-matching rule (TextMatch); no escape character, as on SQL. */
     private function matchLike(string $value, string $pattern): bool
     {
-        $parts = preg_split('/(%|_)/', $pattern, -1, PREG_SPLIT_DELIM_CAPTURE);
-        $regex = '/^';
-        foreach ($parts as $part) {
-            if ($part === '%') {
-                $regex .= '.*';
-            } elseif ($part === '_') {
-                $regex .= '.';
-            } else {
-                $regex .= preg_quote($part, '/');
-            }
-        }
-        // u: case is ignored in every alphabet, and _ is one character, not one byte (as on SQL).
-        $regex .= '$/iu';
-
-        return (bool) preg_match($regex, $value);
+        return TextMatch::like($value, $pattern);
     }
 
     /**
@@ -935,15 +923,13 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
      */
     private function applySearch(array $items, string $term, array $fields, ?Query $query = null): array
     {
-        $term = mb_strtolower($term);
-
         return array_values(array_filter($items, function (array $item) use ($term, $fields, $query) {
             $searchIn = $fields ?: array_keys($item);
 
             foreach ($searchIn as $field) {
                 $value = $this->value($item, $field, $query);
                 if (is_string($value)) {
-                    if (str_contains(mb_strtolower($value), $term)) {
+                    if (TextMatch::contains($value, $term)) {
                         return true;
                     }
                 } elseif (is_array($value) && self::containsText($value, $term)) {

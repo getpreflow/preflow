@@ -85,8 +85,11 @@ interface Dialect
     public function exactText(string $expression): string;
 
     /**
-     * The operator for case-insensitive pattern matching (where LIKE / NOT LIKE, search(),
-     * CONTAINS): 'LIKE' in SQLite and MySQL, whose LIKE ignores case; PostgreSQL's would be 'ILIKE'.
+     * The operator for pattern matching (where LIKE / NOT LIKE, search(), CONTAINS) under the
+     * text-matching rule (StorageDriver: case ignored in every alphabet, accents count), e.g.
+     * 'ILIKE' in PostgreSQL. A dialect whose operator alone cannot give the rule (SQLite's LIKE
+     * folds ASCII case only, MySQL's follows the column's collation, which may ignore accents)
+     * implements PatternMatching, whose likeSql() QueryCompiler then uses instead.
      */
     public function likeOperator(): string;
 

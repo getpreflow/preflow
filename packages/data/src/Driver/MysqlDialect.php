@@ -6,8 +6,72 @@ namespace Preflow\Data\Driver;
 
 use Preflow\Data\UniqueViolation;
 
-final class MysqlDialect implements Dialect
+final class MysqlDialect implements Dialect, PatternMatching
 {
+    /**
+     * The accent-sensitive, case-insensitive collations LIKE compares with, in order of
+     * preference: MariaDB 10.10+'s UCA 14 one, MySQL 8's UCA 9 one (MariaDB 11.4.5+ knows it too,
+     * as an alias). Both fold case as the rule does and keep accents.
+     *
+     * @since 0.78
+     */
+    public const array MATCH_COLLATIONS = ['utf8mb4_uca1400_as_ci', 'utf8mb4_0900_as_ci'];
+
+    /** @var \Closure(): ?string|null resolves the collation on the first LIKE */
+    private ?\Closure $resolveCollation = null;
+
+    private ?string $matchCollation = null;
+
+    /**
+     * @param \Closure(): ?string|string|null $matchCollation The collation LIKE compares with (one
+     *     of MATCH_COLLATIONS the server has); null for none (LIKE lowers both sides instead, see
+     *     likeSql()); a closure naming it (or null), called once, on the first LIKE.
+     */
+    public function __construct(\Closure|string|null $matchCollation = null)
+    {
+        if ($matchCollation instanceof \Closure) {
+            $this->resolveCollation = $matchCollation;
+        } else {
+            $this->matchCollation = self::collationName($matchCollation);
+        }
+    }
+
+    /**
+     * The first of MATCH_COLLATIONS the server has for utf8mb4, or null when it has none
+     * (MariaDB 10.6 to 10.9). Read from the server's collation list, not inferred from
+     * its version: MariaDB 10.10+ lists its UCA 14 collations without a character set
+     * ("uca1400_as_ci", applicable to utf8mb4, used as utf8mb4_uca1400_as_ci), which a lookup by
+     * the full name misses; MySQL 8 and MariaDB 11.4.5+ list utf8mb4_0900_as_ci itself.
+     * information_schema.COLLATION_CHARACTER_SET_APPLICABILITY has both forms on every version.
+     *
+     * @since 0.78
+     */
+    public static function serverMatchCollation(\PDO $pdo): ?string
+    {
+        $names = [];
+        foreach (self::MATCH_COLLATIONS as $collation) {
+            $names[$collation] = $collation;
+            $names[substr($collation, strlen('utf8mb4_'))] = $collation; // MariaDB's name without the character set
+        }
+        $statement = $pdo->prepare(
+            "SELECT COLLATION_NAME FROM information_schema.COLLATION_CHARACTER_SET_APPLICABILITY WHERE CHARACTER_SET_NAME = 'utf8mb4' AND COLLATION_NAME IN ("
+            . implode(', ', array_fill(0, count($names), '?')) . ')',
+        );
+        $statement->execute(array_keys($names));
+        $listed = [];
+        foreach ($statement->fetchAll(\PDO::FETCH_COLUMN) as $name) {
+            $listed[$names[(string) $name] ?? ''] = true;
+        }
+        $statement->closeCursor();
+        foreach (self::MATCH_COLLATIONS as $collation) {
+            if (isset($listed[$collation])) {
+                return $collation;
+            }
+        }
+
+        return null;
+    }
+
     public function quoteIdentifier(string $name): string
     {
         return '`' . str_replace('`', '``', $name) . '`';
@@ -123,10 +187,53 @@ final class MysqlDialect implements Dialect
             . "THEN CAST(TRUNCATE(CAST({$text} AS DECIMAL(65,10)), 0) AS SIGNED) ELSE 0 END)";
     }
 
-    /** MySQL's LIKE ignores case under the tables' case-insensitive collation. */
+    /**
+     * The plain operator, used only by a compiler that does not ask likeSql() (PatternMatching):
+     * under the tables' collation it ignores case, but also accents.
+     */
     public function likeOperator(): string
     {
         return 'LIKE';
+    }
+
+    /**
+     * LIKE under the text-matching rule (case ignored in every alphabet, accents count). With a
+     * collation (MATCH_COLLATIONS) the column is compared in it; the CAST lets a number column or
+     * one of another character set take the COLLATE (as in exactText()), which also means a
+     * prefix pattern does not use an index. Without one both sides are lowered and compared by
+     * code point (utf8mb4_bin), which the data README's "Text matching" says where it differs.
+     */
+    public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string
+    {
+        $like = ($not ? ' NOT' : '') . ' LIKE ';
+        $escapeSql = $escape === null ? '' : " ESCAPE '" . str_replace("'", "''", $escape) . "'";
+        $collation = $this->matchCollation();
+        if ($collation !== null) {
+            return "(CAST({$column} AS CHAR CHARACTER SET utf8mb4) COLLATE {$collation}){$like}?{$escapeSql}";
+        }
+
+        return "LOWER(CAST({$column} AS CHAR CHARACTER SET utf8mb4)) COLLATE utf8mb4_bin{$like}LOWER(CONVERT(? USING utf8mb4)) COLLATE utf8mb4_bin{$escapeSql}";
+    }
+
+    /** The collation LIKE compares with, or null for the LOWER() fallback (a closure resolved once). */
+    private function matchCollation(): ?string
+    {
+        if ($this->resolveCollation !== null) {
+            $this->matchCollation = self::collationName(($this->resolveCollation)()); // a failure is asked again on the next LIKE
+            $this->resolveCollation = null;
+        }
+
+        return $this->matchCollation;
+    }
+
+    /** A collation name goes into the SQL as it is: letters, digits and underscores only. */
+    private static function collationName(?string $name): ?string
+    {
+        if ($name !== null && preg_match('/^[A-Za-z0-9_]+$/', $name) !== 1) {
+            throw new \InvalidArgumentException(sprintf('Invalid collation name "%s".', $name));
+        }
+
+        return $name;
     }
 
     /** "Unknown column 'x' in 'field list'" (error 1054). */

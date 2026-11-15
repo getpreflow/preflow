@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\Text\TextMatch;
 use Preflow\Data\UniqueViolation;
 
 final class SqliteDialect implements Dialect, PatternMatching
@@ -141,15 +142,16 @@ final class SqliteDialect implements Dialect, PatternMatching
     }
 
     /**
-     * LIKE that ignores case for every letter ("über" finds "Über", as MySQL's utf8mb4 collations
-     * do): a pattern of ASCII characters only takes SQLite's native LIKE (it folds ASCII case, and
-     * its _ takes one character, an umlaut too), any other the PHP function ulike() that prepare()
-     * registers, which costs a PHP call per row compared.
+     * LIKE under the text-matching rule (TextMatch: case ignored in every alphabet, accents
+     * count): a pattern TextMatch::asciiSafe() accepts takes SQLite's native LIKE (it folds ASCII
+     * case, and its _ takes one character, an umlaut too), any other the PHP function ulike()
+     * that prepare() registers, which costs a PHP call per row compared. A pattern with a k or an
+     * s is one: the Kelvin sign and the long s fold into them, which native LIKE does not know.
      */
     public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string
     {
         $escapeSql = $escape === null ? null : "'" . str_replace("'", "''", $escape) . "'";
-        if (preg_match('/[^\x00-\x7F]/', $pattern) !== 1) {
+        if (TextMatch::asciiSafe($pattern)) {
             return $column . ($not ? ' NOT LIKE ?' : ' LIKE ?') . ($escapeSql === null ? '' : " ESCAPE {$escapeSql}");
         }
 
@@ -158,9 +160,10 @@ final class SqliteDialect implements Dialect, PatternMatching
 
     /**
      * Readies a connection: registers ulike() (LIKE_FUNCTION, like()), the Unicode match likeSql()
-     * uses for patterns with other than ASCII characters; SQLite's own like() stays. A Pdo\Sqlite
-     * (PDO::connect('sqlite:…')) registers it through createFunction(); a plain PDO only through
-     * sqliteCreateFunction(), deprecated since PHP 8.5, whose deprecation is kept out of this one call.
+     * uses for patterns native LIKE cannot match by the rule; SQLite's own like() stays. A
+     * Pdo\Sqlite (PDO::connect('sqlite:…')) registers it through createFunction(); a plain PDO only
+     * through sqliteCreateFunction(), deprecated since PHP 8.5, whose deprecation is kept out of
+     * this one call.
      *
      * @since 0.77
      */
@@ -180,13 +183,10 @@ final class SqliteDialect implements Dialect, PatternMatching
         }
     }
 
-    /** @var array<string, string> LIKE pattern (with its escape) => regular expression */
-    private static array $patterns = [];
-
     /**
-     * SQL LIKE as ulike(pattern, value[, escape]) is called: % any text, _ one character,
-     * the escape character takes the next one literally; letters compared after mb_strtolower(),
-     * so case is ignored for every alphabet. NULL when the value or the pattern is NULL.
+     * SQL LIKE as ulike(pattern, value[, escape]) is called: TextMatch::like() (% any text, _ one
+     * character, the escape character takes the next one literally, case folded in every
+     * alphabet, accents count). NULL when the value or the pattern is NULL.
      *
      * @since 0.77
      */
@@ -195,32 +195,8 @@ final class SqliteDialect implements Dialect, PatternMatching
         if ($pattern === null || $value === null) {
             return null;
         }
-        $pattern = (string) $pattern;
-        $escape = $escape === null ? '' : (string) $escape;
-        $key = $escape . "\0" . $pattern;
-        if (!isset(self::$patterns[$key])) {
-            if (count(self::$patterns) > 500) {
-                self::$patterns = [];
-            }
-            $regex = '';
-            $chars = mb_str_split(mb_strtolower($pattern));
-            $escapeChar = mb_strtolower($escape);
-            for ($i = 0, $n = count($chars); $i < $n; $i++) {
-                $c = $chars[$i];
-                if ($escapeChar !== '' && $c === $escapeChar && $i + 1 < $n) {
-                    $regex .= preg_quote($chars[++$i], '~');
-                } elseif ($c === '%') {
-                    $regex .= '.*';
-                } elseif ($c === '_') {
-                    $regex .= '.';
-                } else {
-                    $regex .= preg_quote($c, '~');
-                }
-            }
-            self::$patterns[$key] = '~^' . $regex . '$~su';
-        }
 
-        return preg_match(self::$patterns[$key], mb_strtolower((string) $value)) === 1 ? 1 : 0;
+        return TextMatch::like((string) $value, (string) $pattern, $escape === null ? null : (string) $escape) ? 1 : 0;
     }
 
     /** "no such column: x" (a read), "table t has no column named x" (a write). */

@@ -51,10 +51,15 @@ use Preflow\Data\Transactions;
  * key. Strings come back exactly as saved.
  *
  * Query semantics a driver implements (as SQLite and MySQL do):
- * - `LIKE` / `NOT LIKE` ignore case in every alphabet ("über" finds "Über"; PostgreSQL needs
- *   ILIKE, SQLite a Unicode ulike() for patterns with other than ASCII characters, see
- *   SqliteDialect::prepare()); `%` matches any text, `_` one
- *   character (an umlaut is one).
+ * - Text matching: `LIKE`, `NOT LIKE`, `CONTAINS`, search(), searchLoose() and so ⌘K's loose-search
+ *   set compare text with Unicode simple case folding and nothing else: case is ignored in every
+ *   alphabet, accents and other marks count. "über" and "ÜBER" find "Über", "uber" does not; ß is one
+ *   letter ("strasse" does not find "Straße", "STRAẞE" does); the Kelvin sign is a k; "İSTANBUL" finds
+ *   "İstanbul", "istanbul" does not (İ has no simple fold); ı is a letter of its own ("ILIK" does not
+ *   find "ılık"). `%` matches any text, `_` one character (an umlaut is one). Text is compared as
+ *   stored (a decomposed "Ü" is not promised to match). Preflow\Data\Text\TextMatch is the rule in PHP.
+ *   (since 0.78; SQLite needs its Unicode ulike(), see SqliteDialect::prepare(), MySQL an
+ *   accent-sensitive collation in the query, see MysqlDialect::likeSql()).
  * - search() and the `CONTAINS` of whereAny() find a term in a text, and in a list (a `json`
  *   field saved as a list) when one of its values holds it, slashes and umlauts as they are.
  * - A null field matches only `where(field, null)` (IS NULL); `=`, `!=`, `<>`, `<`, `>`, `<=`,
@@ -683,6 +688,45 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame([], $this->wordIds((new Query())->search('nothing', ['title', 'tags'])));
     }
 
+    public function test_like_respects_accents(): void
+    {
+        $this->seedEdgeWords();
+
+        $this->assertSame([], $this->edgeIds((new Query())->where('title', 'LIKE', '%uber%')), 'accents count: "uber" does not find "Über"');
+        $this->assertSame(['u'], $this->edgeIds((new Query())->where('title', 'LIKE', '%über%')));
+        $this->assertSame([], $this->edgeIds((new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'ete']])), '"ete" does not find "ÉTÉ"');
+        $this->assertSame([], $this->edgeIds((new Query())->search('uber', ['title'])));
+    }
+
+    public function test_sharp_s_is_one_letter(): void
+    {
+        $this->seedEdgeWords();
+
+        $this->assertSame([], $this->edgeIds((new Query())->where('title', 'LIKE', 'strasse')), 'ß is one letter, not "ss"');
+        $this->assertSame([], $this->edgeIds((new Query())->where('title', 'LIKE', 'STRASSE')));
+        $this->assertSame(['s'], $this->edgeIds((new Query())->where('title', 'LIKE', 'STRAẞE')), 'the capital ẞ folds to ß');
+        $this->assertSame(['s'], $this->edgeIds((new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'straß']])));
+    }
+
+    public function test_the_kelvin_sign_and_long_s_are_k_and_s(): void
+    {
+        $this->seedEdgeWords();
+
+        $this->assertSame(['l', 'x'], $this->edgeIds((new Query())->where('title', 'LIKE', 'kelvin')), 'the Kelvin sign folds to k');
+        $this->assertSame(['l', 'x'], $this->edgeIds((new Query())->where('title', 'LIKE', "\u{212A}ELVIN")), 'both directions');
+        $this->assertSame(['l', 'x'], $this->edgeIds((new Query())->whereAny([['field' => 'title', 'operator' => 'CONTAINS', 'value' => 'kel']])));
+    }
+
+    public function test_dotted_and_dotless_i_are_letters_of_their_own(): void
+    {
+        $this->seedEdgeWords();
+
+        $this->assertSame(['t'], $this->edgeIds((new Query())->where('title', 'LIKE', 'İSTANBUL')));
+        $this->assertSame([], $this->edgeIds((new Query())->where('title', 'LIKE', 'istanbul')), 'the dot of İ counts as an accent');
+        $this->assertSame([], $this->edgeIds((new Query())->where('title', 'LIKE', 'ILIK')), 'ı is a letter of its own');
+        $this->assertSame(['d'], $this->edgeIds((new Query())->where('title', 'LIKE', 'ılık')));
+    }
+
     public function test_where_in_and_not_in(): void
     {
         $this->seedItems();
@@ -898,6 +942,21 @@ abstract class StorageDriverContract extends TestCase
         $this->driver->save('words', 'u', ['uuid' => 'u', 'title' => 'Über uns', 'tags' => null]);
         $this->driver->save('words', 'e', ['uuid' => 'e', 'title' => 'ÉTÉ', 'tags' => ['Sommer']]);
         $this->driver->save('words', 'k', ['uuid' => 'k', 'title' => 'Kartenspiel', 'tags' => ['Folio', 'Übersetzung', 'a/b']]);
+    }
+
+    /** The text-matching rule's edge cases: accents, ß, the Kelvin sign, dotted and dotless i. */
+    private function seedEdgeWords(): void
+    {
+        $this->createType('edges', ['uuid' => 'string', 'title' => 'string']);
+        foreach (['u' => 'Über uns', 'e' => 'ÉTÉ', 's' => 'Straße', 't' => 'İstanbul', 'd' => 'ılık', 'x' => "\u{212A}elvin", 'l' => 'Kelvin'] as $id => $title) {
+            $this->driver->save('edges', $id, ['uuid' => $id, 'title' => $title]);
+        }
+    }
+
+    /** @return list<string> the matching edge-word ids, sorted */
+    private function edgeIds(Query $query): array
+    {
+        return $this->sortedIds($this->driver->findMany('edges', $query));
     }
 
     /** @return list<string> the matching word ids, sorted */

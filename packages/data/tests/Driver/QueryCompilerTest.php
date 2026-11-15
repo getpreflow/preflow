@@ -90,11 +90,11 @@ final class QueryCompilerTest extends TestCase
 
     public function test_like_operator(): void
     {
-        $q = (new Query())->where('title', 'LIKE', '%test%');
+        $q = (new Query())->where('title', 'LIKE', '%hello%'); // no k or s: SQLite's native LIKE
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame('SELECT * FROM "posts" WHERE "title" LIKE ?', $sql);
-        $this->assertSame(['%test%'], $bindings);
+        $this->assertSame(['%hello%'], $bindings);
     }
 
     public function test_count_query(): void

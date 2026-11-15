@@ -66,6 +66,16 @@ final class DialectMatchingTest extends TestCase
         $this->assertSame('SELECT * FROM "posts" WHERE ("title" LIKE ?) AND (ulike(?, "body", \'!\'))', $sql);
     }
 
+    /** k and s: the Kelvin sign and the long s fold into them, which SQLite's native LIKE does not know. */
+    public function test_sqlite_takes_ulike_for_a_pattern_with_k_or_s(): void
+    {
+        $dialect = new SqliteDialect();
+
+        $this->assertStringStartsWith('ulike(', $dialect->likeSql('t', '%kart%'));
+        $this->assertStringStartsWith('ulike(', $dialect->likeSql('t', '%S%'));
+        $this->assertSame('t LIKE ?', $dialect->likeSql('t', '%ber%'), 'a pattern without k or s keeps native LIKE');
+    }
+
     /** SQLite's own like() stays as it is: prepare() adds ulike() and replaces nothing. */
     public function test_sqlite_prepare_registers_ulike_and_keeps_like(): void
     {

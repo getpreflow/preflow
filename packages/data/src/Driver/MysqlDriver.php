@@ -27,11 +27,42 @@ final class MysqlDriver extends PdoDriver implements RankedSearch
         ];
     }
 
-    /** @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query. */
-    public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null)
+    /** false until matchCollation() asked the server (or the constructor was told) */
+    private bool $collationKnown = false;
+
+    private ?string $matchCollation = null;
+
+    /**
+     * @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query.
+     * @param string|false|null $matchCollation The collation LIKE compares with: null asks the
+     *     server (MysqlDialect::serverMatchCollation(), once, on the first LIKE), false takes the
+     *     LOWER() fallback, a string names it.
+     */
+    public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null, string|false|null $matchCollation = null)
     {
-        $dialect = new MysqlDialect();
+        if ($matchCollation !== null) {
+            $this->matchCollation = $matchCollation === false ? null : $matchCollation;
+            $this->collationKnown = true;
+        }
+        $dialect = new MysqlDialect($this->collationKnown ? $this->matchCollation : $this->matchCollation(...));
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
+    }
+
+    /**
+     * The accent-sensitive, case-insensitive collation LIKE, NOT LIKE, CONTAINS and search()
+     * compare with (one of MysqlDialect::MATCH_COLLATIONS), or null when the server has none and
+     * they lower both sides instead (see the data README, "Text matching").
+     *
+     * @since 0.78
+     */
+    public function matchCollation(): ?string
+    {
+        if (!$this->collationKnown) {
+            $this->matchCollation = MysqlDialect::serverMatchCollation($this->pdo());
+            $this->collationKnown = true;
+        }
+
+        return $this->matchCollation;
     }
 
     protected function configure(\PDO $pdo): void
