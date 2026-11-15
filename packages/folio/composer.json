@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/ai": "^0.77 || @dev",
+        "preflow/ai": "^0.78 || @dev",
         "preflow/core": "^0.77 || @dev",
         "preflow/data": "^0.77.1 || @dev",
         "preflow/view": "^0.74 || @dev",
@@ -18,7 +18,7 @@
         "preflow/publishing": "^0.77 || @dev",
         "preflow/components": "^0.1 || @dev",
         "preflow/htmx": "^0.65 || @dev",
-        "preflow/i18n": "^0.77 || @dev",
+        "preflow/i18n": "^0.78 || @dev",
         "preflow/media": "^0.77 || @dev",
         "preflow/notify": "^0.69 || @dev",
         "preflow/devtools": "^0.77 || @dev",
@@ -35,7 +35,7 @@
         "preflow/rbac": "Stored roles and staff accounts; Folio adds their admin (the built-in extension \"rbac\")"
     },
     "conflict": {
-        "preflow/ai": "<0.77",
+        "preflow/ai": "<0.78",
         "preflow/auth": "<0.69",
         "preflow/blocks": "<0.75",
         "preflow/codes": "<0.68",
@@ -44,7 +44,7 @@
         "preflow/devtools": "<0.77",
         "preflow/form": "<0.75",
         "preflow/htmx": "<0.65",
-        "preflow/i18n": "<0.77",
+        "preflow/i18n": "<0.78",
         "preflow/media": "<0.77",
         "preflow/members": "<0.77",
         "preflow/notify": "<0.69",

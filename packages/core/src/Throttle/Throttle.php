@@ -25,7 +25,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * orphaned by the rotation; hit() prunes them (see prune()).
  *
  * client() refuses an empty or the well-known default key: a hash salted with a
- * public key could be brute-forced back to the IP.
+ * public key could be brute-forced back to the IP. forPerson() (since 0.78) does the
+ * same for a signed-in person's auth id, so the raw id is never stored either.
  */
 final class Throttle
 {
@@ -69,13 +70,32 @@ final class Throttle
      */
     public function client(ServerRequestInterface $request): string
     {
-        if ($this->key === '' || $this->key === self::DEFAULT_KEY) {
-            throw new \RuntimeException('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.');
-        }
+        $this->assertKey();
         $ip = $request->getServerParams()['REMOTE_ADDR'] ?? null;
         $ip = is_string($ip) && $ip !== '' ? self::network($ip) : 'unknown';
 
         return hash_hmac('sha256', $ip, $this->key . '|' . gmdate('Y-m-d'));
+    }
+
+    /**
+     * The client string of a signed-in person (a per-person limit): the auth id hashed with the app
+     * key. Stable, unlike client(): a window of an hour must not start over at midnight. The raw id
+     * is never stored.
+     *
+     * @since 0.78
+     */
+    public function forPerson(string $authId): string
+    {
+        $this->assertKey();
+
+        return hash_hmac('sha256', 'person|' . $authId, $this->key);
+    }
+
+    private function assertKey(): void
+    {
+        if ($this->key === '' || $this->key === self::DEFAULT_KEY) {
+            throw new \RuntimeException('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.');
+        }
     }
 
     /** "2001:db8:1:2::/64" for an IPv6 address, the dotted address for IPv4; anything else as given. */
@@ -106,8 +126,10 @@ final class Throttle
      * Counts an attempt: the first of a window starts it at now, one at window_start +
      * $windowSeconds or later starts a new window (as tooMany() sees it expired). A hit that
      * starts a window prunes old rows, once per instance.
+     *
+     * @return int the hits in the window, this one included (since 0.78; before, nothing)
      */
-    public function hit(string $purpose, string $client, int $windowSeconds): void
+    public function hit(string $purpose, string $client, int $windowSeconds): int
     {
         $now = ($this->clock)();
         $hits = $this->dm->incrementIn(
@@ -123,6 +145,24 @@ final class Throttle
             $this->pruned = true;
             $this->prune();
         }
+
+        return $hits;
+    }
+
+    /**
+     * Seconds until the stored window of $purpose and $client ends (at least 1), or 0 when there
+     * is no row or its window has ended. It does not look at the count: the caller knows the limit.
+     *
+     * @since 0.78
+     */
+    public function retryAfter(string $purpose, string $client, int $windowSeconds): int
+    {
+        $record = $this->dm->findIn($this->type, $this->id($purpose, $client));
+        if ($record === null || $this->expired($record, $windowSeconds)) {
+            return 0;
+        }
+
+        return max(1, (int) $record->get('window_start') + $windowSeconds - ($this->clock)());
     }
 
     public function clear(string $purpose, string $client): void

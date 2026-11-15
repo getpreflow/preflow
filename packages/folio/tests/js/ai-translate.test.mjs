@@ -63,3 +63,27 @@ test('queue mode posts and shows the message without filling inputs', async () =
     assert.deepEqual(running.lines, ['Already queued.'], 'no cron hint while the worker runs');
     assert.equal(running.existing, true);
 });
+
+test('limit_swap lets a 429 inside the run screen swap', () => {
+    const run = { closest: (sel) => (sel === '[data-ai-run]' ? run : null) };
+    const progress = { closest: (sel) => (sel === '[data-ai-run]' ? run : null) };
+    const elsewhere = { closest: () => null };
+
+    for (const target of [run, progress]) {
+        const detail = { xhr: { status: 429 }, target, shouldSwap: false, isError: true };
+        assert.equal(core.limitSwap(detail), true);
+        assert.equal(detail.shouldSwap, true);
+        assert.equal(detail.isError, false);
+    }
+
+    for (const detail of [
+        { xhr: { status: 500 }, target: progress, shouldSwap: false, isError: true },
+        { xhr: { status: 422 }, target: run, shouldSwap: false, isError: true },
+        { xhr: { status: 429 }, target: elsewhere, shouldSwap: false, isError: true },
+        { xhr: { status: 429 }, target: null, shouldSwap: false, isError: true },
+    ]) {
+        assert.equal(core.limitSwap(detail), false);
+        assert.equal(detail.shouldSwap, false, 'another status or target is left to htmx');
+        assert.equal(detail.isError, true);
+    }
+});

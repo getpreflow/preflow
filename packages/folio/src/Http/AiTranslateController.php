@@ -6,6 +6,8 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Ai\AiUnavailable;
+use Preflow\Ai\Limits\AiLimitReached;
+use Preflow\Ai\Limits\AiLimits;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Data\DataManager;
@@ -47,6 +49,12 @@ use Psr\Http\Message\ServerRequestInterface;
  * The routes exist only while AI is on (FolioRoutes); the check here covers a container whose
  * AI was switched off after boot. The route asks the type's edit permission
  * (FolioPermissionMiddleware); this controller adds ai.translate.
+ *
+ * Per-person limits (AiLimits, since 0.78): suggest, suggestLabels and suggestAlt count one
+ * translated item against the signed-in person's `translate` limit; queue and start only check
+ * that budget is left (the runner counts each item when it is translated). Over it, the JSON
+ * endpoints answer 429 with Retry-After and the limit's text; the run screen's progress answers
+ * 429 too, says when it goes on, and polls again after Retry-After (the job waits, it is not stopped).
  */
 final class AiTranslateController
 {
@@ -75,6 +83,7 @@ final class AiTranslateController
         private readonly ?MediaLibrary $media = null,
         private readonly ?Locales $mediaLocales = null,
         private readonly ?TranslationWorker $worker = null,
+        private readonly ?AiLimits $limits = null,
     ) {}
 
     /** GET {type}/_ai/run?ids[]=…: languages, scope and note; without ids the whole type. */
@@ -179,6 +188,13 @@ final class AiTranslateController
         if (self::needsLiveConfirmation($job, $this->sources->get($job->collection)->writesLive()) && !$confirmed) {
             return $this->progress($request, $job, FolioText::get('folio.ai_run.confirm_required'), 422);
         }
+        if ($job->state !== 'done') {
+            try {
+                $this->checkLimit($request);
+            } catch (AiLimitReached $e) {
+                return $this->progress($request, $job, null, 429, $e);
+            }
+        }
 
         return $this->progress($request, $this->runner->start($job->id, $confirmed, $this->userName($request)));
     }
@@ -206,6 +222,9 @@ final class AiTranslateController
                 $job = $this->runner->step($job->id, 1);
             } catch (AiUnavailable) {
                 $job = $this->jobs->get($job->id) ?? $job; // stopped and saved by the runner, with the message
+            } catch (AiLimitReached $e) {
+                // The job waits for its person's limit; the progress says so and polls again after Retry-After.
+                return $this->progress($request, $this->jobs->get($job->id) ?? $job, null, 429, $e);
             }
         }
 
@@ -278,6 +297,11 @@ final class AiTranslateController
         if ($live && !$confirmLive) {
             return self::json(422, ['error' => FolioText::get('folio.ai_queue.confirm_live')]);
         }
+        try {
+            $this->checkLimit($request);
+        } catch (AiLimitReached $e) {
+            return self::limitReached($e);
+        }
         $note = trim(is_string($body['note'] ?? null) ? $body['note'] : '');
         $job = $this->runner->plan($type, [$locale], $target['scope'], [$id], $note === '' ? null : $note, $prefix);
 
@@ -287,6 +311,38 @@ final class AiTranslateController
     private function workerRuns(): bool
     {
         return WorkerWatch::runs($this->worker);
+    }
+
+    /**
+     * Counts one translated item against the signed-in person's limit (nothing without limits or sign-in).
+     *
+     * @throws AiLimitReached
+     */
+    private function takeLimit(ServerRequestInterface $request): void
+    {
+        $person = $this->userName($request);
+        if ($this->limits !== null && $person !== null) {
+            $this->limits->take(AiLimits::TRANSLATE, $person);
+        }
+    }
+
+    /**
+     * Whether the signed-in person has budget left, before a job is queued; counts nothing.
+     *
+     * @throws AiLimitReached
+     */
+    private function checkLimit(ServerRequestInterface $request): void
+    {
+        $person = $this->userName($request);
+        if ($this->limits !== null && $person !== null) {
+            $this->limits->check(AiLimits::TRANSLATE, $person);
+        }
+    }
+
+    /** 429 with Retry-After and the limit's text, for the JSON endpoints. */
+    private static function limitReached(AiLimitReached $e): ResponseInterface
+    {
+        return self::json(429, ['error' => FolioText::get($e->textKey(), $e->textParams())], ['Retry-After' => (string) $e->retryAfter]);
     }
 
     /** The signed-in user's id (who queued a run); null without sign-in. */
@@ -392,6 +448,11 @@ final class AiTranslateController
     {
         if ($units === []) {
             return self::json(200, ['texts' => new \stdClass(), 'failed' => new \stdClass(), 'costUsd' => 0.0]);
+        }
+        try {
+            $this->takeLimit($request);
+        } catch (AiLimitReached $e) {
+            return self::limitReached($e);
         }
         LongRequest::allow($request, self::TIME_LIMIT);
         $cost = 0.0;
@@ -567,17 +628,19 @@ final class AiTranslateController
      * The run screen: the form, the plan's summary, or a job's progress.
      *
      * @param array<string, mixed> $view
+     * @param array<string, string> $headers more headers (Retry-After)
      */
-    private function page(ServerRequestInterface $request, string $type, array $view, int $status = 200): ResponseInterface
+    private function page(ServerRequestInterface $request, string $type, array $view, int $status = 200, array $headers = []): ResponseInterface
     {
         $source = $this->sources->get($type);
 
-        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/ai/run.twig', $view + [
+        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'] + $headers, $this->engine->render('@folio/admin/ai/run.twig', $view + [
             'prefix' => $this->prefix,
             'type' => $type,
             'label' => $source->label(),
             'csrf' => self::csrf($request),
-            'editor_assets' => ['htmx.js'],
+            // ai-translate-core.js: admin.js swaps in a step's 429 (the person's AI limit) through it.
+            'editor_assets' => ['htmx.js', 'ai-translate-core.js'],
             'action' => $this->prefix . '/' . $type . '/_ai/run',
             'languages' => $this->languages($type),
             'locales' => array_keys($this->languages($type)),
@@ -591,20 +654,24 @@ final class AiTranslateController
         ]));
     }
 
-    /** The progress partial for htmx, else the run screen around it. */
-    private function progress(ServerRequestInterface $request, Job $job, ?string $error = null, int $status = 200): ResponseInterface
+    /**
+     * The progress partial for htmx, else the run screen around it. With $limit (429), it says when
+     * the person's limit lets the run go on, and a running job's partial polls again only then.
+     */
+    private function progress(ServerRequestInterface $request, Job $job, ?string $error = null, int $status = 200, ?AiLimitReached $limit = null): ResponseInterface
     {
-        $view = $this->progressView($request, $job, $error);
+        $view = $this->progressView($request, $job, $error, $limit);
+        $headers = $limit === null ? [] : ['Retry-After' => (string) $limit->retryAfter];
         // Folio's own htmx (@folio/htmx.js, not the app's driver) polls the progress partial.
         if ($request->getHeaderLine('HX-Request') !== 'true') {
-            return $this->page($request, $job->collection, ['progress' => $view], $status);
+            return $this->page($request, $job->collection, ['progress' => $view], $status, $headers);
         }
 
-        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'], $this->engine->render('@folio/admin/ai/run-progress.twig', $view));
+        return new Response($status, ['Content-Type' => 'text/html; charset=UTF-8', 'Cache-Control' => 'no-store'] + $headers, $this->engine->render('@folio/admin/ai/run-progress.twig', $view));
     }
 
     /** @return array<string, mixed> what run-progress.twig shows */
-    private function progressView(ServerRequestInterface $request, Job $job, ?string $error): array
+    private function progressView(ServerRequestInterface $request, Job $job, ?string $error, ?AiLimitReached $limit = null): array
     {
         $type = $job->collection;
         $source = $this->sources->get($type);
@@ -658,6 +725,9 @@ final class AiTranslateController
             'worker' => $this->workerRuns(),
             'message' => $job->message,
             'error' => $error,
+            // Over the person's AI limit: the notice, and the seconds the next poll waits.
+            'limit' => $limit === null ? null : FolioText::get($limit->textKey(), $limit->textParams()),
+            'retry_after' => $limit?->retryAfter,
             'done' => count($finished),
             'total' => count($job->items),
             // A request without a price makes the total unknown: "—", never a misleading $0.00.
@@ -710,12 +780,13 @@ final class AiTranslateController
      * U+FFFD instead of a failed response.
      *
      * @param array<string, mixed> $data
+     * @param array<string, string> $headers more headers (Retry-After)
      */
-    private static function json(int $status, array $data): ResponseInterface
+    private static function json(int $status, array $data, array $headers = []): ResponseInterface
     {
         return new Response(
             $status,
-            ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-store'],
+            ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-store'] + $headers,
             json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE),
         );
     }

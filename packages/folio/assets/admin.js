@@ -2881,6 +2881,12 @@
         if (stalled) { stalled.hidden = false; }
     }
 
+    // The AI run's progress over the person's AI limit answers 429 with its notice and a delayed
+    // poll: swapped in like any step (ai-translate-core.js, loaded by the run screen), not a stall.
+    function onRunBeforeSwap(e) {
+        if (window.FolioAiTranslateCore && e.detail) { window.FolioAiTranslateCore.limitSwap(e.detail); }
+    }
+
     // Cards added by htmx: run the same per-element setup as on page load.
     function onHtmxLoad(e) {
         var root = e.detail && e.detail.elt ? e.detail.elt : null;
@@ -4420,6 +4426,7 @@
         ['htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach(function (name) {
             document.addEventListener(name, onRunStepFailed);
         });
+        document.addEventListener('htmx:beforeSwap', onRunBeforeSwap);
         document.addEventListener('htmx:load', onHtmxLoad);
         document.addEventListener('folio:error', onFolioError);
         // Busy buttons: after the confirm, removal and delete-plan handlers above, so a cancelled submit stays idle.

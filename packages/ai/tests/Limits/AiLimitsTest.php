@@ -1,0 +1,200 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Ai\Tests\Limits;
+
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use Preflow\Ai\Limits\AiLimitReached;
+use Preflow\Ai\Limits\AiLimits;
+use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\Migration\Migration;
+use Preflow\Data\Migration\Schema;
+use Preflow\Testing\DataTestCase;
+
+/** Per-person limits for AI work, counted through core's Throttle on every built-in storage. */
+final class AiLimitsTest extends DataTestCase
+{
+    private int $now = 1_000_000;
+
+    private string $storage = 'sqlite';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->migrate($this->getPdo());
+    }
+
+    private function migrate(\PDO $pdo): void
+    {
+        /** @var Migration $migration */
+        $migration = require dirname(__DIR__, 3) . '/core/migrations/2026_10_22_000000_preflow_throttle.php';
+        $migration->up(new Schema($pdo));
+    }
+
+    private function onMysql(): void
+    {
+        $this->migrate($this->useMysql()->pdo());
+        $this->storage = 'mysql';
+    }
+
+    private function throttle(): Throttle
+    {
+        return new Throttle($this->dataManager(), 'secret', $this->storage, fn (): int => $this->now);
+    }
+
+    /** @param array<string, array<string, mixed>> $limits */
+    private function limits(array $limits = AiLimits::DEFAULTS): AiLimits
+    {
+        return new AiLimits($this->throttle(), $limits);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function storages(): array
+    {
+        return ['json' => ['json'], 'sqlite' => ['sqlite']];
+    }
+
+    private function rows(): int
+    {
+        $count = 0;
+        foreach (['p1', 'p2'] as $person) {
+            foreach (['draft', 'translate'] as $action) {
+                $count += $this->throttle()->retryAfter('ai.' . $action, $this->throttle()->forPerson($person), 3600) > 0 ? 1 : 0;
+            }
+        }
+
+        return $count;
+    }
+
+    #[DataProvider('storages')]
+    public function test_take_allows_max_then_refuses_with_retry_after(string $storage = 'sqlite'): void
+    {
+        $this->storage = $storage;
+        $limits = $this->limits(['draft' => ['max' => 2]]);
+        $limits->take(AiLimits::DRAFT, 'p1');
+        $this->now += 600;
+        $limits->take(AiLimits::DRAFT, 'p1');
+
+        try {
+            $limits->take(AiLimits::DRAFT, 'p1');
+            $this->fail('expected AiLimitReached');
+        } catch (AiLimitReached $e) {
+            $this->assertSame('draft', $e->action);
+            $this->assertSame(2, $e->max);
+            $this->assertSame(3000, $e->retryAfter, 'until the window that began with the first draft ends');
+            $this->assertGreaterThanOrEqual(1, $e->retryAfter);
+            $this->assertLessThanOrEqual(3600, $e->retryAfter);
+            $this->assertSame('ai.limits.draft', $e->textKey());
+            $this->assertSame(['max' => 2, 'minutes' => 50], $e->textParams());
+        }
+
+        $this->now += 3000;
+        $limits->take(AiLimits::DRAFT, 'p1');
+        $this->addToAssertionCount(1);
+    }
+
+    #[DataProvider('storages')]
+    public function test_a_limit_of_zero_is_off(string $storage = 'sqlite'): void
+    {
+        $this->storage = $storage;
+        $limits = $this->limits(['draft' => ['max' => 0], 'translate' => ['max' => 0]]);
+        for ($i = 0; $i < 50; $i++) {
+            $limits->take(AiLimits::DRAFT, 'p1');
+            $limits->check(AiLimits::TRANSLATE, 'p1');
+        }
+
+        $this->assertNull($limits->limit(AiLimits::DRAFT));
+        $this->assertSame(0, $this->rows(), 'no throttle row written');
+    }
+
+    #[DataProvider('storages')]
+    public function test_check_counts_nothing(string $storage = 'sqlite'): void
+    {
+        $this->storage = $storage;
+        $limits = $this->limits(['draft' => ['max' => 2]]);
+        for ($i = 0; $i < 5; $i++) {
+            $limits->check(AiLimits::DRAFT, 'p1');
+        }
+        $limits->take(AiLimits::DRAFT, 'p1');
+        $limits->take(AiLimits::DRAFT, 'p1');
+
+        try {
+            $limits->check(AiLimits::DRAFT, 'p1');
+            $this->fail('no budget left: check refuses');
+        } catch (AiLimitReached $e) {
+            $this->assertSame(2, $e->max);
+            $this->assertSame(3600, $e->retryAfter);
+        }
+    }
+
+    #[DataProvider('storages')]
+    public function test_persons_and_actions_are_counted_apart(string $storage = 'sqlite'): void
+    {
+        $this->storage = $storage;
+        $limits = $this->limits(['draft' => ['max' => 1], 'translate' => ['max' => 1]]);
+        $limits->take(AiLimits::DRAFT, 'p1');
+        $limits->take(AiLimits::DRAFT, 'p2');
+        $limits->take(AiLimits::TRANSLATE, 'p1');
+        $limits->take(AiLimits::TRANSLATE, 'p2');
+
+        $this->expectException(AiLimitReached::class);
+        $limits->take(AiLimits::TRANSLATE, 'p1');
+    }
+
+    public function test_an_invalid_limit_names_the_setting(): void
+    {
+        foreach ([
+            [['draft' => ['max' => -1]], 'ai.limits.draft.max'],
+            [['translate' => ['max' => '5']], 'ai.limits.translate.max'],
+            [['draft' => ['per' => 0]], 'ai.limits.draft.per'],
+            [['translate' => ['max' => 5, 'per' => 1.5]], 'ai.limits.translate.per'],
+        ] as [$config, $setting]) {
+            try {
+                $this->limits($config);
+                $this->fail("expected {$setting} to be refused");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString($setting, $e->getMessage());
+            }
+        }
+    }
+
+    public function test_config_is_merged_over_the_defaults_and_unknown_actions_are_refused(): void
+    {
+        $limits = $this->limits(['translate' => ['max' => 5]]);
+        $this->assertSame(['max' => 5, 'per' => 3600], $limits->limit(AiLimits::TRANSLATE));
+        $this->assertSame(['max' => 30, 'per' => 3600], $limits->limit(AiLimits::DRAFT));
+
+        $this->expectException(\InvalidArgumentException::class);
+        $limits->take('image', 'p1');
+    }
+
+    #[Group('mysql')]
+    public function test_take_allows_max_then_refuses_with_retry_after_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_take_allows_max_then_refuses_with_retry_after('mysql');
+    }
+
+    #[Group('mysql')]
+    public function test_a_limit_of_zero_is_off_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_a_limit_of_zero_is_off('mysql');
+    }
+
+    #[Group('mysql')]
+    public function test_check_counts_nothing_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_check_counts_nothing('mysql');
+    }
+
+    #[Group('mysql')]
+    public function test_persons_and_actions_are_counted_apart_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_persons_and_actions_are_counted_apart('mysql');
+    }
+}

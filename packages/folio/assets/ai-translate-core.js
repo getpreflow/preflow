@@ -102,5 +102,20 @@
         return out;
     }
 
-    return { pathToName: pathToName, queue: queue, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
+    /**
+     * htmx:beforeSwap on the run screen: a 429 (the person's AI limit) for an element inside
+     * [data-ai-run] carries the progress with its notice and the delayed poll, so it is swapped in
+     * and not treated as a failed step. Any other answer or target is left to htmx. Returns
+     * whether it changed the swap.
+     */
+    function limitSwap(detail) {
+        var status = detail && detail.xhr ? detail.xhr.status : 0;
+        var target = detail ? detail.target : null;
+        if (status !== 429 || !target || typeof target.closest !== 'function' || !target.closest('[data-ai-run]')) { return false; }
+        detail.shouldSwap = true;
+        detail.isError = false;
+        return true;
+    }
+
+    return { pathToName: pathToName, queue: queue, limitSwap: limitSwap, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
 }));

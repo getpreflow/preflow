@@ -6,6 +6,7 @@ namespace Preflow\Ai;
 
 use Preflow\Ai\Draft\AiDraftWriter;
 use Preflow\Ai\Draft\DraftWriter;
+use Preflow\Ai\Limits\AiLimits;
 use Preflow\Ai\Settings\AiSettingsStore;
 use Preflow\Ai\Settings\FileAiSettingsStore;
 use Preflow\Ai\Settings\ProjectTuning;
@@ -15,12 +16,15 @@ use Preflow\Ai\Usage\UsageLog;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Core\Throttle\Throttle;
 use Preflow\I18n\Translator;
 
 /**
  * Binds the AI service, usage log, pricing, settings store and draft writer from config/ai.php. A
  * missing file means AI is off (enabled defaults to false), so listing this provider is harmless.
- * An unknown `provider`, or a `draft.writer` that names no DraftWriter, stops the boot. The
+ * An unknown `provider`, or a `draft.writer` that names no DraftWriter, stops the boot. AiLimits (the
+ * per-person limits of `limits`, since 0.78) is bound only when core's Throttle is (an app with
+ * config/data.php); a limit that is not a whole number in range stops the boot too. The
  * ai:check and ai:usage commands are listed in composer.json (extra.preflow.commands).
  */
 final class AiServiceProvider extends ServiceProvider
@@ -62,11 +66,24 @@ final class AiServiceProvider extends ServiceProvider
 
             return new AiDraftWriter($c->get(Ai::class), static fn (): Tuning => $c->get(ProjectTuning::class)->tuning());
         });
+
+        // Per-person limits count through the Throttle, which needs the data layer: without it nothing is limited.
+        if ($container->bound(Throttle::class)) {
+            $container->singleton(AiLimits::class, static function (Container $c): AiLimits {
+                $limits = self::config($c)['limits'] ?? [];
+
+                return new AiLimits($c->get(Throttle::class), is_array($limits) ? $limits : []);
+            });
+        }
     }
 
     public function boot(Container $container): void
     {
         self::draftWriterClass($container);
+        // A limit config/ai.php can't mean stops the boot, naming the setting.
+        if ($container->bound(AiLimits::class)) {
+            $container->get(AiLimits::class);
+        }
 
         // A provider name config/ai.php can't mean stops the boot, naming the accepted forms.
         $provider = self::config($container)['provider'] ?? 'claude';

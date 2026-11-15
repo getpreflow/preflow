@@ -6,6 +6,10 @@ namespace Preflow\I18n\Tests\Machine;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Ai\AiUnavailable;
+use Preflow\Ai\Limits\AiLimits;
+use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Ai\Testing\FakeAiClient;
 use Preflow\I18n\Machine\AiTranslator;
 use Preflow\I18n\Machine\Estimator;
@@ -48,7 +52,7 @@ final class TranslationWorkerTest extends TestCase
     }
 
     /** @param list<mixed> $script every model request advances the clock by 30 seconds */
-    private function worker(array $script, bool $enabled = true, ?JobRunner &$runner = null): TranslationWorker
+    private function worker(array $script, bool $enabled = true, ?JobRunner &$runner = null, ?AiLimits $limits = null): TranslationWorker
     {
         $advance = function (callable|\Throwable $entry): callable {
             return function ($request) use ($entry) {
@@ -61,20 +65,52 @@ final class TranslationWorkerTest extends TestCase
         $ai = $this->ai($fake, [], $enabled);
         $this->sources = $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
-        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), $this->store, new FileRecordLease($this->dir . '/leases'));
+        $runner = new JobRunner($sources, new AiTranslator($ai, $this->settings()), new Estimator(new AiTranslator($ai, $this->settings())), $this->store, new FileRecordLease($this->dir . '/leases'), null, $limits);
 
         return new TranslationWorker($runner, $this->store, new AiTranslator($ai, $this->settings()), $this->dir . '/worker.json', fn () => new \DateTimeImmutable('@' . $this->clock));
     }
 
-    private function queued(JobRunner $runner, string $at, string $collection = 'games'): string
+    private function queued(JobRunner $runner, string $at, string $collection = 'games', ?string $by = null): string
     {
         $job = $runner->plan($collection, ['de'], Scope::Needed);
-        $runner->start($job->id);
+        $runner->start($job->id, false, $by);
         $this->store->update($job->id, static function ($j) use ($at): void {
             $j->queuedAt = $at;
         });
 
         return $job->id;
+    }
+
+    public function test_the_worker_skips_a_job_waiting_for_its_persons_limit(): void
+    {
+        $data = $this->dir . '/limits';
+        $throttle = new Throttle(new DataManager(['default' => new JsonFileDriver($data)]), 'secret');
+        $limits = new AiLimits($throttle, ['translate' => ['max' => 1]]);
+        $limits->take(AiLimits::TRANSLATE, 'u1'); // u1 used the limit up in the admin
+        $worker = $this->worker([self::echo(), self::echo()], runner: $runner, limits: $limits);
+        $a = $this->queued($runner, '2026-10-30T10:00:00+00:00', by: 'u1');
+        $b = $this->queued($runner, '2026-10-30T11:00:00+00:00');
+
+        $lines = [];
+        try {
+            $report = $worker->work(50, static function (string $line) use (&$lines): void {
+                $lines[] = $line;
+            });
+        } finally {
+            $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($data, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+            foreach ($it as $f) {
+                $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+            }
+            @rmdir($data);
+        }
+
+        $this->assertSame('done', $this->store->get($b)->state);
+        $this->assertSame(['pending', 'pending'], array_column($this->store->get($a)->items, 'status'), 'A untouched');
+        $this->assertNotSame('stopped', $this->store->get($a)->state);
+        $this->assertSame(2, $report->records);
+        $waits = array_values(array_filter($lines, static fn (string $l): bool => str_contains($l, "waits for its person's AI limit")));
+        $this->assertCount(1, $waits, implode("\n", $lines));
+        $this->assertMatchesRegularExpression("/^games: waits for its person's AI limit \\(\\d+ s\\)$/", $waits[0]);
     }
 
     public function test_works_queued_jobs_oldest_first_within_budget(): void

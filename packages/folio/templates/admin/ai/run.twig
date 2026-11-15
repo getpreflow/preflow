@@ -5,7 +5,7 @@
 {% block page_title %}{{ t('folio.ai_run.title', {label: label|e}) }}{% endblock %}
 {% block actions %}<a class="btn btn-secondary" href="{{ prefix }}/{{ type }}">{{ t('folio.ai_run.back', {label: label|e}) }}</a>{% endblock %}
 {% block content %}
-<div class="folio-ai-run" id="folio-ai-run">
+<div class="folio-ai-run" id="folio-ai-run" data-ai-run>
     {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
     {% if progress %}
         {% include '@folio/admin/ai/run-progress.twig' with progress only %}

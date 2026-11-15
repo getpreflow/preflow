@@ -155,6 +155,9 @@ test('copySafe keeps only the elements the editor keeps, when given', () => {
 test('the error a person sees: the server\'s own text, else one by what happened', () => {
     const texts = { offline: 'Offline.', forbidden: 'Not allowed.', generic: 'Something went wrong.' };
     assert.equal(core.errorText({ status: 503, error: 'AI can’t be used right now.' }, texts), 'AI can’t be used right now.');
+    // Over the person's AI limit: the server's text says when the next draft can be written.
+    assert.equal(core.errorText({ status: 429, error: 'You have reached your limit of 30 AI drafts. You can write the next one in 12 min.' }, texts),
+        'You have reached your limit of 30 AI drafts. You can write the next one in 12 min.');
     assert.equal(core.errorText({ status: 403, error: '' }, texts), 'Not allowed.', 'the CSRF refusal is a page, not JSON');
     assert.equal(core.errorText({ status: 500 }, texts), 'Something went wrong.');
     assert.equal(core.errorText({ status: 0 }, texts), 'Offline.', 'no answer at all');

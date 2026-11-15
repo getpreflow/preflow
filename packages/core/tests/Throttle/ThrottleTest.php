@@ -273,6 +273,89 @@ final class ThrottleTest extends DataTestCase
         $this->assertFalse($t->tooMany('code', 'c1', 1, 60));
     }
 
+    /** @return array<string, array{string}> */
+    public static function storages(): array
+    {
+        return ['json' => ['json'], 'sqlite' => ['sqlite']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('storages')]
+    public function test_for_person_is_stable_and_hides_the_id(string $storage = 'sqlite'): void
+    {
+        $t = $this->throttle($storage);
+        $a = $t->forPerson('u1');
+        $this->now += 86400;
+        $this->assertSame($a, $t->forPerson('u1'), 'no daily rotation: an hour\'s window must not restart at midnight');
+        $this->assertSame(hash_hmac('sha256', 'person|u1', 'secret'), $a);
+        $this->assertNotSame($a, $t->forPerson('u2'));
+        $this->assertNotSame($a, $t->client(new ServerRequest('GET', '/', [], null, '1.1', ['REMOTE_ADDR' => 'u1'])));
+        $this->assertStringNotContainsString('u1', $a);
+
+        // Counted under the hash, never the raw id.
+        $t->hit('ai.draft', $a, 3600);
+        $this->assertTrue($t->tooMany('ai.draft', $a, 1, 3600), $storage);
+
+        foreach ([Throttle::DEFAULT_KEY, ''] as $key) {
+            $message = null;
+            try {
+                (new Throttle($this->dataManager(), $key, $storage, fn (): int => $this->now))->forPerson('u1');
+            } catch (\RuntimeException $e) {
+                $message = $e->getMessage();
+            }
+            $this->assertSame('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.', $message, "key \"{$key}\"");
+        }
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('storages')]
+    public function test_hit_returns_the_count_in_the_window(string $storage = 'sqlite'): void
+    {
+        $t = $this->throttle($storage);
+        $this->assertSame(1, $t->hit('code', 'c1', 60), $storage);
+        $this->assertSame(2, $t->hit('code', 'c1', 60), $storage);
+        $this->assertSame(3, $t->hit('code', 'c1', 60), $storage);
+        $this->assertSame(1, $t->hit('code', 'c2', 60), 'another client counts apart');
+        $this->now += 60;
+        $this->assertSame(1, $t->hit('code', 'c1', 60), 'after the window: 1 again');
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('storages')]
+    public function test_retry_after_counts_down_to_the_window_end(string $storage = 'sqlite'): void
+    {
+        $t = $this->throttle($storage);
+        $this->assertSame(0, $t->retryAfter('ai.draft', 'p1', 3600), 'no row');
+
+        $this->now = 100;
+        $t->hit('ai.draft', 'p1', 3600);
+        $this->now = 1000;
+        $this->assertSame(2700, $t->retryAfter('ai.draft', 'p1', 3600), $storage);
+        $this->now = 3699;
+        $this->assertSame(1, $t->retryAfter('ai.draft', 'p1', 3600));
+        $this->now = 3700;
+        $this->assertSame(0, $t->retryAfter('ai.draft', 'p1', 3600), 'the window has ended');
+        $this->assertSame(0, $t->retryAfter('ai.translate', 'p1', 3600), 'another purpose has no row');
+    }
+
+    #[Group('mysql')]
+    public function test_for_person_is_stable_and_hides_the_id_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_for_person_is_stable_and_hides_the_id('mysql');
+    }
+
+    #[Group('mysql')]
+    public function test_hit_returns_the_count_in_the_window_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_hit_returns_the_count_in_the_window('mysql');
+    }
+
+    #[Group('mysql')]
+    public function test_retry_after_counts_down_to_the_window_end_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_retry_after_counts_down_to_the_window_end('mysql');
+    }
+
     #[Group('mysql')]
     public function test_allows_until_max_then_blocks_on_mysql(): void
     {

@@ -70,6 +70,37 @@ final class AiServiceProviderTest extends TestCase
         }
     }
 
+    public function test_limits_come_from_config_over_the_defaults(): void
+    {
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json'];\n");
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => false, 'limits' => ['translate' => ['max' => 5]]];\n");
+        $c = $this->app()->container();
+
+        $this->assertTrue($c->bound(\Preflow\Ai\Limits\AiLimits::class));
+        $limits = $c->get(\Preflow\Ai\Limits\AiLimits::class);
+        $this->assertSame(['max' => 5, 'per' => 3600], $limits->limit('translate'));
+        $this->assertSame(['max' => 30, 'per' => 3600], $limits->limit('draft'));
+        $this->assertSame($limits, $c->get(\Preflow\Ai\Limits\AiLimits::class));
+
+        // A limit that is not a whole number stops the boot, naming the setting.
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['limits' => ['draft' => ['max' => -1]]];\n");
+        try {
+            $this->app();
+            $this->fail('expected the boot to stop');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('ai.limits.draft.max', $e->getMessage());
+        }
+    }
+
+    public function test_limits_are_not_bound_without_a_throttle(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => false, 'limits' => ['draft' => ['max' => 1]]];\n");
+        $c = $this->app()->container();
+
+        $this->assertFalse($c->bound(\Preflow\Core\Throttle\Throttle::class), 'no config/data.php');
+        $this->assertFalse($c->bound(\Preflow\Ai\Limits\AiLimits::class));
+    }
+
     public function test_commands_registered(): void
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);

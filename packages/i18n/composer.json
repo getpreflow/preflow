@@ -6,10 +6,10 @@
     "require": {
         "php": ">=8.4",
         "preflow/core": "^0.77 || @dev",
-        "preflow/ai": "^0.77 || @dev"
+        "preflow/ai": "^0.78 || @dev"
     },
     "conflict": {
-        "preflow/ai": "<0.77",
+        "preflow/ai": "<0.78",
         "preflow/core": "<0.77"
     },
     "require-dev": {

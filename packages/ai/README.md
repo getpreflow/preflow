@@ -210,6 +210,42 @@ if ($writer->available()) {
   `'draft' => ['writer' => App\Drafts\MyDraftWriter::class]`. The container builds it, so it may
   take services. A class that is no `DraftWriter` stops the boot.
 
+## Limits
+
+Each signed-in person may start only so much AI work in an admin UI, so a misused or careless
+account cannot run up the bill. `config/ai.php`:
+
+```php
+'limits' => [
+    'draft' => ['max' => 30, 'per' => 3600],       // drafts per hour
+    'translate' => ['max' => 100, 'per' => 3600],  // translated items per hour
+],
+```
+
+- `draft` counts drafts; `translate` counts translated items: a record of a job, a set of labels,
+  an image's alt text. What costs money counts, not the requests around it: estimates and plans
+  count nothing. `max` 0 turns a limit off; a value that is not a whole number in range stops the
+  boot, naming the setting (`ai.limits.draft.max`).
+- `Preflow\Ai\Limits\AiLimits` is the guard: `take($action, $authId)` counts one and throws
+  `AiLimitReached` when it passes the limit; `check()` only asks whether budget is left (before
+  queueing work that is counted later); `limit()` gives `['max', 'per']`, or null when off.
+  `AiLimitReached` carries the action, the limit and `retryAfter` (seconds), and its text
+  (`textKey()`, `textParams()`: "You have reached your limit of 30 AI drafts. You can write the
+  next one in 12 min.").
+- Counted through core's `Throttle` under the person's id hashed with the app key
+  (`Throttle::forPerson()`): the raw id is never stored. A window is fixed: it starts with the
+  first item and ends `per` seconds later.
+- Folio's draft and translate endpoints answer 429 with `Retry-After` and the text, which the
+  dialog shows. A translation job counts each item against the person who queued it, also when the
+  cron worker steps it; a job over its person's limit waits (neither stopped nor failed) and goes
+  on once the window ends.
+- **Work from the command line is not limited.** Jobs from `translate:plan` have no person, and
+  `translate:work` steps them freely: whoever runs commands on the server can edit
+  `config/ai.php` anyway, the limit guards against an admin account, and a site's first bulk
+  translation is the command line's job.
+- Without data storage (no `config/data.php`, so no `Throttle`) `AiLimits` is not bound and
+  nothing is limited.
+
 ## Pricing and token usage
 
 Cost is worked out from a price table in USD per million tokens (input, output):

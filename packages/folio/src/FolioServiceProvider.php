@@ -721,6 +721,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Media\MediaLibrary::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
             $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
+            // Per-person AI limits: bound with a data layer (the Throttle counts through it), else none.
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiDraftController::class, fn (Container $c) => new \Preflow\Folio\Http\AiDraftController(
             $c->get(\Preflow\Ai\Draft\DraftWriter::class),
@@ -730,6 +732,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
             $c->get(\Preflow\Ai\Ai::class),

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\I18n\Machine;
 
 use Preflow\Ai\AiUnavailable;
+use Preflow\Ai\Limits\AiLimitReached;
 
 /**
  * The background side of queued translation jobs: a cron job calls work() every minute, which
@@ -12,7 +13,9 @@ use Preflow\Ai\AiUnavailable;
  * or the time budget is used. A job still marked running is continued, since its driver may have
  * crashed; the record lease keeps two drivers off the same record. Every run leaves a heartbeat
  * so an admin screen can tell whether the cron job runs at all, also when the translator is not available. An error in
- * one job is logged (error_log) and the run goes on with the next job.
+ * one job is logged (error_log) and the run goes on with the next job. A job over the AI limit of
+ * the person who queued it (AiLimitReached, since 0.78) waits: it is left as it is for the rest of
+ * the run, with one log line, and a later run tries it again.
  */
 final class TranslationWorker
 {
@@ -30,7 +33,8 @@ final class TranslationWorker
 
     /**
      * @param int $seconds time budget; checked between steps, so a run can overshoot by one step
-     * @param (\Closure(string): void)|null $log gets one line per record: "{collection} {id} {locales}: {status}"
+     * @param (\Closure(string): void)|null $log gets one line per record: "{collection} {id} {locales}: {status}", and
+     *        "{collection}: waits for its person's AI limit ({n} s)" for a job over that limit
      */
     public function work(int $seconds = 50, ?\Closure $log = null): WorkReport
     {
@@ -46,10 +50,16 @@ final class TranslationWorker
         $cost = 0.0;
         $unknown = false;
 
+        /** @var array<string, true> jobs waiting for their person's AI limit: not tried again in this run */
+        $waiting = [];
+
         try {
             do {
                 $progress = false;
                 foreach ($this->queue() as $job) {
+                    if (isset($waiting[$job->id])) {
+                        continue;
+                    }
                     // Depth first: the oldest job is finished before a younger one is started.
                     while ($this->now()->getTimestamp() < $deadline) {
                         $before = $job;
@@ -57,6 +67,13 @@ final class TranslationWorker
                             $job = $this->runner->step($job->id);
                         } catch (AiUnavailable $e) {
                             throw $e;
+                        } catch (AiLimitReached $e) {
+                            // Neither stopped nor failed: the job goes on once its person's window ends.
+                            $waiting[$job->id] = true;
+                            if ($log !== null) {
+                                $log("{$job->collection}: waits for its person's AI limit ({$e->retryAfter} s)");
+                            }
+                            break;
                         } catch (\InvalidArgumentException $e) {
                             // The job was removed meanwhile, or its collection has no text source any
                             // more: stopped with the reason, so it is not tried again on every run.

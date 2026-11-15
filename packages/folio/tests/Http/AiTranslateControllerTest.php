@@ -299,6 +299,99 @@ final class AiTranslateControllerTest extends TestCase
         $this->assertSame(200, $this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode(), 'with the token it passes');
     }
 
+    /** AI on with a `translate` limit of $max, signed in as a person who may use every translate button. */
+    private function limitedTranslator(int $max): void
+    {
+        $this->write('config/ai.php', "<?php\nreturn " . var_export([
+            'enabled' => true,
+            'provider' => 'claude',
+            'models' => ['claude' => 'claude-sonnet-5-5'],
+            'keys' => ['claude' => self::aiKeyEnv()],
+            'limits' => ['translate' => ['max' => $max]],
+        ], true) . ";\n");
+        $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'translations' => ['editable' => ['shop']]];\n");
+        $this->write('lang/en/shop.php', "<?php\nreturn ['bye' => 'Goodbye'];\n");
+        $this->staff('limited', ['limited' => ['folio.dashboard', 'post.view', 'post.edit', 'ai.translate', 'translations.view', 'translations.edit', 'assets.view', 'assets.edit']]);
+    }
+
+    private function assertLimitReached(ResponseInterface $res, string $what): void
+    {
+        $this->assertSame(429, $res->getStatusCode(), $what . ': ' . $res->getBody());
+        $this->assertMatchesRegularExpression('/^\d+$/', $res->getHeaderLine('Retry-After'), $what);
+        $this->assertGreaterThan(0, (int) $res->getHeaderLine('Retry-After'), $what);
+        $this->assertSame('no-store', $res->getHeaderLine('Cache-Control'), $what);
+        $minutes = (int) ceil((int) $res->getHeaderLine('Retry-After') / 60);
+        $this->assertSame("You have reached your limit of 1 AI translations. You can translate again in {$minutes} min.", self::json($res)['error'], $what);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_suggest_over_the_limit_answers_429(): void
+    {
+        $this->limitedTranslator(1);
+        $asset = $this->session->container()->get(\Preflow\Media\MediaLibrary::class);
+        $png = imagecreatetruecolor(4, 4);
+        ob_start();
+        imagepng($png);
+        $bytes = (string) ob_get_clean();
+        $file = (new Psr17Factory())->createUploadedFile((new Psr17Factory())->createStream($bytes), strlen($bytes), UPLOAD_ERR_OK, 'door.png', 'image/png');
+        $door = $asset->update($asset->upload($file, null)->id, ['alt' => ['en' => 'A red door', 'de' => '']]);
+
+        $this->assertSame(200, $this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode());
+
+        $this->assertLimitReached($this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed']), 'suggest');
+        $this->assertLimitReached($this->call('/folio/translations/_ai/suggest', ['group' => 'shop', 'locale' => 'de', 'scope' => 'needed']), 'suggestLabels');
+        $this->assertLimitReached($this->call('/folio/assets/' . $door->id . '/_ai/suggest', ['locale' => 'de']), 'suggestAlt');
+        $this->assertCount(1, $this->fake->requests(), 'only the first one reached the translator');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_queue_without_budget_answers_429_and_queues_nothing(): void
+    {
+        $this->limitedTranslator(1);
+        $this->assertSame(200, $this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed'])->getStatusCode());
+
+        $this->assertLimitReached($this->call('/folio/post/p1/_ai/queue', ['locale' => 'de', 'scope' => 'needed']), 'queue');
+        $this->assertSame([], $this->session->container()->get(JobStore::class)->recent(50), 'nothing queued');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_run_step_over_the_limit_shows_the_notice_with_429(): void
+    {
+        $this->working('post', 'p2', ['title' => ['en' => 'World'], 'slug' => ['en' => 'world'], '_version' => 1]);
+        $this->limitedTranslator(1);
+        $htmx = function (string $uri, array $body = []): ResponseInterface {
+            $request = (new Psr17Factory())->createServerRequest('POST', $uri)->withHeader('Sec-Fetch-Site', 'same-origin')->withHeader('HX-Request', 'true')
+                ->withParsedBody($body + ['_csrf_token' => $this->token]);
+
+            return $this->session->handle($request);
+        };
+        $plan = $this->call('/folio/post/_ai/run', ['step' => 'estimate', 'locales' => ['de'], 'scope' => 'needed']);
+        preg_match('#/folio/post/_ai/jobs/([0-9a-f]{16})/start#', (string) $plan->getBody(), $m);
+        $id = $m[1];
+        $this->assertSame(200, $htmx("/folio/post/_ai/jobs/{$id}/start")->getStatusCode());
+        $this->assertSame(200, $htmx("/folio/post/_ai/jobs/{$id}/step")->getStatusCode());
+
+        $res = $htmx("/folio/post/_ai/jobs/{$id}/step");
+
+        $this->assertSame(429, $res->getStatusCode(), (string) $res->getBody());
+        $retry = (int) $res->getHeaderLine('Retry-After');
+        $this->assertGreaterThan(0, $retry);
+        $this->assertSame('no-store', $res->getHeaderLine('Cache-Control'));
+        $html = (string) $res->getBody();
+        $minutes = (int) ceil($retry / 60);
+        $this->assertStringContainsString("You have reached your limit of 1 AI translations. You can translate again in {$minutes} min.", $html);
+        $this->assertStringContainsString('class="folio-notice is-warning" role="status" data-folio-ai-limit', $html);
+        $this->assertStringContainsString('hx-post="/folio/post/_ai/jobs/' . $id . '/step" hx-trigger="load delay:' . $retry . 's"', $html, 'polls again after Retry-After');
+        $job = $this->session->container()->get(JobStore::class)->get($id);
+        $this->assertSame('running', $job->state, 'the job waits, it is not stopped');
+        $this->assertNull($job->message);
+        $this->assertSame(['done', 'pending'], array_column($job->items, 'status'));
+        $this->assertCount(1, $this->fake->requests());
+
+        // Continue checks the budget too: still none left.
+        $this->assertSame(429, $htmx("/folio/post/_ai/jobs/{$id}/start")->getStatusCode());
+    }
+
     #[RunInSeparateProcess]
     public function test_403_without_permission(): void
     {

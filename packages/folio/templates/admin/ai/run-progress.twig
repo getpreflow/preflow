@@ -1,9 +1,12 @@
 {# A translation job's progress (AiTranslateController). While the job runs, the partial posts
    itself to the step route (one record per request) and swaps in the answer; a finished or
-   stopped job's partial does not poll. Record titles and messages are data: always escaped. #}
-<div id="folio-ai-progress" class="folio-ai-progress" aria-live="polite"{% if running %} hx-post="{{ step_url }}" hx-trigger="load delay:300ms" hx-swap="outerHTML" hx-include="find [name=_csrf_token]"{% endif %}>
+   stopped job's partial does not poll. Record titles and messages are data: always escaped.
+   Over the person's AI limit (limit, answered with 429), a notice says when it goes on and the
+   next poll waits retry_after seconds: the job waits, it is not stopped. #}
+<div id="folio-ai-progress" class="folio-ai-progress" aria-live="polite"{% if running %} hx-post="{{ step_url }}" hx-trigger="load delay:{{ limit|default(null) ? retry_after ~ 's' : '300ms' }}" hx-swap="outerHTML" hx-include="find [name=_csrf_token]"{% endif %}>
     <input type="hidden" name="_csrf_token" value="{{ csrf }}">
     {% if error %}<div class="folio-alert folio-alert-error" role="alert"><p>{{ error }}</p></div>{% endif %}
+    {% if limit|default(null) %}<div class="folio-notice is-warning" role="status" data-folio-ai-limit><p>{{ limit }}</p></div>{% endif %}
     <p class="folio-ai-progress-count">
         <progress max="{{ total }}" value="{{ done }}"></progress>
         <span>{{ done }} / {{ total }}</span> · <span>{{ t('folio.ai_run.cost', {cost: cost}) }}</span>

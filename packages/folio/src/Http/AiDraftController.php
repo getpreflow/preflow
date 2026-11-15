@@ -10,7 +10,10 @@ use Preflow\Ai\Draft\DraftFailed;
 use Preflow\Ai\Draft\DraftLength;
 use Preflow\Ai\Draft\DraftRequest;
 use Preflow\Ai\Draft\DraftWriter;
+use Preflow\Ai\Limits\AiLimitReached;
+use Preflow\Ai\Limits\AiLimits;
 use Preflow\Auth\Access\Access;
+use Preflow\Auth\Authenticatable;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Ai\CostFormat;
@@ -39,6 +42,9 @@ use Symfony\Component\HtmlSanitizer\HtmlSanitizerInterface;
  * this draft failed, 422 for bad input, 404 for an unknown type or record. What the provider said
  * goes to the log (the app's PSR-3 logger, else the PHP log), never to the page.
  *
+ * Each draft counts against the signed-in person's `draft` limit (AiLimits, since 0.78), after the
+ * input checks: over it, 429 with Retry-After and the limit's text (ai.limits.draft).
+ *
  * @since 0.77
  */
 final class AiDraftController
@@ -60,6 +66,7 @@ final class AiDraftController
         private readonly DataManager $dm,
         private readonly ?Access $access = null,
         private readonly ?LoggerInterface $logger = null,
+        private readonly ?AiLimits $limits = null,
     ) {}
 
     public function draft(ServerRequestInterface $request): ResponseInterface
@@ -99,6 +106,15 @@ final class AiDraftController
         $language = self::text($body, 'language');
         if (!$this->registry->get($type)->locales->has($language)) {
             return self::error(422, 'language');
+        }
+
+        $person = $request->getAttribute(Authenticatable::class);
+        if ($this->limits !== null && $person instanceof Authenticatable) {
+            try {
+                $this->limits->take(AiLimits::DRAFT, $person->getAuthId());
+            } catch (AiLimitReached $e) {
+                return self::json(429, ['error' => FolioText::get($e->textKey(), $e->textParams())], ['Retry-After' => (string) $e->retryAfter]);
+            }
         }
 
         LongRequest::allow($request, self::TIME_LIMIT);
@@ -164,12 +180,13 @@ final class AiDraftController
      * U+FFFD instead of a failed response.
      *
      * @param array<string, mixed> $data
+     * @param array<string, string> $headers more headers (Retry-After)
      */
-    private static function json(int $status, array $data): ResponseInterface
+    private static function json(int $status, array $data, array $headers = []): ResponseInterface
     {
         return new Response(
             $status,
-            ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-store'],
+            ['Content-Type' => 'application/json; charset=UTF-8', 'Cache-Control' => 'no-store'] + $headers,
             json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
         );
     }
