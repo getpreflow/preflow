@@ -87,7 +87,7 @@ final class ActivityScreenTest extends TestCase
         $this->assertMatchesRegularExpression('#<form class="folio-activity-toolbar" method="get" action="/folio/activity" role="search" data-folio-autosubmit>#', $all);
         // The type select: the types the person may view, by sidebar order; the person select: who did something.
         $this->assertMatchesRegularExpression('#<select name="type" aria-label="Type">\s*<option value="">All types</option>\s*<option value="note">Notes</option>\s*<option value="post">Posts</option>\s*</select>#', $all);
-        $this->assertMatchesRegularExpression('#<select name="by" aria-label="Person">\s*<option value="">Everyone</option>\s*<option value="u-bob">u-bob</option>\s*<option value="u-ada">u-ada</option>\s*</select>#', $all);
+        $this->assertMatchesRegularExpression('#<select name="by" aria-label="Person">\s*<option value="">Everyone</option>\s*<option value="u-bob">Former user</option>\s*<option value="u-ada">Former user</option>\s*</select>#', $all, 'ids no provider finds: deleted accounts');
 
         $posts = $this->screen('/folio/activity?type=post');
         $this->assertSame(3, substr_count($posts, '<li class="folio-activity-row">'));
