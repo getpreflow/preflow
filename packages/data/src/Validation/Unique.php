@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Data\Validation;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\LocaleValue;
 use Preflow\Data\Model;
 use Preflow\Data\ModelMetadata;
@@ -69,26 +68,25 @@ final class Unique implements ValidationRule
             : $this->type;
         if ($def instanceof TypeDefinition) {
             $query = $this->dm->queryIn($def);
-            [$storage, $idField] = [$def->storage, $def->idField];
+            $idField = $def->idField;
             $translatable = in_array($this->field, $def->translatableFields(), true);
         } else {
             /** @var class-string<Model> $def */
             $meta = ModelMetadata::for($def);
             $query = $this->dm->query($def);
-            [$storage, $idField] = [$meta->storage, $meta->idField];
+            $idField = $meta->idField;
             $translatable = false;
         }
 
-        // SQL narrows the rows down (a column without exact collation may match more); the
-        // comparison below decides. The JSON driver compares typed values, so it reads them all.
-        if ($this->dm->driver($storage) instanceof PdoDriver) {
-            $query->where($this->field, '=', $value);
-            foreach ($scope as $name => $scoped) {
-                $query->where($name, '=', $scoped);
-            }
-            if ($translatable && $this->locale !== null) {
-                $query->locale($this->locale);
-            }
+        // The query narrows the rows down on every storage: IN compares as text (a number stored
+        // as "5" is a duplicate of 5) and a column without exact collation may match more. The
+        // comparison below decides.
+        $query->where($this->field, 'IN', [$value]);
+        foreach ($scope as $name => $scoped) {
+            $query->where($name, 'IN', [(string) $scoped]);
+        }
+        if ($translatable && $this->locale !== null) {
+            $query->locale($this->locale);
         }
 
         foreach ($query->get()->items() as $row) {

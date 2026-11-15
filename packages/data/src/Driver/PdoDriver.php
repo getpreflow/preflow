@@ -11,7 +11,7 @@ use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -110,9 +110,9 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         [$sql, $bindings] = $this->compiler->compile($type, $query);
         $items = $this->read($type, $sql, $bindings)->fetchAll(\PDO::FETCH_ASSOC);
 
-        // A first page that is not full holds every match: the total needs no COUNT query.
+        // Every match (no limit), or a first page that is not full: the total needs no COUNT query.
         $limit = $query->getLimit();
-        if ($limit !== null && ($query->getOffset() ?? 0) === 0 && count($items) < $limit) {
+        if (($query->getOffset() ?? 0) === 0 && ($limit === null || count($items) < $limit)) {
             $total = count($items);
         } else {
             [$countSql, $countBindings] = $this->compiler->compileCount($type, $query);

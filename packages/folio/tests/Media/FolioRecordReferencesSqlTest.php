@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\Media;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Debug\DebugCollector;
 use Preflow\Data\DataManager;
+use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
@@ -23,6 +24,20 @@ use Preflow\Folio\Tests\Fixtures\Blocks\LinkBlock;
 use Preflow\Folio\Tests\Fixtures\Blocks\TradeoffNoteBlock;
 use Preflow\Media\Usage\AssetUsageEntry;
 
+/** A PDO that records every statement it prepares, failing ones too. */
+final class StatementLogPdo extends \PDO
+{
+    /** @var list<string> */
+    public array $prepared = [];
+
+    public function prepare(string $query, array $options = []): \PDOStatement|false
+    {
+        $this->prepared[] = $query;
+
+        return parent::prepare($query, $options);
+    }
+}
+
 /**
  * Folio's usage scan on SQL storage: rows are prefiltered with LIKE on the
  * asset and blocks columns, types without such fields are not read at all,
@@ -30,6 +45,8 @@ use Preflow\Media\Usage\AssetUsageEntry;
  */
 class FolioRecordReferencesSqlTest extends TestCase
 {
+    use ReferenceParity;
+
     protected const string ID = '0123456789abcdef0123456789abcdef';
     protected const string OTHER = 'fedcba9876543210fedcba9876543210';
 
@@ -68,16 +85,18 @@ class FolioRecordReferencesSqlTest extends TestCase
         if (!isset($this->dir) || !is_dir($this->dir)) {
             return; // skipped before setUp ran (MySQL not configured)
         }
-        foreach (glob($this->dir . '/models/*') ?: [] as $f) {
-            unlink($f);
-        }
-        rmdir($this->dir . '/models');
-        rmdir($this->dir);
+        $remove = static function (string $dir) use (&$remove): void {
+            foreach (array_diff(scandir($dir) ?: [], ['.', '..']) as $entry) {
+                is_dir($dir . '/' . $entry) ? $remove($dir . '/' . $entry) : unlink($dir . '/' . $entry);
+            }
+            rmdir($dir);
+        };
+        $remove($this->dir);
     }
 
     protected function driver(): PdoDriver
     {
-        return new SqliteDriver(new \PDO('sqlite::memory:'), $this->log);
+        return new SqliteDriver(new StatementLogPdo('sqlite::memory:'), $this->log);
     }
 
     public function test_finds_every_kind_of_reference_and_reads_only_candidate_rows(): void
@@ -253,6 +272,55 @@ class FolioRecordReferencesSqlTest extends TestCase
         foreach ($sql as $statement) {
             $this->assertStringNotContainsString('"tag"', $statement, 'a type without asset fields or a route is not read');
             $this->assertStringContainsString(' LIKE ?', $statement, 'every read is prefiltered');
+        }
+    }
+
+    public function test_usage_is_found_the_same_way_on_json_and_sqlite(): void
+    {
+        file_put_contents($this->dir . '/models/post.json', json_encode(self::postModel('sql')));
+        $registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
+        $sql = new DataManager(drivers: ['sql' => $this->dm->driver('sql')], defaultDriver: 'sql', typeRegistry: $registry);
+        (new RecordTableSync($sql))->sync($registry->get('post'), ['_seo']);
+        $json = new DataManager(drivers: ['sql' => new JsonFileDriver($this->dir . '/json')], defaultDriver: 'sql', typeRegistry: $registry);
+        foreach ([$sql, $json] as $dm) {
+            self::seedPosts($dm, $registry->get('post'), self::ID, self::OTHER);
+        }
+
+        $onSql = self::postUsages($sql, $registry, $this->dir . '/models', self::ID);
+
+        $this->assertEquals(self::expectedPostUsages(), $onSql);
+        $this->assertEquals(self::postUsages($json, $registry, $this->dir . '/models', self::ID), $onSql);
+    }
+
+    public function test_a_table_without_seo_column_is_searched_without_it(): void
+    {
+        $this->model('venue', ['frontend' => ['route' => '/venues/{slug}'], 'publishing' => false, 'fields' => [
+            'title' => ['type' => 'string'], 'slug' => ['type' => 'string'], 'cover' => ['type' => 'asset'],
+        ]]);
+        $registry = new TypeRegistry($this->dir . '/models', new Locales(['en', 'de'], 'en'));
+        $dm = new DataManager(drivers: ['sql' => $this->dm->driver('sql')], defaultDriver: 'sql', typeRegistry: $registry);
+        (new RecordTableSync($dm))->sync($registry->get('venue')); // predates the _seo column (not migrated yet)
+        $dm->saveType(DynamicRecord::fromArray($registry->get('venue'), ['uuid' => 'v1', 'title' => 'Hall', 'cover' => self::ID]), false);
+        $dm->saveType(DynamicRecord::fromArray($registry->get('venue'), ['uuid' => 'v2', 'title' => self::ID]), false);
+        $collector = new DebugCollector();
+        $logged = new DataManager(drivers: ['sql' => $this->driverOn($collector)], defaultDriver: 'sql', typeRegistry: $registry);
+        $pdo = $this->dm->driver('sql')->pdo();
+        if ($pdo instanceof StatementLogPdo) {
+            $pdo->prepared = [];
+        }
+
+        $usage = (new FolioRecordReferences($this->walker(), $logged, new TypeCatalog($this->dir . '/models'), $registry, '/folio'))->usagesOf(self::ID);
+
+        $this->assertEquals([new AssetUsageEntry('Hall', '/folio/venue/v1/edit', 'folio', type: 'venue')], $usage);
+        $venue = array_values(array_filter(
+            array_map(static fn (array $q): string => (string) $q['sql'], $collector->getQueries()),
+            static fn (string $sql): bool => str_contains($sql, 'venue'),
+        ));
+        $this->assertCount(1, $venue, 'one read of the table');
+        $this->assertStringContainsString(' LIKE ?', $venue[0]);
+        $this->assertStringNotContainsString('_seo', $venue[0]);
+        if ($pdo instanceof StatementLogPdo) {
+            $this->assertSame([], array_values(array_filter($pdo->prepared, static fn (string $sql): bool => str_contains($sql, '_seo'))), 'no statement names the missing column, not even one that fails');
         }
     }
 

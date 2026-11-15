@@ -1223,8 +1223,9 @@ final class DataManager
      * Save a dynamic record.
      *
      * Unique fields: validation checks them (Unique), and the storage guards them whether
-     * validated or not (the unique index on SQL; translatable fields and JSON storage are checked
-     * in the save under the type's lock, ExclusiveWrites). A duplicate is a ValidationException
+     * validated or not (the unique index on a storage with UniqueIndexes; translatable fields and
+     * other storages are checked in the save, under the type's lock where the storage has one,
+     * ExclusiveWrites). A duplicate is a ValidationException
      * with validation.unique on the field ("field.locale" for another locale's value).
      *
      * @throws ValidationException (nothing saved)
@@ -1760,8 +1761,10 @@ final class DataManager
 
     /**
      * Runs the write of $record with its unique fields guarded: unique values no index guards
-     * (translatable fields on SQL, every unique field on other storages) are checked under the
-     * type's lock, with the write; a duplicate the unique index refuses becomes the field error.
+     * (translatable fields on a storage with UniqueIndexes, every unique field on other storages)
+     * are checked with the write, under the type's lock where the storage has one (ExclusiveWrites;
+     * without it the check and the write are not atomic); a duplicate the unique index refuses
+     * becomes the field error.
      * Under the lock, a field the save leaves as stored (with its scope) is not checked again:
      * a duplicate from before the field was unique does not block other changes to the record.
      *
@@ -1777,7 +1780,7 @@ final class DataManager
             return $write();
         }
         $driver = $this->resolveDriver($def->storage);
-        $checked = $driver instanceof PdoDriver ? array_intersect_key($unique, array_flip($def->translatableFields())) : $unique;
+        $checked = $driver instanceof UniqueIndexes ? array_intersect_key($unique, array_flip($def->translatableFields())) : $unique;
 
         return $this->guardedWrite($driver, $def->table, $unique, $checked === [] ? null : function () use ($def, $driver, $record, $checked): array {
             $data = $record->toArray();
@@ -1803,7 +1806,8 @@ final class DataManager
     }
 
     /**
-     * The model's write, guarded as guarded() does for records (on SQL by the index alone).
+     * The model's write, guarded as guarded() does for records (by the index alone on a storage
+     * with UniqueIndexes).
      *
      * @param array<string, mixed> $data
      * @param \Closure(): void $write
@@ -1819,7 +1823,7 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
         $id = $data[$meta->idField] ?? null;
         $id = $id === '' || $id === 0 || $id === '0' ? null : $id;
-        $check = $driver instanceof PdoDriver ? null : function () use ($meta, $unique, $data, $id): array {
+        $check = $driver instanceof UniqueIndexes ? null : function () use ($meta, $unique, $data, $id): array {
             $checks = [];
             foreach ($unique as $field => $scope) {
                 $checks[$field] = [new Unique($this, $meta->modelClass, $field, array_intersect_key($data, array_flip($scope)) + array_fill_keys($scope, null), $id), $data[$field] ?? null];
@@ -1832,23 +1836,25 @@ final class DataManager
 
     /**
      * @param array<string, list<string>> $unique
-     * @param (\Closure(): list<string>)|null $check the taken fields, run under the lock with the write
+     * @param (\Closure(): list<string>)|null $check the taken fields, run with the write (under the
+     *        type's lock on a storage with ExclusiveWrites; without one, just before it)
      */
     private function guardedWrite(StorageDriver $driver, string $table, array $unique, ?\Closure $check, \Closure $write): mixed
     {
         try {
-            if ($check === null || !$driver instanceof ExclusiveWrites) {
+            if ($check === null) {
                 return $write();
             }
-
-            return $driver->exclusive($table, function () use ($check, $write): mixed {
+            $checked = function () use ($check, $write): mixed {
                 $taken = $check();
                 if ($taken !== []) {
                     throw $this->uniqueFailure($taken);
                 }
 
                 return $write();
-            });
+            };
+
+            return $driver instanceof ExclusiveWrites ? $driver->exclusive($table, $checked) : $checked();
         } catch (UniqueViolation $e) {
             $field = $e->field($table, $unique);
             if ($field === null) {

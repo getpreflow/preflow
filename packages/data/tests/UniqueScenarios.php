@@ -91,6 +91,20 @@ trait UniqueScenarios
         $this->assertNull($this->dm->findIn($page, 'b'));
     }
 
+    public function test_a_number_stored_as_text_is_still_a_duplicate(): void
+    {
+        $page = $this->page();
+        $this->save($page, ['uuid' => 'a', 'slug' => '5']);
+        $this->save($page, ['uuid' => 'b', 'slug' => 7]);
+
+        $taken = ['slug' => ['This value is already taken.']];
+        foreach ([true, false] as $validate) {
+            $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'c', 'slug' => 5], $validate), 'stored "5", new 5');
+            $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'c', 'slug' => '7'], $validate), 'stored 7, new "7"');
+        }
+        $this->assertNull($this->dm->findIn($page, 'c'));
+    }
+
     public function testOwnValueIsNotADuplicate(): void
     {
         $page = $this->page();
