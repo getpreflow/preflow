@@ -223,12 +223,17 @@ final class RedirectsControllerTest extends TestCase
         $this->assertSame(['redirect', $entry['id'], '/old-about', 'created'], [$items[0]->subject, $items[0]->id, $items[0]->title, $items[0]->kind->value]);
         $by = $items[0]->by;
 
+        // Saved unchanged: nothing to tell.
+        $this->send('/folio/redirects/' . $entry['id'], ['address' => '/old-about/', 'target' => 'page:p1', 'status' => '301']);
+        $this->assertCount(1, $log->recent(10, ['redirect'])->items, 'an edit that changes nothing');
+
         // An edit is Saved (no new entry), naming what changed.
         $this->send('/folio/redirects/' . $entry['id'], ['address' => '/old-about', 'target' => '/elsewhere', 'status' => '302']);
         $items = $log->recent(10, ['redirect'])->items;
         $this->assertCount(2, $items);
         $this->assertSame(['redirect', $entry['id'], '/old-about', 'saved', $by], [$items[0]->subject, $items[0]->id, $items[0]->title, $items[0]->kind->value, $items[0]->by]);
         $this->assertSame(['target_type', 'target_id', 'target_url', 'status'], $items[0]->changed);
+
 
         $this->send('/folio/redirects/' . $entry['id'] . '/delete');
         $items = $log->recent(10, ['redirect'])->items;

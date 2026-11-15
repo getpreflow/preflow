@@ -140,24 +140,25 @@ Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/te
 **Must:** implement `Preflow\Data\StorageDriver` (`findOne`, `findMany`, `save`, `delete`,
 `exists`, `lastInsertId`, `rawQuery`) with the query semantics `StorageDriverContract` states
 (case-insensitive `LIKE` in every alphabet, `CONTAINS` in list values, null handling, numbers as
-numbers), and pass that contract. That is enough for a driver to work everywhere: DataManager has
-a fallback for every capability below except aggregates.
+numbers), and pass that contract. That is enough for a driver to work everywhere: DataManager, or the
+capability's consumer (`StoredActivityLog` for `Savepoints` and `ChangeTokens`), has a fallback
+for every capability below except aggregates.
 
 **Should, for production:** `VersionedStorage`, `ConditionalUpdates` and `ExclusiveWrites`. Without
 them the fallbacks work but are not atomic, so two concurrent writers can both pass a check (an
 `E_USER_NOTICE` says so for the version checks, once per driver class). Implement
 `AggregatingStorage` if the site uses Folio or any aggregate query. The rest is optional.
 
-| Capability | What it gives | Without it, DataManager… | Atomic? |
+| Capability | What it gives | Without it… | Atomic? |
 |---|---|---|---|
 | `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
 | `AggregatingStorage::aggregate()` | Group, count, sum, avg, min, max (`AggregateQuery`): Folio's dashboard and not-found counts, publish states, the activity people filter. | `AggregateQuery::get()` throws (never wrong numbers); `Publisher::states()` and `StoredActivityLog::people()` read the records instead. | Read only. |
 | `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
-| `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable (the activity log). | runs the writes as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
+| `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
 | `DescribesColumns::hasColumn()` (0.77) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet). | takes any column as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
-| `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed (`changeToken()`: the activity people filter). | reuses nothing: computes every time. | Read only. |
+| `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns` and `AggregatingStorage` from it and implements `exclusive()`
@@ -880,7 +881,10 @@ registers a Unicode `ulike()` on its connection, which folds with `mb_strtolower
 (`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`, as the app
 opens it, and on a plain `PDO`). The dialect uses it only for a pattern with other than ASCII
 characters ("über"); a pattern of ASCII characters only ("bar%") keeps SQLite's native `LIKE`,
-which folds ASCII case and is about 7× faster on a scan. A non-ASCII term costs a PHP call per row
+which folds ASCII case and is about 7× faster on a scan. Caveat: with such a plain-ASCII pattern,
+SQLite follows native `LIKE` for the two letters that lower-case into ASCII, the Kelvin sign (K,
+U+212A) and İ (U+0130): "k%" does not find a value written with the Kelvin sign there, while the
+JSON driver's matches it (tracked in the matching-contract follow-up). A non-ASCII term costs a PHP call per row
 compared (a dialect that writes its match per pattern implements `PatternMatching`); MySQL/MariaDB follow the column's collation, so an
 accent-insensitive collation matches more than the other drivers do ("uber" finds "Über").
 `CONTAINS` and `search()` find a term in a list value (an array field) when one of its values

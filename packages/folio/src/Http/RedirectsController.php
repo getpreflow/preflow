@@ -375,7 +375,10 @@ final class RedirectsController
         } else {
             $value = static fn (mixed $v, string $key): string => $key === 'area' ? (in_array($v, [true, 1, '1'], true) ? '1' : '') : (string) ($v ?? '');
             $changed = array_values(array_filter(self::LOGGED_KEYS, static fn (string $key): bool => $value($row[$key] ?? null, $key) !== $value($entry[$key] ?? null, $key)));
-            $this->tell(\Preflow\Core\Activity\ActivityKind::Saved, $id, $path, self::userId($request), $changed);
+            // As an asset's details save: an edit that changes nothing tells nothing.
+            if ($changed !== []) {
+                $this->tell(\Preflow\Core\Activity\ActivityKind::Saved, $id, $path, self::userId($request), $changed);
+            }
         }
 
         // The row the entry was made from leaves the not-found list too.

@@ -273,6 +273,47 @@ final class PublisherStateCountsTest extends PublishingAppTestCase
         $this->assertSame((int) $this->stored($type, 'a')->get('_version'), (int) $p->snapshot($type, 'a')?->get('_published_version'));
     }
 
+    /** Two saves back to the published content: the older one's mark, landing last, never moves the snapshot's version back. */
+    #[DataProvider('storages')]
+    public function test_a_late_relink_never_moves_the_published_version_back(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $this->edit('a', 'Two');
+        $table = $this->dm()->getTypeRegistry()->get($type)->table;
+        $fired = false;
+        $other = function () use ($p, $type): void {
+            $p->saveDraft($this->stored($type, 'a'), null); // the second save: version 4, marks the snapshot 4
+        };
+        $this->dm()->observe(new class ($table, $fired, $other) implements DataObserver {
+            public function __construct(private string $table, private bool &$fired, private \Closure $other) {}
+
+            public function read(string $storage, string $type, ?string $id): void {}
+
+            public function wrote(string $storage, string $type, ?string $id): void
+            {
+                // The first save (version 3) has written its working copy; before it marks the snapshot, the second save runs.
+                if ($type === $this->table && !$this->fired) {
+                    $this->fired = true;
+                    ($this->other)();
+                }
+            }
+
+            public function rawRead(string $storage, string $sql): void {}
+
+            public function rawWrote(string $storage, string $sql): void {}
+        });
+
+        $this->edit('a', 'One');
+        $this->dm()->observe(null);
+
+        $this->assertTrue($fired);
+        $this->assertSame(4, (int) $this->stored($type, 'a')->get('_version'));
+        $this->assertSame(4, (int) $p->snapshot($type, 'a')?->get('_published_version'), 'never back to 3');
+        $this->assertSame(['a' => PublishState::Published], $p->states($type));
+    }
+
     /** A save whose content differs from the snapshot's leaves the snapshot's version alone. */
     #[DataProvider('storages')]
     public function test_a_save_unlike_the_snapshot_keeps_its_version(string $type): void

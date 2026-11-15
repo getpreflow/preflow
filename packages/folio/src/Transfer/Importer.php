@@ -302,7 +302,8 @@ final class Importer
             }
             $local = [];
             foreach ($this->dm->driver($def->storage)->findMany($table, new Query())->items() as $row) {
-                $local[(string) ($row[$def->idField] ?? '')] = $row;
+                // Compared as the incoming rows are: a key the row lacks has its stated value.
+                $local[(string) ($row[$def->idField] ?? '')] = $row + $this->set->importDefaults($table);
             }
             unset($local['']);
 

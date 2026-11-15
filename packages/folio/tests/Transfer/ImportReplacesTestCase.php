@@ -230,6 +230,23 @@ abstract class ImportReplacesTestCase extends TestCase
         $this->assertSame('published', $states['n2']->value);
     }
 
+    /** A site's own export imported back changes nothing, a snapshot without its published version included. */
+    public function test_an_own_export_with_a_snapshot_without_its_version_previews_unchanged(): void
+    {
+        $driver = $this->dm()->driver($this->storage());
+        $driver->save('note', 'n1', ['uuid' => 'n1', 'name' => 'Local', '_version' => 3], 'uuid');
+        $driver->save('note__published', 'n1', ['uuid' => 'n1', 'name' => 'Local'], 'uuid');
+        $archive = $this->export();
+
+        [$importer] = $this->importerWithData();
+        $plan = $importer->read($archive, 'data');
+        try {
+            $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $plan->tables['note__published'] ?? ['added' => [], 'changed' => [], 'removed' => []]);
+        } finally {
+            $plan->cleanup();
+        }
+    }
+
     public function test_a_slug_on_another_id_replaces_the_local_record(): void
     {
         $this->setGames(['b' => ['title' => 'Live', 'slug' => 'x']]);

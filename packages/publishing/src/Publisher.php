@@ -818,13 +818,15 @@ final class Publisher
      * After a discard, a restore or a draft save (a new working version): when the working copy now holds the
      * published content (the full compare), its snapshot is marked as published from that version,
      * so states() reads Published as state() does. A checked write of that key only (a publish in
-     * between keeps its own); a failure is logged and never fails the write.
+     * between keeps its own), and never to an older version than the snapshot holds (a later save
+     * marked it first); a failure is logged and never fails the write.
      */
     private function relink(DynamicRecord $working, ?DynamicRecord $snapshot): void
     {
         $version = (int) ($working->get('_version') ?? 0);
         $read = self::versionOf($snapshot?->get(self::PUBLISHED_VERSION));
-        if ($snapshot === null || $read === $version || self::compare($working, $snapshot) !== PublishState::Published) {
+        // Never back: a snapshot already marked with a newer version (a later save got there first) keeps it.
+        if ($snapshot === null || $read === $version || ($read !== null && $read > $version) || self::compare($working, $snapshot) !== PublishState::Published) {
             return;
         }
         try {
