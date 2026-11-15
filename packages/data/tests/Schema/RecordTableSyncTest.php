@@ -46,6 +46,18 @@ final class RecordTableSyncTest extends TestCase
         $this->assertSame(['uuid', 'title', 'body'], (new Schema($this->pdo))->columns('note'));
     }
 
+    public function test_record_table_sync_skips_a_storage_without_pdo_connection(): void
+    {
+        $sync = new RecordTableSync(new DataManager(
+            drivers: ['plain' => new \Preflow\Testing\PlainDriver(new SqliteDriver($this->pdo))],
+            defaultDriver: 'plain',
+            typeRegistry: new TypeRegistry($this->dir . '/models'),
+        ));
+
+        $this->assertSame([], $sync->sync($this->def(['title'], 'plain')));
+        $this->assertFalse((new Schema($this->pdo))->hasTable('note'));
+    }
+
     public function test_second_run_changes_nothing(): void
     {
         $sync = $this->sync();

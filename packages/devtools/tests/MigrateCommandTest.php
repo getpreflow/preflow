@@ -187,4 +187,34 @@ final class MigrateCommandTest extends TestCase
             $this->assertStringNotContainsString('seeded', $out, $arg);
         }
     }
+
+    public function test_aliases_of_one_sql_storage_count_once(): void
+    {
+        $json = new \Preflow\Data\Driver\JsonFileDriver($this->dir . '/data');
+        $sqlite = new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'));
+
+        $dm = new \Preflow\Data\DataManager(['default' => $json, 'mysql' => $sqlite, 'db' => $sqlite]);
+
+        $this->assertSame('mysql', MigrateCommand::defaultStorage($dm));
+    }
+
+    public function test_a_storage_without_pdo_connection_is_not_migrated(): void
+    {
+        $plain = new \Preflow\Testing\PlainDriver(new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:')));
+        $dir = $this->dir;
+        $command = new MigrateCommand(static function () use ($dir, $plain): Application {
+            $app = Application::create($dir);
+            $app->boot();
+            $app->container()->instance(\Preflow\Data\DataManager::class, new \Preflow\Data\DataManager(['plain' => $plain], 'plain'));
+
+            return $app;
+        });
+        $this->sqliteConfig();
+
+        ob_start();
+        $code = $command->execute(['--storage=plain']);
+        ob_end_clean();
+
+        $this->assertSame(1, $code);
+    }
 }

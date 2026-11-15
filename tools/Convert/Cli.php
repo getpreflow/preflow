@@ -7,7 +7,7 @@ namespace Preflow\Tools\Convert;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\PdoConnection;
 use Preflow\Data\Schema\RecordTables;
 
 /**
@@ -58,6 +58,9 @@ final class Cli
         if (!class_exists(RecordTables::class)) {
             return $this->fail("The site's preflow/data has no RecordTables: update it to 0.42 or later first.");
         }
+        if (!interface_exists(PdoConnection::class)) {
+            return $this->fail("The site's preflow/data has no PdoConnection: preflow/data 0.78 or later is needed. Update it first.");
+        }
 
         $overlay = $sqlite !== null ? Overlay::create($site, $sqlite, sys_get_temp_dir()) : null;
         try {
@@ -82,7 +85,7 @@ final class Cli
                 return $this->fail('Several SQL storages are configured; choose one with --storage=<driver>.');
             }
             $driver = $dm->driver($storage);
-            if (!$driver instanceof PdoDriver) {
+            if (!$driver instanceof PdoConnection) {
                 return $this->fail("Storage [{$storage}] is not a SQL storage.");
             }
             $pdo = $driver->pdo();
@@ -133,13 +136,13 @@ final class Cli
      */
     private static function defaultStorage(DataManager $dm): string|false|null
     {
-        if (in_array('default', $dm->driverNames(), true) && $dm->driver('default') instanceof PdoDriver) {
+        if (in_array('default', $dm->driverNames(), true) && $dm->driver('default') instanceof PdoConnection) {
             return 'default';
         }
         $sql = [];
         foreach ($dm->driverNames() as $name) {
             $driver = $dm->driver($name);
-            if ($driver instanceof PdoDriver && !in_array($driver, $sql, true)) {
+            if ($driver instanceof PdoConnection && !in_array($driver, $sql, true)) {
                 $sql[$name] = $driver;
             }
         }

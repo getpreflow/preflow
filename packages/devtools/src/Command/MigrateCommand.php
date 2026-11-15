@@ -6,7 +6,7 @@ namespace Preflow\DevTools\Command;
 
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\PdoConnection;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 
@@ -65,7 +65,7 @@ final class MigrateCommand implements CommandInterface
             $storage ??= self::defaultStorage($dm)
                 ?? throw new \RuntimeException('Several SQL storages are configured; choose one with --storage=<driver>.');
             $driver = $dm->driver($storage);
-            if (!$driver instanceof PdoDriver) {
+            if (!$driver instanceof PdoConnection) {
                 throw new \RuntimeException("Storage driver [{$storage}] is not a SQL driver; nothing to migrate.");
             }
 
@@ -104,13 +104,13 @@ final class MigrateCommand implements CommandInterface
      */
     public static function defaultStorage(DataManager $dm): ?string
     {
-        if (in_array('default', $dm->driverNames(), true) && $dm->driver('default') instanceof PdoDriver) {
+        if (in_array('default', $dm->driverNames(), true) && $dm->driver('default') instanceof PdoConnection) {
             return 'default';
         }
         $sql = [];
         foreach ($dm->driverNames() as $name) {
             $driver = $dm->driver($name);
-            if ($driver instanceof PdoDriver && !in_array($driver, $sql, true)) {
+            if ($driver instanceof PdoConnection && !in_array($driver, $sql, true)) {
                 $sql[$name] = $driver;
             }
         }
@@ -131,7 +131,7 @@ final class MigrateCommand implements CommandInterface
     private function hasSqlStorage(?DataManager $dm): bool
     {
         foreach ($dm?->driverNames() ?? [] as $name) {
-            if ($dm->driver($name) instanceof PdoDriver) {
+            if ($dm->driver($name) instanceof PdoConnection) {
                 return true;
             }
         }

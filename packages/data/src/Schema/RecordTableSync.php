@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Schema;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\PdoConnection;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
@@ -53,7 +53,7 @@ final class RecordTableSync
     public function sync(TypeDefinition $def, array $extraColumns = [], bool $typed = true, bool $unique = true): array
     {
         $driver = $this->dm->driver($def->storage);
-        if (!$driver instanceof PdoDriver) {
+        if (!$driver instanceof PdoConnection) {
             return [];
         }
 
