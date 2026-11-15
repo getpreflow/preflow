@@ -892,6 +892,32 @@ order (not ranked by relevance). A term shorter than 2 characters
 after trimming finds nothing, and an unknown type is skipped. The search checks no
 permission: pass only the types the person may read.
 
+## Activity log storage (0.77)
+
+`Preflow\Data\Activity\StoredActivityLog` is the core's `ActivityLog` (core README, "Activity
+log") kept through the `DataManager`, so it works on every storage driver. It is bound when
+`config/data.php` exists, on the storage alias `activity` when one is configured, else on the
+default storage. `preflow migrate` creates its two tables on SQL storage (the step
+`activity.table`): `preflow_activity` (the rows) and `preflow_activity_last` (each record's
+newest row, for coalescing). JSON storage needs no tables.
+
+```php
+// config/activity.php (optional)
+return [
+    'keep_days' => 90,     // 0: no age limit
+    'keep_rows' => 10000,  // 0: no row limit
+];
+```
+
+- **Order:** by time (to the microsecond, UTC), then row id, through one sort key column
+  (`seq`), so a plain text comparison pages the same on every driver.
+- **Coalescing:** a `Saved` by the same person on the same record within 10 minutes of that
+  record's newest row, when that row is such a `Saved`, updates it (changed fields merged, time
+  moved, the row goes to the top). Any other event in between starts a new row. A recording reads
+  and writes single rows by id, so it costs the same however long the log is.
+- **Retention:** about 1 in 50 recordings prunes rows older than `keep_days` and beyond the
+  newest `keep_rows` (at most 1000 of each per run). Reads never prune.
+
 ## JSON storage cache
 
 `JsonFileDriver` takes an optional second argument, a cache directory. With it, a query

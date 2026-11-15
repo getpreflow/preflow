@@ -103,6 +103,8 @@ final class MediaServiceProvider extends ServiceProvider
             colors: new ColorExtractor($colors),
             formats: $c->get(Formats::class),
             makers: $c->get(DerivedMakers::class),
+            activity: $c->bound(\Preflow\Core\Activity\ActivityLog::class) ? $c->get(\Preflow\Core\Activity\ActivityLog::class) : null,
+            logger: interface_exists(\Psr\Log\LoggerInterface::class) && $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
         ));
         // pdf_image() looks an asset id up through view's PdfImageSource; this is media's answer.
         $container->singleton(PdfImageSource::class, fn (Container $c) => new MediaPdfImages($c->get(MediaLibrary::class)));

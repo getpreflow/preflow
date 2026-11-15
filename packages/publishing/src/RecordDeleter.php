@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing;
 
+use Preflow\Core\Activity\ActivityKind;
+use Preflow\Core\Activity\ActivityLog;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Validation\ValidationException;
+use Psr\Log\LoggerInterface;
 
 /**
  * The one delete path for records: through the data package's delete plan, executed record by
@@ -29,6 +32,10 @@ use Preflow\Validation\ValidationException;
  * (RecordWriter's too) → SaveHooks::after() and afterDelete().
  * SQL writes run in one transaction per connection; JSON-file writes cannot be rolled back if a
  * later write fails.
+ *
+ * The activity log (@since 0.77) hears of every deleted record (cascaded ones too: Deleted, its
+ * title as it was, delete()'s $by) once the writes are done; a detach is no activity of its own.
+ * Earlier rows of a deleted record stay. A failing log is logged and never fails the delete.
  */
 final class RecordDeleter
 {
@@ -44,9 +51,14 @@ final class RecordDeleter
         private readonly SaveHooks $hooks = new NoSaveHooks(),
         private readonly ?RecordIndex $index = null,
         private readonly ?RecordAddresses $addresses = null,
+        ?ActivityLog $activity = null,
+        ?LoggerInterface $logger = null,
     ) {
         $this->store = new RecordStore($dm, $publisher, $hooks, $index, $addresses);
+        $this->activity = new ActivityNotes($activity, $logger);
     }
+
+    private readonly ActivityNotes $activity;
 
     /**
      * What deleting these records would do. Publishing types count links in their
@@ -88,9 +100,10 @@ final class RecordDeleter
      * @param list<string> $ids
      * @param RemovalTarget|null $target where the old addresses of every deleted record (those
      *                                   deleted by cascade too) lead; null: they answer 404
+     * @param string|null $by who deletes, for the activity log (@since 0.77)
      * @throws DeleteRefused restricted, or the save of a detached record was refused (nothing was written)
      */
-    public function delete(string $type, array $ids, ?RemovalTarget $target = null): void
+    public function delete(string $type, array $ids, ?RemovalTarget $target = null, ?string $by = null): void
     {
         $plan = $this->plan($type, $ids);
         if ($plan->restricted()) {
@@ -142,6 +155,7 @@ final class RecordDeleter
         foreach ($deletes as $record) {
             $this->index?->forget($record->getType()->key, (string) $record->getId());
             $this->addresses?->removed($record->getType()->key, (string) $record->getId(), $target);
+            $this->activity->note($record, ActivityKind::Deleted, [], $by);
         }
         foreach ($saves as $record) {
             if (!$this->publishes($record->getType()->key)) {

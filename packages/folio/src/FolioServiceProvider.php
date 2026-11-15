@@ -422,6 +422,8 @@ final class FolioServiceProvider extends ServiceProvider
                 $prefix,
                 $c->get(\Preflow\Folio\Redirects\SiteTarget::class),
                 $c->get(\Preflow\Routing\Redirect\RedirectRules::class),
+                $c->bound(\Preflow\Core\Activity\ActivityLog::class) ? $c->get(\Preflow\Core\Activity\ActivityLog::class) : null,
+                $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
             ));
         }
         $container->singleton(\Preflow\Folio\Extension\ExtensionState::class, fn (Container $c) => new \Preflow\Folio\Extension\ExtensionState(

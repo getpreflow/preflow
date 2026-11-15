@@ -125,6 +125,25 @@ JSON-file writes cannot be rolled back), and throws `DeleteRefused` (with the pl
 records lose their snapshot, revisions, index entry and addresses (`$target`: where their old links
 lead).
 
+### Activity (0.77)
+
+The writers tell the activity log (core README, "Activity log") what they stored, with
+`SaveOptions::$by` and the fields that changed:
+
+- `RecordWriter`: `Created` (`create()`, `duplicate()`, a `save()` of a record not stored yet),
+  `Saved` (a save, an autosave, a bulk set, a translation run; autosaves coalesce), `Scheduled`
+  (a save that set a new publish time). When a save publishes, its `Published` stands for it
+  (a create adds `Created` first); a failed publish tells `Saved`. A reorder tells nothing.
+- `Publisher`: `Published` (the fields that differ from the previous snapshot; the scheduler's
+  publishes are `by` `scheduler`), `Unpublished` (`unpublish($type, $id, $target, $by)`, when
+  something was live) and `Restored` (`restore(..., $by)`).
+- `RecordDeleter`: `Deleted` for every deleted record, cascaded ones too
+  (`delete($type, $ids, $target, $by)`). The record's earlier rows stay.
+
+Titles come from `RecordTitle::of()` in the default language, at the time of the event. A
+failing log is logged as a warning and never fails a write. With the log on, a save reads the
+stored record once more (by id) to name the changed fields.
+
 ## Reading what is live
 
 - **`LiveContent`** reads records for rendering: the snapshots of a publishing type on public pages,

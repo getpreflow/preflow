@@ -351,6 +351,38 @@ $throttle->clear('login', $client);                       // after a success
 - `prune(olderThanSeconds: 172800)` deletes old rows and returns how many; `hit()` runs it
   opportunistically, once per request when a new window starts.
 
+### Activity log (0.77)
+
+`Preflow\Core\Activity\ActivityLog` is what happened to the site's content, newest first: who
+saved, published, deleted or uploaded what, and when. Writers call `record()`, an admin reads
+`recent()`:
+
+```php
+use Preflow\Core\Activity\{Activity, ActivityKind, ActivityLog};
+
+$log = $container->get(ActivityLog::class);
+$log->record(new Activity('page', $id, 'About us', ActivityKind::Saved, changed: ['title'], by: $userId));
+
+$page = $log->recent(20, subjects: ['page', 'post']);    // ActivityPage: $items, $next
+$more = $log->recent(20, ['page', 'post'], $page->next); // the next page; null on the last
+```
+
+- `Activity`: `subject` (a type key, `asset`, `redirect`), `id`, `title` (as it was at the time,
+  so a deleted record still reads by name), `kind`, `changed` (field names), `by` (null: the
+  system), `at` (DATE_ATOM; `''` lets the log set the time).
+- `ActivityKind` (stored as lower-case strings): `Created`, `Saved`, `Published`, `Unpublished`,
+  `Scheduled`, `Restored`, `Deleted`, `Uploaded`, `Replaced`.
+- `recent($limit, $subjects, $before)`: `$subjects` null is all, `[]` none; `$before` is the
+  previous page's `next` cursor (opaque; an unreadable one reads from the start). Pages never
+  overlap or skip, also while events are recorded in between.
+- Core binds `NullActivityLog` (keeps nothing). With `config/data.php` the data layer binds its
+  `StoredActivityLog` (see the data README). A provider may bind its own implementation.
+- **A write never fails because of the log.** The framework's writers (publishing's
+  `RecordWriter`, `RecordDeleter` and `Publisher`, media's `MediaLibrary`, Folio's redirects)
+  catch what `record()` throws and log it as a warning (`Psr\Log\LoggerInterface`, when bound).
+  Your own writers should do the same.
+- `recent()` checks no permission: show a person only the subjects they may read.
+
 ### Cookie queue
 
 `Preflow\Core\Http\CookieQueue` holds `Set-Cookie` values queued during a request (the

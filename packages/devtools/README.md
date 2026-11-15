@@ -30,7 +30,7 @@ Boots the application (so packages register their migration paths and steps), th
 1. runs every pending file from `migrations/` and from the paths packages registered
    (core's `preflow_throttle` table among them) on a SQL storage;
 2. runs every registered post-migrate step, such as Folio's table sync for SQL-stored
-   content types.
+   content types and the activity log's tables (`activity.table`, since 0.77).
 
 ```
 php preflow migrate

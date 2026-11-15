@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing;
 
+use Preflow\Core\Activity\ActivityKind;
+use Preflow\Core\Activity\ActivityLog;
 use Preflow\Data\Attributes\Timestamps;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -35,6 +37,14 @@ use Psr\Log\LoggerInterface;
  * stored, its publish refused) propagates to the caller, who shows it.
  *
  * Whether a type publishes, the Publisher decides; without one, none does.
+ *
+ * The activity log (@since 0.77) hears of each write once it is stored, with
+ * SaveOptions::$by and the fields that changed: Created (create(), duplicate(), a save() of a
+ * record not stored yet), Saved (a save, an autosave, a bulk set, a translation run), Scheduled
+ * (a save that set a new publish time); a publish, an unpublish and a restore are the
+ * Publisher's to tell. When a save publishes, its Published stands for it (a create adds
+ * Created first); a failed publish tells Saved, the draft being stored. A reorder tells nothing.
+ * A failing log is logged as a warning and never fails the write.
  */
 final class RecordWriter
 {
@@ -56,10 +66,14 @@ final class RecordWriter
         private readonly ?RecordAddresses $addresses = null,
         ?\Closure $now = null,
         private readonly ?LoggerInterface $logger = null,
+        ?ActivityLog $activity = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
         $this->store = new RecordStore($dm, $publisher, $hooks, $index, $addresses);
+        $this->activity = new ActivityNotes($activity, $logger);
     }
+
+    private readonly ActivityNotes $activity;
 
     /**
      * Saves a new record: an empty id gets a random one (32 hex characters), a record of an
@@ -82,7 +96,7 @@ final class RecordWriter
             $record->set(self::ORDER, $this->maxOrder($def->key) + 10);
         }
 
-        return $this->save($record, $options);
+        return $this->write($record, $options, ActivityKind::Created);
     }
 
     /**
@@ -179,7 +193,7 @@ final class RecordWriter
             $renumber = $this->placeAfter($source, $copy);
         }
 
-        $outcome = $this->save($copy, new SaveOptions(by: $options->by, mayPublish: $options->mayPublish, kind: WriteKind::Save));
+        $outcome = $this->write($copy, new SaveOptions(by: $options->by, mayPublish: $options->mayPublish, kind: WriteKind::Save), ActivityKind::Created);
         if ($renumber !== null) {
             foreach ($renumber as $i => $record) {
                 $position = ($i + 1) * 10;
@@ -364,7 +378,18 @@ final class RecordWriter
      */
     public function save(DynamicRecord $record, SaveOptions $options = new SaveOptions()): SaveOutcome
     {
+        return $this->write($record, $options, ActivityKind::Saved);
+    }
+
+    /** save() telling the activity log $kind (Created, or Saved: see the class). */
+    private function write(DynamicRecord $record, SaveOptions $options, ActivityKind $kind): SaveOutcome
+    {
         $this->hooks->before($record, $options->kind);
+        // What is stored before the write, for the changed fields (read only when a log listens).
+        $before = $this->activity->on() ? $this->dm->findIn($record->getType(), (string) $record->getId())?->toArray() : null;
+        if ($before === null && $this->activity->on()) {
+            $kind = ActivityKind::Created;
+        }
 
         if ($this->publishes($record->getType()->key)) {
             $schedule = $this->schedule($options);
@@ -372,11 +397,22 @@ final class RecordWriter
                 $record->set('_publish_at', $schedule);
             }
             $this->publisher->saveDraft($record, $options->loadedVersion);
+            $scheduled = $schedule !== null && $schedule !== '' && $schedule !== (string) ($before['_publish_at'] ?? '');
+            if ($kind === ActivityKind::Created) {
+                $this->tell($record, ActivityKind::Created, $before, $options->by);
+            }
+            if (!$options->publish && ($scheduled || $kind === ActivityKind::Saved)) {
+                // A save that set a new time is its scheduling.
+                $this->tell($record, $scheduled ? ActivityKind::Scheduled : ActivityKind::Saved, $before, $options->by);
+            }
             if ($options->publish) {
                 try {
                     // Checked against the version the draft save just wrote: a save landing in between conflicts.
                     $this->publisher->publish($record, $options->by, (int) $record->get('_version'));
                 } catch (\Throwable $e) {
+                    if ($kind === ActivityKind::Saved) {
+                        $this->tell($record, ActivityKind::Saved, $before, $options->by); // the draft is stored
+                    }
                     try {
                         $this->hooks->after($record, $options->kind); // the working copy was saved
                     } catch (\Throwable $hookFailure) {
@@ -396,9 +432,24 @@ final class RecordWriter
         $this->checks->validate($record);
         $this->store->write($record);
         $left = $this->store->follow($record);
+        $this->tell($record, $kind, $before, $options->by);
         $this->hooks->after($record, $options->kind);
 
         return new SaveOutcome($record, $left);
+    }
+
+    /**
+     * Tells the activity log about a stored write, with the fields changed since $before (what
+     * was stored; null: a new record, its fields with a value).
+     *
+     * @param array<string, mixed>|null $before
+     */
+    private function tell(DynamicRecord $record, ActivityKind $kind, ?array $before, ?string $by): void
+    {
+        if (!$this->activity->on()) {
+            return;
+        }
+        $this->activity->note($record, $kind, ChangedFields::between($record->getType(), $record->toArray(), $before), $by);
     }
 
     /**
@@ -506,7 +557,7 @@ final class RecordWriter
             throw new \InvalidArgumentException('A restore does not publish: publish the restored record with save().');
         }
 
-        return $this->publisher->restore($type, $id, $revisionId, $options->loadedVersion, $this->schedule($options));
+        return $this->publisher->restore($type, $id, $revisionId, $options->loadedVersion, $this->schedule($options), $options->by);
     }
 
     /**

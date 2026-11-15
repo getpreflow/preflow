@@ -212,6 +212,19 @@ final class RedirectsControllerTest extends TestCase
         $this->assertSame(404, $this->fetch('/folio/redirects/' . $entry['id'])->getStatusCode());
     }
 
+    public function test_a_new_entry_tells_the_activity_log(): void
+    {
+        $this->publishPage('p1', ['en' => 'About'], ['en' => 'about']);
+        $this->send('/folio/redirects', ['address' => '/old-about/', 'target' => 'page:p1', 'status' => '301']);
+        $entry = $this->entries()->at('en', '/old-about');
+        // Editing it is no new entry.
+        $this->send('/folio/redirects/' . $entry['id'], ['address' => '/old-about', 'target' => '/elsewhere', 'status' => '302']);
+
+        $items = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class)->recent(10, ['redirect'])->items;
+        $this->assertCount(1, $items);
+        $this->assertSame(['redirect', $entry['id'], '/old-about', 'created'], [$items[0]->subject, $items[0]->id, $items[0]->title, $items[0]->kind->value]);
+    }
+
     public function test_address_prefill_only_takes_a_path(): void
     {
         // From the admin's 404 page ("→ add a redirect"): a path on this site is prefilled.

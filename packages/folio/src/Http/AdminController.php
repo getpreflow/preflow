@@ -1015,7 +1015,7 @@ final class AdminController
         // Through the delete plan: cascades, detaches and restrictions of declared relations;
         // a restriction or any hook's refusal leaves everything in place.
         try {
-            $this->deleter->delete($type, [$id], $this->removalTarget($request));
+            $this->deleter->delete($type, [$id], $this->removalTarget($request), self::userId($request));
         } catch (DeleteRefused $e) {
             self::flash($request, 'error', $this->deleteSummary()->refusal($e));
         } catch (Refused $e) {
@@ -1072,7 +1072,7 @@ final class AdminController
         }
 
         try {
-            $this->deleter->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records), $this->removalTarget($request));
+            $this->deleter->delete($type, array_map(static fn (DynamicRecord $r): string => (string) $r->getId(), $records), $this->removalTarget($request), self::userId($request));
             self::flash($request, 'success', FolioText::get('folio.common.done_count', ['label' => FolioText::get('folio.common.delete'), 'count' => count($records)]));
         } catch (DeleteRefused $e) {
             self::flash($request, 'error', $this->deleteSummary()->refusal($e));

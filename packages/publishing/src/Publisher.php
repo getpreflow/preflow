@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing;
 
+use Preflow\Core\Activity\ActivityKind;
+use Preflow\Core\Activity\ActivityLog;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
@@ -11,6 +13,7 @@ use Preflow\Data\QueryBuilder;
 use Preflow\Data\TypeDefinition;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
+use Psr\Log\LoggerInterface;
 
 /**
  * Working copy (what the admin edits, the type's own table) and published
@@ -23,6 +26,10 @@ use Preflow\Validation\ValidationResult;
  * follows each save (RecordIndex), the record's public addresses (RecordAddresses) and the
  * columns the app writes besides the fields (RecordColumns: a restore clears those an old
  * revision lacks).
+ *
+ * The activity log (@since 0.77) hears of each publish (Published, with the fields that differ
+ * from the previous snapshot: those of the revision), unpublish (Unpublished) and restore
+ * (Restored), with who did it. A failing log is logged as a warning and never fails the write.
  */
 final class Publisher
 {
@@ -51,12 +58,17 @@ final class Publisher
         private readonly ?RecordIndex $index = null,
         private readonly ?RecordAddresses $addresses = null,
         private readonly ?RecordColumns $columns = null,
+        ?ActivityLog $activity = null,
+        ?LoggerInterface $logger = null,
     ) {
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
         }
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->activity = new ActivityNotes($activity, $logger);
     }
+
+    private readonly ActivityNotes $activity;
 
     public function enabled(string $type): bool
     {
@@ -300,6 +312,7 @@ final class Publisher
             $this->addresses?->changed(static fn (): ?DynamicRecord => $previous, $snapshot);
             $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
             $this->index?->refresh($working);
+            $this->activity->note($working, ActivityKind::Published, self::changedFields($def, $snapshot, $previous), $by);
 
             return $snapshot;
         }
@@ -322,6 +335,7 @@ final class Publisher
         // After the commit: the address book writes on its own (it never fails a publish).
         $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
         $this->index?->refresh($working);
+        $this->activity->note($working, ActivityKind::Published, self::changedFields($def, $snapshot, $previous), $by);
 
         return $snapshot;
     }
@@ -404,13 +418,18 @@ final class Publisher
 
     /**
      * Takes the record off the site. Its old addresses then redirect to $target, or answer 404
-     * when there is none (RecordAddresses::removed()).
+     * when there is none (RecordAddresses::removed()). $by (@since 0.77): who, for the activity
+     * log, which hears of it when something was live.
      */
-    public function unpublish(string $type, string $id, ?RemovalTarget $target = null): void
+    public function unpublish(string $type, string $id, ?RemovalTarget $target = null, ?string $by = null): void
     {
+        $live = $this->activity->on() ? $this->snapshot($type, $id) : null;
         $this->addresses?->changed(fn (): ?DynamicRecord => $this->snapshot($type, $id), null);
         $this->dm->deleteIn(ShadowTypes::published($this->definition($type)), $id);
         $this->addresses?->removed($type, $id, $target);
+        if ($live !== null) {
+            $this->activity->note($this->dm->findIn($this->definition($type), $id) ?? $live, ActivityKind::Unpublished, [], $by);
+        }
     }
 
     /** Carry a working copy's list position into its snapshot (ordering is not content). */
@@ -468,16 +487,20 @@ final class Publisher
      * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
      * $publishAt is the schedule the restored working copy gets: null keeps the stored one, ''
      * cancels it. Callers restore through RecordWriter::restore(), which applies the schedule rule
-     * (who may not publish cancels a pending schedule); calling this directly skips it.
+     * (who may not publish cancels a pending schedule); calling this directly skips it. $by
+     * (@since 0.77): who, for the activity log.
      *
      * @throws VersionConflict
      * @throws ValidationException when the storage refuses the revision's content (validateStorable(); nothing saved)
      */
-    public function restore(string $type, string $id, string $revisionId, ?int $loadedVersion = null, ?string $publishAt = null): ?DynamicRecord
+    public function restore(string $type, string $id, string $revisionId, ?int $loadedVersion = null, ?string $publishAt = null, ?string $by = null): ?DynamicRecord
     {
         foreach ($this->revisions($type, $id) as $revision) {
             if ($revision->id === $revisionId) {
-                return $this->replaceContent($type, $id, $revision->data, $loadedVersion, $publishAt);
+                $restored = $this->replaceContent($type, $id, $revision->data, $loadedVersion, $publishAt);
+                $this->activity->note($restored, ActivityKind::Restored, [], $by);
+
+                return $restored;
             }
         }
 

@@ -60,7 +60,7 @@ final class PublishingController
         $loaded = is_string($body['_version'] ?? null) && ctype_digit($body['_version']) ? (int) $body['_version'] : null;
 
         try {
-            $this->writer->save($record, new SaveOptions(mayPublish: $this->mayPublish($type), loadedVersion: $loaded, kind: WriteKind::Autosave));
+            $this->writer->save($record, new SaveOptions(by: self::userId($request), mayPublish: $this->mayPublish($type), loadedVersion: $loaded, kind: WriteKind::Autosave));
         } catch (VersionConflict) {
             return $this->status(\Preflow\Folio\FolioText::get('folio.publishing.not_saved_conflict'), null, true);
         } catch (ValidationException $e) {
@@ -80,7 +80,7 @@ final class PublishingController
         [$type, $id] = $this->target($request);
         $revision = (string) $request->getAttribute('rev', '');
         try {
-            $restored = $type !== null ? $this->writer->restore($type, $id, $revision, new SaveOptions(mayPublish: $this->mayPublish($type))) : null;
+            $restored = $type !== null ? $this->writer->restore($type, $id, $revision, new SaveOptions(by: self::userId($request), mayPublish: $this->mayPublish($type))) : null;
         } catch (ValidationException $e) {
             \assert($type !== null);
             self::flash($request, 'error', self::refusal('folio.revisions.not_restored', $this->dm->getTypeRegistry()?->get($type), $e));
@@ -147,6 +147,14 @@ final class PublishingController
         return $this->shareFragment($working, null, \Preflow\Folio\FolioText::get('folio.publishing.revoked'));
     }
 
+    /** Who is saving: the signed-in user's id (the activity log's "by"). */
+    private static function userId(ServerRequestInterface $request): ?string
+    {
+        $user = $request->getAttribute(\Preflow\Auth\Authenticatable::class);
+
+        return $user instanceof \Preflow\Auth\Authenticatable ? $user->getAuthId() : null;
+    }
+
     private function mayPublish(string $type): bool
     {
         return $this->access?->can($type . '.publish') ?? true;
@@ -176,7 +184,7 @@ final class PublishingController
         }
         // "Send its old links to…": none chosen leaves them answering 404.
         $target = \Preflow\Folio\Redirects\RemovalTarget::parse(((array) $request->getParsedBody())['_redirect_to'] ?? null, $this->resolver);
-        $this->publisher->unpublish($type, $id, $target);
+        $this->publisher->unpublish($type, $id, $target, self::userId($request));
 
         // From the list's row menu: back to the same view (its posted "_query", read and checked again).
         if ((((array) $request->getParsedBody())['_from'] ?? null) === 'list' && $this->catalog->get($type)?->singleton !== true) {
@@ -195,7 +203,7 @@ final class PublishingController
             return NotFound::response($request, \Preflow\Folio\FolioText::get('folio.errors.unknown_type'));
         }
         try {
-            $this->writer->discard($type, $id, new SaveOptions(mayPublish: $this->mayPublish($type)));
+            $this->writer->discard($type, $id, new SaveOptions(by: self::userId($request), mayPublish: $this->mayPublish($type)));
         } catch (ValidationException $e) {
             self::flash($request, 'error', self::refusal('folio.publishing.not_discarded', $this->dm->getTypeRegistry()?->get($type), $e));
         }

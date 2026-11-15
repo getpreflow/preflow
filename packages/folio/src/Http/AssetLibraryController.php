@@ -204,7 +204,7 @@ final class AssetLibraryController
             return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
         try {
-            $this->library->delete($asset->id);
+            $this->library->delete($asset->id, self::by($request));
         } catch (AssetInUseException $e) {
             return $this->renderPanel($request, $asset, null, self::inUse($e->usages), 409, $e->usages);
         } catch (\RuntimeException $e) {
@@ -289,7 +289,7 @@ final class AssetLibraryController
         usort($assets, static fn (Asset $a, Asset $b): int => (int) $b->isCopy() <=> (int) $a->isCopy());
         foreach ($assets as $asset) {
             try {
-                $this->library->delete($asset->id);
+                $this->library->delete($asset->id, self::by($request));
                 $binned++;
             } catch (AssetInUseException) {
                 $refused[] = $asset->label();

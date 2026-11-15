@@ -46,6 +46,8 @@ final class PublishingServiceProvider extends ServiceProvider
                 $c->get(RecordIndex::class),
                 $c->get(RecordAddresses::class),
                 $c->get(RecordColumns::class),
+                self::activity($c),
+                self::logger($c),
             );
         });
         $container->singleton(Scheduler::class, static fn (Container $c): Scheduler => new Scheduler(
@@ -89,8 +91,8 @@ final class PublishingServiceProvider extends ServiceProvider
             $c->get(RecordIndex::class),
             $c->get(RecordAddresses::class),
             null,
-            // psr/log is suggested, not required: a bound logger gets RecordWriter's warnings.
-            interface_exists(\Psr\Log\LoggerInterface::class) && $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
+            self::logger($c),
+            self::activity($c),
         ));
         $container->singleton(RecordDeleter::class, static fn (Container $c): RecordDeleter => new RecordDeleter(
             $c->get(DataManager::class),
@@ -98,12 +100,26 @@ final class PublishingServiceProvider extends ServiceProvider
             $c->get(SaveHooks::class),
             $c->get(RecordIndex::class),
             $c->get(RecordAddresses::class),
+            self::activity($c),
+            self::logger($c),
         ));
         // Signed with the app key: without a real one, share previews are off (PreviewLinks::enabled()).
         $container->singleton(PreviewLinks::class, static fn (Container $c): PreviewLinks => new PreviewLinks(
             (string) $app->config()->get('app.key', ''),
             $c->get(PublishingConfig::class)->previewTtl,
         ));
+    }
+
+    /** The activity log the core binds (NullActivityLog without data storage). */
+    private static function activity(Container $c): ?\Preflow\Core\Activity\ActivityLog
+    {
+        return $c->bound(\Preflow\Core\Activity\ActivityLog::class) ? $c->get(\Preflow\Core\Activity\ActivityLog::class) : null;
+    }
+
+    /** psr/log is suggested, not required: a bound logger gets the writers' warnings. */
+    private static function logger(Container $c): ?\Psr\Log\LoggerInterface
+    {
+        return interface_exists(\Psr\Log\LoggerInterface::class) && $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null;
     }
 
     public function boot(Container $container): void

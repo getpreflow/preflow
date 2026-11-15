@@ -376,6 +376,9 @@ final class Application
             $nonPublic->add($prefix);
         }
 
+        // The activity log keeps nothing until the data layer binds its stored one (a provider may bind its own).
+        $this->container->singleton(\Preflow\Core\Activity\ActivityLog::class, static fn (): \Preflow\Core\Activity\ActivityLog => new \Preflow\Core\Activity\NullActivityLog());
+
         // Auto-discover installed packages and wire them up
         $this->bootValidators();
         $this->bootDataLayer($collector);
@@ -843,6 +846,7 @@ final class Application
             \Preflow\Data\Search\RecordSearch::class,
             static fn (): \Preflow\Data\Search\RecordSearch => new \Preflow\Data\Search\RecordSearch($dataManager),
         );
+        $this->bindActivityLog($dataManager, isset($drivers[\Preflow\Data\Activity\StoredActivityLog::STORAGE]) ? \Preflow\Data\Activity\StoredActivityLog::STORAGE : 'default');
         if ($this->pageChanges !== null) {
             $dataManager->observe(new \Preflow\Core\PageCache\DataLayerObserver(
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
@@ -890,6 +894,42 @@ final class Application
                 ),
             );
         }
+    }
+
+    /**
+     * The stored activity log (table preflow_activity, on the storage alias "activity" when the
+     * site has one), config/activity.php "keep_days" and "keep_rows"; `preflow migrate` creates
+     * its table (the step "activity.table").
+     */
+    private function bindActivityLog(\Preflow\Data\DataManager $dataManager, string $storage): void
+    {
+        if (!class_exists(\Preflow\Data\Activity\StoredActivityLog::class)) {
+            return;
+        }
+        $config = $this->configFile('activity');
+        $config = is_array($config) ? $config : [];
+        $keepDays = $config['keep_days'] ?? \Preflow\Data\Activity\StoredActivityLog::KEEP_DAYS;
+        $keepRows = $config['keep_rows'] ?? \Preflow\Data\Activity\StoredActivityLog::KEEP_ROWS;
+        if (!is_int($keepDays) || !is_int($keepRows)) {
+            throw new \RuntimeException('config/activity.php: keep_days and keep_rows must be whole numbers (0 keeps all).');
+        }
+        $container = $this->container;
+        $container->singleton(
+            \Preflow\Data\Activity\StoredActivityLog::class,
+            static fn (): \Preflow\Data\Activity\StoredActivityLog => new \Preflow\Data\Activity\StoredActivityLog($dataManager, $storage, $keepDays, $keepRows),
+        );
+        $container->singleton(
+            \Preflow\Core\Activity\ActivityLog::class,
+            static fn (): \Preflow\Core\Activity\ActivityLog => $container->get(\Preflow\Data\Activity\StoredActivityLog::class),
+        );
+        $tables = static fn (): array => $container->get(\Preflow\Data\Activity\StoredActivityLog::class)->tables();
+        if ($container->bound(\Preflow\Data\Schema\RecordTables::class)) {
+            $container->get(\Preflow\Data\Schema\RecordTables::class)->add('activity', $tables);
+        }
+        $container->get(\Preflow\Data\Migration\MigrationRegistry::class)->afterMigrate(
+            'activity.table',
+            static fn (): array => (new \Preflow\Data\Schema\RecordTableSync($dataManager))->syncAll($tables()),
+        );
     }
 
     private function createSqliteDriver(array $config, ?DebugCollector $collector = null): \Preflow\Data\Driver\SqliteDriver

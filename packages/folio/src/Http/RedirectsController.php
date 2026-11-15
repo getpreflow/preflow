@@ -60,7 +60,22 @@ final class RedirectsController
         private readonly string $prefix,
         private readonly SiteTarget $site,
         private readonly RedirectRules $rules,
+        private readonly ?\Preflow\Core\Activity\ActivityLog $activity = null,
+        private readonly ?\Psr\Log\LoggerInterface $logger = null,
     ) {}
+
+    /**
+     * Tells the activity log of a new entry (subject "redirect", titled by its old address); a
+     * failing log is logged, the entry stays.
+     */
+    private function created(string $id, string $path, ?string $by): void
+    {
+        try {
+            $this->activity?->record(new \Preflow\Core\Activity\Activity('redirect', $id, $path, \Preflow\Core\Activity\ActivityKind::Created, by: $by));
+        } catch (\Throwable $e) {
+            $this->logger?->warning("Activity log: \"created\" of redirect {$id} not recorded: {$e->getMessage()}", ['exception' => $e]);
+        }
+    }
 
     /** GET {prefix}/redirects?q=…&record=type:id (q: the old or the new address), or ?tab=not-found */
     public function index(ServerRequestInterface $request): ResponseInterface
@@ -342,6 +357,9 @@ final class RedirectsController
         $id = Redirect::id($values['area'] ? 'area' : 'exact', $locale, $path);
         if ($entry !== null && $entry['id'] !== $id) {
             $this->entries->delete($entry['id']);
+        }
+        if ($entry === null) {
+            $this->created($id, $path, $row['created_by']);
         }
 
         // The row the entry was made from leaves the not-found list too.

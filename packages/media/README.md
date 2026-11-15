@@ -808,6 +808,13 @@ and replace.
   constructor (`heic:`). The default is `ImagickHeicConverter`, built with `heic_max_pixels`;
   a converter of your own throws `Preflow\Media\Image\HeicTooLarge` for a file it refuses by size.
 
+## Activity (0.77)
+
+`MediaLibrary` tells the activity log (core README, "Activity log") of `upload()` (`Uploaded`),
+`replace()` (`Replaced`) and `delete($id, $by)` (`Deleted`, binned or for good), subject
+`asset`, titled by the file name, with the `by` passed. The service provider passes the log the
+container binds; a failing log is logged as a warning and never fails the change.
+
 ## SQL storage
 
 `preflow migrate` creates the table (`media.table`), as `RecordTableSync` makes any record

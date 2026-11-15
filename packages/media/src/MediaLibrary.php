@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Media;
 
+use Preflow\Core\Activity\Activity;
+use Preflow\Core\Activity\ActivityKind;
+use Preflow\Core\Activity\ActivityLog;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
@@ -27,6 +30,7 @@ use Preflow\Media\Usage\AssetInUseException;
 use Preflow\Media\Usage\AssetUsage;
 use Preflow\Media\Usage\AssetUsageEntry;
 use Psr\Http\Message\UploadedFileInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * The shared media library. Files live in a public directory served by the web
@@ -128,8 +132,14 @@ final class MediaLibrary
     /** @var array<string, Asset> id => the stored asset, see record() */
     private array $memo = [];
 
+    /** The subject of an asset's rows in the activity log. @since 0.77 */
+    public const string ACTIVITY_SUBJECT = 'asset';
+
     /**
      * @param array<string, mixed> $config MediaConfig::toArray() (storage, max_bytes, allow_svg, private_dir, private_url, …)
+     * @param ActivityLog|null $activity (@since 0.77) hears of upload() (Uploaded), replace() (Replaced) and
+     *        delete() (Deleted, binned or for good), subject "asset", titled by the file name; a failing log
+     *        is logged as a warning to $logger and never fails the change
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -145,6 +155,8 @@ final class MediaLibrary
         private readonly ?Formats $formats = null,
         private readonly ?DerivedMakers $makers = null,
         private readonly ?HeicConverter $heic = null,
+        private readonly ?ActivityLog $activity = null,
+        private readonly ?LoggerInterface $logger = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
@@ -250,8 +262,23 @@ final class MediaLibrary
     public function upload(UploadedFileInterface $file, ?string $by, bool $private = false): Asset
     {
         [$bytes, $name] = $this->readUpload($file);
+        $asset = $this->store($bytes, $name, $by, $private);
+        $this->tell($asset, ActivityKind::Uploaded, $by);
 
-        return $this->store($bytes, $name, $by, $private);
+        return $asset;
+    }
+
+    /** Tells the activity log; a failing log is logged, never thrown. */
+    private function tell(Asset $asset, ActivityKind $kind, ?string $by): void
+    {
+        if ($this->activity === null) {
+            return;
+        }
+        try {
+            $this->activity->record(new Activity(self::ACTIVITY_SUBJECT, $asset->id, $asset->originalName, $kind, by: $by));
+        } catch (\Throwable $e) {
+            $this->logger?->warning("Activity log: \"{$kind->value}\" of asset {$asset->id} not recorded: {$e->getMessage()}", ['exception' => $e]);
+        }
     }
 
     /**
@@ -1310,10 +1337,12 @@ final class MediaLibrary
      * for good without one. A usage that does not block a delete (an earlier revision) lets it bin;
      * without bin_dir every usage refuses, since a delete for good must never break a revision.
      *
+     * $by (@since 0.77): who, for the activity log.
+     *
      * @throws AssetInUseException while a usage source reports a usage that blocks a delete, or any usage without bin_dir (nothing changes)
      * @throws \RuntimeException when a file could not be moved into the bin (nothing changes)
      */
-    public function delete(string $id): void
+    public function delete(string $id, ?string $by = null): void
     {
         $asset = $this->find($id);
         if ($asset === null) {
@@ -1328,6 +1357,7 @@ final class MediaLibrary
         } else {
             $this->remove($asset);
         }
+        $this->tell($asset, ActivityKind::Deleted, $by);
     }
 
     /**
@@ -1627,7 +1657,10 @@ final class MediaLibrary
         [$bytes, $name] = is_string($file) ? [$this->readFile($file, basename($file)), basename($file)] : $this->readUpload($file);
         $this->requireVersionsDir($id, $name);
 
-        return $this->locked($id, fn (): Asset => $this->swapFile($id, $bytes, $name, $by, []));
+        $asset = $this->locked($id, fn (): Asset => $this->swapFile($id, $bytes, $name, $by, []));
+        $this->tell($asset, ActivityKind::Replaced, $by);
+
+        return $asset;
     }
 
     /** @return list<AssetVersion> the asset's earlier files, newest first ([] for an unknown asset) */
