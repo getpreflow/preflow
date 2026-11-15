@@ -226,7 +226,8 @@ final class PublishingController
     {
         $nonce = bin2hex(random_bytes(16));
         $working->set('_share_token', $nonce);
-        $this->dm->saveType($working, false);
+        // Only the token, without a new version (a save would bump it).
+        $this->publisher->saveSystemKeys($working->getType()->key, (string) $working->getId(), ['_share_token' => $nonce]);
 
         return $nonce;
     }

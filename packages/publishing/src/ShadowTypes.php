@@ -31,7 +31,8 @@ final class ShadowTypes
     public static function tables(TypeDefinition $def, array $extra = []): array
     {
         return [
-            RecordTables::entry(self::published($def), $extra, unique: false),
+            // Only the snapshots keep the version they were published from (@since 0.77).
+            RecordTables::entry(self::published($def), array_values(array_unique([...$extra, Publisher::PUBLISHED_VERSION])), unique: false),
             RecordTables::entry(self::revisions($def), $extra, typed: false, unique: false),
         ];
     }

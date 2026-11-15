@@ -21,7 +21,7 @@ use Preflow\Data\Schema\RecordTableSync;
 final class PublishingTables
 {
     /** Keys the Publisher writes besides a type's fields (_locales: the languages a record is visible in). */
-    public const array COLUMNS = ['_locales', ...Publisher::META];
+    public const array COLUMNS = ['_locales', ...Publisher::TABLE_META];
 
     public function __construct(
         private readonly DataManager $dm,

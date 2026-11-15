@@ -179,11 +179,17 @@ trait PublishingScaffold
      *
      * @param array<string, mixed> $data
      */
+    /**
+     * A stored working copy exactly as given, its _version too: seeded past DataManager, whose saves
+     * of a publishing type bump the version (VersionFields).
+     */
     private function working(string $type, string $id, array $data): DynamicRecord
     {
         $dm = $this->dm();
-        $record = DynamicRecord::fromArray($dm->getTypeRegistry()->get($type), ['uuid' => $id] + $data);
-        $dm->saveType($record, false);
+        $def = $dm->getTypeRegistry()->get($type);
+        $record = DynamicRecord::fromArray($def, ['uuid' => $id] + $data);
+        $dm->driver($def->storage)->save($def->table, $id, $dm->storageValues($def, $record->toArray()), $def->idField);
+        $dm->reportWrite($def->storage, $def->table, $id);
 
         return $record;
     }

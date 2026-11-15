@@ -328,7 +328,7 @@ final class AdminController
         $multilingual = $typeDef->translatableFields() !== [];
         // From the versions (Publisher::states(): the working and published versions, no content).
         $states = $this->publishes($type) ? $this->publisher->states($type) : null;
-        // Records per state over the whole type: the status links' counts (ListQuery::STATUSES), as Publisher::stateCounts() gives them, from the states the rows need anyway.
+        // Records per state over the whole type: the status links' counts (ListQuery::STATUSES), as Publisher::stateCounts() gives them, from the states the rows and the filter use too.
         $statusCounts = null;
         if ($states !== null) {
             $statusCounts = array_fill_keys(ListQuery::STATUSES, 0);
@@ -349,8 +349,7 @@ final class AdminController
         // Relation columns (only when "list.columns" names them): the page's labels in one query per target.
         $relationColumns = array_values(array_filter(array_keys($columns), static fn (string $name) => $typeDef->fields[$name]->type === 'relation'));
         $relationLabels = $relationColumns === [] ? [] : $relations->forRecords($typeDef, $relationColumns, $records);
-        // The page's snapshots, read once: the rows' badges compare the content (Publisher::stateWith(),
-        // exact also after a save that kept the version), the row menu links what is live.
+        // The page's snapshots, read once, for the row menu (what is live, its address).
         $snapshots = null;
         if ($states !== null) {
             $snapshots = [];
@@ -396,7 +395,8 @@ final class AdminController
                 }, $extraColumns),
                 'languages' => $multilingual ? $this->languageStates($typeDef, $record) : [],
                 'unchecked_url' => $uncheckedUrl,
-                'state' => $snapshots !== null ? $this->publisher->stateWith($record, $snapshots[$id] ?? null) : null,
+                // From the versions, as the status links and the filter (the editor shows the exact state()).
+                'state' => $stateOf !== null ? $stateOf($record) : null,
                 // The frontend route's home record: "The home page · slug “home”" under its title.
                 'home' => $home !== null ? FolioText::get('folio.list.home_page', ['field' => $route->paramNames[0], 'value' => $home]) : null,
                 // Its address in the default language, as the router sees it ("/", "/about").

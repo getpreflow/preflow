@@ -124,7 +124,8 @@ final class MemberSelfDeletionPublishedTest extends TestCase
         $this->assertSame('', (string) $this->publisher()->snapshot('order', 'o1')?->get('member'), 'scrubbed although the save was refused');
         $working = $c->get(DataManager::class)->findType('order', 'o1');
         $this->assertSame('', (string) $working?->get('member'), 'the working copy is detached');
-        $this->assertSame($version, (int) $working?->get('_version'), 'only its version bump was refused');
+        // The detach is a data-layer save (it changes content: VersionFields bump it once); the refused writer save adds nothing.
+        $this->assertSame($version + 1, (int) $working?->get('_version'), 'one bump, by the detach');
     }
 
     #[RunInSeparateProcess]

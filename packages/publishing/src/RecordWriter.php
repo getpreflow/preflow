@@ -586,10 +586,14 @@ final class RecordWriter
     /** A new position: stored without a new version, and carried into the snapshot of a publishing type. */
     private function storePosition(DynamicRecord $record): void
     {
-        $this->store->write($record);
-        if ($this->publishes($record->getType()->key)) {
-            $this->publisher->syncOrder($record);
+        if (!$this->publishes($record->getType()->key)) {
+            $this->store->write($record);
+
+            return;
         }
+        // Only the position, without a new version (a save would bump it: DataManager's VersionFields).
+        $this->publisher->saveSystemKeys($record->getType()->key, (string) $record->getId(), ['_order' => $record->get('_order')]);
+        $this->publisher->syncOrder($record);
     }
 
     /** @phpstan-assert-if-true !null $this->publisher */

@@ -62,8 +62,14 @@ Published, another is Changed. On storage that groups (`AggregatingStorage`: the
 drivers) that is one aggregate query per table, over the id and the version; on other storage the
 records are read. A discard, and a restore of the content that is live, mark the snapshot as
 published from the new version. An edit undone by hand reads Changed there, while `state($record)`,
-which compares the content, says Published, and a save that changes the content but keeps
-`_version` (an app's own `DataManager::save()` of a model) still reads Published there. A snapshot
+which compares the content, says Published. Every save of a working copy through DataManager (an
+app's own model save, an import, a reference the data layer clears) bumps `_version`
+(`PublishingVersionFields`, the data layer's `VersionFields`), so it reads Changed; raw SQL and
+direct driver writes are out of reach. Saves that change no content (a schedule set or cancelled,
+the same text again) carry the snapshot's version forward and stay Published. A new position or
+share token is written without a new version: `saveSystemKeys($type, $id, ['_order' => 3])`. On
+tables not migrated yet (no `_published_version` column) every record is compared in full and
+publishing leaves the key out. A snapshot
 published before 0.77 has no `_published_version`; that record is compared in full until the
 `publishing.published_versions` step of `preflow migrate` (right after `publishing.tables`, which
 adds the column) or `markPublishedVersions($type)` marks it: with the working version when the
@@ -183,7 +189,8 @@ what is due from cron:
 
 The command holds a lock (`storage/locks/publish-scheduled.lock`), so overlapping runs do nothing.
 Publishing clears the schedule; a record that fails its checks stays scheduled and is reported on
-every run.
+every run. So does one whose write fails (since 0.77): on SQL the working copy and the snapshot are
+one transaction, on JSON the schedule is put back, and the run goes on with the next record.
 
 `php preflow publish <type> [--id=<id>] [--all]` publishes the drafts of a type at once, e.g. after
 turning publishing on for a type with content. Without `--all` it skips records that are already

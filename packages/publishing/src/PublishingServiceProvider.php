@@ -172,5 +172,11 @@ final class PublishingServiceProvider extends ServiceProvider
         if (!$container->bound(RecordTypes::class)) {
             $container->singleton(RecordTypes::class, static fn (): RecordTypes => new NoRecordTypes());
         }
+        // Every save of a publishing type's working copy bumps _version (the data layer's VersionFields),
+        // so the published version tells a change also when an app saves the record itself.
+        if ($container->bound(DataManager::class)) {
+            $dm = $container->get(DataManager::class);
+            $dm->useVersionFields(new PublishingVersionFields(static fn (): PublishingTypes => $container->get(PublishingTypes::class), $dm));
+        }
     }
 }

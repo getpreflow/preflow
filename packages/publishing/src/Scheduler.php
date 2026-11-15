@@ -38,6 +38,9 @@ final class Scheduler
                     $published[] = $key;
                 } catch (ValidationException $e) {
                     $failed[$key] = self::firstMessage($e);
+                } catch (\Throwable $e) {
+                    // A failed write (the storage, a hook) keeps the schedule (Publisher::publish()) and the run goes on.
+                    $failed[$key] = $e::class . ': ' . $e->getMessage();
                 }
             }
         }

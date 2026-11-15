@@ -7,7 +7,10 @@ namespace Preflow\Publishing\Tests;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Observe\DataObserver;
 use Preflow\Publishing\PublishingTypes;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
 use Preflow\Publishing\PublishState;
 use Preflow\Publishing\Scheduler;
 use Preflow\Publishing\ShadowTypes;
@@ -126,19 +129,38 @@ final class PublisherStateCountsTest extends PublishingAppTestCase
         $this->assertSame([], $p->changes($this->stored($type, 'a')), 'never content');
     }
 
-    /** The counts compare versions, not content: what they read is two narrow columns. */
+    /** An app's own save (DataManager::saveType()) bumps the version (VersionFields), so the counts see the change. */
+    #[DataProvider('storages')]
+    public function test_an_app_save_bumps_the_version(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $app = $this->with('a', ['title' => $this->title('Elsewhere')]);
+        $this->dm()->saveType($app, false);
+
+        $this->assertSame(2, (int) $app->get('_version'), 'the record holds the version written');
+        $this->assertSame(2, (int) $this->stored($type, 'a')->get('_version'));
+        $this->assertSame(1, (int) $p->snapshot($type, 'a')?->get('_published_version'), 'snapshots keep theirs');
+        $this->assertArrayNotHasKey('_version', array_filter($p->snapshot($type, 'a')?->toArray() ?? []), 'snapshots get no _version');
+        $this->assertSame(['a' => PublishState::Changed], $p->states($type));
+        $this->assertSame(PublishState::Changed, $p->state($this->stored($type, 'a')));
+    }
+
+    /** What they read is the two versions, not the content: a driver write past DataManager (keeping the version) is out of their reach. */
     #[DataProvider('storages')]
     public function test_counts_read_the_versions_not_the_content(string $type): void
     {
         $this->use($type);
         $p = $this->publisher();
         $p->publish($this->record('a', 'One'), 'ana');
-        // Content changed behind the Publisher's back, the version kept: only the full compare sees it.
-        $this->dm()->saveType($this->with('a', ['title' => $this->title('Elsewhere')]), false);
+        $def = $this->dm()->getTypeRegistry()->get($type);
+        $row = $this->stored($type, 'a')->toArray();
+        $row['title'] = $type === 'post' ? ['en' => 'Elsewhere'] : 'Elsewhere';
+        $this->dm()->driver($def->storage)->save($def->table, 'a', $row, $def->idField);
 
         $this->assertSame(PublishState::Changed, $p->state($this->stored($type, 'a')));
         $this->assertSame(['a' => PublishState::Published], $p->states($type));
-        $this->assertSame(['draft' => 0, 'published' => 1, 'changed' => 0], $p->stateCounts($type));
     }
 
     /** A snapshot written before 0.77 has no _published_version: that record is compared in full. */
@@ -156,11 +178,165 @@ final class PublisherStateCountsTest extends PublishingAppTestCase
         $this->dm()->saveType($this->with('newer', ['title' => $this->title('Two')]), false);
 
         $this->assertSame(
-            ['edited' => PublishState::Changed, 'newer' => PublishState::Published, 'same' => PublishState::Published],
+            ['edited' => PublishState::Changed, 'newer' => PublishState::Changed, 'same' => PublishState::Published],
             self::sorted($p->states($type)),
         );
         $this->assertSame(['edited' => PublishState::Changed], $p->states($type, ['edited', 'missing']));
-        $this->assertSame(['draft' => 0, 'published' => 2, 'changed' => 1], $p->stateCounts($type));
+        $this->assertSame(['draft' => 0, 'published' => 1, 'changed' => 2], $p->stateCounts($type));
+    }
+
+    /** Saves through RecordWriter that change no content (a schedule, its cancel, the same text) keep a published record Published. */
+    #[DataProvider('storages')]
+    public function test_saves_without_a_content_change_stay_published(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $writer = $this->app()->container()->get(RecordWriter::class);
+        $p->publish($this->record('a', 'One'), 'ana');
+
+        $writer->save($this->with('a', []), new SaveOptions(by: 'ana', loadedVersion: 1, publishAt: '2099-01-01T10:00'));
+        $this->assertSame('2099-01-01T10:00', $this->stored($type, 'a')->get('_publish_at'));
+        $this->assertSame(2, (int) $this->stored($type, 'a')->get('_version'));
+        $this->assertSame(2, (int) $p->snapshot($type, 'a')?->get('_published_version'), 'carried forward');
+        $this->assertSame(['a' => PublishState::Published], $p->states($type), 'scheduled');
+
+        $writer->save($this->with('a', []), new SaveOptions(by: 'ana', loadedVersion: 2, publishAt: ''));
+        $this->assertSame('', (string) $this->stored($type, 'a')->get('_publish_at'));
+        $this->assertSame(['a' => PublishState::Published], $p->states($type), 'cancelled');
+
+        $writer->save($this->with('a', ['title' => $this->title('One')]), new SaveOptions(by: 'ana', loadedVersion: 3));
+        $this->assertSame(['a' => PublishState::Published], $p->states($type), 'saved unchanged');
+
+        $writer->save($this->with('a', ['title' => $this->title('Two')]), new SaveOptions(by: 'ana', loadedVersion: 4));
+        $this->assertSame(['a' => PublishState::Changed], $p->states($type), 'changed');
+        $writer->save($this->with('a', ['title' => $this->title('Two')]), new SaveOptions(by: 'ana', loadedVersion: 5));
+        $this->assertSame(['a' => PublishState::Changed], $p->states($type), 'a change stays a change');
+        $this->assertSame(PublishState::Changed, $p->state($this->stored($type, 'a')));
+    }
+
+    /** A new position and a new share token are written without a new version: the state stays. */
+    #[DataProvider('storages')]
+    public function test_system_keys_keep_the_version(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $p->saveSystemKeys($type, 'a', ['_order' => 7, '_share_token' => 'abc']);
+        $p->syncOrder($this->stored($type, 'a'));
+
+        $this->assertSame(1, (int) $this->stored($type, 'a')->get('_version'));
+        $this->assertSame('abc', $this->stored($type, 'a')->get('_share_token'));
+        $this->assertSame(7, (int) $p->snapshot($type, 'a')?->get('_order'));
+        $this->assertSame(['a' => PublishState::Published], $p->states($type));
+        $this->expectException(\InvalidArgumentException::class);
+        $p->saveSystemKeys($type, 'a', ['title' => 'x']);
+    }
+
+    /** A publish landing between the mark's read and its write keeps the version it wrote. */
+    #[DataProvider('storages')]
+    public function test_a_publish_between_the_marks_read_and_write_wins(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $this->forgetPublishedVersion('a');
+        $this->edit('a', 'Two');
+        $table = $this->dm()->getTypeRegistry()->get($type)->table . '__published';
+        $reads = 0;
+        $this->dm()->observe(new class ($table, $reads, fn () => $p->publish($this->stored($type, 'a'), 'bo', 2)) implements DataObserver {
+            public function __construct(private string $table, private int &$reads, private \Closure $publish) {}
+
+            public function read(string $storage, string $type, ?string $id): void
+            {
+                // The mark reads the published versions, the working copies, then the snapshots: publish after that.
+                if ($type === $this->table && ++$this->reads === 2) {
+                    ($this->publish)();
+                }
+            }
+
+            public function wrote(string $storage, string $type, ?string $id): void {}
+
+            public function rawRead(string $storage, string $sql): void {}
+
+            public function rawWrote(string $storage, string $sql): void {}
+        });
+
+        $this->assertSame(0, $p->markPublishedVersions($type), 'the mark lost the race');
+        $this->dm()->observe(null);
+        $this->assertGreaterThanOrEqual(2, $reads);
+        $this->assertSame(2, (int) $p->snapshot($type, 'a')?->get('_published_version'));
+        $this->assertSame('Two', $this->plain($p->snapshot($type, 'a')?->get('title')));
+        $this->assertSame(['a' => PublishState::Published], $p->states($type));
+    }
+
+    /** Orphan snapshots (their working copy gone) are marked -1, so they are not read again. */
+    public function test_orphan_snapshots_are_marked_once(): void
+    {
+        $this->use('article');
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $this->forgetPublishedVersion('a');
+        $this->dm()->execute("DELETE FROM article WHERE uuid = 'a'", [], 'sqlite');
+
+        $this->assertSame(1, $p->markPublishedVersions('article'));
+        $this->assertSame(-1, (int) $p->snapshot('article', 'a')?->get('_published_version'));
+        $this->assertSame(0, $p->markPublishedVersions('article'));
+    }
+
+    /** Tables not migrated yet (no _published_version column): publishing works, the states are the full compare. */
+    public function test_without_the_column_reads_compare_in_full_and_writes_leave_it_out(): void
+    {
+        $this->use('article');
+        $this->dm()->execute('ALTER TABLE article__published DROP COLUMN _published_version', [], 'sqlite');
+        $p = $this->publisher();
+        $p->publish($this->record('a', 'One'), 'ana');
+        $p->publish($this->record('b', 'One'), 'ana');
+        $this->edit('b', 'Two');
+        $p->saveSystemKeys('article', 'a', ['_order' => 3]);
+        $p->syncOrder($this->stored('article', 'a'));
+        $p->discard('article', 'b');
+        $this->edit('a', 'Two');
+
+        $this->assertSame(['a' => PublishState::Changed, 'b' => PublishState::Published], self::sorted($p->states('article')));
+        $this->assertSame(3, (int) $p->snapshot('article', 'a')?->get('_order'));
+        $this->assertSame(0, $p->markPublishedVersions('article'));
+    }
+
+    /** A publish that fails in the scheduler keeps its schedule, and the run goes on with the next record. */
+    #[DataProvider('storages')]
+    public function test_a_failed_scheduled_publish_keeps_its_schedule(string $type): void
+    {
+        $this->use($type);
+        $p = $this->publisher();
+        foreach (['a', 'b'] as $id) {
+            $p->saveDraft($this->record($id, 'One'), null);
+            $this->edit($id, 'One', ['_publish_at' => '2026-01-01T10:00']);
+        }
+        $p->publish($this->stored($type, 'b'), 'ana', 2);
+        $this->edit('b', 'Two', ['_publish_at' => '2026-01-01T10:00']);
+        // The revisions of the type cannot be written: every publish fails after the working copy.
+        $revisions = $this->dm()->getTypeRegistry()->get($type)->table . '__revisions';
+        if ($type === 'article') {
+            $this->dm()->execute("DROP TABLE {$revisions}", [], 'sqlite');
+        } else {
+            @mkdir($this->dir . '/storage/data/' . $revisions, 0777, true);
+            chmod($this->dir . '/storage/data/' . $revisions, 0500);
+        }
+        set_error_handler(static fn (): bool => true); // the JSON driver's own warning about the folder
+        try {
+            $run = (new Scheduler($p, $this->app()->container()->get(PublishingTypes::class), $this->dm()))->runDue(new \DateTimeImmutable('2026-01-02 00:00'));
+        } finally {
+            restore_error_handler();
+            if ($type === 'post') {
+                chmod($this->dir . '/storage/data/' . $revisions, 0777);
+            }
+        }
+
+        $this->assertSame([], $run['published']);
+        $this->assertSame([$type . '/a', $type . '/b'], array_keys($run['failed']), 'both tried, both failed');
+        foreach (['a', 'b'] as $id) {
+            $this->assertSame('2026-01-01T10:00', $this->stored($type, $id)->get('_publish_at'), "{$id} keeps its schedule");
+        }
     }
 
     /** The migrate step gives snapshots from before 0.77 their version, once; the states stay those of the full compare. */

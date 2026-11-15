@@ -82,6 +82,9 @@ final class ExportImportTest extends TestCase
                 continue;
             }
             foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $f) {
+                if (str_starts_with($f->getFilename(), '.')) {
+                    continue; // the JSON driver's own files (a type's .lock), never exported
+                }
                 $out[substr($f->getPathname(), strlen($this->dir) + 1)] = $root === 'storage/data'
                     ? json_encode(json_decode((string) file_get_contents($f->getPathname()), true))
                     : (string) file_get_contents($f->getPathname());

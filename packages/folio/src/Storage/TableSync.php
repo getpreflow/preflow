@@ -41,7 +41,7 @@ use Preflow\Folio\Seo\SeoSection;
 final class TableSync
 {
     /** System keys Folio writes besides a type's fields (columns() without the repeated _order). */
-    public const array SYSTEM = ['_locales', TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE, '_order', SeoSection::KEY, ...Publisher::META];
+    public const array SYSTEM = ['_locales', TranslationStatus::KEY, TranslationStatus::SOURCES, TranslationStatus::MACHINE, '_order', SeoSection::KEY, ...Publisher::TABLE_META];
 
     private readonly RecordTableSync $records;
 

@@ -180,7 +180,13 @@ final class PublisherTest extends TestCase
         $p = $this->publisher();
         $this->dm->saveType($this->working('post', ['title' => 'A', '_publish_at' => '2026-10-20T09:00']), false);
 
-        $p->publish($this->reload('post'), 'scheduler');
+        // A publish is a checked write: this driver (no VersionedStorage) gets the read-compare-write and its notice.
+        set_error_handler(static fn (int $no, string $message): bool => $no === E_USER_NOTICE && str_contains($message, 'does not implement Preflow\\Data\\VersionedStorage'));
+        try {
+            $p->publish($this->reload('post'), 'scheduler');
+        } finally {
+            restore_error_handler();
+        }
 
         $due = (new \Preflow\Publishing\Scheduler($p, new \Preflow\Folio\Publishing\FolioPublishingTypes(new TypeCatalog($this->dir . '/models')), $this->dm))
             ->runDue(new \DateTimeImmutable('2026-10-20T10:00'));

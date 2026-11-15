@@ -37,8 +37,17 @@ use Psr\Log\LoggerInterface;
  */
 final class Publisher
 {
-    /** System keys, never content. `_published_version` (@since 0.77): the snapshot's working version. */
-    public const array META = ['_version', '_publish_at', '_share_token', '_published_at', '_published_by', '_order', '_published_version'];
+    /** The system keys every table of a publishing type has (working copies, snapshots, revisions). @since 0.77 */
+    public const array TABLE_META = ['_version', '_publish_at', '_share_token', '_published_at', '_published_by', '_order'];
+
+    /** A snapshot's key (only snapshots have it): the working `_version` it was published from. @since 0.77 */
+    public const string PUBLISHED_VERSION = '_published_version';
+
+    /** System keys, never content: TABLE_META and PUBLISHED_VERSION (@since 0.77). */
+    public const array META = [...self::TABLE_META, self::PUBLISHED_VERSION];
+
+    /** Working-copy keys that are not content and are written without a new version (saveSystemKeys()). */
+    private const array SYSTEM_KEYS = ['_order', '_share_token'];
 
     /** Working-copy-only keys that are not copied into a snapshot. */
     private const array WORKING_ONLY = ['_version', '_publish_at', '_share_token'];
@@ -71,7 +80,10 @@ final class Publisher
         }
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
         $this->activity = new ActivityNotes($activity, $logger);
+        $this->logger = $logger;
     }
+
+    private readonly ?LoggerInterface $logger;
 
     private readonly ActivityNotes $activity;
 
@@ -179,10 +191,15 @@ final class Publisher
         // A bounded IN list per query (MySQL binds one placeholder per id).
         $chunks = $only === null ? [null] : array_chunk($only, self::STATES_CHUNK);
 
+        // Tables not migrated yet (no column for it): every record compared in full, as before 0.77.
+        if (!$this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
+            return $this->compared($def, $only);
+        }
+
         $states = [];
         $legacy = [];
         foreach ($chunks as $chunk) {
-            $published = $this->versions($shadow, '_published_version', $chunk);
+            $published = $this->versions($shadow, self::PUBLISHED_VERSION, $chunk);
             foreach ($this->versions($def, '_version', $chunk) as $id => $version) {
                 $id = (string) $id;
                 // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
@@ -225,8 +242,8 @@ final class Publisher
      * Gives each snapshot published before 0.77 (no `_published_version`) the version it was
      * published from, as far as the content tells: the working version when the working copy
      * holds the published content (the full compare), else -1 (an older one), so states() no longer
-     * compares that record in full. Snapshots that have the key, and those whose working copy is
-     * gone, are left alone; a second run marks nothing. Run by the `publishing.published_versions`
+     * compares that record in full. Snapshots that have the key are left alone, those whose working copy is
+     * gone get -1; a second run marks nothing. Run by the `publishing.published_versions`
      * migrate step.
      *
      * @since 0.77
@@ -237,8 +254,11 @@ final class Publisher
     {
         $def = $this->definition($type);
         $shadow = ShadowTypes::published($def);
+        if (!$this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
+            return 0; // publishing.tables adds the column first
+        }
         $legacy = [];
-        foreach ($this->versions($shadow, '_published_version', null) as $id => $version) {
+        foreach ($this->versions($shadow, self::PUBLISHED_VERSION, null) as $id => $version) {
             if ($version === null) {
                 $legacy[] = (string) $id;
             }
@@ -253,12 +273,16 @@ final class Publisher
             foreach ($this->among($this->dm->queryIn($shadow), $shadow, $chunk)->get()->items() as $snapshot) {
                 $id = (string) $snapshot->getId();
                 // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
-                if (!in_array($id, $chunk, true) || !isset($working[$id]) || $snapshot->get('_published_version') !== null) {
+                $read = $snapshot->get(self::PUBLISHED_VERSION);
+                if (!in_array($id, $chunk, true) || ($read !== null && $read !== '')) {
                     continue;
                 }
-                $version = self::compare($working[$id], $snapshot) === PublishState::Published ? (int) ($working[$id]->get('_version') ?? 0) : -1;
-                // Only while it has none (a publish in between wrote its own).
-                if ($this->dm->saveTypeIfVersion($snapshot, 0, $version, '_published_version', validate: false)) {
+                // A snapshot without its working copy (an orphan) gets -1 too, so it is not read again.
+                $version = isset($working[$id]) && self::compare($working[$id], $snapshot) === PublishState::Published
+                    ? (int) ($working[$id]->get('_version') ?? 0)
+                    : -1;
+                // Only while it has none: a publish in between wrote its own.
+                if ($this->dm->updateFieldsIfVersion($shadow, $id, [self::PUBLISHED_VERSION => $version], self::PUBLISHED_VERSION, null)) {
                     $marked++;
                 }
             }
@@ -303,16 +327,17 @@ final class Publisher
     }
 
     /**
-     * States by the full compare (state()) of these working copies, one snapshot query per 500 ids.
+     * States by the full compare (state()) of these working copies (null: all), one snapshot query
+     * per 500 ids.
      *
-     * @param list<string> $ids
+     * @param list<string>|null $ids
      * @return array<string, PublishState>
      */
-    private function compared(TypeDefinition $def, array $ids): array
+    private function compared(TypeDefinition $def, ?array $ids): array
     {
         $shadow = ShadowTypes::published($def);
         $states = [];
-        foreach (array_chunk($ids, self::STATES_CHUNK) as $chunk) {
+        foreach ($ids === null ? [null] : array_chunk($ids, self::STATES_CHUNK) as $chunk) {
             $snapshots = [];
             foreach ($this->among($this->dm->queryIn($shadow), $shadow, $chunk)->get()->items() as $snapshot) {
                 $snapshots[(string) $snapshot->getId()] = $snapshot;
@@ -320,7 +345,7 @@ final class Publisher
             foreach ($this->among($this->dm->queryIn($def), $def, $chunk)->get()->items() as $working) {
                 $id = (string) $working->getId();
                 // An IN on a text column compares case- and accent-insensitively on MySQL: exact ids only.
-                if (!in_array($id, $chunk, true)) {
+                if ($chunk !== null && !in_array($id, $chunk, true)) {
                     continue;
                 }
                 $states[$id] = self::compare($working, $snapshots[$id] ?? null);
@@ -359,11 +384,17 @@ final class Publisher
         // save landing between this read and the write makes the write fail, never overwrite.
         // Without a loaded version, a save that lost such a race is retried on the newer version.
         for ($attempt = 1; ; $attempt++) {
-            $current = $this->storedVersion($working);
+            $stored = $this->dm->findIn($working->getType(), (string) $working->getId());
+            $current = (int) ($stored?->get('_version') ?? 0);
             if ($loadedVersion !== null && $loadedVersion !== $current) {
                 throw new VersionConflict($current);
             }
             if ($this->dm->saveTypeIfVersion($working, $current, $current + 1, validate: false)) {
+                // A save without a content change (a schedule set or cancelled, the same text again)
+                // keeps a published record Published in states(): its snapshot moves to the new version.
+                if ($stored !== null && self::comparable($working) === self::comparable($stored)) {
+                    $this->carryForward($working, $current);
+                }
                 $this->index?->refresh($working);
 
                 return;
@@ -371,6 +402,23 @@ final class Publisher
             if ($loadedVersion !== null || $attempt >= self::SAVE_ATTEMPTS) {
                 throw new VersionConflict($this->storedVersion($working));
             }
+        }
+    }
+
+    /**
+     * The snapshot published from version $from now stands for the working copy's new version (its
+     * content is the same): a checked write of _published_version, so a publish in between keeps its
+     * own. Never fails the save; a failure is logged.
+     */
+    private function carryForward(DynamicRecord $working, int $from): void
+    {
+        $shadow = ShadowTypes::published($working->getType());
+        try {
+            if ($this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
+                $this->dm->updateFieldsIfVersion($shadow, (string) $working->getId(), [self::PUBLISHED_VERSION => (int) $working->get('_version')], self::PUBLISHED_VERSION, $from);
+            }
+        } catch (\Throwable $e) {
+            $this->logger?->warning('Publishing: could not carry the published version of {type}/{id} forward: {message}', ['type' => $working->getType()->key, 'id' => (string) $working->getId(), 'message' => $e->getMessage(), 'exception' => $e]);
         }
     }
 
@@ -429,59 +477,89 @@ final class Publisher
         }
     }
 
-    /** publish() after the checks: the working copy and the snapshot. */
+    /**
+     * publish() after the checks: the working copy (checked against the version expected: the loaded
+     * one, else the one just read, tried again when another save got in between) and the snapshot,
+     * in one transaction on SQL storage. On storage without transactions (JSON) a failed snapshot
+     * write puts the stored schedule back, so a scheduled record is tried again on the next run.
+     */
     private function write(DynamicRecord $working, ?string $by, ?int $loadedVersion): DynamicRecord
     {
         $def = $working->getType();
         $shadow = ShadowTypes::published($def);
+        $id = (string) $working->getId();
+        $before = $working->toArray();
 
-        // Read before any transaction: on MariaDB a transaction's later write to a row changed
-        // since its first read fails (snapshot isolation); the claim catches a save in between.
-        $stored = $this->dm->findIn($def, (string) $working->getId());
-        $changed = $stored === null || self::comparable($working) !== self::comparable($stored);
+        for ($attempt = 1; ; $attempt++) {
+            // Read before any transaction: on MariaDB a transaction's later write to a row changed
+            // since its first read fails (snapshot isolation); the checked write catches a save in between.
+            $stored = $this->dm->findIn($def, $id);
+            $changed = $stored === null || self::comparable($working) !== self::comparable($stored);
+            $expected = $loadedVersion ?? (int) ($stored?->get('_version') ?? 0);
+            $next = $changed ? $expected + 1 : $expected;
 
-        if ($loadedVersion === null) {
-            $previous = $this->dm->findIn($shadow, (string) $working->getId());
-            $storedVersion = $stored?->get('_version');
-            if ($changed) {
-                $working->set('_version', (int) ($storedVersion ?? 0) + 1);
-            } elseif ($storedVersion !== null) {
-                $working->set('_version', (int) $storedVersion);
+            $previous = null;
+            $wrote = false;
+            try {
+                $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $id, $by, $expected, $next, &$previous, &$wrote): ?DynamicRecord {
+                    // '' rather than null: SQL drivers skip null values, so null would never clear it.
+                    $working->set('_publish_at', '');
+                    if (!$this->dm->saveTypeIfVersion($working, $expected, $next, validate: false)) {
+                        return null;
+                    }
+                    $wrote = true;
+                    $previous = $this->dm->findIn($shadow, $id);
+
+                    return $this->writeSnapshot($working, $previous, $by);
+                });
+            } catch (\Throwable $e) {
+                $this->putScheduleBack($working, $before, $wrote ? $next : null);
+                throw $e;
             }
-
-            // '' rather than null: SQL drivers skip null values, so null would never clear it.
-            $working->set('_publish_at', '');
-            $this->dm->saveType($working, false);
-            $snapshot = $this->writeSnapshot($working, $previous, $by);
-            $this->addresses?->changed(static fn (): ?DynamicRecord => $previous, $snapshot);
-            $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
-            $this->index?->refresh($working);
-            $this->activity->note($working, ActivityKind::Published, self::changedFields($def, $snapshot, $previous), $by);
-
-            return $snapshot;
-        }
-
-        $next = $changed ? $loadedVersion + 1 : $loadedVersion;
-
-        $previous = null;
-        $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $by, $loadedVersion, $next, &$previous): DynamicRecord {
-            $schedule = $working->toArray();
-            $working->set('_publish_at', '');
-            if (!$this->dm->saveTypeIfVersion($working, $loadedVersion, $next, validate: false)) {
-                array_key_exists('_publish_at', $schedule) ? $working->set('_publish_at', $schedule['_publish_at']) : $working->remove('_publish_at');
+            if ($snapshot !== null) {
+                break;
+            }
+            self::restoreKey($working, $before, '_publish_at');
+            if ($loadedVersion !== null || $attempt >= self::SAVE_ATTEMPTS) {
                 throw new VersionConflict($this->storedVersion($working));
             }
-            $previous = $this->dm->findIn($shadow, (string) $working->getId());
+        }
 
-            return $this->writeSnapshot($working, $previous, $by);
-        });
         $this->addresses?->changed(static fn (): ?DynamicRecord => $previous, $snapshot);
         // After the commit: the address book writes on its own (it never fails a publish).
-        $this->addresses?->sync($def->key, (string) $working->getId(), $previous);
+        $this->addresses?->sync($def->key, $id, $previous);
         $this->index?->refresh($working);
         $this->activity->note($working, ActivityKind::Published, self::changedFields($def, $snapshot, $previous), $by);
 
         return $snapshot;
+    }
+
+    /**
+     * After a failed publish: the record gets its schedule and version back; where the working copy
+     * was written ($written: its version) and stays written (no transaction rolled it back), the
+     * stored schedule is put back too, by a checked write.
+     *
+     * @param array<string, mixed> $before the record as publish() got it
+     */
+    private function putScheduleBack(DynamicRecord $working, array $before, ?int $written): void
+    {
+        self::restoreKey($working, $before, '_publish_at');
+        self::restoreKey($working, $before, '_version');
+        $schedule = $before['_publish_at'] ?? null;
+        if ($written === null || !is_string($schedule) || $schedule === '') {
+            return;
+        }
+        try {
+            $this->dm->updateFieldsIfVersion($working->getType(), (string) $working->getId(), ['_publish_at' => $schedule], '_version', $written);
+        } catch (\Throwable $e) {
+            $this->logger?->warning('Publishing: could not put the schedule of {type}/{id} back: {message}', ['type' => $working->getType()->key, 'id' => (string) $working->getId(), 'message' => $e->getMessage(), 'exception' => $e]);
+        }
+    }
+
+    /** @param array<string, mixed> $before */
+    private static function restoreKey(DynamicRecord $record, array $before, string $key): void
+    {
+        array_key_exists($key, $before) ? $record->set($key, $before[$key]) : $record->remove($key);
     }
 
     /**
@@ -511,9 +589,13 @@ final class Publisher
         $stamp = ($this->now)()->format(DATE_ATOM);
         $snapshot = DynamicRecord::fromArray($shadow, array_merge(
             array_diff_key($working->toArray(), array_flip(self::WORKING_ONLY)),
-            // The version it was published from: states() compares it with the working copy's.
-            ['_published_at' => $stamp, '_published_by' => $by, '_published_version' => (int) ($working->get('_version') ?? 0)],
+            ['_published_at' => $stamp, '_published_by' => $by],
         ));
+        // The version it was published from (the one just written): states() compares it with the
+        // working copy's. Left out on tables not migrated yet.
+        if ($this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
+            $snapshot->set(self::PUBLISHED_VERSION, (int) ($working->get('_version') ?? 0));
+        }
         $this->dm->saveType($snapshot, false);
         $this->appendRevision($def, $snapshot, $previous, $stamp, $by);
 
@@ -577,15 +659,61 @@ final class Publisher
         }
     }
 
-    /** Carry a working copy's list position into its snapshot (ordering is not content). */
+    /**
+     * Carry a working copy's list position into its snapshot (ordering is not content): only the
+     * position is written, while the snapshot holds the published version read (a publish in between
+     * copies the position itself).
+     */
     public function syncOrder(DynamicRecord $working): void
     {
         $shadow = ShadowTypes::published($working->getType());
-        $snapshot = $this->dm->findIn($shadow, (string) $working->getId());
-        if ($snapshot !== null) {
-            $snapshot->set('_order', $working->get('_order'));
-            $this->dm->saveType($snapshot, false);
+        $id = (string) $working->getId();
+        $snapshot = $this->dm->findIn($shadow, $id);
+        if ($snapshot === null) {
+            return;
         }
+        if (!$this->dm->hasColumn($shadow, self::PUBLISHED_VERSION)) {
+            $snapshot->set('_order', $working->get('_order')); // tables not migrated yet
+            $this->dm->saveType($snapshot, false);
+
+            return;
+        }
+        $this->dm->updateFieldsIfVersion($shadow, $id, ['_order' => $working->get('_order')], self::PUBLISHED_VERSION, self::versionOf($snapshot->get(self::PUBLISHED_VERSION)));
+    }
+
+    /**
+     * Write working-copy keys that are not content (the list position `_order`, the share token
+     * `_share_token`) without a new version: only these keys, checked against the stored version
+     * (tried again when a save got in between), so open editors stay valid and the state stays.
+     *
+     * @since 0.77
+     *
+     * @param array<string, mixed> $keys
+     * @throws \InvalidArgumentException for any other key
+     * @throws VersionConflict when the record was saved by others on every try
+     */
+    public function saveSystemKeys(string $type, string $id, array $keys): void
+    {
+        $unknown = array_diff(array_keys($keys), self::SYSTEM_KEYS);
+        if ($keys === [] || $unknown !== []) {
+            throw new \InvalidArgumentException('saveSystemKeys() writes ' . implode(', ', self::SYSTEM_KEYS) . ' only.');
+        }
+        $def = $this->definition($type);
+        for ($attempt = 1; ; $attempt++) {
+            $stored = $this->dm->findIn($def, $id) ?? throw new \InvalidArgumentException("No {$type} {$id} to write.");
+            if ($this->dm->updateFieldsIfVersion($def, $id, $keys, '_version', self::versionOf($stored->get('_version')))) {
+                return;
+            }
+            if ($attempt >= self::SAVE_ATTEMPTS) {
+                throw new VersionConflict($this->storedVersion($stored));
+            }
+        }
+    }
+
+    /** A stored version: null for none (NULL, ''), else its number. */
+    private static function versionOf(mixed $value): ?int
+    {
+        return $value === null || $value === '' ? null : (int) $value;
     }
 
     /** Remove a deleted record's snapshot and revisions. */
@@ -660,16 +788,23 @@ final class Publisher
     /**
      * After a discard or restore (a new working version): when the working copy now holds the
      * published content (the full compare), its snapshot is marked as published from that version,
-     * so states() reads Published as state() does.
+     * so states() reads Published as state() does. A checked write of that key only (a publish in
+     * between keeps its own); a failure is logged and never fails the discard or restore.
      */
     private function relink(DynamicRecord $working, ?DynamicRecord $snapshot): void
     {
         $version = (int) ($working->get('_version') ?? 0);
-        if ($snapshot === null || (int) ($snapshot->get('_published_version') ?? -1) === $version || self::compare($working, $snapshot) !== PublishState::Published) {
+        $read = self::versionOf($snapshot?->get(self::PUBLISHED_VERSION));
+        if ($snapshot === null || $read === $version || self::compare($working, $snapshot) !== PublishState::Published) {
             return;
         }
-        // Only while the snapshot still holds the version read (a publish in between wrote its own).
-        $this->dm->saveTypeIfVersion($snapshot, (int) ($snapshot->get('_published_version') ?? 0), $version, '_published_version', validate: false);
+        try {
+            if ($this->dm->hasColumn($snapshot->getType(), self::PUBLISHED_VERSION)) {
+                $this->dm->updateFieldsIfVersion($snapshot->getType(), (string) $snapshot->getId(), [self::PUBLISHED_VERSION => $version], self::PUBLISHED_VERSION, $read);
+            }
+        } catch (\Throwable $e) {
+            $this->logger?->warning('Publishing: could not mark the published version of {type}/{id}: {message}', ['type' => $working->getType()->key, 'id' => (string) $working->getId(), 'message' => $e->getMessage(), 'exception' => $e]);
+        }
     }
 
     /** @return list<Revision> */
