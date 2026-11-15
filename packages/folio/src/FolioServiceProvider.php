@@ -2321,7 +2321,7 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * Tells the data package which field types hold searchable text (the SearchableText marker,
-     * extension types included) and which are relations. Only when the app has a DataManager.
+     * extension types included), which hold a list (StoresList) and which are relations. Only when the app has a DataManager.
      */
     private function registerFieldKinds(Container $container, Application $app): void
     {
@@ -2334,6 +2334,9 @@ final class FolioServiceProvider extends ServiceProvider
             $key = $type->key();
             if ($type instanceof \Preflow\Folio\Field\SearchableText) {
                 $kinds->text($key);
+            }
+            if ($type instanceof \Preflow\Folio\Field\StoresList) {
+                $kinds->list($key);
             }
             if ($type instanceof \Preflow\Folio\Field\HasColumnKind) {
                 $kinds->column($key, static fn (array $config): \Preflow\Data\Schema\ColumnKind => $type->columnKind($config));

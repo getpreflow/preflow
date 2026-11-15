@@ -870,10 +870,12 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   ignored, the first spelling wins). `"max"` (tags per record, default 20) and `"maxLength"`
   (characters per tag, default 40) are checked on save ("At most 20 tags."); what the editor
   cannot add for them stays in the input. `"options"` (a list of texts) are suggested while
-  typing. The value is stored as a JSON list (`["Folio","Übersetzung"]`, readable umlauts) in a
-  text column, so the list's search finds a tag on every storage; no tags is stored as `null`, so
-  `"validate": ["required"]` refuses an empty field (as for a multiple relation or multiple
-  assets, since 0.77). A comma string stored before (`"Folio, members"`) is read as its parts.
+  typing. The value is stored as a list: in a JSON file as a list (`["Folio", "Übersetzung"]`,
+  since 0.78), in SQL as JSON text in a text column (readable umlauts), so the list's search finds
+  a tag on every storage; no tags is stored as `null`, so `"validate": ["required"]` refuses an
+  empty field (as for a multiple relation or multiple assets, since 0.77). JSON text or a comma
+  string stored before (`"Folio, members"`) is read as its parts, and a JSON file gets the list on
+  its next save.
   The frontend gets `<ul class="tags"><li>Folio</li>…</ul>`, a list cell "Folio, members, AI +2".
   A `tags` field cannot be `"translatable"` (one list serves every language), on a type or in a
   block: that, or an invalid `"max"`, `"maxLength"` or `"options"`, is a `FrontendConfigException`

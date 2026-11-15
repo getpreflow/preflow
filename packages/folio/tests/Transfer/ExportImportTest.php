@@ -23,7 +23,8 @@ final class ExportImportTest extends TestCase
         $post = $this->working('post', 'p1', ['title' => ['en' => 'Hello'], 'slug' => ['en' => 'hello']]);
         $this->publisher()->publish($post, 'tester');
         $this->working('site', 'site', ['tagline' => ['en' => 'Live tagline']]);
-        $this->driver()->save('folio_assets', 'a1', ['uuid' => 'a1', 'path' => '2026/10/a1.jpg', 'mime' => 'image/jpeg']);
+        // In the canonical order an import writes (0.78: the type's fields, then the id), so a round trip gives the same bytes.
+        $this->driver()->save('folio_assets', 'a1', ['path' => '2026/10/a1.jpg', 'mime' => 'image/jpeg', 'uuid' => 'a1']);
         $this->driver()->save('user_tokens', 't1', ['uuid' => 't1', 'name' => 'not content']);
         $this->put('public/media/2026/10/a1.jpg', 'JPEGBYTES');
         $this->put('public/media/2026/10/a1-480.webp', 'WEBP');
@@ -117,7 +118,7 @@ final class ExportImportTest extends TestCase
         $summary = $this->import($archive);
 
         $this->assertSame('PRIVATEPDF', file_get_contents($this->dir . '/storage/private-media/2026/10/p1.pdf'));
-        $this->assertSame(1, $this->driver()->findOne('folio_assets', 'p1')['private'] ?? null);
+        $this->assertSame(true, $this->driver()->findOne('folio_assets', 'p1')['private'] ?? null, 'a yes/no value as a JSON file holds it (0.78)');
         $this->assertFileDoesNotExist($this->dir . '/public/media/2026/10/p1.pdf');
         $this->assertSame(['added' => [], 'changed' => [], 'removed' => []], $summary['media']);
     }

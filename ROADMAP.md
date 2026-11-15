@@ -345,6 +345,7 @@ all of these are still open. Already done: the expired-session CSRF handler (0.3
 
 ### Folio
 
+- **List values of relation and asset fields in JSON files (data/Folio, after 0.78):** since 0.78 a JSON record file is written in one canonical form (`DataManager::storageValues()`: field order, tags as a list, numbers and yes/no values as such). A multiple relation field and an asset field still hand DataManager their ids as JSON text, so their files hold a JSON string; it is deterministic, so the bytes are stable. Wanted: both as list kinds (`StoresList`), with their readers (relation `HAS`, asset usage, the model bridge) checked for a list
 - **Types with files and `"transfer": false`:** refused today for types with `asset`, `blocks` or `matrix` fields; wanted: exclude single fields from transfer, or transfer a type's files without its records
 - **`list.filters` (and `list.sort`, `list.bulk`) in an `extends` model file:** only `fields` and `list.columns` are allowed (`ModelExtension::merge`)
 - **Staff mails with the site's mail layout:** `StaffMailer` sends plain text only; a `mail.layout` option like members' (lang, subject, paragraphs, optional action)

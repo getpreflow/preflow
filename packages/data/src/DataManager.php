@@ -172,7 +172,7 @@ final class DataManager
             $none = $value === null || $value === '';
             $written = $stored !== null && ($expected === null ? $none : !$none && is_scalar($value) && (string) $value === (string) $expected);
             if ($written) {
-                $driver->save($def->table, $id, array_replace($stored, $fields), $def->idField);
+                $driver->save($def->table, $id, $this->storageValues($def, array_replace($stored, $fields)), $def->idField);
             }
         }
         if ($written) {
@@ -686,7 +686,7 @@ final class DataManager
         }
 
         $driver = $this->resolveDriver($meta->storage);
-        $data = $this->modelData($meta, $model);
+        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
         $id = $data[$meta->idField] ?? null;
         $isEmpty = $id === null || $id === '' || $id === 0 || $id === '0';
 
@@ -726,7 +726,7 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
         if (self::hasStringId($meta)) {
             // A string id is never the storage's to give: the given one, or the new UUID.
-            $data = $this->modelData($meta, $model);
+            $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
             $id = (string) $data[$meta->idField];
             if ($driver->exists($meta->table, $id, $meta->idField)) {
                 throw new \RuntimeException('Cannot insert ' . $model::class . " {$id}: a record with this id exists. Use save() or update().");
@@ -737,7 +737,7 @@ final class DataManager
             return;
         }
 
-        $data = $this->modelData($meta, $model);
+        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
 
         // Force INSERT by passing empty ID (PdoDriver strips the ID field and does plain INSERT)
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, 0, $data, $meta->idField));
@@ -827,7 +827,7 @@ final class DataManager
         }
 
         $driver = $this->resolveDriver($meta->storage);
-        $data = $this->modelData($meta, $model);
+        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
         $id = $data[$meta->idField] ?? null;
 
         if (self::emptyId($id)) {
@@ -922,7 +922,7 @@ final class DataManager
         $this->guarded($record, function () use ($driver, $def, $id, $data, $versionField): void {
             if (self::emptyId($id)) {
                 // An auto-increment id: the storage gives it (a first write, version 1).
-                $driver->save($def->table, 0, $versionField === null ? $data : [...$data, $versionField => 1], $def->idField);
+                $driver->save($def->table, 0, $versionField === null ? $data : $this->storageValues($def, [...$data, $versionField => 1]), $def->idField);
 
                 return;
             }
@@ -986,9 +986,9 @@ final class DataManager
 
             return;
         }
-        $write = static function () use ($driver, $def, $id, $data): void {
+        $write = function () use ($driver, $def, $id, $data): void {
             $stored = $driver->findOne($def->table, $id, $def->idField);
-            $driver->save($def->table, $id, $stored === null ? $data : array_replace($stored, $data), $def->idField);
+            $driver->save($def->table, $id, $this->storageValues($def, $stored === null ? $data : array_replace($stored, $data)), $def->idField);
         };
         $driver instanceof ExclusiveWrites ? $driver->exclusive($def->table, $write) : $write();
     }
@@ -1470,27 +1470,142 @@ final class DataManager
     }
 
     /**
-     * A row of this type as it is written: an empty string in a number, yes/no or date field is
-     * NULL (those columns hold no empty text), and so is an empty unique value (NULL is never a
-     * duplicate in a unique index, '' would be); other empty text stays ''. For callers writing
-     * rows to a driver themselves (an import), as saveType() does.
+     * A row of this type as it is written, the same whoever saves it (Folio, the CLI, a script),
+     * so an unchanged record is written to the same bytes:
+     * - the keys in the type's field order, then the system keys (the id field when it is no
+     *   field, then the keys starting with "_", in their given order), then any other key in its
+     *   given order; no key is dropped;
+     * - a list field (FieldKinds::list()) holds a list, also when given as JSON text or a comma
+     *   string; a number field's numeric text is a number (int when whole); a yes/no field's
+     *   '1'/'0'/1/0/'true'/'false' is a bool. A value that does not convert stays as it is, and so
+     *   does a translatable field (a map per locale) and one the type transforms itself;
+     * - an empty string in a number, yes/no or date field is NULL (those columns hold no empty
+     *   text), and so is an empty unique value (NULL is never a duplicate in a unique index, ''
+     *   would be); other empty text stays ''.
+     * SQL storage stores a list as JSON text, as before. For callers writing rows to a driver
+     * themselves (an import), as saveType() does.
      *
      * @param array<string, mixed> $data
      * @return array<string, mixed>
      */
     public function storageValues(TypeDefinition $def, array $data): array
     {
+        $kinds = $this->fieldKinds();
         foreach ($def->fields as $name => $field) {
-            if (($data[$name] ?? null) !== '') {
+            if (!array_key_exists($name, $data)) {
                 continue;
             }
-            $kind = $this->fieldKinds()->columnKindOf($field);
-            if (in_array($kind, [ColumnKind::Number, ColumnKind::Boolean, ColumnKind::Date], true) || ($field->unique !== false && $kind !== ColumnKind::Text)) {
-                $data[$name] = null;
+            $kind = $kinds->columnKindOf($field);
+            if ($data[$name] === '') {
+                if (in_array($kind, [ColumnKind::Number, ColumnKind::Boolean, ColumnKind::Date], true) || ($field->unique !== false && $kind !== ColumnKind::Text)) {
+                    $data[$name] = null;
+                }
+                continue;
+            }
+            if ($field->translatable || isset($def->transformers[$name])) {
+                continue;
+            }
+            $data[$name] = match (true) {
+                $kinds->isList($field->type) => self::asList($data[$name]),
+                $kind === ColumnKind::Number => self::asNumber($data[$name]),
+                $kind === ColumnKind::Boolean => self::asBool($data[$name]),
+                default => $data[$name],
+            };
+        }
+
+        return self::canonicalOrder($data, array_keys($def->fields), $def->idField);
+    }
+
+    /**
+     * $data with the keys in $fields first (in that order), then $idField when it is none of them
+     * and the keys starting with "_", then the rest; every group but the first in its given order.
+     *
+     * @param array<string, mixed> $data
+     * @param list<string> $fields
+     * @return array<string, mixed>
+     */
+    private static function canonicalOrder(array $data, array $fields, string $idField): array
+    {
+        $first = [];
+        foreach ($fields as $name) {
+            if (array_key_exists($name, $data)) {
+                $first[$name] = $data[$name];
+            }
+        }
+        $system = [];
+        if (array_key_exists($idField, $data) && !array_key_exists($idField, $first)) {
+            $system[$idField] = $data[$idField];
+        }
+        $rest = [];
+        foreach ($data as $key => $value) {
+            if (array_key_exists($key, $first) || array_key_exists($key, $system)) {
+                continue;
+            }
+            if (is_string($key) && str_starts_with($key, '_')) {
+                $system[$key] = $value;
+            } else {
+                $rest[$key] = $value;
             }
         }
 
-        return $data;
+        return $first + $system + $rest;
+    }
+
+    /**
+     * A plain model's row in a stable key order: the fields of its metadata, then the rest.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function canonicalModel(ModelMetadata $meta, array $data): array
+    {
+        return self::canonicalOrder($data, array_map(strval(...), array_keys($meta->fields)), $meta->idField);
+    }
+
+    /** A list value as a list: JSON text of a list, or a legacy comma string ("a, b"); anything else as it is. */
+    private static function asList(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+        $text = trim($value);
+        if ($text === '' || $text === 'null' || $text[0] === '{') {
+            return $value;
+        }
+        if ($text[0] === '[') {
+            $decoded = json_decode($text, true);
+
+            return is_array($decoded) && array_is_list($decoded) ? $decoded : $value;
+        }
+        $parts = array_values(array_filter(array_map(trim(...), explode(',', $text)), static fn (string $part): bool => $part !== ''));
+
+        return $parts === [] ? $value : $parts;
+    }
+
+    /** Numeric text as a number (an int when whole and in range, else a float); anything else as it is. */
+    private static function asNumber(mixed $value): mixed
+    {
+        if (!is_string($value) || !is_numeric($value)) {
+            return $value;
+        }
+        $text = trim($value);
+        // Whole numbers of up to 18 digits fit an int on every 64-bit PHP; longer ones are floats.
+        if (preg_match('/^[+-]?\d+$/', $text) === 1 && strlen(ltrim(ltrim($text, '+-'), '0')) <= 18) {
+            return (int) $text;
+        }
+        $float = (float) $text;
+
+        return is_finite($float) ? $float : $value;
+    }
+
+    /** '1', '0', 1, 0, 'true' and 'false' as a bool; anything else as it is. */
+    private static function asBool(mixed $value): mixed
+    {
+        return match ($value) {
+            '1', 1, 'true' => true,
+            '0', 0, 'false' => false,
+            default => $value,
+        };
     }
 
     /** @var array<class-string, true> driver classes already told about */

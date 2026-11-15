@@ -168,6 +168,28 @@ abstract class StorageDriverContract extends TestCase
         $this->assertBoolean(false, $this->record('no')['active'] ?? null);
     }
 
+    /** A yes/no value is in a list as '1' or '0', as SQL stores it (0.78: JSON files hold true/false). */
+    public function test_a_boolean_is_in_a_list_as_one_or_zero(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'yes', ['uuid' => 'yes', 'active' => true]);
+        $this->driver->save('records', 'no', ['uuid' => 'no', 'active' => false]);
+
+        $in = fn (array $values): array => array_map(
+            static fn (array $row): string => (string) $row['uuid'],
+            $this->driver->findMany('records', (new Query())->where('active', 'IN', $values))->items(),
+        );
+        $any = fn (array $values): array => array_map(
+            static fn (array $row): string => (string) $row['uuid'],
+            $this->driver->findMany('records', (new Query())->whereAny([['field' => 'active', 'operator' => 'IN', 'value' => $values]]))->items(),
+        );
+        $this->assertSame(['yes'], $in(['1']));
+        $this->assertSame(['no'], $in(['0']));
+        $this->assertSame(['no'], $in([0]));
+        $this->assertSame(['yes'], $any(['1']));
+        $this->assertSame(['no'], $any(['0']));
+    }
+
     public function test_a_json_field_round_trips(): void
     {
         $this->createRecords();

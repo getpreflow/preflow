@@ -85,6 +85,20 @@ built: never pass a request's operator or column name unchecked.
 | `SqliteDriver` | PDO-based SQLite via `PdoDriver` + `QueryCompiler` |
 | `MysqlDriver` | PDO-based MySQL / MariaDB via `PdoDriver` + `QueryCompiler` (see [MySQL and MariaDB](#mysql-and-mariadb)) |
 
+**One format for JSON record files (0.78).** Every save through `DataManager` (and so through
+Folio, a CLI command or a script) writes a record in one canonical form, so an unchanged record
+is written to the same bytes: the type's fields in their order, then the id and the system keys
+(`_version`, …) in their order, then any other key (none is dropped); a list field
+(`fieldKinds()->list('tags')`; Folio registers its field types marked `StoresList`) as a list,
+also when it was given as JSON text or a comma string; a number field's numeric text as a number
+and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as `true`/`false`. A value that does not
+convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+| JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. A hand-written
+file gets this form on its next save; nothing is migrated. SQL storage keeps lists as JSON text in
+their columns. A direct `driver()->save()` keeps its caller's key order; `storageValues()` gives
+the canonical row to callers that write rows themselves (an import). In JSON files `IN` reads a
+yes/no value as `'1'` or `'0'`, as SQL stores it.
+
 **Lazy connection (0.59).** `SqliteDriver`, `MysqlDriver` and any `PdoDriver` subclass take a
 `\PDO` or a `\Closure(): \PDO`. Given a closure, the driver opens the connection on its first
 query and runs its session setup (`configure()`) then; `connected()` tells whether it has.

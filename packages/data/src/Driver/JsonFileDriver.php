@@ -16,6 +16,9 @@ use Preflow\Data\VersionedStorage;
 
 final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters
 {
+    /** How a record file is encoded (0.78): the same bytes for the same record, whoever writes it. */
+    private const int RECORD_FLAGS = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR;
+
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
 
@@ -518,7 +521,9 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         }
 
         $path = $this->filePath($type, $id);
-        $json = json_encode($data, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        // Stable bytes (0.78): umlauts and slashes as they are, 2.0 stays 2.0, a trailing newline.
+        // The key order is the caller's (DataManager writes a type's records in its canonical order).
+        $json = json_encode($data, self::RECORD_FLAGS) . "\n";
 
         // Write a temp file next to it, then rename: readers (and exports) only
         // ever see the old or the new record, never half of one.
@@ -764,7 +769,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             if (!is_scalar($fieldValue)) {
                 return false;
             }
-            $listed = in_array((string) $fieldValue, array_map('strval', array_filter((array) $condValue, 'is_scalar')), true);
+            $listed = in_array(self::listText($fieldValue), array_map(self::listText(...), array_filter((array) $condValue, 'is_scalar')), true);
 
             return $operator === 'IN' ? $listed : !$listed;
         }
@@ -783,6 +788,12 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             'NOT LIKE' => $fieldValue !== null && !$this->matchLike((string) $fieldValue, (string) $condValue),
             default => false,
         };
+    }
+
+    /** A value as IN compares it: as text, a yes/no value as '1' or '0' (as SQL stores it). */
+    private static function listText(bool|int|float|string $value): string
+    {
+        return is_bool($value) ? ($value ? '1' : '0') : (string) $value;
     }
 
     /**
@@ -812,7 +823,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
         return match ($condition['operator']) {
             'CONTAINS' => self::containsText($fieldValue, (string) $value),
-            'IN' => is_scalar($fieldValue) && in_array((string) $fieldValue, array_map('strval', array_filter((array) $value, 'is_scalar')), true),
+            'IN' => is_scalar($fieldValue) && in_array(self::listText($fieldValue), array_map(self::listText(...), array_filter((array) $value, 'is_scalar')), true),
             'HAS' => $this->holdsAny($fieldValue, array_map('strval', (array) $value)),
             default => $fieldValue === $value,
         };
