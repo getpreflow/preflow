@@ -183,20 +183,31 @@ final class JsonFileDriverTest extends TestCase
         $this->assertStringContainsString('"label": null', $this->recordFile('post', 'r1'));
     }
 
-    public function test_a_partial_save_keeps_stored_keys_in_their_places(): void
+    public function test_a_full_save_keeps_the_callers_order_and_bytes(): void
     {
         // The file as DataManager writes it (0.78): the type's fields, the id, the system keys.
         $canonical = "{\n    \"title\": \"T\",\n    \"count\": 2,\n    \"tags\": [\n        \"a\"\n    ],\n    \"uuid\": \"r1\",\n    \"_version\": 1\n}\n";
         $this->driver->save('items', 'r1', ['title' => 'T', 'count' => 2, 'tags' => ['a'], 'uuid' => 'r1', '_version' => 1]);
         $this->assertSame($canonical, $this->recordFile('items', 'r1'));
 
-        $this->driver->save('items', 'r1', ['title' => 'T2', 'uuid' => 'r1', '_version' => 2]);
-
+        $this->driver->save('items', 'r1', ['title' => 'T2', 'count' => 2, 'tags' => ['a'], 'uuid' => 'r1', '_version' => 2]);
         $expected = str_replace(['"T"', '"_version": 1'], ['"T2"', '"_version": 2'], $canonical);
         $this->assertSame($expected, $this->recordFile('items', 'r1'), 'the same key order, the new values');
 
         $this->driver->save('items', 'r1', $this->driver->findOne('items', 'r1') ?? $this->fail('record read'));
         $this->assertSame($expected, $this->recordFile('items', 'r1'), 'saving the record again unchanged keeps its bytes');
+    }
+
+    public function test_a_partial_save_puts_the_keys_it_does_not_name_last(): void
+    {
+        $this->driver->save('items', 'r1', ['title' => 'T', 'count' => 2, 'tags' => ['a'], 'uuid' => 'r1', '_version' => 1]);
+        $this->driver->save('items', 'r1', ['title' => 'T2', 'uuid' => 'r1', '_version' => 2]);
+
+        $this->assertSame(
+            ['title' => 'T2', 'uuid' => 'r1', '_version' => 2, 'count' => 2, 'tags' => ['a']],
+            json_decode($this->recordFile('items', 'r1'), true),
+            'the given keys in the save\'s order, then the kept ones in their stored order',
+        );
     }
 
     public function test_keys_a_save_adds_follow_the_saves_order(): void
@@ -207,7 +218,7 @@ final class JsonFileDriverTest extends TestCase
 
         $this->driver->save('post', 'r2', ['x' => 0, 'a' => 1]);
         $this->driver->save('post', 'r2', ['a' => 2]);
-        $this->assertSame(['x' => 0, 'a' => 2], json_decode($this->recordFile('post', 'r2'), true));
+        $this->assertSame(['a' => 2, 'x' => 0], json_decode($this->recordFile('post', 'r2'), true));
     }
 
     public function test_a_save_over_an_unreadable_file_replaces_it(): void
@@ -249,8 +260,46 @@ final class JsonFileDriverTest extends TestCase
             pcntl_waitpid($pid, $status);
         }
 
-        $this->assertSame(['uuid' => 'r1', 'a' => 25, 'b' => 25], json_decode($this->recordFile('post', 'r1'), true));
+        $saved = json_decode($this->recordFile('post', 'r1'), true);
+        ksort($saved); // the order depends on which process saved last
+        $this->assertSame(['a' => 25, 'b' => 25, 'uuid' => 'r1'], $saved);
     }
+
+    /** A delete waits for the type's lock, so a save that holds it (read, merge, write) is never cut in half. */
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('pcntl')]
+    #[\PHPUnit\Framework\Attributes\RequiresPhpExtension('posix')]
+    public function test_delete_waits_for_the_types_lock(): void
+    {
+        $this->driver->save('post', 'r1', ['uuid' => 'r1', 'a' => 1]);
+        $file = $this->dataDir . '/post/r1.json';
+
+        $stillThere = $this->driver->exclusive('post', function () use ($file): bool {
+            $pid = pcntl_fork();
+            if ($pid === -1) {
+                $this->fail('pcntl_fork() failed');
+            }
+            if ($pid === 0) {
+                try {
+                    (new JsonFileDriver($this->dataDir))->delete('post', 'r1');
+                } finally {
+                    posix_kill(posix_getpid(), SIGKILL);
+                }
+            }
+            usleep(300_000); // time enough for an unlocked delete
+            clearstatcache();
+            $there = is_file($file);
+            $this->childPid = $pid;
+
+            return $there;
+        });
+        pcntl_waitpid($this->childPid, $status);
+        clearstatcache();
+
+        $this->assertTrue($stillThere, 'the delete waited while the lock was held');
+        $this->assertFileDoesNotExist($file, 'and ran once it was released');
+    }
+
+    private int $childPid = 0;
 
     public function test_different_types_are_isolated(): void
     {

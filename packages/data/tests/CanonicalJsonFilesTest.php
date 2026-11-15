@@ -157,4 +157,31 @@ final class CanonicalJsonFilesTest extends TestCase
         $this->assertSame('["a"]', $pdo->query("SELECT tags FROM items WHERE uuid = 'r1'")->fetchColumn());
         $this->assertSame('["a"]', $pdo->query("SELECT tags FROM items WHERE uuid = 'r2'")->fetchColumn());
     }
+
+    /**
+     * A class-backed save names only the class's fields and id; the file's other keys (a property
+     * removed from the class, a key added by hand) are kept and come last, in their stored order.
+     */
+    public function test_a_class_backed_save_writes_the_canonical_order_and_keeps_other_keys_last(): void
+    {
+        require_once __DIR__ . '/Fixtures/ModelBridge/TaggedReference.php';
+        mkdir($this->dir . '/data/reference', 0755, true);
+        $file = $this->dir . '/data/reference/r1.json';
+        file_put_contents($file, '{"old":"gone","uses":["a"],"extra":1,"uuid":"r1","name":"N"}');
+        $types = new TypeRegistry($this->dir . '/models', new \Preflow\Data\Locales(['en'], 'en'), ['reference' => \Preflow\Data\Tests\Fixtures\ModelBridge\TaggedReference::class]);
+        $dm = new DataManager(['default' => new JsonFileDriver($this->dir . '/data')], 'default', $types);
+        $dm->fieldKinds()->list('tags');
+
+        $ref = new \Preflow\Data\Tests\Fixtures\ModelBridge\TaggedReference();
+        $ref->uuid = 'r1';
+        $ref->name = 'N';
+        $ref->uses = ['a'];
+        $dm->save($ref, false);
+
+        $canonical = "{\n    \"name\": \"N\",\n    \"uses\": [\n        \"a\"\n    ],\n    \"uuid\": \"r1\",\n    \"old\": \"gone\",\n    \"extra\": 1\n}\n";
+        $this->assertSame($canonical, (string) file_get_contents($file), 'the type\'s keys in order, then the other keys in their stored order');
+
+        $dm->save($ref, false);
+        $this->assertSame($canonical, (string) file_get_contents($file), 'saving again gives the same bytes');
+    }
 }

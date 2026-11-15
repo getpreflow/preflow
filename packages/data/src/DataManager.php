@@ -921,7 +921,7 @@ final class DataManager
         $this->guarded($record, function () use ($driver, $def, $id, $data, $versionField): void {
             if (self::emptyId($id)) {
                 // An auto-increment id: the storage gives it (a first write, version 1).
-                $driver->save($def->table, 0, $versionField === null ? $data : $this->storageValues($def, [...$data, $versionField => 1]), $def->idField);
+                $driver->save($def->table, 0, $this->storageValues($def, $versionField === null ? $data : [...$data, $versionField => 1]), $def->idField);
 
                 return;
             }
@@ -963,7 +963,7 @@ final class DataManager
 
                 return;
             }
-            $fields = array_diff_key([...$data, ...$version], [$def->idField => true]);
+            $fields = array_diff_key($this->storageValues($def, [...$data, ...$version]), [$def->idField => true]);
             if ($driver->updateIfVersion($def->table, $id, $fields, $versionField, $current, $def->idField)) {
                 return;
             }

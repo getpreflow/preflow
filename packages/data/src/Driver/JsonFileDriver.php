@@ -551,12 +551,10 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     }
 
     /**
-     * The stored record with $data laid over it: the save's keys in its order, and a stored key the
-     * save does not name right after the stored key it followed (or first, when it came before
-     * every key the save names). So a full save keeps the caller's order (DataManager's canonical
-     * one), and a partial save of an unchanged record keeps the file's bytes. One case is not
-     * canonical: a partial save that adds a key while the file holds a key the save does not name
-     * places the kept key between them; the next full save puts every key in its place again.
+     * The stored record with $data laid over it: the save's keys in its order, then the stored keys
+     * the save does not name, in their stored order. DataManager's saves name every key of the
+     * type, so its files keep the canonical order with other keys (a property removed from a model
+     * class, a key added by hand) last; a direct partial save ends with the keys it did not name.
      *
      * @param array<string, mixed> $stored
      * @param array<string, mixed> $data
@@ -564,22 +562,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
      */
     private static function merged(array $stored, array $data): array
     {
-        $after = [];
-        $anchor = null; // null: before the first key the save names
-        foreach ($stored as $key => $value) {
-            if (array_key_exists($key, $data)) {
-                $anchor = $key;
-                continue;
-            }
-            $after[$anchor === null ? "\0" : "k:{$anchor}"][$key] = $value;
-        }
-        $merged = $after["\0"] ?? [];
-        foreach ($data as $key => $value) {
-            $merged[$key] = $value;
-            $merged += $after["k:{$key}"] ?? [];
-        }
-
-        return $merged;
+        return $data + $stored;
     }
 
     /**
@@ -675,8 +658,14 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         self::assertSafe($type, $id);
         $path = $this->filePath($type, $id);
 
-        if (file_exists($path)) {
-            unlink($path);
+        // Under the type's lock: a save in progress (read, merge, write) finishes first, so it
+        // cannot write the deleted record's fields back. No folder: nothing to delete (and none made).
+        if (is_dir($this->typeDir($type))) {
+            $this->exclusive($type, static function () use ($path): void {
+                if (file_exists($path)) {
+                    unlink($path);
+                }
+            });
         }
 
         $this->bumpGeneration($type);
@@ -689,11 +678,15 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         foreach ($ids as $id) {
             self::assertSafe($type, $id);
         }
-        foreach ($ids as $id) {
-            $path = $this->filePath($type, $id);
-            if (file_exists($path)) {
-                unlink($path);
-            }
+        if (is_dir($this->typeDir($type))) {
+            $this->exclusive($type, function () use ($type, $ids): void {
+                foreach ($ids as $id) {
+                    $path = $this->filePath($type, $id);
+                    if (file_exists($path)) {
+                        unlink($path);
+                    }
+                }
+            });
         }
         $this->bumpGeneration($type);
         $this->clearCache($type);

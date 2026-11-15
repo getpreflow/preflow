@@ -95,8 +95,9 @@ and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as `true`/`false`. A value t
 convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. A hand-written
 file gets this form on its next save; nothing is migrated. SQL storage keeps lists as JSON text in
-their columns. A direct `driver()->save()` keeps its caller's key order (a stored key it does not
-name stays after the key it followed); `storageValues()` gives
+their columns. A direct `driver()->save()` keeps its caller's key order, and the stored keys it does
+not name follow in their stored order (a class-backed model's save names every key of its type, so
+a property removed from the class or a key added by hand ends up last); `storageValues()` gives
 the canonical row to callers that write rows themselves (an import). `updateFieldsIfVersion()`
 writes its fields into the stored file as it is: the stored key order stays, a new key comes last;
 the next full save (`saveType()`, a model's `save()`) writes the canonical order.

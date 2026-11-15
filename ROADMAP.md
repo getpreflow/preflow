@@ -553,6 +553,8 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
     - JSON queries compare as SQL does: `=`, `!=`, `IN` and `NOT IN` match a number given as text and a yes/no value given as 1/0, and `!=` leaves out records whose field is empty (NULL).
     - On a JSON site, the first publish after the upgrade may list tag and number fields as changed once: their stored form changes on the next save. `updateFieldsIfVersion()` keeps a file's key order until its next full save.
     - A key leaves a JSON record only by deleting the record and saving it again (as on SQL, where a column stays); a property removed from a model class leaves its key in the files. A third-party driver's contract test now checks partial saves.
+    - Class-backed saves (`#[Entity(type: …)]`) are normalised as `saveType()` saves are, on SQL too: a comma list in a list field is stored as JSON text, numeric text in a number field as a number, and (as before) `''` as NULL in number, yes/no, date and unique columns.
+    - A JSON type folder gets a `.lock` file on its first save (every save and delete now takes the type's lock). Sites that keep JSON data in git ignore `**/.lock`.
     - The convert tool (`tools/convert-typed-columns.php`) needs preflow/data 0.78 on the site.
     - Folio's tag field hands DataManager a list instead of JSON text; SQL columns hold the same text as before.
     - On MySQL/MariaDB a search without accents no longer finds accented text ("uber" found "Über" through the tables' collation). On SQLite, every pattern with a printable character is matched by `ulike()`, since a fullwidth form folds into each (slower on large tables). A third-party dialect whose LIKE operator alone does not give the rule implements `PatternMatching`.
