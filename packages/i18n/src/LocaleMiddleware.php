@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
+use Preflow\Core\Http\SafeReturnPath;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -67,6 +68,11 @@ final class LocaleMiddleware implements MiddlewareInterface
 
     private function localize(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        $switched = $this->switchLanguage($request);
+        if ($switched !== null) {
+            return $switched;
+        }
+
         $locale = $this->defaultLocale;
         $strippedRequest = $request;
         $bare = false;
@@ -150,6 +156,43 @@ final class LocaleMiddleware implements MiddlewareInterface
         }
 
         return $response;
+    }
+
+    /**
+     * GET /--locale/{code}?to=/path: the one place the locale cookie is written (an explicit
+     * pick). Answers 302 to a site-relative target (else the locale's root), never cached.
+     * Null (not handled) when redirect_bare is off, the method is not GET/HEAD, or the code is
+     * not one of the site's locales.
+     */
+    private function switchLanguage(ServerRequestInterface $request): ?ResponseInterface
+    {
+        if (!$this->urls?->redirectBare || !$this->urls->prefixed
+            || !in_array($request->getMethod(), ['GET', 'HEAD'], true)
+            || preg_match('#^/--locale/([^/]+)$#', $request->getUri()->getPath(), $m) !== 1
+        ) {
+            return null;
+        }
+
+        $code = $m[1];
+        if (!in_array($code, $this->urls->locales, true)) {
+            return null;
+        }
+
+        parse_str($request->getUri()->getQuery(), $query);
+        $to = $query['to'] ?? null;
+        $location = SafeReturnPath::check(is_string($to) ? $to : null, ['/']) ?? $this->urls->path($code, '/');
+
+        $cookie = "{$this->cookieName}={$code}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly";
+        if ($request->getUri()->getScheme() === 'https') {
+            $cookie .= '; Secure';
+        }
+
+        return new Response(302, [
+            'Location' => $location,
+            'Set-Cookie' => $cookie,
+            'Cache-Control' => 'private, no-store',
+            'X-Robots-Tag' => 'noindex',
+        ]);
     }
 
     /** A visitor's GET or HEAD of what could be a public page (not an API, admin or component path). */
