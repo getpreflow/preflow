@@ -144,6 +144,18 @@ final class FolioTextSourceTest extends TestCase
         $this->assertSame(['en' => 'Secret'], $this->stored('article', 'a1')->get('secret'), 'an opted-out field is never written');
     }
 
+    public function test_a_run_saves_on_behalf_of_who_queued_it(): void
+    {
+        $this->working('article', 'a1', ['title' => ['en' => 'Hello']]);
+        $source = $this->source('article');
+        $this->assertInstanceOf(\Preflow\I18n\Machine\WritesAs::class, $source);
+
+        $source->writeAs('a1', 'de', ['title' => 'Hallo'], 'u7');
+
+        $row = $this->app()->container()->get(\Preflow\Core\Activity\ActivityLog::class)->recent(1)->items[0];
+        $this->assertSame(['saved', 'u7', ['title']], [$row->kind->value, $row->by, $row->changed]);
+    }
+
     public function test_write_saves_draft_not_published_and_marks_unchecked(): void
     {
         $this->working('article', 'a1', [

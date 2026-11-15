@@ -32,6 +32,12 @@ use Preflow\Publishing\WriteKind;
  */
 final class PublishedMemberDeletion
 {
+    /**
+     * Who the detached records' saves are by in the activity log (@since 0.77): the deletion, not
+     * the member, whose id must not outlive the account there.
+     */
+    public const string BY = 'member-deletion';
+
     public function __construct(
         private readonly DataManager $dm,
         private readonly Publisher $publisher,
@@ -82,7 +88,7 @@ final class PublishedMemberDeletion
                 continue;
             }
             try {
-                $this->writer->save($working, new SaveOptions(kind: WriteKind::Detach)); // already detached; this moves its version on
+                $this->writer->save($working, new SaveOptions(by: self::BY, kind: WriteKind::Detach)); // already detached; this moves its version on
             } catch (\Throwable $e) {
                 $message = "Member deletion: the detached {$detach['type']} \"{$detach['id']}\" was not saved again: " . $e->getMessage();
                 $this->log !== null ? ($this->log)($message) : error_log($message);

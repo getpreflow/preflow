@@ -11,7 +11,7 @@ use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -395,6 +395,47 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         $sql = "DELETE FROM {$table} WHERE {$col} = ?";
         $stmt = $this->pdo->prepare($sql);
         $this->executeWithLogging($stmt, $sql, [$id]);
+    }
+
+    /** In chunks of DELETE_CHUNK ids, one statement each. @since 0.77 */
+    public function deleteMany(string $type, array $ids, string $idField = 'uuid'): void
+    {
+        $table = $this->dialect->quoteIdentifier($type);
+        $col = $this->dialect->quoteIdentifier($idField);
+        foreach (array_chunk(array_values($ids), self::DELETE_CHUNK) as $chunk) {
+            $sql = "DELETE FROM {$table} WHERE {$col} IN (" . implode(', ', array_fill(0, count($chunk), '?')) . ')';
+            $stmt = $this->pdo->prepare($sql);
+            $this->executeWithLogging($stmt, $sql, $chunk);
+        }
+    }
+
+    /** How many ids deleteMany() names in one statement. */
+    public const int DELETE_CHUNK = 500;
+
+    private static int $savepoints = 0;
+
+    /** SAVEPOINT / RELEASE / ROLLBACK TO: the same on SQLite, MySQL and PostgreSQL. @since 0.77 */
+    public function savepoint(\Closure $fn): mixed
+    {
+        if (!$this->inTransaction()) {
+            return $fn();
+        }
+        $name = 'preflow_sp_' . ++self::$savepoints;
+        $this->pdo->exec("SAVEPOINT {$name}");
+        try {
+            $result = $fn();
+        } catch (\Throwable $e) {
+            try {
+                $this->pdo->exec("ROLLBACK TO SAVEPOINT {$name}");
+                $this->pdo->exec("RELEASE SAVEPOINT {$name}");
+            } catch (\PDOException) {
+                // The transaction itself is gone; $fn's failure is what matters.
+            }
+            throw $e;
+        }
+        $this->pdo->exec("RELEASE SAVEPOINT {$name}");
+
+        return $result;
     }
 
     public function exists(string $type, string|int $id, string $idField = 'uuid'): bool

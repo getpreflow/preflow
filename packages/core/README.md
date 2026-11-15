@@ -371,10 +371,15 @@ $more = $log->recent(20, ['page', 'post'], $page->next); // the next page; null 
   so a deleted record still reads by name), `kind`, `changed` (field names), `by` (null: the
   system), `at` (DATE_ATOM; `''` lets the log set the time).
 - `ActivityKind` (stored as lower-case strings): `Created`, `Saved`, `Published`, `Unpublished`,
-  `Scheduled`, `Restored`, `Deleted`, `Uploaded`, `Replaced`.
+  `Scheduled`, `Restored`, `Discarded`, `Deleted`, `Uploaded`, `Replaced`.
 - `recent($limit, $subjects, $before)`: `$subjects` null is all, `[]` none; `$before` is the
-  previous page's `next` cursor (opaque; an unreadable one reads from the start). Pages never
-  overlap or skip, also while events are recorded in between.
+  previous page's `next` cursor (opaque; an unreadable one reads from the start). Events recorded
+  in between never make pages overlap or skip; a row that coalesces (a later save in the same
+  editing session) moves to the top and so leaves the later pages.
+- `prune(): int` applies the retention; it never runs while recording or reading. Run
+  `php preflow activity:prune` nightly from cron (`members:prune` runs it too).
+- `forget($subject, $id)` removes every event of a record (erasure for privacy). The members
+  package calls it for a deleted account and everything deleted with it.
 - Core binds `NullActivityLog` (keeps nothing). With `config/data.php` the data layer binds its
   `StoredActivityLog` (see the data README). A provider may bind its own implementation.
 - **A write never fails because of the log.** The framework's writers (publishing's

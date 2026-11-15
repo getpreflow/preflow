@@ -898,8 +898,10 @@ permission: pass only the types the person may read.
 log") kept through the `DataManager`, so it works on every storage driver. It is bound when
 `config/data.php` exists, on the storage alias `activity` when one is configured, else on the
 default storage. `preflow migrate` creates its two tables on SQL storage (the step
-`activity.table`): `preflow_activity` (the rows) and `preflow_activity_last` (each record's
-newest row, for coalescing). JSON storage needs no tables.
+`activity.table`): `preflow_activity` (the rows; indexes on the sort key and on
+(subject, record_id), which `forget()` uses) and `preflow_activity_last` (each record's newest
+row, for coalescing). JSON storage needs no tables. Until a SQL site is migrated, `recent()`
+reads an empty log, `prune()` and `forget()` do nothing, and the logger is told once.
 
 ```php
 // config/activity.php (optional)
@@ -911,12 +913,30 @@ return [
 
 - **Order:** by time (to the microsecond, UTC), then row id, through one sort key column
   (`seq`), so a plain text comparison pages the same on every driver.
-- **Coalescing:** a `Saved` by the same person on the same record within 10 minutes of that
-  record's newest row, when that row is such a `Saved`, updates it (changed fields merged, time
-  moved, the row goes to the top). Any other event in between starts a new row. A recording reads
-  and writes single rows by id, so it costs the same however long the log is.
-- **Retention:** about 1 in 50 recordings prunes rows older than `keep_days` and beyond the
-  newest `keep_rows` (at most 1000 of each per run). Reads never prune.
+- **Coalescing, one row per editing session:** a `Saved` by the same person on the same record
+  updates that record's newest row when it is such a `Saved` and its last save was at most 10
+  minutes ago (changed fields merged, time moved, the row goes to the top). The window slides:
+  each save restarts it, so the session's row closes after 10 minutes without a save. Any other
+  event in between starts a new row. A recording reads and writes single rows by id, so it costs
+  the same however long the log is. The read and write run inside the storage's
+  `ExclusiveWrites::exclusive()` (all built-in drivers), so concurrent saves never open two rows
+  for one session; a third-party driver without it may, rarely.
+- **Transactions:** inside a caller's open transaction, on a storage with `Savepoints` (the SQL
+  drivers), a recording runs under a savepoint: its rows commit or roll back with the caller's
+  transaction, and a failing recording leaves that transaction usable (PostgreSQL-safe).
+- **Retention:** `prune()` deletes rows older than `keep_days` and beyond the newest
+  `keep_rows`, 1000 at a time with one `DELETE … IN (…)` each (`DataManager::deleteManyIn()`),
+  and the newest-row entries pointing at them. It runs from `php preflow activity:prune` (and
+  `members:prune`), never while recording or reading.
+
+### Capabilities a driver may offer (0.77)
+
+- `BulkDeletes::deleteMany($type, $ids, $idField)`: `DataManager::deleteManyIn($def, $ids)`
+  uses it (SQL: `DELETE … WHERE id IN (…)` in chunks of 500; JSON: one cache generation for
+  all) and deletes one by one on a driver without it.
+- `Savepoints::savepoint(\Closure $fn)`: inside an open transaction, `$fn` under a savepoint
+  (released, or rolled back to when it throws); without one, `$fn` as it is. The SQL drivers
+  implement it; a storage without transactions need not.
 
 ## JSON storage cache
 

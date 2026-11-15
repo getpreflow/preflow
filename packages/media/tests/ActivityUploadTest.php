@@ -96,6 +96,42 @@ final class ActivityUploadTest extends TestCase
         $this->assertSame(['deleted asset:Gone.png ana', 'uploaded asset:Gone.png ana'], self::rows($log));
     }
 
+    public function test_restoring_an_earlier_file_is_restored(): void
+    {
+        $log = $this->storedLog();
+        $library = $this->lib($log);
+        $asset = $library->upload($this->upload($this->png(40, 30), 'One.png'), 'ana');
+        $library->replace($asset->id, $this->upload($this->png(30, 40), 'Two.png'), 'ana');
+        $library->restore($asset->id, $library->versions($asset->id)[0]->number, 'ben');
+
+        $this->assertSame('restored asset:One.png ben', self::rows($log)[0]);
+    }
+
+    public function test_a_private_file_is_never_named(): void
+    {
+        $log = $this->storedLog();
+        $library = $this->lib($log, ['private_dir' => $this->assetRoot . '/private']);
+        $asset = $library->upload($this->upload($this->png(40, 30), 'salary-2026-jane.png'), 'ana', private: true);
+        $library->delete($asset->id, 'ana');
+
+        $this->assertSame([
+            'deleted asset:' . MediaLibrary::PRIVATE_TITLE . ' ana',
+            'uploaded asset:' . MediaLibrary::PRIVATE_TITLE . ' ana',
+        ], self::rows($log));
+    }
+
+    public function test_a_discarded_upload_leaves_no_row(): void
+    {
+        $log = $this->storedLog();
+        $library = $this->lib($log);
+        $kept = $library->upload($this->upload($this->png(40, 30), 'Kept.png'), 'ana');
+        $refused = $library->upload($this->upload($this->png(40, 30), 'Refused.png'), 'ana');
+        $library->discard($refused->id);
+
+        $this->assertSame(['uploaded asset:Kept.png ana'], self::rows($log));
+        $this->assertNotNull($library->find($kept->id));
+    }
+
     public function test_a_failing_log_fails_no_upload(): void
     {
         $failing = new class implements ActivityLog {
@@ -107,6 +143,15 @@ final class ActivityUploadTest extends TestCase
             public function recent(int $limit, ?array $subjects = null, ?string $before = null): ActivityPage
             {
                 return new ActivityPage();
+            }
+
+            public function prune(): int
+            {
+                return 0;
+            }
+
+            public function forget(string $subject, string $id): void
+            {
             }
         };
         $logger = new class extends \Psr\Log\AbstractLogger {

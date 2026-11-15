@@ -291,7 +291,7 @@ final class AiTranslateController
         return WorkerWatch::runs($this->worker);
     }
 
-    /** The signed-in user as Folio shows authors (the account's name, else its e-mail); null without sign-in. */
+    /** The signed-in user's id (who queued a run); null without sign-in. */
     private function userName(ServerRequestInterface $request): ?string
     {
         $user = $request->getAttribute(Authenticatable::class);
@@ -299,7 +299,8 @@ final class AiTranslateController
             return null;
         }
 
-        return $this->authors?->label($user->getAuthId()) ?? $user->getAuthId();
+        // The id, not its name (@since 0.77): the run's saves name it in the activity log; screens show it through AuthorNames.
+        return $user->getAuthId();
     }
 
     /**

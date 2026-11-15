@@ -73,6 +73,10 @@ final class MemberSelfDeletionPublishedTest extends TestCase
         $snapshot = $this->publisher()->snapshot('order', 'o1');
         $this->assertNotNull($snapshot, 'still published');
         $this->assertSame('', (string) $snapshot->get('member'), 'the published snapshot points at nobody');
+
+        // The activity log: the detached record's save is by the deletion, never by the member.
+        $row = $this->flow->container()->get(\Preflow\Core\Activity\ActivityLog::class)->recent(10, ['order'])->items[0];
+        $this->assertSame(['saved', \Preflow\Folio\Members\PublishedMemberDeletion::BY], [$row->kind->value, $row->by]);
     }
 
     /** A #[BeforeSave] refusing the detached record's save again never keeps a snapshot pointing at the deleted member. */

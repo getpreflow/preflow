@@ -67,6 +67,25 @@ final class SelfDeletionTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_activity_log_forgets_the_member_and_what_went_with_them(): void
+    {
+        $this->orderSite('cascade');
+        $m = $this->makeMember();
+        $this->order('o1', $m);
+        $this->order('o2', $m);
+        $log = $this->flow->container()->get(\Preflow\Core\Activity\ActivityLog::class);
+        $id = (string) $m->getId();
+        $log->record(new \Preflow\Core\Activity\Activity('member', $id, 'Ada Lovelace', \Preflow\Core\Activity\ActivityKind::Saved, by: 'staff-1'));
+        $log->record(new \Preflow\Core\Activity\Activity('order', 'o1', 'Order of Ada', \Preflow\Core\Activity\ActivityKind::Created));
+        $log->record(new \Preflow\Core\Activity\Activity('order', 'kept', 'Another order', \Preflow\Core\Activity\ActivityKind::Created));
+
+        $this->assertSame(303, $this->deleteOwnAccount()->getStatusCode());
+
+        $left = array_map(static fn (\Preflow\Core\Activity\Activity $a): string => "{$a->subject}:{$a->title}", $log->recent(10)->items);
+        $this->assertSame(['order:Another order'], $left);
+    }
+
+    #[RunInSeparateProcess]
     public function test_detach_deletes_the_member_and_clears_the_orders_member(): void
     {
         $this->orderSite('detach');
@@ -268,7 +287,7 @@ final class SelfDeletionTest extends TestCase
         [$code, $out] = $this->command(new PruneMembersCommand(fn () => $this->flow), ['--now=' . (new \DateTimeImmutable('+10 days'))->format(\DATE_ATOM)]);
 
         $this->assertSame(0, $code, $out);
-        $this->assertStringContainsString('deleted 1 unconfirmed, 0 declined; kept 1 (refused by a self rule or a hook); pruned tokens, remember, throttle', $out);
+        $this->assertStringContainsString('deleted 1 unconfirmed, 0 declined; kept 1 (refused by a self rule or a hook); pruned tokens, remember, throttle, activity', $out);
         $this->assertNotNull($this->flow->container()->get(Members::class)->find((string) $first->getId()));
         $this->assertNull($this->flow->container()->get(Members::class)->find((string) $second->getId()));
         $this->assertStringContainsString('members:prune: deleting member ' . $first->getId() . ' failed (RuntimeException)', (string) file_get_contents($this->dir . '/error.log'));

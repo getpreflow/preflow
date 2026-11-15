@@ -28,8 +28,8 @@ use Psr\Log\LoggerInterface;
  * revision lacks).
  *
  * The activity log (@since 0.77) hears of each publish (Published, with the fields that differ
- * from the previous snapshot: those of the revision), unpublish (Unpublished) and restore
- * (Restored), with who did it. A failing log is logged as a warning and never fails the write.
+ * from the previous snapshot: those of the revision), unpublish (Unpublished), restore
+ * (Restored) and discard (Discarded), with who did it. A failing log is logged as a warning and never fails the write.
  */
 final class Publisher
 {
@@ -457,19 +457,22 @@ final class Publisher
     /**
      * Reset the working copy to the published content; null when nothing is published.
      * With $loadedVersion, only if the working copy is still stored with it (else VersionConflict).
-     * $publishAt as for restore(); callers discard through RecordWriter::discard().
+     * $publishAt as for restore(); callers discard through RecordWriter::discard(). $by
+     * (@since 0.77): who, for the activity log (Discarded).
      *
      * @throws VersionConflict
      * @throws ValidationException when another record has taken a unique value since (nothing saved)
      */
-    public function discard(string $type, string $id, ?int $loadedVersion = null, ?string $publishAt = null): ?DynamicRecord
+    public function discard(string $type, string $id, ?int $loadedVersion = null, ?string $publishAt = null, ?string $by = null): ?DynamicRecord
     {
         $snapshot = $this->snapshot($type, $id);
         if ($snapshot === null) {
             return null;
         }
+        $working = $this->replaceContent($type, $id, $snapshot->toArray(), $loadedVersion, $publishAt);
+        $this->activity->note($working, ActivityKind::Discarded, [], $by);
 
-        return $this->replaceContent($type, $id, $snapshot->toArray(), $loadedVersion, $publishAt);
+        return $working;
     }
 
     /**

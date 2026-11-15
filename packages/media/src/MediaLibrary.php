@@ -136,10 +136,17 @@ final class MediaLibrary
     public const string ACTIVITY_SUBJECT = 'asset';
 
     /**
+     * The title of a private file's rows in the activity log: a translation key (group "media",
+     * "Private file"), never the file name, which may say what the file is. @since 0.77
+     */
+    public const string PRIVATE_TITLE = 'media.activity.private_file';
+
+    /**
      * @param array<string, mixed> $config MediaConfig::toArray() (storage, max_bytes, allow_svg, private_dir, private_url, …)
-     * @param ActivityLog|null $activity (@since 0.77) hears of upload() (Uploaded), replace() (Replaced) and
-     *        delete() (Deleted, binned or for good), subject "asset", titled by the file name; a failing log
-     *        is logged as a warning to $logger and never fails the change
+     * @param ActivityLog|null $activity (@since 0.77) hears of upload() (Uploaded), replace() (Replaced),
+     *        restore() of an earlier file (Restored) and delete() (Deleted, binned or for good), subject
+     *        "asset", titled by the file name (a private file: PRIVATE_TITLE); discard() forgets the
+     *        asset's rows. A failing log is logged as a warning to $logger and never fails the change
      */
     public function __construct(
         private readonly DataManager $dm,
@@ -275,7 +282,8 @@ final class MediaLibrary
             return;
         }
         try {
-            $this->activity->record(new Activity(self::ACTIVITY_SUBJECT, $asset->id, $asset->originalName, $kind, by: $by));
+            $title = $asset->private ? self::PRIVATE_TITLE : $asset->originalName;
+            $this->activity->record(new Activity(self::ACTIVITY_SUBJECT, $asset->id, $title, $kind, by: $by));
         } catch (\Throwable $e) {
             $this->logger?->warning("Activity log: \"{$kind->value}\" of asset {$asset->id} not recorded: {$e->getMessage()}", ['exception' => $e]);
         }
@@ -1634,6 +1642,12 @@ final class MediaLibrary
         $asset = $this->find($id);
         if ($asset !== null) {
             $this->remove($asset);
+            // It never was: its upload leaves no row in the activity log.
+            try {
+                $this->activity?->forget(self::ACTIVITY_SUBJECT, $asset->id);
+            } catch (\Throwable $e) {
+                $this->logger?->warning("Activity log: asset {$asset->id} not forgotten: {$e->getMessage()}", ['exception' => $e]);
+            }
         }
     }
 
@@ -1683,7 +1697,7 @@ final class MediaLibrary
     {
         $this->requireVersionsDir($id, "Version {$version}");
 
-        return $this->locked($id, function () use ($id, $version, $by): Asset {
+        $restored = $this->locked($id, function () use ($id, $version, $by): Asset {
             $asset = $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
             $old = self::versionOf($asset, $version) ?? throw new \InvalidArgumentException("Asset {$id} has no version {$version}.");
             $file = $this->versionFile($id, $version);
@@ -1694,6 +1708,9 @@ final class MediaLibrary
 
             return $this->swapFile($id, (string) file_get_contents($file), $name, $by, $old->meta);
         });
+        $this->tell($restored, ActivityKind::Restored, $by);
+
+        return $restored;
     }
 
     /** Delete one earlier file (an unknown asset or version: nothing happens). Its number is never used again. */

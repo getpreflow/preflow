@@ -304,7 +304,9 @@ Interfaces a package or site may bind (all optional except the settings, which h
 ## Deleting an account
 
 A member deletes their own account on the account page; `members:prune` removes unconfirmed and
-declined ones. Both go through the data layer's delete plan with the **self rules**: a relation
+declined ones (and, since 0.77, applies the activity log's retention). Since 0.77 a deletion
+also erases the account from the activity log: `ActivityLog::forget()` for the member and every
+record deleted with it. Both go through the data layer's delete plan with the **self rules**: a relation
 pointing at `member` may say what happens when the member deletes themselves, apart from what
 staff deletes do:
 

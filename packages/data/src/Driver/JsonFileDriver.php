@@ -14,7 +14,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes
 {
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
@@ -578,6 +578,22 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             unlink($path);
         }
 
+        $this->bumpGeneration($type);
+        $this->clearCache($type);
+    }
+
+    /** One file each, one cache generation for all. @since 0.77 */
+    public function deleteMany(string $type, array $ids, string $idField = 'uuid'): void
+    {
+        foreach ($ids as $id) {
+            self::assertSafe($type, $id);
+        }
+        foreach ($ids as $id) {
+            $path = $this->filePath($type, $id);
+            if (file_exists($path)) {
+                unlink($path);
+            }
+        }
         $this->bumpGeneration($type);
         $this->clearCache($type);
     }

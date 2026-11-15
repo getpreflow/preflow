@@ -136,7 +136,8 @@ The writers tell the activity log (core README, "Activity log") what they stored
   (a create adds `Created` first); a failed publish tells `Saved`. A reorder tells nothing.
 - `Publisher`: `Published` (the fields that differ from the previous snapshot; the scheduler's
   publishes are `by` `scheduler`), `Unpublished` (`unpublish($type, $id, $target, $by)`, when
-  something was live) and `Restored` (`restore(..., $by)`).
+  something was live), `Restored` (`restore(..., $by)`) and `Discarded` (`discard(..., $by)`;
+  `RecordWriter::restore()` and `discard()` pass `SaveOptions::$by`).
 - `RecordDeleter`: `Deleted` for every deleted record, cascaded ones too
   (`delete($type, $ids, $target, $by)`). The record's earlier rows stay.
 

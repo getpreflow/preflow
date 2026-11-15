@@ -465,6 +465,10 @@ longer offered stops with a message at its next step.
   it is exactly what the machine wrote;
 - `writesLive()`: true when a write is public at once (no publishing step).
 
+A source that records who wrote (an activity log, revisions) also implements `WritesAs`
+(since 0.77): the `JobRunner` then calls `writeAs($id, $to, $texts, $by)` with the job's
+`queuedBy` (`start($jobId, $confirmLive, $by)`) instead of `write()`. Folio's sources do.
+
 `JobRunner` runs a job over a source one item at a time, so a web request or a cron tick stays
 short:
 

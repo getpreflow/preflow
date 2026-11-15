@@ -103,6 +103,17 @@ final class JobRunnerTest extends TestCase
         $this->assertSame([], $this->source->writes);
     }
 
+    public function test_a_source_that_writes_as_someone_gets_who_queued_the_job(): void
+    {
+        $runner = $this->runner([self::echo()]);
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($job->id, false, 'u7');
+
+        $runner->step($job->id);
+
+        $this->assertSame(['u7'], $this->source->writtenBy);
+    }
+
     public function test_step_translates_one_item_per_call_and_finishes(): void
     {
         $runner = $this->runner([self::echo()]);

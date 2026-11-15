@@ -341,7 +341,7 @@ final class JobRunner
                 continue;
             }
 
-            $outcome = $source->write($id, $locale, $texts);
+            $outcome = $source instanceof WritesAs ? $source->writeAs($id, $locale, $texts, $job->queuedBy) : $source->write($id, $locale, $texts);
             $item['draft_changes'] = $item['draft_changes'] || $outcome->hadDraftChanges;
             if ($outcome->status === WriteOutcomeStatus::Written && $outcome->leftAlone !== []) {
                 // Texts someone changed while the model worked keep that person's version.

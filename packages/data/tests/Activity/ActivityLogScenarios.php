@@ -19,13 +19,12 @@ trait ActivityLogScenarios
 {
     private \DateTimeImmutable $now;
 
-    private int $prunes = 0;
-
-    private bool $pruneNext = false;
-
     private ?DataManager $dm = null;
 
-    abstract protected function dataManager(string $storage): DataManager;
+    private ?StoredActivityLog $current = null;
+
+    /** $fresh: a new, empty storage; false: a new connection to the storage made last (another process). */
+    abstract protected function dataManager(string $storage, bool $fresh = true): DataManager;
 
     private function log(string $storage, int $keepDays = 90, int $keepRows = 10000): StoredActivityLog
     {
@@ -37,17 +36,10 @@ trait ActivityLogScenarios
             $keepDays,
             $keepRows,
             fn (): \DateTimeImmutable => $this->now,
-            function (): bool {
-                $this->prunes++;
-                $prune = $this->pruneNext;
-                $this->pruneNext = false;
-
-                return $prune;
-            },
         );
         (new RecordTableSync($dm))->syncAll($log->tables());
 
-        return $log;
+        return $this->current = $log;
     }
 
     private function tick(string $modify = '+1 second'): void
@@ -245,36 +237,44 @@ trait ActivityLogScenarios
     }
 
     #[DataProvider('storages')]
-    public function test_pruning_keeps_the_days_and_rows(string $storage): void
+    public function test_prune_keeps_the_days_and_rows_and_both_tables_consistent(string $storage): void
     {
         $log = $this->log($storage, keepDays: 10, keepRows: 3);
         foreach (['old1', 'old2'] as $id) {
-            $log->record(new Activity('page', $id, $id, ActivityKind::Created));
+            $log->record(self::saved($id));
             $this->tick();
         }
         $this->tick('+11 days');
-        foreach (['a', 'b', 'c', 'd'] as $id) {
-            $log->record(new Activity('page', $id, $id, ActivityKind::Created));
+        foreach (['a', 'b', 'c', 'd', 'e'] as $id) {
+            $log->record(self::saved($id));
             $this->tick();
         }
-        $this->assertCount(6, $log->recent(50)->items, 'nothing pruned yet');
+        $this->assertCount(7, $log->recent(50)->items, 'record() never prunes');
 
-        $this->pruneNext = true;
-        $log->record(new Activity('page', 'e', 'e', ActivityKind::Created));
+        $this->assertSame(4, $log->prune());
 
         $this->assertSame(['e', 'd', 'c'], self::ids($log->recent(50)->items));
+        $this->assertSame([], $this->orphanHeads($log), 'no newest-row entry points at a deleted row');
+        $this->assertCount(3, $this->dm->queryIn($log->lastDefinition())->get()->items());
+        $this->assertSame(0, $log->prune(), 'nothing left to prune');
+
+        // A record whose rows were pruned starts a new row on its next save.
+        $log->record(self::saved('a', changed: ['body']));
+        $this->assertSame(['body'], $log->recent(1)->items[0]->changed);
     }
 
     #[DataProvider('storages')]
-    public function test_pruning_runs_on_writes_never_on_reads(string $storage): void
+    public function test_record_and_recent_never_prune(string $storage): void
     {
-        $log = $this->log($storage);
-        $log->record(self::saved('p1'));
-        $this->assertSame(1, $this->prunes);
-
+        $log = $this->log($storage, keepDays: 1, keepRows: 2);
+        foreach (['a', 'b', 'c', 'd'] as $id) {
+            $log->record(new Activity('page', $id, $id, ActivityKind::Created));
+            $this->tick('+2 days');
+        }
         $log->recent(10);
         $log->recent(10, ['page'], null);
-        $this->assertSame(1, $this->prunes);
+
+        $this->assertCount(4, $log->recent(10)->items);
     }
 
     #[DataProvider('storages')]
@@ -283,10 +283,157 @@ trait ActivityLogScenarios
         $log = $this->log($storage, keepDays: 0, keepRows: 0);
         $log->record(new Activity('page', 'a', 'a', ActivityKind::Created));
         $this->tick('+400 days');
-        $this->pruneNext = true;
         $log->record(new Activity('page', 'b', 'b', ActivityKind::Created));
 
+        $this->assertSame(0, $log->prune());
         $this->assertSame(['b', 'a'], self::ids($log->recent(10)->items));
+    }
+
+    #[DataProvider('storages')]
+    public function test_forget_removes_a_records_rows_and_entry(string $storage): void
+    {
+        $log = $this->log($storage);
+        $log->record(new Activity('member', 'm1', 'Jane Doe', ActivityKind::Created));
+        $this->tick();
+        $log->record(self::saved('m1', subject: 'member'));
+        $this->tick();
+        $log->record(new Activity('member', 'm2', 'Someone else', ActivityKind::Created));
+        $this->tick();
+        $log->record(new Activity('page', 'm1', 'A page with the same id', ActivityKind::Created));
+
+        $log->forget('member', 'm1');
+
+        $this->assertSame(['m1', 'm2'], self::ids($log->recent(10)->items));
+        $this->assertSame(['page', 'member'], array_map(static fn (Activity $a): string => $a->subject, $log->recent(10)->items));
+        $this->assertNull($this->dm->findIn($log->lastDefinition(), hash('xxh128', "member\0m1")));
+        $this->assertSame([], $this->orphanHeads($log));
+        $log->forget('member', 'nobody');
+    }
+
+    #[DataProvider('storages')]
+    public function test_paging_while_a_row_coalesces(string $storage): void
+    {
+        $log = $this->log($storage);
+        foreach (['a', 'b', 'c', 'd', 'e'] as $id) {
+            $log->record(self::saved($id));
+            $this->tick();
+        }
+        $one = $log->recent(2);
+        $this->assertSame(['e', 'd'], self::ids($one->items));
+
+        // b is saved again by the same person: its row moves to the top and leaves the later pages.
+        $log->record(self::saved('b', changed: ['body']));
+
+        $two = $log->recent(2, null, $one->next);
+        $this->assertSame(['c', 'a'], self::ids($two->items));
+        $this->assertNull($two->next);
+        $this->assertSame(['b', 'e', 'd', 'c', 'a'], self::ids($log->recent(10)->items));
+    }
+
+    #[DataProvider('storages')]
+    public function test_concurrent_saves_coalesce_into_one_row(string $storage): void
+    {
+        if (!function_exists('pcntl_fork')) {
+            $this->markTestSkipped('needs pcntl');
+        }
+        $log = $this->log($storage);
+        $log->record(self::saved('p1', changed: ['start']));
+        $results = sys_get_temp_dir() . '/activity_race_' . bin2hex(random_bytes(4));
+        mkdir($results);
+        $children = [];
+        foreach (range(1, 4) as $child) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                $result = 'ok';
+                try {
+                    $mine = new StoredActivityLog($this->dataManager($storage, fresh: false), $storage, clock: fn (): \DateTimeImmutable => $this->now);
+                    for ($i = 1; $i <= 5; $i++) {
+                        $mine->record(self::saved('p1', changed: ["f{$child}_{$i}"]));
+                    }
+                } catch (\Throwable $e) {
+                    $result = 'error: ' . $e->getMessage();
+                } finally {
+                    file_put_contents("{$results}/{$child}.txt", $result);
+                    // No shutdown: PHPUnit's handlers and the inherited connection belong to the parent.
+                    posix_kill(posix_getpid(), SIGKILL);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+        }
+        foreach (range(1, 4) as $child) {
+            $this->assertSame('ok', @file_get_contents("{$results}/{$child}.txt"));
+            @unlink("{$results}/{$child}.txt");
+        }
+        @rmdir($results);
+
+        $items = $this->current?->recent(10)->items ?? [];
+        $this->assertCount(1, $items, 'one row for the session');
+        $this->assertCount(21, $items[0]->changed, 'every save merged');
+    }
+
+    #[DataProvider('storages')]
+    public function test_a_missing_table_reads_as_an_empty_log(string $storage): void
+    {
+        $dm = $this->dataManager($storage);
+        $logger = new class extends \Psr\Log\AbstractLogger {
+            /** @var list<string> */
+            public array $lines = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->lines[] = (string) $message;
+            }
+        };
+        $log = new StoredActivityLog($dm, $storage, logger: $logger);
+
+        $this->assertSame([], $log->recent(10)->items);
+        $this->assertSame([], $log->recent(10)->items);
+        // SQL storage fails the query and says so, once; a JSON storage without the folder reads nothing.
+        $this->assertCount($storage === 'json' ? 0 : 1, $logger->lines);
+    }
+
+    #[DataProvider('storages')]
+    public function test_inside_a_transaction_rows_commit_or_roll_back_with_it(string $storage): void
+    {
+        $log = $this->log($storage);
+        $driver = $this->dm->driver($storage);
+        if (!$driver instanceof \Preflow\Data\Savepoints) {
+            $this->markTestSkipped('no transactions on this storage');
+        }
+        $pdo = $driver->pdo();
+
+        $pdo->beginTransaction();
+        $log->record(new Activity('page', 'gone', 'Gone', ActivityKind::Created));
+        $pdo->rollBack();
+        $this->assertSame([], $log->recent(10)->items, 'dropped with the rollback');
+
+        // A recording that fails inside a caller's transaction leaves it usable.
+        $this->dm->execute('DROP TABLE ' . StoredActivityLog::LAST_TABLE, [], $storage);
+        $pdo->beginTransaction();
+        $this->dm->execute("INSERT INTO preflow_activity (id, subject, record_id, seq) VALUES ('caller', 'page', 'c', 'x')", [], $storage);
+        try {
+            $log->record(new Activity('page', 'x', 'X', ActivityKind::Created));
+            $this->fail('the recording fails without its table');
+        } catch (\Throwable) {
+        }
+        $pdo->commit();
+        $this->assertSame([['id' => 'caller']], $this->dm->raw('SELECT id FROM preflow_activity', [], $storage), 'the caller\'s write committed, the failed recording left nothing');
+    }
+
+    /** @return list<string> ids of newest-row entries whose row is gone */
+    private function orphanHeads(StoredActivityLog $log): array
+    {
+        $orphans = [];
+        foreach ($this->dm->queryIn($log->lastDefinition())->get()->items() as $head) {
+            if ($this->dm->findIn($log->definition(), (string) $head->get('row_id')) === null) {
+                $orphans[] = (string) $head->getId();
+            }
+        }
+
+        return $orphans;
     }
 
     #[DataProvider('storages')]

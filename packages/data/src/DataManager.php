@@ -1181,6 +1181,32 @@ final class DataManager
     }
 
     /**
+     * Deletes many records of a type: in a few statements on a storage that implements
+     * BulkDeletes (the built-in drivers), one by one on any other. Repeated ids count once.
+     *
+     * @param list<string|int> $ids
+     * @since 0.77
+     */
+    public function deleteManyIn(TypeDefinition $typeDef, array $ids): void
+    {
+        $ids = array_values(array_unique(array_map(strval(...), $ids)));
+        if ($ids === []) {
+            return;
+        }
+        $driver = $this->resolveDriver($typeDef->storage);
+        if ($driver instanceof BulkDeletes) {
+            $driver->deleteMany($typeDef->table, $ids, $typeDef->idField);
+        } else {
+            foreach ($ids as $id) {
+                $driver->delete($typeDef->table, $id, $typeDef->idField);
+            }
+        }
+        foreach ($ids as $id) {
+            $this->reportWrite($typeDef->storage, $typeDef->table, $id);
+        }
+    }
+
+    /**
      * Validate a dynamic record as saveType() would, without saving it.
      *
      * @throws ValidationException

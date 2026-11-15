@@ -25,11 +25,13 @@ final class StoredActivityLogTest extends TestCase
         yield 'sqlite' => ['sqlite'];
     }
 
-    protected function dataManager(string $storage): DataManager
+    protected function dataManager(string $storage, bool $fresh = true): DataManager
     {
-        $this->dir = sys_get_temp_dir() . '/activity_' . bin2hex(random_bytes(4));
-        mkdir($this->dir, 0777, true);
-        $pdo = new \PDO('sqlite::memory:');
+        if ($fresh || $this->dir === '') {
+            $this->dir = sys_get_temp_dir() . '/activity_' . bin2hex(random_bytes(4));
+            mkdir($this->dir, 0777, true);
+        }
+        $pdo = new \PDO('sqlite:' . $this->dir . '/db.sqlite');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 
         return new DataManager(['sqlite' => new SqliteDriver($pdo), 'json' => new JsonFileDriver($this->dir . '/store')], $storage);

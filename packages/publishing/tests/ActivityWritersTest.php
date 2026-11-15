@@ -127,8 +127,16 @@ final class ActivityWritersTest extends PublishingAppTestCase
         $this->publisher()->unpublish('post', 'p1', null, 'ben');
         $revision = $this->publisher()->revisions('post', 'p1')[0]->id;
         $writer->restore('post', 'p1', $revision, new SaveOptions(by: 'cleo'));
+        $this->publisher()->publish($this->stored('post', 'p1'), 'cleo');
+        $post = $this->stored('post', 'p1');
+        $post->set('title', ['en' => 'Three']);
+        $writer->save($post, new SaveOptions(by: 'dan'));
+        $writer->discard('post', 'p1', new SaveOptions(by: 'dan'));
 
         $this->assertSame([
+            'discarded post:p1 dan',
+            'saved post:p1 dan title',
+            'published post:p1 cleo title',
             'restored post:p1 cleo',
             'unpublished post:p1 ben',
             'scheduled post:p1 ana title',
@@ -171,6 +179,15 @@ final class ActivityWritersTest extends PublishingAppTestCase
             public function recent(int $limit, ?array $subjects = null, ?string $before = null): ActivityPage
             {
                 return new ActivityPage();
+            }
+
+            public function prune(): int
+            {
+                return 0;
+            }
+
+            public function forget(string $subject, string $id): void
+            {
             }
         };
         $logger = new class extends \Psr\Log\AbstractLogger {

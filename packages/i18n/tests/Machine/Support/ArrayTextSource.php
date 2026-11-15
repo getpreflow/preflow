@@ -11,7 +11,7 @@ use Preflow\I18n\Machine\WriteOutcome;
 use Preflow\I18n\Machine\WriteOutcomeStatus;
 
 /** In-memory source: items[id][path] = English text; translations[id][locale][path] = stored text. */
-final class ArrayTextSource implements TextSource
+final class ArrayTextSource implements TextSource, \Preflow\I18n\Machine\WritesAs
 {
     /** @var array<string, array<string, array<string,string>>> */
     public array $translations = [];
@@ -71,6 +71,16 @@ final class ArrayTextSource implements TextSource
         }
 
         return $units;
+    }
+
+    /** @var list<string|null> who each writeAs() was on behalf of */
+    public array $writtenBy = [];
+
+    public function writeAs(string $id, string $to, array $texts, ?string $by): WriteOutcome
+    {
+        $this->writtenBy[] = $by;
+
+        return $this->write($id, $to, $texts);
     }
 
     public function write(string $id, string $to, array $texts): WriteOutcome

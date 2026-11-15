@@ -45,7 +45,7 @@ final class ActivityTest extends TestCase
     public function test_kinds_are_lower_case_strings(): void
     {
         $this->assertSame(
-            ['created', 'saved', 'published', 'unpublished', 'scheduled', 'restored', 'deleted', 'uploaded', 'replaced'],
+            ['created', 'saved', 'published', 'unpublished', 'scheduled', 'restored', 'discarded', 'deleted', 'uploaded', 'replaced'],
             array_map(static fn (ActivityKind $k): string => $k->value, ActivityKind::cases()),
         );
         $this->assertSame(ActivityKind::Saved, ActivityKind::from('saved'));
@@ -72,6 +72,8 @@ final class ActivityTest extends TestCase
         $this->assertInstanceOf(ActivityPage::class, $page);
         $this->assertSame([], $page->items);
         $this->assertNull($page->next);
+        $this->assertSame(0, $log->prune());
+        $log->forget('page', 'p1');
     }
 
     public function test_core_binds_the_null_log_without_data(): void

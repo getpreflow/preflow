@@ -54,6 +54,7 @@ final class Members
         private readonly ?RememberMe $remember = null,
         private readonly ?\Closure $confirmationMail = null,
         private readonly ?\Closure $mailer = null,
+        private readonly ?\Preflow\Core\Activity\ActivityLog $activity = null,
     ) {
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
     }
@@ -349,6 +350,10 @@ final class Members
      * Raises DELETING before and DELETED after a deletion (the record as it was, the plan applied),
      * both with by_member. Copies of pointing records (MemberDeleteCopies, Folio's published
      * snapshots) count for restrict; carrying the deletion into them is their package's DELETED listener.
+     *
+     * Erasure (@since 0.77): the activity log forgets the member and every record deleted with
+     * them (ActivityLog::forget()), so their names leave the log too. A failing log is logged
+     * (error_log) and never undoes the deletion.
      */
     public function delete(DynamicRecord $m, bool $byMember = true): DeletionResult
     {
@@ -362,9 +367,27 @@ final class Members
             return $this->refused($m, $plan, 'listener', $byMember);
         }
         $this->dm->executeDeletePlan($plan);
+        $this->forgetActivity($plan);
         $this->events?->dispatch(MemberEvents::DELETED, ['id' => $id, 'member' => $m, 'plan' => $plan, 'by_member' => $byMember]);
 
         return new DeletionResult(deleted: true, refused: false, told: false, plan: $plan);
+    }
+
+    /** The activity log forgets every record the plan deleted (the member among them). */
+    private function forgetActivity(DeletePlan $plan): void
+    {
+        if ($this->activity === null) {
+            return;
+        }
+        foreach ($plan->deletes() as $type => $ids) {
+            foreach ($ids as $id) {
+                try {
+                    $this->activity->forget((string) $type, (string) $id);
+                } catch (\Throwable $e) {
+                    error_log(sprintf('Members: the activity log did not forget %s %s (%s)', $type, $id, $e::class));
+                }
+            }
+        }
     }
 
     private function refused(DynamicRecord $m, DeletePlan $plan, string $reason, bool $byMember): DeletionResult

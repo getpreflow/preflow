@@ -35,7 +35,7 @@ final class PruneMembersTest extends TestCase
 
         $out = $this->prune();
 
-        $this->assertSame("members:prune — deleted 1 unconfirmed, 1 declined; pruned tokens, remember, throttle\n", $out);
+        $this->assertSame("members:prune — deleted 1 unconfirmed, 1 declined; pruned tokens, remember, throttle, activity\n", $out);
         $this->assertSame(['d-29', 'u-6'], $this->ids());
     }
 

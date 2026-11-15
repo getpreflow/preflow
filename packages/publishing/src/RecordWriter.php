@@ -41,9 +41,10 @@ use Psr\Log\LoggerInterface;
  * The activity log (@since 0.77) hears of each write once it is stored, with
  * SaveOptions::$by and the fields that changed: Created (create(), duplicate(), a save() of a
  * record not stored yet), Saved (a save, an autosave, a bulk set, a translation run), Scheduled
- * (a save that set a new publish time); a publish, an unpublish and a restore are the
- * Publisher's to tell. When a save publishes, its Published stands for it (a create adds
- * Created first); a failed publish tells Saved, the draft being stored. A reorder tells nothing.
+ * (a save that set a new publish time); a publish, an unpublish, a restore and a discard are
+ * the Publisher's to tell (Published, Unpublished, Restored, Discarded). When a save publishes,
+ * its Published stands for it (a create adds Created first); a failed publish tells Saved, the
+ * draft being stored. A reorder tells nothing.
  * A failing log is logged as a warning and never fails the write.
  */
 final class RecordWriter
@@ -579,7 +580,7 @@ final class RecordWriter
             throw new \InvalidArgumentException('A discard does not publish: it goes back to what is published.');
         }
 
-        return $this->publisher->discard($type, $id, $options->loadedVersion, $this->schedule($options));
+        return $this->publisher->discard($type, $id, $options->loadedVersion, $this->schedule($options), $options->by);
     }
 
     /** A new position: stored without a new version, and carried into the snapshot of a publishing type. */

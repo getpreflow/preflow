@@ -51,7 +51,7 @@ use Preflow\Validation\ValidationException;
  * write() start over once from a fresh read, and a second one is a Conflict.
  * The memory lives in this instance, which TextSources keeps for the request a run step runs in.
  */
-final class FolioTextSource implements TextSource
+final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesAs
 {
     /** @var array<string, array<string, array<string, ?string>>> record id => locale => path => target text units() saw */
     private array $seen = [];
@@ -158,6 +158,12 @@ final class FolioTextSource implements TextSource
 
     public function write(string $id, string $to, array $texts): WriteOutcome
     {
+        return $this->writeAs($id, $to, $texts, null);
+    }
+
+    /** write() saved on behalf of $by (who queued the run: the activity log's "by"). @since 0.77 */
+    public function writeAs(string $id, string $to, array $texts, ?string $by): WriteOutcome
+    {
         $def = $this->definition();
         if (!$this->translatesInto($def, $to)) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, "\"{$to}\" is not a language to translate into.");
@@ -166,7 +172,7 @@ final class FolioTextSource implements TextSource
         // A save landing between the read and the save below: start over from a fresh read, once.
         for ($attempt = 0; ; $attempt++) {
             try {
-                $outcome = $this->writeOnce($def, $id, $to, $texts);
+                $outcome = $this->writeOnce($def, $id, $to, $texts, $by);
             } catch (VersionConflict $e) {
                 if ($attempt < self::RACE_RETRIES) {
                     continue;
@@ -191,7 +197,7 @@ final class FolioTextSource implements TextSource
      * @param array<string, string> $texts
      * @throws VersionConflict when a save landed between this read and this save
      */
-    private function writeOnce(TypeDefinition $def, string $id, string $to, array $texts): WriteOutcome
+    private function writeOnce(TypeDefinition $def, string $id, string $to, array $texts, ?string $by = null): WriteOutcome
     {
         $record = $this->dm->findType($this->typeKey, $id);
         if ($record === null) {
@@ -289,7 +295,7 @@ final class FolioTextSource implements TextSource
         // the record is already taken care of above (texts left alone, kept fields), so only a save
         // landing from here on conflicts.
         try {
-            $this->writer->save($after, new SaveOptions(mayPublish: false, loadedVersion: $live ? null : (int) ($record->get('_version') ?? 0), kind: WriteKind::Translate));
+            $this->writer->save($after, new SaveOptions(by: $by, mayPublish: false, loadedVersion: $live ? null : (int) ($record->get('_version') ?? 0), kind: WriteKind::Translate));
         } catch (ValidationException $e) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, self::firstError($e), $hadDraftChanges);
         }

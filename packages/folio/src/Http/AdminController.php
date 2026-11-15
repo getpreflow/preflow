@@ -227,7 +227,7 @@ final class AdminController
                 'cost' => $job->costUnknown ? '—' : \Preflow\Folio\Ai\CostFormat::usd($job->costUsd),
                 'state' => $job->state,
                 'message' => $job->state === 'stopped' ? $job->message : null,
-                'by' => $job->queuedBy,
+                'by' => $job->queuedBy !== null ? ($this->authors?->label($job->queuedBy) ?? $job->queuedBy) : null,
                 'since' => $format->date($job->queuedAt, 'datetime'),
                 'current' => $job->state === 'running' || $job->state === 'queued' ? $this->itemsInProgress($job) : [],
             ];

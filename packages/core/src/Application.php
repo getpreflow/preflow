@@ -897,9 +897,10 @@ final class Application
     }
 
     /**
-     * The stored activity log (table preflow_activity, on the storage alias "activity" when the
-     * site has one), config/activity.php "keep_days" and "keep_rows"; `preflow migrate` creates
-     * its table (the step "activity.table").
+     * The stored activity log (tables preflow_activity and preflow_activity_last, on the storage
+     * alias "activity" when the site has one), config/activity.php "keep_days" and "keep_rows";
+     * `preflow migrate` creates its tables (the step "activity.table"), `preflow activity:prune`
+     * applies the retention.
      */
     private function bindActivityLog(\Preflow\Data\DataManager $dataManager, string $storage): void
     {
@@ -916,7 +917,13 @@ final class Application
         $container = $this->container;
         $container->singleton(
             \Preflow\Data\Activity\StoredActivityLog::class,
-            static fn (): \Preflow\Data\Activity\StoredActivityLog => new \Preflow\Data\Activity\StoredActivityLog($dataManager, $storage, $keepDays, $keepRows),
+            static fn (): \Preflow\Data\Activity\StoredActivityLog => new \Preflow\Data\Activity\StoredActivityLog(
+                $dataManager,
+                $storage,
+                $keepDays,
+                $keepRows,
+                logger: interface_exists(\Psr\Log\LoggerInterface::class) && $container->bound(\Psr\Log\LoggerInterface::class) ? $container->get(\Psr\Log\LoggerInterface::class) : null,
+            ),
         );
         $container->singleton(
             \Preflow\Core\Activity\ActivityLog::class,

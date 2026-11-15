@@ -26,8 +26,11 @@ final class StoredActivityLogMysqlTest extends TestCase
         yield 'mysql' => ['mysql'];
     }
 
-    protected function dataManager(string $storage): DataManager
+    protected function dataManager(string $storage, bool $fresh = true): DataManager
     {
+        if (!$fresh) {
+            return new DataManager(['mysql' => new MysqlDriver(MysqlTestDatabase::reconnect())], 'mysql');
+        }
         $this->pdo = MysqlTestDatabase::pdo();
         MysqlTestDatabase::dropAllTables($this->pdo);
 
@@ -37,6 +40,9 @@ final class StoredActivityLogMysqlTest extends TestCase
     protected function tearDown(): void
     {
         if ($this->pdo !== null) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
             MysqlTestDatabase::dropAllTables($this->pdo);
         }
     }

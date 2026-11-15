@@ -18,7 +18,7 @@ use Preflow\Members\MembersConfig;
 /**
  * Nightly from cron: unconfirmed accounts go after retention.unconfirmed_days (7) from registration,
  * declined ones after retention.declined_days (30) from the decision (config/members.php), and
- * expired tokens, remember rows and throttle hits are pruned. Deletions go through Members::delete() (the self
+ * expired tokens, remember rows, throttle hits and activity rows past their retention are pruned. Deletions go through Members::delete() (the self
  * rules, the DELETING / DELETED hooks); an account a restrict rule or a hook keeps is counted as kept. Prints counts only, never an email
  * or a name. The package lists it in composer.json (extra.preflow.commands), so it needs no setup.
  */
@@ -79,13 +79,17 @@ final class PruneMembersCommand implements CommandInterface
             $c->get(Tokens::class)->prune();
             $c->get(RememberMe::class)->prune();
             $c->get(Throttle::class)->prune();
+            // The activity log's retention too (@since 0.77; activity:prune runs it on its own).
+            if ($c->bound(\Preflow\Core\Activity\ActivityLog::class)) {
+                $c->get(\Preflow\Core\Activity\ActivityLog::class)->prune();
+            }
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
         }
 
         $refused = $kept > 0 ? "; kept {$kept} (refused by a self rule or a hook)" : '';
-        echo "members:prune — deleted {$unconfirmed} unconfirmed, {$declined} declined{$refused}; pruned tokens, remember, throttle\n";
+        echo "members:prune — deleted {$unconfirmed} unconfirmed, {$declined} declined{$refused}; pruned tokens, remember, throttle, activity\n";
 
         return 0;
     }

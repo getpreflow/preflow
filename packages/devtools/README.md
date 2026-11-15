@@ -32,6 +32,13 @@ Boots the application (so packages register their migration paths and steps), th
 2. runs every registered post-migrate step, such as Folio's table sync for SQL-stored
    content types and the activity log's tables (`activity.table`, since 0.77).
 
+`activity:prune` (since 0.77) applies the activity log's retention (`config/activity.php`
+`keep_days`, `keep_rows`; see the data README) and prints how many rows went. Run it nightly:
+
+```
+23 3 * * * cd /path/to/site/current && php preflow activity:prune
+```
+
 ```
 php preflow migrate
 # 2 pending migration(s).

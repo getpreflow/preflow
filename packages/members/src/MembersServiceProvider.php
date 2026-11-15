@@ -84,6 +84,7 @@ final class MembersServiceProvider extends ServiceProvider
             $c->bound(RememberMe::class) ? $c->get(RememberMe::class) : null,
             static fn (): ConfirmationMail => $c->get(ConfirmationMail::class),
             static fn (): MemberMailer => $c->get(MemberMailer::class),
+            $c->bound(\Preflow\Core\Activity\ActivityLog::class) ? $c->get(\Preflow\Core\Activity\ActivityLog::class) : null,
         ));
         $container->singleton(ConfirmationMail::class, static fn (Container $c): ConfirmationMail => new ConfirmationMail(
             $c->get(Tokens::class),

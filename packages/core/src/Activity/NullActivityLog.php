@@ -20,4 +20,13 @@ final class NullActivityLog implements ActivityLog
     {
         return new ActivityPage();
     }
+
+    public function prune(): int
+    {
+        return 0;
+    }
+
+    public function forget(string $subject, string $id): void
+    {
+    }
 }
