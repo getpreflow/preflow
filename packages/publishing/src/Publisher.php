@@ -531,7 +531,7 @@ final class Publisher
             $wrote = false;
             try {
                 $snapshot = $this->transaction([$def, $shadow], function () use ($working, $shadow, $id, $by, $expected, $next, &$previous, &$wrote): ?DynamicRecord {
-                    // '' rather than null: SQL drivers skip null values, so null would never clear it.
+                    // The schedule is cleared: '' is "no schedule", as a cancelled one (RecordWriter) is stored.
                     $working->set('_publish_at', '');
                     if (!$this->dm->saveTypeIfVersion($working, $expected, $next, validate: false)) {
                         return null;

@@ -404,8 +404,8 @@ final class StoredActivityLog implements ActivityLog
                 static fn (DynamicRecord $r): bool => $r->get('actor') === $id,
                 function (array $rows): void {
                     foreach ($rows as $row) {
-                        // '' rather than null: SQL drivers skip null values, so null would never clear it.
-                        $row->set('actor', '');
+                        // No person, as a row recorded without one has (NULL; JSON: null).
+                        $row->set('actor', null);
                         $this->dm->saveType($row, validate: false);
                     }
                 },

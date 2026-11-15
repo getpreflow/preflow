@@ -605,7 +605,7 @@ final class RecordWriter
     /**
      * The schedule rule of a publishing type: the _publish_at a save writes, null to keep the
      * stored one. A save by someone who may not publish cancels a pending schedule; else
-     * $publishAt sets it ('' rather than null: SQL drivers skip null values).
+     * $publishAt sets it ('' cancels it: null means "keep the stored one" here).
      */
     private function schedule(SaveOptions $options): ?string
     {
