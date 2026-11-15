@@ -11,6 +11,7 @@ use Preflow\Data\ConditionalUpdates;
 use Preflow\Data\CounterReset;
 use Preflow\Data\DescribesColumns;
 use Preflow\Data\Query;
+use Preflow\Data\RankedSearch;
 use Preflow\Data\ResultSet;
 use Preflow\Data\RunsSql;
 use Preflow\Data\SortDirection;
@@ -75,6 +76,8 @@ use Preflow\Data\Transactions;
  * - reopenDriver() (default null): a second driver on the same store, made in a forked child
  *   process (its own connection or file handles), for the tests that write from several
  *   processes at once; null skips them (an in-memory store cannot be shared).
+ * - declareFullText() (default: nothing): makes a type's fields scorable together, as the store
+ *   needs it (MySQL: a FULLTEXT index over exactly those columns), for the RankedSearch tests.
  *
  * Capabilities are claimed by implementing their interface, and their tests are skipped otherwise:
  * - RunsSql (@since 0.78): rawQuery(), execute() and dialect() tests.
@@ -82,6 +85,8 @@ use Preflow\Data\Transactions;
  * - AtomicCounters (@since 0.78): increment() inserts a missing row, adds to a stored one,
  *   restarts when the CounterReset field is below its bound (exactly at the boundary too), and
  *   concurrent increments lose no count (with reopenDriver(), pcntl and posix).
+ * - RankedSearch (@since 0.78): score() ranks the better match higher, gives every given id a
+ *   score (0.0 for an unmatched or unknown one); canScore() is true only for the declared fields.
  */
 abstract class StorageDriverContract extends TestCase
 {
@@ -108,6 +113,19 @@ abstract class StorageDriverContract extends TestCase
     protected function reopenDriver(): ?StorageDriver
     {
         return null;
+    }
+
+    /**
+     * Make $fields of $type scorable together (see RankedSearch), as the store needs it: MySQL
+     * creates a FULLTEXT index over exactly those columns. Called after createType(). The default
+     * does nothing.
+     *
+     * @since 0.78
+     *
+     * @param list<string> $fields
+     */
+    protected function declareFullText(string $type, array $fields): void
+    {
     }
 
     private StorageDriver $driver;
@@ -662,6 +680,59 @@ abstract class StorageDriverContract extends TestCase
 
         $this->assertCount(1, $result);
         $this->assertSame(2, $result->total());
+    }
+
+    // --- ranked search (RankedSearch, @since 0.78) -------------------------------------------
+
+    private function ranked(): RankedSearch
+    {
+        if (!$this->driver instanceof RankedSearch) {
+            $this->markTestSkipped('The driver does not implement RankedSearch (RecordSearch keeps storage order).');
+        }
+        $this->createType('articles', ['uuid' => 'string', 'title' => 'string', 'body' => 'string']);
+        $this->declareFullText('articles', ['title', 'body']);
+        foreach ([
+            'a1' => ['garden garden tools', 'Rakes and spades for the garden'],
+            'a2' => ['garden party', 'Music and food'],
+            'a3' => ['kitchen knives', 'Sharp and sturdy'],
+            'a4' => ['winter coats', 'Warm wool'],
+            'a5' => ['city maps', 'Streets and squares'],
+        ] as $id => [$title, $body]) {
+            $this->driver->save('articles', $id, ['uuid' => $id, 'title' => $title, 'body' => $body]);
+        }
+
+        return $this->driver;
+    }
+
+    public function test_score_ranks_the_better_match_higher(): void
+    {
+        $scores = $this->ranked()->score('articles', 'garden', ['title', 'body'], ['a1', 'a2']);
+
+        $this->assertGreaterThan($scores['a2'], $scores['a1'], 'more of the term scores higher');
+        $this->assertGreaterThan(0.0, $scores['a2'], 'a match scores above nothing');
+    }
+
+    public function test_score_gives_unmatched_and_unknown_ids_zero(): void
+    {
+        $driver = $this->ranked();
+        $scores = $driver->score('articles', 'garden', ['title', 'body'], ['a3', 'missing', 'a1']);
+
+        $this->assertSame(['a3', 'missing', 'a1'], array_map('strval', array_keys($scores)), 'every given id, in the given order');
+        $this->assertSame(0.0, $scores['a3']);
+        $this->assertSame(0.0, $scores['missing']);
+        $this->assertIsFloat($scores['a1']);
+        $this->assertSame([], $driver->score('articles', 'garden', ['title', 'body'], []));
+    }
+
+    public function test_can_score_needs_the_declared_fields(): void
+    {
+        $driver = $this->ranked();
+
+        $this->assertTrue($driver->canScore('articles', ['title', 'body']));
+        $this->assertTrue($driver->canScore('articles', ['body', 'title']), 'the fields as a set');
+        $this->assertFalse($driver->canScore('articles', ['title']), 'part of the declared fields');
+        $this->assertFalse($driver->canScore('articles', ['title', 'body', 'uuid']), 'more than the declared fields');
+        $this->assertFalse($driver->canScore('missing_table', ['title', 'body']));
     }
 
     // --- helpers ----------------------------------------------------------------------------

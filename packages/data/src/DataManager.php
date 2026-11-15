@@ -9,6 +9,7 @@ use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Observe\DataObserver;
 use Preflow\Data\Observe\SqlTables;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Search\LooseFields;
 use Preflow\Data\Validation\Unique;
 use Preflow\Validation\Message;
 use Preflow\Validation\ValidationContext;
@@ -91,6 +92,58 @@ final class DataManager
         $driver = $this->resolveDriver($def->storage);
 
         return $driver instanceof ChangeTokens ? $driver->changeToken($def->table) : null;
+    }
+
+    /**
+     * Whether scoreIn() can rank $def's records: its storage implements RankedSearch, the type
+     * declares full-text search ("fullText": true) and the storage can score its loose-search
+     * text fields (Search\LooseFields::text(); MySQL: a FULLTEXT index over exactly those, which
+     * migrate makes). False otherwise, also for a flagged type before migrate made its index.
+     *
+     * @since 0.78
+     */
+    public function canScore(TypeDefinition $def): bool
+    {
+        if (!$def->fullText) {
+            return false;
+        }
+        $driver = $this->resolveDriver($def->storage);
+        if (!$driver instanceof RankedSearch) {
+            return false;
+        }
+        $fields = LooseFields::text($def, $this->fieldKinds());
+
+        return $fields !== [] && $driver->canScore($def->table, $fields);
+    }
+
+    /**
+     * The score of each of $ids (records of $def) for $term, through the storage's RankedSearch
+     * over the type's loose-search text fields: higher is better, 0.0 for one that does not
+     * match or does not exist; every given id is a key. Scoring orders records a search found,
+     * it never finds any. Ask canScore() first.
+     *
+     * @since 0.78
+     *
+     * @param list<string|int> $ids
+     * @return array<string|int, float>
+     * @throws UnsupportedStorage when the storage does not implement RankedSearch
+     * @throws \LogicException when it cannot score this type (canScore() is false)
+     */
+    public function scoreIn(TypeDefinition $def, string $term, array $ids): array
+    {
+        $driver = $this->resolveDriver($def->storage);
+        if (!$driver instanceof RankedSearch) {
+            throw new UnsupportedStorage($def->storage, RankedSearch::class, "scoring {$def->key} records needs it");
+        }
+        if (!$this->canScore($def)) {
+            throw new \LogicException("Storage [{$def->storage}] cannot score {$def->key} records: the type needs \"fullText\": true and, on its storage, a full-text index over its text fields (run `preflow migrate`). Ask canScore() first.");
+        }
+        if ($ids === []) {
+            return [];
+        }
+        $this->reportRead($def->storage, $def->table);
+
+        return $driver->score($def->table, $term, LooseFields::text($def, $this->fieldKinds()), $ids, $def->idField);
     }
 
     /**

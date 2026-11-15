@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
-final class MysqlDriver extends PdoDriver
+use Preflow\Data\Migration\Grammar\MysqlGrammar;
+use Preflow\Data\RankedSearch;
+
+final class MysqlDriver extends PdoDriver implements RankedSearch
 {
     /** Strict, portable session mode; ANSI_QUOTES is deliberately absent (we quote with backticks). */
     public const SQL_MODE = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
@@ -72,5 +75,61 @@ final class MysqlDriver extends PdoDriver
     protected function prepareBindings(array $bindings): array
     {
         return array_map(static fn (mixed $v): mixed => is_bool($v) ? (int) $v : $v, $bindings);
+    }
+
+    /** Ids per score() statement. */
+    private const int SCORE_CHUNK = 500;
+
+    /** @var array<string, bool> canScore() answers, by table and sorted fields */
+    private array $scorable = [];
+
+    /**
+     * True when the table has a FULLTEXT index over exactly $fields (as a set); asked of
+     * information_schema once per table and fields for this driver.
+     */
+    public function canScore(string $table, array $fields): bool
+    {
+        $wanted = array_values(array_unique($fields));
+        sort($wanted);
+        $key = $table . '|' . implode(',', $wanted);
+        if (isset($this->scorable[$key])) {
+            return $this->scorable[$key];
+        }
+        $found = false;
+        if ($wanted !== []) {
+            foreach ((new MysqlGrammar())->fullTextIndexes($this->pdo(), $table) as $columns) {
+                sort($columns);
+                if ($columns === $wanted) {
+                    $found = true;
+                    break;
+                }
+            }
+        }
+
+        return $this->scorable[$key] = $found;
+    }
+
+    /** MATCH (fields) AGAINST (term IN NATURAL LANGUAGE MODE) for the given ids, in chunks. */
+    public function score(string $table, string $term, array $fields, array $ids, string $idField = 'uuid'): array
+    {
+        $scores = [];
+        $quote = $this->dialect()->quoteIdentifier(...);
+        $match = 'MATCH (' . implode(', ', array_map($quote, $fields)) . ') AGAINST (? IN NATURAL LANGUAGE MODE)';
+        $keys = array_values(array_unique(array_map(strval(...), $ids)));
+        foreach (array_chunk($keys, self::SCORE_CHUNK) as $chunk) {
+            $sql = 'SELECT ' . $quote($idField) . ', ' . $match . ' FROM ' . $quote($table)
+                . ' WHERE ' . $quote($idField) . ' IN (' . implode(', ', array_fill(0, count($chunk), '?')) . ')';
+            $stmt = $this->pdo()->prepare($sql);
+            $this->executeWithLogging($stmt, $sql, [$term, ...$chunk]);
+            foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$id, $score]) {
+                $scores[(string) $id] = (float) $score;
+            }
+        }
+        $result = [];
+        foreach ($ids as $id) {
+            $result[$id] = $scores[(string) $id] ?? 0.0;
+        }
+
+        return $result;
     }
 }
