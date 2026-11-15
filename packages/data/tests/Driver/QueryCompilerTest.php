@@ -82,7 +82,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->search('hello', ['title', 'body']);
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertStringContainsString('LIKE', $sql);
+        $this->assertStringContainsString('ulike(?, "title")', $sql);
         $this->assertStringContainsString('"title"', $sql);
         $this->assertStringContainsString('"body"', $sql);
         $this->assertContains('%hello%', $bindings);
@@ -90,11 +90,11 @@ final class QueryCompilerTest extends TestCase
 
     public function test_like_operator(): void
     {
-        $q = (new Query())->where('title', 'LIKE', '%hello%'); // no k or s: SQLite's native LIKE
+        $q = (new Query())->where('title', 'LIKE', '%test%');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "title" LIKE ?', $sql);
-        $this->assertSame(['%hello%'], $bindings);
+        $this->assertSame('SELECT * FROM "posts" WHERE ulike(?, "title")', $sql, 'SQLite matches by the text-matching rule');
+        $this->assertSame(['%test%'], $bindings);
     }
 
     public function test_count_query(): void
@@ -143,7 +143,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE ("status" = ?) AND ("title" LIKE ? ESCAPE \'!\' OR "id" IN (SELECT value FROM json_each(?)) OR "kind" = ?)',
+            'SELECT * FROM "posts" WHERE ("status" = ?) AND (ulike(?, "title", \'!\') OR "id" IN (SELECT value FROM json_each(?)) OR "kind" = ?)',
             $sql,
         );
         $this->assertSame(['live', '%50!%!_!!%', '["a","b"]', 'x'], $bindings);
@@ -157,7 +157,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compileCount('posts', $q);
 
         $this->assertSame(
-            'SELECT COUNT(*) as total FROM "posts" WHERE (0 = 1) AND ("title" LIKE ? ESCAPE \'!\')',
+            'SELECT COUNT(*) as total FROM "posts" WHERE (0 = 1) AND (ulike(?, "title", \'!\'))',
             $sql,
         );
         $this->assertSame(['%a%'], $bindings);
@@ -210,7 +210,7 @@ final class QueryCompilerTest extends TestCase
         [$sql] = $this->compiler->compile('posts', $q);
 
         $this->assertStringContainsString("json_extract(\"title\", '$.\"de\"')", $sql);
-        $this->assertStringContainsString("LIKE ? ESCAPE '!'", $sql);
+        $this->assertStringContainsString("ulike(?, (CASE", $sql);
     }
 
     public function test_empty_has_matches_nothing(): void

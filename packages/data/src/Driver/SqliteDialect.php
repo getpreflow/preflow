@@ -142,11 +142,12 @@ final class SqliteDialect implements Dialect, PatternMatching
     }
 
     /**
-     * LIKE under the text-matching rule (TextMatch: case ignored in every alphabet, accents
-     * count): a pattern TextMatch::asciiSafe() accepts takes SQLite's native LIKE (it folds ASCII
-     * case, and its _ takes one character, an umlaut too), any other the PHP function ulike()
-     * that prepare() registers, which costs a PHP call per row compared. A pattern with a k or an
-     * s is one: the Kelvin sign and the long s fold into them, which native LIKE does not know.
+     * LIKE under the text-matching rule (TextMatch: case and width ignored, accents count): a
+     * pattern TextMatch::asciiSafe() accepts takes SQLite's native LIKE (it folds ASCII case, and
+     * its _ takes one character, an umlaut too), any other the PHP function ulike() that prepare()
+     * registers, which costs a PHP call per row compared. Native LIKE knows no other character
+     * than A for a, so every pattern with a character another one folds into goes to ulike():
+     * with the fullwidth forms (ａ is a, ％ is %), that is every printable ASCII character.
      */
     public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string
     {
@@ -185,8 +186,8 @@ final class SqliteDialect implements Dialect, PatternMatching
 
     /**
      * SQL LIKE as ulike(pattern, value[, escape]) is called: TextMatch::like() (% any text, _ one
-     * character, the escape character takes the next one literally, case folded in every
-     * alphabet, accents count). NULL when the value or the pattern is NULL.
+     * character, the escape character takes the next one literally, case and width folded,
+     * accents count). NULL when the value or the pattern is NULL.
      *
      * @since 0.77
      */

@@ -162,7 +162,7 @@ Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/te
 **Must:** implement `Preflow\Data\StorageDriver` (`findOne`, `findMany`, `save`, `delete`,
 `exists`, `lastInsertId`; since 0.78 no `rawQuery`, which moved to `RunsSql`) with the query
 semantics `StorageDriverContract` states (the text-matching rule for `LIKE`, `CONTAINS` and
-`search()`: case ignored, accents count; `CONTAINS` in list values, null handling, numbers as numbers), and pass that contract. That is enough for a driver
+`search()`: case and width ignored, accents count; `CONTAINS` in list values, null handling, numbers as numbers), and pass that contract. That is enough for a driver
 to work everywhere: DataManager, or the capability's consumer (`StoredActivityLog` for `Savepoints`
 and `ChangeTokens`), has a fallback for every capability below except aggregates and raw SQL, and
 those throw rather than give a different result.
@@ -912,12 +912,12 @@ $dm->queryIn($typeDef)->whereAny([
 | Operator | Matches when |
 |---|---|
 | `=` | The field equals the value. |
-| `CONTAINS` | The field contains the value as a substring, under the text-matching rule (case ignored, accents count). `%`, `_` and the escape character match literally. A list value (an array field; JSON text on SQL) matches when one of its values contains it. |
+| `CONTAINS` | The field contains the value as a substring, under the text-matching rule (case and width ignored, accents count). `%`, `_` and the escape character match literally. A list value (an array field; JSON text on SQL) matches when one of its values contains it. |
 | `IN` | The field equals one of the listed values. An empty list matches nothing. |
 | `HAS` | The field, an id string or a JSON array string, holds at least one of the listed ids. |
 
-`LIKE`, `CONTAINS` and `search()` follow one text-matching rule on every driver: case is ignored,
-accents count (see "Text matching").
+`LIKE`, `CONTAINS` and `search()` follow one text-matching rule on every driver: case and width
+are ignored, accents count (see "Text matching").
 `CONTAINS` and `search()` find a term in a list value (an array field) when one of its values
 holds it: SQL storage keeps the list as JSON text, written with umlauts and slashes as they are
 since 0.77 (rows written before keep `a\/b`, which a search for "a/b" misses until resaved).
@@ -925,35 +925,56 @@ since 0.77 (rows written before keep `a\/b`, which a search for "a/b" misses unt
 ## Text matching
 
 Since 0.78 `LIKE`, `NOT LIKE`, `CONTAINS`, `search()`, `searchLoose()` and so ⌘K's loose-search set
-compare text with **Unicode simple case folding** and nothing else: case is ignored in every
-alphabet, accents and other marks count. The same on JSON, SQLite and MySQL/MariaDB
-(`StorageDriverContract` pins it). Ranked search only orders the loose-search set, so it follows.
+compare text **character by character, as MySQL/MariaDB's `LIKE` does under an accent-sensitive,
+case-insensitive collation**: case is ignored, and so are width and compatibility forms; accents
+and other marks count. The same on JSON, SQLite and MySQL/MariaDB (`StorageDriverContract` pins
+it). Ranked search only orders the loose-search set, so it follows.
 
 | Search | Stored | Found? | Why |
 |---|---|---|---|
 | "über", "ÜBER" | "Über" | yes | case |
 | "uber" / "ete" | "Über" / "été" | **no** | accents count |
-| "STRASSE", "strasse" | "Straße" | **no** | ß is one letter; LIKE compares letter by letter (MySQL does too) |
-| "STRAẞE" (capital ẞ) | "Straße" | yes | ẞ folds to ß |
-| "kelvin" / "K" (Kelvin sign, U+212A) | "Kelvin" / "Kelvin" with the sign | yes, both ways | the sign folds to k |
+| "abc", "1" | "ＡＢＣ" (fullwidth), "①" | yes, both ways | width and compatibility forms |
+| "STRASSE", "strasse" | "Straße" | **no** | ß is one letter; LIKE compares letter by letter |
+| "STRAẞE" (capital ẞ) | "Straße" | yes | ẞ is ß |
+| "kelvin" / "K" (Kelvin sign, U+212A) | "Kelvin" / "Kelvin" with the sign | yes, both ways | the sign is a k |
+| "super" / "ſuper" | "ſuper" (long s) / "super" | **no** | ſ is a letter of its own |
 | "İSTANBUL" | "İstanbul" | yes | the same letter |
-| "istanbul" | "İstanbul" | **no** | İ has no simple fold: its dot counts as an accent |
+| "istanbul" | "İstanbul" | **no** | İ is not i: its dot counts as an accent |
 | "ILIK", "ilik" | "ılık" | **no** | ı is a letter of its own (no Turkish locale rules) |
 
-`%` matches any text and `_` one character (an umlaut is one). Text is compared as stored: a
-decomposed "Ü" (U followed by a combining diaeresis) is not the composed "Ü". Browsers and Folio
-send composed (NFC) text, so this only matters for text imported from elsewhere.
+`%` matches any text and `_` one character (an umlaut is one); a fullwidth ％ or ＿ in a pattern
+is a literal character, never a wildcard. A ligature is one character ("ﬁ" does not find "fi").
+Case pairs of letters outside the Basic Multilingual Plane (Deseret "𐐀" and "𐐨" and other
+historic scripts) are distinct, as in MariaDB's `LIKE`. Text is compared as stored: a decomposed
+"Ü" (U followed by a combining diaeresis) is not the composed "Ü". Browsers and Folio send composed
+(NFC) text, so this only matters for text imported from elsewhere.
+
+### The fold table
+
+`Preflow\Data\Text\TextMatch` is the rule in PHP: `fold()` replaces each character with the
+one the rule takes it as (ＡＢＣ → abc, ẞ → ß; most characters stay), `like()` and `contains()`
+compare folds. Which characters are taken as which is the fold table
+(`src/Text/fold-table.php`, about 5000 entries), derived from the server's collation by
+`bin/text-fold-table` (in the framework repository): every assigned code point but controls,
+surrogates and private use is grouped by its weights, the groups are split until `LIKE` agrees,
+and each group folds to the member most of them reach by case folding after compatibility
+(NFKC) mapping. The MySQL test suite's `TextMatchServerProbeTest` checks it against the server:
+each character paired with its fold, its compatibility fold, its lower and upper case, and the
+characters of equal weights (about 10,000 pairs), asked both ways; it fails listing every
+disagreement. The table was derived from MariaDB's `utf8mb4_uca1400_as_ci` (its
+`utf8mb4_0900_as_ci` gives the same answers); MySQL 8's own `utf8mb4_0900_as_ci` has not been
+probed yet.
 
 ### On JSON and SQLite
 
-`Preflow\Data\Text\TextMatch` is the rule in PHP: `fold()`, `like()`, `contains()`. The JSON
-driver matches with it. `SqliteDriver` registers it as `ulike()` on its connection
-(`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`, as the app
-opens it, and on a plain `PDO`). SQLite's native `LIKE` folds ASCII case only, so the dialect keeps
-it (about 7× faster on a scan) only for a pattern `TextMatch::asciiSafe()` accepts: ASCII
-characters and no k or s, the two letters a character outside ASCII folds into (the Kelvin sign
-and the long s ſ, `TextMatch::FOLDS_INTO_ASCII`). Any other pattern costs a PHP call per row
-compared.
+The JSON driver matches with `TextMatch`. `SqliteDriver` registers it as `ulike()` on its
+connection (`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`,
+as the app opens it, and on a plain `PDO`). SQLite's native `LIKE` folds ASCII case only, so the
+dialect keeps it only for a pattern `TextMatch::asciiSafe()` accepts: ASCII characters that no
+other character folds into. With the fullwidth forms that is no printable character, so in
+practice every `LIKE`, `CONTAINS` and search on SQLite costs a PHP call per row compared (about
+7× slower on a scan than native `LIKE`).
 
 ### On MySQL and MariaDB
 
@@ -967,17 +988,16 @@ utf8mb4 and given the collation in the query, so a prefix `LIKE` (`'abc%'`) no l
 (none of Preflow's own do: they start with `%`). `new MysqlDriver($pdo, matchCollation: false)`
 takes the fallback below; a string names the collation.
 
-One difference from the rule with either collation: the long s ſ (U+017F) stays a letter of its
-own there, so "super" does not find "ſuper", which JSON and SQLite find.
-
 #### Without an accent-sensitive collation
 
 On a server without either collation (MariaDB 10.6 to 10.9) both sides are lowered
-with `LOWER()` and compared by code point (`utf8mb4_bin`). It follows the rule except for
-(`MysqlFallbackMatchingTest` checks this list against the server):
+with `LOWER()` and compared by code point (`utf8mb4_bin`). It follows the rule except for these
+kinds of difference (`MysqlFallbackMatchingTest` runs the fold table's probe through this SQL and
+checks that this list names exactly the kinds it finds):
 
+- Only case is lowered: width and compatibility forms ("ａ" and "a", "①" and "1"), the other characters the collation takes as one (some marks and symbols), and the characters it ignores match only themselves.
 - "istanbul" finds "İstanbul": `LOWER()` turns İ into a plain i.
-- "super" does not find "ſuper": `LOWER()` keeps the long s ſ.
+- Case pairs outside the Basic Multilingual Plane ("𐐀" and "𐐨") match: `LOWER()` folds them, the collation does not.
 
 ## `searchLoose`
 
@@ -987,7 +1007,7 @@ $dm->queryIn($typeDef)->searchLoose('engineer', fields: ['title', 'company'])->g
 ```
 
 The term is split on whitespace. Every word must match (AND); a word matches when it is a
-case-insensitive substring of at least one field (OR). `%`, `_` and quotes in the term match
+substring of at least one field (OR), under the text-matching rule (see "Text matching"). `%`, `_` and quotes in the term match
 literally. Unlike `search()`, which keeps using exactly the `searchable: true` fields:
 
 - By default it searches every text-kind field (`string`, `text`, plus kinds registered with

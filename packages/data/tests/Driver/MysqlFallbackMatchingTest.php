@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Driver;
 
+require_once __DIR__ . '/../Text/CollationProbe.php';
+
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Query;
-use Preflow\Data\Text\TextMatch;
+use Preflow\Data\Tests\Text\CollationProbe;
 use Preflow\Testing\MysqlTestDatabase;
 
 /**
@@ -52,30 +55,45 @@ final class MysqlFallbackMatchingTest extends TestCase
         $this->assertSame(['s'], $this->ids('STRAẞE'));
         $this->assertSame(['l', 'x'], $this->ids('kelvin'), 'the Kelvin sign is a k');
         $this->assertSame(['l', 'x'], $this->ids("\u{212A}ELVIN"));
+        $this->assertSame([], $this->ids('super'), 'the long s is a letter of its own');
+        $this->assertSame(['f'], $this->ids("\u{017F}UPER"));
     }
 
+    /**
+     * The same probe as TextMatchServerProbeTest, through the fallback's SQL: every disagreement
+     * falls into one of the kinds the data README lists, and every listed kind occurs.
+     */
     public function test_the_fallbacks_known_differences_are_documented(): void
     {
-        $version = (string) $this->pdo->query('SELECT VERSION()')->fetchColumn();
-        // Where the server's LOWER() could answer otherwise than TextMatch: marker => [stored, pattern].
-        $probes = ['İstanbul' => ['t', 'istanbul'], 'ſ' => ['f', 'super']];
-        $differences = [];
-        foreach ($probes as $marker => [$id, $pattern]) {
-            $stored = (string) $this->pdo->query('SELECT title FROM fallback_words WHERE uuid = ' . $this->pdo->quote($id))->fetchColumn();
-            $server = in_array($id, $this->ids($pattern), true);
-            if ($server !== TextMatch::like($stored, $pattern)) {
-                $differences[] = $marker;
+        $probe = new CollationProbe($this->pdo);
+        $version = $probe->version();
+        $table = require __DIR__ . '/../../src/Text/fold-table.php';
+        $pairs = $probe->candidatePairs(CollationProbe::codePoints(), $table, MysqlDialect::serverMatchCollation($this->pdo));
+
+        $kinds = [];
+        $unexplained = [];
+        foreach ($probe->disagreements($pairs, new MysqlDialect(null)) as $disagreement) {
+            [$a, $b, $server] = $disagreement;
+            $kind = match (true) {
+                !$server => 'ａ', // only case is lowered: width, compatibility and other equal forms stay apart
+                $server && in_array('İ', [$a, $b], true) => 'İstanbul',
+                $server && mb_ord($a, 'UTF-8') > 0xFFFF && mb_ord($b, 'UTF-8') > 0xFFFF => '𐐀',
+                default => null,
+            };
+            if ($kind === null) {
+                $unexplained[] = CollationProbe::describe($disagreement);
+            } else {
+                $kinds[$kind] = true;
             }
         }
 
-        $this->assertSame(['İstanbul', 'ſ'], $differences, "The LOWER() fallback on {$version} differs from the rule elsewhere than the data README says; update its list.");
-
+        $this->assertSame([], array_slice($unexplained, 0, 50), "The LOWER() fallback on {$version} differs in a way the data README does not list; add it.");
         $readme = (string) file_get_contents(__DIR__ . '/../../README.md');
         $this->assertSame(1, preg_match('/^#### Without an accent-sensitive collation\n(.*?)(?=^#)/ms', $readme, $m), 'the README has the fallback section');
         $bullets = array_values(array_filter(explode("\n", $m[1]), static fn (string $line): bool => str_starts_with($line, '- ')));
-        $this->assertCount(count($differences), $bullets, "The README lists exactly the fallback's differences found on {$version}.");
-        foreach ($differences as $i => $marker) {
-            $this->assertStringContainsString($marker, $bullets[$i], "The README lists the difference {$marker} (found on {$version}).");
+        $this->assertCount(count($kinds), $bullets, "The README lists exactly the kinds of difference found on {$version}: " . implode(', ', array_keys($kinds)));
+        foreach (array_keys($kinds) as $marker) {
+            $this->assertCount(1, array_filter($bullets, static fn (string $b): bool => str_contains($b, (string) $marker)), "The README lists the difference {$marker} (found on {$version}).");
         }
     }
 

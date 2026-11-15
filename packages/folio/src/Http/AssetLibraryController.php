@@ -6,6 +6,7 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Data\Locales;
+use Preflow\Data\Text\TextMatch;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
@@ -907,12 +908,13 @@ final class AssetLibraryController
      */
     private function unused(string $kind, string $q): array
     {
-        $words = preg_split('/\s+/', mb_strtolower($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $words = preg_split('/\s+/u', $q, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $assets = [];
         foreach ($this->cleanup->candidates($kind === '' ? [] : ['kind' => $kind]) as $candidate) {
             $asset = $candidate->asset;
-            $text = mb_strtolower($asset->originalName . ' ' . $asset->title . ' ' . implode(' ', $asset->alt));
-            if (array_filter($words, static fn (string $w): bool => !str_contains($text, $w)) === []) {
+            $text = $asset->originalName . ' ' . $asset->title . ' ' . implode(' ', $asset->alt);
+            // The text-matching rule, as the library's own search on storage.
+            if (array_filter($words, static fn (string $w): bool => !TextMatch::contains($text, $w)) === []) {
                 $assets[] = $asset;
             }
         }

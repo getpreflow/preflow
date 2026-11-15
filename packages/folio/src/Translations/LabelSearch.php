@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Translations;
 
+use Preflow\Data\Text\TextMatch;
+
 /** The screen's paging, search and "Changed only" filter over its rows, shared with the AI button's units (LabelUnits). */
 final class LabelSearch
 {
@@ -17,7 +19,7 @@ final class LabelSearch
     public static function matches(string $q, array $row): bool
     {
         foreach ([$row['key'], $row['delivered'], $row['site'], $row['override']] as $text) {
-            if ($text !== null && mb_stripos($text, $q) !== false) {
+            if ($text !== null && TextMatch::contains($text, $q)) {
                 return true;
             }
         }

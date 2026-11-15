@@ -197,7 +197,7 @@ final class MysqlDialect implements Dialect, PatternMatching
     }
 
     /**
-     * LIKE under the text-matching rule (case ignored in every alphabet, accents count). With a
+     * LIKE under the text-matching rule (case and width ignored, accents count). With a
      * collation (MATCH_COLLATIONS) the column is compared in it; the CAST lets a number column or
      * one of another character set take the COLLATE (as in exactText()), which also means a
      * prefix pattern does not use an index. Without one both sides are lowered and compared by

@@ -17,32 +17,40 @@ final class TextMatchTest extends TestCase
         $this->assertSame('straße', TextMatch::fold('Straße'));
         $this->assertSame('straße', TextMatch::fold('STRAẞE'), 'the capital sharp s folds to ß');
         $this->assertSame('k', TextMatch::fold("\u{212A}"), 'the Kelvin sign folds to k');
-        $this->assertSame('s', TextMatch::fold("\u{017F}"), 'the long s folds to s');
-        $this->assertSame('İ', TextMatch::fold('İ'), 'İ has no simple fold');
+        $this->assertNotSame('s', TextMatch::fold("\u{017F}"), 'the long s is a letter of its own');
+        $this->assertSame('İ', TextMatch::fold('İ'), 'İ is not i');
         $this->assertSame('ı', TextMatch::fold('ı'), 'ı is a letter of its own');
         $this->assertSame('i', TextMatch::fold('I'), 'no Turkish locale rules');
+        $this->assertSame('ü', TextMatch::fold("\u{00DC}"));
+        $this->assertSame("u\u{0308}", TextMatch::fold("U\u{0308}"), 'a decomposed Ü stays decomposed');
     }
 
-    public function test_only_the_kelvin_sign_and_long_s_fold_into_ascii(): void
+    public function test_fold_takes_width_and_compatibility_forms_as_their_letter(): void
     {
-        $found = [];
-        for ($code = 0x80; $code <= 0x10FFFF; $code++) {
-            if ($code >= 0xD800 && $code <= 0xDFFF) {
-                continue; // surrogates are no characters
-            }
-            $char = mb_chr($code, 'UTF-8');
-            if (preg_match('/^[\x00-\x7F]+$/', TextMatch::fold($char)) === 1) {
-                $found[] = $char;
-            }
-        }
-        sort($found);
-        $expected = array_values(TextMatch::FOLDS_INTO_ASCII);
-        sort($expected);
+        $this->assertSame('abc', TextMatch::fold('ａｂｃ'));
+        $this->assertSame('abc', TextMatch::fold('ＡＢＣ'));
+        $this->assertSame('1', TextMatch::fold('①'));
+        $this->assertSame('a', TextMatch::fold('ª'));
+        $this->assertSame('a', TextMatch::fold('Ⓐ'));
+        $this->assertSame('h', TextMatch::fold('ℌ'));
+        $this->assertSame('ﬁ', TextMatch::fold('ﬁ'), 'a ligature is one character, not "fi"');
+    }
 
-        $this->assertSame($expected, $found);
-        foreach (TextMatch::FOLDS_INTO_ASCII as $ascii => $char) {
-            $this->assertSame($ascii, TextMatch::fold($char));
+    /** The table maps one character to one, never to a character it maps on; in ASCII only A-Z. */
+    public function test_the_fold_table_is_one_character_to_one_and_stable(): void
+    {
+        $table = require __DIR__ . '/../../src/Text/fold-table.php';
+
+        $this->assertGreaterThan(1000, count($table));
+        foreach ($table as $char => $fold) {
+            $this->assertSame(1, mb_strlen((string) $char, 'UTF-8'));
+            $this->assertSame(1, mb_strlen($fold, 'UTF-8'));
+            $this->assertArrayNotHasKey($fold, $table, sprintf('U+%04X folds to a character that folds on', mb_ord((string) $char, 'UTF-8')));
+            if (strlen((string) $char) === 1) {
+                $this->assertSame(strtolower((string) $char), $fold);
+            }
         }
+        $this->assertSame(range('A', 'Z'), array_values(array_filter(array_map('strval', array_keys($table)), static fn (string $c): bool => strlen($c) === 1)));
     }
 
     public function test_like_and_contains_follow_the_table(): void
@@ -79,6 +87,16 @@ final class TextMatchTest extends TestCase
         $this->assertFalse(TextMatch::like('ılık', 'ilik'));
         $this->assertFalse(TextMatch::contains('ılık', 'ILI'));
         $this->assertTrue(TextMatch::like('ılık', 'ılık'));
+        // The long s is a letter of its own, both ways.
+        $this->assertFalse(TextMatch::like("\u{017F}uper", 'super'));
+        $this->assertFalse(TextMatch::like('super', "\u{017F}uper"));
+        $this->assertFalse(TextMatch::contains('super', "\u{017F}"));
+        // Width and compatibility forms.
+        $this->assertTrue(TextMatch::like('ａｂｃ', 'ABC'));
+        $this->assertTrue(TextMatch::like('abc', 'ＡＢＣ'));
+        $this->assertTrue(TextMatch::contains('Kapitel ①', '1'));
+        $this->assertTrue(TextMatch::like('５０％', '50!%', '!'), 'a fullwidth percent sign is a percent sign');
+        $this->assertFalse(TextMatch::like('50 Stück', '50％'), 'a fullwidth percent sign in the pattern is no wildcard');
         // Wildcards and escape.
         $this->assertTrue(TextMatch::like('Über uns', '_ber%'), '_ is one character, an umlaut too');
         $this->assertFalse(TextMatch::like('Über uns', '_ber'));
@@ -91,9 +109,10 @@ final class TextMatchTest extends TestCase
 
     public function test_ascii_safe_patterns(): void
     {
-        $this->assertTrue(TextMatch::asciiSafe('%ber%'));
+        $this->assertFalse(TextMatch::asciiSafe('%ber%'), 'ｂ, ｅ and ｒ fold into b, e and r');
         $this->assertFalse(TextMatch::asciiSafe('%kart%'));
-        $this->assertFalse(TextMatch::asciiSafe('%S%'));
         $this->assertFalse(TextMatch::asciiSafe('%über%'));
+        $this->assertTrue(TextMatch::asciiSafe("\t\n"));
+        $this->assertTrue(TextMatch::asciiSafe(''));
     }
 }

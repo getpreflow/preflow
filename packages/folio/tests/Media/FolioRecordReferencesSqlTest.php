@@ -142,7 +142,7 @@ class FolioRecordReferencesSqlTest extends TestCase
         $this->assertNotSame([], $sql);
         foreach ($sql as $statement) {
             $this->assertStringNotContainsString('tag', $statement, 'a type without asset or blocks fields is not read');
-            $this->assertStringContainsString(' LIKE ?', $statement, 'every read is prefiltered');
+            $this->assertMatchesRegularExpression('/ LIKE \?|ulike\(\?/', $statement, 'every read is prefiltered');
         }
         $this->assertCount(3, $sql); // the working table, its published shadow and its revisions
         foreach ($collector->getQueries() as $q) {
@@ -235,7 +235,7 @@ class FolioRecordReferencesSqlTest extends TestCase
         $revisionReads = array_filter($collector->getQueries(), static fn (array $q): bool => str_contains((string) $q['sql'], 'page__revisions'));
         $this->assertCount(1, $revisionReads);
         foreach ($revisionReads as $q) {
-            $this->assertStringContainsString(' LIKE ?', (string) $q['sql']);
+            $this->assertMatchesRegularExpression('/ LIKE \?|ulike\(\?/', (string) $q['sql']);
         }
     }
 
@@ -271,7 +271,7 @@ class FolioRecordReferencesSqlTest extends TestCase
         $sql = array_map(static fn (array $q): string => (string) $q['sql'], $collector->getQueries());
         foreach ($sql as $statement) {
             $this->assertStringNotContainsString('"tag"', $statement, 'a type without asset fields or a route is not read');
-            $this->assertStringContainsString(' LIKE ?', $statement, 'every read is prefiltered');
+            $this->assertMatchesRegularExpression('/ LIKE \?|ulike\(\?/', $statement, 'every read is prefiltered');
         }
     }
 
@@ -317,7 +317,7 @@ class FolioRecordReferencesSqlTest extends TestCase
             static fn (string $sql): bool => str_contains($sql, 'venue'),
         ));
         $this->assertCount(1, $venue, 'one read of the table');
-        $this->assertStringContainsString(' LIKE ?', $venue[0]);
+        $this->assertMatchesRegularExpression('/ LIKE \?|ulike\(\?/', $venue[0]);
         $this->assertStringNotContainsString('_seo', $venue[0]);
         if ($pdo instanceof StatementLogPdo) {
             $this->assertSame([], array_values(array_filter($pdo->prepared, static fn (string $sql): bool => str_contains($sql, '_seo'))), 'no statement names the missing column, not even one that fails');

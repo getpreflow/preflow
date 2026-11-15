@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Auth\Authenticatable;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Data\Locales;
+use Preflow\Data\Text\TextMatch;
 use Preflow\Folio\Content\DisplayLabels;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\RecordLabeler;
@@ -227,7 +228,7 @@ final class RedirectsController
             }
             foreach ($this->live->of($listing->key) as $record) {
                 $label = $labeler->label($record);
-                if ($q !== '' && mb_stripos($label, $q) === false) {
+                if ($q !== '' && !TextMatch::contains($label, $q)) {
                     continue;
                 }
                 $url = $this->resolver->urlFor($record, $record->getType()->locales->default);
@@ -574,7 +575,7 @@ final class RedirectsController
                     ];
             }
             // The search finds the old address or the target (its URL, or the page's label).
-            if ($q !== '' && array_filter([$address, $target['url'], $target['label']], static fn (?string $text): bool => $text !== null && mb_stripos($text, $q) !== false) === []) {
+            if ($q !== '' && array_filter([$address, $target['url'], $target['label']], static fn (?string $text): bool => $text !== null && TextMatch::contains($text, $q)) === []) {
                 continue;
             }
             $rows[] = $entry + [
