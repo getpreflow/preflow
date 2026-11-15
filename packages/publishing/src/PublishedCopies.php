@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Publishing;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
-use Preflow\Data\Migration\Schema;
 use Preflow\Data\TypeDefinition;
 
 /**
@@ -28,11 +26,8 @@ final class PublishedCopies
             return [];
         }
         $shadow = ShadowTypes::published($def);
-        $driver = $this->dm->driver($def->storage);
-        if ($driver instanceof PdoDriver && !(new Schema($driver->pdo()))->hasTable($shadow->table)) {
-            return [];
-        }
 
-        return [$shadow];
+        // a storage whose table is not made yet (not migrated, or JSON before the first publish) has no copies
+        return $this->dm->hasTable($shadow) ? [$shadow] : [];
     }
 }

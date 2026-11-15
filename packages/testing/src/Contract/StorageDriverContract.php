@@ -6,6 +6,7 @@ namespace Preflow\Testing\Contract;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\ConditionalUpdates;
+use Preflow\Data\DescribesColumns;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\RunsSql;
@@ -267,6 +268,20 @@ abstract class StorageDriverContract extends TestCase
         }
 
         return $this->driver;
+    }
+
+    // --- table existence (DescribesColumns, @since 0.78) ---------------------------------------
+
+    public function test_has_table_tells_a_made_type_from_a_missing_one(): void
+    {
+        if (!$this->driver instanceof DescribesColumns) {
+            $this->markTestSkipped('The driver does not implement DescribesColumns.');
+        }
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One']);
+
+        $this->assertTrue($this->driver->hasTable('records'));
+        $this->assertFalse($this->driver->hasTable('never_made'));
     }
 
     // --- transactions (Transactions, @since 0.78) ----------------------------------------------

@@ -14,7 +14,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\SortDirection;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns
 {
     /** @var array<string, true> types whose lock this driver holds (exclusive() nests) */
     private array $locked = [];
@@ -644,6 +644,12 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     public function exists(string $type, string|int $id, string $idField = 'uuid'): bool
     {
         return self::safeName($type) && self::safeName((string) $id) && file_exists($this->filePath($type, $id));
+    }
+
+    /** Any key is a column: a JSON record takes every key. */
+    public function hasColumn(string $type, string $column): bool
+    {
+        return true;
     }
 
     /** Whether the type has its directory (made by its first write, kept when its last record is deleted). */

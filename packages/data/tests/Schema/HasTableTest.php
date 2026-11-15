@@ -12,6 +12,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
+use Preflow\Testing\PlainDriver;
 
 /** DataManager::hasTable(): an SQL table, a JSON type's directory. */
 final class HasTableTest extends TestCase
@@ -59,5 +60,19 @@ final class HasTableTest extends TestCase
         $this->assertTrue($dm->hasTable(self::def('json')));
         $dm->deleteIn(self::def('json'), 'a');
         $this->assertTrue($dm->hasTable(self::def('json')), 'an empty type keeps its directory');
+    }
+
+    public function test_a_driver_without_describes_columns_has_every_table(): void
+    {
+        $dm = new DataManager(['plain' => new PlainDriver(new SqliteDriver(new \PDO('sqlite::memory:')))]);
+
+        $this->assertTrue($dm->hasTable(self::def('plain')));
+    }
+
+    public function test_json_reports_columns_as_present(): void
+    {
+        $driver = new JsonFileDriver($this->dir . '/data');
+
+        $this->assertTrue($driver->hasColumn('x', 'any'));
     }
 }

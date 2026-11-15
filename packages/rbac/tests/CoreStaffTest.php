@@ -246,6 +246,22 @@ final class CoreStaffTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_staff_table_is_missing_on_sql_until_installed_and_never_missing_on_json(): void
+    {
+        $managers = fn (): \Preflow\Rbac\StaffManagers => new \Preflow\Rbac\StaffManagers($this->app()->container()->get(\Preflow\Data\DataManager::class));
+
+        $this->assertFalse($managers()->hasTable(), 'SQLite without the table');
+        $this->assertSame(0, $this->command('rbac:install')[0]);
+        $this->assertTrue($managers()->hasTable());
+
+        $this->write('config/data.php', "<?php\nreturn " . var_export([
+            'default' => 'json',
+            'models_path' => $this->dir . '/config/models',
+            'drivers' => ['json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => $this->dir . '/storage/json']],
+        ], true) . ";\n");
+        $this->assertTrue($managers()->hasTable(), 'JSON before the first staff write');
+    }
+
     public function test_install_create_password_then_sign_in_and_can_follows_the_stored_role(): void
     {
         $this->assertSame(0, $this->command('migrate')[0]);

@@ -312,6 +312,11 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         return in_array($column, (new \Preflow\Data\Migration\Schema($this->pdo))->columns($type), true);
     }
 
+    public function hasTable(string $type): bool
+    {
+        return (new \Preflow\Data\Migration\Schema($this->pdo))->hasTable($type);
+    }
+
     /**
      * Whether a transaction is open on the connection: one opened through PDO, or one the
      * driver opened itself (SqliteDriver::exclusive()).

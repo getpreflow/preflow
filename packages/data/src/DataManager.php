@@ -1898,21 +1898,15 @@ final class DataManager
     }
 
     /**
-     * Whether the definition's table is there: the SQL table, or the JSON driver's directory of
-     * the type (made by its first write, kept when its last record is deleted). A driver of
-     * another kind has no tables to make: true.
+     * Whether the definition's table is there, as its storage says (DescribesColumns: the SQL
+     * table, the JSON driver's directory of the type, made by its first write). A storage that
+     * cannot say has nothing to make first: true.
      */
     public function hasTable(TypeDefinition $def): bool
     {
         $driver = $this->resolveDriver($def->storage);
-        if ($driver instanceof PdoDriver) {
-            return (new Migration\Schema($driver->pdo()))->hasTable($def->table);
-        }
-        if ($driver instanceof Driver\JsonFileDriver) {
-            return $driver->hasTable($def->table);
-        }
 
-        return true;
+        return !$driver instanceof DescribesColumns || $driver->hasTable($def->table);
     }
 
     /** The storage driver for a configured name; an unknown name is an error, never a fallback. */
