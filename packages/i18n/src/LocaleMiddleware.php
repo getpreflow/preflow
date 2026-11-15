@@ -84,18 +84,22 @@ final class LocaleMiddleware implements MiddlewareInterface
         }
 
         // 1b. A bare page path ('/faq') goes to the visitor's language. No cookie is written
-        // here: the locale cookie is only set when the visitor picks a language.
+        // here: the locale cookie is only set when the visitor picks a language. Without a page
+        // lookup nothing changes at all (fails closed: no redirect, no Vary).
         $vary = false;
-        if ($bare && $this->urls?->redirectBare && $this->redirectable($request)) {
+        if ($bare && $this->urls?->redirectBare && $this->pageExists !== null && $this->redirectable($request)) {
             $preferred = $this->detectFromCookie($request)
                 ?? $this->detectFromAcceptLanguage($request)
                 ?? $this->defaultLocale;
             $path = $request->getUri()->getPath();
 
-            if (!$this->urls->prefixDefault && $preferred === $this->defaultLocale) {
-                // Served as it is, in the default locale, but the answer depended on the visitor.
+            if ((!$this->urls->prefixDefault && $preferred === $this->defaultLocale)
+                || !($this->pageExists)($preferred, $path)
+            ) {
+                // Served as it is, in the default locale; the outcome still depended on the
+                // visitor's preference, so caches must keep it apart from the redirect.
                 $vary = true;
-            } elseif ($this->pageExists !== null && ($this->pageExists)($preferred, $path)) {
+            } else {
                 $location = $this->urls->path($preferred, $path);
                 $query = $request->getUri()->getQuery();
 

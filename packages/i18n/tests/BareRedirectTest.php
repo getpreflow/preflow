@@ -14,6 +14,7 @@ use Preflow\I18n\LocaleMiddleware;
 use Preflow\I18n\Translator;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UriInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 final class BareRedirectTest extends TestCase
@@ -151,9 +152,7 @@ final class BareRedirectTest extends TestCase
         $response = $this->dispatch($this->middleware(cookie: true), $this->request('/faq', ['Accept-Language' => 'de']));
 
         $this->assertRedirect('/de/faq', $response);
-        $vary = $response->getHeaderLine('Vary');
-        $this->assertStringContainsString('Accept-Language', $vary);
-        $this->assertStringContainsString('Cookie', $vary);
+        $this->assertSame('Accept-Language, Cookie', $response->getHeaderLine('Vary'));
         $this->assertSame('private, no-store', $response->getHeaderLine('Cache-Control'));
         $this->assertFalse($response->hasHeader('Set-Cookie'));
     }
@@ -236,9 +235,7 @@ final class BareRedirectTest extends TestCase
 
         $this->assertServed($response);
         $this->assertSame('en', $this->captured?->getAttribute('locale'));
-        $vary = $response->getHeaderLine('Vary');
-        $this->assertStringContainsString('Accept-Language', $vary);
-        $this->assertStringContainsString('Cookie', $vary);
+        $this->assertSame('Accept-Language, Cookie', $response->getHeaderLine('Vary'));
     }
 
     public function test_without_prefix_default_other_preference_redirects(): void
@@ -289,5 +286,71 @@ final class BareRedirectTest extends TestCase
         $this->assertServed($response);
         $this->assertSame('en', $this->captured?->getAttribute('locale'));
         $this->assertFalse($response->hasHeader('Location'));
+        $this->assertFalse($response->hasHeader('Vary'));
+    }
+
+    public function test_without_page_lookup_default_preference_gets_no_vary(): void
+    {
+        $response = $this->dispatch(
+            $this->middleware(prefixDefault: false, withPageLookup: false),
+            $this->request('/faq', ['Accept-Language' => 'en']),
+        );
+
+        $this->assertServed($response);
+        $this->assertFalse($response->hasHeader('Vary'));
+    }
+
+    public function test_page_missing_in_preferred_locale_is_served_with_vary(): void
+    {
+        // /faq exists only in en and fr.
+        $pageExists = static fn (string $locale, string $path): bool => $path === '/faq' && in_array($locale, ['en', 'fr'], true);
+
+        $response = $this->dispatch($this->middleware(prefixDefault: false, pageExists: $pageExists), $this->request('/faq', ['Accept-Language' => 'de']));
+        $this->assertServed($response);
+        $this->assertSame('en', $this->captured?->getAttribute('locale'));
+        $this->assertSame('Accept-Language, Cookie', $response->getHeaderLine('Vary'));
+
+        $this->handled = false;
+        $response = $this->dispatch($this->middleware(prefixDefault: false, pageExists: $pageExists), $this->request('/faq', ['Accept-Language' => 'fr']));
+        $this->assertRedirect('/fr/faq', $response);
+        $this->assertSame('Accept-Language, Cookie', $response->getHeaderLine('Vary'));
+    }
+
+    public function test_malformed_accept_language_falls_back(): void
+    {
+        $header = ['Accept-Language' => ';;q=abc,*'];
+
+        $this->assertRedirect('/en/faq', $this->dispatch($this->middleware(), $this->request('/faq', $header)));
+        $this->handled = false;
+        $this->assertRedirect('/fr/faq', $this->dispatch($this->middleware(), $this->request('/faq', $header, ['locale' => 'fr'])));
+    }
+
+    public function test_double_slash_path_never_redirects_off_site(): void
+    {
+        // Nyholm collapses leading slashes itself; other PSR-7 implementations may hand the
+        // path over as sent, so this URI does.
+        $raw = new class ((new Psr17Factory())->createUri('/')) implements UriInterface {
+            public function __construct(private readonly UriInterface $uri) {}
+            public function getScheme(): string { return $this->uri->getScheme(); }
+            public function getAuthority(): string { return $this->uri->getAuthority(); }
+            public function getUserInfo(): string { return $this->uri->getUserInfo(); }
+            public function getHost(): string { return $this->uri->getHost(); }
+            public function getPort(): ?int { return $this->uri->getPort(); }
+            public function getPath(): string { return '//evil.com/x'; }
+            public function getQuery(): string { return ''; }
+            public function getFragment(): string { return ''; }
+            public function withScheme(string $scheme): UriInterface { return $this; }
+            public function withUserInfo(string $user, ?string $password = null): UriInterface { return $this; }
+            public function withHost(string $host): UriInterface { return $this; }
+            public function withPort(?int $port): UriInterface { return $this; }
+            public function withPath(string $path): UriInterface { return $this; }
+            public function withQuery(string $query): UriInterface { return $this; }
+            public function withFragment(string $fragment): UriInterface { return $this; }
+            public function __toString(): string { return '//evil.com/x'; }
+        };
+        $request = $this->request('/', ['Accept-Language' => 'de'])->withUri($raw, true);
+        $this->assertSame('//evil.com/x', $request->getUri()->getPath());
+
+        $this->assertRedirect('/de/evil.com/x', $this->dispatch($this->middleware(), $request));
     }
 }
