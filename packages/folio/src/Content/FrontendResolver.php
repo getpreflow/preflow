@@ -36,6 +36,8 @@ final class FrontendResolver
         private readonly DataManager $dm,
         string|array $routes = 'page',
         private readonly ?\Preflow\Core\PageCache\PageCache $pageCache = null,
+        /** The site's locale URL rule (core binds it from config/i18n.php); null: today's rule, the default unprefixed */
+        private readonly ?\Preflow\Core\Http\LocaleUrls $urls = null,
     ) {
         $this->routes = self::ordered(is_string($routes) ? [self::legacy($routes)] : $routes);
     }
@@ -183,7 +185,8 @@ final class FrontendResolver
 
     /**
      * The public URL of a record in a locale: route parameters filled with the
-     * locale's own values, "/de/…" for non-default locales. Null when the
+     * locale's own values, behind the locale's prefix ("/de/…"; the default
+     * locale's "/en/…" only with config/i18n.php prefix_default). Null when the
      * record isn't visible in that locale or a parameter has no value in it.
      */
     public function urlFor(DynamicRecord $record, string $locale): ?string
@@ -192,11 +195,30 @@ final class FrontendResolver
         if ($path === null) {
             return null;
         }
+        if ($this->urls !== null) {
+            return $this->urls->path($locale, $path);
+        }
         if ($locale === $record->getType()->locales->default) {
             return $path;
         }
 
         return '/' . $locale . ($path !== '/' ? $path : '');
+    }
+
+    /**
+     * The prefix a locale's URLs carry ("/de"; "/en" for the default locale with prefix_default;
+     * '' for none), as urlFor() puts it on. Without the site's LocaleUrls: '' for the default locale
+     * of the routed types, else "/{locale}".
+     */
+    public function localePrefix(string $locale): string
+    {
+        if ($this->urls !== null) {
+            return $this->urls->prefix($locale);
+        }
+        $route = $this->routes[0] ?? null;
+        $default = $route !== null ? $this->definition($route->type)->locales->default : null;
+
+        return $locale === $default ? '' : '/' . $locale;
     }
 
     /**

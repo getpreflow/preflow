@@ -13,8 +13,8 @@ use Preflow\View\Audit\Target;
  * it), a file under the media URL ({media}/{Y}/{m}/{id}…: the original or one of its variants)
  * is its asset. Anything else has no target.
  *
- * A non-default locale's "/de" prefix is taken off before the page is looked up, as
- * FrontendResolver::urlFor() puts it on. A lookup that fails (storage not reachable, a table
+ * The locale's prefix ("/de"; the default's "/en" with prefix_default) is taken off before the
+ * page is looked up, as FrontendResolver::urlFor() puts it on (FrontendResolver::localePrefix()). A lookup that fails (storage not reachable, a table
  * not migrated yet) is no target: the finding still stands, only without the link.
  *
  * @since 0.54
@@ -34,7 +34,7 @@ final class AuditTargets
     /**
      * @param \Closure(): FrontendResolver $resolverFactory built on the first page looked up
      * @param \Closure(): string           $mediaUrlFactory the media core's URL (config/media.php "url"), read on first use
-     * @param string                       $defaultLocale   the site's default language (its URLs carry no prefix)
+     * @param string                       $defaultLocale   the site's default language (kept for compatibility: the resolver knows the prefixes)
      */
     public function __construct(
         private readonly \Closure $resolverFactory,
@@ -78,14 +78,14 @@ final class AuditTargets
 
     private function page(string $path, string $locale): ?Target
     {
-        if ($locale !== '' && $locale !== $this->defaultLocale
-            && preg_match('#^/' . preg_quote($locale, '#') . '(/.*)?$#', $path, $m) === 1) {
-            $path = ($m[1] ?? '') === '' ? '/' : $m[1];
-        }
         $lookup = $locale !== '' ? $locale : null;
 
         try {
             $this->resolver ??= ($this->resolverFactory)();
+            $prefix = $locale !== '' ? $this->resolver->localePrefix($locale) : '';
+            if ($prefix !== '' && preg_match('#^' . preg_quote($prefix, '#') . '(/.*)?$#', $path, $m) === 1) {
+                $path = ($m[1] ?? '') === '' ? '/' : $m[1];
+            }
             // match() compares route values unencoded: "/%C3%BCber-uns" is the page "über-uns".
             $found = $this->resolver->match($path, $lookup)
                 ?? ($path !== rawurldecode($path) ? $this->resolver->match(rawurldecode($path), $lookup) : null);

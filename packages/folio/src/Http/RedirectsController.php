@@ -540,7 +540,9 @@ final class RedirectsController
     /** The address as visitors see and type it ("/de/über-uns"). */
     private function visible(string $locale, string $path): string
     {
-        return (new VisibleAddress($this->locales->default, $this->prefixed))->of($locale, $path);
+        $prefixDefault = $this->resolver->localePrefix($this->locales->default) !== '';
+
+        return (new VisibleAddress($this->locales->default, $this->prefixed, prefixDefault: $prefixDefault))->of($locale, $path);
     }
 
     /**

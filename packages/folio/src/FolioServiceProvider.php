@@ -370,6 +370,9 @@ final class FolioServiceProvider extends ServiceProvider
                 self::prefixedUrls($app),
                 \Preflow\Folio\Redirects\SiteTarget::hostOf($app->config()->get('app.url')),
             ));
+            // Whether a Folio page holds an address: the bare-path redirect (config/i18n.php redirect_bare)
+            // asks core's PageExists, so "/hello" goes to "/en/hello" and "/no-such-page" stays a 404.
+            $container->singleton(\Preflow\Core\Routing\PageExists::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\SiteTarget::class));
             // The write rules of a redirect entry (routing's), for every writer: the entries' save() and
             // Settings → Redirects. What only the site knows is answered by Folio's own classes.
             $container->singleton(\Preflow\Routing\Redirect\RedirectRules::class, static fn (Container $c) => new \Preflow\Routing\Redirect\RedirectRules(
@@ -560,6 +563,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $frontendRoutes,
             $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
+            // The site's locale URL rule (core binds it from config/i18n.php): "/en/…" with prefix_default.
+            $c->bound(\Preflow\Core\Http\LocaleUrls::class) ? $c->get(\Preflow\Core\Http\LocaleUrls::class) : null,
         ));
 
         $uploadsDir = $this->uploadsDir($app);
@@ -686,7 +691,11 @@ final class FolioServiceProvider extends ServiceProvider
             addresses: self::addresses($c),
             oldAddresses: $c->bound(\Preflow\Folio\Redirects\RedirectEntries::class) ? new \Preflow\Folio\Redirects\OldAddresses(
                 $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
-                new \Preflow\Folio\Redirects\VisibleAddress(($locales ?? \Preflow\Data\Locales::single('en'))->default, self::prefixedUrls($app)),
+                new \Preflow\Folio\Redirects\VisibleAddress(
+                    ($locales ?? \Preflow\Data\Locales::single('en'))->default,
+                    self::prefixedUrls($app),
+                    prefixDefault: $c->get(FrontendResolver::class)->localePrefix(($locales ?? \Preflow\Data\Locales::single('en'))->default) !== '',
+                ),
                 $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
             ) : null,
             pageMeta: $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\Folio\Seo\FolioPageMeta::class) : null,

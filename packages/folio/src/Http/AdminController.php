@@ -2421,7 +2421,7 @@ final class AdminController
         if ($at === false) {
             return null;
         }
-        $language = $locale !== $locales->default ? '/' . $locale : '';
+        $language = $this->frontend->localePrefix($locale);
         $before = $language . substr($route->pattern, 0, $at);
         $after = substr($route->pattern, $at + strlen($token));
         $base = rtrim($this->siteUrl ?? '', '/');

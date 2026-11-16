@@ -12,12 +12,14 @@ namespace Preflow\Folio\Redirects;
 final readonly class VisibleAddress
 {
     /**
-     * @param string $defaultLocale the site's default language (its addresses carry no prefix)
+     * @param string $defaultLocale the site's default language (its addresses carry no prefix, unless $prefixDefault)
      * @param bool   $prefixed      whether URLs carry the locale (i18n url_strategy "prefix")
+     * @param bool   $prefixDefault whether the default language's addresses carry its prefix too (i18n prefix_default)
      */
     public function __construct(
         private string $defaultLocale,
         private bool $prefixed,
+        private bool $prefixDefault = false,
     ) {}
 
     public function of(string $locale, string $path): string
@@ -25,10 +27,10 @@ final readonly class VisibleAddress
         return self::readable($this->withPrefix($locale, $path));
     }
 
-    /** The locale prefix of a language other than the default, then the path. */
+    /** The locale prefix (not the default's, unless prefixDefault), then the path. */
     private function withPrefix(string $locale, string $path): string
     {
-        if ($locale === '' || $locale === $this->defaultLocale || !$this->prefixed) {
+        if ($locale === '' || !$this->prefixed || ($locale === $this->defaultLocale && !$this->prefixDefault)) {
             return $path;
         }
 

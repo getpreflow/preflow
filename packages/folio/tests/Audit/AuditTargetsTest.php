@@ -51,6 +51,16 @@ final class AuditTargetsTest extends TestCase
         $this->assertEquals(new Target('record', 'post', 'p1'), $registry->target('/hello', ''), 'a path, and a finding without a locale');
     }
 
+    public function test_default_prefix_is_stripped_before_lookup(): void
+    {
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix', 'prefix_default' => true];\n");
+        $this->publishPost('p1', ['en' => 'Hello', 'de' => 'Hallo'], ['en' => 'hello', 'de' => 'hallo']);
+        $registry = $this->registry();
+
+        $this->assertEquals(new Target('record', 'post', 'p1'), $registry->target('http://localhost/en/hello', 'en'));
+        $this->assertEquals(new Target('record', 'post', 'p1'), $registry->target('http://localhost/de/hallo', 'de'));
+    }
+
     public function test_an_encoded_path_finds_its_page(): void
     {
         // Folio's slug rule keeps umlauts out of new addresses; older records may still have them.

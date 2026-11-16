@@ -191,6 +191,61 @@ final class FrontendResolverTest extends TestCase
         $this->assertSame('/de', $resolver->urlFor($home, 'de'));
     }
 
+    /** A bilingual "lpage" type (en default, de) at "/{slug}", home "start", and its resolver. */
+    private function bilingual(?\Preflow\Core\Http\LocaleUrls $urls): array
+    {
+        file_put_contents($this->models . '/lpage.json', json_encode([
+            'key' => 'lpage', 'table' => 'lpage', 'storage' => 'json', 'id_field' => 'uuid',
+            'frontend' => ['route' => '/{slug}', 'home' => 'start'],
+            'publishing' => false,
+            'fields' => [
+                'title' => ['type' => 'string', 'translatable' => true],
+                'slug' => ['type' => 'string', 'translatable' => true],
+            ],
+        ]));
+        $type = (new TypeRegistry($this->models, new Locales(['en', 'de'], 'en')))->get('lpage');
+        $resolver = new FrontendResolver($this->dm, [FrontendRoute::fromConfig('lpage', ['route' => '/{slug}', 'home' => 'start'])], null, $urls);
+
+        return [
+            $resolver,
+            DynamicRecord::fromArray($type, ['uuid' => 'a', 'title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]),
+            DynamicRecord::fromArray($type, ['uuid' => 'b', 'title' => ['en' => 'Home', 'de' => 'Start'], 'slug' => ['en' => 'start', 'de' => 'start'], '_locales' => ['en', 'de']]),
+        ];
+    }
+
+    public function test_url_for_prefixes_the_default_locale_with_prefix_default(): void
+    {
+        [$resolver, $record] = $this->bilingual(new \Preflow\Core\Http\LocaleUrls(['en', 'de'], 'en', prefixDefault: true));
+
+        $this->assertSame('/en/hello', $resolver->urlFor($record, 'en'));
+        $this->assertSame('/de/hallo', $resolver->urlFor($record, 'de'));
+        $this->assertSame('/hello', $resolver->pathFor($record, 'en'), 'the path after the prefix is stripped stays the same');
+        $this->assertSame('/en', $resolver->localePrefix('en'));
+        $this->assertSame('/de', $resolver->localePrefix('de'));
+    }
+
+    public function test_url_for_home_in_default_locale_is_its_prefix(): void
+    {
+        [$resolver, , $home] = $this->bilingual(new \Preflow\Core\Http\LocaleUrls(['en', 'de'], 'en', prefixDefault: true));
+
+        $this->assertSame('/en', $resolver->urlFor($home, 'en'));
+        $this->assertSame('/de', $resolver->urlFor($home, 'de'));
+    }
+
+    public function test_url_for_unchanged_without_locale_urls(): void
+    {
+        foreach ([null, new \Preflow\Core\Http\LocaleUrls(['en', 'de'], 'en')] as $urls) {
+            [$resolver, $record, $home] = $this->bilingual($urls);
+
+            $this->assertSame('/hello', $resolver->urlFor($record, 'en'));
+            $this->assertSame('/de/hallo', $resolver->urlFor($record, 'de'));
+            $this->assertSame('/', $resolver->urlFor($home, 'en'));
+            $this->assertSame('/de', $resolver->urlFor($home, 'de'));
+            $this->assertSame('', $resolver->localePrefix('en'));
+            $this->assertSame('/de', $resolver->localePrefix('de'));
+        }
+    }
+
     /**
      * @param array<string, mixed> $frontend
      * @param array<string, mixed> $extraFields
