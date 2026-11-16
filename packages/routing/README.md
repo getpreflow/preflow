@@ -239,9 +239,13 @@ return [
 Then a GET or HEAD of `/faq/` or `//en//faq` answers 301 to `/faq` or `/en/faq`, keeping the
 query string. It runs first in the pipeline, before the locale prefix is read, so
 `//de//about/` reaches `/de/about` in one hop; a locale's home is `/de`, never `/de/`. A POST
-(or any other method) is never redirected, and admin, API and component paths
-(`NonPublicPaths`) are left alone, as are paths whose meaning normalising could change (dot
-segments, backslashes, `%2F`). A value other than `true` or `false` stops the boot.
+(or any other method) is never redirected. Left alone as well: admin, API and component paths
+(`NonPublicPaths`), every path whose first segment starts with `--` (framework endpoints such as
+`/--component` and `/--locale`), internal renders (the SEO audit's), and paths whose meaning
+normalising could change (dot segments, backslashes, `%2F`, control bytes). The `Location` is
+site-relative and starts with exactly one `/` (`//evil.example/x/` goes to `/evil.example/x`).
+The 301 depends on the URL alone (no cookie, no `Vary`), so caches may keep it. A value other
+than `true` or `false` stops the boot.
 
 **Trailing slashes in links and routes.** With clean paths on, a link that ends in a slash
 (`href="/faq/"`) costs every visitor a 301 hop, and a route declared with a trailing slash is

@@ -380,6 +380,12 @@ while it is off, nothing about your pages changes.
 It only adds tags a page doesn't already have: a robots meta, `og:image` or `theme-color` your layout prints wins.
 `<title>` and `<meta name="description">` stay your layout's job.
 
+Locale URLs (since 0.78): the sitemap, `hreflang` alternates and canonicals follow
+`config/i18n.php` `prefix_default` (`/en/about`, the default language's home `/en`), and so do the
+URLs llms.txt lists; `/llms.txt` itself stays at the root for the default language (`/de/llms.txt`
+for the others). `robots.txt`, `sitemap.xml` and `llms.txt` are never sent through the bare-path
+redirect (`redirect_bare`).
+
 ### Turning it on
 
 Create `config/seo.php` (the skeleton has one with every key commented):

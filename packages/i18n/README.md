@@ -16,7 +16,8 @@ composer require preflow/i18n
   per-language maps, and a `translations:check` command
 - Resolves dot-notation keys with `:param` replacement and locale fallback
 - ICU-style pluralization with exact, range, and simple two-form rules
-- PSR-15 middleware for locale detection (URL prefix → cookie → Accept-Language)
+- PSR-15 middleware for locale detection (URL prefix → cookie → Accept-Language), and opt-in
+  locale URLs: the default language prefixed, bare paths sent to the visitor's language (since 0.78)
 - Twig functions for global and component-scoped translations
 - Machine translation through the AI connection (`preflow/ai`): single texts, batches, whole
   collections, with tuning, a glossary and a cost estimate (see "Machine translation" below)
@@ -27,12 +28,22 @@ composer require preflow/i18n
 
 ```php
 return [
-    'default'      => 'en',
-    'available'    => ['en', 'de'],
-    'fallback'     => 'en',
-    'url_strategy' => 'prefix', // 'prefix' | 'none'
+    'default'        => 'en',
+    'available'      => ['en', 'de'],
+    'fallback'       => 'en',
+    'url_strategy'   => 'prefix', // 'prefix' | 'none'
+    // Since 0.78, all opt-in (the defaults keep today's URLs):
+    'prefix_default' => false,    // true: the default language is prefixed too ('/en/about', home '/en')
+    'redirect_bare'  => false,    // true: a bare page path ('/about') answers 302 to the visitor's language
+    'cookie_name'    => 'locale', // the cookie the remembered language is read from and written to
 ];
 ```
+
+`prefix_default` and `redirect_bare` take `true` or `false` and need `url_strategy` `'prefix'`;
+`cookie_name` must be a valid cookie name (letters, digits and ``!#$%&'*+-.^_`|~``). Anything
+else stops the boot with a message naming the option. Core reads all three into
+`Preflow\Core\Http\LocaleUrls`, the one rule every package builds locale URLs with (see
+preflow/core).
 
 ## Translation files
 
@@ -202,9 +213,16 @@ One post|:count posts                           // simple two-form (1 = first, e
 
 ### LocaleMiddleware
 
-PSR-15 middleware. Detects locale in priority order: URL prefix → cookie → `Accept-Language` header → configured default. `Accept-Language` is read by `AcceptLanguage::best()`; a language with `q=0` means "not this one" and is never picked (since 0.37). Strips the locale prefix from the request path. A `locale` cookie is set only when enabled (`'cookie' => true` in `config/i18n.php`; the default is off for the `prefix` strategy, on for `none`) and only when the locale changed.
+PSR-15 middleware. Detects locale in priority order: URL prefix → cookie → `Accept-Language` header → configured default (with the `prefix` strategy the cookie and `Accept-Language` are read only by the bare-path redirect, below). `Accept-Language` is read by `AcceptLanguage::best()`; a language with `q=0` means "not this one" and is never picked (since 0.37). Strips the locale prefix from the request path. The locale cookie (`cookie_name`, default `locale`) is set only when enabled (`'cookie' => true` in `config/i18n.php`; the default is off for the `prefix` strategy, on for `none`) and only when the locale changed.
 
-Template helpers: `t()`/`tc()` (parameters are HTML-escaped), `current_locale()`, `available_locales()` and `locale_url(path, locale = current)`, which returns `/about` for the default locale and `/de/about` otherwise.
+Template helpers: `t()`/`tc()` (parameters are HTML-escaped), `current_locale()`, `available_locales()`, `locale_url(path, locale = current)` and `locale_switch_url(path, locale = current)`. `locale_url()` returns `/about` for the default locale and `/de/about` otherwise; with `prefix_default` the default locale is prefixed too (`/en/about`, and `/en` for the root). `locale_switch_url()` (since 0.78) is the link a language picker uses: with `redirect_bare` it goes through the switch endpoint, which remembers the pick (`/--locale/de?to=%2Fde%2Fabout`); without it, it is `locale_url()`.
+
+```twig
+{# page_path: this page's path without its locale prefix, e.g. '/about' #}
+{% for code in available_locales() %}
+  <a href="{{ locale_switch_url(page_path, code) }}" hreflang="{{ code }}">{{ code|upper }}</a>
+{% endfor %}
+```
 
 ```php
 $middleware = new LocaleMiddleware(
@@ -216,6 +234,56 @@ $middleware = new LocaleMiddleware(
 ```
 
 `urlPrefix()` (since 0.46) returns the prefix stripped from the current request's URL: `'/de'` for `/de/blog`, `'/en'` when the default locale was in the URL, and `''` when there was none or the strategy is `none`. It is set only while `process()` runs: cleared on entry and restored to the previous value when `process()` returns or throws, so a long-running worker never carries it into the next request, and code that runs after the response (deferred mail) or in a nested handle never sees a stale prefix. Preflow's core registers the middleware in the container as `LocaleMiddleware::class` and uses `urlPrefix()` to keep component URLs on the page's locale (`/de/--component/…`, see preflow/htmx).
+
+#### Language redirect and the remembered choice (since 0.78)
+
+With `'redirect_bare' => true`, a visitor who asks for a page without a language segment (`/` or
+`/about`) is sent to it in their language: `302` to `/de/about`. The language is picked in this
+order: the remembered choice (the `cookie_name` cookie, when it names one of the site's locales),
+then the browser's `Accept-Language` (negotiated against `available`), then `default`. A visitor
+whose pick is the default language stays on the bare page unless `prefix_default` is on (then
+`/about` goes to `/en/about`). The query string is kept.
+
+What is never redirected:
+
+- anything but GET and HEAD, and internal renders (the SEO audit's);
+- admin, API and component paths (`NonPublicPaths`) and every path whose first segment starts
+  with `--`;
+- a path no page answers at in the picked language: it is served as it is (normally a 404), and
+  redirect entries still apply to it. "A page answers" is asked of core's
+  `Preflow\Core\Routing\PageExists` (`exists(locale, path)`): preflow/routing's `Router`
+  answers for its routes that are not catch-alls, Folio answers for its pages, and a site with
+  catch-all pages of its own binds a `PageExists`. Packages that bind the contract under a name of
+  their own add that name to `Preflow\Core\Routing\PageLookups` (`add(string $id)`; routing adds
+  its `Redirect\PageExists`). The lookups are asked when a request needs them; one bound in an
+  `onRequest` hook is asked too, but the boot check below doesn't see it. When `redirect_bare` is on
+  and nothing can answer (no router that implements `PageExists`, nothing bound under a
+  `PageLookups` id once the providers and their `onProvidersBooted` hooks ran), the boot stops
+  rather than redirect nothing.
+
+The redirect carries `Vary: Accept-Language, Cookie` and `Cache-Control: private, no-store`, so no
+shared cache keeps it. A bare page served without a redirect gets `Vary: Accept-Language, Cookie`
+too. The page cache still stores and serves it (the locale middleware adds the `Vary` outside the
+page cache and decides before it), so a visitor whose language differs still gets the 302.
+`robots.txt`, `sitemap.xml` and `llms.txt` are never redirected. Search engines are sent the
+same way as people; `hreflang` and canonical links point at the prefixed addresses.
+
+**The switch endpoint.** `GET /--locale/{code}?to=/de/about` writes the cookie and answers `302`
+to `to`. `to` must be a path on this site; anything else (another host, `//host`, `/%2F%2Fhost`)
+goes to the locale's home (`/de`). The cookie is `{cookie_name}={code}; Path=/; Max-Age=31536000;
+SameSite=Lax; HttpOnly`, plus `Secure` on HTTPS; the response is `Cache-Control: private,
+no-store` and `X-Robots-Tag: noindex`. An unknown code, another method or `redirect_bare` off
+fall through to the site (normally a 404). `/--locale` is a non-public path while
+`redirect_bare` is on. Link to it with `locale_switch_url()`.
+
+**Privacy.** The language cookie is written only when the visitor picks a language (the switch
+endpoint), never on the redirect and never on a page view; bare redirects only read it. A stored
+choice the visitor made is strictly necessary for what they asked for, so it needs no consent
+(ePrivacy art. 5(3)); a guess from a header on the first visit would be weaker, and sites can
+keep promising "no cookies unless you act". It also keeps pages cacheable (a page response that
+sets a cookie is never stored) and crawlers never get one. The older `'cookie' => true` (written
+on every page whose locale differs) stays for `url_strategy` `'none'` and uses `cookie_name`; with
+`redirect_bare` the switch endpoint is the only writer.
 
 ### TranslationExtension (Twig)
 

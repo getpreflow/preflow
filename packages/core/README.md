@@ -318,6 +318,23 @@ return [
 ];
 ```
 
+### Locale URLs: `Http\LocaleUrls` (0.78)
+
+`Preflow\Core\Http\LocaleUrls` is the one rule for locale prefixes in URLs. Core builds it at boot
+from `config/i18n.php` (`available`, `default`, `url_strategy`, `prefix_default`, `redirect_bare`;
+a single `app.locale` without the file) and binds it for every site, with or without preflow/i18n,
+before any provider registers. `prefix($locale)` gives `/de`, `''` for the default locale unless
+`prefixDefault`, and `''` with `url_strategy` `none` or for an unknown locale; `path($locale,
+$path)` gives the full path (`/en` for the default locale's home with `prefix_default`). The locale
+middleware (preflow/i18n), `locale_url()`, redirects, the SEO tags, sitemap and llms.txt URLs,
+Folio's page addresses and members' links all ask it, so a site changes its URLs in one place.
+The page cache keys a page by the URL as asked, so `/en/about` and a bare `/about` are kept
+apart. A wrong value stops the boot. With `redirect_bare` the middleware asks whether a page
+answers at a bare path through `Preflow\Core\Routing\PageExists` (`exists(locale, path)`), looked
+up under the ids `Preflow\Core\Routing\PageLookups` lists (core's `PageExists` first, then what
+packages `add()`, then a router that implements the contract); see preflow/i18n, "Language
+redirect and the remembered choice".
+
 ### Throttle
 
 `Preflow\Core\Throttle\Throttle` limits attempts (a login, a form, a code guess) in fixed

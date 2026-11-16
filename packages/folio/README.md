@@ -560,6 +560,12 @@ A type's `key` cannot be a path Folio uses under its prefix (`login`, `logout`,
 - `home` (optional): the value `/` resolves to. Only one type may declare it. It must be a valid
   address part too (`home`, `start-page`); anything else stops the boot with a
   `FrontendConfigException`.
+- Language prefixes: a record's address in another language carries its prefix (`/de/blog/…`).
+  With `config/i18n.php` `prefix_default` (since 0.78) the default language's does too
+  (`/en/blog/…`, the home `/en`): the frontend, alternates, the editor's addresses, redirects and
+  the audit follow it. With `redirect_bare`, Folio tells the bare-path redirect which addresses are
+  pages (it binds core's `PageExists`), so `/hello` goes to `/en/hello` and an unknown address
+  stays a 404.
 - `template` (optional): a userland Twig path. When it is absent, Folio uses
   `@folio/frontend/{type}.twig`, then `@folio/frontend/page.twig`. Templates receive
   `record`, `rendered` (field → safe HTML), `type`, `preview`, `locale`, `alternates` and
