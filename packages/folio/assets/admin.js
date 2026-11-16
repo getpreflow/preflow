@@ -1749,6 +1749,20 @@
     window.Folio = window.Folio || {};
     window.Folio.ownControls = ownControls;
 
+    // Folio.fold(text): text as the server's search compares it (preflow/data's matching rule,
+    // since 0.78.1), near enough for filtering in the page: case and accents ignored ("lodz" finds
+    // "Łódź", "elise" finds "Élise"). One fold for every client-side filter (the ⌘K palette, the
+    // relation and block pickers). Combining marks are stripped after NFD; the letters the server's
+    // matching table (search-fold-table.php) folds that have no decomposition are mapped by hand;
+    // ß, æ, ı and ŧ stay letters of their own there, so here too. The final sigma ς is σ there:
+    // toLowerCase() makes a word-final Σ a ς and a lone one a σ, so both become σ.
+    var FOLD_LETTERS = { 'ø': 'o', 'ł': 'l', 'đ': 'd', 'ð': 'd', 'ħ': 'h', 'ſ': 's', 'ς': 'σ' };
+    function fold(text) {
+        return String(text == null ? '' : text).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+            .replace(/[øłđðħſς]/g, function (c) { return FOLD_LETTERS[c]; });
+    }
+    window.Folio.fold = fold;
+
     // A field that is still settling (data-folio-settling, the settling protocol at initUnsavedStates):
     // what it writes is its loading, not an edit.
     function inSettling(el) {

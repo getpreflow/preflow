@@ -36,6 +36,42 @@ final class MysqlDriverTest extends TestCase
         $this->assertTrue($params[3]->isOptional());
     }
 
+    /**
+     * The SQL LIKE gets for each combination (@since 0.78.1): matchCollation: false keeps 0.78.0's
+     * meaning (the LOWER() fallback) unless a search collation is named; a named one wins.
+     */
+    public function test_like_sql_for_each_collation_combination(): void
+    {
+        $noConnection = static fn (): \PDO => throw new \LogicException('no connection expected');
+        $like = static function (MysqlDriver $driver): string {
+            $dialect = $driver->dialect();
+            assert($dialect instanceof \Preflow\Data\Driver\MysqlDialect);
+
+            return $dialect->likeSql('`t`', 'x');
+        };
+
+        $this->assertSame(
+            'LOWER(CAST(`t` AS CHAR CHARACTER SET utf8mb4)) COLLATE utf8mb4_bin LIKE LOWER(CONVERT(? USING utf8mb4)) COLLATE utf8mb4_bin',
+            $like(new MysqlDriver($noConnection, null, false)),
+            'matchCollation: false alone: the LOWER() fallback, as in 0.78.0',
+        );
+        $this->assertSame(
+            '(CAST(`t` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_0900_ai_ci) LIKE ?',
+            $like(new MysqlDriver($noConnection, null, false, 'utf8mb4_0900_ai_ci')),
+            'a named search collation wins',
+        );
+        $this->assertSame(
+            '(CAST(`t` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_0900_as_ci) LIKE ?',
+            $like(new MysqlDriver($noConnection, null, 'utf8mb4_0900_as_ci', false)),
+            'no search collation: the rule\'s',
+        );
+        $this->assertSame(
+            '(CAST(`t` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_uca1400_nopad_ai_ci) LIKE ?',
+            $like(new MysqlDriver($noConnection, null, 'utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_uca1400_nopad_ai_ci')),
+        );
+        $this->assertNull((new MysqlDriver($noConnection, null, false))->searchCollation());
+    }
+
     /** Named collations are taken as given, with no connection opened (@since 0.78.1). */
     public function test_named_collations_need_no_connection(): void
     {

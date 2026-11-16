@@ -371,9 +371,9 @@
     // ---- Relation --------------------------------------------------------------------------------
     var PAGE = 20;
 
+    // Case and accents ignored, as the server's search (admin.js's Folio.fold): "lodz" finds "Łódź".
     function fold(text) {
-        var s = String(text || '').toLowerCase();
-        return s.normalize ? s.normalize('NFD').replace(/[̀-ͯ]/g, '') : s;
+        return window.Folio.fold(text);
     }
 
     function relationOf(el) {

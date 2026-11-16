@@ -17,7 +17,7 @@ const GROUPS = [
 ];
 
 /** One blocks field as blocks/field.twig renders it (no cards), in an autosaving record form. */
-function picker() {
+function picker(groupList = GROUPS) {
     const w = createWindow();
     const doc = w.document;
     const log = { edits: 0, added: [] };
@@ -41,7 +41,7 @@ function picker() {
     box.hidden = true;
     const search = el(box, 'input', { type: 'search', 'data-blocks-search': '', 'data-folio-no-edit': '' }, 'folio-blocks-search-input');
     const items = {};
-    const groups = GROUPS.map(([name, entries]) => {
+    const groups = groupList.map(([name, entries]) => {
         const group = el(popover, 'div', { 'data-blocks-group': '' }, 'folio-blocks-group');
         el(group, 'span', {}, 'folio-blocks-group-label').textContent = name;
         const row = el(group, 'div', { role: 'group' }, 'folio-blocks-items');
@@ -101,6 +101,15 @@ test('typing filters by label and description; groups without a match hide', () 
     p.type('');
     assert.equal(p.visible().length, 5, 'an empty search shows them all');
     assert.equal(p.empty.hidden, true);
+});
+
+test('the search ignores accents as the server\'s does: "lodz" finds "Łódź", "ecole" finds "École"', () => {
+    const p = picker([...GROUPS, ['Places', [['Łódź map', 'łódź map city'], ['École', 'école school']]]]);
+    p.button.click();
+    p.type('lodz');
+    assert.deepEqual(p.visible(), ['Łódź map'], 'ł is an l, ó and ź lose their accents');
+    p.type('ECOLE');
+    assert.deepEqual(p.visible(), ['École']);
 });
 
 test('no match shows the empty line with the query', () => {

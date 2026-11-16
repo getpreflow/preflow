@@ -42,17 +42,21 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
      * @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query.
      * @param string|false|null $matchCollation The collation translatable text values compare
      *     with: null asks the server (matchCollation(), once, on first use), false takes none, a
-     *     string names it.
+     *     string names it. false also means no search collation unless $searchCollation names one,
+     *     so LIKE takes the LOWER() fallback, as in 0.78.0.
      * @param string|false|null $searchCollation The collation LIKE, NOT LIKE, CONTAINS and
      *     search() compare with (@since 0.78.1): null asks the server (searchCollation(), once, on
-     *     first use), false takes none (LIKE then compares in $matchCollation, without one either
-     *     it takes the LOWER() fallback), a string names it.
+     *     first use; none when $matchCollation is false), false takes none (LIKE then compares in
+     *     $matchCollation, without one either it takes the LOWER() fallback), a string names it.
      */
     public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null, string|false|null $matchCollation = null, string|false|null $searchCollation = null)
     {
         if ($matchCollation !== null) {
             $this->matchCollation = $matchCollation === false ? null : $matchCollation;
             $this->collationKnown = true;
+        }
+        if ($searchCollation === null && $matchCollation === false) {
+            $searchCollation = false; // 0.78.0's matchCollation: false meant the LOWER() fallback for LIKE
         }
         if ($searchCollation !== null) {
             $this->searchCollation = $searchCollation === false ? null : $searchCollation;

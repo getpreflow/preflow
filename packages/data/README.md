@@ -1052,7 +1052,9 @@ with "unknown collation", `MysqlGrammar::on($pdo)->searchCollation()`;
 `information_schema.COLLATIONS`, which does not list MariaDB's `utf8mb4_uca1400_*` names. The
 column is cast to utf8mb4 and given the collation in the query, so a prefix `LIKE` (`'abc%'`) does
 not use an index (none of Preflow's own do: they start with `%`). `new MysqlDriver($pdo,
-searchCollation: false)` takes no search collation; a string names one. A server with the text
+searchCollation: false)` takes no search collation; a string names one. `matchCollation: false`
+(as in 0.78.0) takes the `LOWER()` fallback below for `LIKE` too, unless `searchCollation` names a
+collation. A server with the text
 rule's collation (`MysqlDialect::MATCH_COLLATIONS`, `matchCollation:`) but without a search
 collation compares `LIKE` in the text rule's collation, so accents count there; MariaDB 10.10+ and
 MySQL 8 have both.

@@ -10,13 +10,20 @@ import { createWindow, load } from './fake-dom.mjs';
 const FIELDS_JS = fileURLToPath(new URL('../../assets/fields.js', import.meta.url));
 const ID = 'a'.repeat(32);
 
-/** A page with fields.js; Folio.copyLater and folioT stubbed (admin.js's), the admin language English. */
+/** admin.js's Folio.fold, the real one (a pure function), read from admin.js loaded in a window of its own. */
+function sharedFold() {
+    const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
+    load(w, fileURLToPath(new URL('../../assets/admin.js', import.meta.url)));
+    return w.Folio.fold;
+}
+
+/** A page with fields.js; Folio.copyLater and folioT stubbed (admin.js's), Folio.fold admin.js's own, the admin language English. */
 function page(build, { folio = {} } = {}) {
     const w = createWindow({ body: { 'data-folio-prefix': '/folio' } });
     const doc = w.document;
     doc.documentElement.setAttribute('lang', 'en');
     const copied = [];
-    w.Folio = Object.assign({ copyLater: (p) => Promise.resolve(p).then((text) => { copied.push(text); return true; }) }, folio);
+    w.Folio = Object.assign({ copyLater: (p) => Promise.resolve(p).then((text) => { copied.push(text); return true; }), fold: sharedFold() }, folio);
     w.folioT = (key, params = {}) => Object.entries(params).reduce((text, [k, v]) => text.split(':' + k).join(String(v)), {
         'fields.move_named': 'Move :label', 'fields.open_named': 'Open :label', 'fields.remove_named': 'Remove :label',
         position: ':index of :total', at_position: ':label, position :position.',
@@ -267,6 +274,7 @@ function relation({ multiple = false, selected = [] } = {}) {
             { id: 'a1', label: 'Ann Müller', meta: 'ann@example.org' },
             { id: 'a2', label: 'Bob', meta: null },
             { id: 'a3', label: 'Émile Zola', meta: 'writer' },
+            { id: 'a4', label: 'Łódź office', meta: null },
         ]);
         const results = el(field, 'ul', { 'data-folio-relation-results': '', 'data-text-more': 'Show more', 'data-text-empty': 'Nothing found.' });
         results.hidden = true;
@@ -287,7 +295,11 @@ test('typing searches the options (accents and case ignored) and leaves linked o
 
     type(p.w, p.find, '');
     await tick();
-    assert.deepEqual(p.results.querySelectorAll('[data-folio-relation-pick]').map((b) => b.getAttribute('data-id')), ['a1', 'a3'], 'Bob is linked already');
+    assert.deepEqual(p.results.querySelectorAll('[data-folio-relation-pick]').map((b) => b.getAttribute('data-id')), ['a1', 'a3', 'a4'], 'Bob is linked already');
+
+    type(p.w, p.find, 'lodz');
+    await tick();
+    assert.deepEqual(p.results.querySelectorAll('[data-folio-relation-pick]').map((b) => b.getAttribute('data-id')), ['a4'], '"lodz" finds "Łódź", as the server\'s search does');
 
     type(p.w, p.find, 'nobody');
     await tick();

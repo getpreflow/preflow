@@ -119,10 +119,10 @@
         if (popover && popover.parentNode !== picker) { picker.appendChild(popover); }
     }
 
-    // Lower case without accents: "Ecole" finds "École".
+    // Case and accents ignored, as the server's search (admin.js's Folio.fold): "Ecole" finds
+    // "École", "lodz" finds "Łódź".
     function fold(text) {
-        var s = String(text || '').toLowerCase();
-        return typeof s.normalize === 'function' ? s.normalize('NFD').replace(/[̀-ͯ]/g, '') : s;
+        return window.Folio.fold(text);
     }
 
     function filter(picker, query) {

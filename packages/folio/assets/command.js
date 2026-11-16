@@ -51,17 +51,9 @@
         return svg;
     }
 
-    // Letters the server's matching table (preflow/data search-fold-table.php) folds that have no
-    // decomposition to strip; ß, æ, ı and ŧ stay letters of their own there, so here too. The final
-    // sigma ς is σ there: toLowerCase() makes a word-final Σ a ς, a lone Σ a σ, so both become σ.
-    var FOLD_LETTERS = { 'ø': 'o', 'ł': 'l', 'đ': 'd', 'ð': 'd', 'ħ': 'h', 'ſ': 's', 'ς': 'σ' };
-
-    // Matching as the server's search does it, near enough for screen labels and titles: case and
-    // accents ignored ("ubersicht" finds "Übersicht", "elise" finds "Élise").
-    function fold(text) {
-        return String(text).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
-            .replace(/[øłđðħſς]/g, function (c) { return FOLD_LETTERS[c]; });
-    }
+    // Matching as the server's search does it (admin.js's Folio.fold): case and accents ignored
+    // ("ubersicht" finds "Übersicht", "elise" finds "Élise").
+    var fold = Folio.fold;
 
     function words(term) {
         return fold(term).split(/\s+/).filter(function (w) { return w !== ''; });

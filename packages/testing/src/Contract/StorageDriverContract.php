@@ -114,8 +114,9 @@ use Preflow\Data\UniqueViolation;
  *   check (Validation\Unique), which UniqueScenarios in preflow/data pins on every built-in store.
  * - emptyDriver() (default null): a driver on a second, empty store of the same kind, for the
  *   tests that restore a dump into it (Dumps); null skips them.
- * - textRuleMissing() (default null): a reason the store cannot compare by the text rule (a MySQL
- *   server without an accent-sensitive, case-insensitive collation); the exact-comparison tests
+ * - textRuleMissing() (default null): a reason the store cannot compare by the exact-comparison
+ *   text rule (a MySQL server without an accent-sensitive, case-insensitive collation, none of
+ *   MysqlDialect::MATCH_COLLATIONS; matching does not depend on it); the exact-comparison tests
  *   then skip with it.
  *
  * Capabilities are claimed by implementing their interface, and their tests are skipped otherwise:
