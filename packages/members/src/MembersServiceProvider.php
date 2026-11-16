@@ -14,7 +14,6 @@ use Preflow\Auth\Tokens\Tokens;
 use Preflow\Core\Application;
 use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
-use Preflow\Core\Container\Exceptions\ContainerException;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Http\Csrf\CsrfSignInPaths;
 use Preflow\Core\Http\LocaleUrls;
@@ -27,7 +26,6 @@ use Preflow\Data\Locales;
 use Preflow\Data\TypeLabels;
 use Preflow\Data\TypeRegistry;
 use Preflow\I18n\Translator;
-use Preflow\I18n\TranslationExtensionProvider;
 use Preflow\View\AssetCollector;
 use Preflow\Members\Access\MemberAccess;
 use Preflow\Members\Admission\Admission;
@@ -61,8 +59,9 @@ final class MembersServiceProvider extends ServiceProvider
             $container->get(PermissionRegistry::class)->declare(MembersConfig::PERMISSION, 'Use the members area', 'Members');
         }
         // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer
-        // metadata doesn't list the package (test apps, a core before 0.37).
-        self::translator($container)->addDefaultsIfMissing('members', dirname(__DIR__) . '/lang', 'public');
+        // metadata doesn't list the package (test apps). Core binds the translator before any
+        // provider registers.
+        $container->get(Translator::class)->addDefaultsIfMissing('members', dirname(__DIR__) . '/lang', 'public');
         $container->singleton(MembersConfig::class, static fn (Container $c): MembersConfig => MembersConfig::fromFile(
             $c->get(Application::class)->basePath('config/members.php'),
             $c->bound(MembersDefaults::class) ? $c->get(MembersDefaults::class)->config : [],
@@ -237,16 +236,13 @@ final class MembersServiceProvider extends ServiceProvider
 
     private static function links(Container $c): Links
     {
-        $app = $c->get(Application::class);
         $url = $c->get(Config::class)->get('app.url');
-        $i18n = self::config($app->basePath('config/i18n.php'));
 
         return new Links(
             is_string($url) && $url !== '' ? $url : 'http://localhost',
             $c->get(MembersConfig::class)->path(),
             $c->get(Locales::class),
-            ($i18n['url_strategy'] ?? 'prefix') === 'prefix',
-            $c->bound(LocaleUrls::class) ? $c->get(LocaleUrls::class) : null,
+            $c->get(LocaleUrls::class),
         );
     }
 
@@ -269,36 +265,6 @@ final class MembersServiceProvider extends ServiceProvider
         $engine->addNamespace('members', __DIR__ . '/templates');
         // An override that extends the page it replaces cannot name it @members/ (that is itself).
         $engine->addNamespace('members-package', __DIR__ . '/templates');
-    }
-
-    /**
-     * The app's translator; without config/i18n.php and lang/ the app has none, so the
-     * package brings one (site lang/ over the package copy, the default locale).
-     */
-    private static function translator(Container $c): Translator
-    {
-        try {
-            return $c->get(Translator::class);
-        } catch (ContainerException) { // a core before 0.37 boots none without lang/ or config/i18n.php
-            $locale = $c->get(Locales::class)->default;
-            $translator = new Translator($c->get(Application::class)->basePath('lang'), $locale, $locale);
-            $c->instance(Translator::class, $translator);
-            // The app registers t() only with the translator it boots itself; this one needs it too.
-            if ($c->has(TemplateEngineInterface::class)) {
-                $provider = new TranslationExtensionProvider(
-                    $translator,
-                    $c->get(Locales::class)->available,
-                    $locale,
-                    $c->bound(LocaleUrls::class) ? $c->get(LocaleUrls::class) : null,
-                );
-                $engine = $c->get(TemplateEngineInterface::class);
-                foreach ($provider->getTemplateFunctions() as $function) {
-                    $engine->addFunction($function);
-                }
-            }
-
-            return $translator;
-        }
     }
 
     /**

@@ -9,23 +9,20 @@ use Preflow\Data\Locales;
 
 /**
  * Absolute links for mail, from config app.url, never from the request Host: the member
- * pages under {@see MembersConfig::path()}, prefixed with the locale as config/i18n.php
- * does it (the default locale at the root).
+ * pages under {@see MembersConfig::path()}, prefixed with the locale by the site's one rule
+ * ({@see LocaleUrls}: the default locale at the root unless prefix_default is on, no prefix
+ * with url_strategy "none").
  */
 final class Links
 {
     private readonly string $base;
 
-    /**
-     * @param bool $prefixed whether the URLs carry the locale (url_strategy "prefix")
-     * @param ?LocaleUrls $urls the site's locale URL rule (prefix_default); when set it decides the prefix
-     */
+    /** @param LocaleUrls $urls the site's locale URL rule; core binds it before any provider registers */
     public function __construct(
         string $baseUrl,
         private readonly string $path,
         private readonly Locales $locales,
-        private readonly bool $prefixed = true,
-        private readonly ?LocaleUrls $urls = null,
+        private readonly LocaleUrls $urls,
     ) {
         $this->base = rtrim($baseUrl, '/');
     }
@@ -43,7 +40,7 @@ final class Links
         return $this->prefix($locale) . $this->path . $path;
     }
 
-    /** The locale prefix of a site path ("/de/start" for "/start"), none for the default locale. */
+    /** The locale prefix of a site path ("/de/start" for "/start"), as LocaleUrls gives it. */
     public function localize(string $locale, string $path): string
     {
         $locale = $this->locales->has($locale) ? $locale : $this->locales->default;
@@ -53,11 +50,7 @@ final class Links
 
     private function prefix(string $locale): string
     {
-        if ($this->urls !== null) {
-            return $this->urls->prefix($locale);
-        }
-
-        return $this->prefixed && $locale !== $this->locales->default ? '/' . $locale : '';
+        return $this->urls->prefix($locale);
     }
 
     /** @return list<string> the site's locales, in the order config/i18n.php lists them */

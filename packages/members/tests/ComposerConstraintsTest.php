@@ -7,7 +7,7 @@ namespace Preflow\Members\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Since 0.78: core 0.78 (Http\LocaleUrls, which Links follows for the locale prefix). Since 0.77: core 0.77 (Activity\ActivityLog, which Members and members:prune call, and ActivityActors, where MembersServiceProvider registers the account-deletion actor).
+ * Since 0.78: core 0.78 (Http\LocaleUrls, which Links takes for the locale prefix, bound with the translator before any provider registers, so members keeps no fallback for either). Since 0.77: core 0.77 (Activity\ActivityLog, which Members and members:prune call, and ActivityActors, where MembersServiceProvider registers the account-deletion actor).
  *
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing members with a release that lacks the APIs it calls: auth 0.65 (ListsRoles,

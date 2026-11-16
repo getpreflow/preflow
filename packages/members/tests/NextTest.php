@@ -7,6 +7,7 @@ namespace Preflow\Members\Tests;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Data\Locales;
 use Preflow\Members\Http\SafeNext;
 use Preflow\Members\Links;
@@ -35,7 +36,7 @@ final class NextTest extends TestCase
     {
         $members = new MembersConfig($config);
 
-        return new SafeNext($members, new Links('https://site.test', $members->path(), new Locales($locales, $locales[0]), $prefixed));
+        return new SafeNext($members, new Links('https://site.test', $members->path(), new Locales($locales, $locales[0]), new LocaleUrls($locales, $locales[0], $prefixed)));
     }
 
     public function test_by_default_only_member_pages_are_kept(): void

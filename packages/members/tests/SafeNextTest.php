@@ -6,6 +6,7 @@ namespace Preflow\Members\Tests;
 
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Data\Locales;
 use Preflow\Members\Http\SafeNext;
 use Preflow\Members\Links;
@@ -19,7 +20,7 @@ final class SafeNextTest extends TestCase
     {
         $members = new MembersConfig($config);
 
-        return new SafeNext($members, new Links('https://site.test', $members->path(), new Locales($locales, $locales[0])));
+        return new SafeNext($members, new Links('https://site.test', $members->path(), new Locales($locales, $locales[0]), new LocaleUrls($locales, $locales[0])));
     }
 
     /** @return iterable<string, array{0: string, 1: string, 2?: string}> */
@@ -57,7 +58,7 @@ final class SafeNextTest extends TestCase
     public function test_without_locale_prefixes_only_the_bare_path_counts(): void
     {
         $members = new MembersConfig(['path' => '/tools']);
-        $safe = new SafeNext($members, new Links('https://site.test', '/tools', new Locales(['en', 'de'], 'en'), prefixed: false));
+        $safe = new SafeNext($members, new Links('https://site.test', '/tools', new Locales(['en', 'de'], 'en'), new LocaleUrls(['en', 'de'], 'en', prefixed: false)));
 
         $this->assertSame('/tools/x', $safe->of('/tools/x', 'de'));
         $this->assertSame('/tools', $safe->of('/de/tools/x', 'de'));

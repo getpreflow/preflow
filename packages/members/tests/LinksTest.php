@@ -14,7 +14,7 @@ final class LinksTest extends TestCase
 {
     private function links(bool $prefixed = true): Links
     {
-        return new Links('https://site.test/', '/konto', new Locales(['en', 'de'], 'en'), $prefixed);
+        return new Links('https://site.test/', '/konto', new Locales(['en', 'de'], 'en'), new LocaleUrls(['en', 'de'], 'en', $prefixed));
     }
 
     public function test_url_is_absolute_and_local_is_not(): void
@@ -37,7 +37,7 @@ final class LinksTest extends TestCase
 
     public function test_default_locale_link_carries_prefix_with_prefix_default(): void
     {
-        $links = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), true, new LocaleUrls(['en', 'de'], 'en', true, true));
+        $links = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), new LocaleUrls(['en', 'de'], 'en', true, true));
 
         $this->assertSame('https://site.test/en/members/login', $links->url('en', '/login'));
         $this->assertSame('/de/members/login', $links->local('de', '/login'));
@@ -46,21 +46,18 @@ final class LinksTest extends TestCase
         $this->assertSame('/de/start', $links->localize('de', '/start'));
     }
 
-    public function test_links_unchanged_without_locale_urls(): void
+    public function test_default_locale_urls_keep_the_default_locale_at_the_root(): void
     {
-        $plain = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), true);
-        $default = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), true, new LocaleUrls(['en', 'de'], 'en'));
+        $links = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), new LocaleUrls(['en', 'de'], 'en'));
 
-        foreach ([$plain, $default] as $links) {
-            $this->assertSame('https://site.test/members/login', $links->url('en', '/login'));
-            $this->assertSame('/de/members/login', $links->local('de', '/login'));
-            $this->assertSame('/start', $links->localize('en', '/start'));
-        }
+        $this->assertSame('https://site.test/members/login', $links->url('en', '/login'));
+        $this->assertSame('/de/members/login', $links->local('de', '/login'));
+        $this->assertSame('/start', $links->localize('en', '/start'));
     }
 
     public function test_url_strategy_none_gives_no_prefix_with_locale_urls(): void
     {
-        $links = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), false, new LocaleUrls(['en', 'de'], 'en', false));
+        $links = new Links('https://site.test/', '/members', new Locales(['en', 'de'], 'en'), new LocaleUrls(['en', 'de'], 'en', false));
 
         $this->assertSame('/members/login', $links->local('de', '/login'));
     }
