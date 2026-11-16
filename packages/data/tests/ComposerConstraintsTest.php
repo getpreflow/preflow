@@ -7,6 +7,8 @@ namespace Preflow\Data\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.78: core 0.78 (the 0.78 upgrade path runs through core: Application registers DeclaredTables and the migrate steps, Throttle
+ * counts through incrementIn() with exact columns, and a JSON storage entry reads 'cache' => false).
  * Since 0.77: core 0.77 (Activity\ActivityLog, which StoredActivityLog implements, and BootManifest::isRecording(), which TypeRegistry reads).
  *
  * "^0.52 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
@@ -22,8 +24,8 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.77', 'preflow/validation' => '<0.52', 'preflow/folio' => '<0.67', 'preflow/publishing' => '<0.72'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.77 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.78', 'preflow/validation' => '<0.52', 'preflow/folio' => '<0.67', 'preflow/publishing' => '<0.72'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.78 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.52 || @dev', $composer['require']['preflow/validation'] ?? null);
     }
 }

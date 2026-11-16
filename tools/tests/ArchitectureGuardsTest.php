@@ -37,6 +37,13 @@ use PHPUnit\Framework\TestCase;
  * RankedSearch, DescribesColumns), so a new driver gets the same treatment by implementing it.
  * Building a driver (`new …`) is allowed (core's factory, preflow/testing). Scanned: every
  * package's psr-4 source roots and tools/Convert.
+ *
+ * packages.requires-what-it-names: a package whose source names another package's class (or
+ * interface, trait, enum) that says `@since X.Y` in its docblock keeps Composer from pairing it with
+ * a release before X.Y: its `conflict` for that package is `<X.Y` or later, and where it requires
+ * the package, the require's lowest version is X.Y or later. A constraint can't be tightened for a
+ * version after it is published, so this runs before every release. Methods are not covered (their
+ * @since sits on the method); the per-package ComposerConstraintsTest names those.
  */
 final class ArchitectureGuardsTest extends TestCase
 {
@@ -207,6 +214,96 @@ final class ArchitectureGuardsTest extends TestCase
      * Each spelling the guard must catch, and lines it must leave alone (building a driver,
      * naming one in a comment, a capability check).
      */
+    public function test_packages_requires_what_it_names(): void
+    {
+        $namespaces = [];
+        $packages = [];
+        foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
+            $dir = dirname($composerFile);
+            $composer = json_decode((string) file_get_contents($composerFile), true, flags: JSON_THROW_ON_ERROR);
+            $packages[$dir] = $composer;
+            foreach ((array) ($composer['autoload']['psr-4'] ?? []) as $prefix => $path) {
+                $namespaces[$prefix] = [(string) $composer['name'], $dir . '/' . rtrim((string) $path, '/')];
+            }
+        }
+        uksort($namespaces, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+
+        $missing = [];
+        $checked = 0;
+        foreach ($packages as $dir => $composer) {
+            if (self::isStarter($composer)) {
+                continue;
+            }
+            $name = (string) $composer['name'];
+            foreach ((array) ($composer['autoload']['psr-4'] ?? []) as $path) {
+                $sourceDir = $dir . '/' . rtrim((string) $path, '/');
+                if (!is_dir($sourceDir)) {
+                    continue;
+                }
+                foreach ($this->files($sourceDir) as $file) {
+                    if (!str_ends_with($file, '.php')) {
+                        continue;
+                    }
+                    preg_match_all('/(?<![A-Za-z0-9_])(Preflow(?:\\\\[A-Za-z0-9_]+)+)/', (string) file_get_contents($file), $m);
+                    foreach (array_unique($m[1]) as $class) {
+                        foreach ($namespaces as $prefix => [$owner, $ownerDir]) {
+                            if (!str_starts_with($class . '\\', $prefix)) {
+                                continue;
+                            }
+                            if ($owner === $name) {
+                                break;
+                            }
+                            $since = self::classSince($ownerDir . '/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php');
+                            if ($since === null) {
+                                break;
+                            }
+                            $checked++;
+                            $require = $composer['require'][$owner] ?? null;
+                            $conflict = $composer['conflict'][$owner] ?? null;
+                            $requireOk = $require === null
+                                || (preg_match('/\^(\d+\.\d+(?:\.\d+)?)/', (string) $require, $r) === 1 && version_compare($r[1], $since, '>='));
+                            $conflictOk = $conflict !== null && version_compare(ltrim((string) $conflict, '<'), $since, '>=');
+                            if (!$requireOk || !$conflictOk) {
+                                $missing[] = sprintf(
+                                    '%s names %s (@since %s): require %s, conflict %s',
+                                    $name,
+                                    $class,
+                                    $since,
+                                    $require ?? '-',
+                                    $conflict ?? '-',
+                                );
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $this->assertGreaterThan(50, $checked, 'the scan found @since classes named across packages');
+        $this->assertSame([], array_values(array_unique($missing)), 'raise the require and conflict to the version the named class arrived in');
+    }
+
+    /** The @since version in a class-like declaration's docblock, or null. */
+    private static function classSince(string $file): ?string
+    {
+        if (!is_file($file)) {
+            return null;
+        }
+        $pattern = '/\/\*\*((?:(?!\*\/).)*)\*\/\s*(?:#\[[^\]]*\]\s*)*(?:(?:final|abstract|readonly)\s+)*(?:class|interface|trait|enum)\s/s';
+        if (preg_match($pattern, (string) file_get_contents($file), $doc) !== 1) {
+            return null;
+        }
+
+        return preg_match('/@since\s+(\d+\.\d+(?:\.\d+)?)/', $doc[1], $since) === 1 ? $since[1] : null;
+    }
+
+    /** Starters and the skeleton are apps (they require released versions; the release checklist raises them). */
+    private static function isStarter(array $composer): bool
+    {
+        return ($composer['type'] ?? 'library') === 'project';
+    }
+
     public function test_storage_driver_class_check_patterns(): void
     {
         $caught = [
