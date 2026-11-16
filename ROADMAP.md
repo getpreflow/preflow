@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-16 (v0.78.2)
+> Last updated: 2026-11-16 (v0.78.3)
 
 ## Current State
 
-**v0.78.2** — 9008 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.78.3** — 9017 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,6 +525,11 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Entries for every language skip the language redirect (v0.78.3, released 2026-11-16):** two cases where 0.78.2 sent an address through the language redirect although the answer does not depend on the language.
+  - An entry for every language (no locale: old asset files, `/index.php`) no longer counts for the bare redirect (`RedirectEntryExists` answers for entries of one language only): `/favicon/old.ico` answers its `301` at once instead of `302 /de/favicon/old.ico` first.
+  - With `prefix_default` and `redirect_bare`, an untidy bare address (`/old-help/`) no longer takes one language's entry in the clean-path one hop: it answers the clean `301 /old-help`, which then passes the language redirect. An entry for every language still answers in one hop.
+  - core, routing and folio's own constraint tests follow 0.78.2's `require` and `conflict` (0.78.2 shipped with them stale; the packages' constraints were right).
+  - Upgrading: nothing to do. Only sites with `redirect_bare` and redirect entries see a difference.
 - **Locale URL gaps (v0.78.2, released 2026-11-16):** four places where 0.78's language URLs could not keep a site's existing addresses.
   - `config/i18n.php` `home_slash` (default false, needs `url_strategy` `prefix`): a prefixed language's home is `/de/` instead of `/de`, in `locale_url()`, the bare-path redirect and the switch endpoint's default `to`. `LocaleUrls::$homeSlash`, `LocaleUrls::isHome()`. With `canonical_paths` the clean form of a language home is then `/de/` (`/de` answers 301 `/de/`); `/` is always clean.
   - `/robots.txt`, `/sitemap.xml` and `/llms.txt` are never sent to a language by `redirect_bare` (the README promised it; a route there was redirected).
