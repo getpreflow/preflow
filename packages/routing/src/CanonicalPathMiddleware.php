@@ -52,12 +52,15 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
      * @param RedirectResolver|(\Closure(): ?RedirectResolver)|null $redirects the redirect lookup; a closure
      *        is asked on every request, because the store may be bound after boot
      * @param (\Closure(Redirect): void)|null $hit counts a redirect hit (not called for internal renders)
+     * @param (\Closure(string $locale, string $path): bool)|null $pageExists whether a page (never a
+     *        redirect entry) answers the clean path; when one does, the plain clean 301 is answered
      */
     public function __construct(
         private readonly ?NonPublicPaths $nonPublic = null,
         private readonly RedirectResolver|\Closure|null $redirects = null,
         private readonly ?LocaleUrls $urls = null,
         private readonly ?\Closure $hit = null,
+        private readonly ?\Closure $pageExists = null,
     ) {}
 
     /**
@@ -155,6 +158,11 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
         }
 
         try {
+            // A page wins over an entry: RedirectMiddleware only answers a 404.
+            if ($this->pageExists !== null && ($this->pageExists)($locale, $path)) {
+                return null;
+            }
+
             [$entry, $rest] = $resolver->find($path, $locale);
             $url = $entry === null ? null : $resolver->url($entry, $rest, $locale);
         } catch (\Throwable) {

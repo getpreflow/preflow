@@ -252,7 +252,7 @@ value other than `true` or `false` stops the boot.
 
 **One hop with a redirect entry.** When the clean path has a redirect entry (see below: exact,
 else the longest area, in the language the address names, the default language when it names
-none), an untidy address answers with that entry's status and target in one response: `/de/old-help/`
+none, so on a site without locale prefixes the lookup uses the default language), and no page answers that path (a page wins over an entry, as it does when a page is not found), an untidy address answers with that entry's status and target in one response: `/de/old-help/`
 with an entry `/old-help` (German) to `/de/help` is one `301 /de/help`, not a clean-path 301 and
 then the entry's. The visit counts one hit and the query string is kept. With no entry the clean
 301 is answered as before. An entry that points back at the clean address itself is skipped (no

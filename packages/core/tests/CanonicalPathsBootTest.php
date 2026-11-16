@@ -104,6 +104,10 @@ final class CanonicalPathsBootTest extends TestCase
 
             public function exact(string $path, string $locale): ?Redirect
             {
+                if ($path === '/about' && $locale === 'en') {
+                    return new Redirect('c', '/about', 'en', false, AreaMode::One, null, null, '/elsewhere', 301);
+                }
+
                 return $path === '/old-help' && $locale === 'de'
                     ? new Redirect('a', '/old-help', 'de', false, AreaMode::One, null, null, '/de/help', 301)
                     : null;
@@ -139,6 +143,11 @@ final class CanonicalPathsBootTest extends TestCase
         $this->assertSame(302, $area->getStatusCode());
         $this->assertSame('/de/area/deep', $area->getHeaderLine('Location'));
 
+        $this->assertSame(['a', 'b'], $store->hits);
+
+        // A page answers at /about: it wins over the entry there, as it does for a 404.
+        $page = $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/about/'));
+        $this->assertSame('/about', $page->getHeaderLine('Location'));
         $this->assertSame(['a', 'b'], $store->hits);
 
         // No entry: the plain clean 301, as before.

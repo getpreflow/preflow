@@ -290,6 +290,37 @@ final class CanonicalPathMiddlewareTest extends TestCase
         $this->assertCount(1, $store->hits);
     }
 
+    public function test_a_page_at_the_clean_path_wins_over_the_entry(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'en', '/help')]);
+        $asked = [];
+        $middleware = new CanonicalPathMiddleware(
+            null,
+            new RedirectResolver($store),
+            $this->urls(),
+            static fn (Redirect $entry) => $store->hit($entry, new \DateTimeImmutable()),
+            static function (string $locale, string $path) use (&$asked): bool {
+                $asked[] = [$locale, $path];
+
+                return $path === '/old-help';
+            },
+        );
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return new Response(200);
+            }
+        };
+
+        $r = $middleware->process($this->request('GET', '/old-help/'), $handler);
+
+        $this->assertSame(301, $r->getStatusCode());
+        $this->assertSame('/old-help', $r->getHeaderLine('Location'));
+        $this->assertFalse($r->hasHeader('Cache-Control'));
+        $this->assertSame([], $store->hits);
+        $this->assertSame([['en', '/old-help']], $asked);
+    }
+
     public function test_the_entry_keeps_its_status(): void
     {
         $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help', status: 302)]);
