@@ -137,7 +137,7 @@ final class RelationFieldTypeTest extends TestCase
 
     public function test_initials(): void
     {
-        $this->assertSame('DH', RelationFieldType::initials('Dubach Holzbau AG'));
+        $this->assertSame('NS', RelationFieldType::initials('Nordlicht Studio AG'));
         $this->assertSame('ÜB', RelationFieldType::initials('über-bau'));
         $this->assertSame('?', RelationFieldType::initials('  '));
     }

@@ -25,8 +25,8 @@ const COMMANDS = {
 
 const ANSWER = {
     groups: [
-        { type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [{ id: 'p1', title: 'Werkhalle Dubach', url: '/folio/page/p1/edit' }] },
-        { type: 'assets', label: 'Assets', family: 'asset', icon: 'ui-library', items: [{ id: 'a1', title: 'dub.png', url: '/folio/assets/a1' }] },
+        { type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [{ id: 'p1', title: 'Werkhalle Nord', url: '/folio/page/p1/edit' }] },
+        { type: 'assets', label: 'Assets', family: 'asset', icon: 'ui-library', items: [{ id: 'a1', title: 'nord.png', url: '/folio/assets/a1' }] },
     ],
 };
 
@@ -146,15 +146,15 @@ test('records come grouped by type after the screens, the match in <strong>, ass
     try {
         const p = page();
         press(p, 'k', { meta: true });
-        type(p, 'dub');
+        type(p, 'nor');
         mock.timers.tick(150);
         p.answer(p.requests[0], ANSWER);
         await flush();
         const labels = palette(p).querySelectorAll('.folio-command-group-label').map((l) => l.textContent);
-        assert.deepEqual(labels, ['Pages', 'Assets'], 'no screen matches "dub": records only');
-        assert.deepEqual(titles(p), ['Werkhalle Dubach', 'dub.png']);
+        assert.deepEqual(labels, ['Pages', 'Assets'], 'no screen matches "nor": records only');
+        assert.deepEqual(titles(p), ['Werkhalle Nord', 'nord.png']);
         const title = rows(p)[0].querySelector('.folio-command-title');
-        assert.deepEqual(title.children.map((c) => [c.tagName, c.textContent]), [['SPAN', 'Werkhalle '], ['STRONG', 'Dub'], ['SPAN', 'ach']]);
+        assert.deepEqual(title.children.map((c) => [c.tagName, c.textContent]), [['SPAN', 'Werkhalle '], ['STRONG', 'Nor'], ['SPAN', 'd']]);
         assert.equal(rows(p)[1].querySelector('.folio-type-icon').getAttribute('data-family'), 'asset');
         assert.equal(palette(p).querySelector('[aria-live="polite"]').textContent, '2 results');
     } finally {
@@ -188,7 +188,7 @@ test('an older answer and an aborted request are dropped', async () => {
         press(p, 'k', { meta: true });
         type(p, 'du');
         mock.timers.tick(150);
-        type(p, 'dub');
+        type(p, 'nor');
         mock.timers.tick(150);
         assert.equal(p.requests.length, 2);
         assert.equal(p.requests[0].options.signal.aborted, true, 'the older request is aborted');
@@ -198,7 +198,7 @@ test('an older answer and an aborted request are dropped', async () => {
         assert.equal(palette(p).querySelector('[aria-live="polite"]').textContent, 'No results', 'and no error either');
         p.answer(p.requests[1], ANSWER);
         await flush();
-        assert.deepEqual(titles(p), ['Werkhalle Dubach', 'dub.png']);
+        assert.deepEqual(titles(p), ['Werkhalle Nord', 'nord.png']);
     } finally {
         mock.timers.reset();
     }
@@ -267,7 +267,7 @@ test('a term change inside the 150 ms window drops the answer in flight', async 
         type(p, 'du');
         mock.timers.tick(150);
         assert.equal(p.requests.length, 1);
-        type(p, 'dub');
+        type(p, 'nor');
         assert.equal(p.requests[0].options.signal.aborted, true, 'the term changed: the request in flight is aborted at once');
         p.answer(p.requests[0], { groups: [{ type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [{ id: 'old', title: 'Old du', url: '/folio/page/old/edit' }] }] });
         await flush();
@@ -276,7 +276,7 @@ test('a term change inside the 150 ms window drops the answer in flight', async 
         assert.equal(p.requests.length, 2);
         p.answer(p.requests[1], ANSWER);
         await flush();
-        assert.deepEqual(titles(p), ['Werkhalle Dubach', 'dub.png']);
+        assert.deepEqual(titles(p), ['Werkhalle Nord', 'nord.png']);
     } finally {
         mock.timers.reset();
     }
@@ -303,7 +303,7 @@ test('a failed search stays visible as a row and is announced; the next answer c
     try {
         const p = page();
         press(p, 'k', { meta: true });
-        type(p, 'dub');
+        type(p, 'nor');
         mock.timers.tick(150);
         p.requests[0].resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
         await flush();
@@ -311,13 +311,13 @@ test('a failed search stays visible as a row and is announced; the next answer c
         assert.ok(error, 'a visible row in the list');
         assert.equal(error.textContent, 'The search did not answer. Try again.');
         assert.equal(palette(p).querySelector('[aria-live="polite"]').textContent, 'The search did not answer. Try again.', 'and announced');
-        type(p, 'dube');
+        type(p, 'nord');
         assert.equal(palette(p).querySelector('.folio-command-error'), null, 'a new term clears it');
         mock.timers.tick(150);
         p.answer(p.requests[1], ANSWER);
         await flush();
         assert.equal(palette(p).querySelector('.folio-command-error'), null);
-        assert.deepEqual(titles(p), ['Werkhalle Dubach', 'dub.png']);
+        assert.deepEqual(titles(p), ['Werkhalle Nord', 'nord.png']);
     } finally {
         mock.timers.reset();
     }
