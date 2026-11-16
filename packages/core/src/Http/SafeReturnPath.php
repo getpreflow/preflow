@@ -11,11 +11,15 @@ namespace Preflow\Core\Http;
  * follow. Path segments may carry RFC 3986 sub-delims (`+ , : @ ( ) ; = ! $ ' *`) and
  * percent-encoded UTF-8 ('/de/%C3%BCber-uns'). Refused: another host or a scheme, a double
  * slash, a backslash, a `..` segment (a lone `.` is not refused), a control or space character,
- * raw non-ASCII bytes, invalid UTF-8, a path starting '/@', each also percent-encoded (decoded
- * down to the fixed point).
+ * raw non-ASCII bytes, invalid UTF-8, a path starting '/@' (right after the prefix), each also
+ * percent-encoded: every decoded form is judged down to the fixed point, and a value that has not
+ * settled after five decodes is refused.
  */
 final class SafeReturnPath
 {
+    /** How many times a value may be percent-decoded before it must have settled. */
+    private const int MAX_DECODES = 5;
+
     /**
      * $next unchanged when it is a safe path under one of $allowedPrefixes, else null.
      *
@@ -34,26 +38,35 @@ final class SafeReturnPath
         if ($next === null || $next === '' || $next[0] !== '/' || $allowedPrefixes === []) {
             return null;
         }
-        // Browsers decode %2e and friends before resolving dot segments: judge every decoded form, down to the fixed point.
+        // Browsers decode %2e and friends before resolving dot segments: judge every decoded form,
+        // the final one included, and refuse a value still changing after MAX_DECODES decodes.
+        $start = '#^(?:' . implode('|', array_unique($bases)) . ')/@#';
         $seen = $next;
-        for ($i = 0; $i < 5; $i++) {
-            // The raw value is plain ASCII; a decoded form may hold UTF-8 but no control or space byte.
-            $bad = $i === 0 ? '/[^\x21-\x7E]/' : '/[\x00-\x20\x7F]/';
-            if (str_contains($seen, '..') || str_contains($seen, '//') || str_contains($seen, '\\')
-                || preg_match($bad, $seen) === 1 || preg_match('//u', $seen) !== 1
-            ) {
+        for ($decodes = 0; ; $decodes++) {
+            if (self::refused($seen, $decodes === 0, $start)) {
                 return null;
             }
             $decoded = rawurldecode($seen);
             if ($decoded === $seen) {
                 break;
             }
+            if ($decodes === self::MAX_DECODES) {
+                return null;
+            }
             $seen = $decoded;
-        }
-        if ($seen !== rawurldecode($seen)) {
-            return null;
         }
 
         return preg_match('#^(?:' . implode('|', array_unique($bases)) . ')(?!/@)(/[A-Za-z0-9._~%/!$&\'()*+,;=:@-]*)?(\?[\x21-\x7E]*)?$#D', $next) === 1 ? $next : null;
+    }
+
+    /** Whether one form of the value (the raw one, or a decoded one) is refused. */
+    private static function refused(string $form, bool $raw, string $start): bool
+    {
+        // The raw value is plain ASCII; a decoded form may hold UTF-8 but no control or space byte.
+        $bad = $raw ? '/[^\x21-\x7E]/' : '/[\x00-\x20\x7F]/';
+
+        return str_contains($form, '..') || str_contains($form, '//') || str_contains($form, '\\')
+            || preg_match($bad, $form) === 1 || preg_match('//u', $form) !== 1
+            || preg_match($start, $form) === 1;
     }
 }

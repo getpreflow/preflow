@@ -18,7 +18,7 @@ final class SafeReturnPathTest extends TestCase
             'javascript:alert(1)', 'employer', '?a=b', '/employerx', '/employer.evil', '/employer/../folio', '/employer//x',
             '/employer\\x', '/employer/%2e%2e/folio', '/employer/.%2E/x', '/employer/%252e%252e/folio', '/employer/%25252e%25252e/x',
             '/employer/%2f/x', '/employer/%5cx', "/employer\nSet-Cookie: x=1", "/employer?a\x00", '/employer?a%00', '/employer/ä',
-            '/employer#top', '/other', '/employer?q=a%20b',
+            '/employer#top', '/other', '/employer?q=a%20b', '/employer/%40evil', '/employer%2F%40evil',
         ] as $next) {
             yield 'refuse ' . json_encode($next) => [$next];
         }
@@ -32,7 +32,8 @@ final class SafeReturnPathTest extends TestCase
             'JaVaScRiPt:x', '/%5Cevil', '/%5cevil', '/%255Cevil', '/%25252Fevil', "/\tevil", "/\t/evil", "/%09/evil", "/\r\n/evil",
             "/x\r\nSet-Cookie: a=b", '/x%0d%0aSet-Cookie:a=b', '/x%0A', "/x\0", '/x%00', '/@evil', '/de#//evil', '/%2e%2e/x', '/%2E%2E/x',
             '/de/../x', '/de/%252e%252e/x', "/de/\xC3\xBCber", "/de/%C0%AF", '/de/%FF', '/de/%E2%80', '/de\\evil', '/ /evil',
-            "/\x0B/evil", '/%0B/evil', '/%20/evil',
+            "/\x0B/evil", '/%0B/evil', '/%20/evil', '/%40evil.com', '/%2540evil.com', '/%252540evil.com',
+            '/a/%252525252e%252525252e', '/a/%25252525252e%25252525252e/x', '/%25252525252F%25252525252Fevil',
         ] as $next) {
             yield 'refuse ' . json_encode($next) => [$next];
         }
@@ -49,7 +50,8 @@ final class SafeReturnPathTest extends TestCase
     {
         foreach ([
             '/de/%C3%BCber-uns', '/de/a+b', '/de/a,b', '/de/x:y', '/de/a@b', '/de/(x)', '/de/a;b=c', "/de/it's", '/de/a!$*b',
-            '/de/%E6%97%A5%E6%9C%AC', '/de/a%2Bb', '/de/.', '/de/%C3%BCber-uns?x=%C3%BC',
+            '/de/%E6%97%A5%E6%9C%AC', '/de/a%2Bb', '/de/.', '/de/%C3%BCber-uns?x=%C3%BC', '/de/a%40b', '/de/%2540ok',
+            '/de/%25252525C3%25252525BC',
         ] as $next) {
             yield 'accept ' . $next => [$next];
         }
