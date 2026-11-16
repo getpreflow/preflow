@@ -33,23 +33,48 @@ final class AnsweringRouter extends PlainRouter implements PageExists
     }
 }
 
-/** Site page lookups, each bound under the contract it names (core's or routing's), with the paths it knows. */
+/**
+ * Site page lookups, each bound (as a singleton, built on first use) under the contract it names
+ * (core's or routing's), with the paths it knows: $lookups in register(), $late inside an
+ * onProvidersBooted hook (after every hook core and routing added). $built counts the lookups built.
+ */
 final class PageLookupProvider extends ServiceProvider
 {
     /** @var array<class-string, list<string>> binding => paths */
     public static array $lookups = [];
 
+    /** @var array<class-string, list<string>> binding => paths, bound in a later onProvidersBooted hook */
+    public static array $late = [];
+
+    public static int $built = 0;
+
     public function register(Container $container): void
     {
-        foreach (self::$lookups as $binding => $paths) {
-            $container->instance($binding, new class ($paths) implements \Preflow\Routing\Redirect\PageExists {
-                /** @param list<string> $paths */
-                public function __construct(private readonly array $paths) {}
+        self::bindAll($container, self::$lookups);
+        $late = self::$late;
+        if ($late !== []) {
+            $container->get(\Preflow\Core\Application::class)->onProvidersBooted(static function () use ($container, $late): void {
+                self::bindAll($container, $late);
+            });
+        }
+    }
 
-                public function exists(string $locale, string $path): bool
-                {
-                    return in_array($path, $this->paths, true);
-                }
+    /** @param array<class-string, list<string>> $lookups */
+    private static function bindAll(Container $container, array $lookups): void
+    {
+        foreach ($lookups as $binding => $paths) {
+            $container->singleton($binding, static function () use ($paths): \Preflow\Routing\Redirect\PageExists {
+                self::$built++;
+
+                return new class ($paths) implements \Preflow\Routing\Redirect\PageExists {
+                    /** @param list<string> $paths */
+                    public function __construct(private readonly array $paths) {}
+
+                    public function exists(string $locale, string $path): bool
+                    {
+                        return in_array($path, $this->paths, true);
+                    }
+                };
             });
         }
     }
@@ -57,5 +82,7 @@ final class PageLookupProvider extends ServiceProvider
     public static function reset(): void
     {
         self::$lookups = [];
+        self::$late = [];
+        self::$built = 0;
     }
 }

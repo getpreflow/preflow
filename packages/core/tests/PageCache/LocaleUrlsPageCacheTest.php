@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests\PageCache;
 
+require_once __DIR__ . '/../Fixtures/LocaleUrls/PageLookupFixtures.php';
+
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
@@ -164,6 +166,22 @@ final class LocaleUrlsPageCacheTest extends TestCase
         $this->assertSame(302, $german->getStatusCode());
         $this->assertSame('/de/about', $german->getHeaderLine('Location'));
         $this->assertSame('', $german->getHeaderLine('X-Page-Cache'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_page_cache_hit_builds_no_page_lookup(): void
+    {
+        $this->site(['prefix_default' => true, 'redirect_bare' => true]);
+        \Preflow\Core\Tests\Fixtures\LocaleUrls\PageLookupProvider::$lookups = [
+            \Preflow\Core\Routing\PageExists::class => ['/about'],
+            \Preflow\Routing\Redirect\PageExists::class => ['/blog'],
+        ];
+        $this->write('config/providers.php', "<?php\nreturn [" . var_export(\Preflow\Core\Tests\Fixtures\LocaleUrls\PageLookupProvider::class, true) . "];\n");
+
+        $this->assertSame('miss', $this->web('/en/about')->getHeaderLine('X-Page-Cache'));
+        \Preflow\Core\Tests\Fixtures\LocaleUrls\PageLookupProvider::$built = 0;
+        $this->assertSame('hit', $this->web('/en/about')->getHeaderLine('X-Page-Cache'));
+        $this->assertSame(0, \Preflow\Core\Tests\Fixtures\LocaleUrls\PageLookupProvider::$built, 'neither the boot nor the hit builds a lookup');
     }
 
     private function write(string $rel, string $content): void

@@ -9,8 +9,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * "^0.78 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing routing with a core release that lacks what it calls: core 0.78
- * (Routing\PageExists, which Router and Redirect\PageExists implement and RoutingRegistration binds; Application::onProvidersBooted()
- * since 0.69.1, after which RoutingRegistration aliases), core 0.72 (ConfiguredMiddleware, which MiddlewareWith implements and the kernel builds; since 0.62
+ * (Routing\PageExists, which Router and Redirect\PageExists implement; Routing\PageLookups, to which RoutingRegistration
+ * adds Redirect\PageExists), core 0.72 (ConfiguredMiddleware, which MiddlewareWith implements and the kernel builds; since 0.62
  * MethodNotAllowedHttpException, thrown by Router).
  */
 final class ComposerConstraintsTest extends TestCase

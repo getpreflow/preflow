@@ -240,11 +240,9 @@ final class LocaleUrlsBootTest extends TestCase
 
     public function test_a_site_binding_only_routings_page_exists_still_answers(): void
     {
-        // preflow/routing answers its own name under core's: core asks only core's contract.
+        // preflow/routing adds its own name as a page lookup source: core asks it when a request does.
         $this->provide(\Preflow\Routing\Redirect\PageExists::class, '/blog');
 
-        $app = $this->app(new PlainRouter());
-        $this->assertTrue($app->container()->bound(PageExists::class));
         $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
         $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], new PlainRouter())->getStatusCode());
     }
@@ -256,5 +254,43 @@ final class LocaleUrlsBootTest extends TestCase
         $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
         $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
         $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], new PlainRouter())->getStatusCode());
+    }
+
+    public function test_routings_name_bound_in_a_later_hook_is_asked_beside_cores(): void
+    {
+        $this->provideEach([PageExists::class => ['/about']]);
+        PageLookupProvider::$late = [\Preflow\Routing\Redirect\PageExists::class => ['/blog']];
+
+        $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
+        $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
+        $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], new PlainRouter())->getStatusCode());
+    }
+
+    public function test_routings_name_alone_bound_late_boots_and_answers(): void
+    {
+        $this->provideEach([]);
+        PageLookupProvider::$late = [\Preflow\Routing\Redirect\PageExists::class => ['/blog']];
+
+        $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
+        $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], new PlainRouter())->getStatusCode());
+    }
+
+    public function test_the_boot_builds_no_page_lookup(): void
+    {
+        $this->provideEach([PageExists::class => ['/about'], \Preflow\Routing\Redirect\PageExists::class => ['/blog']]);
+
+        $app = $this->app(new PlainRouter());
+        $this->assertSame(0, PageLookupProvider::$built, 'built only when a bare path asks');
+
+        $app->handle((new Psr17Factory())->createServerRequest('GET', '/de/about'));
+        $this->assertSame(0, PageLookupProvider::$built, 'a prefixed path asks no lookup');
+    }
+
+    public function test_a_page_lookup_source_is_core_api(): void
+    {
+        $app = $this->app();
+        $sources = $app->container()->get(\Preflow\Core\Routing\PageLookups::class);
+        $this->assertContains(\Preflow\Routing\Redirect\PageExists::class, $sources->ids(), 'routing adds its own name');
+        $this->assertSame(PageExists::class, $sources->ids()[0], "core's name is asked first");
     }
 }

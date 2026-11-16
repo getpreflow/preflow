@@ -5,72 +5,43 @@ declare(strict_types=1);
 namespace Preflow\Routing\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Preflow\Core\Container\Container;
+use Preflow\Core\Application;
 use Preflow\Core\Routing\PageExists as CorePageExists;
+use Preflow\Core\Routing\PageLookups;
 use Preflow\Routing\Redirect\PageExists;
 use Preflow\Routing\RoutingRegistration;
 
-/** A lookup bound under routing's Redirect\PageExists answers under core's PageExists too. */
+/** Routing's Redirect\PageExists is one of core's page lookup sources, after core's own name. */
 final class RoutingRegistrationTest extends TestCase
 {
-    /** @param list<string> $paths */
-    private static function lookup(array $paths): PageExists
-    {
-        return new class ($paths) implements PageExists {
-            /** @param list<string> $paths */
-            public function __construct(private readonly array $paths) {}
+    private string $dir;
 
-            public function exists(string $locale, string $path): bool
-            {
-                return in_array($path, $this->paths, true);
-            }
-        };
+    protected function setUp(): void
+    {
+        $this->dir = sys_get_temp_dir() . '/preflow_routing_registration_' . bin2hex(random_bytes(4));
+        mkdir($this->dir . '/config', 0777, true);
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 't', 'debug' => 0, 'key' => 'k'];\n");
     }
 
-    public function test_routings_name_alone_is_bound_under_cores(): void
+    protected function tearDown(): void
     {
-        $container = new Container();
-        $lookup = self::lookup(['/blog']);
-        $container->instance(PageExists::class, $lookup);
-
-        RoutingRegistration::alias($container);
-
-        $this->assertTrue($container->bound(CorePageExists::class));
-        $this->assertSame($lookup, $container->get(CorePageExists::class));
+        exec('rm -rf ' . escapeshellarg($this->dir));
     }
 
-    public function test_both_names_answer_under_cores(): void
+    public function test_routings_name_is_a_page_lookup_source(): void
     {
-        $container = new Container();
-        $container->instance(CorePageExists::class, self::lookup(['/about']));
-        $container->instance(PageExists::class, self::lookup(['/blog']));
+        $app = Application::create($this->dir);
+        $app->boot();
 
-        RoutingRegistration::alias($container);
-
-        $pages = $container->get(CorePageExists::class);
-        $this->assertTrue($pages->exists('en', '/about'));
-        $this->assertTrue($pages->exists('en', '/blog'));
-        $this->assertFalse($pages->exists('en', '/nope'));
+        $this->assertSame([CorePageExists::class, PageExists::class], $app->container()->get(PageLookups::class)->ids());
     }
 
-    public function test_one_lookup_under_both_names_stays_as_it_is(): void
+    public function test_registering_twice_adds_the_name_once(): void
     {
-        $container = new Container();
-        $lookup = self::lookup(['/about']);
-        $container->instance(CorePageExists::class, $lookup);
-        $container->instance(PageExists::class, $lookup);
+        $app = Application::create($this->dir);
+        $app->boot();
+        RoutingRegistration::register($app);
 
-        RoutingRegistration::alias($container);
-
-        $this->assertSame($lookup, $container->get(CorePageExists::class));
-    }
-
-    public function test_nothing_bound_stays_unbound(): void
-    {
-        $container = new Container();
-
-        RoutingRegistration::alias($container);
-
-        $this->assertFalse($container->bound(CorePageExists::class), 'core must still see that nothing can tell a page');
+        $this->assertSame([CorePageExists::class, PageExists::class], $app->container()->get(PageLookups::class)->ids());
     }
 }

@@ -369,6 +369,9 @@ final class Application
         $nonPublic = new \Preflow\Core\Http\NonPublicPaths();
         $this->container->instance(\Preflow\Core\Http\NonPublicPaths::class, $nonPublic);
 
+        // Where page lookups are bound (core's PageExists first); packages add their own names for it
+        $this->container->instance(\Preflow\Core\Routing\PageLookups::class, new \Preflow\Core\Routing\PageLookups());
+
         // API prefixes (config/api.php): errors there are JSON, and SEO and GEO leave them alone
         $api = \Preflow\Core\Http\Api\ApiConfig::fromArray($this->configFile('api'));
         $this->container->instance(\Preflow\Core\Http\Api\ApiConfig::class, $api);
@@ -2028,8 +2031,8 @@ final class Application
             return;
         }
 
-        // What preflow/routing sets up itself (its Redirect\PageExists answers as core's PageExists),
-        // with a router of the app's own too.
+        // What preflow/routing sets up itself (its Redirect\PageExists is a page lookup source), with a
+        // router of the app's own too.
         \Preflow\Routing\RoutingRegistration::register($this);
 
         if ($this->router !== null) {
@@ -2201,19 +2204,18 @@ final class Application
     }
 
     /**
-     * What can tell whether a page answers at a path (core's Routing\PageExists): a lookup bound
-     * in the container under core's name (Folio binds its pages there; a package with a name of
-     * its own for the contract binds that under core's, as preflow/routing does for its
-     * Redirect\PageExists), then the router when it implements the contract (preflow/routing's
-     * Router does, for routes that are not catch-alls).
+     * What can tell whether a page answers at a path (core's Routing\PageExists), built now: the
+     * lookups bound under the ids of PageLookups (core's name first, then the names packages added,
+     * as preflow/routing adds its Redirect\PageExists), then the router when it implements the
+     * contract (preflow/routing's Router does, for routes that are not catch-alls). Called when a
+     * request asks, never at boot.
      *
      * @return list<\Preflow\Core\Routing\PageExists>
      */
     private static function pageLookups(Container $container): array
     {
         $lookups = [];
-        $candidates = [\Preflow\Core\Routing\PageExists::class, RouterInterface::class];
-        foreach ($candidates as $id) {
+        foreach ([...self::pageLookupIds($container), RouterInterface::class] as $id) {
             if (!$container->bound($id)) {
                 continue;
             }
@@ -2226,9 +2228,19 @@ final class Application
         return $lookups;
     }
 
+    /** @return list<string> the ids page lookups are bound under (PageLookups) */
+    private static function pageLookupIds(Container $container): array
+    {
+        return $container->bound(\Preflow\Core\Routing\PageLookups::class)
+            ? $container->get(\Preflow\Core\Routing\PageLookups::class)->ids()
+            : [\Preflow\Core\Routing\PageExists::class];
+    }
+
     /**
-     * redirect_bare redirects only paths a page answers at, so it needs something that can tell
-     * (pageLookups()); without it, it would do nothing. Checked once providers ran.
+     * redirect_bare redirects only paths a page answers at, so it needs something that can tell;
+     * without it, it would do nothing. Checked once providers and their onProvidersBooted hooks ran,
+     * without building a lookup: one of the PageLookups ids is bound, or the router (already built)
+     * implements PageExists.
      *
      * @throws \RuntimeException when redirect_bare is on and nothing can tell
      */
@@ -2236,8 +2248,16 @@ final class Application
     {
         if (!$this->container->get(\Preflow\Core\Http\LocaleUrls::class)->redirectBare
             || !class_exists(\Preflow\I18n\LocaleMiddleware::class)
-            || !$this->container->bound(\Preflow\I18n\LocaleMiddleware::class)
-            || self::pageLookups($this->container) !== []) {
+            || !$this->container->bound(\Preflow\I18n\LocaleMiddleware::class)) {
+            return;
+        }
+        foreach (self::pageLookupIds($this->container) as $id) {
+            if ($this->container->bound($id)) {
+                return;
+            }
+        }
+        if ($this->container->bound(RouterInterface::class)
+            && $this->container->get(RouterInterface::class) instanceof \Preflow\Core\Routing\PageExists) {
             return;
         }
 

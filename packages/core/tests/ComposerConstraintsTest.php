@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
  * (LocaleMiddleware takes urls:, cookieName:, pageExists: and nonPublic:, the bare-path redirect and the
  * language switch); view 0.78 (SeoMiddleware takes localeUrls:, the home of a prefixed default locale);
  * routing 0.78 (CanonicalPathMiddleware, which config/routing.php's canonical_paths turns on; RoutingRegistration,
- * which binds a lookup under routing's Redirect\PageExists as core's Routing\PageExists).
+ * which adds routing's Redirect\PageExists to core's page lookup sources, PageLookups).
  * Since 0.74: view 0.74 (Audits, which bootAudit binds) and notify 0.74 (Notifier::discardingQueued(),
  * which every internal render runs in, so mail a render queues is dropped; with an older notify it would be sent).
  *
