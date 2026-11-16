@@ -9,6 +9,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Routing\PageExists as CorePageExists;
 use Preflow\Core\Routing\PageLookups;
 use Preflow\Routing\Redirect\PageExists;
+use Preflow\Routing\Redirect\RedirectEntryExists;
 use Preflow\Routing\RoutingRegistration;
 
 /** Routing's Redirect\PageExists is one of core's page lookup sources, after core's own name. */
@@ -43,5 +44,17 @@ final class RoutingRegistrationTest extends TestCase
         RoutingRegistration::register($app);
 
         $this->assertSame([CorePageExists::class, PageExists::class], $app->container()->get(PageLookups::class)->ids());
+    }
+
+    public function test_the_redirect_entry_lookup_is_an_answer_never_a_page(): void
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+        $lookups = $app->container()->get(PageLookups::class);
+
+        $this->assertSame([RedirectEntryExists::class], $lookups->answers());
+        $this->assertNotContains(RedirectEntryExists::class, $lookups->ids());
+        // Nothing is bound to a store: nothing answers, and nothing fails.
+        $this->assertFalse($app->container()->get(RedirectEntryExists::class)->exists('de', '/old-help'));
     }
 }

@@ -260,8 +260,11 @@ What is never redirected:
 - anything but GET and HEAD, and internal renders (the SEO audit's);
 - admin, API and component paths (`NonPublicPaths`) and every path whose first segment starts
   with `--`;
-- a path no page answers at in the picked language: it is served as it is (normally a 404), and
-  redirect entries still apply to it. "A page answers" is asked of core's
+- a path neither a page nor a redirect entry answers at in the picked language: it is served as it
+  is (normally a 404), and redirect entries still apply to it. A path a redirect entry answers goes
+  to the visitor's language like a page (since 0.78.2; preflow/routing registers it with
+  `PageLookups::addAnswer()`, so the entry then answers at the prefixed address: two hops, and i18n
+  never reads the redirect store). "A page answers" is asked of core's
   `Preflow\Core\Routing\PageExists` (`exists(locale, path)`): preflow/routing's `Router`
   answers for its routes that are not catch-alls, Folio answers for its pages, and a site with
   catch-all pages of its own binds a `PageExists` (on a Folio site too: both are asked). Packages

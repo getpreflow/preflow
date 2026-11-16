@@ -371,6 +371,10 @@ final class FolioServiceProvider extends ServiceProvider
                 $locales ?? \Preflow\Data\Locales::single('en'),
                 self::prefixedUrls($app),
                 \Preflow\Folio\Redirects\SiteTarget::hostOf($app->config()->get('app.url')),
+                // prefix_default + redirect_bare: a bare address goes to a language before any entry answers.
+                $c->bound(\Preflow\Core\Http\LocaleUrls::class)
+                    && $c->get(\Preflow\Core\Http\LocaleUrls::class)->prefixDefault
+                    && $c->get(\Preflow\Core\Http\LocaleUrls::class)->redirectBare,
             ));
             // Whether a Folio page holds an address: the bare-path redirect (config/i18n.php redirect_bare)
             // asks SiteTarget as one of core's page lookups, so "/hello" goes to "/en/hello" and

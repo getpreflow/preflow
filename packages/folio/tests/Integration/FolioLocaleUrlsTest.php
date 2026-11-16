@@ -152,7 +152,7 @@ final class FolioLocaleUrlsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_bare_old_address_still_answers_from_redirects(): void
+    public function test_bare_old_address_goes_to_a_language_then_answers_from_redirects(): void
     {
         $this->publishHello();
         $this->app()->container()->get(RedirectEntries::class)->save(['path' => '/old', 'locale' => 'en', 'target_type' => 'page', 'target_id' => 'p1']);
@@ -161,10 +161,11 @@ final class FolioLocaleUrlsTest extends TestCase
         $this->assertSame(301, $prefixed->getStatusCode());
         $this->assertSame('/en/hello', $prefixed->getHeaderLine('Location'));
 
-        // "/old" is no page: not sent to a language, the redirect store answers it.
+        // "/old" is no page but an entry answers it (since 0.78.2): sent to the visitor's language
+        // first, where the entry answers (two hops).
         $bare = $this->get('/old');
-        $this->assertSame(301, $bare->getStatusCode());
-        $this->assertSame('/en/hello', $bare->getHeaderLine('Location'));
+        $this->assertSame(302, $bare->getStatusCode());
+        $this->assertSame('/en/old', $bare->getHeaderLine('Location'));
 
         // Settings → Redirects shows the address as visitors type it.
         $this->assertMatchesRegularExpression('~>\s*/en/old\s*<~', $this->body('/folio/redirects'));

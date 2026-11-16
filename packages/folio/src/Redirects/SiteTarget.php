@@ -8,6 +8,7 @@ use Preflow\Data\Locales;
 use Preflow\Folio\Content\FrontendResolver;
 use Preflow\Folio\Content\ResolvedRecord;
 use Preflow\Routing\Redirect\AreaMode;
+use Preflow\Routing\Redirect\LanguageRedirectedAddresses;
 use Preflow\Routing\Redirect\PageExists;
 use Preflow\Routing\Redirect\RedirectPath;
 use Preflow\Routing\Redirect\SiteAddresses;
@@ -25,7 +26,7 @@ use Preflow\Routing\Redirect\SiteAddresses;
  * Addresses are read as LocaleMiddleware reads them: with locale prefixes a first segment naming
  * one of the site's languages is the language, else the default; without prefixes ''.
  */
-final class SiteTarget implements PageExists, SiteAddresses
+final class SiteTarget implements PageExists, SiteAddresses, LanguageRedirectedAddresses
 {
     /** Hops followed through entries that point at other entries (left over from before this check). */
     private const int MAX_HOPS = 10;
@@ -37,6 +38,8 @@ final class SiteTarget implements PageExists, SiteAddresses
      * @param LiveRecords|\Closure(): LiveRecords $live a closure when LiveRecords is built later
      * @param bool   $prefixed whether URLs carry the locale (i18n url_strategy "prefix")
      * @param string $host     this site's host (app.url's); '' when not configured
+     * @param bool   $languageRedirectsBare bare addresses are always sent to a language first (config/i18n.php
+     *                         prefix_default and redirect_bare), so no entry answers one (@since 0.78.2)
      */
     public function __construct(
         private readonly RedirectEntries $entries,
@@ -45,6 +48,7 @@ final class SiteTarget implements PageExists, SiteAddresses
         private readonly Locales $locales,
         private readonly bool $prefixed,
         private readonly string $host = '',
+        private readonly bool $languageRedirectsBare = false,
     ) {
         $this->live = $live instanceof LiveRecords ? static fn (): LiveRecords => $live : $live;
     }
@@ -79,6 +83,21 @@ final class SiteTarget implements PageExists, SiteAddresses
         $normalized = $local === null ? null : RedirectPath::normalize($local);
 
         return $normalized === null ? null : $this->split($normalized);
+    }
+
+    /** A bare address on a site that sends bare addresses to a language first (see LanguageRedirectedAddresses). */
+    public function isLanguageRedirected(string $url, string $host = ''): bool
+    {
+        if (!$this->languageRedirectsBare || !$this->prefixed) {
+            return false;
+        }
+        $local = $this->localPath($url, $host);
+        $normalized = $local === null ? null : RedirectPath::normalize($local);
+        if ($normalized === null) {
+            return false;
+        }
+
+        return !(preg_match('#^/([a-z]{2})(/.*)?$#', $normalized, $m) === 1 && $this->locales->has($m[1]));
     }
 
     /** Whether a page holds the address (page()). */

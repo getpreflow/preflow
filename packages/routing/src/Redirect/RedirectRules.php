@@ -129,6 +129,10 @@ final class RedirectRules
         if ($area && $sameLanguage && RedirectPath::under($targetPath, $path) !== null) {
             return self::refuse('target', 'target_in_area');
         }
+        // A bare target on a site that sends bare addresses to a language first is answered by no entry.
+        if ($this->languageRedirected($url, $host)) {
+            return new RedirectErrors();
+        }
         if ($this->redirectsAt($this->site->lookupLocale($targetLocale), $targetPath, $own)) {
             return self::refuse('target', 'target_redirects');
         }
@@ -184,6 +188,10 @@ final class RedirectRules
     private function targetedBy(string $locale, string $path, bool $area, ?string $own, string $host): bool
     {
         foreach ($this->leading($locale, $path, $area, $own, $host) as $other) {
+            // A bare target is sent to a language first, so no entry answers it (see LanguageRedirectedAddresses).
+            if ($this->languageRedirected((string) $other->targetUrl, $host)) {
+                continue;
+            }
             if ($other->area && $other->mode === AreaMode::Prefix) {
                 return true;
             }
@@ -261,6 +269,12 @@ final class RedirectRules
         }
 
         return false;
+    }
+
+    /** Whether a URL is a bare address the site's language redirect always runs on first (see LanguageRedirectedAddresses). */
+    private function languageRedirected(string $url, string $host): bool
+    {
+        return $this->site instanceof LanguageRedirectedAddresses && $this->site->isLanguageRedirected($url, $host);
     }
 
     private static function refuse(string $field, string $key): RedirectErrors

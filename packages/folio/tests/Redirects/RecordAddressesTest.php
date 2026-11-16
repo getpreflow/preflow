@@ -555,4 +555,28 @@ final class RecordAddressesTest extends TestCase
         ], $this->entryLines(), 'hand-made entries keep the target they were given');
         $this->assertSame(['en' => '/c', 'de' => '/x'], $this->addresses->of('page', 'p1'));
     }
+
+    public function test_a_bare_address_is_language_redirected_only_when_the_site_says_so(): void
+    {
+        $site = static fn (RedirectEntries $entries, LiveRecords $live, FrontendResolver $resolver, bool $bare): SiteTarget => new SiteTarget(
+            $entries,
+            $live,
+            $resolver,
+            new Locales(['en', 'de'], 'en'),
+            true,
+            'example.com',
+            $bare,
+        );
+
+        $off = $site($this->entries, $this->live, $this->resolver, false);
+        $on = $site($this->entries, $this->live, $this->resolver, true);
+
+        $this->assertFalse($off->isLanguageRedirected('/help'));
+        $this->assertTrue($on->isLanguageRedirected('/help'));
+        $this->assertTrue($on->isLanguageRedirected('https://example.com/help'));
+        $this->assertTrue($on->isLanguageRedirected('/'));
+        $this->assertFalse($on->isLanguageRedirected('/de/help'));
+        $this->assertFalse($on->isLanguageRedirected('/en'));
+        $this->assertFalse($on->isLanguageRedirected('https://other.test/help'));
+    }
 }

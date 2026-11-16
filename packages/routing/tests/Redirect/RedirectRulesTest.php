@@ -6,6 +6,7 @@ namespace Preflow\Routing\Tests\Redirect;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Routing\Redirect\AreaMode;
+use Preflow\Routing\Redirect\LanguageRedirectedAddresses;
 use Preflow\Routing\Redirect\NotFoundList;
 use Preflow\Routing\Redirect\PageExists;
 use Preflow\Routing\Redirect\Redirect;
@@ -25,11 +26,15 @@ final class RedirectRulesTest extends TestCase
     /** @var list<string> */
     private array $forgotten = [];
 
+    /** The site redirects bare addresses to the visitor's language (prefix_default + redirect_bare). */
+    private bool $languageRedirectsBare = false;
+
     /** @param list<Redirect> $entries */
     private function rules(array $entries = []): RedirectRules
     {
         $pages = $this->pages;
         $live = $this->live;
+        $bare = $this->languageRedirectsBare;
         $forgotten = &$this->forgotten;
 
         return new RedirectRules(
@@ -52,17 +57,29 @@ final class RedirectRulesTest extends TestCase
                     return in_array($type . ':' . $id, $this->live, true);
                 }
             },
-            new class implements SiteAddresses {
+            new class ($bare) implements SiteAddresses, LanguageRedirectedAddresses {
+                public function __construct(private readonly bool $bare) {}
+
                 public function address(string $url, string $host = ''): ?array
                 {
                     $path = str_starts_with($url, '/') ? parse_url($url, PHP_URL_PATH) : (parse_url($url, PHP_URL_HOST) === 'example.test' ? parse_url($url, PHP_URL_PATH) : null);
+                    if (!is_string($path)) {
+                        return null;
+                    }
 
-                    return is_string($path) ? ['', $path] : null;
+                    return preg_match('#^/de(/.*)?$#', $path, $m) === 1 ? ['de', ($m[1] ?? '') === '' ? '/' : $m[1]] : ['', $path];
                 }
 
                 public function lookupLocale(string $locale): string
                 {
                     return $locale !== '' ? $locale : 'en';
+                }
+
+                public function isLanguageRedirected(string $url, string $host = ''): bool
+                {
+                    $at = $this->address($url, $host);
+
+                    return $this->bare && $at !== null && $at[0] === '';
                 }
             },
             new class ($forgotten) implements NotFoundList {
@@ -277,5 +294,52 @@ final class RedirectRulesTest extends TestCase
         $rules->saved(self::entry('/zone', '/new', true));
 
         self::assertSame(['one:/old', 'area:/zone'], $this->forgotten);
+    }
+
+    public function test_entries_never_count_as_pages_for_the_rules(): void
+    {
+        // An entry at /old-help (German), no page anywhere: the rules' page lookup is not the entry lookup.
+        $entries = [new Redirect(Redirect::id('exact', 'de', '/old-help'), '/old-help', 'de', false, AreaMode::One, null, null, '/de/help', 301)];
+        $entryLookup = new \Preflow\Routing\Redirect\RedirectEntryExists(
+            new \Preflow\Routing\Redirect\RedirectResolver(new InMemoryRedirectStore($entries)),
+        );
+
+        self::assertTrue($entryLookup->exists('de', '/old-help'));
+        self::assertNotInstanceOf(PageExists::class, $entryLookup);
+
+        // No page at the address: another exact entry on it is not refused as "a page wins".
+        self::assertTrue($this->rules()->address(self::entry('/old-help'), null)->isEmpty());
+        // And the chain refusal still fires for a prefixed target, with or without the language redirect.
+        foreach ([false, true] as $bare) {
+            $this->languageRedirectsBare = $bare;
+            self::assertSame('target_redirects', $this->rules($entries)->check(self::entry('/second', '/de/old-help'), null)->get('target'));
+        }
+    }
+
+    public function test_a_bare_target_is_no_chain_with_redirect_bare(): void
+    {
+        $entries = [self::exact('/b', '/c')];
+
+        // Without the language redirect a bare target another entry answers is a chain, as ever.
+        self::assertSame('target_redirects', $this->rules($entries)->check(self::entry('/a', '/b'), null)->get('target'));
+
+        // With it the visitor is sent to a language first: the address is never answered by that entry.
+        $this->languageRedirectsBare = true;
+        self::assertTrue($this->rules($entries)->check(self::entry('/a', '/b'), null)->isEmpty());
+        self::assertTrue($this->rules([self::area('/zone', '/elsewhere')])->check(self::entry('/a', '/zone/x'), null)->isEmpty());
+    }
+
+    public function test_an_address_a_bare_target_leads_to_is_free_with_redirect_bare(): void
+    {
+        $entries = [self::exact('/x', '/c')];
+
+        self::assertSame('targeted', $this->rules($entries)->address(self::entry('/c', '/y'), null)->get('address'));
+
+        $this->languageRedirectsBare = true;
+        self::assertTrue($this->rules($entries)->address(self::entry('/c', '/y'), null)->isEmpty());
+
+        // A prefixed target is still an address the entry answers.
+        $prefixed = [self::exact('/x', '/de/c')];
+        self::assertSame('targeted', $this->rules($prefixed)->address(self::entry('/c', '/y'), null)->get('address'));
     }
 }

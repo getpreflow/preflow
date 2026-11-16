@@ -263,6 +263,20 @@ loop). Both are found per request, so a redirect store bound after boot (Folio's
 (`/de` answers `301 /de/`, `/de/` answers 200); every other path stays without a trailing slash
 (`/de/faq/` answers `301 /de/faq`). Without clean paths both `/de` and `/de/` answer.
 
+**An old bare address with an entry goes to the visitor's language** (since 0.78.2). With `redirect_bare`
+(preflow/i18n) an address no page answers is served as it is, so an old address that only a redirect
+entry answers (`/old-help` with an entry `/old-help` in German) would stay unredirected for a visitor
+whose language is German. Routing registers `Redirect\RedirectEntryExists` with core's
+`PageLookups::addAnswer()`: the bare redirect asks it too, so `/old-help` goes `302 /de/old-help`
+and the entry answers there (two hops, as i18n never reads the redirect store). It looks the store
+up per question (a store bound after boot counts) and says no without one. It is no page lookup:
+the redirect rules and the clean-path one hop ask pages only, so a page still wins over an entry
+and entries never count as pages. On a site with both `prefix_default` and `redirect_bare`, the
+redirect rules (`RedirectRules`) skip the "no chains" check for a bare target such as `/help`,
+because the language redirect always runs first; a site's `SiteAddresses` says so by also
+implementing `Redirect\LanguageRedirectedAddresses` (Folio's does). Prefixed targets (`/de/help`)
+are checked as before.
+
 **Trailing slashes in links and routes.** With clean paths on, a link that ends in a slash
 (`href="/faq/"`) costs every visitor a 301 hop, and a route declared with a trailing slash is
 only ever reached through one. Write links and routes without it (`locale_url()` already does).
