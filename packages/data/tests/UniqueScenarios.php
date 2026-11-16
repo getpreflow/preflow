@@ -117,6 +117,27 @@ trait UniqueScenarios
         $this->assertSame(['key' => ['This value is already taken.']], $this->errorsOf($key, ['uuid' => 'd', 'key' => 'aBc'], validate: false));
     }
 
+    /**
+     * A field marked exact is a machine value, not searchable text, on every storage: loose search
+     * (and a full-text index) leaves it out, and its unique check keeps case, also in a type with
+     * full-text search.
+     */
+    public function test_an_exact_field_of_a_full_text_type_is_not_searched_and_stays_exact(): void
+    {
+        $key = $this->synced(new TypeDefinition('apikey', 'apikey', $this->storage(), [
+            'title' => new TypeFieldDefinition('title'),
+            'key' => new TypeFieldDefinition('key', unique: true, exact: true),
+        ], fullText: true));
+        $this->save($key, ['uuid' => 'a', 'title' => 'Alpha', 'key' => 'SecretWord']);
+        $found = fn (string $term): array => array_map(static fn ($r): string => (string) $r->getId(), $this->dm->queryIn($key)->searchLoose($term)->get()->items());
+
+        $this->assertSame(['a'], $found('Alpha'));
+        $this->assertSame([], $found('SecretWord'), 'a word only in the exact field is not found');
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'b', 'title' => 'Beta', 'key' => 'secretword']), 'a case variant is another value');
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'c', 'title' => 'Gamma', 'key' => 'SECRETWORD'], validate: false));
+        $this->assertSame(['key' => ['This value is already taken.']], $this->errorsOf($key, ['uuid' => 'd', 'key' => 'SecretWord'], validate: false));
+    }
+
     public function test_a_number_stored_as_text_is_still_a_duplicate(): void
     {
         $page = $this->page();

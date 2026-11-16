@@ -253,7 +253,7 @@ final class QueryBuilder
             }
         } elseif ($this->meta !== null) {
             foreach ($this->meta->fields as $name => $attr) {
-                if ($attr->searchable === false || ($requested !== null && !in_array($name, $requested, true))) {
+                if ($attr->searchable === false || $attr->exact || ($requested !== null && !in_array($name, $requested, true))) {
                     continue;
                 }
                 $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
@@ -323,14 +323,14 @@ final class QueryBuilder
             }
         } else {
             foreach ($target->fields as $name => $def) {
-                if ($def->type === 'string' && LooseFields::searchable($def)) {
+                if ($def->type === 'string' && !$def->exact && LooseFields::searchable($def)) {
                     $names[] = $name;
                     break;
                 }
             }
         }
         foreach ($target->fields as $name => $def) {
-            if (LooseFields::searchable($def) && $kinds->isText($def->type)) {
+            if (!$def->exact && LooseFields::searchable($def) && $kinds->isText($def->type)) {
                 $names[] = $name;
             }
         }

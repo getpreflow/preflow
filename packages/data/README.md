@@ -1084,11 +1084,10 @@ Where the rule lives:
   such an `ORDER BY` cannot use an index, which a long column has none of anyway. A unique or
   indexed text field (`VARCHAR`, `TextColumns::short()`, which `QueryBuilder` names on the query
   with `Query::shortText()`) sorts by its column and keeps its index.
-- **Full-text types on MySQL:** a FULLTEXT index takes columns of one collation, so the tags and
-  exact fields a `"fullText": true` type's index covers (`TextColumns::exactInFullText()`) get the
-  rule's collation too; queries still compare them exactly (`Query::compareExactly()`, which
-  `QueryBuilder` sets: `=`, `IN`, `ORDER BY`, grouping and `HAS` name `utf8mb4_bin`). A unique
-  index on such an exact field follows the rule.
+- **Full-text types on MySQL:** a FULLTEXT index takes columns of one collation, so the tags a
+  `"fullText": true` type's index covers (`TextColumns::exactInFullText()`) get the rule's
+  collation too; queries still compare them exactly (`Query::compareExactly()`, which
+  `QueryBuilder` sets: `=`, `IN`, `ORDER BY`, grouping and `HAS` name `utf8mb4_bin`).
 - **JSON:** the query names its text fields (`Query::compareAsText()`, set by `QueryBuilder` from
   the type, as `localize()` is) and the driver compares them with `TextMatch`; a query built by
   hand that names none compares every field exactly. `Validation\Unique` decides with
@@ -1096,6 +1095,10 @@ Where the rule lives:
 - **Translatable fields:** a locale's value is a JSON value without the column's collation; the
   dialect compares it by the rule (`TextComparison::textValue()`: `COLLATE preflow_text`, or a cast
   into the rule's collation).
+
+A field marked exact is a machine value, not searchable text, on every driver: loose search,
+⌘K and a full-text index leave it out, so its column stays exact (`utf8mb4_bin`, BINARY) and a
+unique exact field keeps case everywhere.
 
 A plain column keeps its own collation in the query, so its indexes stay usable. `StorageDriverContract`
 pins the rule on every driver: its field kind `text` is a text field (`string` stays exact), and

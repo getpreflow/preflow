@@ -12,6 +12,8 @@ use Preflow\Data\TypeFieldDefinition;
 /**
  * The fields of a type that loose search looks at: its own text fields, in field order. A field that
  * says "searchable": false is left out, and so is a hidden one unless it says "searchable": true.
+ * A field marked exact ("exact": true) holds a machine value, not searchable text: it is left out
+ * on every driver (since 0.78).
  * Relations are not text (their targets' titles are searched through the relation). This is the one
  * list QueryBuilder::searchLoose() searches, ranked search asks for, and a full-text index covers.
  *
@@ -26,7 +28,7 @@ final class LooseFields
     {
         $text = [];
         foreach ($def->fields as $name => $field) {
-            if (!self::searchable($field) || Relation::fromField($def->key, $field, $kinds) !== null) {
+            if ($field->exact || !self::searchable($field) || Relation::fromField($def->key, $field, $kinds) !== null) {
                 continue;
             }
             if ($kinds->isText($field->type)) {

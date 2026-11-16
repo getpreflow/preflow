@@ -73,10 +73,11 @@ final class MysqlFullTextTest extends TestCase
     }
 
     /**
-     * A FULLTEXT index takes columns of one collation: a full-text type's tags and exact fields get
-     * the rule's collation with the other text fields, and keep comparing exactly in queries.
+     * A FULLTEXT index takes columns of one collation: a full-text type's tags get the rule's
+     * collation with the other text fields and keep comparing exactly in queries; a field marked
+     * exact is no searchable text, stays out of the index and keeps utf8mb4_bin.
      */
-    public function test_tags_and_an_exact_field_join_the_index_and_stay_exact(): void
+    public function test_tags_join_the_index_and_stay_exact_an_exact_field_stays_out(): void
     {
         $dm = new DataManager(drivers: ['mysql' => new MysqlDriver($this->pdo)], defaultDriver: 'mysql');
         $dm->fieldKinds()->text('tags');
@@ -90,12 +91,13 @@ final class MysqlFullTextTest extends TestCase
         $lines = (new RecordTableSync($dm))->sync($def);
 
         $this->assertSame(['created table note', 'added full-text index ft_note_search'], $lines);
-        $this->assertSame(['ft_note_search' => ['title', 'tags', 'code']], (new MysqlGrammar())->fullTextIndexes($this->pdo, 'note'));
+        $this->assertSame(['ft_note_search' => ['title', 'tags']], (new MysqlGrammar())->fullTextIndexes($this->pdo, 'note'));
+        $this->assertSame('utf8mb4_bin', (new MysqlGrammar())->columnCollations($this->pdo, 'note')['code']);
         $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'a', 'title' => 'Kartenspiel', 'tags' => ['PHP', 'Würfel'], 'code' => 'AbC']), validate: false);
         $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'b', 'title' => 'Brettspiel', 'tags' => ['php'], 'code' => 'abc']), validate: false);
 
         $this->assertTrue($dm->canScore($def));
-        foreach (['Kartenspiel', 'Würfel', 'AbC'] as $word) {
+        foreach (['Kartenspiel', 'Würfel'] as $word) {
             $this->assertGreaterThan(0.0, $dm->scoreIn($def, $word, ['a', 'b'])['a'], "full-text search finds {$word}");
         }
         $ids = static fn (iterable $records): array => array_map(static fn ($r): string => (string) $r->getId(), [...$records]);

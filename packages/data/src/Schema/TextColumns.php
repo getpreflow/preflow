@@ -65,8 +65,9 @@ final class TextColumns
     /**
      * The fields of a full-text type ("fullText": true) that compare exactly although a full-text
      * index puts them in a column of the rule's collation: the loosely searchable text fields
-     * (LooseFields::text(): lists such as tags, fields marked exact) that are not text fields
-     * (of()). A full-text index takes columns of one collation only (MySQL), so their columns carry
+     * (LooseFields::text()) that are not text fields (of()), that is lists such as tags. Fields
+     * marked exact are no searchable text (LooseFields leaves them out), so their columns stay
+     * exact. A full-text index takes columns of one collation only (MySQL), so their columns carry
      * the rule's; queries compare them exactly (Query::compareExactly()). Empty for a type without
      * full-text search.
      *
