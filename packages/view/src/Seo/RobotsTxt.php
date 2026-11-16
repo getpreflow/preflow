@@ -27,11 +27,13 @@ final class RobotsTxt
             ...$disallow,
         ];
 
+        // robots.default_group goes into the `User-agent: *` group, robots.all_groups into each.
+        $all = $config->robotsAllGroups;
         $groups = [
-            ['User-agent: *', ...$rules],
-            ['# AI search and assistant crawlers', ...self::agents(self::SEARCH_BOTS), ...$rules],
+            ['User-agent: *', ...$rules, ...$config->robotsDefaultGroup, ...$all],
+            ['# AI search and assistant crawlers', ...self::agents(self::SEARCH_BOTS), ...$rules, ...$all],
             // Training crawlers kept out get no exceptions.
-            ['# AI training crawlers', ...self::agents(self::TRAINING_BOTS), ...($config->aiTraining ? $rules : ['Disallow: /'])],
+            ['# AI training crawlers', ...self::agents(self::TRAINING_BOTS), ...($config->aiTraining ? $rules : ['Disallow: /']), ...$all],
         ];
 
         $text = implode("\n\n", array_map(static fn (array $lines): string => implode("\n", $lines), $groups)) . "\n";

@@ -17,7 +17,9 @@ final readonly class SeoConfig
      *        fields each type's title, description and share image are read from (first non-empty wins)
      * @param ?list<string>         $listedTypes types in the sitemap; null lists every public routed type
      * @param list<string>          $disallow    robots.txt Disallow paths
-     * @param list<string>          $robotsExtra extra robots.txt lines
+     * @param list<string>          $robotsExtra extra robots.txt lines, after the last group
+     * @param list<string>          $robotsDefaultGroup lines in the `User-agent: *` group (e.g. Crawl-delay; since 0.78)
+     * @param list<string>          $robotsAllGroups    lines in every group (since 0.78)
      * @param array<string, string> $themeColor  `'' => '#hex'`, or `'light'`/`'dark'` => '#hex'
      */
     public function __construct(
@@ -36,6 +38,8 @@ final readonly class SeoConfig
         public ?string $securityPolicy = null,
         public array $themeColor = [],
         public bool $etag = true,
+        public array $robotsDefaultGroup = [],
+        public array $robotsAllGroups = [],
     ) {}
 
     /** Read a config file; a missing file means SEO is off. */
@@ -70,6 +74,8 @@ final readonly class SeoConfig
             securityPolicy: self::string($security['policy'] ?? null),
             themeColor: self::themeColor($config['theme_color'] ?? null),
             etag: (bool) ($config['etag'] ?? true),
+            robotsDefaultGroup: self::strings($robots['default_group'] ?? []),
+            robotsAllGroups: self::strings($robots['all_groups'] ?? []),
         );
     }
 

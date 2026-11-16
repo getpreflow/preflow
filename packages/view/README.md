@@ -412,7 +412,9 @@ return [
         'enabled' => true,
         'disallow' => ['/--component/', '/*/--component/'], // Folio adds its admin path itself
         'ai_training' => true,                              // false shuts out AI training crawlers
-        'extra' => [],                                      // raw lines, appended as they are
+        'extra' => [],                                      // raw lines, appended after the last group
+        'default_group' => [],                              // lines in the `User-agent: *` group, e.g. 'Crawl-delay: 5' (0.78)
+        'all_groups' => [],                                 // lines in every group (0.78)
     ],
     'sitemap' => true,
     // Served only with a contact (mailto: or https: URL); Expires is always 180 days ahead.
