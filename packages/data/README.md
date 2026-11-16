@@ -77,7 +77,7 @@ All methods return `$this` for chaining except the terminal methods.
 (`[A-Za-z_][A-Za-z0-9_]*`). Anything else throws `\InvalidArgumentException` before any SQL is
 built: never pass a request's operator or column name unchecked. Since 0.78 a typed query (a type
 or a model class) also refuses a field the type or class does not have (its fields, the id field
-and system keys with a leading `_` are allowed): `Type "post" has no field "titel" to query by.`,
+and system keys with a leading `_` are allowed): `Unknown field "titel": type "post" has no such field to query by.`,
 the same on every driver, where SQL would name the missing column and JSON would match nothing.
 SQLite quotes identifiers with backticks, so a hand-built query on a missing column is an error
 there too (it read a double-quoted unknown name as a string).

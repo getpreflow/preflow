@@ -53,7 +53,7 @@ final class QueryFieldGuardTest extends TestCase
                     $query();
                     $this->fail("{$storage}: {$what} on a missing field must be refused");
                 } catch (\InvalidArgumentException $e) {
-                    $this->assertSame('Type "note" has no field "titel" to query by.', $e->getMessage(), "{$storage} {$what}");
+                    $this->assertSame('Unknown field "titel": type "note" has no such field to query by.', $e->getMessage(), "{$storage} {$what}");
                 }
             }
         }

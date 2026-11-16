@@ -193,11 +193,11 @@ final class QueryBuilder
             if ($field === $this->typeDef->idField || isset($this->typeDef->fields[$field])) {
                 return;
             }
-            throw new \InvalidArgumentException("Type \"{$this->typeDef->key}\" has no field \"{$field}\" to query by.");
+            throw new \InvalidArgumentException("Unknown field \"{$field}\": type \"{$this->typeDef->key}\" has no such field to query by.");
         }
         // A plain model's columns are its migration's: a #[Field], the id, or another property of the class (#[Timestamps]).
         if ($this->meta !== null && $field !== $this->meta->idField && !isset($this->meta->fields[$field]) && !property_exists($this->meta->modelClass, $field)) {
-            throw new \InvalidArgumentException("Model {$this->meta->modelClass} has no field \"{$field}\" to query by.");
+            throw new \InvalidArgumentException("Unknown field \"{$field}\": model {$this->meta->modelClass} has no such field to query by.");
         }
     }
 
