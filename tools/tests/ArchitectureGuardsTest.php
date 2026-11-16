@@ -211,8 +211,8 @@ final class ArchitectureGuardsTest extends TestCase
     }
 
     /**
-     * Each spelling the guard must catch, and lines it must leave alone (building a driver,
-     * naming one in a comment, a capability check).
+     * Every package must require each package whose namespace it names, at a version that carries
+     * the classes it uses (@since).
      */
     public function test_packages_requires_what_it_names(): void
     {
@@ -304,6 +304,10 @@ final class ArchitectureGuardsTest extends TestCase
         return ($composer['type'] ?? 'library') === 'project';
     }
 
+    /**
+     * Each spelling the guard must catch, and lines it must leave alone (building a driver,
+     * naming one in a comment, a capability check).
+     */
     public function test_storage_driver_class_check_patterns(): void
     {
         $caught = [
