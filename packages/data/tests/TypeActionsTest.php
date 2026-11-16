@@ -163,6 +163,17 @@ final class TypeActionsTest extends TestCase
         new TypeRegistry($this->dir . '/models', classes: ['ta_inbox' => TypeActionsInbox::class]); // at boot
     }
 
+    public function test_a_class_with_full_text_and_its_admin_file_never_disagree_silently(): void
+    {
+        file_put_contents($this->dir . '/models/ta_search.json', json_encode(['key' => 'ta_search', 'label' => 'Search', 'fullText' => true]));
+        $this->assertTrue((new TypeRegistry($this->dir . '/models', classes: ['ta_search' => TypeActionsSearch::class]))->get('ta_search')->fullText, 'agreeing is fine');
+
+        file_put_contents($this->dir . '/models/ta_search.json', json_encode(['key' => 'ta_search', 'label' => 'Search', 'fullText' => false]));
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Type "ta_search" has "fullText": true on ' . TypeActionsSearch::class . ' and false in ta_search.json: set it in one place.');
+        new TypeRegistry($this->dir . '/models', classes: ['ta_search' => TypeActionsSearch::class]);
+    }
+
     public function test_an_adapter_is_refused_with_a_403_naming_the_type_and_action(): void
     {
         $this->model('faq', ['readonly' => true]);
@@ -273,4 +284,11 @@ final class TypeActionsPlain extends Model
 {
     #[Id] public string $uuid = '';
     #[Field] public string $body = '';
+}
+
+#[Entity(table: 'ta_search', type: 'ta_search', fullText: true)]
+final class TypeActionsSearch extends Model
+{
+    #[Id] public string $uuid = '';
+    #[Field] public string $title = '';
 }

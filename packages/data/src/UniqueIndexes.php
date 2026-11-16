@@ -11,6 +11,11 @@ namespace Preflow\Data;
  * whose values sit in one locale map); on a storage without this marker it checks every unique
  * field, under the type's lock where the storage has one (ExclusiveWrites).
  *
+ * A refused save leaves the caller's open transaction usable: the caller catches the
+ * UniqueViolation (a form shows it) and goes on writing in the same transaction. SQLite and
+ * MySQL undo only the failed statement; a database that aborts the whole transaction on a failed
+ * statement (PostgreSQL) needs a savepoint around the write inside an open transaction.
+ *
  * A marker: it adds no method. Claim it only when every unique index RecordTableSync asks for
  * exists and is enforced on save.
  *

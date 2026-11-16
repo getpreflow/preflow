@@ -1134,7 +1134,7 @@ finds a record when a word of the term equals the field's whole value, compared 
 (`LooseFields::wholeValue()`, `conditions()`).
 
 A plain column keeps its own collation in the query, so its indexes stay usable. `StorageDriverContract`
-pins the rule on every driver: its field kind `text` is a text field (`string` stays exact), and
+pins the rule on every driver: its field kind `text` is a text field (`exact`, called `string` before 0.78, is exact), and
 a store that cannot follow the rule says why in `textRuleMissing()`.
 
 **Servers without the collation** (MariaDB before 10.10, MySQL before 8.0): text columns stay
@@ -1328,7 +1328,7 @@ $def->assertAllows(TypeAction::Update);  // throws TypeActionRefused, a 403
 - **Checked at boot:** a value other than `true` or `false`, or `"readonly": true` together with
   `"creatable": true`, stops the boot naming the type and the option (with a boot manifest, when
   `preflow optimize` builds it). A model class sets them on `#[Entity]` or in its admin file; both
-  may set one only to the same value.
+  may set one only to the same value (so may `fullText`).
 
 ## Record titles and cross-type search (0.77)
 

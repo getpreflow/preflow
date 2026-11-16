@@ -119,9 +119,10 @@ final class ModelSchema
     }
 
     /**
-     * A class's #[Entity(readonly:, creatable:)] and its admin file's "readonly" / "creatable" agree:
-     * the file may add an option the class leaves at its default, never contradict one the class
-     * sets. Run for every class-backed key when TypeRegistry is built (at boot).
+     * A class's #[Entity(readonly:, creatable:, fullText:)] and its admin file's "readonly" /
+     * "creatable" / "fullText" agree: the file may add an option the class leaves at its default,
+     * never contradict one the class sets. Run for every class-backed key when TypeRegistry is
+     * built (at boot).
      *
      * @param array<string, mixed> $adminFile
      * @param class-string $modelClass
@@ -135,7 +136,11 @@ final class ModelSchema
         if ($entity === null) {
             return;
         }
-        $class = array_filter(['readonly' => $entity->readonly ? true : null, 'creatable' => $entity->creatable ? null : false], static fn (?bool $v): bool => $v !== null);
+        $class = array_filter([
+            'readonly' => $entity->readonly ? true : null,
+            'creatable' => $entity->creatable ? null : false,
+            'fullText' => $entity->fullText ? true : null,
+        ], static fn (?bool $v): bool => $v !== null);
         foreach ($class as $option => $value) {
             if (array_key_exists($option, $adminFile) && $adminFile[$option] !== $value) {
                 throw new \RuntimeException('Type "' . $key . '" has "' . $option . '": ' . var_export($value, true) . ' on ' . $modelClass

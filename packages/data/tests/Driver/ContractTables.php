@@ -17,7 +17,7 @@ use Preflow\Data\Schema\ColumnSpec;
  */
 trait ContractTables
 {
-    /** @param array<string, 'string'|'text'|'short_text'|'number'|'boolean'|'json'> $fields the id field first ('text', 'short_text': text fields, the rest exact) */
+    /** @param array<string, 'exact'|'text'|'short_text'|'number'|'boolean'|'json'> $fields the id field first ('text', 'short_text': text fields, the rest exact) */
     private static function createContractTable(PdoDriver $driver, string $type, array $fields, string $autoIdColumn): void
     {
         $idField = array_key_first($fields);
@@ -26,7 +26,7 @@ trait ContractTables
             $specs[] = new ColumnSpec($name, match ($kind) {
                 'number' => ColumnKind::Number,
                 'boolean' => ColumnKind::Boolean,
-                'string', 'text', 'json' => ColumnKind::Text,
+                'exact', 'text', 'json' => ColumnKind::Text,
                 'short_text' => ColumnKind::Short,
             }, text: in_array($kind, ['text', 'short_text'], true));
         }
