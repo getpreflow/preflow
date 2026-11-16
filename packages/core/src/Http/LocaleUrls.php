@@ -70,7 +70,10 @@ final readonly class LocaleUrls
         return '/' . $locale;
     }
 
-    /** '/de/faq'; '/de' for '/' or ''; '/faq' when the prefix is ''. $path is a path without prefix. */
+    /**
+     * '/de/faq'; '/de' for '/' or '' ('/de/' with homeSlash); '/' for the unprefixed root; '/faq'
+     * when the prefix is ''. $path is a path without prefix.
+     */
     public function path(string $locale, string $path): string
     {
         $path = trim($path, '/');

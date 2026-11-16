@@ -277,7 +277,9 @@ The redirect carries `Vary: Accept-Language, Cookie` and `Cache-Control: private
 shared cache keeps it. A bare page served without a redirect gets `Vary: Accept-Language, Cookie`
 too. The page cache still stores and serves it (the locale middleware adds the `Vary` outside the
 page cache and decides before it), so a visitor whose language differs still gets the 302.
-`/robots.txt`, `/sitemap.xml` and `/llms.txt` are never redirected (an exact match on the path, whether a route, a static file or nothing answers there). Search engines are sent the
+`/robots.txt`, `/sitemap.xml` and `/llms.txt` are never redirected (an exact match on the
+path, whether a route, a static file or nothing answers there), and they get no `Vary` header
+from this middleware. Search engines are sent the
 same way as people; `hreflang` and canonical links point at the prefixed addresses.
 
 **The switch endpoint.** `GET /--locale/{code}?to=/de/about` writes the cookie and answers `302`

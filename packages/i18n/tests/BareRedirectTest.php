@@ -356,11 +356,15 @@ final class BareRedirectTest extends TestCase
 
     public function test_well_known_files_are_never_language_redirected(): void
     {
-        foreach (['/robots.txt', '/sitemap.xml', '/llms.txt'] as $path) {
-            $this->handled = false;
-            $response = $this->dispatch($this->middleware(), $this->request($path, ['Accept-Language' => 'de']));
+        foreach ([true, false] as $pageAnswers) {
+            $mw = $this->middleware(pageExists: static fn (string $locale, string $path): bool => $pageAnswers);
+            foreach (['/robots.txt', '/sitemap.xml', '/llms.txt'] as $path) {
+                $this->handled = false;
+                $response = $this->dispatch($mw, $this->request($path, ['Accept-Language' => 'de']));
 
-            $this->assertServed($response);
+                $this->assertServed($response);
+                $this->assertFalse($response->hasHeader('Vary'), 'No Vary on the well-known files.');
+            }
         }
 
         $this->handled = false;
@@ -380,5 +384,35 @@ final class BareRedirectTest extends TestCase
         );
 
         $this->assertRedirect('/de/', $this->dispatch($mw, $this->request('/', ['Accept-Language' => 'de'])));
+    }
+
+    /** @return array{int, array<string, list<string>>, string} */
+    private static function full(ResponseInterface $r): array
+    {
+        return [$r->getStatusCode(), $r->getHeaders(), (string) $r->getBody()];
+    }
+
+    public function test_home_slash_off_answers_exactly_as_0_78_1(): void
+    {
+        $mw = $this->middleware(prefixDefault: false);
+        $redirect = static fn (string $to): array => [302, [
+            'Location' => [$to],
+            'Vary' => ['Accept-Language, Cookie'],
+            'Cache-Control' => ['private, no-store'],
+        ], ''];
+
+        $this->assertSame($redirect('/de'), self::full($this->dispatch($mw, $this->request('/', ['Accept-Language' => 'de']))));
+        $this->assertSame($redirect('/de/faq'), self::full($this->dispatch($mw, $this->request('/faq', ['Accept-Language' => 'de']))));
+
+        $served = $this->dispatch($mw, $this->request('/faq', ['Accept-Language' => 'en']));
+        $this->assertSame([200, ['Vary' => ['Accept-Language, Cookie']], ''], self::full($served));
+
+        $switch = $mw->process($this->request('/--locale/de'), $this->handler());
+        $this->assertSame([302, [
+            'Location' => ['/de'],
+            'Set-Cookie' => ['locale=de; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly'],
+            'Cache-Control' => ['private, no-store'],
+            'X-Robots-Tag' => ['noindex'],
+        ], ''], self::full($switch));
     }
 }
