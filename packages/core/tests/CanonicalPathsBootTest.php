@@ -8,6 +8,9 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Uri;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Routing\Redirect\AreaMode;
+use Preflow\Routing\Redirect\Redirect;
+use Preflow\Routing\Redirect\RedirectStore;
 use Psr\Http\Message\ResponseInterface;
 
 /** `canonical_paths` in config/routing.php: 301 to the clean path, before the locale prefix is read. */
@@ -90,5 +93,71 @@ final class CanonicalPathsBootTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('config/routing.php: canonical_paths must be true or false, got string.');
         $this->get('/');
+    }
+
+    /** A store holding /old-help (German) and the area /old-area, counting its hits. */
+    private function store(): RedirectStore
+    {
+        return new class implements RedirectStore {
+            /** @var list<string> */
+            public array $hits = [];
+
+            public function exact(string $path, string $locale): ?Redirect
+            {
+                return $path === '/old-help' && $locale === 'de'
+                    ? new Redirect('a', '/old-help', 'de', false, AreaMode::One, null, null, '/de/help', 301)
+                    : null;
+            }
+
+            public function areas(string $locale): array
+            {
+                return $locale === 'de' ? [new Redirect('b', '/old-area', 'de', true, AreaMode::Prefix, null, null, '/de/area', 302)] : [];
+            }
+
+            public function hit(Redirect $redirect, \DateTimeImmutable $at): void
+            {
+                $this->hits[] = $redirect->id;
+            }
+        };
+    }
+
+    public function test_an_untidy_address_with_an_entry_is_one_hop_with_a_store_bound_after_boot(): void
+    {
+        $this->routing("['canonical_paths' => true]");
+        $app = Application::create($this->dir);
+        $app->boot();
+        // Bound after boot, the way Folio's provider does: resolved when the request comes in.
+        $store = $this->store();
+        $app->container()->instance(RedirectStore::class, $store);
+
+        $one = $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/old-help/?x=1'));
+        $this->assertSame(301, $one->getStatusCode());
+        $this->assertSame('/de/help?x=1', $one->getHeaderLine('Location'));
+        $this->assertSame('public, max-age=86400', $one->getHeaderLine('Cache-Control'));
+
+        $area = $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/old-area/deep/'));
+        $this->assertSame(302, $area->getStatusCode());
+        $this->assertSame('/de/area/deep', $area->getHeaderLine('Location'));
+
+        $this->assertSame(['a', 'b'], $store->hits);
+
+        // No entry: the plain clean 301, as before.
+        $this->assertSame('/de/about', $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/about/'))->getHeaderLine('Location'));
+    }
+
+    public function test_home_slash_with_canonical_paths(): void
+    {
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'url_strategy'=>'prefix','home_slash'=>true];\n");
+        $this->routing("['canonical_paths' => true]");
+
+        $this->assertSame('/de/', $this->get('/de')->getHeaderLine('Location'));
+        $this->assertSame(301, $this->get('/de')->getStatusCode());
+        $this->assertSame(200, $this->get('/de/')->getStatusCode());
+        $this->assertSame('/de/about', $this->get('/de/about/')->getHeaderLine('Location'));
+
+        // Without canonical_paths both spellings answer.
+        $this->routing("['canonical_paths' => false]");
+        $this->assertSame(200, $this->get('/de')->getStatusCode());
+        $this->assertSame(200, $this->get('/de/')->getStatusCode());
     }
 }

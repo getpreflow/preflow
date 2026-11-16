@@ -6,7 +6,11 @@ namespace Preflow\Routing;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
+use Preflow\Routing\Redirect\Redirect;
+use Preflow\Routing\Redirect\RedirectPath;
+use Preflow\Routing\Redirect\RedirectResolver;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -30,6 +34,11 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   '/--component' and '/--locale'), or whose second does behind a locale prefix
  *   ('/de/--component/x'), whether or not it is registered as non-public.
  * - Internal renders (InternalRender::is) are left alone: the app asked for that exact path.
+ * - With a redirect entry for the clean path (exact or area, in the locale the address names) the
+ *   answer is that entry's status and target in one response, not the clean 301 and then the
+ *   entry's; the query is kept and the same Location rules apply. An entry that points back at
+ *   the clean address itself, or at a protocol-relative Location, is skipped: the clean 301 runs.
+ * - With LocaleUrls::$homeSlash a prefixed locale's root keeps its slash ('/de' becomes '/de/').
  * - The 301 depends on the URL alone (no cookie, no Vary), so caches may keep it per URL.
  *
  * Register it first in the pipeline (prepend), before any middleware that reads the path,
@@ -37,7 +46,19 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class CanonicalPathMiddleware implements MiddlewareInterface
 {
-    public function __construct(private readonly ?NonPublicPaths $nonPublic = null) {}
+    private const CACHE_CONTROL = 'public, max-age=86400';
+
+    /**
+     * @param RedirectResolver|(\Closure(): ?RedirectResolver)|null $redirects the redirect lookup; a closure
+     *        is asked on every request, because the store may be bound after boot
+     * @param (\Closure(Redirect): void)|null $hit counts a redirect hit (not called for internal renders)
+     */
+    public function __construct(
+        private readonly ?NonPublicPaths $nonPublic = null,
+        private readonly RedirectResolver|\Closure|null $redirects = null,
+        private readonly ?LocaleUrls $urls = null,
+        private readonly ?\Closure $hit = null,
+    ) {}
 
     /**
      * Whether config/routing.php turns canonical paths on. Default false.
@@ -64,8 +85,11 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
         return $value;
     }
 
-    /** Repeated slashes collapsed, trailing slash dropped (root stays '/'). */
-    public static function canonical(string $path): string
+    /**
+     * Repeated slashes collapsed, trailing slash dropped (root stays '/'). With $urls whose
+     * homeSlash is on, a prefixed locale's root keeps its slash ('/de/').
+     */
+    public static function canonical(string $path, ?LocaleUrls $urls = null): string
     {
         $path = preg_replace('#/{2,}#', '/', $path) ?? $path;
         if ($path === '') {
@@ -73,8 +97,15 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
         }
 
         $trimmed = rtrim($path, "/");
+        if ($trimmed === "") {
+            return "/";
+        }
 
-        return $trimmed === "" ? "/" : $trimmed;
+        if ($urls !== null && $urls->homeSlash && $urls->isHome($trimmed . '/')) {
+            return $trimmed . '/';
+        }
+
+        return $trimmed;
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -94,7 +125,7 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
 
         // $path starts with '/' and canonical() collapses every run of slashes, so $canonical
         // starts with exactly one '/': the Location below can never name another host.
-        $canonical = self::canonical($path);
+        $canonical = self::canonical($path, $this->urls);
         if ($canonical === $path || self::isEndpoint($canonical)) {
             return $handler->handle($request);
         }
@@ -103,7 +134,66 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        return new Response(301, ['Location' => $canonical . ($query !== '' ? '?' . $query : '')]);
+        return $this->oneHop($canonical, $query) ?? new Response(301, ['Location' => $canonical . ($query !== '' ? '?' . $query : '')]);
+    }
+
+    /**
+     * The redirect entry's answer for the clean path, or null when there is none (or it cannot
+     * be used safely): the caller then answers the plain clean 301. A failing store is no error.
+     */
+    private function oneHop(string $canonical, string $query): ?ResponseInterface
+    {
+        $resolver = $this->redirects instanceof \Closure ? ($this->redirects)() : $this->redirects;
+        if ($resolver === null || $this->urls === null) {
+            return null;
+        }
+
+        $locale = $this->urls->localeOf($canonical) ?? $this->urls->default;
+        $path = RedirectPath::normalize($this->urls->strip($canonical));
+        if ($path === null) {
+            return null;
+        }
+
+        try {
+            [$entry, $rest] = $resolver->find($path, $locale);
+            $url = $entry === null ? null : $resolver->url($entry, $rest, $locale);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($entry === null || $url === null) {
+            return null;
+        }
+
+        $location = $query === '' ? $url : RedirectResolver::withQuery($url, $query);
+
+        // A protocol-relative Location would send the visitor to another host; a target equal
+        // to the clean address would loop (RedirectMiddleware's visited-address rule).
+        if (str_starts_with($location, '//') || str_starts_with($location, '/\\') || self::isAddress($url, $canonical)) {
+            return null;
+        }
+
+        if ($this->hit !== null) {
+            try {
+                ($this->hit)($entry);
+            } catch (\Throwable) {
+                // a hit that cannot be counted never blocks the redirect
+            }
+        }
+
+        return new Response($entry->status, ['Location' => $location, 'Cache-Control' => self::CACHE_CONTROL]);
+    }
+
+    private static function isAddress(string $url, string $canonical): bool
+    {
+        $parts = parse_url($url);
+        if ($parts === false || isset($parts['host'])) {
+            return false;
+        }
+
+        $target = RedirectPath::normalize($parts['path'] ?? '/');
+
+        return $target !== null && $target === RedirectPath::normalize($canonical);
     }
 
     /**

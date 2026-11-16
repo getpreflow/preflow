@@ -4,13 +4,20 @@ declare(strict_types=1);
 
 namespace Preflow\Routing\Tests;
 
+require_once __DIR__ . '/Redirect/Fixtures/InMemoryRedirectStore.php';
+
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Routing\CanonicalPathMiddleware;
+use Preflow\Routing\Redirect\AreaMode;
+use Preflow\Routing\Redirect\Redirect;
+use Preflow\Routing\Redirect\RedirectResolver;
+use Preflow\Routing\Tests\Redirect\Fixtures\InMemoryRedirectStore;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UriInterface;
@@ -231,5 +238,204 @@ final class CanonicalPathMiddlewareTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
         CanonicalPathMiddleware::enabled('nope');
+    }
+
+    // ---- one hop with a redirect entry, and the language home's slash (0.78.2) ----
+
+    private function urls(bool $homeSlash = false): LocaleUrls
+    {
+        return new LocaleUrls(['en', 'de'], 'en', true, false, false, $homeSlash);
+    }
+
+    private function entry(string $path, string $locale, string $url, bool $area = false, int $status = 301, AreaMode $mode = AreaMode::One): Redirect
+    {
+        return new Redirect(Redirect::id($area ? 'area' : 'exact', $locale, $path), $path, $locale, $area, $mode, null, null, $url, $status);
+    }
+
+    private function sendWith(string $uri, ?InMemoryRedirectStore $store, ?LocaleUrls $urls, ?ServerRequestInterface $base = null): ResponseInterface
+    {
+        $this->handled = 0;
+        $handler = new class ($this) implements RequestHandlerInterface {
+            public function __construct(private readonly CanonicalPathMiddlewareTest $t) {}
+
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                $this->t->markHandled();
+
+                return new Response(200, [], 'ok');
+            }
+        };
+        $middleware = new CanonicalPathMiddleware(
+            null,
+            // a closure: the store may be bound after boot
+            $store === null ? null : static fn (): RedirectResolver => new RedirectResolver($store),
+            $urls,
+            $store === null ? null : static fn (Redirect $entry) => $store->hit($entry, new \DateTimeImmutable()),
+        );
+        $request = $base ?? $this->request('GET', $uri);
+
+        return $middleware->process($request, $handler);
+    }
+
+    public function test_an_untidy_address_with_an_entry_answers_in_one_hop(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help')]);
+
+        $r = $this->sendWith('/de/old-help/?x=1', $store, $this->urls());
+
+        $this->assertSame(301, $r->getStatusCode());
+        $this->assertSame('/de/help?x=1', $r->getHeaderLine('Location'));
+        $this->assertSame('public, max-age=86400', $r->getHeaderLine('Cache-Control'));
+        $this->assertSame(0, $this->handled);
+        $this->assertCount(1, $store->hits);
+    }
+
+    public function test_the_entry_keeps_its_status(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help', status: 302)]);
+
+        $this->assertSame(302, $this->sendWith('/de/old-help/', $store, $this->urls())->getStatusCode());
+    }
+
+    public function test_an_area_entry_answers_in_one_hop(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help', area: true, mode: AreaMode::Prefix)]);
+
+        $r = $this->sendWith('/de/old-help/page/', $store, $this->urls());
+
+        $this->assertSame(301, $r->getStatusCode());
+        $this->assertSame('/de/help/page', $r->getHeaderLine('Location'));
+        $this->assertCount(1, $store->hits);
+    }
+
+    public function test_an_unprefixed_address_uses_the_default_locale(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'en', '/help')]);
+
+        $this->assertSame('/help', $this->sendWith('/old-help/', $store, $this->urls())->getHeaderLine('Location'));
+    }
+
+    public function test_the_entry_is_looked_up_in_the_locale_the_address_names(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'en', '/help')]);
+
+        $r = $this->sendWith('/de/old-help/', $store, $this->urls());
+
+        $this->assertSame('/de/old-help', $r->getHeaderLine('Location'), 'no German entry: the clean 301');
+        $this->assertSame([], $store->hits);
+    }
+
+    public function test_without_an_entry_it_is_the_clean_301(): void
+    {
+        $store = new InMemoryRedirectStore([]);
+
+        $r = $this->sendWith('/de/faq/', $store, $this->urls());
+
+        $this->assertSame(301, $r->getStatusCode());
+        $this->assertSame('/de/faq', $r->getHeaderLine('Location'));
+        $this->assertFalse($r->hasHeader('Cache-Control'));
+    }
+
+    public function test_a_clean_address_with_an_entry_passes_on(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help')]);
+
+        $this->assertSame(200, $this->sendWith('/de/old-help', $store, $this->urls())->getStatusCode());
+        $this->assertSame([], $store->hits);
+    }
+
+    public function test_an_internal_render_counts_no_hit(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help')]);
+        $base = InternalRender::mark($this->request('GET', '/de/old-help/'));
+
+        $r = $this->sendWith('/de/old-help/', $store, $this->urls(), $base);
+
+        $this->assertSame(200, $r->getStatusCode());
+        $this->assertSame([], $store->hits);
+    }
+
+    public function test_an_entry_pointing_at_the_clean_address_keeps_the_clean_301(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/old-help')]);
+
+        $r = $this->sendWith('/de/old-help/', $store, $this->urls());
+
+        $this->assertSame('/de/old-help', $r->getHeaderLine('Location'));
+        $this->assertSame([], $store->hits);
+    }
+
+    public function test_a_protocol_relative_target_is_never_used(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '//evil.example/x')]);
+
+        $r = $this->sendWith('/de/old-help/', $store, $this->urls());
+
+        $this->assertSame('/de/old-help', $r->getHeaderLine('Location'));
+    }
+
+    public function test_a_failing_store_falls_back_to_the_clean_301(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help')]);
+        $store->fail = true;
+
+        $this->assertSame('/de/old-help', $this->sendWith('/de/old-help/', $store, $this->urls())->getHeaderLine('Location'));
+    }
+
+    public function test_a_resolver_given_directly_works_too(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'en', '/help')]);
+        $middleware = new CanonicalPathMiddleware(null, new RedirectResolver($store), $this->urls());
+
+        $r = $middleware->process($this->request('GET', '/old-help/'), new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return new Response(200);
+            }
+        });
+
+        $this->assertSame('/help', $r->getHeaderLine('Location'));
+    }
+
+    public function test_home_slash_keeps_the_slash_of_a_locale_root(): void
+    {
+        $urls = $this->urls(homeSlash: true);
+
+        $this->assertSame('/de/', $this->sendWith('/de', null, $urls)->getHeaderLine('Location'));
+        $this->assertSame(301, $this->sendWith('/de', null, $urls)->getStatusCode());
+        $this->assertSame('/de/', $this->sendWith('/de//', null, $urls)->getHeaderLine('Location'));
+        $this->assertSame(200, $this->sendWith('/de/', null, $urls)->getStatusCode());
+        $this->assertSame(200, $this->sendWith('/', null, $urls)->getStatusCode());
+        $faq = $this->sendWith('/de/faq/', null, $urls);
+        $this->assertSame(301, $faq->getStatusCode());
+        $this->assertSame('/de/faq', $faq->getHeaderLine('Location'));
+    }
+
+    public function test_without_home_slash_the_locale_root_has_no_slash(): void
+    {
+        $urls = $this->urls();
+
+        $this->assertSame('/de', $this->sendWith('/de/', null, $urls)->getHeaderLine('Location'));
+        $this->assertSame(200, $this->sendWith('/de', null, $urls)->getStatusCode());
+    }
+
+    public function test_the_same_requests_answer_alike_without_the_new_options(): void
+    {
+        $plain = new CanonicalPathMiddleware();
+        $wired = new CanonicalPathMiddleware(null, static fn (): RedirectResolver => new RedirectResolver(new InMemoryRedirectStore([])), $this->urls(), static function (): void {});
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return new Response(200, ['X-A' => 'b'], 'ok');
+            }
+        };
+
+        foreach (['/', '/faq', '/faq/', '//en//faq', '/de/', '/de', '/de/faq/?x=1', '/--locale/de/', '/a/./b/', '/x%2Fy/'] as $uri) {
+            $a = $plain->process($this->request('GET', $uri), $handler);
+            $b = $wired->process($this->request('GET', $uri), $handler);
+            $this->assertSame($a->getStatusCode(), $b->getStatusCode(), $uri);
+            $this->assertSame($a->getHeaders(), $b->getHeaders(), $uri);
+            $this->assertSame((string) $a->getBody(), (string) $b->getBody(), $uri);
+        }
     }
 }

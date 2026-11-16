@@ -24,6 +24,8 @@ final class RedirectMiddleware implements MiddlewareInterface
 {
     private const CACHE_CONTROL = 'public, max-age=86400';
 
+    private readonly RedirectResolver $resolver;
+
     /**
      * @param \Closure(): \DateTimeImmutable $now
      * @param (\Closure(string): void)|null  $warn
@@ -32,7 +34,7 @@ final class RedirectMiddleware implements MiddlewareInterface
      */
     public function __construct(
         private readonly RedirectStore $store,
-        private readonly ?RedirectTargets $targets,
+        ?RedirectTargets $targets,
         private readonly ?NotFoundLog $log,
         private readonly NonPublicPaths $nonPublic,
         private readonly NotFoundFilter $filter,
@@ -40,7 +42,9 @@ final class RedirectMiddleware implements MiddlewareInterface
         private readonly \Closure $now,
         private readonly ?\Closure $warn = null,
         private readonly ?\Closure $urlPrefix = null,
-    ) {}
+    ) {
+        $this->resolver = new RedirectResolver($store, $targets);
+    }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
@@ -71,7 +75,7 @@ final class RedirectMiddleware implements MiddlewareInterface
         $internal = InternalRender::is($request);
 
         try {
-            [$entry, $rest] = $this->lookup($path, $locale);
+            [$entry, $rest] = $this->resolver->find($path, $locale);
         } catch (\Throwable $e) {
             $this->warn('Redirect lookup failed: ' . $e->getMessage());
             throw $notFound;
@@ -85,7 +89,7 @@ final class RedirectMiddleware implements MiddlewareInterface
         }
 
         try {
-            $url = $this->targetUrl($entry, $rest, $locale);
+            $url = $this->resolver->url($entry, $rest, $locale);
         } catch (\Throwable $e) {
             $this->warn('Redirect target lookup failed: ' . $e->getMessage());
             throw $notFound;
@@ -99,7 +103,7 @@ final class RedirectMiddleware implements MiddlewareInterface
             throw $notFound;
         }
 
-        $location = $this->withQuery($url, $request->getUri()->getQuery());
+        $location = RedirectResolver::withQuery($url, $request->getUri()->getQuery());
 
         // A protocol-relative Location would send the visitor to another host.
         if (str_starts_with($location, '//') || str_starts_with($location, '/\\')) {
@@ -110,48 +114,6 @@ final class RedirectMiddleware implements MiddlewareInterface
             'Location' => $location,
             'Cache-Control' => self::CACHE_CONTROL,
         ]);
-    }
-
-    /** @return array{?Redirect, string} the entry and, for an area, the rest of the path below it */
-    private function lookup(string $path, string $locale): array
-    {
-        $exact = $this->store->exact($path, $locale);
-        if ($exact !== null) {
-            return [$exact, ''];
-        }
-
-        $best = null;
-        $bestRest = '';
-
-        foreach ($this->store->areas($locale) as $area) {
-            $rest = RedirectPath::under($path, $area->path);
-
-            if ($rest !== null && ($best === null || strlen($area->path) > strlen($best->path))) {
-                $best = $area;
-                $bestRest = $rest;
-            }
-        }
-
-        return [$best, $bestRest];
-    }
-
-    private function targetUrl(Redirect $entry, string $rest, string $locale): ?string
-    {
-        if ($entry->targetUrl !== null && $entry->targetUrl !== '') {
-            if ($entry->area && $entry->mode === AreaMode::Prefix) {
-                $url = rtrim($entry->targetUrl, '/') . $rest;
-
-                return $url === '' ? '/' : $url;
-            }
-
-            return $entry->targetUrl;
-        }
-
-        if ($this->targets === null || $entry->targetType === null || $entry->targetId === null) {
-            return null;
-        }
-
-        return $this->targets->url($entry->targetType, $entry->targetId, $entry->locale !== '' ? $entry->locale : $locale);
     }
 
     /** Whether the URL points at the address the visitor asked for (locale prefix included). */
@@ -171,22 +133,6 @@ final class RedirectMiddleware implements MiddlewareInterface
         $target = RedirectPath::normalize($parts['path'] ?? '/');
 
         return $visited !== null && $visited === $target;
-    }
-
-    private function withQuery(string $url, string $query): string
-    {
-        if ($query === '') {
-            return $url;
-        }
-
-        $fragment = '';
-        $hash = strpos($url, '#');
-        if ($hash !== false) {
-            $fragment = substr($url, $hash);
-            $url = substr($url, 0, $hash);
-        }
-
-        return $url . (str_contains($url, '?') ? '&' : '?') . $query . $fragment;
     }
 
     private function hit(Redirect $entry): void

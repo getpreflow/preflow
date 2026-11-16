@@ -2671,8 +2671,34 @@ final class Application
             return;
         }
 
+        // A clean path with a redirect entry is answered in one hop. The store may be bound after
+        // boot (a provider of an admin package), so the resolver and the hit are looked up per request.
+        $container = $this->container;
+        $store = static function () use ($container): ?\Preflow\Routing\Redirect\RedirectStore {
+            return class_exists(\Preflow\Routing\Redirect\RedirectResolver::class)
+                && $container->bound(\Preflow\Routing\Redirect\RedirectStore::class)
+                    ? $container->get(\Preflow\Routing\Redirect\RedirectStore::class)
+                    : null;
+        };
+
         $this->pipeline->prepend(new \Preflow\Routing\CanonicalPathMiddleware(
-            $this->container->get(\Preflow\Core\Http\NonPublicPaths::class),
+            $container->get(\Preflow\Core\Http\NonPublicPaths::class),
+            static function () use ($container, $store): ?\Preflow\Routing\Redirect\RedirectResolver {
+                if ($store() === null) {
+                    return null;
+                }
+
+                return new \Preflow\Routing\Redirect\RedirectResolver(
+                    $container->get(\Preflow\Routing\Redirect\RedirectStore::class),
+                    $container->bound(\Preflow\Routing\Redirect\RedirectTargets::class)
+                        ? $container->get(\Preflow\Routing\Redirect\RedirectTargets::class)
+                        : null,
+                );
+            },
+            $container->get(\Preflow\Core\Http\LocaleUrls::class),
+            static function (\Preflow\Routing\Redirect\Redirect $entry) use ($store): void {
+                $store()?->hit($entry, new \DateTimeImmutable());
+            },
         ));
     }
 

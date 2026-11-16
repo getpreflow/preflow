@@ -238,7 +238,7 @@ return [
 
 Then a GET or HEAD of `/faq/` or `//en//faq` answers 301 to `/faq` or `/en/faq`, keeping the
 query string. It runs first in the pipeline, before the locale prefix is read, so
-`//de//about/` reaches `/de/about` in one hop; a locale's home is `/de`, never `/de/`. A POST
+`//de//about/` reaches `/de/about` in one hop; a locale's home is `/de`, never `/de/` (unless `home_slash` is on, below). A POST
 (or any other method) is never redirected. Left alone as well: admin, API and component paths
 (`NonPublicPaths`), every path whose first segment starts with `--` (framework endpoints such as
 `/--component` and `/--locale`) or whose second does behind a locale prefix
@@ -249,6 +249,19 @@ The 301 depends on the URL alone (no cookie, no `Vary`), so caches may keep it. 
 before the security headers middleware, as the SEO and GEO files are, so it carries no
 `Strict-Transport-Security` or CSP: send HSTS from the web server if the redirect needs it. A
 value other than `true` or `false` stops the boot.
+
+**One hop with a redirect entry.** When the clean path has a redirect entry (see below: exact,
+else the longest area, in the language the address names, the default language when it names
+none), an untidy address answers with that entry's status and target in one response: `/de/old-help/`
+with an entry `/old-help` (German) to `/de/help` is one `301 /de/help`, not a clean-path 301 and
+then the entry's. The visit counts one hit and the query string is kept. With no entry the clean
+301 is answered as before. An entry that points back at the clean address itself is skipped (no
+loop). Both are found per request, so a redirect store bound after boot (Folio's) takes part.
+
+**A language's home with a slash** (since 0.78.2). With `'home_slash' => true` in `config/i18n.php`
+(see preflow/i18n) a prefixed language's home is `/de/`. Clean paths then keep that one slash
+(`/de` answers `301 /de/`, `/de/` answers 200); every other path stays without a trailing slash
+(`/de/faq/` answers `301 /de/faq`). Without clean paths both `/de` and `/de/` answer.
 
 **Trailing slashes in links and routes.** With clean paths on, a link that ends in a slash
 (`href="/faq/"`) costs every visitor a 301 hop, and a route declared with a trailing slash is
