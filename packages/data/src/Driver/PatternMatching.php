@@ -20,7 +20,7 @@ interface PatternMatching
      * SQL matching $column against the pattern, with exactly one "?" placeholder, which the
      * caller binds to $pattern. % matches any text, _ one character, $escape (one character, or
      * null for none) takes the next one literally; text is compared by the text-matching rule
-     * (StorageDriver: case and width ignored, accents count). $not negates it (NULL stays
+     * (StorageDriver: case, accents and width ignored, since 0.78.1). $not negates it (NULL stays
      * NULL, as with NOT LIKE).
      */
     public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string;

@@ -33,19 +33,35 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
 
     private ?string $matchCollation = null;
 
+    /** false until searchCollation() asked the server (or the constructor was told) */
+    private bool $searchCollationKnown = false;
+
+    private ?string $searchCollation = null;
+
     /**
      * @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query.
-     * @param string|false|null $matchCollation The collation LIKE and translatable text values
-     *     compare with: null asks the server (matchCollation(), once, on first use), false takes
-     *     the LOWER() fallback, a string names it.
+     * @param string|false|null $matchCollation The collation translatable text values compare
+     *     with: null asks the server (matchCollation(), once, on first use), false takes none, a
+     *     string names it.
+     * @param string|false|null $searchCollation The collation LIKE, NOT LIKE, CONTAINS and
+     *     search() compare with (@since 0.78.1): null asks the server (searchCollation(), once, on
+     *     first use), false takes none (LIKE then compares in $matchCollation, without one either
+     *     it takes the LOWER() fallback), a string names it.
      */
-    public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null, string|false|null $matchCollation = null)
+    public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null, string|false|null $matchCollation = null, string|false|null $searchCollation = null)
     {
         if ($matchCollation !== null) {
             $this->matchCollation = $matchCollation === false ? null : $matchCollation;
             $this->collationKnown = true;
         }
-        $dialect = new MysqlDialect($this->collationKnown ? $this->matchCollation : $this->matchCollation(...));
+        if ($searchCollation !== null) {
+            $this->searchCollation = $searchCollation === false ? null : $searchCollation;
+            $this->searchCollationKnown = true;
+        }
+        $dialect = new MysqlDialect(
+            $this->collationKnown ? $this->matchCollation : $this->matchCollation(...),
+            $this->searchCollationKnown ? $this->searchCollation : $this->searchCollation(...),
+        );
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect, $this->columnFacts(...)), $collector);
     }
 
@@ -79,11 +95,10 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
     }
 
     /**
-     * The text rule's collation (one of MysqlDialect::MATCH_COLLATIONS): LIKE, NOT LIKE, CONTAINS
-     * and search() compare with it, as the columns of text fields do (MysqlGrammar names the same
-     * one); null when the server has none: LIKE then lowers both sides and the columns stay exact
-     * (see the data README, "Text matching" and "Exact comparisons"). The server is probed once
-     * per connection (MysqlGrammar::on()).
+     * The text rule's collation (one of MysqlDialect::MATCH_COLLATIONS): translatable text values
+     * compare with it, as the columns of text fields do (MysqlGrammar names the same one); null
+     * when the server has none: the columns then stay exact (see the data README, "Exact
+     * comparisons"). The server is probed once per connection (MysqlGrammar::on()).
      *
      * @since 0.78
      */
@@ -95,6 +110,25 @@ final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColu
         }
 
         return $this->matchCollation;
+    }
+
+    /**
+     * The matching rule's collation (one of MysqlDialect::SEARCH_COLLATIONS): LIKE, NOT LIKE,
+     * CONTAINS and search() compare with it, ignoring case and accents; null when the server has
+     * none: LIKE then compares in matchCollation() (accents count), without that either it lowers
+     * both sides (see the data README, "Text matching"). The server is probed once per connection
+     * (MysqlGrammar::on()).
+     *
+     * @since 0.78.1
+     */
+    public function searchCollation(): ?string
+    {
+        if (!$this->searchCollationKnown) {
+            $this->searchCollation = (new MysqlGrammar())->on($this->pdo())->searchCollation();
+            $this->searchCollationKnown = true;
+        }
+
+        return $this->searchCollation;
     }
 
     protected function configure(\PDO $pdo): void

@@ -250,7 +250,7 @@ final class SearchLooseTest extends TestCase
     {
         $dm = $this->dm($g, $d);
 
-        foreach (['%', '_', "'", '"', '!', 'ü'] as $word) {
+        foreach (['%', '_', "'", '"', '!', 'ß'] as $word) { // not ü: it finds every u (accents are ignored since 0.78.1)
             $this->assertSame([], $this->ids($dm->queryType('game')->searchLoose($word)), $word);
         }
     }

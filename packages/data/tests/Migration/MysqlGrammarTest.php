@@ -203,17 +203,33 @@ final class MysqlGrammarTest extends TestCase
 
     public function test_probe_prefers_the_nopad_collation(): void
     {
-        $both = new FakeMysqlPdo(['utf8mb4_0900_as_ci', 'utf8mb4_uca1400_nopad_as_ci']);
-        $this->assertSame('utf8mb4_uca1400_nopad_as_ci', (new MysqlGrammar())->on($both)->textCollation());
-        $this->assertSame(['utf8mb4_uca1400_nopad_as_ci'], $both->probed, 'the first accepted one ends the probe');
+        $both = new FakeMysqlPdo(['utf8mb4_0900_as_ci', 'utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_0900_ai_ci', 'utf8mb4_uca1400_nopad_ai_ci']);
+        $bound = (new MysqlGrammar())->on($both);
+        $this->assertSame('utf8mb4_uca1400_nopad_as_ci', $bound->textCollation());
+        $this->assertSame('utf8mb4_uca1400_nopad_ai_ci', $bound->searchCollation());
+        $this->assertSame(['utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_uca1400_nopad_ai_ci'], $both->probed, 'the first accepted one ends each probe');
         (new MysqlGrammar())->on($both);
-        $this->assertCount(1, $both->probed, 'probed once per connection');
+        $this->assertCount(2, $both->probed, 'probed once per connection');
 
         $old = (new MysqlGrammar())->on(new FakeMysqlPdo([]));
         $this->assertNull($old->textCollation(), 'an old server: none');
         $this->assertSame('LONGTEXT COLLATE utf8mb4_bin', $old->textColumnType(ColumnKind::Text), 'its text columns stay exact');
         $this->assertSame((new MysqlGrammar())->recordColumnType(ColumnKind::Short, 80), $old->textColumnType(ColumnKind::Short, 80));
         $this->assertSame('VARCHAR(255)', $old->textType('string'));
+    }
+
+    /** @since 0.78.1 */
+    public function test_the_search_collation_is_probed_apart_and_never_named_by_a_column(): void
+    {
+        $mysql = (new MysqlGrammar())->on(new FakeMysqlPdo(['utf8mb4_0900_as_ci', 'utf8mb4_0900_ai_ci']));
+        $this->assertSame('utf8mb4_0900_ai_ci', $mysql->searchCollation());
+        $this->assertSame('LONGTEXT COLLATE utf8mb4_0900_as_ci', $mysql->textColumnType(ColumnKind::Text));
+
+        $none = (new MysqlGrammar())->on(new FakeMysqlPdo(['utf8mb4_0900_as_ci']));
+        $this->assertNull($none->searchCollation(), 'a server without one');
+        $this->assertSame('utf8mb4_0900_as_ci', $none->textCollation());
+        $this->assertNull((new MysqlGrammar())->searchCollation(), 'an unbound grammar has none');
+        $this->assertNull((new MysqlGrammar(null, []))->on(new FakeMysqlPdo(['utf8mb4_0900_ai_ci']))->searchCollation(), '[] binds to none');
     }
 
     public function test_a_failure_other_than_an_unknown_collation_is_not_swallowed(): void

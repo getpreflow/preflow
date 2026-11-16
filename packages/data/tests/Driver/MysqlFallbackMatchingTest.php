@@ -13,12 +13,13 @@ use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Query;
 use Preflow\Data\Tests\Text\CollationProbe;
+use Preflow\Data\Text\TextMatch;
 use Preflow\Testing\MysqlTestDatabase;
 
 /**
- * The LOWER() fallback a MySQL/MariaDB server without an accent-sensitive, case-insensitive
- * collation gets (`composer test:mysql`): it follows the rule but for the differences the data
- * README lists.
+ * The LOWER() fallback a MySQL/MariaDB server without the search and text collations gets
+ * (`composer test:mysql`): it follows the matching rule but for the differences the data README
+ * lists, the first of which is that accents count.
  */
 #[Group('mysql')]
 final class MysqlFallbackMatchingTest extends TestCase
@@ -31,7 +32,7 @@ final class MysqlFallbackMatchingTest extends TestCase
         $this->pdo = MysqlTestDatabase::pdo();
         $this->pdo->exec('DROP TABLE IF EXISTS fallback_words');
         $this->pdo->exec('CREATE TABLE fallback_words (uuid VARCHAR(36) PRIMARY KEY, title VARCHAR(255))');
-        $this->driver = new MysqlDriver($this->pdo, matchCollation: false);
+        $this->driver = new MysqlDriver($this->pdo, matchCollation: false, searchCollation: false);
         foreach (['u' => 'Über uns', 'e' => 'ÉTÉ', 's' => 'Straße', 't' => 'İstanbul', 'x' => "\u{212A}elvin", 'l' => 'Kelvin', 'f' => "\u{017F}uper"] as $id => $title) {
             $this->driver->save('fallback_words', $id, ['uuid' => $id, 'title' => $title]);
         }
@@ -47,6 +48,7 @@ final class MysqlFallbackMatchingTest extends TestCase
     public function test_the_fallback_ignores_case_and_respects_accents(): void
     {
         $this->assertNull($this->driver->matchCollation());
+        $this->assertNull($this->driver->searchCollation());
         $this->assertSame(['u'], $this->ids('%über%'));
         $this->assertSame(['u'], $this->ids('%ÜBER%'));
         $this->assertSame([], $this->ids('%uber%'), 'accents count');
@@ -71,18 +73,18 @@ final class MysqlFallbackMatchingTest extends TestCase
     {
         $probe = new CollationProbe($this->pdo);
         $version = $probe->version();
-        $table = require __DIR__ . '/../../src/Text/fold-table.php';
-        $pairs = $probe->candidatePairs(CollationProbe::codePoints(), $table, (new MysqlGrammar())->on($this->pdo)->textCollation());
+        $table = require __DIR__ . '/../../src/Text/search-fold-table.php';
+        $pairs = $probe->candidatePairs(CollationProbe::codePoints(), $table, (new MysqlGrammar())->on($this->pdo)->searchCollation());
 
         $kinds = [];
         $unexplained = [];
         foreach ($probe->disagreements($pairs, new MysqlDialect(null)) as $disagreement) {
             [$a, $b, $server] = $disagreement;
             $kind = match (true) {
+                mb_ord($a, 'UTF-8') > 0xFFFF && mb_ord($b, 'UTF-8') > 0xFFFF => '𐐀',
+                !$server && TextMatch::fold($a) !== TextMatch::fold($b) => 'uber', // accents and other marks count, as in "="
                 !$server => 'ａ', // only case is lowered: width, compatibility and other equal forms stay apart
-                $server && in_array('İ', [$a, $b], true) => 'İstanbul',
-                $server && in_array('ẞ', [$a, $b], true) && in_array('ß', [$a, $b], true) => 'ẞ',
-                $server && mb_ord($a, 'UTF-8') > 0xFFFF && mb_ord($b, 'UTF-8') > 0xFFFF => '𐐀',
+                in_array('ẞ', [$a, $b], true) && in_array('ß', [$a, $b], true) => 'ẞ',
                 default => null,
             };
             if ($kind === null) {
@@ -94,7 +96,7 @@ final class MysqlFallbackMatchingTest extends TestCase
 
         $this->assertSame([], array_slice($unexplained, 0, 50), "The LOWER() fallback on {$version} differs in a way the data README does not list; add it.");
         $readme = (string) file_get_contents(__DIR__ . '/../../README.md');
-        $this->assertSame(1, preg_match('/^#### Without an accent-sensitive collation\n(.*?)(?=^#)/ms', $readme, $m), 'the README has the fallback section');
+        $this->assertSame(1, preg_match('/^#### Without the search and text collations\n(.*?)(?=^#)/ms', $readme, $m), 'the README has the fallback section');
         $bullets = array_values(array_filter(explode("\n", $m[1]), static fn (string $line): bool => str_starts_with($line, '- ')));
         foreach (array_keys($kinds) as $marker) {
             $this->assertCount(1, array_filter($bullets, static fn (string $b): bool => str_contains($b, (string) $marker)), "The README lists the difference {$marker} (found on {$version}), once.");

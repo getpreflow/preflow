@@ -213,6 +213,12 @@ final class QueryBuilder
         return $this;
     }
 
+    /**
+     * Records where one of $fields (null: the type's searchable fields) holds $term, ignoring
+     * case and accents (the matching rule, StorageDriver; since 0.78.1).
+     *
+     * @param list<string>|null $fields
+     */
     public function search(string $term, ?array $fields = null): self
     {
         $this->filters++;
@@ -226,8 +232,9 @@ final class QueryBuilder
 
     /**
      * Loose search: the term is split on whitespace, every word must match
-     * (AND), a word matches as a case-insensitive substring of any text field
-     * or, one level deep, of the label or text fields of a related record.
+     * (AND), a word matches as a substring of any text field or, one level
+     * deep, of the label or text fields of a related record, ignoring case and
+     * accents (the matching rule, StorageDriver; since 0.78.1: "uber" finds "Über").
      *
      * Repeated words count once, words after the first MAX_LOOSE_WORDS are ignored. A word
      * matching more than RELATION_MATCH_LIMIT records of a related type does not match through

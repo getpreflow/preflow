@@ -26,12 +26,30 @@ final class MysqlDriverTest extends TestCase
         $constructor = $ref->getConstructor();
         $params = $constructor->getParameters();
 
-        $this->assertCount(3, $params);
+        $this->assertCount(4, $params);
         $this->assertSame('pdo', $params[0]->getName());
         $this->assertSame('collector', $params[1]->getName());
         $this->assertTrue($params[1]->isOptional());
         $this->assertSame('matchCollation', $params[2]->getName());
         $this->assertTrue($params[2]->isOptional());
+        $this->assertSame('searchCollation', $params[3]->getName());
+        $this->assertTrue($params[3]->isOptional());
+    }
+
+    /** Named collations are taken as given, with no connection opened (@since 0.78.1). */
+    public function test_named_collations_need_no_connection(): void
+    {
+        $opened = 0;
+        $driver = new MysqlDriver(static function () use (&$opened): \PDO {
+            $opened++;
+
+            throw new \LogicException('no connection expected');
+        }, null, 'utf8mb4_0900_as_ci', 'utf8mb4_0900_ai_ci');
+
+        $this->assertSame('utf8mb4_0900_as_ci', $driver->matchCollation());
+        $this->assertSame('utf8mb4_0900_ai_ci', $driver->searchCollation());
+        $this->assertNull((new MysqlDriver(static fn (): \PDO => throw new \LogicException('no connection expected'), null, false, false))->searchCollation());
+        $this->assertSame(0, $opened);
     }
 
     public function test_mysql_driver_extends_pdo_driver(): void

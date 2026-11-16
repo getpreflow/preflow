@@ -11,31 +11,54 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
     /**
      * The text rule's collations (ignore case, respect accents, NO PAD), in order of preference:
      * MariaDB 10.10+'s UCA 14 one, MySQL 8's UCA 9 one (MariaDB 11.4.5+ knows it too, as an
-     * alias). Not utf8mb4_uca1400_as_ci: it is PAD SPACE, so 'abc' would equal 'abc '. LIKE, the
-     * text fields' columns (MysqlGrammar::textColumnType()) and textValue() use the first one the
+     * alias). Not utf8mb4_uca1400_as_ci: it is PAD SPACE, so 'abc' would equal 'abc '. The text
+     * fields' columns (MysqlGrammar::textColumnType()) and textValue() use the first one the
      * server accepts (MysqlGrammar::on() probes it).
      *
      * @since 0.78
      */
     public const array MATCH_COLLATIONS = ['utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_0900_as_ci'];
 
-    /** @var \Closure(): ?string|null resolves the collation on the first LIKE or text comparison */
+    /**
+     * The matching rule's collations (ignore case and accents), in order of preference: MariaDB
+     * 10.10+'s UCA 14 one, MySQL 8's UCA 9 one (MariaDB 11.4.5+ knows it too, as an alias). LIKE,
+     * NOT LIKE, CONTAINS and search() compare in the first one the server accepts
+     * (MysqlGrammar::searchCollation()).
+     *
+     * @since 0.78.1
+     */
+    public const array SEARCH_COLLATIONS = ['utf8mb4_uca1400_nopad_ai_ci', 'utf8mb4_0900_ai_ci'];
+
+    /** @var \Closure(): ?string|null resolves the collation on the first text comparison */
     private ?\Closure $resolveCollation = null;
 
     private ?string $matchCollation = null;
 
+    /** @var \Closure(): ?string|null resolves the search collation on the first LIKE */
+    private ?\Closure $resolveSearchCollation = null;
+
+    private ?string $searchCollation = null;
+
     /**
-     * @param \Closure(): ?string|string|null $matchCollation The collation LIKE and textValue()
-     *     compare with (one of MATCH_COLLATIONS the server has); null for none (LIKE lowers both
-     *     sides instead, see likeSql(); textValue() compares exactly); a closure naming it (or
-     *     null), called once, on first use.
+     * @param \Closure(): ?string|string|null $matchCollation The collation textValue() compares
+     *     with (one of MATCH_COLLATIONS the server has); null for none (textValue() compares
+     *     exactly); a closure naming it (or null), called once, on first use.
+     * @param \Closure(): ?string|string|null $searchCollation The collation LIKE compares with
+     *     (one of SEARCH_COLLATIONS the server has, @since 0.78.1); null for none (LIKE then
+     *     compares in $matchCollation, without one either it lowers both sides, see likeSql()); a
+     *     closure naming it (or null), called once, on first use.
      */
-    public function __construct(\Closure|string|null $matchCollation = null)
+    public function __construct(\Closure|string|null $matchCollation = null, \Closure|string|null $searchCollation = null)
     {
         if ($matchCollation instanceof \Closure) {
             $this->resolveCollation = $matchCollation;
         } else {
             $this->matchCollation = self::collationName($matchCollation);
+        }
+        if ($searchCollation instanceof \Closure) {
+            $this->resolveSearchCollation = $searchCollation;
+        } else {
+            $this->searchCollation = self::collationName($searchCollation);
         }
     }
 
@@ -156,7 +179,7 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
 
     /**
      * The plain operator, used only by a compiler that does not ask likeSql() (PatternMatching):
-     * under the tables' collation it ignores case, but also accents.
+     * it compares in the column's collation (the text rule's for a text field: accents count).
      */
     public function likeOperator(): string
     {
@@ -164,17 +187,19 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
     }
 
     /**
-     * LIKE under the text-matching rule (case and width ignored, accents count). With a
-     * collation (MATCH_COLLATIONS) the column is compared in it; the CAST lets a number column or
-     * one of another character set take the COLLATE (as in exactText()), which also means a
-     * prefix pattern does not use an index. Without one both sides are lowered and compared by
-     * code point (utf8mb4_bin), which the data README's "Text matching" says where it differs.
+     * LIKE under the matching rule (case, accents and width ignored). With a search collation
+     * (SEARCH_COLLATIONS) the column is compared in it; the CAST lets a number column or one of
+     * another character set take the COLLATE (as in exactText()), which also means a prefix
+     * pattern does not use an index. A server without one but with the text rule's collation
+     * (MATCH_COLLATIONS) compares in that one, so accents count; one without either lowers both
+     * sides and compares by code point (utf8mb4_bin). The data README's "Text matching" says
+     * where those two differ from the rule.
      */
     public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string
     {
         $like = ($not ? ' NOT' : '') . ' LIKE ';
         $escapeSql = $escape === null ? '' : " ESCAPE '" . str_replace("'", "''", $escape) . "'";
-        $collation = $this->matchCollation();
+        $collation = $this->searchCollation() ?? $this->matchCollation();
         if ($collation !== null) {
             return "(CAST({$column} AS CHAR CHARACTER SET utf8mb4) COLLATE {$collation}){$like}?{$escapeSql}";
         }
@@ -205,15 +230,26 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
         return "WEIGHT_STRING({$expression})";
     }
 
-    /** The collation LIKE compares with, or null for the LOWER() fallback (a closure resolved once). */
+    /** The text rule's collation textValue() compares in, or null for none (a closure resolved once). */
     private function matchCollation(): ?string
     {
         if ($this->resolveCollation !== null) {
-            $this->matchCollation = self::collationName(($this->resolveCollation)()); // a failure is asked again on the next LIKE
+            $this->matchCollation = self::collationName(($this->resolveCollation)()); // a failure is asked again on the next use
             $this->resolveCollation = null;
         }
 
         return $this->matchCollation;
+    }
+
+    /** The collation LIKE compares in, or null for none (a closure resolved once). */
+    private function searchCollation(): ?string
+    {
+        if ($this->resolveSearchCollation !== null) {
+            $this->searchCollation = self::collationName(($this->resolveSearchCollation)()); // a failure is asked again on the next LIKE
+            $this->resolveSearchCollation = null;
+        }
+
+        return $this->searchCollation;
     }
 
     /** A collation name goes into the SQL as it is: letters, digits and underscores only. */

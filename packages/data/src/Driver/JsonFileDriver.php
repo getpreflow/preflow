@@ -1015,9 +1015,10 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     }
 
     /**
-     * CONTAINS under the text-matching rule (TextMatch): a text (or number) that holds the term,
-     * or a list any of whose values does (a tags field a model saved as an array). SQL storage
-     * keeps such a list as JSON text and finds the same records (since 0.77).
+     * CONTAINS under the matching rule (TextMatch::contains(): case and accents ignored): a text
+     * (or number) that holds the term, or a list any of whose values does (a tags field a model
+     * saved as an array). SQL storage keeps such a list as JSON text and finds the same records
+     * (since 0.77).
      */
     private static function containsText(mixed $fieldValue, string $term): bool
     {
@@ -1063,7 +1064,7 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
         return array_intersect($ids, $held) !== [];
     }
 
-    /** LIKE under the text-matching rule (TextMatch); no escape character, as on SQL. */
+    /** LIKE under the matching rule (TextMatch::like(): case and accents ignored); no escape character, as on SQL. */
     private function matchLike(string $value, string $pattern): bool
     {
         return TextMatch::like($value, $pattern);

@@ -7,7 +7,7 @@ namespace Preflow\Data\Tests\Text;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Text\TextMatch;
 
-/** The text-matching rule in PHP: LIKE and CONTAINS character by character, "=" and order over the whole text. */
+/** The text rules in PHP: matching (LIKE, CONTAINS) character by character, "=" and order over the whole text. */
 final class TextMatchTest extends TestCase
 {
     public function test_fold_ignores_case_and_keeps_accents(): void
@@ -53,18 +53,58 @@ final class TextMatchTest extends TestCase
         $this->assertSame(range('A', 'Z'), array_values(array_filter(array_map('strval', array_keys($table)), static fn (string $c): bool => strlen($c) === 1)));
     }
 
-    public function test_like_and_contains_follow_the_table(): void
+    /** The matching table maps one character to one, never to a character it maps on; in ASCII only A-Z. @since 0.78.1 */
+    public function test_the_matching_table_is_one_character_to_one_and_stable(): void
+    {
+        $table = require __DIR__ . '/../../src/Text/search-fold-table.php';
+
+        $this->assertGreaterThan(5000, count($table));
+        foreach ($table as $char => $fold) {
+            $this->assertSame(1, mb_strlen((string) $char, 'UTF-8'));
+            $this->assertSame(1, mb_strlen($fold, 'UTF-8'));
+            $this->assertArrayNotHasKey($fold, $table, sprintf('U+%04X folds to a character that folds on', mb_ord((string) $char, 'UTF-8')));
+        }
+        $this->assertSame(range('A', 'Z'), array_values(array_filter(array_map('strval', array_keys($table)), static fn (string $c): bool => strlen($c) === 1)));
+    }
+
+    /** Matching ignores accents, exact comparisons keep them (@since 0.78.1). */
+    public function test_match_fold_ignores_accents_and_fold_keeps_them(): void
+    {
+        $this->assertSame(TextMatch::matchFold('ELISE'), TextMatch::matchFold('Élise'));
+        $this->assertSame('elise', TextMatch::matchFold('Élise'));
+        $this->assertSame('uber uns', TextMatch::matchFold('Über uns'));
+        $this->assertSame('istanbul', TextMatch::matchFold('İstanbul'));
+        $this->assertSame('lodz', TextMatch::matchFold('Łódź'));
+        $this->assertSame('straße', TextMatch::matchFold('STRAẞE'), 'ß stays one letter');
+        $this->assertSame('ılık', TextMatch::matchFold('ılık'), 'ı stays a letter of its own');
+        $this->assertSame('æ', TextMatch::matchFold('Æ'));
+        $this->assertSame(mb_strlen("U\u{0308}ber"), mb_strlen(TextMatch::matchFold("U\u{0308}ber")), 'one character for one');
+        $this->assertSame('élise', TextMatch::fold('Élise'), 'fold() keeps the accent');
+        $this->assertNotSame(TextMatch::fold('elise'), TextMatch::fold('Élise'));
+
+        $this->assertTrue(TextMatch::like('Über uns', '%uber%'));
+        $this->assertTrue(TextMatch::like('uber', 'Über'), 'an accented pattern finds the plain word');
+        $this->assertTrue(TextMatch::like('UBER', 'über'));
+        $this->assertTrue(TextMatch::contains('Élise', 'elise'));
+        $this->assertFalse(TextMatch::contains('Straße', 'strasse'));
+        $this->assertFalse(TextMatch::like('Ægir', 'aegir'));
+        $this->assertFalse(TextMatch::equals('Muller', 'Müller'), '"=" still respects accents');
+        $this->assertTrue(TextMatch::equals('Müller', 'MÜLLER'));
+    }
+
+    public function test_like_and_contains_follow_the_matching_table(): void
     {
         // Case.
         $this->assertTrue(TextMatch::like('Über', 'über'));
         $this->assertTrue(TextMatch::like('Über', 'ÜBER'));
         $this->assertTrue(TextMatch::contains('Über uns', 'über'));
         $this->assertTrue(TextMatch::contains('Über uns', 'ÜBER'));
-        // Accents count.
-        $this->assertFalse(TextMatch::like('Über', 'uber'));
-        $this->assertFalse(TextMatch::like('été', 'ete'));
-        $this->assertFalse(TextMatch::contains('Über uns', 'uber'));
-        $this->assertFalse(TextMatch::contains('été', 'ete'));
+        // Accents are ignored.
+        $this->assertTrue(TextMatch::like('Über', 'uber'));
+        $this->assertTrue(TextMatch::like('été', 'ete'));
+        $this->assertTrue(TextMatch::contains('Über uns', 'uber'));
+        $this->assertTrue(TextMatch::contains('été', 'ETE'));
+        $this->assertTrue(TextMatch::like('Øre', 'ore'));
         // ß is one letter.
         $this->assertFalse(TextMatch::like('Straße', 'STRASSE'));
         $this->assertFalse(TextMatch::like('Straße', 'strasse'));
@@ -77,20 +117,20 @@ final class TextMatchTest extends TestCase
         $this->assertTrue(TextMatch::like('kelvin', "\u{212A}ELVIN"));
         $this->assertTrue(TextMatch::contains("\u{212A}elvin", 'kel'));
         $this->assertTrue(TextMatch::contains('Kelvin', "\u{212A}"));
-        // İ: the same letter matches, i does not.
+        // İ is an i with an accent (its dot).
         $this->assertTrue(TextMatch::like('İstanbul', 'İSTANBUL'));
         $this->assertTrue(TextMatch::contains('İstanbul', 'İSTAN'));
-        $this->assertFalse(TextMatch::like('İstanbul', 'istanbul'));
-        $this->assertFalse(TextMatch::contains('İstanbul', 'ist'));
+        $this->assertTrue(TextMatch::like('İstanbul', 'istanbul'));
+        $this->assertTrue(TextMatch::contains('İstanbul', 'ist'));
         // ı is a letter of its own.
         $this->assertFalse(TextMatch::like('ılık', 'ILIK'));
         $this->assertFalse(TextMatch::like('ılık', 'ilik'));
         $this->assertFalse(TextMatch::contains('ılık', 'ILI'));
         $this->assertTrue(TextMatch::like('ılık', 'ılık'));
-        // The long s is a letter of its own, both ways.
-        $this->assertFalse(TextMatch::like("\u{017F}uper", 'super'));
-        $this->assertFalse(TextMatch::like('super', "\u{017F}uper"));
-        $this->assertFalse(TextMatch::contains('super', "\u{017F}"));
+        // The long s is an s, both ways (in "=" it is a letter of its own).
+        $this->assertTrue(TextMatch::like("\u{017F}uper", 'super'));
+        $this->assertTrue(TextMatch::like('super', "\u{017F}uper"));
+        $this->assertTrue(TextMatch::contains('super', "\u{017F}"));
         // Width and compatibility forms.
         $this->assertTrue(TextMatch::like('ａｂｃ', 'ABC'));
         $this->assertTrue(TextMatch::like('abc', 'ＡＢＣ'));
@@ -111,6 +151,8 @@ final class TextMatchTest extends TestCase
     {
         $this->assertFalse(TextMatch::asciiSafe('%ber%'), 'ｂ, ｅ and ｒ fold into b, e and r');
         $this->assertFalse(TextMatch::asciiSafe('%kart%'));
+        $this->assertFalse(TextMatch::asciiSafe('abc'), 'á, ｂ, ç and more fold into a, b and c');
+        $this->assertFalse(TextMatch::asciiSafe('2024'), '２ and ² fold into 2');
         $this->assertFalse(TextMatch::asciiSafe('%über%'));
         $this->assertTrue(TextMatch::asciiSafe("\t\n"));
         $this->assertTrue(TextMatch::asciiSafe(''));

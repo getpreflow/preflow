@@ -32,36 +32,35 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
     /** The collation text columns name (on()), null for none. */
     private ?string $textCollation = null;
 
+    /** The collation LIKE compares in (on()), null for none. */
+    private ?string $searchCollation = null;
+
     /** @var \WeakMap<\PDO, array<string, ?string>>|null each connection's probed collation, by the candidates probed */
     private static ?\WeakMap $probed = null;
 
     /**
      * @param list<string>|null $collations the collations on() probes, in preference order (null:
      *     MysqlDialect::MATCH_COLLATIONS); [] binds to none, as on a server without them (tests)
+     * @param list<string>|null $searchCollations the search collations on() probes, in
+     *     preference order (null: MysqlDialect::SEARCH_COLLATIONS); [] binds to none (@since 0.78.1)
      */
-    public function __construct(private readonly ?array $collations = null)
+    public function __construct(private readonly ?array $collations = null, private readonly ?array $searchCollations = null)
     {
     }
 
     /**
-     * Bound to the first of MysqlDialect::MATCH_COLLATIONS the server accepts: each is probed
-     * (SELECT _utf8mb4'a' COLLATE name) until one does not fail with "unknown collation", once per
-     * connection. The server's collation list is not read: information_schema.COLLATIONS does not
-     * list MariaDB's utf8mb4_uca1400_* names (it lists uca1400_*). Runs on the connection itself, so
+     * Bound to the first of MysqlDialect::MATCH_COLLATIONS and the first of
+     * MysqlDialect::SEARCH_COLLATIONS the server accepts: each is probed (SELECT _utf8mb4'a'
+     * COLLATE name) until one does not fail with "unknown collation", once per connection. The
+     * server's collation list is not read: information_schema.COLLATIONS does not list MariaDB's
+     * utf8mb4_uca1400_* names (it lists uca1400_*). Runs on the connection itself, so
      * MysqlDriver's SET NAMES utf8mb4 is in force.
      */
     public function on(\PDO $pdo): static
     {
-        $candidates = $this->collations ?? MysqlDialect::MATCH_COLLATIONS;
-        $key = implode(',', $candidates);
-        self::$probed ??= new \WeakMap();
-        $known = self::$probed[$pdo] ?? [];
-        if (!array_key_exists($key, $known)) {
-            $known[$key] = self::probe($pdo, $candidates);
-            self::$probed[$pdo] = $known;
-        }
         $bound = clone $this;
-        $bound->textCollation = $known[$key];
+        $bound->textCollation = self::probed($pdo, $this->collations ?? MysqlDialect::MATCH_COLLATIONS);
+        $bound->searchCollation = self::probed($pdo, $this->searchCollations ?? MysqlDialect::SEARCH_COLLATIONS);
 
         return $bound;
     }
@@ -69,6 +68,36 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
     public function textCollation(): ?string
     {
         return $this->textCollation;
+    }
+
+    /**
+     * The collation LIKE, NOT LIKE, CONTAINS and search() compare in (ignore case and accents):
+     * the first of MysqlDialect::SEARCH_COLLATIONS the server has (on()), null for none or
+     * unbound. Columns never take it.
+     *
+     * @since 0.78.1
+     */
+    public function searchCollation(): ?string
+    {
+        return $this->searchCollation;
+    }
+
+    /**
+     * The first of the candidates the connection accepts, probed once per connection and list.
+     *
+     * @param list<string> $candidates
+     */
+    private static function probed(\PDO $pdo, array $candidates): ?string
+    {
+        $key = implode(',', $candidates);
+        self::$probed ??= new \WeakMap();
+        $known = self::$probed[$pdo] ?? [];
+        if (!array_key_exists($key, $known)) {
+            $known[$key] = self::probe($pdo, $candidates);
+            self::$probed[$pdo] = $known;
+        }
+
+        return $known[$key];
     }
 
     /** @param list<string> $candidates */

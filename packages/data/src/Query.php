@@ -166,6 +166,12 @@ final class Query
         return $this;
     }
 
+    /**
+     * Records where one of $fields (every field when empty) holds $term, compared by the matching
+     * rule (StorageDriver: case and accents ignored, since 0.78.1; "uber" finds "Über").
+     *
+     * @param list<string> $fields
+     */
     public function search(string $term, array $fields = []): self
     {
         foreach ($fields as $field) {

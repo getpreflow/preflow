@@ -10,7 +10,7 @@ use Preflow\Data\Driver\MysqlDialect;
  * Asks a MySQL/MariaDB server how its LIKE compares single characters: the weights of a
  * collation (WEIGHT_STRING) and LIKE answers for pairs, through the SQL MysqlDialect::likeSql()
  * writes (with a collation or the LOWER() fallback). bin/text-fold-table derives TextMatch's
- * fold table from it; TextMatchServerProbeTest checks the table against it.
+ * fold and matching tables from it; TextMatchServerProbeTest checks the tables against it.
  */
 final class CollationProbe
 {
@@ -62,7 +62,7 @@ final class CollationProbe
     }
 
     /**
-     * The pairs worth asking about: each character with its fold (TextMatch's table), with its
+     * The pairs worth asking about: each character with its fold (one of TextMatch's tables), with its
      * relatives (relatives()), and with the first character of equal weights
      * under $collation (null: none). Each pair once.
      *
@@ -105,11 +105,14 @@ final class CollationProbe
 
     /**
      * Where the server and TextMatch disagree on "a LIKE b and b LIKE a" (each taken literally).
+     * TextMatch's answer is TextMatch::like() both ways (the matching table), or $same's.
      *
      * @param list<array{string, string}> $pairs
+     * @param (\Closure(string, string): bool)|null $same TextMatch's answer for a pair, e.g. by
+     *     fold() for the fold table
      * @return list<array{string, string, bool}> a, b, the server's answer (TextMatch's is the opposite)
      */
-    public function disagreements(array $pairs, MysqlDialect $dialect): array
+    public function disagreements(array $pairs, MysqlDialect $dialect, ?\Closure $same = null): array
     {
         $both = [];
         foreach ($pairs as [$a, $b]) {
@@ -121,7 +124,9 @@ final class CollationProbe
         $found = [];
         foreach ($pairs as $i => [$a, $b]) {
             $server = $answers[2 * $i] && $answers[2 * $i + 1];
-            $php = \Preflow\Data\Text\TextMatch::like($a, $literal($b), '!') && \Preflow\Data\Text\TextMatch::like($b, $literal($a), '!');
+            $php = $same !== null
+                ? $same($a, $b)
+                : \Preflow\Data\Text\TextMatch::like($a, $literal($b), '!') && \Preflow\Data\Text\TextMatch::like($b, $literal($a), '!');
             if ($server !== $php) {
                 $found[] = [$a, $b, $server];
             }

@@ -128,6 +128,52 @@ final class MysqlDialectTest extends TestCase
         $this->assertSame(['utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_0900_as_ci'], MysqlDialect::MATCH_COLLATIONS);
     }
 
+    /** @since 0.78.1 */
+    public function test_like_compares_in_the_search_collation_and_text_value_in_the_rules(): void
+    {
+        $this->assertSame(['utf8mb4_uca1400_nopad_ai_ci', 'utf8mb4_0900_ai_ci'], MysqlDialect::SEARCH_COLLATIONS);
+        $dialect = new MysqlDialect('utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_uca1400_nopad_ai_ci');
+
+        $this->assertSame('(CAST(`title` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_uca1400_nopad_ai_ci) LIKE ?', $dialect->likeSql('`title`', '%uber%'));
+        $this->assertSame("(CAST(`title` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_uca1400_nopad_ai_ci) NOT LIKE ? ESCAPE '!'", $dialect->likeSql('`title`', '%x%', true, '!'));
+        $this->assertSame('(CAST(`s` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_uca1400_nopad_as_ci)', $dialect->textValue('`s`'), '"=" keeps respecting accents');
+        $this->assertSame(
+            '(CAST(`title` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_0900_ai_ci) LIKE ?',
+            (new MysqlDialect(null, 'utf8mb4_0900_ai_ci'))->likeSql('`title`', 'x'),
+            'a search collation alone',
+        );
+    }
+
+    /** A closure names the search collation on the first LIKE, once; without one LIKE takes the rule's collation. */
+    public function test_a_closure_resolves_the_search_collation_once_on_first_use(): void
+    {
+        $calls = 0;
+        $dialect = new MysqlDialect('utf8mb4_0900_as_ci', function () use (&$calls): ?string {
+            $calls++;
+
+            return 'utf8mb4_0900_ai_ci';
+        });
+        $dialect->textValue('`s`');
+        $this->assertSame(0, $calls, 'textValue() does not ask for it');
+
+        $dialect->likeSql('`a`', 'x');
+        $sql = $dialect->likeSql('`b`', 'y');
+
+        $this->assertSame(1, $calls);
+        $this->assertSame('(CAST(`b` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_0900_ai_ci) LIKE ?', $sql);
+        $this->assertSame(
+            '(CAST(`a` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_0900_as_ci) LIKE ?',
+            (new MysqlDialect('utf8mb4_0900_as_ci', static fn (): ?string => null))->likeSql('`a`', 'x'),
+            'no search collation: the rule\'s, accents count',
+        );
+    }
+
+    public function test_a_search_collation_name_is_letters_digits_and_underscores(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        new MysqlDialect(null, 'utf8mb4_bin) OR (1');
+    }
+
     public function test_text_value_names_the_collation(): void
     {
         $dialect = new MysqlDialect('utf8mb4_uca1400_nopad_as_ci');

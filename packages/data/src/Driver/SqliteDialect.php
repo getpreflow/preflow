@@ -171,12 +171,13 @@ final class SqliteDialect implements Dialect, PatternMatching, TextComparison
     }
 
     /**
-     * LIKE under the text-matching rule (TextMatch: case and width ignored, accents count): a
-     * pattern TextMatch::asciiSafe() accepts takes SQLite's native LIKE (it folds ASCII case, and
-     * its _ takes one character, an umlaut too), any other the PHP function ulike() that prepare()
-     * registers, which costs a PHP call per row compared. Native LIKE knows no other character
-     * than A for a, so every pattern with a character another one folds into goes to ulike():
-     * with the fullwidth forms (ａ is a, ％ is %), that is every printable ASCII character.
+     * LIKE under the matching rule (TextMatch::like(): case, accents and width ignored, since
+     * 0.78.1): a pattern TextMatch::asciiSafe() accepts takes SQLite's native LIKE (it folds ASCII
+     * case, and its _ takes one character, an umlaut too), any other the PHP function ulike() that
+     * prepare() registers, which costs a PHP call per row compared. Native LIKE knows no other
+     * character than A for a, so every pattern with a character another one folds into goes to
+     * ulike(): with the accented letters and the fullwidth forms (é and ａ are a, ２ is 2, ％ is %),
+     * that is every printable ASCII character; only a pattern of control characters stays native.
      */
     public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string
     {
@@ -221,8 +222,8 @@ final class SqliteDialect implements Dialect, PatternMatching, TextComparison
 
     /**
      * SQL LIKE as ulike(pattern, value[, escape]) is called: TextMatch::like() (% any text, _ one
-     * character, the escape character takes the next one literally, case and width folded,
-     * accents count). NULL when the value or the pattern is NULL.
+     * character, the escape character takes the next one literally, case, accents and width
+     * folded, since 0.78.1). NULL when the value or the pattern is NULL.
      *
      * @since 0.77
      */

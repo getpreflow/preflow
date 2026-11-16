@@ -8,10 +8,11 @@ use Preflow\Data\Text\TextMatch;
 
 /**
  * Marks the words of a list search in a plain-text cell. Matches are found on the plain text by
- * the rule the search itself follows (TextMatch::fold(): case, width and compatibility forms
- * ignored, accents count; every occurrence of every word, overlaps merged), so the marks show
- * what the search found. Each piece is escaped on its own, so a word can never match inside an
- * entity ("amp" in "&amp;") and neither the value nor the search can inject markup.
+ * the rule the search itself follows (TextMatch::matchFold(): case, accents, width and
+ * compatibility forms ignored, so "elise" marks "Élise"; every occurrence of every word, overlaps
+ * merged), so the marks show what the search found. Each piece is escaped on its own, so a word
+ * can never match inside an entity ("amp" in "&amp;") and neither the value nor the search can
+ * inject markup.
  */
 final class Highlighter
 {
@@ -64,7 +65,7 @@ final class Highlighter
         foreach ($chars as $i => $char) {
             $byteAt[$i] = $pos;
             $pos += strlen($char);
-            foreach (mb_str_split(TextMatch::fold($char), 1, 'UTF-8') as $piece) {
+            foreach (mb_str_split(TextMatch::matchFold($char), 1, 'UTF-8') as $piece) {
                 $origin[] = $i;
                 $folded[] = $piece;
             }
@@ -74,7 +75,7 @@ final class Highlighter
 
         $ranges = [];
         foreach ($words as $word) {
-            $needle = TextMatch::fold($word);
+            $needle = TextMatch::matchFold($word);
             $length = mb_strlen($needle, 'UTF-8');
             if ($length === 0) {
                 continue;
