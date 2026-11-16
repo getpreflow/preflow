@@ -119,10 +119,10 @@ trait UniqueScenarios
 
     /**
      * A field marked exact is a machine value, not searchable text, on every storage: loose search
-     * (and a full-text index) leaves it out, and its unique check keeps case, also in a type with
-     * full-text search.
+     * finds it only by its whole value (compared exactly), a full-text index leaves it out, and its
+     * unique check keeps case, also in a type with full-text search.
      */
-    public function test_an_exact_field_of_a_full_text_type_is_not_searched_and_stays_exact(): void
+    public function test_an_exact_field_of_a_full_text_type_is_found_whole_and_stays_exact(): void
     {
         $key = $this->synced(new TypeDefinition('apikey', 'apikey', $this->storage(), [
             'title' => new TypeFieldDefinition('title'),
@@ -131,11 +131,15 @@ trait UniqueScenarios
         $this->save($key, ['uuid' => 'a', 'title' => 'Alpha', 'key' => 'SecretWord']);
         $found = fn (string $term): array => array_map(static fn ($r): string => (string) $r->getId(), $this->dm->queryIn($key)->searchLoose($term)->get()->items());
 
-        $this->assertSame(['a'], $found('Alpha'));
-        $this->assertSame([], $found('SecretWord'), 'a word only in the exact field is not found');
         $this->assertSame([], $this->errorsOf($key, ['uuid' => 'b', 'title' => 'Beta', 'key' => 'secretword']), 'a case variant is another value');
         $this->assertSame([], $this->errorsOf($key, ['uuid' => 'c', 'title' => 'Gamma', 'key' => 'SECRETWORD'], validate: false));
         $this->assertSame(['key' => ['This value is already taken.']], $this->errorsOf($key, ['uuid' => 'd', 'key' => 'SecretWord'], validate: false));
+
+        $this->assertSame(['a'], $found('Alpha'));
+        $this->assertSame(['a'], $found('SecretWord'), 'its whole value finds it, compared exactly');
+        $this->assertSame(['b'], $found('secretword'), 'a case variant finds only its own record');
+        $this->assertSame([], $found('Secret'), 'a part of it does not');
+        $this->assertSame(['a'], $found('alpha SecretWord'), 'with the other words of the term');
     }
 
     public function test_a_number_stored_as_text_is_still_a_duplicate(): void

@@ -181,6 +181,24 @@ final class MysqlMigrationsTest extends TestCase
         $schema->renameColumn('staff', 'createdAt', 'created');
     }
 
+    /** A plain model's unique string (its migration's VARCHAR in the rule's collation) sorts by the rule with a plain ORDER BY. */
+    public function test_a_plain_models_unique_string_sorts_by_the_rule(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('sorted_slug', function (Table $t): void {
+            $t->uuid('uuid')->primary();
+            $t->string('slug', 100)->unique();
+        });
+        $dm = new \Preflow\Data\DataManager(['mysql' => new MysqlDriver($this->pdo)], 'mysql');
+        foreach (['s1' => 'Zebra', 's2' => 'äpfel', 's3' => 'Apfel', 's4' => 'eagle', 's5' => 'Émile'] as $id => $slug) {
+            $this->pdo->prepare('INSERT INTO sorted_slug (uuid, slug) VALUES (?, ?)')->execute([$id, $slug]);
+        }
+
+        $slugs = array_map(static fn (SortedSlug $m): string => $m->slug, $dm->query(SortedSlug::class)->orderBy('slug')->get()->items());
+
+        $this->assertSame(['Apfel', 'äpfel', 'eagle', 'Émile', 'Zebra'], $slugs);
+    }
+
     public function test_convert_column_on_mysql_keeps_data_default_nullability_and_indexes(): void
     {
         // A site's case: indexed record fields made LONGTEXT before 0.72 become VARCHAR(191) utf8mb4_bin.
@@ -291,4 +309,14 @@ final class MysqlMigrationsTest extends TestCase
         $schema->dropColumn('t', 'b');
         $this->assertSame(['uuid', 'a'], $schema->columns('t'));
     }
+}
+
+#[\Preflow\Data\Attributes\Entity(table: 'sorted_slug', storage: 'mysql')]
+final class SortedSlug extends \Preflow\Data\Model
+{
+    #[\Preflow\Data\Attributes\Id]
+    public string $uuid = '';
+
+    #[\Preflow\Data\Attributes\Field(unique: true, length: 100)]
+    public string $slug = '';
 }

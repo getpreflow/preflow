@@ -264,4 +264,30 @@ final class QueryCompilerTest extends TestCase
         $this->assertStringContainsString('COLUMNS(v VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PATH', $sql, 'a list\'s members compare exactly');
         $this->assertStringEndsWith('ORDER BY (CAST(`code` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) ASC', $sql);
     }
+
+    /** A plain model's unique or indexed string is a VARCHAR (its migration's string()): plain ORDER BY, index kept. */
+    public function test_a_plain_models_short_text_field_sorts_by_its_column(): void
+    {
+        $dm = new \Preflow\Data\DataManager(['sqlite' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))], 'sqlite');
+        $query = $dm->query(SortedNote::class)->orderBy('slug')->orderBy('title')->aggregate()->query(); // the query as QueryBuilder prepares it
+
+        [$sql] = (new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci')))->compile('sorted_note', $query);
+        $this->assertSame('SELECT * FROM `sorted_note` ORDER BY `slug` ASC, WEIGHT_STRING(`title`) ASC', $sql);
+    }
+}
+
+#[\Preflow\Data\Attributes\Entity(table: 'sorted_note', storage: 'sqlite')]
+final class SortedNote extends \Preflow\Data\Model
+{
+    #[\Preflow\Data\Attributes\Id]
+    public string $uuid = '';
+
+    #[\Preflow\Data\Attributes\Field(unique: true)]
+    public string $slug = '';
+
+    #[\Preflow\Data\Attributes\Field]
+    public string $title = '';
+
+    #[\Preflow\Data\Attributes\Field(exact: true)]
+    public string $code = '';
 }

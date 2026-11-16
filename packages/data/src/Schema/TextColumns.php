@@ -105,6 +105,29 @@ final class TextColumns
         return $text;
     }
 
+    /**
+     * The text fields of a plain model class (ofModel()) in a bounded, indexable column: those whose
+     * #[Field] is unique or indexed (not translatable, not of type "text"). A plain model's table
+     * comes from its migration, which can index only a bounded column (string(); MySQL refuses an
+     * index over text()), so these are VARCHAR there. Any other one is sorted the safe way
+     * (Query::shortText()).
+     *
+     * @return list<string>
+     * @since 0.78
+     */
+    public static function shortOfModel(ModelMetadata $meta, FieldKinds $kinds): array
+    {
+        $short = [];
+        foreach (self::ofModel($meta, $kinds) as $name) {
+            $field = $meta->fields[$name];
+            if (($field->unique !== false || $field->index) && !$field->translatable && $field->type !== 'text') {
+                $short[] = $name;
+            }
+        }
+
+        return $short;
+    }
+
     /** "string" for a property typed string (or ?string), else null (not text). */
     private static function propertyType(string $class, string $property): ?string
     {

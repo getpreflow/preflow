@@ -34,15 +34,23 @@ trait ContractTables
 
         if ($fields[$idField] !== 'number') {
             $driver->pdo()->exec($grammar->createRecordTable($type, $idField, $specs));
-            foreach (array_keys($fields, 'short_text', true) as $name) {
-                $driver->pdo()->exec($grammar->createRecordIndex($grammar->indexName('idx', $type, (string) $name), $type, [(string) $name], false));
-            }
+            self::indexShortText($driver, $type, $fields);
 
             return;
         }
         $quote = $driver->dialect()->quoteIdentifier(...);
         $columns = array_map(static fn (ColumnSpec $c): string => $quote($c->name) . ' ' . ($c->text && $grammar instanceof TextCollations ? $grammar->textColumnType($c->kind) : $grammar->recordColumnType($c->kind)), $specs);
         $driver->pdo()->exec('CREATE TABLE ' . $quote($type) . ' (' . $quote($idField) . " {$autoIdColumn}, " . implode(', ', $columns) . ')');
+        self::indexShortText($driver, $type, $fields);
+    }
+
+    /** @param array<string, string> $fields */
+    private static function indexShortText(PdoDriver $driver, string $type, array $fields): void
+    {
+        $grammar = Grammars::for($driver->pdo());
+        foreach (array_keys($fields, 'short_text', true) as $name) {
+            $driver->pdo()->exec($grammar->createRecordIndex($grammar->indexName('idx', $type, (string) $name), $type, [(string) $name], false));
+        }
     }
 
     /** A unique index over one column, as RecordTableSync makes it (a Short column on MySQL). */

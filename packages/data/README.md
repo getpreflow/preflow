@@ -1083,7 +1083,8 @@ Where the rule lives:
   weights only (so "äpfel" and "Apfel" in storage order), and the weight string holds every level;
   such an `ORDER BY` cannot use an index, which a long column has none of anyway. A unique or
   indexed text field (`VARCHAR`, `TextColumns::short()`, which `QueryBuilder` names on the query
-  with `Query::shortText()`) sorts by its column and keeps its index.
+  with `Query::shortText()`) sorts by its column and keeps its index; for a plain model class that
+  is a `#[Field]` with `unique` or `index` (its migration's `string()`, `TextColumns::shortOfModel()`).
 - **Full-text types on MySQL:** a FULLTEXT index takes columns of one collation, so the tags a
   `"fullText": true` type's index covers (`TextColumns::exactInFullText()`) get the rule's
   collation too; queries still compare them exactly (`Query::compareExactly()`, which
@@ -1096,9 +1097,12 @@ Where the rule lives:
   dialect compares it by the rule (`TextComparison::textValue()`: `COLLATE preflow_text`, or a cast
   into the rule's collation).
 
-A field marked exact is a machine value, not searchable text, on every driver: loose search,
-⌘K and a full-text index leave it out, so its column stays exact (`utf8mb4_bin`, BINARY) and a
-unique exact field keeps case everywhere.
+A field marked exact is a machine value, not searchable text, on every driver: no word search,
+`CONTAINS` or full-text index looks into it, so its column stays exact (`utf8mb4_bin`, BINARY) and
+a unique exact field keeps case everywhere. Loose search (Folio's lists, ⌘K, a relation's target)
+finds a record when a word of the term equals the field's whole value, compared exactly: a code
+"EXAMPLECLUB2026" is found by "EXAMPLECLUB2026", not by "EXAMPLECLUB" or "exampleclub2026"
+(`LooseFields::wholeValue()`, `conditions()`).
 
 A plain column keeps its own collation in the query, so its indexes stay usable. `StorageDriverContract`
 pins the rule on every driver: its field kind `text` is a text field (`string` stays exact), and

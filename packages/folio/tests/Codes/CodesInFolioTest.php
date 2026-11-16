@@ -350,6 +350,27 @@ final class CodesInFolioTest extends TestCase
         $this->assertStringNotContainsString('EXAMPLECLUB2026', $rows('/folio/code?f[form]=random'));
     }
 
+    /** A code is a machine value (exact): the list search and ⌘K find it by its whole value only, compared exactly. */
+    #[RunInSeparateProcess]
+    public function test_list_search_and_the_palette_find_a_code_by_its_whole_value(): void
+    {
+        $this->app();
+        $this->login();
+        $this->assertSame(302, $this->send('POST', '/folio/code', $this->create())->getStatusCode());
+        $id = $this->idOf('EXAMPLECLUB2026');
+
+        $rows = fn (string $uri): string => preg_match('#<tbody.*?</tbody>#s', (string) $this->send('GET', $uri)->getBody(), $m) === 1 ? $m[0] : '';
+        $this->assertStringContainsString('EXAMPLECLUB2026', $rows('/folio/code?q=EXAMPLECLUB2026'));
+        $this->assertStringNotContainsString('EXAMPLECLUB2026', $rows('/folio/code?q=EXAMPLECLUB'), 'not by a part');
+        $this->assertStringNotContainsString('EXAMPLECLUB2026', $rows('/folio/code?q=exampleclub2026'), 'not by a case variant');
+
+        $palette = fn (string $q): string => (string) $this->app()->handle((new Psr17Factory())->createServerRequest('GET', '/folio/_search?q=' . rawurlencode($q))
+            ->withHeader('Accept', 'application/json'))->getBody();
+        $this->assertStringContainsString($id, $palette('EXAMPLECLUB2026'));
+        $this->assertStringNotContainsString($id, $palette('EXAMPLECLUB'));
+        $this->assertStringNotContainsString($id, $palette('exampleclub2026'));
+    }
+
     #[RunInSeparateProcess]
     public function test_create_readable_code_in_admin(): void
     {

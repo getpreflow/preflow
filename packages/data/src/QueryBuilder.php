@@ -221,11 +221,12 @@ final class QueryBuilder
         return $this;
     }
 
-    /** @return array{text: list<string>, relations: list<Relation>} */
+    /** @return array{text: list<string>, whole: list<string>, relations: list<Relation>} */
     private function looseFields(?array $requested): array
     {
         $kinds = $this->dataManager?->fieldKinds() ?? new FieldKinds();
         $text = [];
+        $whole = [];
         $relations = [];
 
         if ($this->typeDef !== null) {
@@ -241,11 +242,16 @@ final class QueryBuilder
                 }
             }
             $own = LooseFields::text($this->typeDef, $kinds);
+            $exact = LooseFields::exact($this->typeDef, $kinds);
             foreach ($this->typeDef->fields as $name => $def) {
-                if (!LooseFields::searchable($def) || ($requested !== null && !in_array($name, $requested, true))) {
+                if ($requested !== null && !in_array($name, $requested, true)) {
                     continue;
                 }
-                if (isset($relationFields[$name])) {
+                if (in_array($name, $exact, true)) {
+                    $whole[] = $name;
+                } elseif (!LooseFields::searchable($def)) {
+                    continue;
+                } elseif (isset($relationFields[$name])) {
                     $relations[] = $relationFields[$name];
                 } elseif (in_array($name, $own, true)) {
                     $text[] = $name;
@@ -253,17 +259,21 @@ final class QueryBuilder
             }
         } elseif ($this->meta !== null) {
             foreach ($this->meta->fields as $name => $attr) {
-                if ($attr->searchable === false || $attr->exact || ($requested !== null && !in_array($name, $requested, true))) {
+                if ($attr->searchable === false || ($requested !== null && !in_array($name, $requested, true))) {
                     continue;
                 }
                 $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
                 if ($type instanceof \ReflectionNamedType && $type->getName() === 'string') {
-                    $text[] = $name;
+                    if ($attr->exact) {
+                        $whole[] = $name; // a machine value: found by its whole value only
+                    } else {
+                        $text[] = $name;
+                    }
                 }
             }
         }
 
-        return ['text' => $text, 'relations' => $relations];
+        return ['text' => $text, 'whole' => $whole, 'relations' => $relations];
     }
 
     private function applyLooseSearches(): void
@@ -275,10 +285,7 @@ final class QueryBuilder
         foreach ($searches as $search) {
             $fields = $this->looseFields($search['fields']);
             foreach ($search['words'] as $word) {
-                $conditions = [];
-                foreach ($fields['text'] as $name) {
-                    $conditions[] = ['field' => $name, 'operator' => 'CONTAINS', 'value' => $word];
-                }
+                $conditions = LooseFields::conditions($fields['text'], $fields['whole'], $word);
                 foreach ($fields['relations'] as $relation) {
                     $ids = $this->relatedIds($relation, $word);
                     if ($ids === null || count($ids) > $budget) {
@@ -314,6 +321,7 @@ final class QueryBuilder
 
         // The label field (the relation's, else the target's titleField, else its first string
         // field) and the text fields; hidden ones only where they say "searchable": true.
+        // An exact one is compared whole (LooseFields::conditions()).
         $names = [];
         $labelField = $relation->labelField ?? $target->titleField;
         $label = $labelField !== null ? ($target->fields[$labelField] ?? null) : null;
@@ -323,21 +331,23 @@ final class QueryBuilder
             }
         } else {
             foreach ($target->fields as $name => $def) {
-                if ($def->type === 'string' && !$def->exact && LooseFields::searchable($def)) {
+                if ($def->type === 'string' && LooseFields::searchable($def)) {
                     $names[] = $name;
                     break;
                 }
             }
         }
         foreach ($target->fields as $name => $def) {
-            if (!$def->exact && LooseFields::searchable($def) && $kinds->isText($def->type)) {
+            if (LooseFields::searchable($def) && $kinds->isText($def->type)) {
                 $names[] = $name;
             }
         }
-        $conditions = array_map(
-            static fn (string $name) => ['field' => $name, 'operator' => 'CONTAINS', 'value' => $word],
-            array_values(array_unique($names)),
-        );
+        $whole = LooseFields::exact($target, $kinds);
+        $names = array_values(array_diff(array_unique($names), $whole)); // an exact label is compared whole
+        if ($label !== null && $label->exact && !in_array($label->name, $whole, true) && ($label->searchable === true || ($label->config['hidden'] ?? false) !== true)) {
+            $whole[] = $label->name;
+        }
+        $conditions = LooseFields::conditions($names, $whole, $word);
         if ($conditions === []) {
             return [];
         }
@@ -508,6 +518,7 @@ final class QueryBuilder
         if ($this->typeDef === null) {
             if ($this->meta !== null) {
                 $this->query->compareAsText(TextColumns::ofModel($this->meta, $kinds));
+                $this->query->shortText(TextColumns::shortOfModel($this->meta, $kinds));
             }
 
             return $this->query;
