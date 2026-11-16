@@ -35,11 +35,12 @@ return [
     // Since 0.78, all opt-in (the defaults keep today's URLs):
     'prefix_default' => false,    // true: the default language is prefixed too ('/en/about', home '/en')
     'redirect_bare'  => false,    // true: a bare page path ('/about') answers 302 to the visitor's language
+    'home_slash'     => false,    // true: a language's home ends in a slash ('/de/', not '/de'); since 0.78.2
     'cookie_name'    => 'locale', // the cookie the remembered language is read from and written to
 ];
 ```
 
-`prefix_default` and `redirect_bare` take `true` or `false` and need `url_strategy` `'prefix'`;
+`prefix_default`, `redirect_bare` and `home_slash` take `true` or `false` and need `url_strategy` `'prefix'`;
 `cookie_name` must be a valid cookie name (letters, digits and ``!#$%&'*+-.^_`|~``). Anything
 else stops the boot with a message naming the option. Core reads all three into
 `Preflow\Core\Http\LocaleUrls`, the one rule every package builds locale URLs with (see
@@ -48,6 +49,12 @@ preflow/core).
 `prefix_default` alone keeps the bare addresses answering (`/about` and `/en/about` are both
 200); the bare copy's page address (`og:url`, the JSON-LD `url`) names the prefixed one, so search
 engines see one page. Turn on `redirect_bare` as well to send visitors to `/en/about`.
+
+`home_slash` (since 0.78.2) makes a prefixed language's home end in a slash: `/de/` instead of
+`/de` (and `/en/` with `prefix_default`). The bare redirect, `locale_url('/', 'de')` and the
+switch endpoint's default target all give the slash form. Other paths are unchanged (`/de/about`),
+and the unprefixed default language's home stays `/`. With routing's `canonical_paths` the clean
+form of a language home is then `/de/`.
 
 ## Translation files
 
@@ -270,7 +277,7 @@ The redirect carries `Vary: Accept-Language, Cookie` and `Cache-Control: private
 shared cache keeps it. A bare page served without a redirect gets `Vary: Accept-Language, Cookie`
 too. The page cache still stores and serves it (the locale middleware adds the `Vary` outside the
 page cache and decides before it), so a visitor whose language differs still gets the 302.
-`robots.txt`, `sitemap.xml` and `llms.txt` are never redirected. Search engines are sent the
+`/robots.txt`, `/sitemap.xml` and `/llms.txt` are never redirected (an exact match on the path, whether a route, a static file or nothing answers there). Search engines are sent the
 same way as people; `hreflang` and canonical links point at the prefixed addresses.
 
 **The switch endpoint.** `GET /--locale/{code}?to=/de/about` writes the cookie and answers `302`

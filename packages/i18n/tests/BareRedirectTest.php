@@ -353,4 +353,32 @@ final class BareRedirectTest extends TestCase
 
         $this->assertRedirect('/de/evil.com/x', $this->dispatch($this->middleware(), $request));
     }
+
+    public function test_well_known_files_are_never_language_redirected(): void
+    {
+        foreach (['/robots.txt', '/sitemap.xml', '/llms.txt'] as $path) {
+            $this->handled = false;
+            $response = $this->dispatch($this->middleware(), $this->request($path, ['Accept-Language' => 'de']));
+
+            $this->assertServed($response);
+        }
+
+        $this->handled = false;
+        $this->assertRedirect('/de/faq', $this->dispatch($this->middleware(), $this->request('/faq', ['Accept-Language' => 'de'])));
+    }
+
+    public function test_bare_root_redirect_with_home_slash_goes_to_the_slash_form(): void
+    {
+        $mw = new LocaleMiddleware(
+            $this->translator,
+            self::LOCALES,
+            'en',
+            'prefix',
+            false,
+            urls: new LocaleUrls(self::LOCALES, 'en', true, true, true, true),
+            pageExists: static fn (string $locale, string $path): bool => true,
+        );
+
+        $this->assertRedirect('/de/', $this->dispatch($mw, $this->request('/', ['Accept-Language' => 'de'])));
+    }
 }

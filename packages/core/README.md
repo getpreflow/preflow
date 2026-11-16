@@ -321,11 +321,13 @@ return [
 ### Locale URLs: `Http\LocaleUrls` (0.78)
 
 `Preflow\Core\Http\LocaleUrls` is the one rule for locale prefixes in URLs. Core builds it at boot
-from `config/i18n.php` (`available`, `default`, `url_strategy`, `prefix_default`, `redirect_bare`;
+from `config/i18n.php` (`available`, `default`, `url_strategy`, `prefix_default`, `redirect_bare`, `home_slash`;
 a single `app.locale` without the file) and binds it for every site, with or without preflow/i18n,
 before any provider registers. `prefix($locale)` gives `/de`, `''` for the default locale unless
 `prefixDefault`, and `''` with `url_strategy` `none` or for an unknown locale; `path($locale,
-$path)` gives the full path (`/en` for the default locale's home with `prefix_default`). The locale
+$path)` gives the full path (`/en` for the default locale's home with `prefix_default`; `/en/` and `/de/` with `home_slash`,
+since 0.78.2, which leaves the unprefixed default's `/` alone). `isHome($path)` says whether a path
+is a locale root in that configured form. The locale
 middleware (preflow/i18n), `locale_url()`, redirects, the SEO tags, sitemap and llms.txt URLs,
 Folio's page addresses and members' links all ask it, so a site changes its URLs in one place.
 The page cache keys a page by the URL as asked, so `/en/about` and a bare `/about` are kept

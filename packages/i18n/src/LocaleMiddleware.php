@@ -17,6 +17,9 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 final class LocaleMiddleware implements MiddlewareInterface
 {
+    /** Files search engines and crawlers fetch by their exact address: never language-redirected. */
+    private const array NEVER_REDIRECTED = ['/robots.txt', '/sitemap.xml', '/llms.txt'];
+
     /** The locale prefix stripped from the current request's URL ('/de'), or ''. */
     private string $urlPrefix = '';
 
@@ -205,7 +208,7 @@ final class LocaleMiddleware implements MiddlewareInterface
         }
 
         $path = $request->getUri()->getPath();
-        if ($this->nonPublic?->matches($path)) {
+        if (in_array($path, self::NEVER_REDIRECTED, true) || $this->nonPublic?->matches($path)) {
             return false;
         }
 

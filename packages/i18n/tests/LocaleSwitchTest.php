@@ -220,4 +220,22 @@ final class LocaleSwitchTest extends TestCase
         self::assertSame(302, $response->getStatusCode());
         self::assertSame('/de/faq', $response->getHeaderLine('Location'));
     }
+
+    public function test_switch_without_target_lands_on_the_slash_home_with_home_slash(): void
+    {
+        $mw = new LocaleMiddleware(
+            new Translator(sys_get_temp_dir() . '/preflow_locale_switch_none', 'en', 'en'),
+            self::LOCALES,
+            'en',
+            'prefix',
+            false,
+            urls: new LocaleUrls(self::LOCALES, 'en', true, true, true, true),
+            pageExists: static fn (string $locale, string $path): bool => true,
+        );
+
+        $response = $this->call($mw, '/--locale/de');
+
+        self::assertSame(302, $response->getStatusCode());
+        self::assertSame('/de/', $response->getHeaderLine('Location'));
+    }
 }

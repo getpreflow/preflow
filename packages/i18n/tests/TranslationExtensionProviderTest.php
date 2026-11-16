@@ -185,4 +185,13 @@ final class TranslationExtensionProviderTest extends TestCase
         }
         $this->fail("No template function {$name}");
     }
+
+    public function test_locale_url_root_ends_in_a_slash_with_home_slash(): void
+    {
+        $url = $this->fn($this->providerWith(new LocaleUrls(['en', 'de'], 'en', true, false, false, true)), 'locale_url');
+
+        $this->assertSame('/de/', $url('/', 'de'));
+        $this->assertSame('/de/about', $url('/about', 'de'));
+        $this->assertSame('/', $url('/', 'en'));
+    }
 }

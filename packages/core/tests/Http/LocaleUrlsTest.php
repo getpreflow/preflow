@@ -132,4 +132,60 @@ final class LocaleUrlsTest extends TestCase
         $this->assertFalse($urls->prefixDefault);
         $this->assertFalse($urls->redirectBare);
     }
+
+    public function test_home_slash_makes_prefixed_roots_end_in_a_slash(): void
+    {
+        $urls = new LocaleUrls(['en', 'de'], 'en', homeSlash: true);
+
+        $this->assertSame('/de/', $urls->path('de', '/'));
+        $this->assertSame('/de/', $urls->path('de', ''));
+        $this->assertSame('/de/faq', $urls->path('de', '/faq'));
+        $this->assertSame('/', $urls->path('en', '/'));
+        $this->assertSame('/faq', $urls->path('en', '/faq'));
+
+        $prefixed = new LocaleUrls(['en', 'de'], 'en', prefixDefault: true, homeSlash: true);
+        $this->assertSame('/en/', $prefixed->path('en', '/'));
+        $this->assertSame('/en/faq', $prefixed->path('en', '/faq'));
+    }
+
+    public function test_home_slash_is_off_by_default(): void
+    {
+        $this->assertSame('/de', (new LocaleUrls(['en', 'de'], 'en'))->path('de', '/'));
+        $this->assertFalse(LocaleUrls::fromConfig(['available' => ['en', 'de'], 'default' => 'en'])->homeSlash);
+        $this->assertTrue(LocaleUrls::fromConfig(['available' => ['en', 'de'], 'default' => 'en', 'home_slash' => true])->homeSlash);
+    }
+
+    public function test_home_slash_must_be_a_bool_and_needs_prefix(): void
+    {
+        try {
+            LocaleUrls::fromConfig(['home_slash' => 'yes']);
+            $this->fail('A non-bool home_slash must stop the boot.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('config/i18n.php: home_slash must be true or false.', $e->getMessage());
+        }
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('config/i18n.php: home_slash needs url_strategy "prefix".');
+        LocaleUrls::fromConfig(['url_strategy' => 'none', 'home_slash' => true]);
+    }
+
+    public function test_is_home_is_the_locale_root_in_its_configured_form(): void
+    {
+        $plain = new LocaleUrls(['en', 'de'], 'en');
+        $this->assertTrue($plain->isHome('/'));
+        $this->assertTrue($plain->isHome('/de'));
+        $this->assertFalse($plain->isHome('/de/'));
+        $this->assertFalse($plain->isHome('/de/faq'));
+        $this->assertFalse($plain->isHome('/faq'));
+
+        $slash = new LocaleUrls(['en', 'de'], 'en', homeSlash: true);
+        $this->assertTrue($slash->isHome('/'));
+        $this->assertTrue($slash->isHome('/de/'));
+        $this->assertFalse($slash->isHome('/de'));
+        $this->assertFalse($slash->isHome('/de/faq'));
+
+        $both = new LocaleUrls(['en', 'de'], 'en', prefixDefault: true, homeSlash: true);
+        $this->assertTrue($both->isHome('/en/'));
+        $this->assertFalse($both->isHome('/en'));
+    }
 }
