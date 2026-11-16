@@ -345,6 +345,20 @@ final class TokensTest extends DataTestCase
         $this->assertSame([], glob($lockDir . '/*') ?: []);
     }
 
+    /** SQLite consumes through its conditional DELETE (RunsSql), never under the file lock JSON needs. */
+    public function test_sqlite_consumes_through_sql_without_a_lock(): void
+    {
+        foreach (['sqlite' => false, 'json' => true] as $storage => $locks) {
+            $lockDir = sys_get_temp_dir() . '/preflow_tokens_locks_' . uniqid();
+            $this->lockDirs[] = $lockDir;
+            $t = new Tokens($this->dataManager(), $storage, fn (): int => $this->now, $lockDir);
+            $token = $t->issue('confirm', 'user-1', 3600);
+
+            $this->assertSame('user-1', $t->consume($token, 'confirm'), $storage);
+            $this->assertSame($locks, is_dir($lockDir), $locks ? 'JSON consumes under the file lock' : 'SQLite takes the SQL path: no lock directory');
+        }
+    }
+
     public function test_unknown_token_creates_no_lock_file_on_json(): void
     {
         $lockDir = sys_get_temp_dir() . '/preflow_tokens_locks_' . uniqid();

@@ -436,6 +436,18 @@ final class CodesTest extends TestCase
         $this->assertFileExists($this->dir . '/storage/locks');
     }
 
+    /** SQLite counts a use with one conditional UPDATE (RunsSql), never under the file lock JSON needs. */
+    public function test_sqlite_storage_counts_without_a_file_lock(): void
+    {
+        $codes = $this->codes();
+        $this->assertInstanceOf(\Preflow\Data\Driver\SqliteDriver::class, $this->app()->container()->get(DataManager::class)->driver('codes'));
+        $codes->issue('members.book', [], 'ONLYONCE', maxUses: 1);
+
+        $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
+        $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
+        $this->assertDirectoryDoesNotExist($this->dir . '/storage/locks');
+    }
+
     public function test_max_uses_ten_allows_exactly_ten(): void
     {
         $codes = $this->codes();
