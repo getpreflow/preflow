@@ -12,7 +12,8 @@ final class VisibleAddressTest extends TestCase
 {
     public function test_default_locale_address_carries_prefix_with_prefix_default(): void
     {
-        $visible = new VisibleAddress('en', true, prefixDefault: true);
+        $urls = new \Preflow\Core\Http\LocaleUrls(['en', 'de'], 'en', prefixDefault: true);
+        $visible = new VisibleAddress('en', true, $urls->prefix(...));
 
         $this->assertSame('/en/about', $visible->of('en', '/about'));
         $this->assertSame('/en', $visible->of('en', '/'));
@@ -23,9 +24,12 @@ final class VisibleAddressTest extends TestCase
     public function test_default_locale_address_unprefixed_by_default(): void
     {
         $visible = new VisibleAddress('en', true);
-
         $this->assertSame('/about', $visible->of('en', '/about'));
         $this->assertSame('/de/about', $visible->of('de', '/about'));
-        $this->assertSame('/about', (new VisibleAddress('en', false, prefixDefault: true))->of('de', '/about'), 'no prefixes without the prefix strategy');
+
+        $site = new VisibleAddress('en', true, (new \Preflow\Core\Http\LocaleUrls(['en', 'de'], 'en'))->prefix(...));
+        $this->assertSame('/about', $site->of('en', '/about'), 'the site rule without prefix_default');
+        $this->assertSame('/de/about', $site->of('de', '/about'));
+        $this->assertSame('/about', (new VisibleAddress('en', false, static fn (string $locale): string => '/' . $locale))->of('de', '/about'), 'no prefixes without the prefix strategy');
     }
 }

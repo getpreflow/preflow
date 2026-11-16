@@ -207,8 +207,12 @@ final class FrontendResolver
 
     /**
      * The prefix a locale's URLs carry ("/de"; "/en" for the default locale with prefix_default;
-     * '' for none), as urlFor() puts it on. Without the site's LocaleUrls: '' for the default locale
-     * of the routed types, else "/{locale}".
+     * '' for none), as urlFor() puts it on.
+     *
+     * Without the site's LocaleUrls (a resolver built by hand; core 0.78 always binds it): '' for
+     * the default locale of the first routed type, else "/{locale}". urlFor() takes the record's own
+     * type's default instead, so the two agree only while every routed type has the site's
+     * locales, as the types of one site do.
      */
     public function localePrefix(string $locale): string
     {

@@ -98,6 +98,8 @@ final class FolioServiceProvider extends ServiceProvider
         // models need no files). Without a DataManager, Folio's own. Bound unconditionally:
         // Container::has() falls back to class_exists(), so a has() guard would never bind it.
         $locales = $this->locales($container);
+        // The site's locales, or a single 'en' without a DataManager's (the default of every Locales fallback below)
+        $siteLocales = $locales ?? \Preflow\Data\Locales::single('en');
         $dataManager = $this->dataManager($container, $app);
         $own = new TypeRegistry($modelsPath, $locales);
         $types = $dataManager?->ensureTypeRegistry($own) ?? $own;
@@ -692,9 +694,10 @@ final class FolioServiceProvider extends ServiceProvider
             oldAddresses: $c->bound(\Preflow\Folio\Redirects\RedirectEntries::class) ? new \Preflow\Folio\Redirects\OldAddresses(
                 $c->get(\Preflow\Folio\Redirects\RedirectEntries::class),
                 new \Preflow\Folio\Redirects\VisibleAddress(
-                    ($locales ?? \Preflow\Data\Locales::single('en'))->default,
+                    $siteLocales->default,
                     self::prefixedUrls($app),
-                    prefixDefault: $c->get(FrontendResolver::class)->localePrefix(($locales ?? \Preflow\Data\Locales::single('en'))->default) !== '',
+                    // The resolver is built only when an address is shown.
+                    static fn (string $locale): string => $c->get(FrontendResolver::class)->localePrefix($locale),
                 ),
                 $app->config()->get('app.debug', false) ? static fn (string $message) => error_log('folio: ' . $message) : null,
             ) : null,

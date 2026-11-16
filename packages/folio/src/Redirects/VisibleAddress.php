@@ -12,14 +12,16 @@ namespace Preflow\Folio\Redirects;
 final readonly class VisibleAddress
 {
     /**
-     * @param string $defaultLocale the site's default language (its addresses carry no prefix, unless $prefixDefault)
+     * @param string $defaultLocale the site's default language (its addresses carry no prefix by default)
      * @param bool   $prefixed      whether URLs carry the locale (i18n url_strategy "prefix")
-     * @param bool   $prefixDefault whether the default language's addresses carry its prefix too (i18n prefix_default)
+     * @param (\Closure(string $locale): string)|null $prefixOf the site's prefix of a locale ("/de";
+     *        "/en" for the default with prefix_default: FrontendResolver::localePrefix()); null:
+     *        "/{locale}" for every language but the default
      */
     public function __construct(
         private string $defaultLocale,
         private bool $prefixed,
-        private bool $prefixDefault = false,
+        private ?\Closure $prefixOf = null,
     ) {}
 
     public function of(string $locale, string $path): string
@@ -27,14 +29,17 @@ final readonly class VisibleAddress
         return self::readable($this->withPrefix($locale, $path));
     }
 
-    /** The locale prefix (not the default's, unless prefixDefault), then the path. */
+    /** The locale's prefix, then the path. */
     private function withPrefix(string $locale, string $path): string
     {
-        if ($locale === '' || !$this->prefixed || ($locale === $this->defaultLocale && !$this->prefixDefault)) {
+        if ($locale === '' || !$this->prefixed) {
             return $path;
         }
+        $prefix = $this->prefixOf !== null
+            ? ($this->prefixOf)($locale)
+            : ($locale === $this->defaultLocale ? '' : '/' . $locale);
 
-        return '/' . $locale . ($path === '/' ? '' : $path);
+        return $prefix === '' ? $path : $prefix . ($path === '/' ? '' : $path);
     }
 
     /**

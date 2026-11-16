@@ -13,8 +13,9 @@ use Preflow\View\Audit\Target;
  * it), a file under the media URL ({media}/{Y}/{m}/{id}…: the original or one of its variants)
  * is its asset. Anything else has no target.
  *
- * The locale's prefix ("/de"; the default's "/en" with prefix_default) is taken off before the
- * page is looked up, as FrontendResolver::urlFor() puts it on (FrontendResolver::localePrefix()). A lookup that fails (storage not reachable, a table
+ * The locale's prefix ("/de"; the default's "/en" with prefix_default,
+ * FrontendResolver::localePrefix()) is taken off before the page is looked up, as
+ * FrontendResolver::urlFor() puts it on. A lookup that fails (storage not reachable, a table
  * not migrated yet) is no target: the finding still stands, only without the link.
  *
  * @since 0.54
@@ -34,7 +35,8 @@ final class AuditTargets
     /**
      * @param \Closure(): FrontendResolver $resolverFactory built on the first page looked up
      * @param \Closure(): string           $mediaUrlFactory the media core's URL (config/media.php "url"), read on first use
-     * @param string                       $defaultLocale   the site's default language (kept for compatibility: the resolver knows the prefixes)
+     * @param string                       $defaultLocale   the site's default language (unused; kept for
+     *                                                      compatibility: the resolver knows the prefixes)
      */
     public function __construct(
         private readonly \Closure $resolverFactory,
