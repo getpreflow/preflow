@@ -285,7 +285,12 @@ final class MembersServiceProvider extends ServiceProvider
             $c->instance(Translator::class, $translator);
             // The app registers t() only with the translator it boots itself; this one needs it too.
             if ($c->has(TemplateEngineInterface::class)) {
-                $provider = new TranslationExtensionProvider($translator, $c->get(Locales::class)->available, $locale);
+                $provider = new TranslationExtensionProvider(
+                    $translator,
+                    $c->get(Locales::class)->available,
+                    $locale,
+                    $c->bound(LocaleUrls::class) ? $c->get(LocaleUrls::class) : null,
+                );
                 $engine = $c->get(TemplateEngineInterface::class);
                 foreach ($provider->getTemplateFunctions() as $function) {
                     $engine->addFunction($function);

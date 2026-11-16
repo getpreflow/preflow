@@ -425,6 +425,10 @@ final class Application
         // GEO Markdown views — prepended, so it runs before every other middleware
         $this->bootGeo($debug);
 
+        // Clean paths (config/routing.php canonical_paths) — prepended around GEO, so '//de//about/'
+        // is answered with its clean address before anything reads the path or its locale prefix.
+        $this->bootCanonicalPaths();
+
         // CORS for API paths — prepended last, so it is outermost: it wraps the page cache
         // (stored pages hold no CORS headers, hits get them) and answers preflights first.
         $cors = null;
@@ -2068,6 +2072,15 @@ final class Application
 
     private function bootI18n(): void
     {
+        // The one rule for locale URL prefixes, bound for every site (a single locale without
+        // config/i18n.php), with or without preflow/i18n. Its options are checked here: a wrong
+        // value stops the boot instead of doing nothing.
+        $i18nFile = $this->configFile('i18n');
+        $i18nConfig = (array) ($i18nFile ?? []);
+        $urls = \Preflow\Core\Http\LocaleUrls::fromConfig($i18nFile === null ? null : $i18nConfig, (string) $this->config->get('app.locale', 'en'));
+        $this->container->instance(\Preflow\Core\Http\LocaleUrls::class, $urls);
+        $cookieName = self::localeCookieName($i18nConfig);
+
         if (!class_exists(\Preflow\I18n\Translator::class)) {
             return;
         }
@@ -2077,13 +2090,11 @@ final class Application
         // content-only multilingual app may have config/i18n.php but no lang/ yet), so a
         // site with neither keeps its frontend unchanged.
         $langDir = $this->basePath('lang');
-        $i18nFile = $this->configFile('i18n');
         $localized = is_dir($langDir) || $i18nFile !== null;
 
-        $i18nConfig = (array) ($i18nFile ?? []);
-        $locale = (string) ($i18nConfig['default'] ?? $this->config->get('app.locale', 'en'));
+        $locale = $urls->default;
         $fallback = (string) ($i18nConfig['fallback'] ?? $locale);
-        $available = array_values((array) ($i18nConfig['available'] ?? [$locale]));
+        $available = $urls->locales;
         $strategy = (string) ($i18nConfig['url_strategy'] ?? 'prefix');
 
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
@@ -2097,19 +2108,29 @@ final class Application
         // t()/tc() and locale helpers
         if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {
             $engine = $this->container->get(\Preflow\View\TemplateEngineInterface::class);
-            $translationProvider = new \Preflow\I18n\TranslationExtensionProvider($translator, $available, $locale);
+            $translationProvider = new \Preflow\I18n\TranslationExtensionProvider($translator, $available, $locale, $urls);
             $this->registerExtensionProvider($engine, $translationProvider);
         }
 
         // Locale middleware. No cookie by default with the prefix strategy (the URL
         // carries the locale), so sites can truthfully claim "no cookies".
+        // With redirect_bare it also sends bare page paths to the visitor's language and answers
+        // the language switch (/--locale/{code}), the only place its cookie is written.
         if ($localized && class_exists(\Preflow\I18n\LocaleMiddleware::class)) {
+            $nonPublic = $this->container->get(\Preflow\Core\Http\NonPublicPaths::class);
+            if ($urls->redirectBare) {
+                $nonPublic->add('/--locale');
+            }
             $localeMiddleware = new \Preflow\I18n\LocaleMiddleware(
                 $translator,
                 $available,
                 $locale,
                 $strategy,
                 (bool) ($i18nConfig['cookie'] ?? $strategy !== 'prefix'),
+                urls: $urls,
+                cookieName: $cookieName,
+                pageExists: $this->pageExists(),
+                nonPublic: $nonPublic,
             );
             $this->container->instance(\Preflow\I18n\LocaleMiddleware::class, $localeMiddleware);
             $this->addMiddleware($localeMiddleware);
@@ -2127,6 +2148,53 @@ final class Application
                 }
             });
         }
+    }
+
+    /**
+     * The locale cookie's name (config/i18n.php `cookie_name`, default "locale").
+     *
+     * @param array<array-key, mixed> $i18n
+     * @throws \RuntimeException when it is not a non-empty cookie name (RFC 6265 token)
+     */
+    private static function localeCookieName(array $i18n): string
+    {
+        $name = $i18n['cookie_name'] ?? 'locale';
+        if (!is_string($name) || preg_match('/^[!#$%&\'*+\-.^_`|~0-9A-Za-z]+$/', $name) !== 1) {
+            throw new \RuntimeException('config/i18n.php: cookie_name must be a non-empty cookie name (letters, digits and !#$%&\'*+-.^_`|~).');
+        }
+
+        return $name;
+    }
+
+    /**
+     * Whether a page answers at a bare path, for the locale middleware's redirect (redirect_bare):
+     * a route that is not a catch-all, or the site's PageExists (Folio binds one for its pages; a
+     * site with its own catch-all pages binds its own). Null without preflow/routing's Router,
+     * which leaves bare paths alone. The router is read when a request asks, so a router a
+     * provider sets later counts.
+     *
+     * @return (\Closure(string $locale, string $path): bool)|null
+     */
+    private function pageExists(): ?\Closure
+    {
+        if (!class_exists(\Preflow\Routing\Router::class) || !$this->router instanceof \Preflow\Routing\Router) {
+            return null;
+        }
+
+        $container = $this->container;
+
+        return static function (string $locale, string $path) use ($container): bool {
+            $router = $container->get(RouterInterface::class);
+            if ($router instanceof \Preflow\Routing\Router) {
+                $match = (new \Preflow\Routing\RouteMatcher($router->getCollection()))->match('GET', $path);
+                if ($match !== null && !$match['entry']->isCatchAll) {
+                    return true;
+                }
+            }
+
+            return $container->bound(\Preflow\Routing\Redirect\PageExists::class)
+                && $container->get(\Preflow\Routing\Redirect\PageExists::class)->exists($locale, $path);
+        };
     }
 
     /** Binds RequestContext for the request being handled (handle(), and again once the locale prefix is stripped). */
@@ -2343,13 +2411,9 @@ final class Application
      */
     private function siteLocales(): array
     {
-        $i18n = (array) ($this->configFile('i18n') ?? []);
-        $defaultLocale = (string) ($i18n['default'] ?? $this->config->get('app.locale', 'en'));
-        $locales = ($i18n['url_strategy'] ?? 'prefix') === 'prefix'
-            ? array_values(array_map('strval', (array) ($i18n['available'] ?? [$defaultLocale])))
-            : [$defaultLocale];
+        $urls = $this->container->get(\Preflow\Core\Http\LocaleUrls::class);
 
-        return [$locales, $defaultLocale];
+        return [$urls->prefixed ? $urls->locales : [$urls->default], $urls->default];
     }
 
     /**
@@ -2394,6 +2458,7 @@ final class Application
             static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
             $this->sessionCookieName(),
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+            localeUrls: $this->container->get(\Preflow\Core\Http\LocaleUrls::class),
         );
         $this->container->instance(\Preflow\View\Seo\SeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
@@ -2522,6 +2587,23 @@ final class Application
         );
         $this->container->instance(\Preflow\View\Geo\GeoMiddleware::class, $middleware);
         $this->pipeline->prepend($middleware);
+    }
+
+    /**
+     * Clean paths (preflow/routing, config/routing.php `'canonical_paths' => true`): a GET or
+     * HEAD whose path has a trailing slash or repeated slashes answers 301 to its clean form.
+     * Off by default; a value that is not a bool stops the boot.
+     */
+    private function bootCanonicalPaths(): void
+    {
+        if (!class_exists(\Preflow\Routing\CanonicalPathMiddleware::class)
+            || !\Preflow\Routing\CanonicalPathMiddleware::enabled($this->configFile('routing'))) {
+            return;
+        }
+
+        $this->pipeline->prepend(new \Preflow\Routing\CanonicalPathMiddleware(
+            $this->container->get(\Preflow\Core\Http\NonPublicPaths::class),
+        ));
     }
 
     /**

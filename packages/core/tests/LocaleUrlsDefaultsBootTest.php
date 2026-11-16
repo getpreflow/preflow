@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Http\LocaleUrls;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -68,6 +69,14 @@ final class LocaleUrlsDefaultsBootTest extends TestCase
             $this->assertFalse($response->hasHeader('Set-Cookie'), "{$uri} sets a cookie");
             $this->assertFalse($response->hasHeader('Location'), "{$uri} redirects");
         }
+
+        $app = Application::create($this->dir);
+        $app->boot();
+        $urls = $app->container()->get(LocaleUrls::class);
+        $this->assertSame('', $urls->prefix('en'));
+        $this->assertSame('/de', $urls->prefix('de'));
+        $this->assertFalse($urls->prefixDefault);
+        $this->assertFalse($urls->redirectBare);
     }
 
     /** @param array<string, string> $headers */

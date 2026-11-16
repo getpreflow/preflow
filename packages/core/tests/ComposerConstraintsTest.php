@@ -7,7 +7,10 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which Throttle gives its purpose field).
+ * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which Throttle gives its purpose field); i18n 0.78
+ * (LocaleMiddleware takes urls:, cookieName:, pageExists: and nonPublic:, the bare-path redirect and the
+ * language switch); view 0.78 (SeoMiddleware takes localeUrls:, the home of a prefixed default locale);
+ * routing 0.78 (CanonicalPathMiddleware, which config/routing.php's canonical_paths turns on).
  * Since 0.74: view 0.74 (Audits, which bootAudit binds) and notify 0.74 (Notifier::discardingQueued(),
  * which every internal render runs in, so mail a render queues is dropped; with an older notify it would be sent).
  *
@@ -49,9 +52,9 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/components' => '<0.60',
             'preflow/data' => '<0.78',
             'preflow/htmx' => '<0.65',
-            'preflow/i18n' => '<0.67',
-            'preflow/routing' => '<0.62',
-            'preflow/view' => '<0.74',
+            'preflow/i18n' => '<0.78',
+            'preflow/routing' => '<0.78',
+            'preflow/view' => '<0.78',
             'preflow/twig' => '<0.60',
             'preflow/blade' => '<0.60',
             'preflow/folio' => '<0.67',

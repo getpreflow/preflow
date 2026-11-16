@@ -6,6 +6,7 @@ namespace Preflow\View\Seo;
 
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\Stream;
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\SecurityHeadersMiddleware;
 use Preflow\View\NonceGenerator;
 use Psr\Http\Message\ResponseInterface;
@@ -44,6 +45,7 @@ final class SeoMiddleware implements MiddlewareInterface
      * @param \Closure(): \DateTimeImmutable $now security.txt's Expires counts from it
      * @param ?string      $sessionCookie the session cookie's name (config); session_name() when null
      * @param ?\Closure(): list<string> $sentHeaders headers PHP queued natively; headers_list() by default
+     * @param ?LocaleUrls  $localeUrls    the site's locale URL rule: a locale's home is its prefix ('/en' with prefix_default)
      */
     public function __construct(
         private readonly SeoConfig $config,
@@ -61,6 +63,7 @@ final class SeoMiddleware implements MiddlewareInterface
         private readonly ?string $sessionCookie = null,
         ?\Closure $sentHeaders = null,
         private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
+        private readonly ?LocaleUrls $localeUrls = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_list();
     }
@@ -375,9 +378,16 @@ final class SeoMiddleware implements MiddlewareInterface
             : $this->defaultLocale;
     }
 
-    /** `/` for the default locale, `/{locale}` for the others (a trailing slash is the same page). */
+    /**
+     * `/` for the default locale, `/{locale}` for the others (a trailing slash is the same page);
+     * with LocaleUrls the locale's prefix, so `/en` when the default locale is prefixed too.
+     */
     private function homePath(string $locale): string
     {
+        if ($this->localeUrls !== null) {
+            return $this->localeUrls->prefix($locale);
+        }
+
         return $locale === $this->defaultLocale ? '' : '/' . $locale;
     }
 
