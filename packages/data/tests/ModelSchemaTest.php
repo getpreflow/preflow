@@ -7,7 +7,9 @@ namespace Preflow\Data\Tests;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\ModelMetadata;
 use Preflow\Data\ModelSchema;
+use Preflow\Data\Tests\Fixtures\ModelSchema\ApiClient;
 use Preflow\Data\Tests\Fixtures\ModelSchema\Job;
+use Preflow\Data\TypeRegistry;
 use Preflow\Data\Tests\Fixtures\ModelSchema\PlainPost;
 use Preflow\Data\Tests\Fixtures\ModelSchema\UntypedArray;
 use Preflow\Data\Tests\Fixtures\ModelSchema\TranslatableString;
@@ -70,5 +72,31 @@ final class ModelSchemaTest extends TestCase
     {
         $this->assertSame('job', ModelMetadata::for(Job::class)->type);
         $this->assertNull(ModelMetadata::for(PlainPost::class)->type);
+    }
+
+    public function test_exact_is_data_in_class_and_file_schemas(): void
+    {
+        $schema = ModelSchema::of(ApiClient::class);
+        $this->assertSame(['type' => 'string', 'exact' => true], $schema['fields']['apiKey']);
+        $this->assertSame(['type' => 'string'], $schema['fields']['name']);
+        $this->assertContains('exact', ModelSchema::SCHEMA_FIELD_KEYS, 'an admin file may not set it on a class-backed type');
+
+        $dir = sys_get_temp_dir() . '/preflow_exact_' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            file_put_contents($dir . '/api_key.json', json_encode([
+                'key' => 'api_key',
+                'table' => 'api_key',
+                'fields' => ['name' => ['type' => 'string'], 'secret' => ['type' => 'string', 'exact' => true]],
+            ]));
+            $def = (new TypeRegistry($dir))->get('api_key');
+        } finally {
+            array_map('unlink', glob($dir . '/*'));
+            rmdir($dir);
+        }
+
+        $this->assertTrue($def->fields['secret']->exact);
+        $this->assertFalse($def->fields['name']->exact);
+        $this->assertArrayNotHasKey('exact', $def->fields['secret']->config);
     }
 }

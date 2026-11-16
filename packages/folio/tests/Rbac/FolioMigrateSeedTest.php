@@ -53,7 +53,9 @@ final class FolioMigrateSeedTest extends TestCase
 
         $c = $this->container();
         $this->assertTrue($c->get(RoleStore::class)->installed());
-        $this->assertSame(['admin' => ['*'], 'editor' => ['page.*']], $c->get(RoleStore::class)->rolesFor('staff'));
+        $roles = $c->get(RoleStore::class)->rolesFor('staff');
+        ksort($roles); // roles have no order; JSON storage lists them by their random ids
+        $this->assertSame(['admin' => ['*'], 'editor' => ['page.*']], $roles);
         $resolver = (new \ReflectionProperty(Access::class, 'resolver'))->getValue($c->get(Access::class));
         $this->assertInstanceOf(RbacResolver::class, $resolver);
         $this->assertTrue($resolver->allows(new TestUser(roles: ['admin']), 'staff', 'rbac_role.edit', null));
@@ -85,7 +87,9 @@ final class FolioMigrateSeedTest extends TestCase
         $this->assertSame(0, $code, $out);
         $this->assertStringContainsString('No SQL storage configured: no schema migrations.', $out);
         $this->assertStringContainsString('seeded 2 rbac roles', $out);
-        $this->assertSame(['admin' => ['*'], 'editor' => ['page.*']], $this->container()->get(RoleStore::class)->rolesFor('staff'));
+        $roles = $this->container()->get(RoleStore::class)->rolesFor('staff');
+        ksort($roles); // roles have no order; JSON storage lists them by their random ids
+        $this->assertSame(['admin' => ['*'], 'editor' => ['page.*']], $roles);
 
         $registry = $this->container()->get(\Preflow\Data\Migration\MigrationRegistry::class);
         foreach (['folio.tables', 'activity.table'] as $sqlOnly) {

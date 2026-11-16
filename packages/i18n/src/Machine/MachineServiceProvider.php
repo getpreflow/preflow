@@ -6,6 +6,7 @@ namespace Preflow\I18n\Machine;
 
 use Preflow\Ai\Ai;
 use Preflow\Ai\AiServiceProvider;
+use Preflow\Ai\Limits\AiLimits;
 use Preflow\Ai\Settings\AiSettingsStore;
 use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
@@ -55,6 +56,9 @@ final class MachineServiceProvider extends ServiceProvider
             $c->get(Estimator::class),
             $c->get(JobStore::class),
             $c->get(RecordLease::class),
+            null,
+            // Per-person AI limits (bound with a data layer): a job someone queued counts against them.
+            $c->bound(AiLimits::class) ? $c->get(AiLimits::class) : null,
         ));
         $container->singleton(TranslationWorker::class, static fn (Container $c): TranslationWorker => new TranslationWorker(
             $c->get(JobRunner::class),

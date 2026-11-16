@@ -47,6 +47,17 @@ final class Ai
     private ?AiClient $client = null;
 
     /**
+     * The directory of preflow/ai's texts (lang/{locale}/ai.php: the AI limits' messages), for an
+     * adapter that shows them in its own translator (Folio).
+     *
+     * @since 0.78
+     */
+    public static function langPath(): string
+    {
+        return dirname(__DIR__) . '/lang';
+    }
+
+    /**
      * @param array<string, mixed> $config config/ai.php
      * @param (\Closure(string): ?string)|null $env reads an env var; tests inject one
      * @param (\Closure(string, string, string): AiClient)|null $clientFactory builds the client from provider, model, key in place

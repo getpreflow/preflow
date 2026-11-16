@@ -110,6 +110,31 @@ final class AiSettingsTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_test_button_counts_against_the_draft_limit(): void
+    {
+        $this->write('config/ai.php', "<?php\nreturn " . var_export([
+            'enabled' => true,
+            'provider' => 'claude',
+            'models' => ['claude' => 'claude-sonnet-5-5'],
+            'keys' => ['claude' => self::aiKeyEnv()],
+            'limits' => ['draft' => ['max' => 1]],
+        ], true) . ";\n");
+        $this->script = [FakeAiClient::json(['ok' => true]), FakeAiClient::json(['ok' => true])];
+        $this->staff('aiadmin');
+
+        $this->assertStringContainsString('The connection works', (string) $this->call('POST', '/folio/ai/test')->getBody());
+        $res = $this->call('POST', '/folio/ai/test');
+
+        $this->assertSame(429, $res->getStatusCode());
+        $retry = (int) $res->getHeaderLine('Retry-After');
+        $this->assertGreaterThan(0, $retry);
+        $this->assertSame('no-store', $res->getHeaderLine('Cache-Control'));
+        $minutes = (int) ceil($retry / 60);
+        $this->assertStringContainsString("You have reached your limit of 1 AI drafts. You can write the next one in {$minutes} min.", (string) $res->getBody());
+        $this->assertCount(1, $this->fake->requests(), 'the second test asked no AI');
+    }
+
+    #[RunInSeparateProcess]
     public function test_test_button_shows_failure_instead_of_a_500(): void
     {
         $this->script = [new AiRequestFailed('Provider said no')];

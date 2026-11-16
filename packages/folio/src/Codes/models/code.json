@@ -11,7 +11,11 @@
     },
     "fields": {
         "purpose": {
-            "type": "codes_purpose"
+            "type": "codes_purpose",
+            "exact": true
+        },
+        "code": {
+            "exact": true
         },
         "expires_at": {
             "help": "Empty: never expires."
@@ -20,20 +24,26 @@
             "help": "Empty: unlimited."
         },
         "uses": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "revoked_at": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side",
+            "exact": true
         },
         "payload": {
             "hidden": true,
-            "searchable": false
+            "searchable": false,
+            "exact": true
         },
         "form": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "recipient": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "created_at": {
             "hidden": true,

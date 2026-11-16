@@ -107,7 +107,7 @@ final class Query
      * One group of conditions of which at least one must hold (OR). Every group
      * is AND'd with the other wheres and groups.
      *
-     * Operators: "=" (a null value matches a missing or NULL field), "CONTAINS" (case-insensitive substring), "IN" (value is a
+     * Operators: "=" (a null value matches a missing or NULL field), "CONTAINS" (substring under the text-matching rule, see StorageDriver), "IN" (value is a
      * list; empty matches nothing) and "HAS" (the column holds a JSON array of
      * ids or one id; true if any given id is in it; empty list matches nothing).
      *
@@ -210,6 +210,43 @@ final class Query
         }
 
         return ['locale' => $this->localization['locale'], 'default' => $this->localization['default'], 'available' => $this->localization['available']];
+    }
+
+    /** @var array<string, true>|null null until compareAsText() named the text fields */
+    private ?array $textFields = null;
+
+    /**
+     * Compare these fields by the text rule (ignore case, respect accents; TextMatch): =, !=,
+     * IN, NOT IN, range comparisons, ORDER BY and grouping; every other field exactly.
+     * QueryBuilder names a type's or a model class's text fields (TextColumns), so a query it
+     * builds compares the same on every driver. A query built by hand names them itself: one that
+     * names none is compared field by field as the store keeps it (JSON exactly; SQL by each
+     * column's collation, which for a type's table made by Preflow is the rule's for text fields
+     * and exact for the rest; see the data README, "Exact comparisons").
+     *
+     * @param list<string> $fields
+     * @since 0.78
+     */
+    public function compareAsText(array $fields): void
+    {
+        $this->textFields = array_fill_keys(array_map('strval', $fields), true);
+    }
+
+    /**
+     * Whether compareAsText() named the query's text fields (it may have named none): then every
+     * field it did not name compares exactly, also where its column carries the rule.
+     *
+     * @since 0.78
+     */
+    public function namesTextFields(): bool
+    {
+        return $this->textFields !== null;
+    }
+
+    /** @since 0.78 */
+    public function comparesAsText(string $field): bool
+    {
+        return isset($this->textFields[$field]);
     }
 
     public function getWheres(): array { return $this->wheres; }

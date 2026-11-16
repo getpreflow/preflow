@@ -91,6 +91,77 @@ trait UniqueScenarios
         $this->assertNull($this->dm->findIn($page, 'b'));
     }
 
+    /**
+     * A unique text field refuses a case variant and takes an accent variant, on every storage:
+     * through the column's unique index on SQL (the save that skips validation too), through the
+     * check (Validation\Unique, TextMatch) on JSON. An exact field takes a case variant.
+     */
+    public function test_a_case_variant_is_a_duplicate_on_every_storage(): void
+    {
+        $page = $this->page();
+        $this->save($page, ['uuid' => 'a', 'slug' => 'MÜLLER']);
+        $taken = ['slug' => ['This value is already taken.']];
+
+        $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'b', 'slug' => 'Müller']));
+        $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'b', 'slug' => 'müller'], validate: false), 'the storage itself refuses it');
+        $this->assertNull($this->dm->findIn($page, 'b'));
+        $this->assertSame([], $this->errorsOf($page, ['uuid' => 'c', 'slug' => 'Muller']), 'an accent variant is another value');
+        $this->assertSame([], $this->errorsOf($page, ['uuid' => 'd', 'slug' => 'Mueller'], validate: false));
+
+        $key = $this->synced(new TypeDefinition('apikey', 'apikey', $this->storage(), [
+            'key' => new TypeFieldDefinition('key', unique: true, exact: true),
+        ]));
+        $this->save($key, ['uuid' => 'a', 'key' => 'aBc']);
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'b', 'key' => 'abc']), 'an exact field compares case');
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'c', 'key' => 'ABC'], validate: false));
+        $this->assertSame(['key' => ['This value is already taken.']], $this->errorsOf($key, ['uuid' => 'd', 'key' => 'aBc'], validate: false));
+    }
+
+    /**
+     * A field marked exact is a machine value, not searchable text, on every storage: loose search
+     * finds it only by its whole value (compared exactly), a full-text index leaves it out, and its
+     * unique check keeps case, also in a type with full-text search.
+     */
+    public function test_an_exact_field_of_a_full_text_type_is_found_whole_and_stays_exact(): void
+    {
+        $key = $this->synced(new TypeDefinition('apikey', 'apikey', $this->storage(), [
+            'title' => new TypeFieldDefinition('title'),
+            'key' => new TypeFieldDefinition('key', unique: true, exact: true),
+        ], fullText: true));
+        $this->save($key, ['uuid' => 'a', 'title' => 'Alpha', 'key' => 'SecretWord']);
+        $found = fn (string $term): array => array_map(static fn ($r): string => (string) $r->getId(), $this->dm->queryIn($key)->searchLoose($term)->get()->items());
+
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'b', 'title' => 'Beta', 'key' => 'secretword']), 'a case variant is another value');
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'c', 'title' => 'Gamma', 'key' => 'SECRETWORD'], validate: false));
+        $this->assertSame(['key' => ['This value is already taken.']], $this->errorsOf($key, ['uuid' => 'd', 'key' => 'SecretWord'], validate: false));
+
+        $this->assertSame(['a'], $found('Alpha'));
+        $this->assertSame(['a'], $found('SecretWord'), 'its whole value finds it, compared exactly');
+        $this->assertSame(['b'], $found('secretword'), 'a case variant finds only its own record');
+        $this->assertSame([], $found('Secret'), 'a part of it does not');
+        $this->assertSame(['a'], $found('alpha SecretWord'), 'with the other words of the term');
+
+        // An exact value with a space is found by the whole trimmed term (R39).
+        $this->save($key, ['uuid' => 'e', 'title' => 'Epsilon', 'key' => 'AB 12']);
+        $this->assertSame(['e'], $found('  AB 12 '), 'the whole term');
+        $this->assertSame([], $found('ab 12'), 'compared exactly');
+        $this->assertSame([], $found('AB'), 'a word of it is not its whole value');
+    }
+
+    public function test_a_number_stored_as_text_is_still_a_duplicate(): void
+    {
+        $page = $this->page();
+        $this->save($page, ['uuid' => 'a', 'slug' => '5']);
+        $this->save($page, ['uuid' => 'b', 'slug' => 7]);
+
+        $taken = ['slug' => ['This value is already taken.']];
+        foreach ([true, false] as $validate) {
+            $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'c', 'slug' => 5], $validate), 'stored "5", new 5');
+            $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'c', 'slug' => '7'], $validate), 'stored 7, new "7"');
+        }
+        $this->assertNull($this->dm->findIn($page, 'c'));
+    }
+
     public function testOwnValueIsNotADuplicate(): void
     {
         $page = $this->page();

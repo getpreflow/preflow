@@ -57,7 +57,11 @@ final class ConvertTypedColumnsTest extends TestCase
         $fresh = new \PDO('sqlite:' . $this->dir . '/fresh.sqlite');
         $freshDm = new DataManager(['sqlite' => new SqliteDriver($fresh)], 'sqlite');
         (new \Preflow\Data\Schema\RecordTableSync($freshDm))->sync(self::event());
-        $sql = static fn (\PDO $pdo): array => $pdo->query("SELECT type, name, sql FROM sqlite_master WHERE tbl_name = 'event' AND name <> 'own_event_name' ORDER BY name")->fetchAll(\PDO::FETCH_ASSOC);
+        // SQLite writes a renamed table's name in double quotes (the rebuild renames): quoting aside, the same.
+        $sql = static fn (\PDO $pdo): array => array_map(
+            static fn (array $row): array => ['sql' => preg_replace('/^CREATE TABLE "([^"]+)"/', 'CREATE TABLE `$1`', (string) $row['sql'])] + $row,
+            $pdo->query("SELECT type, name, sql FROM sqlite_master WHERE tbl_name = 'event' AND name <> 'own_event_name' ORDER BY name")->fetchAll(\PDO::FETCH_ASSOC),
+        );
         $this->assertSame($sql($fresh), $sql($this->pdo()));
         $this->assertContains('own_event_name', (new \Preflow\Data\Migration\Schema($this->pdo()))->indexes('event'), 'other indexes are kept');
     }

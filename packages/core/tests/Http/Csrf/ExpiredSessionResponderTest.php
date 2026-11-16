@@ -46,6 +46,32 @@ final class ExpiredSessionResponderTest extends TestCase
         $this->assertSame(['name' => 'Ada'], $this->session->getFlash(OldInput::FLASH_KEY));
     }
 
+    /** A form that promises to store nothing (config/csrf.php forget_input) comes back empty, with the warning. */
+    public function test_a_forgotten_path_keeps_no_old_input(): void
+    {
+        $config = \Preflow\Core\Http\Csrf\CsrfConfig::fromArray(['forget_input' => ['/contact']]);
+
+        $response = (new ExpiredSessionResponder('en', config: $config))($this->post(['Referer' => 'https://site.test/contact']));
+
+        $this->assertSame(303, $response->getStatusCode());
+        $this->assertSame('Your session had expired. Please send the form again.', $this->session->getFlash('warning'));
+        $this->assertNull($this->session->getFlash(OldInput::FLASH_KEY), 'the message and e-mail are not kept');
+
+        $other = \Preflow\Core\Http\Csrf\CsrfConfig::fromArray(['forget_input' => ['/con']]);
+        (new ExpiredSessionResponder('en', config: $other))($this->post([]));
+        $this->assertSame(['name' => 'Ada'], $this->session->getFlash(OldInput::FLASH_KEY), 'whole path segments only');
+    }
+
+    public function test_forgotten_fields_are_never_kept(): void
+    {
+        $config = \Preflow\Core\Http\Csrf\CsrfConfig::fromArray(['forget_fields' => ['name']]);
+        $request = $this->post([])->withParsedBody(['name' => 'Ada', 'topic' => 'help', '_csrf_token' => 'old']);
+
+        (new ExpiredSessionResponder('en', config: $config))($request);
+
+        $this->assertSame(['topic' => 'help'], $this->session->getFlash(OldInput::FLASH_KEY));
+    }
+
     public function test_foreign_referer_redirects_home(): void
     {
         $responder = new ExpiredSessionResponder('en');

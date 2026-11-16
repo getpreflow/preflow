@@ -757,6 +757,20 @@ final class Application
         if (class_exists(\Preflow\Data\Schema\RecordTables::class)) {
             $this->container->instance(\Preflow\Data\Schema\RecordTables::class, new \Preflow\Data\Schema\RecordTables());
         }
+        // The tables migrations make, with each column's intent (text or exact), for `preflow migrate`
+        // to give existing ones the text rule (data 0.78): the framework's own here, packages' in theirs.
+        if (class_exists(\Preflow\Data\Schema\DeclaredTables::class)) {
+            $declared = new \Preflow\Data\Schema\DeclaredTables();
+            $exact = \Preflow\Data\Migration\MigrationColumns::EXACT;
+            $declared->add('preflow_migrations', ['migration' => $exact, 'ran_at' => $exact]);
+            $declared->add(\Preflow\Data\Migration\MigrationColumns::TABLE, ['id' => $exact, 'table_name' => $exact, 'column_name' => $exact, 'intent' => $exact]);
+            $declared->add('preflow_throttle', ['id' => $exact, 'purpose' => $exact]);
+            if (class_exists(\Preflow\Auth\Tokens\Tokens::class)) {
+                $declared->add('auth_tokens', ['id' => $exact, 'purpose' => $exact, 'subject' => $exact]);
+                $declared->add('auth_remember', ['id' => $exact, 'guard' => $exact, 'user_id' => $exact, 'validator_hash' => $exact, 'previous_hash' => $exact]);
+            }
+            $this->container->instance(\Preflow\Data\Schema\DeclaredTables::class, $declared);
+        }
 
         $dataConfig = $this->configFile('data');
         if ($dataConfig === null) {
@@ -776,7 +790,8 @@ final class Application
                 'mysql' => $this->createMysqlDriver($driverConfig, $collector),
                 'json' => $jsonDriver = new \Preflow\Data\Driver\JsonFileDriver(
                     $driverConfig['path'] ?? $this->basePath('storage/data'),
-                    cacheDir: $this->dataCachePath(),
+                    // 'cache' => false: no read cache, for files that change outside the app (a git pull).
+                    cacheDir: ($driverConfig['cache'] ?? true) === false ? null : $this->dataCachePath(),
                 ),
                 default => $this->createStorageDriver((string) $name, $kind, $driverConfig),
             };
@@ -849,6 +864,7 @@ final class Application
             static fn (): \Preflow\Data\Search\RecordSearch => new \Preflow\Data\Search\RecordSearch($dataManager),
         );
         $this->bindActivityLog($dataManager, isset($drivers[\Preflow\Data\Activity\StoredActivityLog::STORAGE]) ? \Preflow\Data\Activity\StoredActivityLog::STORAGE : 'default');
+        $this->registerTextRuleSteps($dataManager, $migrations, $dataConfig['text_rule'] ?? [], $modelPaths);
         if ($this->pageChanges !== null) {
             $dataManager->observe(new \Preflow\Core\PageCache\DataLayerObserver(
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
@@ -872,7 +888,6 @@ final class Application
                 $dataManager,
                 (string) $this->config->get('app.key', \Preflow\Core\Throttle\Throttle::DEFAULT_KEY),
                 isset($drivers['throttle']) ? 'throttle' : 'default',
-                lockDir: $this->basePath('storage/locks'),
             ),
         );
 
@@ -895,6 +910,59 @@ final class Application
                     lockDir: $this->basePath('storage/locks'),
                 ),
             );
+        }
+    }
+
+    /**
+     * The migrate steps of the text rule (data 0.78, the data README's "Existing tables (`preflow
+     * migrate`)"): `data.text-rule` gives the declared tables (DeclaredTables: the framework's own,
+     * declared here and by packages) and the tables migrations made since 0.78 (MigrationColumns)
+     * the collation of each column's intent on the storage the migrations run on, lists the tables
+     * without known intent once, and rebuilds SQLite's text indexes when the rule's version
+     * changed; `data.text-duplicates` lists the case-variant duplicates of unique text fields no
+     * index holds (JSON). The record tables' own columns are converted by their sync steps
+     * (RecordTableSync). Every conversion also makes the rule's collation the table default.
+     * `data.collations`, after every other step, lists as warnings each text column of a table
+     * Preflow manages that still compares otherwise (`db:check` lists them too). `migrate --pretend` runs the check `data.text-rule` (every refusal, nothing
+     * changed). config/data.php 'text_rule' => ['skip' => [table, …]] leaves tables alone.
+     *
+     * @param mixed $config config/data.php 'text_rule'
+     */
+    /**
+     * @param list<string> $modelPaths data.model_paths: where `data.model-exactness` finds the plain
+     *        model classes whose #[Field(exact)] it compares with their migrations' columns
+     */
+    private function registerTextRuleSteps(\Preflow\Data\DataManager $dataManager, \Preflow\Data\Migration\MigrationRegistry $migrations, mixed $config, array $modelPaths = []): void
+    {
+        if (!class_exists(\Preflow\Data\Schema\TextRuleConversion::class)) {
+            return;
+        }
+        $skip = is_array($config) ? ($config['skip'] ?? []) : null;
+        if (!is_array($skip) || !array_is_list($skip) || array_filter($skip, static fn (mixed $table): bool => !is_string($table)) !== []
+            || array_diff(array_keys(is_array($config) ? $config : []), ['skip']) !== []) {
+            throw new \RuntimeException("config/data.php: 'text_rule' takes ['skip' => [table names]].");
+        }
+        $container = $this->container;
+        $conversion = static fn (): \Preflow\Data\Schema\TextRuleConversion => new \Preflow\Data\Schema\TextRuleConversion(
+            $dataManager,
+            $container->bound(\Preflow\Data\Schema\RecordTables::class) ? $container->get(\Preflow\Data\Schema\RecordTables::class) : null,
+            $container->bound(\Preflow\Data\Schema\DeclaredTables::class) ? $container->get(\Preflow\Data\Schema\DeclaredTables::class) : null,
+            $migrations->storage(),
+            $skip,
+        );
+        // `preflow db:check` lists what still compares otherwise (TextRuleConversion::unconverted()).
+        $container->bind(\Preflow\Data\Schema\TextRuleConversion::class, $conversion);
+        $migrations->afterMigrate('data.text-rule', static fn (): array => $conversion()->convert());
+        $migrations->afterMigrate('data.text-duplicates', static fn (): array => $conversion()->duplicates(), sqlOnly: false);
+        // After every package's table step: any text column of a Preflow table still on an older collation, as a warning.
+        $migrations->afterMigrate('data.collations', static fn (): array => $conversion()->unconverted(), last: true);
+        $migrations->check('data.text-rule', static fn (): array => $conversion()->check(), sqlOnly: false);
+        if (class_exists(\Preflow\Data\Schema\ModelExactness::class)) {
+            $migrations->afterMigrate('data.model-exactness', static fn (): array => (new \Preflow\Data\Schema\ModelExactness(
+                $dataManager,
+                (new \Preflow\Data\ModelClasses($modelPaths))->plain(),
+                $migrations->storage(),
+            ))->check());
         }
     }
 
@@ -2682,6 +2750,7 @@ final class Application
                 : null,
             $appUrl,
             $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+            $config,
         );
 
         // A site's ExpiredSessionHandler is bound by its providers, which run after this:

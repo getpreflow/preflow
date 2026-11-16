@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
-use Preflow\Data\Driver\PdoDriver;
-
 /**
  * Works out and carries out delete plans (see DataManager::deletePlan() and
  * DataManager::executeDeletePlan()).
@@ -144,22 +142,8 @@ final class DeletePlanner
             $defs[$type] = $this->registry->get($type);
         }
 
-        /** @var array<int, \PDO> $began */
-        $began = [];
-        try {
-            foreach ($defs as $def) {
-                $driver = $this->dm->driver($def->storage);
-                if (!$driver instanceof PdoDriver) {
-                    continue;
-                }
-                $pdo = $driver->pdo();
-                $key = spl_object_id($pdo);
-                if (!isset($began[$key]) && !$pdo->inTransaction()) {
-                    $pdo->beginTransaction();
-                    $began[$key] = $pdo;
-                }
-            }
-
+        $storages = array_values(array_unique(array_map(static fn (TypeDefinition $def): string => $def->storage, $defs)));
+        $this->dm->transaction($storages, function () use ($plan, $defs): void {
             foreach ($plan->detaches() as $detach) {
                 $record = $this->dm->findIn($defs[$detach['type']], $detach['id']);
                 if ($record === null) {
@@ -178,18 +162,7 @@ final class DeletePlanner
                     $this->dm->deleteIn($defs[$type], $id);
                 }
             }
-
-            foreach ($began as $pdo) {
-                $pdo->commit();
-            }
-        } catch (\Throwable $e) {
-            foreach ($began as $pdo) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-            }
-            throw $e;
-        }
+        });
     }
 
     /**

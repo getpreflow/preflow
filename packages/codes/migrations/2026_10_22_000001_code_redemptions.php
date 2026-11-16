@@ -11,8 +11,8 @@ return new class extends Migration
         $schema->create('code_redemption', function (Table $table) {
             $table->uuid('id')->primary();
             $table->uuid('code_id')->index();
-            $table->string('purpose');
-            $table->string('redeemer')->nullable();
+            $table->string('purpose')->exact();
+            $table->string('redeemer')->exact()->nullable();
             $table->integer('redeemed_at');
         });
     }

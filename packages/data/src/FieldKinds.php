@@ -22,6 +22,9 @@ final class FieldKinds
     /** @var array<string, true> */
     private array $relation = ['relation' => true];
 
+    /** @var array<string, true> */
+    private array $list = [];
+
     /** @var array<string, ColumnKind|\Closure(array<string, mixed>): ColumnKind> */
     private array $columns;
 
@@ -52,6 +55,19 @@ final class FieldKinds
     }
 
     /**
+     * Field types whose value is a list (Folio's tags): DataManager writes it as a list, also when
+     * it is given as JSON text or a comma string (SQL storage keeps it as JSON text in its column).
+     *
+     * @since 0.78
+     */
+    public function list(string ...$types): void
+    {
+        foreach ($types as $type) {
+            $this->list[$type] = true;
+        }
+    }
+
+    /**
      * Register the column kind of a field type: a kind, or a closure from the field's config to one.
      *
      * @param ColumnKind|\Closure(array<string, mixed>): ColumnKind $kind
@@ -69,6 +85,12 @@ final class FieldKinds
     public function isRelation(string $type): bool
     {
         return isset($this->relation[$type]);
+    }
+
+    /** @since 0.78 */
+    public function isList(string $type): bool
+    {
+        return isset($this->list[$type]);
     }
 
     /** Translatable fields are text (a map per locale); Short is text unless the field is unique or indexed. */

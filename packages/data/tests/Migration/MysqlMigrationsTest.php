@@ -7,6 +7,7 @@ namespace Preflow\Data\Tests\Migration;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDriver;
+use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Migration\Migrator;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Migration\Table;
@@ -180,9 +181,27 @@ final class MysqlMigrationsTest extends TestCase
         $schema->renameColumn('staff', 'createdAt', 'created');
     }
 
+    /** A plain model's unique string (its migration's VARCHAR in the rule's collation) sorts by the rule with a plain ORDER BY. */
+    public function test_a_plain_models_unique_string_sorts_by_the_rule(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('sorted_slug', function (Table $t): void {
+            $t->uuid('uuid')->primary();
+            $t->string('slug', 100)->unique();
+        });
+        $dm = new \Preflow\Data\DataManager(['mysql' => new MysqlDriver($this->pdo)], 'mysql');
+        foreach (['s1' => 'Zebra', 's2' => 'äpfel', 's3' => 'Apfel', 's4' => 'eagle', 's5' => 'Émile'] as $id => $slug) {
+            $this->pdo->prepare('INSERT INTO sorted_slug (uuid, slug) VALUES (?, ?)')->execute([$id, $slug]);
+        }
+
+        $slugs = array_map(static fn (SortedSlug $m): string => $m->slug, $dm->query(SortedSlug::class)->orderBy('slug')->get()->items());
+
+        $this->assertSame(['Apfel', 'äpfel', 'eagle', 'Émile', 'Zebra'], $slugs);
+    }
+
     public function test_convert_column_on_mysql_keeps_data_default_nullability_and_indexes(): void
     {
-        // holz's case: indexed record fields made LONGTEXT before 0.72 become VARCHAR(191) utf8mb4_bin.
+        // A site's case: indexed record fields made LONGTEXT before 0.72 become VARCHAR(191) utf8mb4_bin.
         $this->pdo->exec('CREATE TABLE `object` (`uuid` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `state` LONGTEXT, `owner` LONGTEXT, '
             . "`kind` VARCHAR(20) NOT NULL DEFAULT 'chair', `n` TEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         $this->pdo->exec('CREATE INDEX `idx_object_owner` ON `object` (`owner`(191))');
@@ -198,7 +217,8 @@ final class MysqlMigrationsTest extends TestCase
         $columns = $this->pdo->query("SELECT COLUMN_NAME, COLUMN_TYPE, COLLATION_NAME, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'object' ORDER BY ORDINAL_POSITION")->fetchAll(\PDO::FETCH_NUM);
         $this->assertSame(['state', 'varchar(191)', 'utf8mb4_bin', 'YES'], array_slice($columns[1], 0, 4));
         $this->assertSame(['owner', 'varchar(191)', 'utf8mb4_bin', 'YES'], array_slice($columns[2], 0, 4));
-        $this->assertSame(['kind', 'varchar(40)', 'utf8mb4_unicode_ci', 'NO'], array_slice($columns[3], 0, 4));
+        $text = (new MysqlGrammar())->on($this->pdo)->textCollation() ?? 'utf8mb4_unicode_ci';
+        $this->assertSame(['kind', 'varchar(40)', $text, 'NO'], array_slice($columns[3], 0, 4), 'a string() column compares by the text rule');
         $this->assertContains($columns[3][4], ["'chair'", 'chair'], 'default kept (MariaDB quotes it, MySQL does not)');
         $this->assertSame(['n', 'double', null, 'YES'], array_slice($columns[4], 0, 4));
         $this->assertContains('idx_object_owner', $schema->indexes('object'));
@@ -289,4 +309,14 @@ final class MysqlMigrationsTest extends TestCase
         $schema->dropColumn('t', 'b');
         $this->assertSame(['uuid', 'a'], $schema->columns('t'));
     }
+}
+
+#[\Preflow\Data\Attributes\Entity(table: 'sorted_slug', storage: 'mysql')]
+final class SortedSlug extends \Preflow\Data\Model
+{
+    #[\Preflow\Data\Attributes\Id]
+    public string $uuid = '';
+
+    #[\Preflow\Data\Attributes\Field(unique: true, length: 100)]
+    public string $slug = '';
 }

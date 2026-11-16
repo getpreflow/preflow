@@ -75,7 +75,12 @@ All methods return `$this` for chaining except the terminal methods.
 `NOT IN` (any case; `IN` / `NOT IN` take a list); `where($field, $value)` is `=`. Field names in
 `where()`, `orWhere()`, `whereAny()`, `orderBy()` and `search()` are identifiers
 (`[A-Za-z_][A-Za-z0-9_]*`). Anything else throws `\InvalidArgumentException` before any SQL is
-built: never pass a request's operator or column name unchecked.
+built: never pass a request's operator or column name unchecked. Since 0.78 a typed query (a type
+or a model class) also refuses a field the type or class does not have (its fields, the id field
+and system keys with a leading `_` are allowed): `Unknown field "titel": type "post" has no such field to query by.`,
+the same on every driver, where SQL would name the missing column and JSON would match nothing.
+SQLite quotes identifiers with backticks, so a hand-built query on a missing column is an error
+there too (it read a double-quoted unknown name as a string).
 
 ### Storage drivers
 
@@ -84,6 +89,29 @@ built: never pass a request's operator or column name unchecked.
 | `JsonFileDriver` | One `.json` file per record at `{basePath}/{table}/{id}.json` |
 | `SqliteDriver` | PDO-based SQLite via `PdoDriver` + `QueryCompiler` |
 | `MysqlDriver` | PDO-based MySQL / MariaDB via `PdoDriver` + `QueryCompiler` (see [MySQL and MariaDB](#mysql-and-mariadb)) |
+
+**One format for JSON record files (0.78).** Every save through `DataManager` (and so through
+Folio, a CLI command or a script) writes a record in one canonical form, so an unchanged record
+is written to the same bytes: the type's fields in their order, then the id and the system keys
+(`_version`, …) in their order, then any other key (none is dropped); a list field
+(`fieldKinds()->list('tags')`; Folio registers its field types marked `StoresList`) as a list,
+also when it was given as JSON text or a comma string; a number field's numeric text as a number
+and a yes/no field's `'1'`/`'0'`/`'true'`/`'false'` as `true`/`false`. A value that does not
+convert stays as it is. `JsonFileDriver` encodes with `JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+| JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION` and a trailing newline. A hand-written
+file gets this form on its next save; nothing is migrated. SQL storage keeps lists as JSON text in
+their columns. A direct `driver()->save()` keeps its caller's key order, and the stored keys it does
+not name follow in their stored order (a class-backed model's save names every key of its type, so
+a property removed from the class or a key added by hand ends up last); `storageValues()` gives
+the canonical row to callers that write rows themselves (an import). `updateFieldsIfVersion()`
+writes its fields into the stored file as it is: the stored key order stays, a new key comes last;
+the next full save (`saveType()`, a model's `save()`) writes the canonical order.
+
+Since JSON files now hold numbers and `true`/`false`, the JSON driver compares them as SQL compares
+its number and 1/0 columns: `=`, `!=`/`<>`, `IN`/`NOT IN` and `whereAny()`'s `=` match a number given
+as numeric text of the same value (`'2'`, `'02'`, `'2.5'`) and a yes/no value given as `1`/`'1'`
+(or `'true'`) and `0`/`'0'` (or `''`, `'false'`). Text never equals text that differs, and text that
+is no number never equals a number. A NULL field is never `!=` a value, as in SQL.
 
 **Lazy connection (0.59).** `SqliteDriver`, `MysqlDriver` and any `PdoDriver` subclass take a
 `\PDO` or a `\Closure(): \PDO`. Given a closure, the driver opens the connection on its first
@@ -123,8 +151,9 @@ providers ran, so its constructor may take services a provider binds. The class 
 keys are checked at boot.
 
 For another SQL database, a `PdoDriver` subclass supplies a `Dialect` (every method of the interface, see "Raw writes"; `likeOperator()` decides
-the case-insensitive match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`, or,
-since 0.77, the optional `PatternMatching::likeSql()` writes it per pattern;
+the match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`, or,
+since 0.77, the optional `PatternMatching::likeSql()` writes it per pattern, which a dialect whose
+operator alone cannot give the text-matching rule (see "Text matching") implements;
 `numericOrder()` the numeric sort; `missingColumn(\PDOException)` reads the column a failed write
 names, so the "run `preflow migrate`" message works on that database) and registers its schema grammar for its PDO driver name, so
 `Schema`, `RecordTableSync` and `preflow migrate` work:
@@ -133,16 +162,33 @@ names, so the "run `preflow migrate`" message works on that database) and regist
 Grammars::register('pgsql', new PgsqlGrammar()); // a SchemaGrammar; in the driver or a provider's register()
 ```
 
-Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/testing).
+Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/testing). Since 0.78 its schema
+grammar may implement `TextCollations` and its dialect `TextComparison`, so text fields compare by
+the text rule in the database (see "Exact comparisons"); a driver on SQLite calls
+`SqliteDialect::prepare()` on its connection. `TextCollations` is what new tables need (six
+methods: bind to the connection, name the collation, the text, exact and record column types,
+`collate()`). Converting tables made before is a second, optional interface,
+`ConvertsCollations` (it extends `TextCollations`: read and change column collations, refusals,
+unique prefixes, row keys, and where the application supplies the collation its version and
+the index rebuild). A grammar for a database whose tables get the rule from the start implements
+the first alone; `preflow migrate` then says once per storage that existing columns stay.
 
 #### Driver-author checklist
 
 **Must:** implement `Preflow\Data\StorageDriver` (`findOne`, `findMany`, `save`, `delete`,
-`exists`, `lastInsertId`, `rawQuery`) with the query semantics `StorageDriverContract` states
-(case-insensitive `LIKE` in every alphabet, `CONTAINS` in list values, null handling, numbers as
-numbers), and pass that contract. That is enough for a driver to work everywhere: DataManager, or the
-capability's consumer (`StoredActivityLog` for `Savepoints` and `ChangeTokens`), has a fallback
-for every capability below except aggregates.
+`exists`, `lastInsertId`; since 0.78 no `rawQuery`, which moved to `RunsSql`) with the query
+semantics `StorageDriverContract` states (the text-matching rule for `LIKE`, `CONTAINS` and
+`search()`: case and width ignored, accents count; `CONTAINS` in list values, null handling, numbers as numbers;
+`save()` writes the fields it is given and keeps every other stored field, a field given as null
+is stored as null, since 0.78), and pass that contract. That is enough for a driver
+to work everywhere: DataManager, or the capability's consumer (`StoredActivityLog` for `Savepoints`
+and `ChangeTokens`), has a fallback for every capability below except aggregates and raw SQL, and
+those throw rather than give a different result.
+
+Since 0.78 nothing in the framework checks a driver's class (an architecture guard keeps it so):
+every ability is asked for by its interface below, so a new driver gets exactly what a built-in
+one with the same interfaces gets. `Preflow\Testing\PlainDriver` wraps any driver and hides every
+capability, for tests of the bare-minimum path.
 
 **Should, for production:** `VersionedStorage`, `ConditionalUpdates` and `ExclusiveWrites`. Without
 them the fallbacks work but are not atomic, so two concurrent writers can both pass a check (an
@@ -154,15 +200,27 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
+| `Transactions::transaction()`, `inTransaction()` (0.78) | Writes that commit together or not at all; inside an open transaction (whoever opened it) `transaction()` joins it. `DataManager::transaction()` spans storages: it begins on each storage with it once (aliases of one driver count once), commits the innermost first, and throws `PartialCommit` (a `RuntimeException`, the failed commit as previous) when a commit fails after another storage committed (publishing, deletes, the permission sync). | `DataManager::transaction()` runs the writes as they come: a failure part-way leaves the earlier writes stored (JSON files). | Yes with it. |
+| `UniqueIndexes` (0.78, a marker) | Says `save()` refuses a duplicate in every unique index the table sync made (`UniqueViolation`, nothing written). DataManager then checks before the write only the unique fields no index can hold (translatable ones). | DataManager checks every unique field before the write, under the type's lock (`ExclusiveWrites`) where the driver has one, else without. | Yes with it or `ExclusiveWrites`; the plain check is not. |
+| `AtomicCounters::increment()` (0.78) | Counts on a row in one step: inserts it, adds to it, or restarts it when a `CounterReset` field is below a bound (`incrementIn()`: the throttle's fixed windows). The contract tests it, also with four processes at once. | reads, adds and writes under the type's lock (`ExclusiveWrites`) when the driver has one, else plainly. | Yes with it or `ExclusiveWrites`; the plain fallback is not. |
 | `AggregatingStorage::aggregate()` | Group, count, sum, avg, min, max (`AggregateQuery`): Folio's dashboard and not-found counts, publish states, the activity people filter. | `AggregateQuery::get()` throws (never wrong numbers); `Publisher::states()` and `StoredActivityLog::people()` read the records instead. | Read only. |
 | `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
-| `DescribesColumns::hasColumn()` (0.77) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet). | takes any column as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
+| `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
+| `RankedSearch::canScore()`, `score()` (0.78) | Scores the hits loose search found, so ⌘K puts a type's best matches first (`DataManager::canScore()`, `scoreIn()`; only for a type with `"fullText": true`). It orders, it never finds: the hits are the same on every driver. `MysqlDriver` scores with `MATCH … AGAINST` over the FULLTEXT index `migrate` adds. | hits stay in storage order; `scoreIn()` throws `UnsupportedStorage`. | Read only. |
+| `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`; the auth tokens, remember-me and codes use it for their conditional single-statement writes. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result; tokens, remember-me and codes read and write under their own lock instead. | As the SQL runs. |
+| `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
+| `Maintenance::check()`, `compact()` (0.78) | Checks the whole store (structure, indexes, references) and compacts it, through the driver's own prepared connection (`preflow db:check`, `db:vacuum`). For storage whose database tools can't do it once Preflow owns it (SQLite: the `preflow_text` collation). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqlcheck`). | — |
+| `Dumps::dump()`, `restore()` (0.78) | The whole store as text the same driver restores into an empty store (`preflow db:dump`, `db:restore`). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqldump`; JSON: copy the folder). | `restore()` is all or nothing. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `BulkDeletes`,
-`Savepoints`, `DescribesColumns` and `AggregatingStorage` from it and implements `exclusive()`
-itself (as `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`.
+`Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
+`RunsSql`), `Transactions` and `UniqueIndexes` from it and implements `exclusive()` itself (as
+`SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
+`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`,
+`ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
+`AggregatingStorage`.
 
 ### Migrations
 
@@ -451,7 +509,11 @@ missing column is asked again on the next call, as a migrate may add it.
 
 `save()` writes every key it is given, `null` included: `$record->set('expires_at', null)`
 clears the column on SQLite, MySQL and JSON alike (before 0.42 SQL drivers dropped nulls, so a
-clear needed `''`). A key the caller does not pass is left alone: a partial save no longer
+clear needed `''`). A key the caller does not pass is left alone, on every driver (the JSON driver
+merges the save into the stored file under the type's lock since 0.78; before, a JSON save
+replaced the file). A key leaves a JSON record only by deleting the record and saving it again,
+as a column stays on SQL; a property removed from a model class leaves its key in the files. A
+partial save no longer
 nulls the other columns on SQLite (it used `INSERT OR REPLACE`, which replaced the whole row;
 it is an upsert on the primary key now, and on MySQL an `UPDATE` with an `INSERT` for a new
 record). A save never touches another record: a value colliding with a unique index is an error
@@ -492,8 +554,10 @@ final class Job extends Model { … }
   the unique fields; `DataManager::validateStorable($record)` checks what the storage itself
   would refuse, the unique fields and the length of every bounded column (`validation.max.string`),
   for a save that skips the other rules (Folio uses it for draft saves and restored revisions). Empty values (`null`, `''`) and values with
-  a `null` scope are never duplicates. Comparison is exact: case and accents count, on every
-  database. App forms use the rule directly:
+  a `null` scope are never duplicates. Since 0.78 a text field compares by the text rule on every
+  database (see "Exact comparisons"): case is ignored, accents count, so "Müller" is taken once
+  "MÜLLER" is, "Muller" is not; a field marked `"exact": true` (and an id, a relation) compares
+  exactly. App forms use the rule directly:
   `new Unique($dm, 'job', 'slug', scope: ['company'], exceptId: $id)` (the scope is read from the
   validated data, or given as `['company' => 'acme']`).
 - **Database guard.** On SQL the unique index is the last line: two requests passing the
@@ -510,7 +574,8 @@ final class Job extends Model { … }
 - **Empty is NULL.** An empty value in a unique field is stored as `NULL` (a unique index would
   refuse a second `''`). For a `Model`, the property must accept `null`.
 - **Index and length.** `unique` and `index` make a short text column: `VARCHAR(length)` (default
-  191) with `utf8mb4_bin` on MySQL, so the index compares exactly; validation then limits the
+  191) on MySQL, in the text rule's collation for a text field and `utf8mb4_bin` for an exact one
+  or a relation, so the index compares as the field does; validation then limits the
   value to `length` characters, also for the scope fields of a unique field and the fields of a
   composite index. Free text, blocks and translatable fields get no index. `__revisions` tables
   are never checked or indexed; `__published` tables are typed like their working table and carry
@@ -627,13 +692,19 @@ several SQL drivers pass `--storage`.
 | `Table` method | SQLite | MySQL |
 |---|---|---|
 | `uuid()` | TEXT | VARCHAR(64) COLLATE utf8mb4_bin |
-| `string($n = 255)` | TEXT | VARCHAR($n) (`COLLATE utf8mb4_bin` when `primary()`) |
-| `text()` | TEXT | TEXT |
-| `json()` | TEXT | LONGTEXT (not `JSON`: MySQL's type rewrites key order and spacing) |
+| `string($n = 255)` | TEXT COLLATE preflow_text (TEXT when `primary()` or `exact()`) | VARCHAR($n) COLLATE the text rule's collation (`utf8mb4_bin` when `primary()` or `exact()`) |
+| `text()` | TEXT COLLATE preflow_text (TEXT when `exact()`) | TEXT COLLATE the text rule's collation (`utf8mb4_bin` when `exact()`) |
+| `json()` | TEXT | LONGTEXT COLLATE utf8mb4_bin (not `JSON`: MySQL's type rewrites key order and spacing) |
 | `integer()` | INTEGER | BIGINT |
 | `boolean()` | INTEGER | TINYINT(1) |
-| `timestamps()` | TEXT, nullable | VARCHAR(32), nullable |
+| `timestamps()` | TEXT, nullable | VARCHAR(32) COLLATE utf8mb4_bin, nullable |
 | `addColumn()` default | TEXT | LONGTEXT |
+
+Since 0.78 `string()` and `text()` compare by the text rule (see "Exact comparisons"); `->exact()`
+after one marks a machine value that compares exactly (an API key, a hash, base64, an id of
+another table). On a MySQL server without the rule's collation `string()` and `text()` keep the
+table default (`utf8mb4_unicode_ci`), as before. `addColumns()` and `convertColumn()` type their
+columns the same way.
 
 **Record tables** (the tables `RecordTableSync` makes from a type definition: Folio's types,
 codes, members, media assets) use `id VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY` (TEXT on
@@ -643,16 +714,23 @@ SQLite), and every other column is nullable and typed by its field's column kind
 | Kind | Field types | SQLite | MySQL |
 |---|---|---|---|
 | text | text, blocks, translatable fields, JSON, strings that are neither unique nor indexed | TEXT | LONGTEXT |
-| short | a string, select or single relation that is unique or indexed | TEXT | VARCHAR(`length`, default 191) COLLATE utf8mb4_bin |
+| short | a string, select or single relation that is unique or indexed | TEXT | VARCHAR(`length`, default 191) |
 | number | number | NUMERIC (`'12'` stays 12, sorts numerically) | DOUBLE |
 | boolean | boolean | INTEGER | TINYINT(1) |
-| date | date | TEXT | VARCHAR(32) (ISO text) |
+| date | date | TEXT | VARCHAR(32) COLLATE utf8mb4_bin (ISO text) |
+
+Since 0.78 the column of a text field (`TextColumns`: string, text, rich text, select, translatable
+ones too; not a list, not `"exact": true`) declares the text rule: `COLLATE preflow_text` on SQLite,
+the rule's collation on MySQL (also the table default there). Every other text column compares
+exactly: `utf8mb4_bin` on MySQL (ids, relations, JSON, lists, dates, exact fields), no COLLATE
+(BINARY) on SQLite. See "Exact comparisons".
 
 Columns are typed only when sync creates them (with the table, or added later). The unique
 (`uniq_{table}_{field}`, over the field and its scope), plain (`idx_{table}_{field}`) and composite
 (`idx_{table}_{field1}_{field2}…`) indexes are made whenever they are missing (see
 [Unique fields and indexes](#unique-fields-and-indexes)); names past 64 characters are shortened
-with a crc32 hash. An existing column is never altered: a column whose type differs from its kind,
+with a crc32 hash. An existing column's type is never altered (since 0.78 its collation is: see
+"Existing tables (`preflow migrate`)"): a column whose type differs from its kind,
 or a unique field without its index, is printed as a warning (`warning: post.seats is text, expected number;
 convert the table (see the data README)`; see Converting record tables below). Packages register
 their tables with `RecordTables`: it lists every record table, whichever package syncs it.
@@ -679,14 +757,18 @@ warning names is converted on purpose:
   (`mysql --defaults-extra-file=<option file> <database> < <backup>.sql`). Until a site is
   converted, `preflow migrate` prints the drift warnings on every run.
 - `RecordTableSync::specs()` and `RecordTableSync::indexes()` are public (the script builds its columns
-  and indexes with them, so it makes the indexes migrate would).
+  and indexes with them, so it makes the indexes migrate would). Since 0.78 its text fields' columns
+  take the text rule's collation, and `--check` counts a unique text field's duplicates by the rule
+  ("Cafe" is a duplicate of "cafe", "café" is not).
+- A column's collation (since 0.78) is converted by `preflow migrate` itself: see "Existing tables
+  (`preflow migrate`)" under "Exact comparisons".
 - A column whose kind changed later (a field turned translatable, a relation became `multiple`,
   a field's type was edited or it became unique) is converted with a migration in the project,
   with `Schema::convertColumn()` (since 0.75; see "Converting a column"), for example
   `$schema->convertColumn('object', new ColumnSpec('state', ColumnKind::Short))` for a field that
   became indexed.
 
-`preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
+`preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) COLLATE utf8mb4_bin NOT NULL`.
 
 **64-character names.** MySQL caps table and index names at 64 characters. The index name is
 `idx_{table}_{column}` and Folio adds `{table}__published` and `{table}__revisions`, so long
@@ -704,19 +786,20 @@ column just defined (`$t->string('slug')->unique()`). Names are `uniq_{table}_{c
 `idx_{table}_{columns}` (columns joined by `_`), shortened with a crc32 past 64 characters; a
 one-column `index()` keeps its name `idx_{table}_{column}`. Every column must exist and not be
 `text()`, checked before anything is created. Empty (`NULL`) values never collide in a unique index.
-On MySQL, `string()` columns compare case-insensitively (`utf8mb4_unicode_ci`), so `Ab` and `ab`
-collide there but not on SQLite.
+Since 0.78 `string()` columns compare by the text rule on SQLite and MySQL alike, so `Ab` and `ab`
+collide on both (an `exact()` column keeps them apart).
 
-**Charset and collation.** Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci` (MariaDB 10.6 has no `utf8mb4_0900_*`), identifiers in backticks.
-Ids and keys (`uuid()` columns, primary `string()` columns, Folio record ids,
-migration names) are `utf8mb4_bin`, so they compare exactly, as on SQLite and JSON: `A`, `a` and
-`ä` are three records. **Known difference from SQLite:** value columns stay
-`utf8mb4_unicode_ci`, which compares case-, accent- and trailing-space-insensitively, so values
-that differ only in case, accents or trailing spaces (`Abc` and `abc`, `cafe` and `café`) are
-equal in `WHERE` and collide in a unique index on MySQL while SQLite keeps them apart. Slugs are
-values: on MySQL a page with slug `cafe` can shadow one with `café`. (`utf8mb4_bin` pads too, so
-an id with a trailing space still equals the one without.)
+**Charset and collation.** Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=…`
+with the text rule's collation as the default (`utf8mb4_uca1400_nopad_as_ci` on MariaDB 10.10+,
+`utf8mb4_0900_as_ci` on MySQL 8; `utf8mb4_unicode_ci` on a server without either), identifiers in
+backticks. Since 0.78 the columns of text fields and a migration's `string()` and `text()` name the
+rule's collation, so `=`, `IN`, `ORDER BY`, `GROUP BY` and unique indexes ignore case and respect
+accents there as on SQLite and JSON (see "Exact comparisons"). Ids and keys (`uuid()` columns,
+primary and `exact()` `string()` columns, Folio record ids, migration names) and every record-table
+column that is not a text field's are `utf8mb4_bin`, so they compare exactly: `A`, `a` and `ä` are
+three records. (`utf8mb4_bin` pads, so an id with a trailing space still equals the one without;
+the rule's collations do not pad.) Tables made before 0.78 keep their columns' collations until
+`migrate` converts them (see "Existing tables (`preflow migrate`)" under "Exact comparisons").
 
 **Connection.** `createMysqlDriver` builds the `PDO` with `MysqlDriver::connectionOptions()`, and
 `MysqlDriver` sets the session; together they give:
@@ -836,11 +919,12 @@ Rows are arrays keyed by the group fields and the result names. Fields are the o
 Group values and `min`/`max` of boolean fields are PHP `bool` on every storage; those of text and date fields are
 strings as stored.
 
-**Case.** Text group values are case-sensitive everywhere: `'a'` and `'A'` are two groups. On MySQL/MariaDB the
-group fields (and `countDistinct`, `min`, `max`, `orderBy`, `having` on text) use a binary collation
-(`utf8mb4_bin`), so the rows match SQLite and JSON. The `where()` filters keep the table's collation, so a
-`where('grade', 'a')` still matches `'A'` on a `_ci` table. The binary comparison keeps MySQL from using an index
-for the GROUP BY; aggregates scan the filtered rows anyway.
+**Case.** Since 0.78 a text field's group values, `countDistinct`, `min` and `max` follow the text rule on
+every storage (see "Exact comparisons"): `'Über'` and `'über'` are one group (which of the two spellings the
+row shows is not promised), `'Über'` and `'Uber'` two. Any other field's values are exact: on an exact field
+(`"exact": true`, an id, a relation) `'a'` and `'A'` are two groups; on SQL they are compared with
+`exactText()` (`COLLATE BINARY` on SQLite, `utf8mb4_bin` on MySQL/MariaDB), which keeps the database from
+using an index for the GROUP BY; aggregates scan the filtered rows anyway.
 
 **Refused** (`\InvalidArgumentException`, when the method is called unless noted):
 
@@ -873,26 +957,328 @@ $dm->queryIn($typeDef)->whereAny([
 | Operator | Matches when |
 |---|---|
 | `=` | The field equals the value. |
-| `CONTAINS` | The field contains the value as a substring, case-insensitively. `%`, `_` and the escape character match literally. A list value (an array field; JSON text on SQL) matches when one of its values contains it. |
+| `CONTAINS` | The field contains the value as a substring, under the text-matching rule (case and width ignored, accents count). `%`, `_` and the escape character match literally. A list value (an array field; JSON text on SQL) matches when one of its values contains it. |
 | `IN` | The field equals one of the listed values. An empty list matches nothing. |
 | `HAS` | The field, an id string or a JSON array string, holds at least one of the listed ids. |
 
-`LIKE`, `CONTAINS` and `search()` ignore case in every alphabet on every shipped driver
-("über" finds "Über", `_` matches one character, an umlaut too): the JSON driver compares with
-Unicode-aware functions (`mb_stripos`, `preg_match` with `/iu`); since 0.77 `SqliteDriver`
-registers a Unicode `ulike()` on its connection, which folds with `mb_strtolower`
-(`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`, as the app
-opens it, and on a plain `PDO`). The dialect uses it only for a pattern with other than ASCII
-characters ("über"); a pattern of ASCII characters only ("bar%") keeps SQLite's native `LIKE`,
-which folds ASCII case and is about 7× faster on a scan. Caveat: with such a plain-ASCII pattern,
-SQLite follows native `LIKE` for the two letters that lower-case into ASCII, the Kelvin sign (K,
-U+212A) and İ (U+0130): "k%" does not find a value written with the Kelvin sign there, while the
-JSON driver's matches it (tracked in the matching-contract follow-up). A non-ASCII term costs a PHP call per row
-compared (a dialect that writes its match per pattern implements `PatternMatching`); MySQL/MariaDB follow the column's collation, so an
-accent-insensitive collation matches more than the other drivers do ("uber" finds "Über").
+Since 0.78 `=`, `IN` and `HAS` on a type's text fields (a single value: `string`, `text`, rich
+text, select; not `"exact": true`) ignore case and respect accents, as `where()` does. List fields
+(tags) are not text fields: their values, and `HAS` on them, compare exactly on every driver
+("Folio" does not find the tag "folio"). A query built without a `DataManager`
+(`QueryBuilder::forType($driver, $def)`) knows only the built-in text kinds (`string`, `text`);
+text kinds an extension registers need the `DataManager`'s field kinds (`$dm->queryIn()`).
+
+`LIKE`, `CONTAINS` and `search()` follow one text-matching rule on every driver: case and width
+are ignored, accents count (see "Text matching").
 `CONTAINS` and `search()` find a term in a list value (an array field) when one of its values
 holds it: SQL storage keeps the list as JSON text, written with umlauts and slashes as they are
 since 0.77 (rows written before keep `a\/b`, which a search for "a/b" misses until resaved).
+
+## Text matching
+
+Since 0.78 `LIKE`, `NOT LIKE`, `CONTAINS`, `search()`, `searchLoose()` and so ⌘K's loose-search set
+compare text **character by character, as MySQL/MariaDB's `LIKE` does under an accent-sensitive,
+case-insensitive collation**: case is ignored, and so are width and compatibility forms; accents
+and other marks count. The same on JSON, SQLite and MySQL/MariaDB (`StorageDriverContract` pins
+it). Ranked search only orders the loose-search set, so it follows.
+
+| Search | Stored | Found? | Why |
+|---|---|---|---|
+| "über", "ÜBER" | "Über" | yes | case |
+| "uber" / "ete" | "Über" / "été" | **no** | accents count |
+| "abc", "1" | "ＡＢＣ" (fullwidth), "①" | yes, both ways | width and compatibility forms |
+| "STRASSE", "strasse" | "Straße" | **no** | ß is one letter; LIKE compares letter by letter |
+| "STRAẞE" (capital ẞ) | "Straße" | yes | ẞ is ß |
+| "kelvin" / "K" (Kelvin sign, U+212A) | "Kelvin" / "Kelvin" with the sign | yes, both ways | the sign is a k |
+| "super" / "ſuper" | "ſuper" (long s) / "super" | **no** | ſ is a letter of its own |
+| "İSTANBUL" | "İstanbul" | yes | the same letter |
+| "istanbul" | "İstanbul" | **no** | İ is not i: its dot counts as an accent |
+| "ILIK", "ilik" | "ılık" | **no** | ı is a letter of its own (no Turkish locale rules) |
+
+`%` matches any text and `_` one character (an umlaut is one); a fullwidth ％ or ＿ in a pattern
+is a literal character, never a wildcard. A ligature is one character ("ﬁ" does not find "fi").
+Case pairs of letters outside the Basic Multilingual Plane (Deseret "𐐀" and "𐐨" and other
+historic scripts) are distinct, as in MariaDB's `LIKE`. Text is compared as stored: a decomposed
+"Ü" (U followed by a combining diaeresis) is not the composed "Ü". Browsers and Folio send composed
+(NFC) text, so this only matters for text imported from elsewhere.
+
+### The fold table
+
+`Preflow\Data\Text\TextMatch` is the rule in PHP: `fold()` replaces each character with the
+one the rule takes it as (ＡＢＣ → abc, ẞ → ß; most characters stay), `like()` and `contains()`
+compare folds. Which characters are taken as which is the fold table
+(`src/Text/fold-table.php`, about 5000 entries), derived from the server's collation by
+`bin/text-fold-table` (in the framework repository): every assigned code point but controls,
+surrogates and private use is grouped by its weights, the groups are split until `LIKE` agrees,
+and each group folds to the member most of them reach by case folding after compatibility
+(NFKC) mapping. The MySQL test suite's `TextMatchServerProbeTest` checks it against the server:
+each character paired with its fold, its compatibility fold, its lower and upper case, and the
+characters of equal weights (about 10,000 pairs), asked both ways; it fails listing every
+disagreement. The table was derived from MariaDB's `utf8mb4_uca1400_as_ci` (its
+`utf8mb4_0900_as_ci` gives the same answers); MySQL 8's own `utf8mb4_0900_as_ci` has not been
+probed yet.
+
+### On JSON and SQLite
+
+The JSON driver matches with `TextMatch`. `SqliteDriver` registers it as `ulike()` on its
+connection (`SqliteDialect::prepare()`; it registers on a `Pdo\Sqlite`, `PDO::connect('sqlite:…')`,
+as the app opens it, and on a plain `PDO`). SQLite's native `LIKE` folds ASCII case only, so the
+dialect keeps it only for a pattern `TextMatch::asciiSafe()` accepts: ASCII characters that no
+other character folds into. With the fullwidth forms that is no printable character, so in
+practice every `LIKE`, `CONTAINS` and search on SQLite costs a PHP call per row compared (about
+7× slower on a scan than native `LIKE`).
+
+### On MySQL and MariaDB
+
+The query compares in an accent-sensitive, case-insensitive NO PAD collation:
+`utf8mb4_uca1400_nopad_as_ci` (MariaDB 10.10+) or `utf8mb4_0900_as_ci` (MySQL 8, MariaDB 11.4.5+),
+the first of `MysqlDialect::MATCH_COLLATIONS` the server accepts; the columns of text fields use the
+same one (see "Exact comparisons"). It is found once per connection by probing
+(`SELECT _utf8mb4'a' COLLATE …` for each name until one does not fail with "unknown collation",
+`MysqlGrammar::on($pdo)->textCollation()`; `MysqlDriver::matchCollation()` returns it), not from
+the version string or `information_schema.COLLATIONS`, which does not list MariaDB's
+`utf8mb4_uca1400_*` names. The column is cast to utf8mb4 and given the collation in the query, so a prefix `LIKE` (`'abc%'`) no longer uses an index
+(none of Preflow's own do: they start with `%`). `new MysqlDriver($pdo, matchCollation: false)`
+takes the fallback below; a string names the collation.
+
+#### Without an accent-sensitive collation
+
+On a server without either collation (MariaDB 10.6 to 10.9) both sides are lowered
+with `LOWER()` and compared by code point (`utf8mb4_bin`). It follows the rule except for these
+kinds of difference (`MysqlFallbackMatchingTest` runs the fold table's probe through this SQL and
+checks that every kind it finds is listed; a kind that is version-specific says where it occurs, and
+a server need not show every kind):
+
+- Only case is lowered: width and compatibility forms ("ａ" and "a", "①" and "1"), the other characters the collation takes as one (some marks and symbols), and the characters it ignores match only themselves.
+- "istanbul" finds "İstanbul": `LOWER()` turns İ into a plain i.
+- Case pairs outside the Basic Multilingual Plane ("𐐀" and "𐐨") match: `LOWER()` folds them, the collation does not. Where `LOWER()` does not fold them (MariaDB 11.4), they do not match, as under the rule.
+- The capital sharp s "ẞ" and "ß" match only where `LOWER()` turns ẞ into ß; where it leaves ẞ as it is (MariaDB 11.4) "STRAẞE" does not find "Straße", unlike the rule.
+
+## Exact comparisons
+
+Since 0.78 `=`, `!=`, `IN`, `NOT IN`, ranges, `ORDER BY`, `GROUP BY`, `COUNT(DISTINCT)`, `MIN`/`MAX`,
+`HAS` on a single value, unique checks and unique indexes compare a type's **text fields** by the
+same rule as matching, over the whole text: **case is ignored, accents count**. The rule exactly:
+the Unicode Collation Algorithm, root order, secondary strength, no padding (ICU's `Collator` at
+`SECONDARY`, MariaDB's `utf8mb4_uca1400_nopad_as_ci`, MySQL's `utf8mb4_0900_as_ci`;
+`Preflow\Data\Text\TextMatch::equals()`, `compare()` and `key()` in PHP).
+
+| Values | Equal? | Why |
+|---|---|---|
+| "Müller", "MÜLLER" | yes | case |
+| "Müller", "Muller" | **no** | accents count |
+| "Straße", "STRAẞE" / "strasse" | yes / **no** | ẞ is ß; ß is not ss |
+| "Kelvin" with the Kelvin sign, "kelvin" | yes | the sign is a k |
+| "İstanbul", "istanbul" | **no** | İ is not i |
+| "abc", "abc " | **no** | no padding |
+
+Texts sort as "Apfel", "äpfel", "eagle", "Émile", "Zebra"; rows equal under the rule come in no
+promised order among themselves. Text fields are those `TextColumns` names: `string`, `text`
+and the text types extensions register (rich text, select), translatable ones too, except list
+fields (tags, which compare exactly), the id field and fields marked `"exact": true`
+(`#[Field(exact: true)]`). Slugs and e-mail addresses are text: "About" and "about" are one slug.
+Everything else compares exactly: ids, relations, assets, numbers, dates, yes/no values, exact
+fields ("ab" is not "Ab"). A migration's `string()` and `text()` are text unless `->exact()`.
+
+Where the rule lives:
+
+- **SQLite:** the columns of text fields declare `COLLATE preflow_text`, a collation backed by
+  `TextMatch::compare()` that `SqliteDialect::prepare()` registers on every connection
+  `SqliteDriver` opens. A unique index on such a column refuses a case variant. Code that opens
+  its own PDO on a Preflow SQLite file calls `SqliteDialect::prepare($pdo)` before it compares or
+  writes indexed text columns (`Grammars::for()`, so `Schema` and `Migrator`, refuse a connection
+  without it; so does a third-party driver's connection on SQLite: call it in its `configure()`).
+  The `sqlite3` command-line tool does not have it: it reads such a table, but cannot filter, sort
+  or write an indexed `preflow_text` column ("no such collation sequence"), nor restore a `.dump`
+  of the database (it fails at the first `CREATE TABLE`, so nothing is restored), `VACUUM` it or
+  run `PRAGMA integrity_check`. Use the commands that run through `SqliteDriver`'s connection:
+  `preflow db:check` (integrity and foreign keys), `db:vacuum`, `db:dump [file]` and
+  `db:restore <file>` (into an empty database; `Maintenance`, `Dumps`). A copy of the file taken
+  while the site writes nothing stays a backup. The order of a `preflow_text` index comes from the
+  ICU of the PHP that built it: run `migrate` with the PHP binary the site serves with (it rebuilds
+  the indexes when `TextMatch::version()` changes, as that PHP sees it). Measured on a table of
+  10,000 rows (PHP 8.5, ICU 79): each comparison is a PHP call (about 2 µs), so
+  work that compares many values costs more than with BINARY: `ORDER BY` over all rows 107 ms
+  instead of 7, `GROUP BY` 143 ms instead of 7, `=` without an index (a scan) 19 ms instead of
+  0.4, making a unique index 107 ms instead of 5, inserting 10,000 rows into a table with one
+  156 ms instead of 21. With an index the lookup (`=` 0.01 ms) and `ORDER BY … LIMIT` (0.01 ms)
+  cost the same as before. Index the text fields a site filters or sorts large types by.
+- **MySQL/MariaDB:** the columns of text fields name the rule's collation (see "On MySQL and
+  MariaDB" above for how it is found); the rest are `utf8mb4_bin`. `ORDER BY` on a text field in a
+  long column (TEXT, LONGTEXT: a field that is neither unique nor indexed) or on a translatable
+  one sorts by `WEIGHT_STRING()` of the value: MariaDB sorts a long text by its first-level
+  weights only (so "äpfel" and "Apfel" in storage order), and the weight string holds every level;
+  such an `ORDER BY` cannot use an index, which a long column has none of anyway. A text field in
+  a `VARCHAR` column (a unique or indexed field of a type; a plain model's migration `string()`)
+  sorts by its column and keeps its index. `MysqlDriver` reads which columns are `VARCHAR` from
+  the table itself (`information_schema`, once per table and request), so this holds for every
+  query, also one built by hand.
+- **Full-text types on MySQL:** a FULLTEXT index takes columns of one collation, so the tags a
+  `"fullText": true` type's index covers (`TextColumns::exactInFullText()`) get the rule's
+  collation too; queries still compare them exactly: `MysqlDriver` sees the column's collation,
+  and a query that names its text fields (`Query::compareAsText()`, as `QueryBuilder` does) names
+  `utf8mb4_bin` for every other field whose column carries the rule (`=`, `IN`, `ORDER BY`,
+  grouping and `HAS`).
+- **JSON:** the query names its text fields (`Query::compareAsText()`, set by `QueryBuilder` from
+  the type, as `localize()` is) and the driver compares them with `TextMatch`. `Validation\Unique`
+  decides with `TextMatch::equals()`.
+- **A query built by hand** (`new Query()` handed to a driver's `findMany()`) carries what its
+  author gives it, and the only text hint a query has is `compareAsText()`. Name the text fields
+  with it, and the query compares the same on every driver: those by the rule, every other field
+  exactly. A query that names none is compared as each store keeps its fields: JSON exactly, SQL by
+  each column's collation (the rule's for a type's text fields, exact for the rest, in tables
+  Preflow made). Everything else a database needs (MySQL: which columns are `VARCHAR`, which carry
+  the rule) its driver reads from the table, not from the query.
+- **Translatable fields:** a locale's value is a JSON value without the column's collation; the
+  dialect compares it by the rule (`TextComparison::textValue()`: `COLLATE preflow_text`, or a cast
+  into the rule's collation).
+
+A field marked exact is a machine value, not searchable text, on every driver: no word search,
+`CONTAINS` or full-text index looks into it, so its column stays exact (`utf8mb4_bin`, BINARY) and
+a unique exact field keeps case everywhere. Loose search (Folio's lists, ⌘K, a relation's target)
+finds a record when a word of the term equals the field's whole value, compared exactly: a code
+"EXAMPLECLUB2026" is found by "EXAMPLECLUB2026", not by "EXAMPLECLUB" or "exampleclub2026"
+(`LooseFields::wholeValue()`, `conditions()`).
+
+A plain column keeps its own collation in the query, so its indexes stay usable. `StorageDriverContract`
+pins the rule on every driver: its field kind `text` is a text field (`exact`, called `string` before 0.78, is exact), and
+a store that cannot follow the rule says why in `textRuleMissing()`.
+
+**Servers without the collation** (MariaDB before 10.10, MySQL before 8.0): text columns stay
+exact (`utf8mb4_bin`), translatable values compare exactly, a migration's `string()` keeps the
+table default `utf8mb4_unicode_ci`, and the contract's exact-comparison tests skip. `preflow
+migrate` changes no collation there and says so once (`warning: this server has no
+accent-sensitive, case-insensitive collation (MariaDB 10.10+ or MySQL 8.0+); text columns keep
+their comparison`). A known difference, documented here.
+
+### Existing tables (`preflow migrate`)
+
+Tables made before 0.78 get the rule when `preflow migrate` runs (back the database up first, as
+for every upgrade). Nothing in a row is ever changed or removed, every change is one statement per
+table (all of its columns or none), and every step is safe to run again: a second run finds
+nothing to do. A column gets the collation of its **intent**: text (the rule's) or exact
+(`utf8mb4_bin` on MySQL, `BINARY` on SQLite), the same on every storage. Where the intent comes
+from:
+
+- **Record tables** (the types' tables, their `__published` snapshots and `__revisions` history,
+  as `RecordTables` lists them): from the type, text fields the rule and its other columns exact.
+  A column the entry does not list is converted too (`RecordTableSync`'s column plan): the id
+  becomes exact, one a migration added gets its recorded intent, and any other (a system column
+  such as `_share_token` an earlier version made, a removed field's) keeps the rule or the exact
+  collation it has, while an older one becomes exact.
+  Their sync step (`folio.tables`,
+  `publishing.tables`, `codes.table`, …, `RecordTableSync::collations()`) converts them, on any
+  storage: MySQL one `ALTER TABLE … MODIFY …, MODIFY …` (it copies the table and blocks writes
+  while it runs; a FULLTEXT index refuses columns of mixed collations, so they change together),
+  SQLite one table rebuild that keeps every column's collation, index and trigger.
+- **The framework's tables** (`preflow_migrations`, `preflow_throttle`, `auth_tokens`,
+  `auth_remember`, `code_redemption`, the bookkeeping below): declared with each column's intent in
+  `Schema\DeclaredTables` (as `RecordTables` lists types' tables). Their machine values (purposes,
+  subjects, hashes, ids) become exact. A package or an app declares its own the same way:
+
+  ```php
+  $container->get(DeclaredTables::class)->add('user_tokens', ['tokenHash' => 'exact', 'userId' => 'exact', 'name' => 'text']);
+  ```
+- **Tables a migration makes since 0.78**: `Migrator` runs each migration with a `Schema` that
+  records every table it creates or drops and each column's intent (`string()`/`text()` text
+  unless `->exact()`, everything else exact) in `preflow_migration_columns`, beside
+  `preflow_migrations` (`Migration\MigrationColumns`). A later conversion reads it; no migration
+  is ever run again.
+
+Declared and recorded tables are converted by the step `data.text-rule`, on the storage the
+migrations run on only (a table on another storage only when its declaration names that storage).
+
+A line says what changed: `converted collations of people: title, body`. Converting a table also
+makes the rule's collation its default where the database has one (MySQL: `ALTER TABLE …
+DEFAULT CHARACTER SET utf8mb4 COLLATE …`, metadata only, no row rewritten), as a table made since
+0.78 has it: `converted the default collation of people to utf8mb4_uca1400_nopad_as_ci`. A column
+added without a type (`Schema::addColumn()`) is free text and compares exactly on every storage.
+
+The last step of `migrate`, `data.collations` (`TextRuleConversion::unconverted()`), lists as a
+warning every text column of a table Preflow manages (record, declared and recorded tables) whose
+collation is still neither the rule's nor the exact one, and every such table default, with the
+fix; `migrate` still succeeds. `preflow db:check` lists them too. Tables Preflow does not know are
+not listed there (see below).
+
+- **Duplicates under the rule.** Before a column under a unique index changes collation, whatever
+  its old one, its values are counted under the new one (`TextDuplicates::sql()`, the unique
+  field with its scope, by the index's prefix where it has one): a `utf8mb4_bin` column may hold
+  "Müller" and "MÜLLER", and an older case-insensitive one (`utf8mb4_unicode_ci`) "Straße" and
+  "STRAẞE", which it tells apart and the rule does not. When some are there more than once, that
+  column is left as it is (with the other columns of a full-text index it shares), the rest of the
+  table is converted, and every group is listed with its records, up to 20 and then a count:
+
+  ```
+  [folio.tables] refused: people.title: 1 value is there more than once when case is ignored; the column keeps its collation until they differ
+  [folio.tables]   "Müller" in r1, r2
+  [folio.tables] converted collations of people: body
+  Some values are there more than once under the text rule (see "refused:" above); nothing was changed or removed. Rename one record of each group, then run migrate again.
+  ```
+
+  `migrate` then exits 1, after every step has run. Rename one record of each group (in Folio) and
+  run `migrate` again: it converts the column. `preflow migrate --pretend` prints the same list
+  without changing anything. A save that adds a duplicate between the count and the change makes
+  the server refuse the change; nothing changes, and the line ends `run migrate again`. A table
+  SQLite cannot rebuild as it is (a `CHECK`, `REFERENCES` or another collation in its definition)
+  is left as it is with `refused: people: Cannot convert …; convert the table (see the data
+  README)`: convert it with a migration (`Schema::convertColumn()` cannot either; rebuild it by
+  hand).
+- **A column in another character set** (MySQL `latin1`, `utf8mb3`) or an `ENUM`/`SET` is never
+  converted (that would convert its values): `warning: people.title is in another character set
+  (latin1_swedish_ci); it keeps its collation`. Convert the table on purpose.
+- **Tables without known intent** (made by a site's migration before 0.78, or by another
+  application in a shared database) are left as they are. `migrate` lists each once, on the storage
+  the migrations run on: `warning: notes has no recorded text rule (made by a migration before
+  0.78, or not by Preflow): its columns id, title keep their comparison. Adopt it with a migration
+  (Schema::convertColumn(), see the data README) or list it in text_rule.skip`. A table made
+  before 0.78 that a later migration extended (`addColumns()`) has intent for the new columns
+  only: those are converted, and its older text columns are listed once the same way (`warning:
+  notes has columns without a recorded text rule (made before 0.78): title keep their
+  comparison. …`; its key column is not listed). To adopt a table, write a migration that converts its columns; `Migrator`
+  records their intent as it runs it:
+
+  ```php
+  $schema->convertColumn('notes', fn (Table $t) => $t->string('title'));           // the rule
+  $schema->convertColumn('notes', fn (Table $t) => $t->string('code', 40)->exact()); // a machine value
+  ```
+
+  Tables never to touch (and never to list) go in `config/data.php`:
+
+  ```php
+  'text_rule' => ['skip' => ['legacy_orders', 'wp_posts']],
+  ```
+- **SQLite after a PHP or ICU upgrade.** SQLite keeps the indexes over `preflow_text` columns in
+  the order PHP's ICU and `TextMatch`'s tables give (`TextMatch::version()`). The step
+  `data.text-rule` records the version in the table `preflow_text_collation` (in a transaction)
+  and, when it is another or none is recorded, rebuilds each of those indexes (`REINDEX`), and
+  says so when a version was recorded before: `rebuilt the indexes over text columns for icu 79.1,
+  tables 3f9c0e1a2b4d6c8e (was icu 78.2, tables 3f9c0e1a2b4d6c8e)` (the first run records the
+  version quietly). `migrate --pretend` lists the refusals below without rebuilding. A unique index whose
+  values the new version takes as equal is left as it was, its groups are listed as `refused:`
+  lines and the version is not recorded, so the next `migrate` tries again once they differ.
+  Until then that index **stays in use** in its old order: a lookup of one of those values may
+  miss a row, and the index may let in a value the rule takes as a duplicate. Fix the listed
+  values first.
+- **JSON** (the step `data.text-duplicates`, also on a site without SQL storage): nothing to
+  convert, since the rule applies in PHP. Case-variant duplicates of a unique text field saved
+  before 0.78 are listed in the same form (`refused: people.title: 1 value is there more than once
+  when case is ignored; saving one of these records is refused until they differ`), and `migrate`
+  exits 1: saving either record is refused (`validation.unique`) until they differ. The same
+  check covers translatable unique fields on every storage (no index holds them), per locale
+  (`people.slug (en)`).
+- **Servers without the collation** change nothing (see above).
+
+`GROUP BY`, `COUNT(DISTINCT)` and `MIN`/`MAX` on a text field follow the column's collation
+after the change, so they group and compare by the rule as `=` does (values equal under `=`
+form one group).
+
+**A grammar of your own** (`Grammars::register()`) that implements
+`Migration\Grammar\TextCollations` gets the same for new tables and columns: `Grammars::for($pdo)`
+binds it to the connection (`on()`), and the table sync gives text fields its `textColumnType()`.
+The conversion of existing tables above needs `Migration\Grammar\ConvertsCollations` too; without
+it `migrate` prints one warning line per storage and leaves those columns as they are. Without
+either, its columns keep its own comparison. A dialect implements `Driver\TextComparison` for translatable values and
+the sort order.
 
 ## `searchLoose`
 
@@ -902,7 +1288,7 @@ $dm->queryIn($typeDef)->searchLoose('engineer', fields: ['title', 'company'])->g
 ```
 
 The term is split on whitespace. Every word must match (AND); a word matches when it is a
-case-insensitive substring of at least one field (OR). `%`, `_` and quotes in the term match
+substring of at least one field (OR), under the text-matching rule (see "Text matching"). `%`, `_` and quotes in the term match
 literally. Unlike `search()`, which keeps using exactly the `searchable: true` fields:
 
 - By default it searches every text-kind field (`string`, `text`, plus kinds registered with
@@ -929,6 +1315,49 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
   both sides. They need a `DataManager`; a builder made without one searches the type's own
   fields only.
 
+## Read-only and no-create types (0.78)
+
+A type says what editors and APIs may do with its records. The core reads it; every adapter
+(Folio, an API, one of your own) asks the same question and refuses the same things:
+
+```json
+{ "key": "faq",     "table": "faq",      "readonly": true,   "fields": { … } }
+{ "key": "message", "table": "messages", "creatable": false, "fields": { … } }
+```
+
+```php
+#[Entity(table: 'faq', type: 'faq', readonly: true)]
+#[Entity(table: 'messages', type: 'message', creatable: false)]
+
+use Preflow\Data\TypeAction;
+$def = $data->getTypeRegistry()->get('faq');
+$def->allows(TypeAction::Create);        // false
+$def->assertAllows(TypeAction::Update);  // throws TypeActionRefused, a 403
+```
+
+| Option | Create | Update | Delete | For |
+|---|---|---|---|---|
+| (none) | yes | yes | yes | every type, as before |
+| `"readonly": true` | no | no | no | records that come from files or code (an FAQ kept in git and seeded on every deploy): listed and viewed only |
+| `"creatable": false` | no | yes | yes | an inbox of what visitors sent: no "New", but its flags are changed and its records deleted |
+
+- **Reading is never restricted**, and **code is not either**: seeders, migrations and the app's own
+  `DataManager` calls (`saveType()`, `deleteType()`, …) write as before. The option is about editors
+  and adapters, not storage.
+- **Machine translation is an adapter**, not code: it writes for editors. A read-only type is never
+  offered for translation (Folio's text source asks `allows(TypeAction::Update)`), and a job queued
+  before the type became read-only stops without sending a text to the model.
+- `TypeDefinition::allows(TypeAction)` answers; `assertAllows()` throws
+  `Preflow\Data\TypeActionRefused` (a `ForbiddenHttpException`: `$type`, `$action`), so an API
+  controller that lets it through answers a JSON 403 under its API prefixes (and a page the error
+  page). No built-in adapter throws it yet: Folio asks `allows()` and answers its own 403 page;
+  `assertAllows()` is there for an API or an adapter of your own. `TypeDefinition::$readonly`,
+  `$creatable` (false for a read-only type).
+- **Checked at boot:** a value other than `true` or `false`, or `"readonly": true` together with
+  `"creatable": true`, stops the boot naming the type and the option (with a boot manifest, when
+  `preflow optimize` builds it). A model class sets them on `#[Entity]` or in its admin file; both
+  may set one only to the same value (so may `fullText`).
+
 ## Record titles and cross-type search (0.77)
 
 **A record's title** is the text that names it in lists, search hits and activity rows:
@@ -946,7 +1375,10 @@ RecordTitle::of($record, 'de');  // a translatable title in German (with the loc
 ```
 
 `TypeDefinition::$titleField` is the field. Without one, the title is the first field of type
-`string` that is not hidden (`"hidden": true`), read as a string only. A declared `titleField` may
+`string` that is not hidden (`"hidden": true`) and holds no personal data, read as a string only
+(since 0.78; titles end up in the activity log and in lists): a field named `email` or ending in
+`_email`, one with `"format": "email"` or an `email` rule, and one marked `"personal": true` are
+skipped. Name it as `titleField` to use one anyway. A declared `titleField` may
 also be a number field (its value is cast to text). An empty title (or none) falls back to the
 record id. A `titleField` the type does not have is an error naming the type when the type
 registry is built (at boot; with a boot manifest, when `preflow optimize` builds it). A model class sets it on `#[Entity(titleField: …)]` or in its admin
@@ -1058,6 +1490,9 @@ is used after it; a cache is not written when the signature moved while the reco
 Edge case: a record file edited by hand in place, outside the driver (an editor, `sed`, a deploy that
 overwrites a file), changes neither the generation nor the directory's mtime and is not noticed until the
 next save of that type or `preflow cache:clear`. Adding or removing a file by hand is noticed.
+For a site whose files change outside the app (a `git pull` of the data folder), turn the cache off
+on that storage in `config/data.php`: `'json' => ['path' => ..., 'cache' => false]`. Every query then
+reads the record files; the default is on.
 A cache that cannot be written only costs
 speed. Core's `Application` passes `storage/cache/data`.
 

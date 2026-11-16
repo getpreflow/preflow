@@ -53,6 +53,34 @@ php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite
   shared deploy step can always run it. An explicit `--storage=<key>` that is unknown or not SQL
   still exits 1.
 
+### `throttle:prune` — delete attempt-limit rows whose window has ended (since 0.78)
+
+Deletes the rows of `preflow_throttle` whose window has ended (`Throttle::prune()`) and prints
+how many. The throttle does this itself on the next request that counts; run the command from
+cron when a site promises how long it keeps them:
+
+```
+*/5 * * * * cd /path/to/site/current && php preflow throttle:prune
+```
+
+### `db:check`, `db:vacuum`, `db:dump`, `db:restore` — the database through Preflow's connection (since 0.78)
+
+A SQLite database's text columns use the collation `preflow_text`, which only Preflow's
+connection has, so the `sqlite3` tool can't check, compact or restore it. These commands can:
+
+```
+php preflow db:check                  # PRAGMA integrity_check + foreign_key_check; exit 1 on a problem
+php preflow db:vacuum                 # VACUUM
+php preflow db:dump backup.sql        # the database as SQL (no file: standard output; an existing file is refused)
+php preflow db:restore backup.sql --storage=copy   # into an empty database only ("-" reads standard input)
+```
+
+Each takes `--storage=<name>`; without it, the default storage when it can, else the one storage
+that can. They ask the storage's driver for `Preflow\Data\Maintenance` (`check`, `vacuum`) and
+`Preflow\Data\Dumps` (`dump`, `restore`); `SqliteDriver` implements both. On MySQL/MariaDB, whose
+own tools work on Preflow's tables, and on JSON storage they exit 1 naming the tools to use
+(`mysqlcheck`, `mysqldump`, a copy of the folder). Messages go to standard error.
+
 ### `activity:prune` — apply the activity log's retention (since 0.77)
 
 Boots the application and deletes the activity log rows past `config/activity.php`

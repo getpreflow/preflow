@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Throttle;
 
+use Preflow\Data\CounterReset;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
@@ -17,26 +17,41 @@ use Psr\Http\Message\ServerRequestInterface;
  * daily; a raw IP is never stored.
  *
  * Windows should be much shorter than a day: the client hash rotates at 00:00
- * UTC, so a window spanning midnight starts over. hit() is atomic: on SQL one
- * upsert counts the attempt (or restarts an expired window), on the JSON driver
- * an exclusive file lock in $lockDir guards the read-modify-write, so
- * concurrent requests never lose a hit. Rows of earlier days are orphaned by
- * the rotation; hit() prunes them (see prune()).
+ * UTC, so a window spanning midnight starts over. hit() counts through
+ * DataManager::incrementIn(): on a storage with AtomicCounters (every built-in
+ * driver: one upsert on SQL, the type's lock on JSON) concurrent requests never
+ * lose a hit; on another storage the count is a read and a write, under the
+ * type's lock when the storage has ExclusiveWrites.
+ *
+ * Retention (since 0.78): a row stores when its window ends (expires_at) and is deleted once it
+ * has: by prune(), which the first hit that starts a window runs (once per instance), by
+ * tooMany() and retryAfter() when they find it ended, and by `preflow throttle:prune` from cron
+ * for a site that promises a retention however quiet it is. So a row lives for its window plus
+ * at most the time until the next request that counts, or the next cron run. Rows of earlier
+ * days are orphaned by the client hash's rotation and go the same way.
  *
  * client() refuses an empty or the well-known default key: a hash salted with a
- * public key could be brute-forced back to the IP.
+ * public key could be brute-forced back to the IP. forPerson() (since 0.78) does the
+ * same for a signed-in person's auth id, so the raw id is never stored either.
  */
 final class Throttle
 {
     public const string DEFAULT_KEY = 'preflow-default-key-change-me!!';
 
-    private const TABLE = 'preflow_throttle';
+    /** The table (and type key) the rows are stored in. @since 0.78 public */
+    public const string TABLE = 'preflow_throttle';
+
+    /** Rows stored before 0.78 have no expires_at: prune() deletes them after this many seconds, as it did. */
+    private const int LEGACY_RETENTION = 172800;
 
     private readonly TypeDefinition $type;
     private readonly \Closure $clock;
-    private readonly string $lockDir;
     private bool $pruned = false;
 
+    /**
+     * @param string|null $lockDir @deprecated ignored since 0.78: the storage guards the count
+     *        (AtomicCounters, ExclusiveWrites); kept so existing calls keep working
+     */
     public function __construct(
         private readonly DataManager $dm,
         private readonly string $key,
@@ -45,18 +60,29 @@ final class Throttle
         ?string $lockDir = null,
     ) {
         $this->clock = $clock ?? static fn (): int => time();
-        $this->lockDir = $lockDir ?? sys_get_temp_dir();
         $this->type = new TypeDefinition(
             key: self::TABLE,
             table: self::TABLE,
             storage: $storage,
             fields: [
-                'purpose' => new TypeFieldDefinition('purpose', 'string'),
+                'purpose' => new TypeFieldDefinition('purpose', 'string', exact: true),
                 'hits' => new TypeFieldDefinition('hits', 'number'),
                 'window_start' => new TypeFieldDefinition('window_start', 'number'),
+                'expires_at' => new TypeFieldDefinition('expires_at', 'number'),
             ],
             idField: 'id',
         );
+    }
+
+    /**
+     * The type the rows are stored as (table preflow_throttle: id, purpose, hits, window_start,
+     * expires_at), for code that reads them, such as tests.
+     *
+     * @since 0.78
+     */
+    public function definition(): TypeDefinition
+    {
+        return $this->type;
     }
 
     /**
@@ -66,13 +92,43 @@ final class Throttle
      */
     public function client(ServerRequestInterface $request): string
     {
-        if ($this->key === '' || $this->key === self::DEFAULT_KEY) {
-            throw new \RuntimeException('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.');
-        }
+        $this->assertKey();
         $ip = $request->getServerParams()['REMOTE_ADDR'] ?? null;
         $ip = is_string($ip) && $ip !== '' ? self::network($ip) : 'unknown';
 
         return hash_hmac('sha256', $ip, $this->key . '|' . gmdate('Y-m-d'));
+    }
+
+    /**
+     * The client string of a signed-in person (a per-person limit): the auth id hashed with the app
+     * key. Stable, unlike client(): a window of an hour must not start over at midnight. The raw id
+     * is never stored.
+     *
+     * @since 0.78
+     */
+    public function forPerson(string $authId): string
+    {
+        $this->assertKey();
+
+        return hash_hmac('sha256', 'person|' . $authId, $this->key);
+    }
+
+    /**
+     * Whether the app key can salt client and person hashes (not empty, not the default): without
+     * it client() and forPerson() throw. Lets a caller refuse at boot instead of per request.
+     *
+     * @since 0.78
+     */
+    public function hasKey(): bool
+    {
+        return $this->key !== '' && $this->key !== self::DEFAULT_KEY;
+    }
+
+    private function assertKey(): void
+    {
+        if (!$this->hasKey()) {
+            throw new \RuntimeException('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.');
+        }
     }
 
     /** "2001:db8:1:2::/64" for an IPv6 address, the dotted address for IPv4; anything else as given. */
@@ -91,102 +147,56 @@ final class Throttle
 
     public function tooMany(string $purpose, string $client, int $max, int $windowSeconds): bool
     {
-        $record = $this->dm->findIn($this->type, $this->id($purpose, $client));
-        if ($record === null || $this->expired($record, $windowSeconds)) {
+        $record = $this->current($purpose, $client, $windowSeconds);
+        if ($record === null) {
             return false;
         }
 
         return (int) $record->get('hits') >= $max;
     }
 
-    public function hit(string $purpose, string $client, int $windowSeconds): void
+    /**
+     * Counts an attempt: the first of a window starts it at now, one at window_start +
+     * $windowSeconds or later starts a new window (as tooMany() sees it expired); either stores
+     * when the window ends (expires_at). A hit that starts a window prunes ended rows, once per
+     * instance.
+     *
+     * @return int the hits in the window, this one included (since 0.78; before, nothing)
+     */
+    public function hit(string $purpose, string $client, int $windowSeconds): int
     {
-        $id = $this->id($purpose, $client);
-        $driver = $this->dm->driver($this->type->storage);
+        $now = ($this->clock)();
+        $hits = $this->dm->incrementIn(
+            $this->type,
+            $this->id($purpose, $client),
+            'hits',
+            1,
+            ['purpose' => $purpose, 'window_start' => $now, 'expires_at' => $now + $windowSeconds],
+            new CounterReset('window_start', $now - $windowSeconds + 1, ['window_start' => $now, 'expires_at' => $now + $windowSeconds]),
+        );
 
-        if ($driver instanceof PdoDriver) {
-            if (!$this->pruned) {
-                $record = $this->dm->findIn($this->type, $id);
-                if ($record === null || $this->expired($record, $windowSeconds)) {
-                    $this->pruned = true;
-                    $this->prune();
-                }
-            }
-            if ($this->upsert($driver, $id, $purpose, $windowSeconds)) {
-                return;
-            }
+        if ($hits === 1 && !$this->pruned) {
+            $this->pruned = true;
+            $this->prune();
         }
 
-        $this->locked($id, function () use ($id, $purpose, $windowSeconds): void {
-            $record = $this->dm->findIn($this->type, $id);
-
-            if ($record === null || $this->expired($record, $windowSeconds)) {
-                $record = new DynamicRecord($this->type, [
-                    'id' => $id,
-                    'purpose' => $purpose,
-                    'hits' => 1,
-                    'window_start' => ($this->clock)(),
-                ]);
-                if (!$this->pruned) {
-                    $this->pruned = true;
-                    $this->prune();
-                }
-            } else {
-                $record->set('hits', (int) $record->get('hits') + 1);
-            }
-
-            $this->dm->saveType($record, validate: false);
-        });
+        return $hits;
     }
 
     /**
-     * One statement the driver's Dialect writes: insert the row, or count the hit on it,
-     * restarting the window when it has expired. The expressions read the existing row through
-     * table-qualified columns (PostgreSQL finds a bare name ambiguous with EXCLUDED's), and neither
-     * reads a column assigned before it (MySQL would read the new value). False when the dialect
-     * has no such statement.
+     * Seconds until the stored window of $purpose and $client ends (at least 1), or 0 when there
+     * is no row or its window has ended. It does not look at the count: the caller knows the limit.
+     *
+     * @since 0.78
      */
-    private function upsert(PdoDriver $driver, string $id, string $purpose, int $windowSeconds): bool
+    public function retryAfter(string $purpose, string $client, int $windowSeconds): int
     {
-        $dialect = $driver->dialect();
-        $table = $dialect->quoteIdentifier(self::TABLE);
-        $hits = $table . '.' . $dialect->quoteIdentifier('hits');
-        $start = $table . '.' . $dialect->quoteIdentifier('window_start');
-        $sql = $dialect->insertOrUpdateSql(self::TABLE, ['id', 'purpose', 'hits', 'window_start'], 'id', [
-            'hits' => "CASE WHEN ? >= {$start} + ? THEN 1 ELSE {$hits} + 1 END",
-            'window_start' => "CASE WHEN ? >= {$start} + ? THEN ? ELSE {$start} END",
-        ]);
-        if ($sql === null) {
-            return false;
+        $record = $this->current($purpose, $client, $windowSeconds);
+        if ($record === null) {
+            return 0;
         }
-        $now = ($this->clock)();
 
-        $this->dm->execute(
-            $sql,
-            [$id, $purpose, 1, $now, $now, $windowSeconds, $now, $windowSeconds, $now],
-            $this->type->storage,
-        );
-
-        return true;
-    }
-
-    /** Runs $fn holding an exclusive lock on throttle-{id}.lock in the lock directory. */
-    private function locked(string $id, \Closure $fn): void
-    {
-        if (!is_dir($this->lockDir) && !@mkdir($this->lockDir, 0755, true) && !is_dir($this->lockDir)) {
-            throw new \RuntimeException("Throttle lock directory {$this->lockDir} cannot be created.");
-        }
-        $path = $this->lockDir . '/throttle-' . $id . '.lock';
-        $handle = fopen($path, 'c');
-        if ($handle === false || !flock($handle, LOCK_EX)) {
-            throw new \RuntimeException("Throttle lock {$path} cannot be taken.");
-        }
-        try {
-            $fn();
-        } finally {
-            flock($handle, LOCK_UN);
-            fclose($handle);
-        }
+        return max(1, (int) $record->get('window_start') + $windowSeconds - ($this->clock)());
     }
 
     public function clear(string $purpose, string $client): void
@@ -195,19 +205,40 @@ final class Throttle
     }
 
     /**
-     * Delete rows whose window started before now - $olderThanSeconds
-     * (default two days). Returns how many were deleted.
+     * Delete the rows whose window has ended (expires_at at or before now; a row stored before
+     * 0.78, without expires_at, once its window started two days ago). With $olderThanSeconds:
+     * the rows whose window started before now - $olderThanSeconds, ended or not. Returns how
+     * many were deleted.
      */
-    public function prune(int $olderThanSeconds = 172800): int
+    public function prune(?int $olderThanSeconds = null): int
     {
-        $cutoff = ($this->clock)() - $olderThanSeconds;
-        $count = 0;
-        foreach ($this->dm->queryIn($this->type)->where('window_start', '<', $cutoff)->get() as $record) {
-            $this->dm->deleteIn($this->type, (string) $record->getId());
-            $count++;
+        $now = ($this->clock)();
+        $records = $olderThanSeconds === null
+            ? [
+                ...$this->dm->queryIn($this->type)->where('expires_at', '<=', $now)->get(),
+                ...$this->dm->queryIn($this->type)->where('expires_at', null)->where('window_start', '<', $now - self::LEGACY_RETENTION)->get(),
+            ]
+            : [...$this->dm->queryIn($this->type)->where('window_start', '<', $now - $olderThanSeconds)->get()];
+        $ids = array_map(static fn (DynamicRecord $record): string => (string) $record->getId(), $records);
+        if ($ids !== []) {
+            $this->dm->deleteManyIn($this->type, $ids);
         }
 
-        return $count;
+        return count($ids);
+    }
+
+    /** The row of $purpose and $client while its window runs; one whose window has ended is deleted. */
+    private function current(string $purpose, string $client, int $windowSeconds): ?DynamicRecord
+    {
+        $id = $this->id($purpose, $client);
+        $record = $this->dm->findIn($this->type, $id);
+        if ($record !== null && $this->expired($record, $windowSeconds)) {
+            $this->dm->deleteIn($this->type, $id);
+
+            return null;
+        }
+
+        return $record;
     }
 
     private function id(string $purpose, string $client): string

@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Data;
 
 use Preflow\Data\Attributes\Timestamps;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\Observe\DataObserver;
 use Preflow\Data\Observe\SqlTables;
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Search\LooseFields;
 use Preflow\Data\Validation\Unique;
 use Preflow\Validation\Message;
 use Preflow\Validation\ValidationContext;
@@ -94,6 +94,68 @@ final class DataManager
     }
 
     /**
+     * Whether scoreIn() can rank $def's records: its storage implements RankedSearch, the type
+     * declares full-text search ("fullText": true) and the storage can score its loose-search
+     * text fields (Search\LooseFields::text(); MySQL: a FULLTEXT index over exactly those, which
+     * migrate makes). False otherwise, also for a flagged type before migrate made its index.
+     *
+     * @since 0.78
+     */
+    public function canScore(TypeDefinition $def): bool
+    {
+        if (!$def->fullText) {
+            return false;
+        }
+        $driver = $this->resolveDriver($def->storage);
+        if (!$driver instanceof RankedSearch) {
+            return false;
+        }
+        $fields = LooseFields::text($def, $this->fieldKinds());
+
+        return $fields !== [] && $driver->canScore($def->table, $fields);
+    }
+
+    /**
+     * The score of each of $ids (records of $def) for $term, through the storage's RankedSearch
+     * over the type's loose-search text fields: higher is better, 0.0 for one that does not
+     * match or does not exist; every given id is a key. Scoring orders records a search found,
+     * it never finds any. Ask canScore() first. When scoring fails and the storage, asked again,
+     * can no longer score the type (its index was dropped or rebuilt since canScore() said yes),
+     * every id scores 0.0, so the records keep storage order; any other failure is rethrown.
+     *
+     * @since 0.78
+     *
+     * @param list<string|int> $ids
+     * @return array<string|int, float>
+     * @throws UnsupportedStorage when the storage does not implement RankedSearch
+     * @throws \LogicException when it cannot score this type (canScore() is false)
+     */
+    public function scoreIn(TypeDefinition $def, string $term, array $ids): array
+    {
+        $driver = $this->resolveDriver($def->storage);
+        if (!$driver instanceof RankedSearch) {
+            throw new UnsupportedStorage($def->storage, RankedSearch::class, "scoring {$def->key} records needs it");
+        }
+        if (!$this->canScore($def)) {
+            throw new \LogicException("Storage [{$def->storage}] cannot score {$def->key} records: the type needs \"fullText\": true and, on its storage, a full-text index over its text fields (run `preflow migrate`). Ask canScore() first.");
+        }
+        if ($ids === []) {
+            return [];
+        }
+        $this->reportRead($def->storage, $def->table);
+        $fields = LooseFields::text($def, $this->fieldKinds());
+        try {
+            return $driver->score($def->table, $term, $fields, $ids, $def->idField);
+        } catch (\RuntimeException $e) {
+            if ($driver->canScore($def->table, $fields)) {
+                throw $e;
+            }
+
+            return array_fill_keys($ids, 0.0);
+        }
+    }
+
+    /**
      * Write $fields, and only those, to the record $id of $def while its $versionField holds
      * $expected (a whole number; null: none yet, never 0 for that) — the compare-and-set
      * ConditionalUpdates gives, the same on every built-in driver. $fields may set $versionField
@@ -119,7 +181,7 @@ final class DataManager
             $none = $value === null || $value === '';
             $written = $stored !== null && ($expected === null ? $none : !$none && is_scalar($value) && (string) $value === (string) $expected);
             if ($written) {
-                $driver->save($def->table, $id, array_replace($stored, $fields), $def->idField);
+                $driver->save($def->table, $id, $this->storageValues($def, array_replace($stored, $fields)), $def->idField);
             }
         }
         if ($written) {
@@ -185,13 +247,15 @@ final class DataManager
     }
 
     /**
-     * Reports again reads captured by captureReads() (a memo hit).
+     * Reports again reads captured by captureReads() (a memo hit): to the observer, and to every
+     * open captureReads(), with or without an observer, so a memo filled from another memo's hit
+     * holds the reads too.
      *
      * @param list<array<int, mixed>> $reads
      */
     public function replayReads(array $reads): void
     {
-        if ($this->observer === null) {
+        if ($this->observer === null && $this->captures === []) {
             return;
         }
         foreach ($reads as $read) {
@@ -503,7 +567,7 @@ final class DataManager
      */
     public function raw(string $sql, array $bindings = [], string $storage = 'default'): array
     {
-        $driver = $this->resolveDriver($storage);
+        $driver = $this->sql($storage, 'raw() needs a storage that runs SQL');
         if ($this->observer === null && $this->captures === []) {
             return $driver->rawQuery($sql, $bindings);
         }
@@ -521,23 +585,86 @@ final class DataManager
     }
 
     /**
-     * Execute a raw SQL write (UPDATE, DELETE, an upsert) and return the
-     * affected rows. Only PDO drivers run SQL; any other driver is a LogicException.
+     * Execute a raw SQL write (UPDATE, DELETE, an upsert) and return the affected rows. A storage
+     * that does not implement RunsSql throws UnsupportedStorage (a LogicException).
      *
      * @param array<int|string, mixed> $bindings Parameter bindings
      */
     public function execute(string $sql, array $bindings = [], string $storage = 'default'): int
     {
-        $driver = $this->resolveDriver($storage);
-        if (!$driver instanceof Driver\PdoDriver) {
-            throw new \LogicException("Storage driver [{$storage}] does not run SQL; execute() needs a PDO driver.");
-        }
+        $driver = $this->sql($storage, 'execute() needs a storage that runs SQL');
 
         try {
             return $driver->execute($sql, $bindings);
         } finally {
             $this->observer?->rawWrote($this->storageKey($storage), $sql); // also after a failure: part may be written
         }
+    }
+
+    /**
+     * Runs $fn in one transaction per storage driver among $storages that has Transactions
+     * (names aliasing one driver count once), nested in the given order: the first is
+     * outermost, so the last commits first. A storage without transactions (JSON files) simply
+     * runs the writes. A storage already in a transaction joins it: commit and rollback stay
+     * with its owner. When $fn throws, every transaction this call began rolls back and the
+     * failure is rethrown.
+     *
+     * A commit that fails after another storage this call began has committed throws
+     * PartialCommit (naming the committed storages, the failure as previous): those writes stay.
+     *
+     * @template T
+     * @param list<string> $storages storage names as configured
+     * @param \Closure(): T $fn
+     * @return T
+     * @throws PartialCommit
+     * @since 0.78
+     */
+    public function transaction(array $storages, \Closure $fn): mixed
+    {
+        /** @var array<int, array{0: string, 1: Transactions}> $drivers by driver object, first name kept */
+        $drivers = [];
+        foreach ($storages as $name) {
+            $driver = $this->resolveDriver($name);
+            if ($driver instanceof Transactions) {
+                $drivers[spl_object_id($driver)] ??= [$name, $driver];
+            }
+        }
+
+        /** @var list<string> $committed */
+        $committed = [];
+        $run = $fn;
+        foreach (array_reverse($drivers) as [$name, $driver]) {
+            $inner = $run;
+            $run = static function () use ($name, $driver, $inner, &$committed): mixed {
+                if ($driver->inTransaction()) {
+                    return $driver->transaction($inner); // joined: the owner commits
+                }
+                $result = $driver->transaction($inner);
+                $committed[] = $name;
+
+                return $result;
+            };
+        }
+
+        try {
+            return $run();
+        } catch (\Throwable $e) {
+            // Only a commit can fail once an inner storage has committed ($fn has returned by then).
+            if ($committed !== []) {
+                throw new PartialCommit($committed, $e);
+            }
+            throw $e;
+        }
+    }
+
+    private function sql(string $storage, string $needs): RunsSql
+    {
+        $driver = $this->resolveDriver($storage);
+        if (!$driver instanceof RunsSql) {
+            throw new UnsupportedStorage($storage, RunsSql::class, $needs);
+        }
+
+        return $driver;
     }
 
     /**
@@ -570,7 +697,7 @@ final class DataManager
         }
 
         $driver = $this->resolveDriver($meta->storage);
-        $data = $this->modelData($meta, $model);
+        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
         $id = $data[$meta->idField] ?? null;
         $isEmpty = $id === null || $id === '' || $id === 0 || $id === '0';
 
@@ -610,7 +737,7 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
         if (self::hasStringId($meta)) {
             // A string id is never the storage's to give: the given one, or the new UUID.
-            $data = $this->modelData($meta, $model);
+            $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
             $id = (string) $data[$meta->idField];
             if ($driver->exists($meta->table, $id, $meta->idField)) {
                 throw new \RuntimeException('Cannot insert ' . $model::class . " {$id}: a record with this id exists. Use save() or update().");
@@ -621,7 +748,7 @@ final class DataManager
             return;
         }
 
-        $data = $this->modelData($meta, $model);
+        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
 
         // Force INSERT by passing empty ID (PdoDriver strips the ID field and does plain INSERT)
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, 0, $data, $meta->idField));
@@ -711,7 +838,7 @@ final class DataManager
         }
 
         $driver = $this->resolveDriver($meta->storage);
-        $data = $this->modelData($meta, $model);
+        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
         $id = $data[$meta->idField] ?? null;
 
         if (self::emptyId($id)) {
@@ -806,7 +933,7 @@ final class DataManager
         $this->guarded($record, function () use ($driver, $def, $id, $data, $versionField): void {
             if (self::emptyId($id)) {
                 // An auto-increment id: the storage gives it (a first write, version 1).
-                $driver->save($def->table, 0, $versionField === null ? $data : [...$data, $versionField => 1], $def->idField);
+                $driver->save($def->table, 0, $this->storageValues($def, $versionField === null ? $data : [...$data, $versionField => 1]), $def->idField);
 
                 return;
             }
@@ -815,7 +942,7 @@ final class DataManager
 
                 return;
             }
-            $this->saveKeepingOtherColumns($driver, $def, $id, $data);
+            $driver->save($def->table, $id, $this->storageValues($def, $data), $def->idField);
         });
 
         if (self::emptyId($id)) {
@@ -844,37 +971,15 @@ final class DataManager
             // Unchanged: the stored version stays (none stays none).
             $version = $changed ? [$versionField => ($current ?? 0) + 1] : ($current === null ? [] : [$versionField => $current]);
             if ($stored === null || !$driver instanceof ConditionalUpdates || $attempt >= self::BUMP_ATTEMPTS) {
-                $this->saveKeepingOtherColumns($driver, $def, $id, [...$data, ...$version]);
+                $driver->save($def->table, $id, $this->storageValues($def, [...$data, ...$version]), $def->idField);
 
                 return;
             }
-            $fields = array_diff_key([...$data, ...$version], [$def->idField => true]);
+            $fields = array_diff_key($this->storageValues($def, [...$data, ...$version]), [$def->idField => true]);
             if ($driver->updateIfVersion($def->table, $id, $fields, $versionField, $current, $def->idField)) {
                 return;
             }
         }
-    }
-
-    /**
-     * Writes $data over the stored record, leaving the columns $data does not have as they
-     * are. SQL storage does that itself; a storage that writes whole records (JSON files) gets
-     * the stored record with $data laid over it, read and written under the type's lock where
-     * the storage has one, so a version-checked save in between is not undone.
-     *
-     * @param array<string, mixed> $data
-     */
-    private function saveKeepingOtherColumns(StorageDriver $driver, TypeDefinition $def, string|int $id, array $data): void
-    {
-        if ($driver instanceof PdoDriver) {
-            $driver->save($def->table, $id, $data, $def->idField);
-
-            return;
-        }
-        $write = static function () use ($driver, $def, $id, $data): void {
-            $stored = $driver->findOne($def->table, $id, $def->idField);
-            $driver->save($def->table, $id, $stored === null ? $data : array_replace($stored, $data), $def->idField);
-        };
-        $driver instanceof ExclusiveWrites ? $driver->exclusive($def->table, $write) : $write();
     }
 
     /**
@@ -1160,8 +1265,9 @@ final class DataManager
      * Save a dynamic record.
      *
      * Unique fields: validation checks them (Unique), and the storage guards them whether
-     * validated or not (the unique index on SQL; translatable fields and JSON storage are checked
-     * in the save under the type's lock, ExclusiveWrites). A duplicate is a ValidationException
+     * validated or not (the unique index on a storage with UniqueIndexes; translatable fields and
+     * other storages are checked in the save, under the type's lock where the storage has one,
+     * ExclusiveWrites). A duplicate is a ValidationException
      * with validation.unique on the field ("field.locale" for another locale's value).
      *
      * @throws ValidationException (nothing saved)
@@ -1353,27 +1459,142 @@ final class DataManager
     }
 
     /**
-     * A row of this type as it is written: an empty string in a number, yes/no or date field is
-     * NULL (those columns hold no empty text), and so is an empty unique value (NULL is never a
-     * duplicate in a unique index, '' would be); other empty text stays ''. For callers writing
-     * rows to a driver themselves (an import), as saveType() does.
+     * A row of this type as it is written, the same whoever saves it (Folio, the CLI, a script),
+     * so an unchanged record is written to the same bytes:
+     * - the keys in the type's field order, then the system keys (the id field when it is no
+     *   field, then the keys starting with "_", in their given order), then any other key in its
+     *   given order; no key is dropped;
+     * - a list field (FieldKinds::list()) holds a list, also when given as JSON text or a comma
+     *   string; a number field's numeric text is a number (int when whole); a yes/no field's
+     *   '1'/'0'/1/0/'true'/'false' is a bool. A value that does not convert stays as it is, and so
+     *   does a translatable field (a map per locale) and one the type transforms itself;
+     * - an empty string in a number, yes/no or date field is NULL (those columns hold no empty
+     *   text), and so is an empty unique value (NULL is never a duplicate in a unique index, ''
+     *   would be); other empty text stays ''.
+     * SQL storage stores a list as JSON text, as before. For callers writing rows to a driver
+     * themselves (an import), as saveType() does.
      *
      * @param array<string, mixed> $data
      * @return array<string, mixed>
      */
     public function storageValues(TypeDefinition $def, array $data): array
     {
+        $kinds = $this->fieldKinds();
         foreach ($def->fields as $name => $field) {
-            if (($data[$name] ?? null) !== '') {
+            if (!array_key_exists($name, $data)) {
                 continue;
             }
-            $kind = $this->fieldKinds()->columnKindOf($field);
-            if (in_array($kind, [ColumnKind::Number, ColumnKind::Boolean, ColumnKind::Date], true) || ($field->unique !== false && $kind !== ColumnKind::Text)) {
-                $data[$name] = null;
+            $kind = $kinds->columnKindOf($field);
+            if ($data[$name] === '') {
+                if (in_array($kind, [ColumnKind::Number, ColumnKind::Boolean, ColumnKind::Date], true) || ($field->unique !== false && $kind !== ColumnKind::Text)) {
+                    $data[$name] = null;
+                }
+                continue;
+            }
+            if ($field->translatable || isset($def->transformers[$name])) {
+                continue;
+            }
+            $data[$name] = match (true) {
+                $kinds->isList($field->type) => self::asList($data[$name]),
+                $kind === ColumnKind::Number => self::asNumber($data[$name]),
+                $kind === ColumnKind::Boolean => self::asBool($data[$name]),
+                default => $data[$name],
+            };
+        }
+
+        return self::canonicalOrder($data, array_keys($def->fields), $def->idField);
+    }
+
+    /**
+     * $data with the keys in $fields first (in that order), then $idField when it is none of them
+     * and the keys starting with "_", then the rest; every group but the first in its given order.
+     *
+     * @param array<string, mixed> $data
+     * @param list<string> $fields
+     * @return array<string, mixed>
+     */
+    private static function canonicalOrder(array $data, array $fields, string $idField): array
+    {
+        $first = [];
+        foreach ($fields as $name) {
+            if (array_key_exists($name, $data)) {
+                $first[$name] = $data[$name];
+            }
+        }
+        $system = [];
+        if (array_key_exists($idField, $data) && !array_key_exists($idField, $first)) {
+            $system[$idField] = $data[$idField];
+        }
+        $rest = [];
+        foreach ($data as $key => $value) {
+            if (array_key_exists($key, $first) || array_key_exists($key, $system)) {
+                continue;
+            }
+            if (is_string($key) && str_starts_with($key, '_')) {
+                $system[$key] = $value;
+            } else {
+                $rest[$key] = $value;
             }
         }
 
-        return $data;
+        return $first + $system + $rest;
+    }
+
+    /**
+     * A plain model's row in a stable key order: the fields of its metadata, then the rest.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private function canonicalModel(ModelMetadata $meta, array $data): array
+    {
+        return self::canonicalOrder($data, array_map(strval(...), array_keys($meta->fields)), $meta->idField);
+    }
+
+    /** A list value as a list: JSON text of a list, or a legacy comma string ("a, b"); anything else as it is. */
+    private static function asList(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+        $text = trim($value);
+        if ($text === '' || $text === 'null' || $text[0] === '{') {
+            return $value;
+        }
+        if ($text[0] === '[') {
+            $decoded = json_decode($text, true);
+
+            return is_array($decoded) && array_is_list($decoded) ? $decoded : $value;
+        }
+        $parts = array_values(array_filter(array_map(trim(...), explode(',', $text)), static fn (string $part): bool => $part !== ''));
+
+        return $parts === [] ? $value : $parts;
+    }
+
+    /** Numeric text as a number (an int when whole and in range, else a float); anything else as it is. */
+    private static function asNumber(mixed $value): mixed
+    {
+        if (!is_string($value) || !is_numeric($value)) {
+            return $value;
+        }
+        $text = trim($value);
+        // Whole numbers of up to 18 digits fit an int on every 64-bit PHP; longer ones are floats.
+        if (preg_match('/^[+-]?\d+$/', $text) === 1 && strlen(ltrim(ltrim($text, '+-'), '0')) <= 18) {
+            return (int) $text;
+        }
+        $float = (float) $text;
+
+        return is_finite($float) ? $float : $value;
+    }
+
+    /** '1', '0', 1, 0, 'true' and 'false' as a bool; anything else as it is. */
+    private static function asBool(mixed $value): mixed
+    {
+        return match ($value) {
+            '1', 1, 'true' => true,
+            '0', 0, 'false' => false,
+            default => $value,
+        };
     }
 
     /** @var array<class-string, true> driver classes already told about */
@@ -1405,6 +1626,34 @@ final class DataManager
     {
         $this->resolveDriver($typeDef->storage)->delete($typeDef->table, $id, $typeDef->idField);
         $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
+    }
+
+    /**
+     * Counts on the row $id of a type in one step: inserts it as [$idField => $id] + $insert +
+     * [$field => $by] when missing, restarts it when $reset matches (writes $reset->set and
+     * $field = $by), else adds $by (see AtomicCounters::increment()). Returns the counter as read
+     * right after the write. Writes the named columns only: no validation, no version bump.
+     *
+     * Atomic on a storage with AtomicCounters (the built-in drivers). On another, a read, an
+     * addition and a write: under the type's lock when the storage has ExclusiveWrites, else
+     * plainly, which is not atomic (two concurrent increments may count once).
+     *
+     * @param array<string, scalar|null> $insert the other columns of a new row
+     * @throws \InvalidArgumentException when $insert names $field or the id, or $reset->set names $field
+     * @since 0.78
+     */
+    public function incrementIn(TypeDefinition $def, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset = null): int
+    {
+        $driver = $this->resolveDriver($def->storage);
+        if ($driver instanceof AtomicCounters) {
+            $value = $driver->increment($def->table, $id, $field, $by, $insert, $reset, $def->idField);
+        } else {
+            $step = static fn (): int => Counters::step($driver, $def->table, $id, $field, $by, $insert, $reset, $def->idField);
+            $value = $driver instanceof ExclusiveWrites ? $driver->exclusive($def->table, $step) : $step();
+        }
+        $this->reportWrite($def->storage, $def->table, (string) $id);
+
+        return $value;
     }
 
     /**
@@ -1669,8 +1918,10 @@ final class DataManager
 
     /**
      * Runs the write of $record with its unique fields guarded: unique values no index guards
-     * (translatable fields on SQL, every unique field on other storages) are checked under the
-     * type's lock, with the write; a duplicate the unique index refuses becomes the field error.
+     * (translatable fields on a storage with UniqueIndexes, every unique field on other storages)
+     * are checked with the write, under the type's lock where the storage has one (ExclusiveWrites;
+     * without it the check and the write are not atomic); a duplicate the unique index refuses
+     * becomes the field error.
      * Under the lock, a field the save leaves as stored (with its scope) is not checked again:
      * a duplicate from before the field was unique does not block other changes to the record.
      *
@@ -1686,7 +1937,7 @@ final class DataManager
             return $write();
         }
         $driver = $this->resolveDriver($def->storage);
-        $checked = $driver instanceof PdoDriver ? array_intersect_key($unique, array_flip($def->translatableFields())) : $unique;
+        $checked = $driver instanceof UniqueIndexes ? array_intersect_key($unique, array_flip($def->translatableFields())) : $unique;
 
         return $this->guardedWrite($driver, $def->table, $unique, $checked === [] ? null : function () use ($def, $driver, $record, $checked): array {
             $data = $record->toArray();
@@ -1712,7 +1963,8 @@ final class DataManager
     }
 
     /**
-     * The model's write, guarded as guarded() does for records (on SQL by the index alone).
+     * The model's write, guarded as guarded() does for records (by the index alone on a storage
+     * with UniqueIndexes).
      *
      * @param array<string, mixed> $data
      * @param \Closure(): void $write
@@ -1728,7 +1980,7 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
         $id = $data[$meta->idField] ?? null;
         $id = $id === '' || $id === 0 || $id === '0' ? null : $id;
-        $check = $driver instanceof PdoDriver ? null : function () use ($meta, $unique, $data, $id): array {
+        $check = $driver instanceof UniqueIndexes ? null : function () use ($meta, $unique, $data, $id): array {
             $checks = [];
             foreach ($unique as $field => $scope) {
                 $checks[$field] = [new Unique($this, $meta->modelClass, $field, array_intersect_key($data, array_flip($scope)) + array_fill_keys($scope, null), $id), $data[$field] ?? null];
@@ -1741,23 +1993,25 @@ final class DataManager
 
     /**
      * @param array<string, list<string>> $unique
-     * @param (\Closure(): list<string>)|null $check the taken fields, run under the lock with the write
+     * @param (\Closure(): list<string>)|null $check the taken fields, run with the write (under the
+     *        type's lock on a storage with ExclusiveWrites; without one, just before it)
      */
     private function guardedWrite(StorageDriver $driver, string $table, array $unique, ?\Closure $check, \Closure $write): mixed
     {
         try {
-            if ($check === null || !$driver instanceof ExclusiveWrites) {
+            if ($check === null) {
                 return $write();
             }
-
-            return $driver->exclusive($table, function () use ($check, $write): mixed {
+            $checked = function () use ($check, $write): mixed {
                 $taken = $check();
                 if ($taken !== []) {
                     throw $this->uniqueFailure($taken);
                 }
 
                 return $write();
-            });
+            };
+
+            return $driver instanceof ExclusiveWrites ? $driver->exclusive($table, $checked) : $checked();
         } catch (UniqueViolation $e) {
             $field = $e->field($table, $unique);
             if ($field === null) {
@@ -1835,21 +2089,15 @@ final class DataManager
     }
 
     /**
-     * Whether the definition's table is there: the SQL table, or the JSON driver's directory of
-     * the type (made by its first write, kept when its last record is deleted). A driver of
-     * another kind has no tables to make: true.
+     * Whether the definition's table is there, as its storage says (DescribesColumns: the SQL
+     * table, the JSON driver's directory of the type, made by its first write). A storage that
+     * cannot say has nothing to make first: true.
      */
     public function hasTable(TypeDefinition $def): bool
     {
         $driver = $this->resolveDriver($def->storage);
-        if ($driver instanceof PdoDriver) {
-            return (new Migration\Schema($driver->pdo()))->hasTable($def->table);
-        }
-        if ($driver instanceof Driver\JsonFileDriver) {
-            return $driver->hasTable($def->table);
-        }
 
-        return true;
+        return !$driver instanceof DescribesColumns || $driver->hasTable($def->table);
     }
 
     /** The storage driver for a configured name; an unknown name is an error, never a fallback. */

@@ -27,6 +27,12 @@ final class RoleType
 
     public const string FILE = __DIR__ . '/../models/rbac_role.json';
 
+    /**
+     * What `preflow migrate` says (once per run) where rbac is not installed yet. Informational:
+     * a site that wants staff to may do everything needs no action. @since 0.78
+     */
+    public const string NOT_INSTALLED = 'rbac is not installed (informational; no action needed if staff may do everything): to use roles run php preflow rbac:install once, or on a Folio site php preflow folio:extensions:apply, to create the roles and staff tables; migrate keeps them current afterwards';
+
     /** The schema as the package ships it (a model file's shape). @return array<string, mixed> */
     public static function schema(): array
     {
@@ -61,16 +67,34 @@ final class RoleType
             }
         }
         if ($c->bound(MigrationRegistry::class)) {
-            $c->get(MigrationRegistry::class)->afterMigrate('rbac.seed', static fn (): array => self::seed($c), sqlOnly: false);
+            // The hint prints once per process, however often the step runs.
+            $told = false;
+            $c->get(MigrationRegistry::class)->afterMigrate('rbac.seed', static function () use ($c, &$told): array {
+                $lines = self::seed($c);
+                if (in_array(self::NOT_INSTALLED, $lines, true)) {
+                    if ($told) {
+                        return [];
+                    }
+                    $told = true;
+                }
+
+                return $lines;
+            }, sqlOnly: false);
         }
     }
 
-    /** The migrate step: seeds the roles where rbac is installed. @return list<string> what it seeded, and each undeclared permission it granted */
+    /**
+     * The migrate step: seeds the roles where rbac is installed. Where it is not, it says how:
+     * migrate does not install rbac itself, since installing switches can() from "staff may do
+     * everything" to the stored roles, which a site decides once (`rbac:install`).
+     *
+     * @return list<string> what it seeded, and each undeclared permission it granted
+     */
     private static function seed(Container $c): array
     {
         $store = $c->get(RoleStore::class);
         if (!$store->installed()) {
-            return [];
+            return [self::NOT_INSTALLED];
         }
         $count = static fn (): int => array_sum(array_map(static fn (string $p): int => count($store->rolesFor($p)), RoleStore::POPULATIONS));
         $before = $count();

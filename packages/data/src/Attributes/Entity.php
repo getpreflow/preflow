@@ -12,5 +12,11 @@ final class Entity
         public readonly ?string $type = null,
         /** The field that names a record of the type (a model file's `titleField`); null: the first string field that is not hidden. @since 0.77 */
         public readonly ?string $titleField = null,
+        /** The type declares full-text search: on MySQL the table sync indexes its loosely searchable text fields (a model file's `fullText`). @since 0.78 */
+        public readonly bool $fullText = false,
+        /** Editors and APIs read its records, never create, change or delete them (a model file's `readonly`). @since 0.78 */
+        public readonly bool $readonly = false,
+        /** Editors and APIs may create its records; false: they change and delete only (a model file's `creatable`). @since 0.78 */
+        public readonly bool $creatable = true,
     ) {}
 }

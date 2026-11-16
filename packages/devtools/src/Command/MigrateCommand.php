@@ -6,13 +6,16 @@ namespace Preflow\DevTools\Command;
 
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\PdoConnection;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 
 /**
  * Boots the app, runs every registered migration path, then the post-migrate steps. A site
- * without SQL storage runs only the steps registered for any storage (sqlOnly: false).
+ * without SQL storage runs only the steps registered for any storage (sqlOnly: false). Exits 1
+ * when a step refused something (a line starting with "refused:"), after every step has run.
+ * --pretend lists the pending migrations and runs the read-only checks
+ * (MigrationRegistry::check(): what the steps would refuse), changing nothing.
  */
 final class MigrateCommand implements CommandInterface
 {
@@ -52,11 +55,13 @@ final class MigrateCommand implements CommandInterface
                     return 0;
                 }
                 echo "No SQL storage configured: no schema migrations.\n";
-                if (!$pretend) {
-                    $this->runSteps($container->get(MigrationRegistry::class)->steps(sql: false));
-                    echo "Done.\n";
+                $registry = $container->get(MigrationRegistry::class);
+                if ($pretend) {
+                    return $this->runSteps($registry->checks(sql: false)) ? $this->refused() : 0;
                 }
-                return 0;
+                $refused = $this->runSteps($registry->steps(sql: false));
+                echo "Done.\n";
+                return $refused ? $this->refused() : 0;
             }
             if ($dm === null) {
                 throw new \RuntimeException('No data configuration found (config/data.php).');
@@ -65,7 +70,7 @@ final class MigrateCommand implements CommandInterface
             $storage ??= self::defaultStorage($dm)
                 ?? throw new \RuntimeException('Several SQL storages are configured; choose one with --storage=<driver>.');
             $driver = $dm->driver($storage);
-            if (!$driver instanceof PdoDriver) {
+            if (!$driver instanceof PdoConnection) {
                 throw new \RuntimeException("Storage driver [{$storage}] is not a SQL driver; nothing to migrate.");
             }
 
@@ -86,12 +91,15 @@ final class MigrateCommand implements CommandInterface
                 }
             }
 
-            if (!$pretend) {
-                $this->runSteps($registry->steps(sql: true));
-                echo "Done.\n";
+            $registry->ranOn($storage);
+            if ($pretend) {
+                // The read-only checks: what the steps would refuse, nothing changed.
+                return $this->runSteps($registry->checks(sql: true)) ? $this->refused() : 0;
             }
+            $refused = $this->runSteps($registry->steps(sql: true));
+            echo "Done.\n";
 
-            return 0;
+            return $refused ? $this->refused() : 0;
         } catch (\Throwable $e) {
             fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
             return 1;
@@ -104,13 +112,13 @@ final class MigrateCommand implements CommandInterface
      */
     public static function defaultStorage(DataManager $dm): ?string
     {
-        if (in_array('default', $dm->driverNames(), true) && $dm->driver('default') instanceof PdoDriver) {
+        if (in_array('default', $dm->driverNames(), true) && $dm->driver('default') instanceof PdoConnection) {
             return 'default';
         }
         $sql = [];
         foreach ($dm->driverNames() as $name) {
             $driver = $dm->driver($name);
-            if ($driver instanceof PdoDriver && !in_array($driver, $sql, true)) {
+            if ($driver instanceof PdoConnection && !in_array($driver, $sql, true)) {
                 $sql[$name] = $driver;
             }
         }
@@ -118,20 +126,38 @@ final class MigrateCommand implements CommandInterface
         return count($sql) === 1 ? array_key_first($sql) : null;
     }
 
-    /** @param array<string, \Closure(): list<string>> $steps */
-    private function runSteps(array $steps): void
+    /**
+     * Runs every step, printing its lines.
+     *
+     * @param array<string, \Closure(): list<string>> $steps
+     * @return bool whether a step refused something (a line starting with "refused:", such as a
+     *     text column whose values would collide under the text rule; data README, "Exact comparisons")
+     */
+    private function runSteps(array $steps): bool
     {
+        $refused = false;
         foreach ($steps as $name => $step) {
             foreach ($step() as $line) {
                 echo "[{$name}] {$line}\n";
+                $refused = $refused || str_starts_with($line, 'refused:');
             }
         }
+
+        return $refused;
+    }
+
+    /** Exit code 1 after every step ran, with the closing line. */
+    private function refused(): int
+    {
+        echo "Some values are there more than once under the text rule (see \"refused:\" above); nothing was changed or removed. Rename one record of each group, then run migrate again.\n";
+
+        return 1;
     }
 
     private function hasSqlStorage(?DataManager $dm): bool
     {
         foreach ($dm?->driverNames() ?? [] as $name) {
-            if ($dm->driver($name) instanceof PdoDriver) {
+            if ($dm->driver($name) instanceof PdoConnection) {
                 return true;
             }
         }

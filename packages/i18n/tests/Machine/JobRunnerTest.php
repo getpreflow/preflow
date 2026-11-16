@@ -7,6 +7,11 @@ namespace Preflow\I18n\Tests\Machine;
 use PHPUnit\Framework\TestCase;
 use Preflow\Ai\AiRequest;
 use Preflow\Ai\AiUnavailable;
+use Preflow\Ai\Limits\AiLimitReached;
+use Preflow\Ai\Limits\AiLimits;
+use Preflow\Core\Throttle\Throttle;
+use Preflow\Data\DataManager;
+use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Ai\Testing\FakeAiClient;
 use Preflow\Ai\TokenUsage;
 use Preflow\I18n\Machine\AiTranslator;
@@ -45,6 +50,15 @@ final class JobRunnerTest extends TestCase
 
     protected function tearDown(): void
     {
+        foreach ($this->limitDirs as $data) {
+            if (is_dir($data)) {
+                $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($data, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+                foreach ($it as $f) {
+                    $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+                }
+                @rmdir($data);
+            }
+        }
         foreach (array_merge(glob($this->dir . '/*') ?: [], glob($this->dir . '/.*.lock') ?: [], glob($this->dir . '/leases/*') ?: []) as $f) {
             @unlink($f);
         }
@@ -53,14 +67,107 @@ final class JobRunnerTest extends TestCase
     }
 
     /** @param list<mixed> $script */
-    private function runner(array $script, ?JobStore $store = null, int $batchChars = 12000): JobRunner
+    private function runner(array $script, ?JobStore $store = null, int $batchChars = 12000, ?AiLimits $limits = null): JobRunner
     {
         $this->fake = new FakeAiClient($script);
         $ai = $this->ai($this->fake);
         $sources = new TextSources();
         $sources->add('games', fn () => $this->source);
 
-        return new JobRunner($sources, new AiTranslator($ai, $this->settings(), $batchChars), new Estimator(new AiTranslator($ai, $this->settings())), $store ?? new FileJobStore($this->dir), $this->lease);
+        return new JobRunner($sources, new AiTranslator($ai, $this->settings(), $batchChars), new Estimator(new AiTranslator($ai, $this->settings())), $store ?? new FileJobStore($this->dir), $this->lease, null, $limits);
+    }
+
+    /** Limits counted on a JSON storage in the test's folder (removed with it). */
+    private function limits(int $translateMax, ?\Closure $clock = null): AiLimits
+    {
+        return new AiLimits($this->limitThrottle($clock), ['translate' => ['max' => $translateMax]]);
+    }
+
+    private ?Throttle $limitThrottle = null;
+
+    private function limitThrottle(?\Closure $clock = null): Throttle
+    {
+        $data = $this->dir . '/limits';
+        $this->limitDirs[] = $data;
+
+        return $this->limitThrottle ??= new Throttle(new DataManager(['default' => new JsonFileDriver($data)]), 'secret', 'default', $clock);
+    }
+
+    public function test_a_waiting_job_goes_on_after_the_window_and_counts_each_item_once(): void
+    {
+        $now = 1_000_000;
+        $runner = $this->runner([self::echo(), self::echo(), self::echo()], limits: $this->limits(1, static function () use (&$now): int {
+            return $now;
+        }));
+        $job = $runner->plan('games', ['de'], Scope::Needed);
+        $runner->start($job->id, false, 'u1');
+        $person = $this->limitThrottle()->forPerson('u1');
+        $counted = fn (): int => $this->limitThrottle()->tooMany('ai.translate', $person, 2, 3600) ? 2 : ($this->limitThrottle()->tooMany('ai.translate', $person, 1, 3600) ? 1 : 0);
+
+        $this->assertSame('done', $runner->step($job->id)->items['1']['status']);
+        $this->assertSame(1, $counted());
+        foreach (['2', '3'] as $id) {
+            try {
+                $runner->step($job->id);
+                $this->fail("item {$id}: expected the job to wait");
+            } catch (AiLimitReached $e) {
+                $this->assertSame(3600 - ($now - 1_000_000) % 3600, $e->retryAfter);
+            }
+            $this->assertSame('pending', (new FileJobStore($this->dir))->get($job->id)->items[$id]['status'], 'waits');
+
+            $now += 3600; // the window has ended
+            $stepped = $runner->step($job->id);
+            $this->assertSame('done', $stepped->items[$id]['status'], "item {$id} goes on");
+            $this->assertSame(1, $counted(), "item {$id} is the only one counted in its window");
+        }
+
+        $this->assertSame('done', $stepped->state);
+        $this->assertCount(3, $this->fake->requests(), 'every item translated once');
+        $this->assertSame(['u1', 'u1', 'u1'], $this->source->writtenBy);
+    }
+
+    /** @var list<string> */
+    private array $limitDirs = [];
+
+    public function test_a_step_over_the_persons_limit_leaves_the_job_waiting(): void
+    {
+        $runner = $this->runner([self::echo(), self::echo()], limits: $this->limits(1));
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1', '2']);
+        $runner->start($job->id, false, 'u1');
+
+        $job = $runner->step($job->id);
+        $this->assertSame('done', $job->items['1']['status']);
+
+        try {
+            $runner->step($job->id);
+            $this->fail('expected AiLimitReached');
+        } catch (AiLimitReached $e) {
+            $this->assertSame('translate', $e->action);
+            $this->assertSame(1, $e->max);
+            $this->assertGreaterThan(0, $e->retryAfter);
+        }
+
+        $stored = (new FileJobStore($this->dir))->get($job->id);
+        $this->assertSame('pending', $stored->items['2']['status']);
+        $this->assertSame('running', $stored->state, 'neither stopped nor failed: it waits');
+        $this->assertNull($stored->message);
+        $this->assertCount(1, $this->fake->requests(), 'the translator ran once');
+        $this->assertTrue($this->lease->claim('games', '2'), 'the claim was released');
+        $this->lease->release('games', '2');
+    }
+
+    public function test_a_job_without_a_person_is_not_limited(): void
+    {
+        $runner = $this->runner([self::echo(), self::echo()], limits: $this->limits(1));
+        $job = $runner->plan('games', ['de'], Scope::Needed, ['1', '2']);
+        $runner->start($job->id); // translate:plan queues without a person
+
+        $runner->step($job->id);
+        $job = $runner->step($job->id);
+
+        $this->assertSame('done', $job->items['1']['status']);
+        $this->assertSame('done', $job->items['2']['status']);
+        $this->assertSame('done', $job->state);
     }
 
     public function test_plan_estimates_without_writing(): void

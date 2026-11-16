@@ -14,6 +14,8 @@ final class Migrator
 
     private readonly SchemaGrammar $grammar;
 
+    private readonly MigrationColumns $columns;
+
     public function __construct(
         private readonly \PDO $pdo,
         string|array $migrationsPaths,
@@ -21,6 +23,8 @@ final class Migrator
         $this->grammar = Grammars::for($pdo);
         $this->migrationsPaths = is_array($migrationsPaths) ? array_values($migrationsPaths) : [$migrationsPaths];
         $this->ensureMigrationsTable();
+        $this->columns = new MigrationColumns($pdo);
+        $this->columns->ensure();
     }
 
     public function migrate(): void
@@ -34,7 +38,8 @@ final class Migrator
                 throw new \RuntimeException("Migration file [{$file}] must return a Migration instance.");
             }
 
-            $schema = new Schema($this->pdo);
+            // The Schema records the tables and the columns' intent it makes (MigrationColumns, since 0.78).
+            $schema = new Schema($this->pdo, $this->columns);
             $migration->up($schema);
 
             $this->recordMigration(basename($file));

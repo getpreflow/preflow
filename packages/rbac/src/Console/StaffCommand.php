@@ -34,7 +34,7 @@ trait StaffCommand
             return null;
         }
         if (!(new StaffManagers($c->get(DataManager::class)))->hasTable()) {
-            echo "No staff table yet: run php preflow rbac:install (or php preflow migrate on a Folio site).\n";
+            echo "No staff table yet: run php preflow migrate (or php preflow rbac:install).\n";
 
             return null;
         }

@@ -9,7 +9,6 @@ use Preflow\Core\Activity\ActivityLog;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Validation\ValidationException;
 use Psr\Log\LoggerInterface;
@@ -30,8 +29,8 @@ use Psr\Log\LoggerInterface;
  * or the storage's; then deletes with Publisher::forget()) → RecordIndex::forget() and
  * RecordAddresses::removed() of the deleted → the detached records' index and addresses
  * (RecordWriter's too) → SaveHooks::after() and afterDelete().
- * SQL writes run in one transaction per connection; JSON-file writes cannot be rolled back if a
- * later write fails.
+ * The writes run in one transaction per storage that has transactions (DataManager::transaction());
+ * JSON-file writes cannot be rolled back if a later write fails.
  *
  * The activity log (@since 0.77) hears of every deleted record (cascaded ones too: Deleted, its
  * title as it was, delete()'s $by) once the writes are done; a detach is no activity of its own.
@@ -138,7 +137,8 @@ final class RecordDeleter
             }
         }
 
-        $this->transaction([...$saves, ...$deletes], function () use ($saves, $deletes): void {
+        $storages = array_values(array_unique(array_map(static fn (DynamicRecord $r): string => $r->getType()->storage, [...$saves, ...$deletes])));
+        $this->dm->transaction($storages, function () use ($saves, $deletes): void {
             foreach ($saves as $record) {
                 if ($this->publishes($record->getType()->key)) {
                     $this->publisher->saveDraft($record, null); // the working copy; the live snapshot keeps its links until the next publish
@@ -217,45 +217,6 @@ final class RecordDeleter
         }
 
         return $records;
-    }
-
-    /**
-     * Runs $writes inside one transaction per SQL connection the records live on
-     * (a transaction already open there is left to its owner).
-     *
-     * @param list<DynamicRecord> $records
-     */
-    private function transaction(array $records, \Closure $writes): void
-    {
-        /** @var array<int, \PDO> $began */
-        $began = [];
-        try {
-            foreach ($records as $record) {
-                $driver = $this->dm->driver($record->getType()->storage);
-                if (!$driver instanceof PdoDriver) {
-                    continue;
-                }
-                $pdo = $driver->pdo();
-                $key = spl_object_id($pdo);
-                if (!isset($began[$key]) && !$pdo->inTransaction()) {
-                    $pdo->beginTransaction();
-                    $began[$key] = $pdo;
-                }
-            }
-
-            $writes();
-
-            foreach ($began as $pdo) {
-                $pdo->commit();
-            }
-        } catch (\Throwable $e) {
-            foreach ($began as $pdo) {
-                if ($pdo->inTransaction()) {
-                    $pdo->rollBack();
-                }
-            }
-            throw $e;
-        }
     }
 
     /** @phpstan-assert-if-true !null $this->publisher */

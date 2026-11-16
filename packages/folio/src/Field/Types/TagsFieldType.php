@@ -10,12 +10,14 @@ use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Field\FieldType;
 use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\Field\SearchableText;
+use Preflow\Folio\Field\StoresList;
 use Preflow\Folio\FolioText;
 
 /**
- * Tag field (0.77): a list of short texts ("Folio", "members"), stored as a JSON list in a text
- * column (JSON_UNESCAPED_UNICODE, so a loose search finds "Übersetzung" with the ordinary CONTAINS
- * on every storage). A legacy comma string ("Folio, members") is read as its parts.
+ * Tag field (0.77): a list of short texts ("Folio", "members"), a list in a JSON file (0.78) and a
+ * JSON list in a SQL text column (JSON_UNESCAPED_UNICODE, so a loose search finds "Übersetzung"
+ * with the ordinary CONTAINS on every storage). Stored JSON text and a legacy comma string
+ * ("Folio, members") are read as the list.
  *
  * Options: "max" (tags per record, default 20), "maxLength" (characters per tag, default 40) and
  * "options" (a list of texts the add input suggests). A translatable tags field is a boot error:
@@ -25,7 +27,7 @@ use Preflow\Folio\FolioText;
  * the empty input removes the last, a pasted "a, b, c" adds three). Without script it is one
  * comma-separated text input under the field's own name.
  */
-final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, DisplaysInAdmin
+final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, DisplaysInAdmin, StoresList
 {
     public const int DEFAULT_MAX = 20;
 
@@ -119,15 +121,19 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
     }
 
     /**
-     * A posted list (name[]) or a comma string (the input without script) as the tags: trimmed,
-     * without control characters and empty ones, in NFC, each once (case ignored, the first
-     * spelling kept). A tag cannot hold a comma: the comma separates tags.
+     * A posted list (name[]), its JSON text or a comma string (the input without script) as the
+     * tags: trimmed, without control characters and empty ones, in NFC, each once (case ignored,
+     * the first spelling kept). A tag cannot hold a comma: the comma separates tags.
      * Nothing is cut: a list over the limits stays so, and the field's rule refuses it.
      *
      * @return list<string>
      */
     public function normalizeInput(mixed $raw, array $config): mixed
     {
+        if (is_string($raw) && str_starts_with(trim($raw), '[')) {
+            $decoded = json_decode(trim($raw), true);
+            $raw = is_array($decoded) ? $decoded : $raw; // a JSON list posted as text (0.78)
+        }
         if (is_string($raw)) {
             $raw = explode(',', $raw);
         }
@@ -156,14 +162,16 @@ final class TagsFieldType implements FieldType, HasColumnKind, SearchableText, D
     }
 
     /**
-     * The JSON list, as the relation field stores its ids; umlauts stay readable for search. No
-     * tags is null (no value), so "required" refuses an empty field.
+     * The list (0.78): a JSON file holds it as a list, SQL storage as JSON text in its column (umlauts
+     * readable, for search). No tags is null (no value), so "required" refuses an empty field.
+     *
+     * @return list<string>|null
      */
     public function toStorage(mixed $value): mixed
     {
         $tags = $this->fromStorage($value);
 
-        return $tags === [] ? null : json_encode($tags, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        return $tags === [] ? null : $tags;
     }
 
     /**

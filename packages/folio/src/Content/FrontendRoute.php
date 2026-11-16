@@ -32,6 +32,26 @@ final readonly class FrontendRoute
     ) {}
 
     /**
+     * $query limited to the records the public site shows, for a type without publishing: those
+     * whose published field (default "status") holds the published value. A type without that
+     * field shows none, on every driver (JSON matched nothing, SQL failed on the missing column;
+     * since 0.78 a query on a missing field is refused, so it is decided here).
+     *
+     * @template T of \Preflow\Data\QueryBuilder
+     * @param T $query
+     * @return T
+     * @since 0.78
+     */
+    public function published(\Preflow\Data\QueryBuilder $query, \Preflow\Data\TypeDefinition $def): \Preflow\Data\QueryBuilder
+    {
+        if ($this->publishedField === $def->idField || isset($def->fields[$this->publishedField])) {
+            return $query->where($this->publishedField, $this->publishedValue);
+        }
+
+        return $query->whereAny([['field' => $def->idField, 'operator' => 'IN', 'value' => []]]);
+    }
+
+    /**
      * @param array<string, mixed> $frontend
      * @param bool                 $publishing records are read from published snapshots; the
      *                                         "published" field convention is then ignored

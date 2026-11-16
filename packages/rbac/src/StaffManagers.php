@@ -6,8 +6,8 @@ namespace Preflow\Rbac;
 
 use Preflow\Auth\Access\Pattern;
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\RunsSql;
 
 /**
  * Who can manage staff and roles: an active staff account (rbac's "staff" type) whose staff
@@ -32,7 +32,7 @@ final class StaffManagers
     /**
      * Whether the staff accounts can be read: the site has the staff type and, on SQL storage,
      * its table (made by `rbac:install`, or `migrate` where Folio's part defines the type);
-     * JSON storage makes it on the first write.
+     * other storages make it on the first write.
      */
     public function hasTable(): bool
     {
@@ -41,7 +41,7 @@ final class StaffManagers
         }
         $definition = $this->dm->getTypeRegistry()->get(self::TYPE);
 
-        return !$this->dm->driver($definition->storage) instanceof PdoDriver || $this->dm->hasTable($definition);
+        return !$this->dm->driver($definition->storage) instanceof RunsSql || $this->dm->hasTable($definition);
     }
 
     /**

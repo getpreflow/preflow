@@ -41,6 +41,14 @@ return [
     // Usage log and admin edits (usage-YYYY-MM.jsonl, settings.json, jobs/). Relative to the app root.
     'storage' => 'storage/ai',
 
+    // Per-person limits for AI work started in the admin, per signed-in person over `per` seconds:
+    // `draft` counts drafts, `translate` translated items (a record, a set of labels, an alt text).
+    // 0 turns a limit off. Work started from the command line (translate:plan, translate:work) has none.
+    'limits' => [
+        'draft' => ['max' => 30, 'per' => 3600],
+        'translate' => ['max' => 100, 'per' => 3600],
+    ],
+
     // Instructions for every AI request of this project, one string each, e.g.
     // 'Our product is called "Foo"; never translate it.'
     'tuning' => [],

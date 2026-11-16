@@ -102,5 +102,31 @@
         return out;
     }
 
-    return { pathToName: pathToName, queue: queue, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
+    /**
+     * htmx:beforeSwap on the run screen: a 429 (the person's AI limit) for an element inside
+     * [data-ai-run] carries the progress with its notice and the delayed poll, so it is swapped in
+     * and not treated as a failed step. Any other answer or target is left to htmx. Returns
+     * whether it changed the swap.
+     */
+    function limitSwap(detail) {
+        var status = detail && detail.xhr ? detail.xhr.status : 0;
+        var target = detail ? detail.target : null;
+        if (status !== 429 || !target || typeof target.closest !== 'function' || !target.closest('[data-ai-run]')) { return false; }
+        detail.shouldSwap = true;
+        detail.isError = false;
+        return true;
+    }
+
+    /**
+     * What the dialog shows for a failed request (error: an Error whose message is the server's
+     * text, with its HTTP status): a 429 (the person's AI limit) says when to try again on its own,
+     * as it is; anything else inside the dialog's prefix (":message").
+     */
+    function failureText(error, prefix) {
+        var message = error && error.message ? String(error.message) : '';
+        if (error && error.status === 429 && message !== '') { return message; }
+        return format(prefix, { message: message });
+    }
+
+    return { pathToName: pathToName, queue: queue, limitSwap: limitSwap, failureText: failureText, discardValue: discardValue, format: format, formatCost: formatCost, wordDiff: wordDiff };
 }));

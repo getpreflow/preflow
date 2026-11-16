@@ -82,11 +82,11 @@ final class StoredOverrides implements TranslationOverrides
             table: self::TABLE,
             storage: 'default',
             fields: [
-                'locale' => new TypeFieldDefinition('locale', 'string'),
-                'key' => new TypeFieldDefinition('key', 'string'),
+                'locale' => new TypeFieldDefinition('locale', 'string', exact: true),
+                'key' => new TypeFieldDefinition('key', 'string', exact: true),
                 'text' => new TypeFieldDefinition('text', 'text'),
-                'updated_by' => new TypeFieldDefinition('updated_by', 'string'),
-                'updated_at' => new TypeFieldDefinition('updated_at', 'string'),
+                'updated_by' => new TypeFieldDefinition('updated_by', 'string', exact: true),
+                'updated_at' => new TypeFieldDefinition('updated_at', 'string', exact: true),
             ],
             idField: 'id',
         );

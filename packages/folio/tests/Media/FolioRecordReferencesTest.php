@@ -8,6 +8,9 @@ use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
+use Preflow\Data\Driver\SqliteDriver;
+use Preflow\Data\Locales;
+use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Assets\AssetReferences;
@@ -32,6 +35,7 @@ use Preflow\Folio\Tests\Support\AssetFixtures;
 final class FolioRecordReferencesTest extends TestCase
 {
     use AssetFixtures;
+    use ReferenceParity;
 
     private DataManager $dm;
     private TypeRegistry $registry;
@@ -272,6 +276,27 @@ final class FolioRecordReferencesTest extends TestCase
             $this->assertCount(1, $e->usages);
         }
         $this->assertNotNull($library->find($asset->id));
+    }
+
+    public function test_usage_is_found_the_same_way_on_json_and_sqlite(): void
+    {
+        $id = '0123456789abcdef0123456789abcdef';
+        $other = 'fedcba9876543210fedcba9876543210';
+        $models = $this->assetRoot . '/parity-models';
+        mkdir($models);
+        file_put_contents($models . '/post.json', json_encode(self::postModel('store')));
+        $registry = new TypeRegistry($models, new Locales(['en', 'de'], 'en'));
+        $json = new DataManager(drivers: ['store' => new JsonFileDriver($this->assetRoot . '/parity')], defaultDriver: 'store', typeRegistry: $registry);
+        $sqlite = new DataManager(drivers: ['store' => new SqliteDriver(new \PDO('sqlite::memory:'))], defaultDriver: 'store', typeRegistry: $registry);
+        (new RecordTableSync($sqlite))->sync($registry->get('post'), ['_seo']);
+        foreach ([$json, $sqlite] as $dm) {
+            self::seedPosts($dm, $registry->get('post'), $id, $other);
+        }
+
+        $onJson = self::postUsages($json, $registry, $models, $id);
+
+        $this->assertEquals(self::expectedPostUsages(), $onJson);
+        $this->assertEquals(self::postUsages($sqlite, $registry, $models, $id), $onJson);
     }
 
     /** @return array<string, mixed> */

@@ -29,10 +29,35 @@ use PHPUnit\Framework\TestCase;
  *    folio.mail.*, members.php's members.mail.*).
  * Mail-sending classes (MemberMailer, StaffMail, Folio's StaffMailer, notify's BasicMailLayout)
  * take every word from these keys and add markup only, so their PHP is not scanned.
+ *
+ * storage.no-driver-class-checks: outside packages/data/src/Driver/ no source asks a storage driver
+ * for its class: no `instanceof` and no parameter type naming PdoDriver, MysqlDriver, SqliteDriver
+ * or JsonFileDriver (short, `Driver\…` or fully qualified). Code that needs an ability asks for its
+ * capability interface (RunsSql, PdoConnection, Transactions, AtomicCounters, UniqueIndexes,
+ * RankedSearch, DescribesColumns), so a new driver gets the same treatment by implementing it.
+ * Building a driver (`new …`) is allowed (core's factory, preflow/testing). Scanned: every
+ * package's psr-4 source roots and tools/Convert.
+ *
+ * packages.requires-what-it-names: a package whose source names another package's class (or
+ * interface, trait, enum) that says `@since X.Y` in its docblock keeps Composer from pairing it with
+ * a release before X.Y: its `conflict` for that package is `<X.Y` or later, and where it requires
+ * the package, the require's lowest version is X.Y or later. A constraint can't be tightened for a
+ * version after it is published, so this runs before every release. Methods are not covered (their
+ * @since sits on the method); the per-package ComposerConstraintsTest names those.
  */
 final class ArchitectureGuardsTest extends TestCase
 {
     private const FOLIO = 'preflow/folio';
+
+    private const DRIVERS = '(?:Preflow\\\\Data\\\\Driver\\\\|Driver\\\\)?(PdoDriver|MysqlDriver|SqliteDriver|JsonFileDriver)';
+
+    /**
+     * A driver class check that must stay for a release names its file and line here; none since
+     * 0.78. Each line must be found exactly once; remove the entry when its line goes.
+     *
+     * @var array<string, list<string>>
+     */
+    private const PENDING_DRIVER_CHECKS = [];
 
     private static function packages(): string
     {
@@ -123,6 +148,254 @@ final class ArchitectureGuardsTest extends TestCase
         $this->assertSame([], $hits, 'mails must not say Folio');
     }
 
+    public function test_storage_no_driver_class_checks(): void
+    {
+        $driverDir = self::packages() . '/data/src/Driver/';
+        $sources = [];
+        foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
+            $dir = dirname($composerFile);
+            $composer = json_decode((string) file_get_contents($composerFile), true, flags: JSON_THROW_ON_ERROR);
+            $roots = array_values((array) ($composer['autoload']['psr-4'] ?? []));
+            $roots = $roots === [] ? ['src/'] : $roots;
+            foreach ($roots as $root) {
+                foreach ((array) $root as $path) {
+                    $sourceDir = $dir . '/' . rtrim($path, '/');
+                    if (is_dir($sourceDir)) {
+                        $sources[basename($dir)][] = $sourceDir;
+                    }
+                }
+            }
+        }
+        $sources['tools/Convert'] = [dirname(__DIR__) . '/Convert'];
+
+        $hits = [];
+        foreach ($sources as $sourceDirs) {
+            foreach ($sourceDirs as $sourceDir) {
+                foreach ($this->files($sourceDir) as $file) {
+                    if (str_starts_with($file, $driverDir) || !str_ends_with($file, '.php')) {
+                        continue;
+                    }
+                    foreach (file($file) ?: [] as $n => $line) {
+                        if (self::checksDriverClass($line)) {
+                            $hits[] = [$this->relativeToRepo($file), $n + 1, trim($line)];
+                        }
+                    }
+                }
+            }
+        }
+
+        $unexpected = [];
+        $pendingSeen = [];
+        foreach ($hits as [$file, $lineNo, $text]) {
+            $pendingFile = str_starts_with($file, 'packages/') ? substr($file, strlen('packages/')) : $file;
+            if (in_array($text, self::PENDING_DRIVER_CHECKS[$pendingFile] ?? [], true)) {
+                $pendingSeen[$pendingFile . ': ' . $text] = ($pendingSeen[$pendingFile . ': ' . $text] ?? 0) + 1;
+                continue;
+            }
+            $unexpected[] = $file . ':' . $lineNo . ': ' . $text;
+        }
+
+        foreach (['auth', 'core', 'folio', 'data', 'tools/Convert'] as $package) {
+            $this->assertArrayHasKey($package, $sources, 'a scanned source');
+        }
+        $this->assertSame([], $unexpected, 'ask for a capability interface, not a driver class');
+        foreach (self::PENDING_DRIVER_CHECKS as $file => $lines) {
+            foreach ($lines as $text) {
+                $this->assertSame(
+                    1,
+                    $pendingSeen[$file . ': ' . $text] ?? 0,
+                    "pending driver check {$file}: {$text} must be found exactly once (remove a stale entry)",
+                );
+            }
+        }
+    }
+
+    /**
+     * Every package must require each package whose namespace it names, at a version that carries
+     * the classes it uses (@since).
+     */
+    public function test_packages_requires_what_it_names(): void
+    {
+        $namespaces = [];
+        $packages = [];
+        foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
+            $dir = dirname($composerFile);
+            $composer = json_decode((string) file_get_contents($composerFile), true, flags: JSON_THROW_ON_ERROR);
+            $packages[$dir] = $composer;
+            foreach ((array) ($composer['autoload']['psr-4'] ?? []) as $prefix => $path) {
+                $namespaces[$prefix] = [(string) $composer['name'], $dir . '/' . rtrim((string) $path, '/')];
+            }
+        }
+        uksort($namespaces, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
+
+        $missing = [];
+        $checked = 0;
+        foreach ($packages as $dir => $composer) {
+            if (self::isStarter($composer)) {
+                continue;
+            }
+            $name = (string) $composer['name'];
+            foreach ((array) ($composer['autoload']['psr-4'] ?? []) as $path) {
+                $sourceDir = $dir . '/' . rtrim((string) $path, '/');
+                if (!is_dir($sourceDir)) {
+                    continue;
+                }
+                foreach ($this->files($sourceDir) as $file) {
+                    if (!str_ends_with($file, '.php')) {
+                        continue;
+                    }
+                    preg_match_all('/(?<![A-Za-z0-9_])(Preflow(?:\\\\[A-Za-z0-9_]+)+)/', (string) file_get_contents($file), $m);
+                    foreach (array_unique($m[1]) as $class) {
+                        foreach ($namespaces as $prefix => [$owner, $ownerDir]) {
+                            if (!str_starts_with($class . '\\', $prefix)) {
+                                continue;
+                            }
+                            if ($owner === $name) {
+                                break;
+                            }
+                            $since = self::classSince($ownerDir . '/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php');
+                            if ($since === null) {
+                                break;
+                            }
+                            $checked++;
+                            $require = $composer['require'][$owner] ?? null;
+                            $conflict = $composer['conflict'][$owner] ?? null;
+                            $requireOk = $require === null
+                                || (preg_match('/\^(\d+\.\d+(?:\.\d+)?)/', (string) $require, $r) === 1 && version_compare($r[1], $since, '>='));
+                            $conflictOk = $conflict !== null && version_compare(ltrim((string) $conflict, '<'), $since, '>=');
+                            if (!$requireOk || !$conflictOk) {
+                                $missing[] = sprintf(
+                                    '%s names %s (@since %s): require %s, conflict %s',
+                                    $name,
+                                    $class,
+                                    $since,
+                                    $require ?? '-',
+                                    $conflict ?? '-',
+                                );
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $this->assertGreaterThan(50, $checked, 'the scan found @since classes named across packages');
+        $this->assertSame([], array_values(array_unique($missing)), 'raise the require and conflict to the version the named class arrived in');
+    }
+
+    /** The @since version in a class-like declaration's docblock, or null. */
+    private static function classSince(string $file): ?string
+    {
+        if (!is_file($file)) {
+            return null;
+        }
+        $pattern = '/\/\*\*((?:(?!\*\/).)*)\*\/\s*(?:#\[[^\]]*\]\s*)*(?:(?:final|abstract|readonly)\s+)*(?:class|interface|trait|enum)\s/s';
+        if (preg_match($pattern, (string) file_get_contents($file), $doc) !== 1) {
+            return null;
+        }
+
+        return preg_match('/@since\s+(\d+\.\d+(?:\.\d+)?)/', $doc[1], $since) === 1 ? $since[1] : null;
+    }
+
+    /** Starters and the skeleton are apps (they require released versions; the release checklist raises them). */
+    private static function isStarter(array $composer): bool
+    {
+        return ($composer['type'] ?? 'library') === 'project';
+    }
+
+    /**
+     * Each spelling the guard must catch, and lines it must leave alone (building a driver,
+     * naming one in a comment, a capability check).
+     */
+    public function test_storage_driver_class_check_patterns(): void
+    {
+        $caught = [
+            'instanceof' => 'if ($driver instanceof PdoDriver) {',
+            'instanceof, fully qualified' => 'return $d instanceof \Preflow\Data\Driver\MysqlDriver;',
+            'instanceof, Driver\\' => '$ok = $d instanceof Driver\SqliteDriver;',
+            'parameter' => 'public function run(PdoDriver $driver): void',
+            'nullable parameter' => 'function f(int $a, ?JsonFileDriver $d = null) {}',
+            'parameter on its own line' => '        PdoDriver $driver,',
+            'nullable parameter on its own line' => '        ?\Preflow\Data\Driver\MysqlDriver $driver = null,',
+            'promoted parameter' => '        private readonly PdoDriver $driver,',
+            'public promoted parameter' => 'public function __construct(public PdoDriver $d) {}',
+            'promoted nullable parameter' => '        protected ?SqliteDriver $driver = null,',
+            'union type' => 'function f(int|PdoDriver $d) {}',
+            'union type, driver first' => 'function f(PdoDriver|string $d) {}',
+            'intersection type' => 'function f(RunsSql&PdoDriver $d) {}',
+            'by reference' => 'function f(PdoDriver &$d) {}',
+            'variadic' => 'function f(PdoDriver ...$d) {}',
+            'is_a' => 'if (is_a($driver, PdoDriver::class)) {',
+            'is_a, fully qualified' => 'if (is_a($driver, \Preflow\Data\Driver\SqliteDriver::class, true)) {',
+            'is_subclass_of' => 'if (is_subclass_of($driver, Driver\PdoDriver::class)) {',
+            '::class ===' => 'if ($driver::class === MysqlDriver::class) {',
+            '=== ::class' => 'if (MysqlDriver::class === $driver::class) {',
+            '!== ::class' => 'if ($driver::class !== JsonFileDriver::class) {',
+            'get_class ===' => 'if (get_class($driver) === SqliteDriver::class) {',
+            'get_class ==' => 'if (get_class($driver) == SqliteDriver::class) {',
+        ];
+        foreach ($caught as $spelling => $line) {
+            $this->assertTrue(self::checksDriverClass($line), "caught: {$spelling}: {$line}");
+        }
+
+        $allowed = [
+            'building a driver' => '$x = new PdoDriver($pdo, $dialect);',
+            'building one, fully qualified' => 'return new \Preflow\Data\Driver\MysqlDriver($pdo);',
+            'a driver class in config' => "'driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class,",
+            'a use statement' => 'use Preflow\Data\Driver\PdoDriver;',
+            'a docblock' => '     * @param PdoDriver $driver the driver',
+            'a nullable docblock type' => '     * @param ?PdoDriver $driver',
+            'a line comment' => '        // $driver instanceof PdoDriver was the old check',
+            'a hash comment' => '        # is_a($d, PdoDriver::class)',
+            'a block comment line' => '/* function f(PdoDriver $d) */',
+            'a capability check' => 'if ($driver instanceof RunsSql) {',
+            'a longer class name' => 'function f(PdoDriverFactory $f) {}',
+            'a capability parameter' => 'function f(PdoConnection $driver) {}',
+            // preflow/testing builds its drivers and keeps them in typed properties
+            'a property holding a built driver' => '    private ?SqliteDriver $sqliteDriver = null;',
+            'a property without a default' => '    private MysqlDriver $driver;',
+        ];
+        foreach ($allowed as $spelling => $line) {
+            $this->assertFalse(self::checksDriverClass($line), "not caught: {$spelling}: {$line}");
+        }
+    }
+
+    /**
+     * Whether a source line asks a built-in storage driver for its class: `instanceof`, a parameter
+     * type (on any line, promoted or not, nullable, union or intersection, by reference, variadic),
+     * `is_a()`, `is_subclass_of()`, or a `::class` / `get_class()` comparison. Comment lines,
+     * `new …` and a property that holds a driver the class built (preflow/testing) are not checks.
+     */
+    private static function checksDriverClass(string $line): bool
+    {
+        $code = ltrim($line);
+        if ($code === '' || str_starts_with($code, '*') || str_starts_with($code, '/*') || str_starts_with($code, '//')
+            || (str_starts_with($code, '#') && !str_starts_with($code, '#['))) {
+            return false;
+        }
+        $driver = '\\\\?' . self::DRIVERS;
+        $patterns = [
+            // instanceof
+            '/\binstanceof\s+' . $driver . '\b/',
+            // a parameter type: after "(", ",", "|", "&", "?", a modifier (promoted) or the start of the
+            // line, before "$", "&$" or "...$"; not a property ("$name;" or "$name = …;")
+            '/(?:^|[(,|&?]|\b(?:public|protected|private|readonly|var|static))\s*\??' . $driver
+                . '\s*(?:[|&]\s*\??\\\\?[\w\\\\]+\s*)*(?:&\s*)?(?:\.\.\.\s*)?\$\w++(?!\s*(?:=[^,)]*)?;)/',
+            // is_a() / is_subclass_of() against a driver class
+            '/\b(?:is_a|is_subclass_of)\s*\(.*' . $driver . '::class\b/',
+            // a ::class or get_class() comparison
+            '/' . $driver . '::class\s*[!=]==?|[!=]==?\s*' . $driver . '::class\b/',
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $line) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return list<string> every file below $dir */
     private function files(string $dir): array
     {
@@ -141,5 +414,10 @@ final class ArchitectureGuardsTest extends TestCase
     private function relative(string $file): string
     {
         return substr($file, strlen(self::packages()) + 1);
+    }
+
+    private function relativeToRepo(string $file): string
+    {
+        return substr($file, strlen(dirname(__DIR__, 2)) + 1);
     }
 }

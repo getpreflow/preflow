@@ -9,7 +9,7 @@ Staff screens, the field types `rbac_permissions` and `rbac_roles`, the new-perm
 
 ```
 composer require preflow/rbac
-php preflow rbac:install            # without Folio
+php preflow rbac:install            # without Folio: once (migrate does not install rbac)
 php preflow folio:extensions:enable rbac   # with Folio: the admin
 php preflow folio:extensions:apply
 ```
@@ -17,6 +17,10 @@ php preflow folio:extensions:apply
 - Add `Preflow\Rbac\RbacServiceProvider` to `config/providers.php`. Where it runs (and the site
   has `config/data.php`) it answers `can()` from the roles; Folio's extension switch only shows
   or hides the admin (`config/folio/extensions.json`).
+- `php preflow migrate` does not install rbac: installing switches `can()` from "staff may do
+  everything" to the stored roles, which the site decides once with `rbac:install` (or Folio's
+  `folio:extensions:apply`). Until then `migrate` prints `[rbac.seed] rbac is not installed: run
+  php preflow rbac:install once …`; afterwards it seeds the roles and keeps the staff table current.
 - The admin's classes live in Folio (`Preflow\Folio\Rbac\…`).
 - `folio:extensions:apply` (run it on every deploy) seeds the roles on every run (since 0.53):
   - It creates the staff role `admin` ("Administrator", `*`) when no staff role exists.
@@ -261,7 +265,8 @@ For an existing site with an `.env` admin:
    ```
 
    The staff type exists once a provider names it (rbac defines it; with Folio, `model:staff` adds
-   its screens); run `php preflow migrate` for its table. While there are no records, the chain
+   its screens). Without Folio, `php preflow rbac:install` makes its table (once; `migrate` keeps
+   it current afterwards); with Folio, `php preflow migrate` does. While there are no records, the chain
    resolves the config user as before.
 2. Enable `model:staff` (`enabled_parts`) and run `php preflow folio:extensions:apply`.
 3. Run `php preflow staff:import-config`.

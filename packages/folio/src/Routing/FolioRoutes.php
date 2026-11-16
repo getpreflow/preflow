@@ -27,6 +27,7 @@ final class FolioRoutes
     private const AUTH_MW = 'Preflow\\Folio\\Http\\AdminAuthMiddleware';
     private const LOCALE_MW = 'Preflow\\Folio\\Http\\AdminLocaleMiddleware';
     private const PERMISSION_MW = 'Preflow\\Folio\\Http\\FolioPermissionMiddleware';
+    private const TYPE_ACTIONS_MW = 'Preflow\\Folio\\Http\\TypeActionsMiddleware';
     private const EXTENSION_ASSETS = 'Preflow\\Folio\\Http\\ExtensionAssetController';
     private const NAV_PREFS = 'Preflow\\Folio\\Http\\NavPreferenceController';
     private const AI = 'Preflow\\Folio\\Http\\AiTranslateController';
@@ -183,13 +184,18 @@ final class FolioRoutes
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
             // Signed-in staff, then the user's interface language, then the route's permission
-            // (FolioPermissionMiddleware::rule). Signed-out pages: the browser's language.
+            // (FolioPermissionMiddleware::rule), then what its type allows (TypeActionsMiddleware).
+            // Signed-out pages: the browser's language.
             if ($handlerClass === self::EXTENSION_ASSETS) {
                 $middleware = []; // public static files: no login, no drafts
             } else {
                 $middleware = ($authEnabled && $handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS)
                     ? [self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW]
                     : [self::LOCALE_MW];
+                if ($handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS) {
+                    // What the route's type allows (data's "readonly" / "creatable"), with or without sign-in.
+                    $middleware[] = self::TYPE_ACTIONS_MW;
+                }
                 $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
             }
             $c = PatternCompiler::compile($pattern);

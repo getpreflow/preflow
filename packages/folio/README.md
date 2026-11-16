@@ -870,10 +870,12 @@ How the editor shows them (since 0.75, the LibFields board; `assets/fields.js` r
   ignored, the first spelling wins). `"max"` (tags per record, default 20) and `"maxLength"`
   (characters per tag, default 40) are checked on save ("At most 20 tags."); what the editor
   cannot add for them stays in the input. `"options"` (a list of texts) are suggested while
-  typing. The value is stored as a JSON list (`["Folio","Übersetzung"]`, readable umlauts) in a
-  text column, so the list's search finds a tag on every storage; no tags is stored as `null`, so
-  `"validate": ["required"]` refuses an empty field (as for a multiple relation or multiple
-  assets, since 0.77). A comma string stored before (`"Folio, members"`) is read as its parts.
+  typing. The value is stored as a list: in a JSON file as a list (`["Folio", "Übersetzung"]`,
+  since 0.78), in SQL as JSON text in a text column (readable umlauts), so the list's search finds
+  a tag on every storage; no tags is stored as `null`, so `"validate": ["required"]` refuses an
+  empty field (as for a multiple relation or multiple assets, since 0.77). JSON text or a comma
+  string stored before (`"Folio, members"`) is read as its parts, and a JSON file gets the list on
+  its next save.
   The frontend gets `<ul class="tags"><li>Folio</li>…</ul>`, a list cell "Folio, members, AI +2".
   A `tags` field cannot be `"translatable"` (one list serves every language), on a type or in a
   block: that, or an invalid `"max"`, `"maxLength"` or `"options"`, is a `FrontendConfigException`
@@ -902,9 +904,10 @@ Any field also takes:
   the stored value; a posted value is ignored.
 - `"readonly": true`: shown as its label and display value, without an input: a select its option
   label, a relation its record labels, a date formatted for the admin, rich text its sanitised
-  markup, "—" when empty. Since 0.75 the editor lists these under **System fields** in its side
-  panel, with the record's id (the create drawer keeps them in the form). A save keeps the stored
-  value; a posted value is ignored.
+  markup, "—" when empty. Since 0.78 it is the record's content in the form column (a text keeps
+  its line breaks); with `"panel": "side"` it is metadata, listed under **System fields** in the
+  side panel with the record's id (0.75 to 0.77 listed every read-only field there). A save keeps
+  the stored value; a posted value is ignored.
   A read-only field is not validated on save (not its `validate` rules, its type's rules or
   `required`): the editor can't change it, so checking it would only block the save.
 
@@ -1083,6 +1086,39 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
 - **Templates:** `{% set site = folio_get('site') %}` returns its values in the page's
   language, or `null` before the first save, loaded once per request. In PHP, inject
   `Preflow\Folio\Content\Singletons`.
+
+## Read-only and no-create types (0.78)
+
+A type's model file says what Folio may do with its records (data's `"readonly"` and
+`"creatable"`, see [preflow/data](../data/README.md#read-only-and-no-create-types-078)); Folio only
+renders it and refuses what the type refuses, for everyone (a role cannot lift it):
+
+- **`"readonly": true`** (an FAQ kept as files and seeded on every deploy): the list and the record
+  stay. There is no "New" (header, empty state, dashboard, ⌘K), no Save, Delete, Duplicate, bulk
+  action or move. The record opens as "View …" with a *Read-only* badge and a note saying why, and
+  every field is shown as content in the main column (a text keeps its line breaks), not under
+  System fields. Per-field `"readonly"` is not needed on such a type.
+- **`"creatable": false`** (an inbox): no "New" anywhere; editing (its flags, bulk set) and delete stay.
+- **Machine translation** counts as editing: a read-only type is not offered under AI → Translate
+  (nor to `translate:plan`), and a job queued before the type became read-only stops with a message
+  instead of translating.
+- A direct request to a refused route (the create form, a create, save, delete, bulk delete,
+  duplicate, publish, translate, …) answers 403 with Folio's page, saying why; with or without
+  sign-in (`TypeActionsMiddleware`, on every admin route; the verb is the one the route's
+  permission names). The Roles matrix shows "–" for a verb the type refuses.
+- **A field marked `"readonly"`** (on any type) shows as content in the main column too, so an
+  inbox shows the visitor's message where the editor reads it. Metadata (a received date, an IP
+  address) goes to the side panel's System fields with `"panel": "side"`.
+- **Extension authors:** in a template ask `folio_can('faq.create')` rather than `can()`: it answers
+  the user's permission and what the type allows. In PHP ask `TypeActions` (container singleton)
+  `allowsVerb($type, 'create')` or `permits('faq.create')`, or data's
+  `$registry->get($type)->allows(TypeAction::Create)`; an endpoint of your own that writes a type's
+  records for an editor calls `assertAllows()` first (a 403 Folio and an API both answer). Your
+  routes under Folio's `{type}` paths are covered by `TypeActionsMiddleware` only if their handler
+  has a rule in `FolioPermissionMiddleware`; a screen route is not, so check yourself.
+- In PHP: `Preflow\Folio\Content\TypeActions` (`allows()`, `allowsVerb()`, `permits()`,
+  `readonly()`) maps Folio's verbs onto data's `TypeAction` (`create`, `edit`/`publish` = update,
+  `delete`).
 
 ## Drafts and publishing
 

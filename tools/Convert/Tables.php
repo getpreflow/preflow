@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Tools\Convert;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
+use Preflow\Data\PdoConnection;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
 use Preflow\Data\Migration\Schema;
@@ -37,7 +37,7 @@ final class Tables
     public static function from(DataManager $dm, array $entries, string $storage): self
     {
         $driver = $dm->driver($storage);
-        if (!$driver instanceof PdoDriver) {
+        if (!$driver instanceof PdoConnection) {
             throw new \RuntimeException("Storage [{$storage}] is not a SQL storage.");
         }
         $grammar = Grammars::for($driver->pdo());
@@ -48,7 +48,7 @@ final class Tables
             if (!$entry['typed'] || isset($tables[$def->table]) || !self::storedIn($dm, $def, $driver)) {
                 continue;
             }
-            $specs = $sync->specs($def, $entry['extra'], true);
+            $specs = $sync->specs($def, $entry['extra'], true, $grammar);
             $tables[$def->table] = new Table(
                 $def->table,
                 $def->idField,
@@ -136,7 +136,7 @@ final class Tables
         return $this->pdo->query('SELECT 1 FROM ' . $this->grammar->quote($table) . " WHERE {$empty} LIMIT 1")->fetchColumn() !== false;
     }
 
-    private static function storedIn(DataManager $dm, TypeDefinition $def, PdoDriver $driver): bool
+    private static function storedIn(DataManager $dm, TypeDefinition $def, PdoConnection $driver): bool
     {
         try {
             return $dm->driver($def->storage) === $driver;

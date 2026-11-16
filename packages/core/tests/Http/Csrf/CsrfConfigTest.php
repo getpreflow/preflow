@@ -17,12 +17,14 @@ final class CsrfConfigTest extends TestCase
         $this->assertSame(['/--component/'], $config->exempt);
         $this->assertSame([], $config->trustedOrigins);
         $this->assertSame([], $config->signInPaths);
+        $this->assertSame([], $config->forgetInput);
+        $this->assertSame([], $config->forgetFields);
     }
 
     public function test_reads_every_key(): void
     {
         $file = sys_get_temp_dir() . '/csrf_config_' . bin2hex(random_bytes(4)) . '.php';
-        file_put_contents($file, "<?php\nreturn ['exempt' => ['/--component/', '/hooks/'], 'trusted_origins' => ['https://stage.example.com'], 'sign_in_paths' => ['/login']];\n");
+        file_put_contents($file, "<?php\nreturn ['exempt' => ['/--component/', '/hooks/'], 'trusted_origins' => ['https://stage.example.com'], 'sign_in_paths' => ['/login'], 'forget_input' => ['/contact'], 'forget_fields' => ['message']];\n");
 
         try {
             $config = CsrfConfig::fromFile($file);
@@ -33,6 +35,10 @@ final class CsrfConfigTest extends TestCase
         $this->assertSame(['/--component/', '/hooks/'], $config->exempt);
         $this->assertSame(['https://stage.example.com'], $config->trustedOrigins);
         $this->assertSame(['/login'], $config->signInPaths);
+        $this->assertSame(['/contact'], $config->forgetInput);
+        $this->assertSame(['message'], $config->forgetFields);
+        $this->assertTrue($config->forgetsInputOf('/contact/send'));
+        $this->assertFalse($config->forgetsInputOf('/contacts'));
     }
 
     public function test_exempt_adds_to_the_component_prefix(): void

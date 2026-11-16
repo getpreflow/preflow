@@ -128,8 +128,10 @@ final class DataAliasesTest extends TestCase
 
     private function migrate(Application $app): void
     {
-        /** @var Migration $migration */
-        $migration = require dirname(__DIR__) . '/migrations/2026_10_22_000000_preflow_throttle.php';
-        $migration->up(new Schema($app->container()->get(\PDO::class)));
+        foreach (glob(dirname(__DIR__) . '/migrations/*preflow_throttle*.php') ?: [] as $file) {
+            /** @var Migration $migration */
+            $migration = require $file;
+            $migration->up(new Schema($app->container()->get(\PDO::class)));
+        }
     }
 }

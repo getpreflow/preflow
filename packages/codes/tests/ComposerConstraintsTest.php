@@ -19,10 +19,10 @@ final class ComposerConstraintsTest extends TestCase
 
         $this->assertSame([
             'preflow/core' => '<0.38',
-            'preflow/data' => '<0.66.1',
+            'preflow/data' => '<0.78',
             'preflow/folio' => '<0.40',
         ], $composer['conflict'] ?? null);
-        $this->assertSame('^0.42 || @dev', $composer['require']['preflow/data'] ?? null);
+        $this->assertSame('^0.78 || @dev', $composer['require']['preflow/data'] ?? null);
         $this->assertArrayHasKey('preflow/validation', $composer['require']);
     }
 }

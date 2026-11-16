@@ -12,7 +12,7 @@
    buttons sit outside the record form and name it (form="folio-record"); see _publish_button.twig. #}
 {% block topbar_lead %}{% if back_url|default(null) %}<a class="btn btn-secondary btn-icon folio-back" href="{{ back_url }}" aria-label="{{ t('folio.form.back_to', {label: label}) }}" title="{{ t('folio.form.back_to', {label: label}) }}"><svg class="folio-icon is-mirrored" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-chevron"></use></svg></a>{% endif %}{% endblock %}
 {% block breadcrumb %}<nav class="folio-breadcrumb" aria-label="{{ t('folio.form.breadcrumb') }}">{% if back_url|default(null) %}<a href="{{ back_url }}">{{ label }}</a>{% else %}<span>{{ label }}</span>{% endif %}{% if type_count|default(null) is not null %}<span class="folio-breadcrumb-count" title="{{ t('folio.list.count', {count: folio_number(type_count)}, type_count) }}">· {{ folio_number(type_count) }}</span>{% endif %}</nav>{% endblock %}
-{% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if publishing %}{% for badge in publishing.badges|default([]) %} <span class="folio-badge is-{{ badge.tone }}">{{ badge.label }}</span>{% endfor %}{% endif %}{% endblock %}
+{% block page_title %}<span class="folio-title-text">{{ record_title|default(null) ?: heading }}</span>{% if readonly_note|default(null) %} <span class="folio-badge is-readonly"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-lock"></use></svg>{{ t('folio.list.readonly') }}</span>{% endif %}{% if publishing %}{% for badge in publishing.badges|default([]) %} <span class="folio-badge is-{{ badge.tone }}">{{ badge.label }}</span>{% endfor %}{% endif %}{% endblock %}
 {% block actions %}
     {%- if framed and multilingual|default(false) %}
     {# The content language: a dot per language (filled complete, warning ring partial, subtle ring missing). #}
@@ -46,6 +46,13 @@
     {% if previewable|default(false) %}<div class="folio-split" data-folio-split data-mode="form">
     <div class="folio-split-form">{% endif %}
     <div class="folio-form folio-editor">
+        {% if readonly_note|default(null) %}
+            {# A read-only type (data's "readonly"): what it is and why there is no Save, Delete or New. #}
+            <div class="folio-notice folio-readonly-note" role="note">
+                <p class="folio-readonly-note-title">{{ t('folio.form.readonly_note_title') }}</p>
+                <p>{{ readonly_note }}</p>
+            </div>
+        {% endif %}
         {% if notice %}
             <div class="folio-notice" role="alert">
                 <p>{{ notice }}{% if reload_url %} <a href="{{ reload_url }}">{{ t('folio.form.reload') }}</a>{% endif %}</p>

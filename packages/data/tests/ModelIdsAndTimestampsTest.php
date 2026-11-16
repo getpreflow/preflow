@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests;
 
+use Preflow\Data\Driver\SqliteDialect;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Attributes\Entity;
@@ -147,6 +148,7 @@ final class ModelIdsAndTimestampsTest extends TestCase
     {
         ModelMetadata::clearCache();
         $pdo = new \PDO('sqlite::memory:');
+        SqliteDialect::prepare($pdo);
         $pdo->exec('CREATE TABLE notes (uuid TEXT PRIMARY KEY, title TEXT)');
         $pdo->exec('CREATE TABLE stamped (uuid TEXT PRIMARY KEY, title TEXT, createdAt TEXT, updatedAt TEXT)');
         (new Schema($pdo))->create('snake_stamped', function (Table $t): void {

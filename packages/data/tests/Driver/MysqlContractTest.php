@@ -8,6 +8,7 @@ require_once __DIR__ . '/ContractTables.php';
 
 use PHPUnit\Framework\Attributes\Group;
 use Preflow\Data\Driver\MysqlDriver;
+use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\StorageDriver;
 use Preflow\Testing\Contract\StorageDriverContract;
 use Preflow\Testing\MysqlTestDatabase;
@@ -31,6 +32,29 @@ final class MysqlContractTest extends StorageDriverContract
     protected function createType(string $type, array $fields): void
     {
         self::createContractTable($this->mysql, $type, $fields, 'BIGINT AUTO_INCREMENT PRIMARY KEY');
+    }
+
+    protected function declareUnique(string $type, string $field): void
+    {
+        self::createContractUnique($this->mysql, $type, $field);
+    }
+
+    protected function textRuleMissing(): ?string
+    {
+        return (new MysqlGrammar())->on($this->mysql->pdo())->textCollation() === null
+            ? 'The server has none of MysqlDialect::MATCH_COLLATIONS: its columns keep exact comparisons (see the data README).'
+            : null;
+    }
+
+    protected function declareFullText(string $type, array $fields): void
+    {
+        $grammar = new MysqlGrammar();
+        $this->mysql->pdo()->exec($grammar->createFullTextIndex($grammar->indexName('ft', $type, 'search'), $type, $fields));
+    }
+
+    protected function reopenDriver(): ?StorageDriver
+    {
+        return new MysqlDriver(MysqlTestDatabase::reconnect());
     }
 
     protected function tearDown(): void

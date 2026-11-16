@@ -11,7 +11,7 @@ use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -110,9 +110,9 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         [$sql, $bindings] = $this->compiler->compile($type, $query);
         $items = $this->read($type, $sql, $bindings)->fetchAll(\PDO::FETCH_ASSOC);
 
-        // A first page that is not full holds every match: the total needs no COUNT query.
+        // Every match (no limit), or a first page that is not full: the total needs no COUNT query.
         $limit = $query->getLimit();
-        if ($limit !== null && ($query->getOffset() ?? 0) === 0 && count($items) < $limit) {
+        if (($query->getOffset() ?? 0) === 0 && ($limit === null || count($items) < $limit)) {
             $total = count($items);
         } else {
             [$countSql, $countBindings] = $this->compiler->compileCount($type, $query);
@@ -312,13 +312,56 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         return in_array($column, (new \Preflow\Data\Migration\Schema($this->pdo))->columns($type), true);
     }
 
+    public function hasTable(string $type): bool
+    {
+        return (new \Preflow\Data\Migration\Schema($this->pdo))->hasTable($type);
+    }
+
     /**
      * Whether a transaction is open on the connection: one opened through PDO, or one the
      * driver opened itself (SqliteDriver::exclusive()).
      */
-    protected function inTransaction(): bool
+    public function inTransaction(): bool
     {
         return $this->pdo->inTransaction();
+    }
+
+    /**
+     * $fn in a transaction on the connection; inside an open one, joined (its owner commits or
+     * rolls back). A failed commit is rolled back where the connection still holds the
+     * transaction, and rethrown. @since 0.78
+     */
+    public function transaction(\Closure $fn): mixed
+    {
+        if ($this->inTransaction()) {
+            return $fn();
+        }
+        $this->pdo->beginTransaction();
+        try {
+            $result = $fn();
+        } catch (\Throwable $e) {
+            $this->rollBackQuietly();
+            throw $e;
+        }
+        try {
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->rollBackQuietly();
+            throw $e;
+        }
+
+        return $result;
+    }
+
+    /** Rolls back the transaction the connection still holds; a failure to do so is not the error that matters. */
+    private function rollBackQuietly(): void
+    {
+        try {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+        } catch (\PDOException) {
+        }
     }
 
     /** An integral number or numeric string as its canonical integer string ('05', 5.0: '5'); anything else as it is. */
@@ -508,6 +551,53 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         $this->executeWithLogging($stmt, $sql, [$id]);
 
         return $stmt->fetchColumn() !== false;
+    }
+
+    /**
+     * One insert-or-update statement of the dialect (AtomicCounters, @since 0.78), then a read of
+     * the counter. The expressions read the stored row through table-qualified columns (PostgreSQL
+     * finds a bare name ambiguous with EXCLUDED's), and the reset field is assigned last: MySQL
+     * reads a column assigned earlier in the statement as its new value. A dialect without such a
+     * statement counts with a read and a write under exclusive().
+     */
+    public function increment(string $table, string|int $id, string $field, int $by, array $insert, ?\Preflow\Data\CounterReset $reset = null, string $idField = 'uuid'): int
+    {
+        \Preflow\Data\Counters::assertArguments($field, $insert, $reset, $idField);
+        $q = $this->dialect->quoteIdentifier(...);
+        $column = static fn (string $name): string => $q($table) . '.' . $q($name);
+        $counter = $column($field);
+
+        $set = [];
+        $bindings = [$id, ...array_values($insert), $by];
+        if ($reset === null) {
+            $set[$field] = "COALESCE({$counter}, 0) + ?";
+            $bindings[] = $by;
+        } else {
+            $restart = $column($reset->field) . ' < ?';
+            $set[$field] = "CASE WHEN {$restart} THEN ? ELSE COALESCE({$counter}, 0) + ? END";
+            array_push($bindings, $reset->below, $by, $by);
+            $assigned = $reset->set;
+            if (array_key_exists($reset->field, $assigned)) {
+                // Last: the CASEs before it must read the stored value.
+                $own = $assigned[$reset->field];
+                unset($assigned[$reset->field]);
+                $assigned[$reset->field] = $own;
+            }
+            foreach ($assigned as $name => $value) {
+                $set[$name] = "CASE WHEN {$restart} THEN ? ELSE " . $column($name) . ' END';
+                array_push($bindings, $reset->below, $value);
+            }
+        }
+
+        $sql = $this->dialect->insertOrUpdateSql($table, [$idField, ...array_keys($insert), $field], $idField, $set);
+        if ($sql === null) {
+            return $this->exclusive($table, fn (): int => \Preflow\Data\Counters::step($this, $table, $id, $field, $by, $insert, $reset, $idField));
+        }
+        $this->execute($sql, $bindings);
+
+        $read = 'SELECT ' . $q($field) . ' FROM ' . $q($table) . ' WHERE ' . $q($idField) . ' = ? LIMIT 1';
+
+        return (int) $this->read($table, $read, [$id])->fetchColumn();
     }
 
     public function rawQuery(string $sql, array $bindings = []): array

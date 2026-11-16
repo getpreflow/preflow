@@ -8,6 +8,8 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\MysqlDriver;
+use Preflow\Data\Migration\Grammar\Grammars;
+use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Query;
 use Preflow\Data\Schema\RecordTableSync;
@@ -44,11 +46,12 @@ final class MysqlTypedSyncTest extends TestCase
             'slug' => 'varchar(191)', 'city' => 'varchar(191)', 'short' => 'varchar(40)', 'name' => 'longtext',
         ], (new Schema($this->pdo))->columnTypes('event'));
         $this->assertContains('uniq_event_slug', (new Schema($this->pdo))->indexes('event'));
-        $this->assertSame('utf8mb4_bin', $this->collation('event', 'slug'), 'unique values compare exactly');
+        $text = (new MysqlGrammar())->on($this->pdo)->textCollation() ?? 'utf8mb4_bin';
+        $this->assertSame($text, $this->collation('event', 'slug'), 'a slug is text: it compares by the rule (exactly on a server without the collation)');
 
         $driver = new MysqlDriver($this->pdo);
         $driver->save('event', 'a', ['uuid' => 'a', 'slug' => 'cafe', 'seats' => '12']);
-        $driver->save('event', 'b', ['uuid' => 'b', 'slug' => 'Cafe', 'seats' => '9']);
+        $driver->save('event', 'b', ['uuid' => 'b', 'slug' => 'kafe', 'seats' => '9']);
         $driver->save('event', 'c', ['uuid' => 'c', 'slug' => 'café', 'seats' => '12.5']);
         $driver->save('event', 'd', ['uuid' => 'd', 'slug' => null]);
         $driver->save('event', 'e', ['uuid' => 'e', 'slug' => null]);
@@ -58,6 +61,45 @@ final class MysqlTypedSyncTest extends TestCase
 
         $this->expectException(\PDOException::class);
         $this->pdo->exec("INSERT INTO event (uuid, slug) VALUES ('f', 'cafe')");
+    }
+
+    /** Text fields' columns take the rule's collation, the rest utf8mb4_bin: ids, machine values, dates, other free text. */
+    public function test_a_new_table_gets_text_and_exact_columns(): void
+    {
+        $text = (new MysqlGrammar())->on($this->pdo)->textCollation();
+        if ($text === null) {
+            $this->markTestSkipped('The server has none of MysqlDialect::MATCH_COLLATIONS.');
+        }
+        $def = new TypeDefinition('person', 'person', 'mysql', [
+            'name' => new TypeFieldDefinition('name', unique: true),
+            'bio' => new TypeFieldDefinition('bio', 'text'),
+            'key' => new TypeFieldDefinition('key', exact: true),
+            'born' => new TypeFieldDefinition('born', 'date'),
+            'age' => new TypeFieldDefinition('age', 'number'),
+            'title' => new TypeFieldDefinition('title', translatable: true),
+            'meta' => new TypeFieldDefinition('meta', 'json'),
+        ]);
+        $this->sync()->sync($def);
+
+        $this->assertSame(
+            ['uuid' => 'utf8mb4_bin', 'name' => $text, 'bio' => $text, 'key' => 'utf8mb4_bin', 'born' => 'utf8mb4_bin', 'age' => null, 'title' => $text, 'meta' => 'utf8mb4_bin'],
+            Grammars::for($this->pdo)->columnCollations($this->pdo, 'person'),
+        );
+        $stmt = $this->pdo->query("SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'person'");
+        $this->assertSame($text, $stmt->fetchColumn(), 'the table default is the rule\'s collation');
+        $driver = new MysqlDriver($this->pdo);
+        $driver->save('person', 'a', ['uuid' => 'a', 'name' => 'MÜLLER']);
+        $driver->save('person', 'b', ['uuid' => 'b', 'name' => 'Muller']);
+        $this->expectException(\Preflow\Data\UniqueViolation::class);
+        $driver->save('person', 'c', ['uuid' => 'c', 'name' => 'Müller']);
+    }
+
+    public function test_a_text_column_is_not_reported_as_drifted(): void
+    {
+        $sync = $this->sync();
+        $sync->sync(self::def());
+
+        $this->assertSame([], $sync->sync(self::def()));
     }
 
     public function testScopedUniqueIndexCoversItsScope(): void
@@ -110,7 +152,7 @@ final class MysqlTypedSyncTest extends TestCase
         $types = (new Schema($this->pdo))->columnTypes('event');
         $this->assertSame('double', $types['seats']);
         $this->assertSame('varchar(191)', $types['slug']);
-        $this->assertSame('utf8mb4_bin', $this->collation('event', 'slug'));
+        $this->assertSame((new MysqlGrammar())->on($this->pdo)->textCollation() ?? 'utf8mb4_bin', $this->collation('event', 'slug'), 'a text field\'s column, added later too');
         $this->assertSame([], $sync->sync(self::def()));
     }
 

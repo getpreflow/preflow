@@ -26,14 +26,14 @@ final class JsonContractTest extends StorageDriverContract
         // JSON files have no schema: a type's folder is made on its first save.
     }
 
+    protected function reopenDriver(): ?StorageDriver
+    {
+        return new JsonFileDriver($this->dataDir);
+    }
+
     protected function supportsAutoIds(): bool
     {
         return false; // the caller gives every id
-    }
-
-    protected function supportsRawQuery(): bool
-    {
-        return false;
     }
 
     protected function tearDown(): void

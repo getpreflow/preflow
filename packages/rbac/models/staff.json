@@ -8,10 +8,10 @@
     "fields": {
         "email": { "type": "string", "validate": ["required"] },
         "name": { "type": "string" },
-        "password_hash": { "type": "string", "hidden": true, "searchable": false },
+        "password_hash": { "type": "string", "exact": true, "hidden": true, "searchable": false },
         "roles": { "type": "list" },
         "active": { "type": "boolean", "default": true },
-        "auth_epoch": { "type": "string", "hidden": true, "searchable": false, "default": "0" },
+        "auth_epoch": { "type": "string", "exact": true, "hidden": true, "searchable": false, "default": "0" },
         "last_login_at": { "type": "date", "time": true },
         "created_at": { "type": "date", "time": true }
     }

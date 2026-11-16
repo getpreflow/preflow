@@ -36,4 +36,15 @@ final class MigrationRegistryTest extends TestCase
         $this->assertTrue($registry->isSqlOnly('tables'));
         $this->assertFalse($registry->isSqlOnly('marks'));
     }
+
+    public function test_a_last_step_runs_after_every_other_whenever_it_was_registered(): void
+    {
+        $registry = new MigrationRegistry();
+        $registry->afterMigrate('first', fn (): array => []);
+        $registry->afterMigrate('check', fn (): array => [], last: true);
+        $registry->afterMigrate('later', fn (): array => [], sqlOnly: false);
+
+        $this->assertSame(['first', 'later', 'check'], array_keys($registry->steps()));
+        $this->assertSame(['later'], array_keys($registry->steps(sql: false)));
+    }
 }

@@ -75,12 +75,12 @@ final class MysqlDeclaredIndexesTest extends TestCase
         $unique = new TypeDefinition('page', 'page', 'mysql', ['slug' => new TypeFieldDefinition('slug', unique: true)]);
         $sync = $this->sync();
         $sync->sync($plain);
-        $this->pdo->exec("INSERT INTO page (uuid, slug) VALUES ('a', 'one'), ('b', 'one'), ('c', 'One'), ('d', NULL), ('e', NULL)");
+        $this->pdo->exec("INSERT INTO page (uuid, slug) VALUES ('a', 'one'), ('b', 'one'), ('c', 'Öne'), ('d', NULL), ('e', NULL)");
 
         $this->assertSame(['warning: page.slug has no unique index (1 value is there more than once); remove the duplicates (tools/convert-typed-columns.php --check lists them), the next migrate adds it'], $sync->sync($unique));
 
         $this->pdo->exec("DELETE FROM page WHERE uuid = 'b'");
-        $this->assertSame(['added unique index uniq_page_slug'], $sync->sync($unique), "'one' and 'One' differ (binary), NULLs never collide");
+        $this->assertSame(['added unique index uniq_page_slug'], $sync->sync($unique), "'one' and 'Öne' differ (accents count), NULLs never collide");
         $this->assertSame([], $sync->sync($unique));
     }
 

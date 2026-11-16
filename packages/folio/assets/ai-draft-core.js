@@ -74,6 +74,15 @@
         return String(texts.generic);
     }
 
+    /**
+     * The dialog's error line: a 429 (the person's AI limit) is the server's own text, which says when
+     * the next draft can be written, as it is; anything else is errorText() inside the prefix (":message").
+     */
+    function failureLine(failure, texts, prefix) {
+        if (failure && failure.status === 429 && typeof failure.error === 'string' && failure.error !== '') { return failure.error; }
+        return format(prefix, { message: errorText(failure, texts) });
+    }
+
     /** A link the preview may keep: http(s), mailto, tel, a path or an anchor; anything else (javascript:, data:) is null. */
     function safeHref(href) {
         var value = String(href || '').trim();
@@ -146,5 +155,5 @@
         return mode === 'replace' ? 'replace' : 'insert';
     }
 
-    return { ALLOWED: ALLOWED, format: format, fieldLabel: fieldLabel, params: params, write: write, costLine: costLine, errorText: errorText, safeHref: safeHref, copySafe: copySafe, compact: compact, apply: apply };
+    return { ALLOWED: ALLOWED, format: format, fieldLabel: fieldLabel, params: params, write: write, costLine: costLine, errorText: errorText, failureLine: failureLine, safeHref: safeHref, copySafe: copySafe, compact: compact, apply: apply };
 }));

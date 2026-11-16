@@ -7,6 +7,7 @@ namespace Preflow\Data\Migration;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
+use Preflow\Data\Migration\Grammar\TextCollations;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Schema\ColumnSpec;
 
@@ -14,10 +15,28 @@ final class Schema
 {
     private readonly SchemaGrammar $grammar;
 
+    /**
+     * @param MigrationColumns|null $columns records each table this Schema makes or drops and each
+     *     column's intent (text or exact), as Migrator passes it (since 0.78); null records nothing
+     */
     public function __construct(
         private readonly \PDO $pdo,
+        private readonly ?MigrationColumns $columns = null,
     ) {
         $this->grammar = Grammars::for($pdo);
+    }
+
+    /**
+     * A builder column's intent: text for a string() or text() that is neither exact() nor a
+     * primary key, exact for every other column.
+     *
+     * @param array{kind: string, primary: bool, exact?: bool} $column
+     */
+    private static function intent(array $column): string
+    {
+        return in_array($column['kind'], ['string', 'text'], true) && !$column['primary'] && !($column['exact'] ?? false)
+            ? MigrationColumns::TEXT
+            : MigrationColumns::EXACT;
     }
 
     public function create(string $table, callable $callback): void
@@ -34,11 +53,18 @@ final class Schema
         foreach ($indexes as $sql) {
             $this->pdo->exec($sql);
         }
+        if ($this->columns !== null) {
+            $this->columns->forgetTable($builder->getName());
+            foreach ($builder->columns() as $column) {
+                $this->columns->record($builder->getName(), $column['name'], self::intent($column));
+            }
+        }
     }
 
     public function drop(string $table): void
     {
         $this->pdo->exec($this->grammar->dropTable($table));
+        $this->columns?->forgetTable($table);
     }
 
     public function hasTable(string $table): bool
@@ -90,10 +116,13 @@ final class Schema
         $indexes = $this->indexStatements($table, $builder, $kinds);
         $statements = [];
         foreach ($builder->columns() as $column) {
-            $statements[] = $this->grammar->addColumn($table, $column['name'], $this->grammar->columnType($column['kind'], $column['length']));
+            $statements[] = $this->grammar->addColumn($table, $column['name'], $this->typeOf($column));
         }
         foreach ([...$statements, ...$indexes] as $sql) {
             $this->pdo->exec($sql);
+        }
+        foreach ($this->columns !== null ? $builder->columns() : [] as $column) {
+            $this->columns->record($table, $column['name'], self::intent($column));
         }
     }
 
@@ -140,6 +169,7 @@ final class Schema
             }
         }
         $this->pdo->exec($this->grammar->dropColumn($table, $own));
+        $this->columns?->forgetColumn($table, $own);
     }
 
     /** Sets the column to $value on every row where it is NULL (a backfill after addColumns()); returns how many rows. */
@@ -167,6 +197,7 @@ final class Schema
             throw new \LogicException("Cannot rename \"{$table}.{$from}\" to \"{$to}\": the table already has a column \"{$to}\".");
         }
         $this->pdo->exec($this->grammar->renameColumn($table, $own, $to));
+        $this->columns?->renameColumn($table, $own, $to);
     }
 
     /**
@@ -175,9 +206,12 @@ final class Schema
      * table is rebuilt in one transaction, its indexes, triggers and views kept). $to is either
      *
      * - a ColumnSpec: a record-table column, typed as RecordTableSync makes it (a Short column is
-     *   VARCHAR(length, default 191) COLLATE utf8mb4_bin on MySQL; nullability kept), or
+     *   VARCHAR(length, default 191) on MySQL, a text field's (text: true) in the text rule's
+     *   collation, any other utf8mb4_bin; nullability kept), or
      * - a callback declaring the one column with the create() builder: string('name', 40), boolean(), …;
-     *   NOT NULL unless ->nullable(), as in create(); collation follows the kind (uuid compares exactly).
+     *   NOT NULL unless ->nullable(), as in create(); collation follows the kind (string() and text()
+     *   the text rule unless ->exact(), uuid compares exactly). On SQLite this is how a column of a
+     *   table made by a migration gets the rule.
      *
      * Refuses (LogicException, nothing changed) a column the table doesn't have, a value longer than
      * a bounded new type (string, uuid, Short), NULLs in a column becoming NOT NULL (fillNulls() first),
@@ -192,7 +226,9 @@ final class Schema
     {
         if ($to instanceof ColumnSpec) {
             $name = $to->name;
-            $type = $this->grammar->recordColumnType($to->kind, $to->length);
+            $type = $to->text && $this->grammar instanceof TextCollations
+                ? $this->grammar->textColumnType($to->kind, $to->length)
+                : $this->grammar->recordColumnType($to->kind, $to->length);
             $nullable = null;
             $length = $to->kind === ColumnKind::Short ? ($to->length ?? FieldKinds::DEFAULT_LENGTH) : null;
         } else {
@@ -210,7 +246,7 @@ final class Schema
             if ($builder->getIndexDefinitions() !== []) {
                 throw new \LogicException("Cannot convert \"{$table}.{$name}\" with an index: convert it, then add the index.");
             }
-            $type = $this->grammar->columnType($column['kind'], $column['length']);
+            $type = $this->typeOf($column);
             $nullable = $column['nullable'];
             $length = match ($column['kind']) {
                 'string' => $column['length'] ?? 255,
@@ -238,9 +274,29 @@ final class Schema
             }
         }
         $this->grammar->convertColumn($this->pdo, $table, $own, $type, $nullable);
+        $this->columns?->record($table, $own, $to instanceof ColumnSpec
+            ? ($to->text ? MigrationColumns::TEXT : MigrationColumns::EXACT)
+            : self::intent($column));
     }
 
-    /** Adds a nullable column to an existing table; a null type is free text (TEXT / LONGTEXT). */
+    /**
+     * A builder column's type: string() and text() compare by the text rule (the grammar's
+     * textType()) unless exact() or a primary key, as in create().
+     *
+     * @param array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, exact: bool} $column
+     */
+    private function typeOf(array $column): string
+    {
+        if (!$this->grammar instanceof TextCollations) {
+            return $this->grammar->columnType($column['kind'], $column['length']);
+        }
+
+        return $column['primary'] || $column['exact']
+            ? $this->grammar->exactType($column['kind'], $column['length'])
+            : $this->grammar->textType($column['kind'], $column['length']);
+    }
+
+    /** Adds a nullable column to an existing table; a null type is free text compared exactly (TEXT / LONGTEXT COLLATE utf8mb4_bin). */
     public function addColumn(string $table, string $column, ?string $type = null): void
     {
         $this->pdo->exec($this->grammar->addColumn($table, $column, $type));

@@ -56,6 +56,7 @@ final class ShadowTypes
                 $f->name, $f->type, $f->searchable, $f->transform, $f->validate, $f->label, $f->help, $f->config,
                 $f->translatable, $f->labels, $f->helps, unique: false,
                 index: $f->index || (!$f->translatable && !in_array([$name], $def->indexes, true)), length: $f->length,
+                exact: $f->exact,
             );
         }
 
@@ -77,7 +78,8 @@ final class ShadowTypes
     {
         $fields = [];
         foreach (['record_id' => 'string', 'seq' => 'number', 'data' => 'text', 'changed' => 'text', 'created_at' => 'string', 'created_by' => 'string'] as $name => $type) {
-            $fields[$name] = new TypeFieldDefinition($name, $type);
+            // Ids and times compare exactly; the snapshot (data, changed) is JSON text, never compared.
+            $fields[$name] = new TypeFieldDefinition($name, $type, exact: in_array($name, ['record_id', 'created_at', 'created_by'], true));
         }
 
         return new TypeDefinition(

@@ -63,3 +63,37 @@ test('queue mode posts and shows the message without filling inputs', async () =
     assert.deepEqual(running.lines, ['Already queued.'], 'no cron hint while the worker runs');
     assert.equal(running.existing, true);
 });
+
+test('limit_swap lets a 429 inside the run screen swap', () => {
+    const run = { closest: (sel) => (sel === '[data-ai-run]' ? run : null) };
+    const progress = { closest: (sel) => (sel === '[data-ai-run]' ? run : null) };
+    const elsewhere = { closest: () => null };
+
+    for (const target of [run, progress]) {
+        const detail = { xhr: { status: 429 }, target, shouldSwap: false, isError: true };
+        assert.equal(core.limitSwap(detail), true);
+        assert.equal(detail.shouldSwap, true);
+        assert.equal(detail.isError, false);
+    }
+
+    for (const detail of [
+        { xhr: { status: 500 }, target: progress, shouldSwap: false, isError: true },
+        { xhr: { status: 422 }, target: run, shouldSwap: false, isError: true },
+        { xhr: { status: 429 }, target: elsewhere, shouldSwap: false, isError: true },
+        { xhr: { status: 429 }, target: null, shouldSwap: false, isError: true },
+    ]) {
+        assert.equal(core.limitSwap(detail), false);
+        assert.equal(detail.shouldSwap, false, 'another status or target is left to htmx');
+        assert.equal(detail.isError, true);
+    }
+});
+
+test('failure_text shows a 429 as it is, anything else in the prefix', () => {
+    const limit = Object.assign(new Error('You have reached your limit of 100 AI translations. You can translate again in 12 min.'), { status: 429 });
+    assert.equal(core.failureText(limit, 'The translation failed: :message'), 'You have reached your limit of 100 AI translations. You can translate again in 12 min.');
+
+    const other = Object.assign(new Error('Provider said no'), { status: 503 });
+    assert.equal(core.failureText(other, 'The translation failed: :message'), 'The translation failed: Provider said no');
+    assert.equal(core.failureText(new Error('offline'), 'The translation failed: :message'), 'The translation failed: offline', 'no status');
+    assert.equal(core.failureText(Object.assign(new Error(''), { status: 429 }), 'The translation failed: :message'), 'The translation failed: ');
+});

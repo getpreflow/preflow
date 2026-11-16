@@ -90,6 +90,50 @@ final class DebugToolbarTest extends TestCase
         $this->assertStringContainsString('pages/blog.twig', $html);
     }
 
+    public function test_the_bar_has_a_collapse_button(): void
+    {
+        $html = (new DebugToolbar())->render(new DebugCollector());
+
+        $this->assertMatchesRegularExpression(
+            '{<div class="pdt-bar">\s*<button type="button" class="pdt-collapse" aria-label="Collapse the Preflow toolbar" aria-expanded="true">}',
+            $html,
+        );
+    }
+
+    public function test_the_collapsed_tab_shows_only_the_preflow_mark(): void
+    {
+        $html = (new DebugToolbar())->render(new DebugCollector());
+
+        $this->assertMatchesRegularExpression(
+            '{<button type="button" class="pdt-tab" aria-label="Expand the Preflow toolbar" aria-expanded="false">\s*&#9889; Preflow\s*</button>}',
+            $html,
+        );
+        $this->assertMatchesRegularExpression('{\.pdt-collapsed \.pdt-bar,\s*#preflow-debug-toolbar\.pdt-collapsed \.pdt-panel\s*\{\s*display: none}', $html);
+        $this->assertStringContainsString('#preflow-debug-toolbar.pdt-collapsed .pdt-tab', $html);
+    }
+
+    /** The site's own button styles never reach the toolbar's buttons, and its markup has no inline handler or style (a strict CSP blocks both). */
+    public function test_buttons_start_from_nothing_and_markup_has_no_inline_handlers_or_styles(): void
+    {
+        $html = (new DebugToolbar())->render(new DebugCollector());
+
+        $this->assertMatchesRegularExpression('{#preflow-debug-toolbar button \{\s*all: unset;}', $html);
+        $markup = (string) preg_replace('{<(script|style)\b[^>]*>.*?</\1>}s', '', $html);
+        $this->assertDoesNotMatchRegularExpression('{<[^>]*\s(on[a-z]+|style)\s*=}i', $markup);
+        $this->assertStringNotContainsString("tab.setAttribute('aria-expanded'", $html, 'the tab shows only while collapsed: always "false"');
+    }
+
+    public function test_the_state_is_remembered_safely(): void
+    {
+        $html = (new DebugToolbar())->render(new DebugCollector());
+
+        $this->assertStringContainsString("'preflow.toolbar'", $html);
+        $this->assertStringContainsString("'collapsed'", $html);
+        $this->assertStringContainsString("'bar'", $html);
+        $this->assertMatchesRegularExpression('~try \{[^}]*localStorage\.getItem[^}]*\} catch~', $html);
+        $this->assertMatchesRegularExpression('~try \{[^}]*localStorage\.setItem[^}]*\} catch~', $html);
+    }
+
     public function test_contains_toggle_script(): void
     {
         $collector = new DebugCollector();

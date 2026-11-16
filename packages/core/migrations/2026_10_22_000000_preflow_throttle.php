@@ -10,7 +10,7 @@ return new class extends Migration
     {
         $schema->create('preflow_throttle', function (Table $table) {
             $table->uuid('id')->primary();
-            $table->string('purpose');
+            $table->string('purpose')->exact();
             $table->integer('hits');
             $table->integer('window_start');
         });

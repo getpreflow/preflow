@@ -31,8 +31,8 @@ final class ExtensionState
             table: self::TABLE,
             storage: 'default',
             fields: [
-                'version' => new TypeFieldDefinition('version', 'string'),
-                'installed_at' => new TypeFieldDefinition('installed_at', 'string'),
+                'version' => new TypeFieldDefinition('version', 'string', exact: true),
+                'installed_at' => new TypeFieldDefinition('installed_at', 'string', exact: true),
             ],
             idField: 'name',
         );

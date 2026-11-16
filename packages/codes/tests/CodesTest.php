@@ -21,6 +21,7 @@ use Preflow\Data\UniqueViolation;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\Exporter;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Testing\PlainDriver;
 
 /**
  * A temp app with Folio and the codes extension enabled (a fake vendor/composer/installed.json
@@ -403,6 +404,27 @@ final class CodesTest extends TestCase
         $this->assertCount(1, $a->redemptions($id));
     }
 
+    public function test_max_uses_holds_on_a_driver_without_runs_sql(): void
+    {
+        $c = $this->app()->container();
+        $dm = $c->get(DataManager::class);
+        $drivers = [];
+        foreach ($dm->driverNames() as $name) {
+            $drivers[$name] = $name === 'codes' ? new PlainDriver($dm->driver($name)) : $dm->driver($name);
+        }
+        $codes = new Codes(
+            new DataManager($drivers, 'json', $dm->getTypeRegistry()),
+            $c->get(Throttle::class),
+            require $this->dir . '/config/codes.php',
+            fn (): \DateTimeImmutable => $this->now,
+            $this->dir . '/storage/locks',
+        );
+        $codes->issue('members.book', [], 'ONLYONCE', maxUses: 1);
+
+        $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
+        $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
+    }
+
     public function test_json_storage_counts_under_file_lock(): void
     {
         $this->dataConfig(['codes' => 'json']);
@@ -412,6 +434,18 @@ final class CodesTest extends TestCase
         $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
         $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
         $this->assertFileExists($this->dir . '/storage/locks');
+    }
+
+    /** SQLite counts a use with one conditional UPDATE (RunsSql), never under the file lock JSON needs. */
+    public function test_sqlite_storage_counts_without_a_file_lock(): void
+    {
+        $codes = $this->codes();
+        $this->assertInstanceOf(\Preflow\Data\Driver\SqliteDriver::class, $this->app()->container()->get(DataManager::class)->driver('codes'));
+        $codes->issue('members.book', [], 'ONLYONCE', maxUses: 1);
+
+        $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
+        $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
+        $this->assertDirectoryDoesNotExist($this->dir . '/storage/locks');
     }
 
     public function test_max_uses_ten_allows_exactly_ten(): void
@@ -681,10 +715,10 @@ final class CodesTest extends TestCase
         $driver = $this->app()->container()->get(DataManager::class)->driver('codes');
         $this->assertInstanceOf(ThirdPartyDriver::class, $driver);
         $this->assertContains('wholeNumber', $driver->dialect()->asked);
-        $counting = array_filter($driver->executed, static fn (string $sql): bool => str_contains($sql, '"uses"'));
+        $counting = array_filter($driver->executed, static fn (string $sql): bool => str_contains($sql, '`uses`'));
         $this->assertNotEmpty($counting);
         $dialect = $driver->dialect();
-        $own = [$dialect->wholeNumber('"uses"'), $dialect->wholeNumber('"max_uses"')];
+        $own = [$dialect->wholeNumber('`uses`'), $dialect->wholeNumber('`max_uses`')];
         foreach ($counting as $sql) {
             // What the dialect wrote is its own business; the rest is the package's SQL.
             $this->assertStringNotContainsString("''", str_replace($own, 'N', $sql), 'no comparison of a number column with the empty string');
@@ -862,6 +896,13 @@ final class ThirdPartyDriver extends PdoDriver
     {
         $dialect = new ThirdPartyDialect();
         parent::__construct(static fn (): \PDO => new \PDO('sqlite:' . $path), $dialect, new QueryCompiler($dialect));
+    }
+
+    /** A driver on a SQLite file readies its connection as SqliteDriver does (the text rule's collation). */
+    protected function configure(\PDO $pdo): void
+    {
+        parent::configure($pdo);
+        \Preflow\Data\Driver\SqliteDialect::prepare($pdo);
     }
 
     /** One test process writes: running $fn is enough (a real driver takes its database's lock). */

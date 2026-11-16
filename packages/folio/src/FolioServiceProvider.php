@@ -477,7 +477,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
-            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            self::can($c),
             static fn (): ?\Preflow\View\Audit\Audits => $c->bound(\Preflow\View\Audit\Audits::class) ? $c->get(\Preflow\View\Audit\Audits::class) : null,
             self::logger($c),
         ));
@@ -523,7 +523,7 @@ final class FolioServiceProvider extends ServiceProvider
 
             $nav = new \Preflow\Folio\Http\AdminNav(
                 $c->get(TypeCatalog::class),
-                static fn (string $permission): bool => $access->can($permission),
+                self::can($c),
                 $prefix,
                 $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             );
@@ -586,7 +586,7 @@ final class FolioServiceProvider extends ServiceProvider
             // The sanitizer is built on the first sanitize call, not on every request.
             $registry->register(new RichTextFieldType(\Preflow\Folio\Field\LazyHtmlSanitizer::standard()));
             // Editors render only the controls the user may use (the routes check again).
-            $can = static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission);
+            $can = self::can($c);
             $registry->register(new AssetFieldType(
                 $uploadsDir,
                 $uploadUrlPrefix,
@@ -691,6 +691,7 @@ final class FolioServiceProvider extends ServiceProvider
             ) : null,
             pageMeta: $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\Folio\Seo\FolioPageMeta::class) : null,
             siteUrl: is_string($appUrl = $app->config()->get('app.url')) && $appUrl !== '' ? $appUrl : null,
+            typeActions: $c->get(\Preflow\Folio\Content\TypeActions::class),
             dashboard: new \Preflow\Folio\Dashboard\Dashboard(
                 $c->get(TypeCatalog::class),
                 $c->get(DataManager::class),
@@ -721,6 +722,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Media\MediaLibrary::class),
             $locales ?? \Preflow\Data\Locales::single('en'),
             $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
+            // Per-person AI limits: bound with a data layer (the Throttle counts through it), else none.
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiDraftController::class, fn (Container $c) => new \Preflow\Folio\Http\AiDraftController(
             $c->get(\Preflow\Ai\Draft\DraftWriter::class),
@@ -730,6 +733,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(\Preflow\Auth\Access\Access::class),
             $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
             $c->get(\Preflow\Ai\Ai::class),
@@ -740,6 +744,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(ContentLocale::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
         ));
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
@@ -994,23 +999,32 @@ final class FolioServiceProvider extends ServiceProvider
         $container->bind(\Preflow\Folio\Http\ActivityController::class, fn (Container $c) => new \Preflow\Folio\Http\ActivityController(
             $c->get(\Preflow\Folio\Dashboard\RecentChanges::class),
             $c->get(\Preflow\Folio\View\FolioEngine::class),
-            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            self::can($c),
             $prefix,
         ));
         // The ⌘K palette: its screens, actions and g-chords (folio_commands()) and its record search ({prefix}/_search).
         $container->bind(\Preflow\Folio\Http\CommandPalette::class, fn (Container $c) => new \Preflow\Folio\Http\CommandPalette(
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
-            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            self::can($c),
             $prefix,
         ));
         $container->bind(\Preflow\Folio\Http\SearchController::class, fn (Container $c) => new \Preflow\Folio\Http\SearchController(
             $c->get(\Preflow\Folio\Http\CommandPalette::class),
             $c->get(\Preflow\Data\Search\RecordSearch::class),
             $c->get(\Preflow\Folio\Content\DisplayLabels::class),
-            static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
+            self::can($c),
             static fn (): \Preflow\Media\MediaLibrary => $c->get(\Preflow\Media\MediaLibrary::class),
             $prefix,
+        ));
+        // What each type allows (data's "readonly" / "creatable"): asked by every screen and button, refused on every route.
+        $container->singleton(\Preflow\Folio\Content\TypeActions::class, static fn (Container $c) => new \Preflow\Folio\Content\TypeActions($c->get(TypeRegistry::class)));
+        $container->bind(\Preflow\Folio\Http\TypeActionsMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\TypeActionsMiddleware(
+            $c->get(\Preflow\Folio\Content\TypeActions::class),
+            $c->get(TypeCatalog::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $prefix,
+            $c->get(\Preflow\Folio\Content\DisplayLabels::class),
         ));
         $container->bind(\Preflow\Folio\Http\FolioPermissionMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\FolioPermissionMiddleware(
             $c->get(\Preflow\Auth\Access\Access::class),
@@ -1018,6 +1032,7 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\Folio\View\FolioEngine::class),
             $prefix,
             $c->get(ScreenRegistry::class),
+            $c->get(\Preflow\Folio\Content\TypeActions::class),
         ));
         // Extension screens: validated when first resolved (the admin setup, ensureAdmin()), so collisions fail there.
         $container->singleton(ScreenRegistry::class, fn (Container $c) => ScreenRegistry::fromExtensions(
@@ -1631,6 +1646,14 @@ final class FolioServiceProvider extends ServiceProvider
                 callable: static fn (): string => self::jsTexts(\Preflow\Folio\FolioText::translator()),
             ));
 
+            // The admin's permission question for templates (Folio's and extensions'): the user's permission and, for a
+            // type's record verb ("faq.create"), whether the type allows it at all (data's "readonly" / "creatable"). @since 0.78
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_can',
+                callable: static fn (string $permission): bool => (self::can($container))($permission),
+                isSafe: true,
+            ));
+
             // The sidebar: sections and items from the nav model (extensions add theirs), filtered by permission.
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_nav',
@@ -1956,7 +1979,8 @@ final class FolioServiceProvider extends ServiceProvider
      * One machine-translation text source per type of a multilingual app (types share the app's
      * locales), so the core job runner can translate Folio records. Lazy: no type definition is
      * read and no source is built until a run asks for it; a type with nothing translatable (roles,
-     * staff accounts) is not offered.
+     * staff accounts) or whose records editors may not change (read-only) is not offered
+     * (FolioTextSource::offers()).
      */
     private function registerTextSources(Container $container): void
     {
@@ -1977,8 +2001,9 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
                 $container->get(\Preflow\Publishing\RecordWriter::class),
                 $container->get(FrontendResolver::class),
-            ), static fn (): bool => $container->get(\Preflow\Folio\Content\TranslationStatus::class)->translatable(
+            ), static fn (): bool => \Preflow\Folio\Content\FolioTextSource::offers(
                 $container->get(DataManager::class)->getTypeRegistry()?->get($key) ?? throw new \LogicException('Text sources need a TypeRegistry.'),
+                $container->get(\Preflow\Folio\Content\TranslationStatus::class),
             ));
         }
     }
@@ -2108,6 +2133,19 @@ final class FolioServiceProvider extends ServiceProvider
         }
     }
 
+    /**
+     * The admin's permission question for screens and buttons: the signed-in user's permission
+     * (Access) and, for a record verb of a type ("{type}.create", ".edit", ".publish", ".delete"),
+     * whether the type allows it at all (TypeActions, data's "readonly" / "creatable").
+     *
+     * @return \Closure(string): bool
+     */
+    private static function can(Container $c): \Closure
+    {
+        return static fn (string $permission): bool => $c->get(\Preflow\Auth\Access\Access::class)->can($permission)
+            && $c->get(\Preflow\Folio\Content\TypeActions::class)->permits($permission);
+    }
+
     /** Whether the members admin is Folio's built-in one (preflow/members installed) and switched on. */
     private static function membersAdmin(ExtensionRegistry $extensions): bool
     {
@@ -2132,6 +2170,8 @@ final class FolioServiceProvider extends ServiceProvider
             $container->bound(\Preflow\Folio\Content\DisplayLabels::class) ? $container->get(\Preflow\Folio\Content\DisplayLabels::class) : null,
             // The "New" marks: what an update brought, for a user who may edit roles (read when the editor renders).
             static fn (): array => $container->get(\Preflow\Folio\Rbac\NewPermissions::class)->forManager(),
+            // A verb its type does not allow (data's "readonly" / "creatable") gets no box.
+            $container->get(\Preflow\Folio\Content\TypeActions::class),
         ));
         $assets = $container->get(\Preflow\Folio\Http\AdminAssets::class);
         $assets->add('rbac.css', dirname(__DIR__) . '/assets/rbac/rbac.css');
@@ -2321,7 +2361,7 @@ final class FolioServiceProvider extends ServiceProvider
 
     /**
      * Tells the data package which field types hold searchable text (the SearchableText marker,
-     * extension types included) and which are relations. Only when the app has a DataManager.
+     * extension types included), which hold a list (StoresList) and which are relations. Only when the app has a DataManager.
      */
     private function registerFieldKinds(Container $container, Application $app): void
     {
@@ -2334,6 +2374,9 @@ final class FolioServiceProvider extends ServiceProvider
             $key = $type->key();
             if ($type instanceof \Preflow\Folio\Field\SearchableText) {
                 $kinds->text($key);
+            }
+            if ($type instanceof \Preflow\Folio\Field\StoresList) {
+                $kinds->list($key);
             }
             if ($type instanceof \Preflow\Folio\Field\HasColumnKind) {
                 $kinds->column($key, static fn (array $config): \Preflow\Data\Schema\ColumnKind => $type->columnKind($config));

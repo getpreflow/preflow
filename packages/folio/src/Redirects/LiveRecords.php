@@ -38,11 +38,8 @@ final class LiveRecords implements TargetIsLive
             return $this->publisher->snapshot($type, $id);
         }
 
-        $idField = $this->dm->getTypeRegistry()?->get($type)->idField ?? 'uuid';
-        $records = $this->dm->queryType($type)
-            ->where($idField, $id)
-            ->where($route->publishedField, $route->publishedValue)
-            ->get()->items();
+        $def = $this->dm->getTypeRegistry()?->get($type) ?? throw new \LogicException('Live records need a TypeRegistry.');
+        $records = $route->published($this->dm->queryType($type)->where($def->idField, $id), $def)->get()->items();
         foreach ($records as $record) {
             // The id is a value column here, which MySQL compares case-insensitively: exact matches only.
             if ((string) $record->getId() === $id) {
@@ -64,6 +61,8 @@ final class LiveRecords implements TargetIsLive
             return array_values($this->publisher->query($type)->get()->items());
         }
         // Queried as FrontendResolver::match() queries it: what this returns is what the site shows.
-        return array_values($this->dm->queryType($type)->where($route->publishedField, $route->publishedValue)->get()->items());
+        $def = $this->dm->getTypeRegistry()?->get($type) ?? throw new \LogicException('Live records need a TypeRegistry.');
+
+        return array_values($route->published($this->dm->queryType($type), $def)->get()->items());
     }
 }

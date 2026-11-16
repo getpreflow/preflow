@@ -77,4 +77,16 @@ T;
         $this->assertStringContainsString("User-agent: meta-externalagent\nDisallow: /\n", $blocked);
         $this->assertSame(2, substr_count($blocked, 'Allow: /folio/_uploads/'));
     }
+
+    /** Lines for the `User-agent: *` group (Crawl-delay) stay in it; lines for every group go into each (0.78). */
+    public function test_lines_into_the_default_group_or_every_group(): void
+    {
+        $config = SeoConfig::fromArray(['robots' => ['default_group' => ['Crawl-delay: 5'], 'all_groups' => ['Disallow: /private/'], 'ai_training' => false, 'disallow' => []]]);
+        $text = RobotsTxt::render($config, [], 'https://example.com', false);
+
+        $this->assertStringStartsWith("User-agent: *\nAllow: /\nCrawl-delay: 5\nDisallow: /private/\n\n# AI search", $text);
+        $this->assertSame(1, substr_count($text, 'Crawl-delay: 5'), 'only the default group');
+        $this->assertSame(3, substr_count($text, 'Disallow: /private/'), 'every group');
+        $this->assertStringContainsString("User-agent: meta-externalagent\nDisallow: /\nDisallow: /private/\n", $text);
+    }
 }

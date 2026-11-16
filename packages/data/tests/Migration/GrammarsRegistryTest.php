@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Migration;
 
+use Preflow\Data\Driver\SqliteDialect;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\SqliteDriver;
@@ -26,7 +27,10 @@ final class GrammarsRegistryTest extends TestCase
 
     public function test_built_in_grammars_by_driver_name(): void
     {
-        $this->assertInstanceOf(SqliteGrammar::class, Grammars::for(new \PDO('sqlite::memory:')));
+        $pdo = new \PDO('sqlite::memory:');
+        SqliteDialect::prepare($pdo);
+        $this->assertInstanceOf(SqliteGrammar::class, Grammars::for($pdo));
+        $this->assertSame('preflow_text', Grammars::for($pdo)->textCollation(), 'bound to the connection');
         $this->assertInstanceOf(MysqlGrammar::class, Grammars::named('mysql'));
     }
 
@@ -43,10 +47,10 @@ final class GrammarsRegistryTest extends TestCase
         $grammar = new SqliteGrammar();
         Grammars::register('fakesql', $grammar);
         $pdo = new FakeSqlPdo();
-
-        $this->assertSame($grammar, Grammars::for($pdo));
-
         $dm = new DataManager(['default' => new SqliteDriver($pdo)], 'default');
+
+        $this->assertSame($grammar, Grammars::named('fakesql'));
+        $this->assertEquals($grammar->on($pdo), Grammars::for($pdo), 'bound to the connection');
         $lines = (new RecordTableSync($dm))->sync(new TypeDefinition('note', 'note', 'default', ['title' => new TypeFieldDefinition('title')]));
 
         $this->assertSame(['created table note'], $lines);

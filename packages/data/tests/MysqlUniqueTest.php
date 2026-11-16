@@ -44,14 +44,17 @@ final class MysqlUniqueTest extends TestCase
         return 'mysql';
     }
 
-    public function testExactComparison(): void
+    /** The unique index applies the text rule: case is ignored, accents count. */
+    public function testComparisonByTheRule(): void
     {
         $page = $this->page();
-        foreach (['a' => 'cafe', 'b' => 'café', 'c' => 'Cafe'] as $id => $slug) {
+        foreach (['a' => 'cafe', 'b' => 'café'] as $id => $slug) {
             $this->assertSame([], $this->errorsOf($page, ['uuid' => $id, 'slug' => $slug]), $slug);
         }
-        $this->assertSame([], $this->errorsOf($page, ['uuid' => 'd', 'slug' => 'CAFÉ'], validate: false));
-        $this->assertSame(['slug' => ['This value is already taken.']], $this->errorsOf($page, ['uuid' => 'e', 'slug' => 'café']));
+        $taken = ['slug' => ['This value is already taken.']];
+        $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'c', 'slug' => 'Cafe']));
+        $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'd', 'slug' => 'CAFÉ'], validate: false));
+        $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'e', 'slug' => 'café']));
     }
 
     public function testDriverNamesTheViolatedIndex(): void

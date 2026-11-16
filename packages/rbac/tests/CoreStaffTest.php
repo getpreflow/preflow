@@ -246,6 +246,23 @@ final class CoreStaffTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_the_staff_table_is_missing_on_sql_until_installed_and_never_missing_on_json(): void
+    {
+        $managers = fn (): \Preflow\Rbac\StaffManagers => new \Preflow\Rbac\StaffManagers($this->app()->container()->get(\Preflow\Data\DataManager::class));
+
+        $this->assertFalse($managers()->hasTable(), 'SQLite without the table');
+        $this->assertSame(0, $this->command('rbac:install')[0]);
+        $this->assertTrue($managers()->hasTable());
+
+        $this->write('config/data.php', "<?php\nreturn " . var_export([
+            'default' => 'json',
+            'models_path' => $this->dir . '/config/models',
+            'drivers' => ['json' => ['driver' => \Preflow\Data\Driver\JsonFileDriver::class, 'path' => $this->dir . '/storage/json']],
+        ], true) . ";\n");
+        $this->assertTrue($managers()->hasTable(), 'JSON before the first staff write');
+    }
+
+    #[RunInSeparateProcess]
     public function test_install_create_password_then_sign_in_and_can_follows_the_stored_role(): void
     {
         $this->assertSame(0, $this->command('migrate')[0]);
@@ -570,6 +587,26 @@ final class CoreStaffTest extends TestCase
         $this->assertSame("This site has no staff accounts: config/auth.php names no user provider of class Preflow\\Auth\\Record\\RecordUserProvider with 'type' => 'staff'.\n", $out);
     }
 
+    /** A fresh app with rbac: migrate creates no rbac table (installing switches can() to the roles) and says how; after rbac:install it keeps them. */
+    #[RunInSeparateProcess]
+    public function test_migrate_names_the_install_and_keeps_the_tables_after_it(): void
+    {
+        [$code, $out] = $this->command('migrate');
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('[rbac.seed] ' . \Preflow\Rbac\RoleType::NOT_INSTALLED, $out);
+        $this->assertStringContainsString('rbac:install', \Preflow\Rbac\RoleType::NOT_INSTALLED);
+        $this->assertStringContainsString('folio:extensions:apply', \Preflow\Rbac\RoleType::NOT_INSTALLED, 'a Folio site has its own step');
+        $this->assertSame(1, substr_count($out, 'rbac is not installed'), 'said once');
+        $this->assertSame([1, "rbac is not installed here yet; run php preflow rbac:install first.\n"], $this->command('staff:list'));
+
+        $this->assertSame(0, $this->command('rbac:install')[0]);
+        (new \PDO('sqlite:' . $this->dir . '/storage/site.sqlite'))->exec('DROP TABLE staff');
+        [$code, $out] = $this->command('migrate');
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString(\Preflow\Rbac\RoleType::NOT_INSTALLED, $out);
+        $this->assertSame(0, $this->command('staff:create', ['ada@site.test', '--role=admin'])[0], 'migrate made the staff table again');
+    }
+
     #[RunInSeparateProcess]
     public function test_before_install_the_staff_commands_say_so(): void
     {
@@ -592,7 +629,7 @@ final class CoreStaffTest extends TestCase
         $this->assertSame(0, $this->command('rbac:role', ['reporter', '--grant=reports.view'])[0]);
         (new \PDO('sqlite:' . $this->dir . '/storage/site.sqlite'))->exec('DROP TABLE staff');
 
-        $message = "No staff table yet: run php preflow rbac:install (or php preflow migrate on a Folio site).\n";
+        $message = "No staff table yet: run php preflow migrate (or php preflow rbac:install).\n";
         foreach ([['staff:list', []], ['staff:create', ['ada@site.test']], ['staff:invite', ['ada@site.test']], ['staff:disable', ['ada@site.test']]] as [$command, $args]) {
             $this->assertSame([1, $message], $this->command($command, $args), $command);
         }

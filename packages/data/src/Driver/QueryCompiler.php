@@ -9,13 +9,33 @@ use Preflow\Data\Query;
 
 class QueryCompiler
 {
-    public function __construct(private readonly Dialect $dialect = new SqliteDialect()) {}
+    /** The table being compiled, for the column facts. */
+    private ?string $table = null;
+
+    /** @var array<string, array<string, array{bounded: bool, rule: bool}>> table => column => facts, as read once */
+    private array $facts = [];
+
+    /**
+     * @param (\Closure(string): array<string, array{bounded: bool, rule: bool}>)|null $columns what the
+     *     database says about a table's columns, read once per table (since 0.78): `bounded`, a
+     *     column of bounded length (VARCHAR) its collation sorts with every level, so ORDER BY on
+     *     a text field keeps it and its index (a long one, TEXT/LONGTEXT, goes through
+     *     TextComparison::textOrder()); `rule`, a column whose collation is the text rule's (a
+     *     field the query does not name as text, such as a list in a full-text index, is then
+     *     compared through Dialect::exactText()). MysqlDriver gives it; without it every text
+     *     field is sorted the safe way and every column compared by its own collation.
+     */
+    public function __construct(
+        private readonly Dialect $dialect = new SqliteDialect(),
+        private readonly ?\Closure $columns = null,
+    ) {}
 
     /**
      * @return array{0: string, 1: array<int, mixed>}
      */
     public function compile(string $table, Query $query): array
     {
+        $this->table = $table;
         $bindings = [];
         $sql = 'SELECT * FROM ' . $this->dialect->quoteIdentifier($table);
 
@@ -45,6 +65,7 @@ class QueryCompiler
      */
     public function compileCount(string $table, Query $query): array
     {
+        $this->table = $table;
         $bindings = [];
         $sql = 'SELECT COUNT(*) as total FROM ' . $this->dialect->quoteIdentifier($table);
 
@@ -65,6 +86,7 @@ class QueryCompiler
      */
     public function compileAggregate(AggregateQuery $aggregate): array
     {
+        $this->table = $aggregate->table();
         $query = $aggregate->query();
         $numeric = array_fill_keys($aggregate->numericFields(), true);
         $boolean = array_fill_keys($aggregate->booleanFields(), true);
@@ -103,7 +125,10 @@ class QueryCompiler
 
         $orders = [];
         foreach ($aggregate->orders() as $order) {
-            $orders[] = ($groups[$order['name']] ?? $measures[$order['name']]) . ' ' . $order['direction']->value;
+            $name = $order['name'];
+            $orders[] = (isset($groups[$name])
+                ? $this->ordered($name, $query, $groups[$name])
+                : $this->orderedMeasure($aggregate, $name, $measures[$name])) . ' ' . $order['direction']->value;
         }
         if ($orders !== []) {
             $sql .= ' ORDER BY ' . implode(', ', $orders);
@@ -120,6 +145,18 @@ class QueryCompiler
         }
 
         return [$sql, $bindings];
+    }
+
+    /** A MIN or MAX of a text field sorts by the rule, as the field does; any other result as it is. */
+    private function orderedMeasure(AggregateQuery $aggregate, string $alias, string $expression): string
+    {
+        foreach ($aggregate->measures() as $measure) {
+            if ($measure['as'] === $alias && in_array($measure['fn'], ['min', 'max'], true) && !in_array($measure['field'], $aggregate->numericFields(), true)) {
+                return $this->ordered((string) $measure['field'], $aggregate->query(), $expression);
+            }
+        }
+
+        return $expression;
     }
 
     /**
@@ -150,8 +187,10 @@ class QueryCompiler
     }
 
     /**
-     * A field's value as grouped and compared as stored: text exactly (case and all, on every
-     * storage), numbers and booleans as their columns hold them.
+     * A field's value as grouped and compared as stored: numbers and booleans as their columns
+     * hold them, a text field (Query::comparesAsText()) by the text rule (its column's collation;
+     * a translatable one's locale value through the dialect, compared()), any other value exactly
+     * (case and all).
      *
      * @param array<string, true> $numeric
      * @param array<string, true> $boolean
@@ -159,8 +198,45 @@ class QueryCompiler
     private function stored(string $field, Query $query, array $numeric, array $boolean): string
     {
         $column = $this->column($field, $query);
+        if (isset($numeric[$field]) || isset($boolean[$field])) {
+            return $column;
+        }
 
-        return isset($numeric[$field]) || isset($boolean[$field]) ? $column : $this->dialect->exactText($column);
+        return $query->comparesAsText($field) ? $this->compared($field, $query) : $this->dialect->exactText($column);
+    }
+
+    /**
+     * ORDER BY's expression for a field's value: a text field's by the rule through
+     * TextComparison::textOrder(), unless it is a plain column of bounded length (the column
+     * facts), which its collation orders (its index stays usable).
+     */
+    private function ordered(string $field, Query $query, string $expression): string
+    {
+        if (!$this->dialect instanceof TextComparison || !$query->comparesAsText($field)) {
+            return $expression;
+        }
+        $plain = $query->localizationFor($field) === null && ($this->facts($field)['bounded'] ?? false);
+
+        return $plain ? $expression : $this->dialect->textOrder($expression);
+    }
+
+    /**
+     * A field's value as =, !=, IN, NOT IN, ranges and ORDER BY compare it: a translatable text
+     * field's locale value (a JSON value, without the column's collation) by the text rule where
+     * the dialect has it (TextComparison); anything else as the column is, left to its collation
+     * (a text field's column carries the rule), so its indexes stay usable.
+     */
+    private function compared(string $field, Query $query): string
+    {
+        $column = $this->column($field, $query);
+        if ($this->exactOnRuleColumn($field, $query)) {
+            return $this->dialect->exactText($column); // a list in a full-text index: its column carries the rule
+        }
+        if ($this->dialect instanceof TextComparison && $query->comparesAsText($field) && $query->localizationFor($field) !== null) {
+            return $this->dialect->textValue($column);
+        }
+
+        return $column;
     }
 
     /**
@@ -199,8 +275,11 @@ class QueryCompiler
      */
     private function compileWhere(array $where, Query $query, array &$bindings): string
     {
-        $column = $this->column($where['field'], $query);
         $operator = $where['operator'];
+        // LIKE keeps the plain value: the dialect matches it by the rule itself.
+        $column = in_array(strtoupper((string) $operator), ['LIKE', 'NOT LIKE'], true)
+            ? $this->column($where['field'], $query)
+            : $this->compared($where['field'], $query);
         if (!in_array($operator, Query::OPERATORS, true)) {
             throw new \InvalidArgumentException('Unsupported operator in a where condition.');
         }
@@ -284,7 +363,11 @@ class QueryCompiler
      */
     private function compileAnyCondition(array $condition, Query $query, array &$bindings): string
     {
-        $column = $this->column($condition['field'], $query);
+        // = and IN compare by the rule; CONTAINS matches the plain value, HAS a list's members exactly.
+        $column = in_array($condition['operator'], ['IN', '='], true)
+            || ($condition['operator'] === 'HAS' && $this->exactOnRuleColumn($condition['field'], $query))
+            ? $this->compared($condition['field'], $query)
+            : $this->column($condition['field'], $query);
         $value = $condition['value'];
 
         switch ($condition['operator']) {
@@ -359,14 +442,50 @@ class QueryCompiler
 
         $parts = [];
         foreach ($orders as $order) {
-            $column = $this->column($order['field'], $query);
-            $parts[] = (($order['numeric'] ?? false) ? $this->dialect->numericOrder($column) : $column) . " {$order['direction']->value}";
+            $parts[] = (($order['numeric'] ?? false)
+                ? $this->dialect->numericOrder($this->column($order['field'], $query))
+                : $this->ordered($order['field'], $query, $this->compared($order['field'], $query))) . " {$order['direction']->value}";
         }
 
         return 'ORDER BY ' . implode(', ', $parts);
     }
 
     /** A quoted column, or its localized expression for translatable fields. */
+    /**
+     * Whether a field the query compares exactly sits in a column of the rule's collation (a list
+     * or an exact field in a full-text index, MySQL): only a query that names its text fields
+     * (Query::namesTextFields()) says the others are exact.
+     */
+    private function exactOnRuleColumn(string $field, Query $query): bool
+    {
+        return $query->namesTextFields() && !$query->comparesAsText($field) && ($this->facts($field)['rule'] ?? false);
+    }
+
+    /** Drops the column facts read for $table (null: for every table); the next compile reads them again. */
+    public function forgetFacts(?string $table = null): void
+    {
+        if ($table === null) {
+            $this->facts = [];
+        } else {
+            unset($this->facts[$table]);
+        }
+    }
+
+    /** @return array{bounded?: bool, rule?: bool} what the column facts say about the field's column */
+    private function facts(string $field): array
+    {
+        if ($this->columns === null || $this->table === null) {
+            return [];
+        }
+        if (!isset($this->facts[$this->table])) {
+            // A table that is not there (yet) is remembered as empty too: one read per table, not one per
+            // compile. forgetFacts() drops it once the table is made or changed through the driver.
+            $this->facts[$this->table] = ($this->columns)($this->table);
+        }
+
+        return $this->facts[$this->table][$field] ?? [];
+    }
+
     private function column(string $field, Query $query): string
     {
         $quoted = $this->dialect->quoteIdentifier($field);

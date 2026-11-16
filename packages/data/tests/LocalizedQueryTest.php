@@ -10,6 +10,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\QueryCompiler;
+use Preflow\Data\Driver\SqliteDialect;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
@@ -110,6 +111,41 @@ final class LocalizedQueryTest extends TestCase
 
         // de titles: A "Zebra", C "Affe"
         $this->assertSame(['C', 'A'], $ids);
+    }
+
+    /** A translatable text field's locale value compares and sorts by the text rule (TextComparison on SQL). */
+    #[DataProvider('drivers')]
+    public function test_a_localized_text_field_compares_by_the_rule(string $driver): void
+    {
+        $dm = $this->seeded($driver);
+        $type = $dm->getTypeRegistry()->get('page');
+        $dm->saveType(DynamicRecord::fromArray($type, ['uuid' => 'D', 'title' => ['en' => 'apple', 'de' => 'Müller'], 'slug' => ['en' => 'd', 'de' => 'd']]), validate: false);
+        $dm->saveType(DynamicRecord::fromArray($type, ['uuid' => 'E', 'title' => ['en' => 'Apple', 'de' => 'äpfel'], 'slug' => ['en' => 'e', 'de' => 'e']]), validate: false);
+        $ids = static fn (iterable $records): array => array_map(static fn ($r) => $r->getId(), [...$records]);
+
+        $this->assertSame(['D'], $ids($dm->queryType('page')->locale('de')->where('title', 'MÜLLER')->get()->items()), 'case is ignored');
+        $this->assertSame([], $ids($dm->queryType('page')->locale('de')->where('title', 'muller')->get()->items()), 'accents count');
+        $this->assertSame(['D'], $ids($dm->queryType('page')->locale('de')->where('title', 'IN', ['müller', 'x'])->get()->items()));
+        $this->assertSame(['E', 'D', 'A'], $ids($dm->queryType('page')->locale('de')->where('uuid', 'IN', ['A', 'D', 'E'])->orderBy('title')->get()->items()), 'äpfel, Müller, Zebra');
+    }
+
+    public function test_the_localized_comparison_names_the_collation(): void
+    {
+        $query = (new Query())->where('title', 'MÜLLER')->orderBy('title');
+        $query->localize(['title'], 'de', 'en');
+        $query->compareAsText(['title']);
+
+        [$sql] = (new QueryCompiler(new SqliteDialect()))->compile('page', $query);
+        $this->assertStringContainsString('ELSE NULL END) COLLATE preflow_text) = ?', $sql);
+        $this->assertStringContainsString('ELSE NULL END) COLLATE preflow_text) ASC', $sql);
+
+        [$sql] = (new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci')))->compile('page', $query);
+        $this->assertStringContainsString('ELSE NULL END) AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_uca1400_nopad_as_ci) = ?', $sql);
+
+        $plain = (new Query())->where('title', 'MÜLLER');
+        $plain->compareAsText(['title']);
+        [$sql] = (new QueryCompiler(new SqliteDialect()))->compile('page', $plain);
+        $this->assertSame('SELECT * FROM `page` WHERE `title` = ?', $sql, 'a plain column is left to its collation (its index stays usable)');
     }
 
     public function test_pdo_round_trips_map(): void

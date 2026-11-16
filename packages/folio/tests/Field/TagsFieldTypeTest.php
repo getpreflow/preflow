@@ -96,10 +96,19 @@ final class TagsFieldTypeTest extends TestCase
         $this->assertSame('A tag can have at most 3 characters.', (string) $small->validate(['abcd'], $ctx));
     }
 
-    public function test_storage_is_a_json_list_with_readable_umlauts(): void
+    public function test_to_storage_returns_the_list(): void
     {
-        $this->assertSame('["Folio","Übersetzung","a/b"]', $this->type->toStorage(['Folio', 'Übersetzung', 'a/b']));
+        $this->assertSame(['a', 'b'], $this->type->toStorage(['a', 'b']));
+        $this->assertSame(['Folio', 'Übersetzung', 'a/b'], $this->type->toStorage(['Folio', 'Übersetzung', 'a/b']));
         $this->assertNull($this->type->toStorage([]), 'no tags is no value, so "required" refuses it');
+        $this->assertSame(['a'], $this->type->toStorage('["a"]'), 'stored JSON text is accepted');
+        $this->assertSame(['a', 'b'], $this->type->toStorage('a, b'), 'a legacy comma string is accepted');
+        $this->assertSame(['a', 'Ü'], $this->type->toStorage($this->type->normalizeInput('["a","Ü"]', [])), 'a JSON list posted as text is the list');
+        $this->assertInstanceOf(\Preflow\Folio\Field\StoresList::class, $this->type, 'Folio registers it as a list kind');
+    }
+
+    public function test_reads_stored_json_text_and_lists(): void
+    {
         $this->assertSame(['Folio', 'Übersetzung'], $this->type->fromStorage('["Folio","Übersetzung"]'));
         $this->assertSame(['Folio'], $this->type->fromStorage(['Folio']), 'a list as the JSON storage or a class model holds it');
         $this->assertSame([], $this->type->fromStorage(null));

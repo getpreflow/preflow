@@ -66,11 +66,11 @@ final class NotFoundEntries implements NotFoundLog, NotFoundList
             storage: 'default',
             fields: [
                 'path' => new TypeFieldDefinition('path', 'string'),
-                'locale' => new TypeFieldDefinition('locale', 'string'),
+                'locale' => new TypeFieldDefinition('locale', 'string', exact: true),
                 'hits' => new TypeFieldDefinition('hits', 'number'),
-                'first_hit_at' => new TypeFieldDefinition('first_hit_at', 'string'),
-                'last_hit_at' => new TypeFieldDefinition('last_hit_at', 'string'),
-                'dismissed_at' => new TypeFieldDefinition('dismissed_at', 'string'),
+                'first_hit_at' => new TypeFieldDefinition('first_hit_at', 'string', exact: true),
+                'last_hit_at' => new TypeFieldDefinition('last_hit_at', 'string', exact: true),
+                'dismissed_at' => new TypeFieldDefinition('dismissed_at', 'string', exact: true),
             ],
             idField: 'id',
         );

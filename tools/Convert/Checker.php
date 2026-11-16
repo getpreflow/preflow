@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Preflow\Tools\Convert;
 
 use Preflow\Data\FieldKinds;
+use Preflow\Data\Migration\Grammar\TextCollations;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Schema\RecordIndex;
+use Preflow\Data\Text\TextMatch;
 
 /**
  * Every value of the tables still to convert against its column's kind, and every unique index
@@ -88,8 +90,9 @@ final class Checker
 
     /**
      * Records whose value (non-empty) and scope (none of it NULL) another record already has: the
-     * unique index would refuse them. Exact, as the index compares; MySQL's utf8mb4_bin ignores
-     * trailing spaces.
+     * unique index would refuse them. As the index compares: a text field's column by the text
+     * rule (TextMatch::key(): "Müller" and "MÜLLER" are one value) where the grammar gives it the
+     * rule's collation, any other exactly; MySQL's utf8mb4_bin ignores trailing spaces.
      *
      * @param list<array<string, mixed>> $rows sorted by id
      * @return list<Failure>
@@ -98,6 +101,9 @@ final class Checker
     {
         [$field] = $index->columns;
         $pad = $this->tables->isMysql();
+        $grammar = $this->tables->grammar;
+        $rule = $grammar instanceof TextCollations && $grammar->textCollation() !== null;
+        $text = array_map(static fn (string $c): bool => $rule && ($table->specs[$c]->text ?? false), $index->columns);
         $first = [];
         $failures = [];
         foreach ($rows as $row) {
@@ -105,7 +111,11 @@ final class Checker
             if ($values[0] === null || $values[0] === '' || in_array(null, $values, true)) {
                 continue;
             }
-            $key = json_encode(array_map(static fn (mixed $v): string => $pad ? rtrim((string) $v, ' ') : (string) $v, $values));
+            $key = serialize(array_map(
+                static fn (mixed $v, bool $isText): string => $isText ? TextMatch::key((string) $v) : ($pad ? rtrim((string) $v, ' ') : (string) $v),
+                $values,
+                $text,
+            ));
             $id = (string) $row[$table->idField];
             if (!isset($first[$key])) {
                 $first[$key] = $id;

@@ -56,4 +56,13 @@ final class HighlighterTest extends TestCase
         $this->assertSame('a<mark>.*</mark>b (c)', Highlighter::html('a.*b (c)', '.*'));
         $this->assertSame('100<mark>%</mark>', Highlighter::html('100%', '%'));
     }
+
+    /** The marks follow the search's rule (TextMatch): width and compatibility forms match, accents count. */
+    public function test_marks_what_the_search_found_by_the_same_rule(): void
+    {
+        $this->assertSame('<mark>ＡＢＣ</mark> und <mark>abc</mark>', Highlighter::html('ＡＢＣ und abc', 'abc'));
+        $this->assertSame("<mark>\u{212A}elvin</mark>", Highlighter::html("\u{212A}elvin", 'kelvin'), 'the Kelvin sign is a k');
+        $this->assertSame('Über', Highlighter::html('Über', 'uber'), 'accents count');
+        $this->assertSame('<mark>Straße</mark> <mark>STRAẞE</mark>', Highlighter::html('Straße STRAẞE', 'STRAẞE'), 'ẞ is ß');
+    }
 }

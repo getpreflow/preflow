@@ -15,6 +15,9 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Model;
+use Preflow\Data\TypeDefinition;
+use Preflow\Data\TypeFieldDefinition;
+use Preflow\Testing\PlainDriver;
 use Preflow\Data\Tests\Driver\HookedPdo;
 use Preflow\Data\UniqueViolation;
 use Preflow\Data\Validation\Unique;
@@ -128,7 +131,8 @@ final class UniqueTest extends TestCase
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'ABC', 'purpose' => 'p2']));
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose' => 'p2']), ['code' => 'ABC']), 'a fixed scope value');
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose'], exceptId: 'a'), ['code' => 'ABC', 'purpose' => 'p1']));
-        $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'abc', 'purpose' => 'p1']), 'compared exactly');
+        $this->assertSame(['code' => ['This value is already taken.']], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'abc', 'purpose' => 'p1']), 'case is ignored');
+        $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'ÀBC', 'purpose' => 'p1']), 'accents count');
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code'), ['code' => '']));
     }
 
@@ -140,7 +144,7 @@ final class UniqueTest extends TestCase
         $other->setAttribute(\PDO::ATTR_TIMEOUT, 0);
         $locked = null;
         $this->pdo->beforePrepare = function (string $sql) use ($other, &$locked): void {
-            if (!str_starts_with($sql, 'INSERT INTO "doc"')) {
+            if (!str_starts_with($sql, 'INSERT INTO `doc`')) {
                 return;
             }
             try {
@@ -214,6 +218,25 @@ final class UniqueTest extends TestCase
         $first->email = 'a@x.test';
         $this->dm->update($first);
         $this->assertCount(1, $this->dm->query(UniqueMember::class)->get()->items());
+    }
+
+    public function test_a_driver_without_unique_indexes_is_checked_under_the_lock(): void
+    {
+        // A storage that has neither unique indexes nor a lock: DataManager checks every unique
+        // field with the write (the documented fallback, not atomic), never skips the check.
+        $this->pdo->exec('CREATE TABLE page (uuid TEXT PRIMARY KEY, slug TEXT, title TEXT)');
+        $this->dm = new DataManager(['sqlite' => new PlainDriver(new SqliteDriver($this->pdo))], 'sqlite', null, new ValidatorFactory(new RuleFactory()));
+        $page = new TypeDefinition('page', 'page', 'sqlite', [
+            'slug' => new TypeFieldDefinition('slug', unique: true),
+            'title' => new TypeFieldDefinition('title'),
+        ]);
+        $this->save($page, ['uuid' => 'a', 'slug' => 'x']);
+
+        foreach ([true, false] as $validate) {
+            $this->assertSame(['slug' => ['This value is already taken.']], $this->errorsOf($page, ['uuid' => 'b', 'slug' => 'x'], $validate));
+        }
+        $this->assertNull($this->dm->findIn($page, 'b'));
+        $this->assertSame([], $this->errorsOf($page, ['uuid' => 'a', 'slug' => 'x', 'title' => 'T'], validate: false), 'its own value');
     }
 
     public function testUnmappedViolationStaysADatabaseError(): void

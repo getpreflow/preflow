@@ -70,6 +70,84 @@ final class AiServiceProviderTest extends TestCase
         }
     }
 
+    public function test_limits_come_from_config_over_the_defaults(): void
+    {
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json'];\n");
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => false, 'limits' => ['translate' => ['max' => 5]]];\n");
+        $c = $this->app()->container();
+
+        $this->assertTrue($c->bound(\Preflow\Ai\Limits\AiLimits::class));
+        $limits = $c->get(\Preflow\Ai\Limits\AiLimits::class);
+        $this->assertSame(['max' => 5, 'per' => 3600], $limits->limit('translate'));
+        $this->assertSame(['max' => 30, 'per' => 3600], $limits->limit('draft'));
+        $this->assertSame($limits, $c->get(\Preflow\Ai\Limits\AiLimits::class));
+
+        // A limit that is not a whole number stops the boot, naming the setting.
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['limits' => ['draft' => ['max' => -1]]];\n");
+        try {
+            $this->app();
+            $this->fail('expected the boot to stop');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('ai.limits.draft.max', $e->getMessage());
+        }
+    }
+
+    public function test_limits_on_without_an_app_key_stop_the_boot_naming_it(): void
+    {
+        file_put_contents($this->dir . '/config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json'];\n");
+        foreach (["", "'key' => '',", "'key' => 'preflow-default-key-change-me!!',"] as $key) {
+            file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 1, 'engine' => 'twig', {$key}];\n");
+            file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'limits' => ['draft' => ['max' => 0]]];\n"); // translate keeps its default 100
+            $message = null;
+            try {
+                $this->app();
+            } catch (\RuntimeException $e) {
+                $message = $e->getMessage();
+            }
+            $this->assertNotNull($message, "expected the boot to stop ({$key})");
+            $this->assertStringContainsString('APP_KEY', $message, $key);
+            $this->assertStringContainsString('ai.limits', $message, $key);
+
+            // A translator of the app's own runs without the switch: limited too, so the key is needed.
+            file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => false, 'translation' => ['translator' => 'App\\\\Translator']];\n");
+            $message = null;
+            try {
+                $this->app();
+            } catch (\RuntimeException $e) {
+                $message = $e->getMessage();
+            }
+            $this->assertStringContainsString('APP_KEY', (string) $message, "own translator, {$key}");
+
+            // Every limit off: nothing is hashed, so the boot needs no key.
+            file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'limits' => ['draft' => ['max' => 0], 'translate' => ['max' => 0]]];\n");
+            $c = $this->app()->container();
+            $this->assertNull($c->get(\Preflow\Ai\Limits\AiLimits::class)->limit('translate'), $key);
+
+            // AI off and nothing of the app's own in config/ai.php: boots as before. A writer an app binds in
+            // a provider is still limited: without the key its first draft is refused naming APP_KEY.
+            foreach (["<?php\nreturn ['enabled' => false];\n", null] as $config) {
+                $config === null ? @unlink($this->dir . '/config/ai.php') : file_put_contents($this->dir . '/config/ai.php', $config);
+                $c = $this->app()->container();
+                $this->assertTrue($c->bound(\Preflow\Ai\Limits\AiLimits::class), $key);
+                try {
+                    $c->get(\Preflow\Ai\Limits\AiLimits::class)->take(\Preflow\Ai\Limits\AiLimits::DRAFT, 'person-1');
+                    $this->fail("expected the draft to be refused ({$key})");
+                } catch (\RuntimeException $e) {
+                    $this->assertStringContainsString('APP_KEY', $e->getMessage(), $key);
+                }
+            }
+        }
+    }
+
+    public function test_limits_are_not_bound_without_a_throttle(): void
+    {
+        file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => false, 'limits' => ['draft' => ['max' => 1]]];\n");
+        $c = $this->app()->container();
+
+        $this->assertFalse($c->bound(\Preflow\Core\Throttle\Throttle::class), 'no config/data.php');
+        $this->assertFalse($c->bound(\Preflow\Ai\Limits\AiLimits::class));
+    }
+
     public function test_commands_registered(): void
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);

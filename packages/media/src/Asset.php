@@ -12,6 +12,9 @@ final readonly class Asset
     /** The asset's own columns that hold text (JSON text for lists and maps). */
     public const array TEXT_COLUMNS = ['path', 'original_name', 'mime', 'size', 'width', 'height', 'duration', 'alt', 'title', 'focal_x', 'focal_y', 'poster', 'variants', 'created_at', 'created_by', 'version', 'versions', 'preview', 'color', 'palette', 'text_color', 'note', 'rotation', 'flip', 'crop', 'crops', 'master', 'derived_from', 'maker', 'maker_params', 'binned_at'];
 
+    /** The text columns people write and read (compared by the text rule, case ignored); the others hold machine values. */
+    public const array PEOPLES_TEXT = ['original_name', 'alt', 'title', 'note'];
+
     /** Every key of the asset's own record: an extra field may not use one of these names. */
     public const array RESERVED = [...self::TEXT_COLUMNS, 'private', 'derived_version', 'uuid'];
 

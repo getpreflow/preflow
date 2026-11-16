@@ -50,7 +50,8 @@ final class ConvertTypedColumnsMysqlTest extends TestCase
         return self::STORAGE;
     }
 
-    public function testUniqueComparesExactly(): void
+    /** A unique text field compares by the text rule, as its column will: case is ignored, accents count. */
+    public function testUniqueComparesByTheTextRule(): void
     {
         $this->legacy(self::event());
         $this->insert('event', [
@@ -59,20 +60,31 @@ final class ConvertTypedColumnsMysqlTest extends TestCase
             ['uuid' => 'c', 'slug' => 'café'],
         ]);
 
-        $this->assertSame([], (new Checker($this->tables()))->check());
-        $this->assertSame(0, $this->conversion()->run(false, static fn (string $line) => null));
-        $this->assertSame(['cafe', 'Cafe', 'café'], array_column($this->snapshot('event'), 'slug'));
-    }
-
-    /** utf8mb4_bin pads: 'x' and 'x ' are one value in the unique index, so a duplicate. */
-    public function testTrailingSpaceIsADuplicate(): void
-    {
-        $this->legacy(self::event());
-        $this->insert('event', [['uuid' => 'a', 'slug' => 'x'], ['uuid' => 'b', 'slug' => 'x ']]);
-
         $failures = (new Checker($this->tables()))->check();
 
-        $this->assertSame([['event', 'b', 'slug', 'x ']], array_map(static fn (Failure $f): array => [$f->table, $f->id, $f->field, $f->value], $failures));
+        $this->assertSame([['event', 'b', 'slug', 'Cafe']], array_map(static fn (Failure $f): array => [$f->table, $f->id, $f->field, $f->value], $failures));
+        $this->pdo()->exec("DELETE FROM event WHERE uuid = 'b'");
+        $this->assertSame(0, $this->conversion()->run(false, static fn (string $line) => null));
+        $this->assertSame(['cafe', 'café'], array_column($this->snapshot('event'), 'slug'));
+    }
+
+    /**
+     * The rule's collation does not pad: 'x' and 'x ' are two values of a text field. An exact
+     * field's utf8mb4_bin pads: there they are one value in the unique index, so a duplicate.
+     */
+    public function testTrailingSpaceIsADuplicateOnlyOfAnExactField(): void
+    {
+        $def = new \Preflow\Data\TypeDefinition('event', 'event', self::STORAGE, [
+            'slug' => new \Preflow\Data\TypeFieldDefinition('slug', unique: true),
+            'key' => new \Preflow\Data\TypeFieldDefinition('key', unique: true, exact: true),
+        ]);
+        $entries = [RecordTables::entry($def)];
+        $this->legacy($def);
+        $this->insert('event', [['uuid' => 'a', 'slug' => 'x', 'key' => 'x'], ['uuid' => 'b', 'slug' => 'x ', 'key' => 'x ']]);
+
+        $failures = (new Checker($this->tables($entries)))->check();
+
+        $this->assertSame([['event', 'b', 'key', 'x ']], array_map(static fn (Failure $f): array => [$f->table, $f->id, $f->field, $f->value], $failures));
     }
 
     public function testShortValueOverItsLengthFails(): void

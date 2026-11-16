@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Data;
 
 use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\TextColumns;
+use Preflow\Data\Search\LooseFields;
 
 /**
  * @template T of Model
@@ -31,7 +33,7 @@ final class QueryBuilder
     /** Words of one loose search beyond this many are ignored (each binds once per text field). */
     public const MAX_LOOSE_WORDS = 32;
 
-    /** @var list<array{words: list<string>, fields: ?list<string>}> resolved at get() */
+    /** @var list<array{words: list<string>, term: string, fields: ?list<string>}> resolved at get() */
     private array $looseSearches = [];
 
     /**
@@ -135,9 +137,14 @@ final class QueryBuilder
         return $this;
     }
 
-    /** See Query::where(): where($field, $value) compares with "=". */
+    /**
+     * See Query::where(): where($field, $value) compares with "=".
+     *
+     * @throws \InvalidArgumentException when the type or model class has no such field (since 0.78)
+     */
     public function where(string $field, mixed $operator, mixed $value = null): self
     {
+        $this->assertField($field);
         $this->filters++;
         func_num_args() === 2 ? $this->query->where($field, $operator) : $this->query->where($field, $operator, $value);
         return $this;
@@ -146,6 +153,9 @@ final class QueryBuilder
     /** @param list<array{field: string, operator: string, value: mixed}> $conditions OR'd; see Query::whereAny() */
     public function whereAny(array $conditions): self
     {
+        foreach ($conditions as $condition) {
+            $this->assertField((string) ($condition['field'] ?? ''));
+        }
         $this->filters++;
         $this->query->whereAny($conditions);
         return $this;
@@ -153,6 +163,7 @@ final class QueryBuilder
 
     public function orWhere(string $field, mixed $operator, mixed $value = null): self
     {
+        $this->assertField($field);
         $this->filters++;
         func_num_args() === 2 ? $this->query->orWhere($field, $operator) : $this->query->orWhere($field, $operator, $value);
         return $this;
@@ -161,8 +172,33 @@ final class QueryBuilder
     /** @param bool $numeric compare as numbers even where the column stores text */
     public function orderBy(string $field, SortDirection $direction = SortDirection::Asc, bool $numeric = false): self
     {
+        $this->assertField($field);
         $this->query->orderBy($field, $direction, $numeric);
         return $this;
+    }
+
+    /**
+     * Refuses a field the type (or plain model class) does not have, so a misspelt or removed
+     * field fails the same on every driver: SQL names a missing column ("no such column"), but
+     * JSON would quietly match nothing (or, for IS NULL, everything). Allowed: the fields, the id
+     * field and system keys (a leading "_": versions, order, the columns adapters add); for a plain
+     * model class also its other properties. A builder without a type or class checks nothing.
+     */
+    private function assertField(string $field): void
+    {
+        if ($field === '' || str_starts_with($field, '_')) {
+            return;
+        }
+        if ($this->typeDef !== null) {
+            if ($field === $this->typeDef->idField || isset($this->typeDef->fields[$field])) {
+                return;
+            }
+            throw new \InvalidArgumentException("Unknown field \"{$field}\": type \"{$this->typeDef->key}\" has no such field to query by.");
+        }
+        // A plain model's columns are its migration's: a #[Field], the id, or another property of the class (#[Timestamps]).
+        if ($this->meta !== null && $field !== $this->meta->idField && !isset($this->meta->fields[$field]) && !property_exists($this->meta->modelClass, $field)) {
+            throw new \InvalidArgumentException("Unknown field \"{$field}\": model {$this->meta->modelClass} has no such field to query by.");
+        }
     }
 
     public function limit(int $limit): self
@@ -214,16 +250,21 @@ final class QueryBuilder
         if ($words === false || $words === []) {
             return $this;
         }
-        $this->looseSearches[] = ['words' => array_slice(array_values(array_unique($words)), 0, self::MAX_LOOSE_WORDS), 'fields' => $fields === null ? null : array_values($fields)];
+        $this->looseSearches[] = [
+            'words' => array_slice(array_values(array_unique($words)), 0, self::MAX_LOOSE_WORDS),
+            'term' => trim($term),
+            'fields' => $fields === null ? null : array_values($fields),
+        ];
 
         return $this;
     }
 
-    /** @return array{text: list<string>, relations: list<Relation>} */
+    /** @return array{text: list<string>, whole: list<string>, relations: list<Relation>} */
     private function looseFields(?array $requested): array
     {
         $kinds = $this->dataManager?->fieldKinds() ?? new FieldKinds();
         $text = [];
+        $whole = [];
         $relations = [];
 
         if ($this->typeDef !== null) {
@@ -238,13 +279,19 @@ final class QueryBuilder
                     }
                 }
             }
+            $own = LooseFields::text($this->typeDef, $kinds);
+            $exact = LooseFields::exact($this->typeDef, $kinds);
             foreach ($this->typeDef->fields as $name => $def) {
-                if (!self::looselySearchable($def) || ($requested !== null && !in_array($name, $requested, true))) {
+                if ($requested !== null && !in_array($name, $requested, true)) {
                     continue;
                 }
-                if (isset($relationFields[$name])) {
+                if (in_array($name, $exact, true)) {
+                    $whole[] = $name;
+                } elseif (!LooseFields::searchable($def)) {
+                    continue;
+                } elseif (isset($relationFields[$name])) {
                     $relations[] = $relationFields[$name];
-                } elseif ($kinds->isText($def->type)) {
+                } elseif (in_array($name, $own, true)) {
                     $text[] = $name;
                 }
             }
@@ -253,27 +300,18 @@ final class QueryBuilder
                 if ($attr->searchable === false || ($requested !== null && !in_array($name, $requested, true))) {
                     continue;
                 }
-                $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
-                if ($type instanceof \ReflectionNamedType && $type->getName() === 'string') {
-                    $text[] = $name;
+                $type = ModelSchema::fieldType($this->meta, (string) $name);
+                if ($type !== null && $kinds->isText($type) && !$kinds->isList($type)) {
+                    if ($attr->exact) {
+                        $whole[] = $name; // a machine value: found by its whole value only
+                    } else {
+                        $text[] = $name;
+                    }
                 }
             }
         }
 
-        return ['text' => $text, 'relations' => $relations];
-    }
-
-    /**
-     * Whether loose search may look at a type field: not when it says "searchable": false,
-     * and not when it is hidden unless it says "searchable": true.
-     */
-    private static function looselySearchable(TypeFieldDefinition $def): bool
-    {
-        if ($def->searchable !== null) {
-            return $def->searchable;
-        }
-
-        return ($def->config['hidden'] ?? false) !== true;
+        return ['text' => $text, 'whole' => $whole, 'relations' => $relations];
     }
 
     private function applyLooseSearches(): void
@@ -284,13 +322,11 @@ final class QueryBuilder
         $budget = self::RELATION_ID_BUDGET;
         foreach ($searches as $search) {
             $fields = $this->looseFields($search['fields']);
+            $term = count($search['words']) > 1 ? $search['term'] : null;
             foreach ($search['words'] as $word) {
-                $conditions = [];
-                foreach ($fields['text'] as $name) {
-                    $conditions[] = ['field' => $name, 'operator' => 'CONTAINS', 'value' => $word];
-                }
+                $conditions = LooseFields::conditions($fields['text'], $fields['whole'], $word, $term);
                 foreach ($fields['relations'] as $relation) {
-                    $ids = $this->relatedIds($relation, $word);
+                    $ids = $this->relatedIds($relation, $word, $term);
                     if ($ids === null || count($ids) > $budget) {
                         continue; // too many matches: this relation does not count for this word
                     }
@@ -312,7 +348,7 @@ final class QueryBuilder
     }
 
     /** @return list<string>|null ids of target records the word matches; null: more than RELATION_MATCH_LIMIT */
-    private function relatedIds(Relation $relation, string $word): ?array
+    private function relatedIds(Relation $relation, string $word, ?string $term = null): ?array
     {
         $dm = $this->dataManager;
         $registry = $dm?->getTypeRegistry();
@@ -324,6 +360,7 @@ final class QueryBuilder
 
         // The label field (the relation's, else the target's titleField, else its first string
         // field) and the text fields; hidden ones only where they say "searchable": true.
+        // An exact one is compared whole (LooseFields::conditions()).
         $names = [];
         $labelField = $relation->labelField ?? $target->titleField;
         $label = $labelField !== null ? ($target->fields[$labelField] ?? null) : null;
@@ -333,21 +370,23 @@ final class QueryBuilder
             }
         } else {
             foreach ($target->fields as $name => $def) {
-                if ($def->type === 'string' && self::looselySearchable($def)) {
+                if ($def->type === 'string' && LooseFields::searchable($def)) {
                     $names[] = $name;
                     break;
                 }
             }
         }
         foreach ($target->fields as $name => $def) {
-            if (self::looselySearchable($def) && $kinds->isText($def->type)) {
+            if (LooseFields::searchable($def) && $kinds->isText($def->type)) {
                 $names[] = $name;
             }
         }
-        $conditions = array_map(
-            static fn (string $name) => ['field' => $name, 'operator' => 'CONTAINS', 'value' => $word],
-            array_values(array_unique($names)),
-        );
+        $whole = LooseFields::exact($target, $kinds);
+        $names = array_values(array_diff(array_unique($names), $whole)); // an exact label is compared whole
+        if ($label !== null && $label->exact && $kinds->isText($label->type) && !in_array($label->name, $whole, true) && ($label->searchable === true || ($label->config['hidden'] ?? false) !== true)) {
+            $whole[] = $label->name;
+        }
+        $conditions = LooseFields::conditions($names, $whole, $word, $term);
         if ($conditions === []) {
             return [];
         }
@@ -444,13 +483,11 @@ final class QueryBuilder
         } elseif ($this->meta !== null) {
             $fields = [$this->meta->idField, ...array_keys($this->meta->fields)];
             foreach ($fields as $name) {
-                if (!property_exists($this->meta->modelClass, $name)) {
-                    continue; // the default id field of a model without an #[Id] property
-                }
-                $type = (new \ReflectionProperty($this->meta->modelClass, $name))->getType();
-                if ($type instanceof \ReflectionNamedType && in_array($type->getName(), ['int', 'float'], true)) {
+                // The default id field of a model without an #[Id] property has no type.
+                $type = ModelSchema::fieldType($this->meta, $name);
+                if ($type === 'number') {
                     $numeric[] = $name;
-                } elseif ($type instanceof \ReflectionNamedType && $type->getName() === 'bool') {
+                } elseif ($type === 'boolean') {
                     $boolean[] = $name;
                 }
             }
@@ -504,15 +541,30 @@ final class QueryBuilder
         };
     }
 
-    /** The query with the loose searches resolved and translatable fields compared in the locale. */
+    /**
+     * The query with the loose searches resolved, translatable fields compared in the locale and
+     * text fields compared by the text rule (TextColumns: a type's, or a plain model class's).
+     * Which field types are text comes from the DataManager's field kinds; a builder made without
+     * one (forType($driver, $def)) knows only the built-in ones (string, text), not the text
+     * kinds an extension registers.
+     */
     private function prepared(): Query
     {
         $this->applyLooseSearches();
-        $translatable = $this->typeDef?->translatableFields() ?? [];
+        $kinds = $this->dataManager?->fieldKinds() ?? new FieldKinds();
+        if ($this->typeDef === null) {
+            if ($this->meta !== null) {
+                $this->query->compareAsText(TextColumns::ofModel($this->meta, $kinds));
+            }
+
+            return $this->query;
+        }
+        $translatable = $this->typeDef->translatableFields();
         if ($translatable !== []) {
             $default = $this->typeDef->locales->default;
             $this->query->localize($translatable, $this->locale ?? $default, $default, $this->typeDef->locales->available);
         }
+        $this->query->compareAsText(TextColumns::of($this->typeDef, $kinds));
 
         return $this->query;
     }

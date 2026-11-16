@@ -318,6 +318,66 @@ final class AiDraftRouteTest extends TestCase
         $this->assertCount(1, $this->fake->requests());
     }
 
+    /** AI on with a draft limit of one. */
+    private function oneDraftAllowed(): void
+    {
+        $this->write('config/ai.php', "<?php\nreturn " . var_export([
+            'enabled' => true,
+            'provider' => 'claude',
+            'models' => ['claude' => 'claude-sonnet-5-5'],
+            'keys' => ['claude' => self::aiKeyEnv()],
+            'limits' => ['draft' => ['max' => 1]],
+        ], true) . ";\n");
+    }
+
+    /** A counted draft that then fails stays counted: the provider may have charged for it. */
+    #[RunInSeparateProcess]
+    public function test_a_failed_draft_still_uses_the_limit(): void
+    {
+        $this->oneDraftAllowed();
+        $this->script = [self::answer('<p>half', StopReason::Truncated), self::answer('<p>Two</p>')];
+        $this->staff('drafter', ['drafter' => self::DRAFTER]);
+
+        $this->logged(fn () => $this->assertSame(502, $this->draft()->getStatusCode()));
+        $this->assertSame(429, $this->draft()->getStatusCode());
+        $this->assertCount(1, $this->fake->requests());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_draft_over_the_limit_answers_429_with_retry_after_and_the_message(): void
+    {
+        $this->oneDraftAllowed();
+        $this->script = [self::answer('<p>One</p>'), self::answer('<p>Two</p>')];
+        $this->staff('drafter', ['drafter' => self::DRAFTER]);
+
+        $this->assertSame(200, $this->draft()->getStatusCode());
+        $res = $this->draft();
+
+        $this->assertSame(429, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertMatchesRegularExpression('/^\d+$/', $res->getHeaderLine('Retry-After'));
+        $this->assertGreaterThan(0, (int) $res->getHeaderLine('Retry-After'));
+        $this->assertSame('no-store', $res->getHeaderLine('Cache-Control'));
+        $minutes = (int) ceil((int) $res->getHeaderLine('Retry-After') / 60);
+        $this->assertSame("You have reached your limit of 1 AI drafts. You can write the next one in {$minutes} min.", self::json($res)['error']);
+        $this->assertCount(1, $this->fake->requests(), 'the writer ran once');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_draft_limits_without_the_app_key_answer_503_naming_it(): void
+    {
+        $this->oneDraftAllowed();
+        $this->staff('drafter', ['drafter' => self::DRAFTER]);
+        $dir = sys_get_temp_dir() . '/preflow-nokey-' . bin2hex(random_bytes(4));
+        $throttle = new \Preflow\Core\Throttle\Throttle(new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\JsonFileDriver($dir)]), '');
+        $this->session->container()->instance(\Preflow\Ai\Limits\AiLimits::class, new \Preflow\Ai\Limits\AiLimits($throttle, ['draft' => ['max' => 1]]));
+
+        $res = $this->draft();
+
+        $this->assertSame(503, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertStringContainsString('APP_KEY', self::json($res)['error']);
+        $this->assertCount(0, $this->fake->requests());
+    }
+
     #[RunInSeparateProcess]
     public function test_without_ai_draft_refused_and_no_button(): void
     {

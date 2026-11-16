@@ -18,6 +18,63 @@ final class MigrationRegistry
     /** @var array<string, true> the steps that run on any storage (sqlOnly: false) */
     private array $anyStorage = [];
 
+    /** @var array<string, true> the steps that run after every other one (last: true) */
+    private array $last = [];
+
+    /** @var array<string, \Closure> read-only checks `preflow migrate --pretend` runs */
+    private array $checks = [];
+
+    /** @var array<string, true> the checks that run on any storage */
+    private array $anyStorageChecks = [];
+
+    /** The storage the migrations run on in this run (ranOn()), null before or without one. */
+    private ?string $storage = null;
+
+    /**
+     * Names the storage `preflow migrate` runs the migrations on, before it runs the steps: a step
+     * that works on what the migrations made (their tables, MigrationColumns) works there only.
+     *
+     * @since 0.78
+     */
+    public function ranOn(?string $storage): void
+    {
+        $this->storage = $storage;
+    }
+
+    /** @since 0.78 */
+    public function storage(): ?string
+    {
+        return $this->storage;
+    }
+
+    /**
+     * A read-only check `preflow migrate --pretend` runs instead of the steps: it reports what a
+     * step would refuse (lines starting with "refused:") and changes nothing. sqlOnly as for
+     * afterMigrate().
+     *
+     * @param \Closure(): list<string> $check
+     * @since 0.78
+     */
+    public function check(string $name, \Closure $check, bool $sqlOnly = true): void
+    {
+        if (isset($this->checks[$name])) {
+            throw new \RuntimeException("Migration check [{$name}] is already registered.");
+        }
+        $this->checks[$name] = $check;
+        if (!$sqlOnly) {
+            $this->anyStorageChecks[$name] = true;
+        }
+    }
+
+    /**
+     * @return array<string, \Closure> the checks, in the order registered (as steps())
+     * @since 0.78
+     */
+    public function checks(?bool $sql = null): array
+    {
+        return $sql === false ? array_intersect_key($this->checks, $this->anyStorageChecks) : $this->checks;
+    }
+
     /** Missing directories are ignored. */
     public function addPath(string $dir): void
     {
@@ -43,8 +100,10 @@ final class MigrationRegistry
      *
      * @param \Closure(): list<string> $step Returns the changes made, one line each
      * @param bool $sqlOnly false: the step runs on any storage (@since 0.77.1)
+     * @param bool $last true: the step runs after every other one (a check of what they all did),
+     *        whenever it is registered; last steps keep their order among themselves (@since 0.78)
      */
-    public function afterMigrate(string $name, \Closure $step, bool $sqlOnly = true): void
+    public function afterMigrate(string $name, \Closure $step, bool $sqlOnly = true, bool $last = false): void
     {
         if (isset($this->steps[$name])) {
             throw new \RuntimeException("Migration step [{$name}] is already registered.");
@@ -54,21 +113,22 @@ final class MigrationRegistry
         if (!$sqlOnly) {
             $this->anyStorage[$name] = true;
         }
+        if ($last) {
+            $this->last[$name] = true;
+        }
     }
 
     /**
-     * The steps, in the order registered: every step for a site with SQL storage ($sql true or
+     * The steps, in the order registered (the last ones after the rest): every step for a site with SQL storage ($sql true or
      * null), only those registered with sqlOnly: false for one without ($sql false).
      *
      * @return array<string, \Closure>
      */
     public function steps(?bool $sql = null): array
     {
-        if ($sql !== false) {
-            return $this->steps;
-        }
+        $steps = [...array_diff_key($this->steps, $this->last), ...array_intersect_key($this->steps, $this->last)];
 
-        return array_intersect_key($this->steps, $this->anyStorage);
+        return $sql === false ? array_intersect_key($steps, $this->anyStorage) : $steps;
     }
 
     /** Whether the step runs only where the site has SQL storage (false for an unknown name). @since 0.77.1 */

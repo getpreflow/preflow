@@ -19,6 +19,7 @@ use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Schema;
 use Preflow\Testing\DataTestCase;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Testing\PlainDriver;
 use Preflow\Data\UniqueViolation;
 
 final class ThrottleTest extends DataTestCase
@@ -32,9 +33,11 @@ final class ThrottleTest extends DataTestCase
 
     private function migrate(?\PDO $pdo = null): void
     {
-        /** @var Migration $migration */
-        $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_22_000000_preflow_throttle.php';
-        $migration->up(new Schema($pdo ?? $this->getPdo()));
+        foreach (glob(dirname(__DIR__, 2) . '/migrations/*preflow_throttle*.php') ?: [] as $file) {
+            /** @var Migration $migration */
+            $migration = require $file;
+            $migration->up(new Schema($pdo ?? $this->getPdo()));
+        }
     }
 
     /** The rest of the test on MySQL: 'default' is a migrated MySQL storage. */
@@ -171,17 +174,14 @@ final class ThrottleTest extends DataTestCase
     private function oldRow(string $id, int $start): void
     {
         $this->dataManager()->saveType(new \Preflow\Data\DynamicRecord(
-            (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle),
+            $this->throttle->definition(),
             ['id' => $id, 'purpose' => 'code', 'hits' => 1, 'window_start' => $start],
         ), validate: false);
     }
 
     private function rowExists(string $id): bool
     {
-        return $this->dataManager()->findIn(
-            (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle),
-            $id,
-        ) !== null;
+        return $this->dataManager()->findIn($this->throttle->definition(), $id) !== null;
     }
 
     private Throttle $throttle;
@@ -209,6 +209,45 @@ final class ThrottleTest extends DataTestCase
         $this->assertTrue($this->rowExists('old2'));
     }
 
+    /** Retention: a row says when its window ends and is deleted once it has (a privacy statement's "kept for one hour"). */
+    public function test_a_row_is_deleted_once_its_window_has_ended(): void
+    {
+        foreach ($this->usesMysql() ? ['mysql'] : ['sqlite', 'json'] as $storage) {
+            $start = $this->now;
+            $this->throttle = $t = $this->throttle($storage);
+            $t->hit('contact', 'c1', 3600);
+            $id = hash('sha256', 'contact|c1');
+            $this->assertSame($start + 3600, (int) $this->dataManager()->findIn($t->definition(), $id)?->get('expires_at'), $storage);
+
+            $this->now = $start + 3599;
+            $this->assertSame(0, $t->prune(), "{$storage}: still in its window");
+            $this->now = $start + 3600;
+            $this->assertSame(1, $t->prune(), "{$storage}: the window has ended");
+            $this->assertFalse($this->rowExists($id), $storage);
+
+            $t->hit('contact', 'c1', 3600);
+            $this->now += 3600;
+            $this->assertFalse($t->tooMany('contact', 'c1', 1, 3600), $storage);
+            $this->assertFalse($this->rowExists($id), "{$storage}: tooMany() deletes an ended row it finds");
+
+            $t->hit('contact', 'c2', 60);
+            $this->now += 60;
+            $this->throttle($storage)->hit('login', 'c3', 600); // another request: its first window start prunes
+            $this->assertFalse($this->rowExists(hash('sha256', 'contact|c2')), "{$storage}: a hit that starts a window prunes ended rows of every purpose");
+            $this->now = $start;
+        }
+    }
+
+    public function test_a_restarted_window_moves_its_end(): void
+    {
+        $this->throttle = $t = $this->throttle();
+        $t->hit('code', 'c1', 60);
+        $this->now += 60;
+        $t->hit('code', 'c1', 60);
+
+        $this->assertSame($this->now + 60, (int) $this->dataManager()->findIn($t->definition(), hash('sha256', 'code|c1'))?->get('expires_at'));
+    }
+
     /** A third-party SQL database: the hit is one statement its Dialect writes, not MySQL's or SQLite's. */
     public function test_a_third_party_dialect_writes_the_counting_statement(): void
     {
@@ -233,12 +272,12 @@ final class ThrottleTest extends DataTestCase
         $sets = $driver->dialect()->sets;
         $this->assertCount(1, $sets);
         foreach ($sets[0] as $column => $expression) {
-            $this->assertMatchesRegularExpression('/"preflow_throttle"\."[a-z_]+"/', $expression, $column);
-            $this->assertStringNotContainsString('"', (string) preg_replace('/"preflow_throttle"\."[a-z_]+"/', '', $expression), "{$column}: a bare column in {$expression}");
+            $this->assertMatchesRegularExpression('/`preflow_throttle`\.`[a-z_]+`/', $expression, $column);
+            $this->assertStringNotContainsString('`', (string) preg_replace('/`preflow_throttle`\.`[a-z_]+`/', '', $expression), "{$column}: a bare column in {$expression}");
         }
     }
 
-    /** A dialect without a single insert-or-update statement counts under the lock instead. */
+    /** A dialect without a single insert-or-update statement counts under the driver's exclusive lock instead. */
     public function test_a_dialect_without_insert_or_update_counts_under_the_lock(): void
     {
         $driver = new ThirdPartyDriver($this->getPdo(), new ThirdPartyDialect(insertOrUpdate: false));
@@ -272,6 +311,96 @@ final class ThrottleTest extends DataTestCase
         $this->assertFalse($t->tooMany('code', 'c1', 1, 60));
     }
 
+    /** @return array<string, array{string}> */
+    public static function storages(): array
+    {
+        return ['json' => ['json'], 'sqlite' => ['sqlite']];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('storages')]
+    public function test_for_person_is_stable_and_hides_the_id(string $storage = 'sqlite'): void
+    {
+        $t = $this->throttle($storage);
+        $a = $t->forPerson('u1');
+        $this->now += 86400;
+        $this->assertSame($a, $t->forPerson('u1'), 'no daily rotation: an hour\'s window must not restart at midnight');
+        $this->assertSame(hash_hmac('sha256', 'person|u1', 'secret'), $a);
+        $this->assertNotSame($a, $t->forPerson('u2'));
+        $this->assertNotSame($a, $t->client(new ServerRequest('GET', '/', [], null, '1.1', ['REMOTE_ADDR' => 'u1'])));
+        $this->assertStringNotContainsString('u1', $a);
+
+        // Counted under the hash, never the raw id.
+        $t->hit('ai.draft', $a, 3600);
+        $this->assertTrue($t->tooMany('ai.draft', $a, 1, 3600), $storage);
+
+        foreach ([Throttle::DEFAULT_KEY, ''] as $key) {
+            $message = null;
+            try {
+                (new Throttle($this->dataManager(), $key, $storage, fn (): int => $this->now))->forPerson('u1');
+            } catch (\RuntimeException $e) {
+                $message = $e->getMessage();
+            }
+            $this->assertSame('Throttle needs APP_KEY (app.key) to be set; the default key would make client hashes reversible.', $message, "key \"{$key}\"");
+        }
+    }
+
+    public function test_has_key_is_false_for_an_empty_or_the_default_key(): void
+    {
+        $this->assertTrue($this->throttle()->hasKey());
+        $this->assertFalse((new Throttle($this->dataManager(), Throttle::DEFAULT_KEY))->hasKey());
+        $this->assertFalse((new Throttle($this->dataManager(), ''))->hasKey());
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('storages')]
+    public function test_hit_returns_the_count_in_the_window(string $storage = 'sqlite'): void
+    {
+        $t = $this->throttle($storage);
+        $this->assertSame(1, $t->hit('code', 'c1', 60), $storage);
+        $this->assertSame(2, $t->hit('code', 'c1', 60), $storage);
+        $this->assertSame(3, $t->hit('code', 'c1', 60), $storage);
+        $this->assertSame(1, $t->hit('code', 'c2', 60), 'another client counts apart');
+        $this->now += 60;
+        $this->assertSame(1, $t->hit('code', 'c1', 60), 'after the window: 1 again');
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('storages')]
+    public function test_retry_after_counts_down_to_the_window_end(string $storage = 'sqlite'): void
+    {
+        $t = $this->throttle($storage);
+        $this->assertSame(0, $t->retryAfter('ai.draft', 'p1', 3600), 'no row');
+
+        $this->now = 100;
+        $t->hit('ai.draft', 'p1', 3600);
+        $this->now = 1000;
+        $this->assertSame(2700, $t->retryAfter('ai.draft', 'p1', 3600), $storage);
+        $this->now = 3699;
+        $this->assertSame(1, $t->retryAfter('ai.draft', 'p1', 3600));
+        $this->now = 3700;
+        $this->assertSame(0, $t->retryAfter('ai.draft', 'p1', 3600), 'the window has ended');
+        $this->assertSame(0, $t->retryAfter('ai.translate', 'p1', 3600), 'another purpose has no row');
+    }
+
+    #[Group('mysql')]
+    public function test_for_person_is_stable_and_hides_the_id_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_for_person_is_stable_and_hides_the_id('mysql');
+    }
+
+    #[Group('mysql')]
+    public function test_hit_returns_the_count_in_the_window_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_hit_returns_the_count_in_the_window('mysql');
+    }
+
+    #[Group('mysql')]
+    public function test_retry_after_counts_down_to_the_window_end_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_retry_after_counts_down_to_the_window_end('mysql');
+    }
+
     #[Group('mysql')]
     public function test_allows_until_max_then_blocks_on_mysql(): void
     {
@@ -298,6 +427,13 @@ final class ThrottleTest extends DataTestCase
     {
         $this->onMysql();
         $this->test_purposes_are_separate();
+    }
+
+    #[Group('mysql')]
+    public function test_a_row_is_deleted_once_its_window_has_ended_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_a_row_is_deleted_once_its_window_has_ended();
     }
 
     #[Group('mysql')]
@@ -328,13 +464,26 @@ final class ThrottleTest extends DataTestCase
         $this->test_window_expires_exactly_at_boundary();
     }
 
-    /** Four processes, each on its own connection, hit one key 25 times: the upsert loses none. */
+    /** Four processes, each on its own connection, hit one key 25 times: the increment loses none. */
     #[Group('mysql')]
     #[RequiresPhpExtension('pcntl')]
     #[RequiresPhpExtension('posix')]
     public function test_concurrent_hits_are_all_counted_on_mysql(): void
     {
         $this->onMysql();
+        $this->hitConcurrently('default', static fn (): DataManager => new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]));
+
+        $this->assertSame(['hits' => 100, 'window_start' => $this->now], $this->storedRow($this->dataManager(), 'login', 'c1'));
+    }
+
+    /**
+     * Four forked processes hit login/c1 25 times each, through the DataManager $dm makes in
+     * the child (its own connection).
+     *
+     * @param \Closure(): DataManager $dm
+     */
+    private function hitConcurrently(string $storage, \Closure $dm): void
+    {
         $children = [];
         for ($i = 0; $i < 4; $i++) {
             $pid = pcntl_fork();
@@ -343,8 +492,7 @@ final class ThrottleTest extends DataTestCase
             }
             if ($pid === 0) {
                 try {
-                    $dm = new DataManager(['default' => new MysqlDriver(MysqlTestDatabase::reconnect())]);
-                    $t = new Throttle($dm, 'secret', 'default', fn (): int => $this->now);
+                    $t = new Throttle($dm(), 'secret', $storage, fn (): int => $this->now);
                     for ($n = 0; $n < 25; $n++) {
                         $t->hit('login', 'c1', 60);
                     }
@@ -358,8 +506,6 @@ final class ThrottleTest extends DataTestCase
         foreach ($children as $pid) {
             pcntl_waitpid($pid, $status);
         }
-
-        $this->assertSame(['hits' => 100, 'window_start' => $this->now], $this->storedRow($this->dataManager(), 'login', 'c1'));
     }
 
     /** @var list<string> */
@@ -390,9 +536,7 @@ final class ThrottleTest extends DataTestCase
         $this->tempFiles[] = $file;
         $dm = static fn (): DataManager => new DataManager(['default' => new SqliteDriver(new \PDO('sqlite:' . $file))]);
         $dmA = $dm();
-        /** @var Migration $migration */
-        $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_22_000000_preflow_throttle.php';
-        $migration->up(new Schema($dmA->driver('default')->pdo()));
+        $this->migrate($dmA->driver('default')->pdo());
 
         $hook = null;
         $a = new Throttle($dmA, 'secret', 'default', function () use (&$hook): int {
@@ -461,37 +605,48 @@ final class ThrottleTest extends DataTestCase
         $this->assertSame(['hits' => 2, 'window_start' => $this->now], $this->storedRow($dm, 'login', 'c1'));
     }
 
-    public function test_json_hit_locks(): void
+    /** Four processes, each with its own JSON driver on the data folder, hit one key 25 times: the type's lock loses none. */
+    #[RequiresPhpExtension('pcntl')]
+    #[RequiresPhpExtension('posix')]
+    public function test_concurrent_hits_are_all_counted_on_json(): void
+    {
+        $this->hitConcurrently('json', fn (): DataManager => new DataManager(['json' => $this->getJsonDriver()]));
+
+        $t = $this->throttle('json');
+        $this->assertTrue($t->tooMany('login', 'c1', 100, 60));
+        $this->assertFalse($t->tooMany('login', 'c1', 101, 60));
+    }
+
+    /** A driver with none of the capabilities: DataManager reads, adds and writes (not atomic, but counted). */
+    public function test_throttle_counts_through_a_driver_without_atomic_counters(): void
+    {
+        $t = new Throttle(new DataManager(['default' => new PlainDriver($this->getSqliteDriver())]), 'secret', 'default', fn (): int => $this->now);
+
+        $t->hit('code', 'c1', 60);
+        $t->hit('code', 'c1', 60);
+        $t->hit('code', 'c1', 60);
+        $this->assertTrue($t->tooMany('code', 'c1', 3, 60));
+        $this->assertFalse($t->tooMany('code', 'c1', 4, 60));
+
+        $this->now += 60;
+        $t->hit('code', 'c1', 60);
+        $this->assertTrue($t->tooMany('code', 'c1', 1, 60));
+        $this->assertFalse($t->tooMany('code', 'c1', 2, 60), 'the window restarted at one hit');
+    }
+
+    /** The lock directory is ignored since 0.78: the JSON driver's own type lock guards the count. */
+    public function test_throttle_no_longer_writes_lock_files(): void
     {
         $lockDir = sys_get_temp_dir() . '/preflow_throttle_locks_' . uniqid();
+        mkdir($lockDir);
         $this->tempFiles[] = $lockDir;
-        $lockFile = $lockDir . '/throttle-' . hash('sha256', 'login|c1') . '.lock';
-        $heldDuringHit = [];
-        $t = new Throttle($this->dataManager(), 'secret', 'json', function () use ($lockFile, &$heldDuringHit): int {
-            if (is_file($lockFile)) {
-                $probe = fopen($lockFile, 'c');
-                $heldDuringHit[] = !flock($probe, LOCK_EX | LOCK_NB);
-                fclose($probe);
-            }
-
-            return $this->now;
-        }, $lockDir);
+        $t = new Throttle($this->dataManager(), 'secret', 'json', fn (): int => $this->now, $lockDir);
 
         $t->hit('login', 'c1', 60);
         $t->hit('login', 'c1', 60);
-        $t->hit('login', 'c1', 60);
 
-        $this->assertFileExists($lockFile);
-        $this->assertNotEmpty($heldDuringHit);
-        $this->assertNotContains(false, $heldDuringHit, 'the lock is held while hit() reads and writes');
-        // Released afterwards.
-        $probe = fopen($lockFile, 'c');
-        $this->assertTrue(flock($probe, LOCK_EX | LOCK_NB));
-        flock($probe, LOCK_UN);
-        fclose($probe);
-
-        $this->assertTrue($t->tooMany('login', 'c1', 3, 60));
-        $this->assertFalse($t->tooMany('login', 'c1', 4, 60));
+        $this->assertSame([], glob($lockDir . '/*') ?: []);
+        $this->assertTrue($t->tooMany('login', 'c1', 2, 60));
     }
 }
 

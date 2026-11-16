@@ -18,7 +18,9 @@ interface SchemaGrammar
     public function columnType(string $kind, ?int $length = null): string;
 
     /**
-     * @param list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool}> $columns
+     * @param list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, exact?: bool}> $columns
+     *        exact (since 0.78): a string or text column that compares exactly (Table::exact()); a
+     *        grammar with TextCollations gives the others its text type
      */
     public function createTable(string $table, array $columns): string;
 
@@ -70,7 +72,7 @@ interface SchemaGrammar
     /** Throws LogicException when this server cannot drop a column (before any SQL runs); a no-op when it can. */
     public function assertCanDropColumn(\PDO $pdo): void;
 
-    /** Adds a nullable column; a null type means the grammar's free-text type. */
+    /** Adds a nullable column; a null type means the grammar's free-text type, compared exactly (it names its collation where a table default could differ). */
     public function addColumn(string $table, string $column, ?string $type = null): string;
 
     /** ALTER TABLE … RENAME COLUMN … TO … (SQLite 3.25+, MySQL 8, PostgreSQL); the data stays. Since 0.65. */

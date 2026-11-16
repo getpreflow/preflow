@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Driver;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\QueryCompiler;
 use Preflow\Data\Query;
 use Preflow\Data\SortDirection;
@@ -22,7 +23,7 @@ final class QueryCompilerTest extends TestCase
     {
         [$sql, $bindings] = $this->compiler->compile('posts', new Query());
 
-        $this->assertSame('SELECT * FROM "posts"', $sql);
+        $this->assertSame('SELECT * FROM `posts`', $sql);
         $this->assertSame([], $bindings);
     }
 
@@ -31,7 +32,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "status" = ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE `status` = ?', $sql);
         $this->assertSame(['active'], $bindings);
     }
 
@@ -40,7 +41,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active')->where('type', 'blog');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "status" = ? AND "type" = ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE `status` = ? AND `type` = ?', $sql);
         $this->assertSame(['active', 'blog'], $bindings);
     }
 
@@ -49,7 +50,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active')->orWhere('status', 'pending');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "status" = ? OR "status" = ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE `status` = ? OR `status` = ?', $sql);
         $this->assertSame(['active', 'pending'], $bindings);
     }
 
@@ -58,7 +59,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->orderBy('created', SortDirection::Desc)->orderBy('title');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" ORDER BY "created" DESC, "title" ASC', $sql);
+        $this->assertSame('SELECT * FROM `posts` ORDER BY `created` DESC, `title` ASC', $sql);
     }
 
     public function test_numeric_order_by(): void
@@ -66,7 +67,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->orderBy('_order', numeric: true)->orderBy('uuid');
         [$sql] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" ORDER BY ("_order" + 0) ASC, "uuid" ASC', $sql);
+        $this->assertSame('SELECT * FROM `posts` ORDER BY (`_order` + 0) ASC, `uuid` ASC', $sql);
     }
 
     public function test_limit_offset(): void
@@ -74,7 +75,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->limit(10)->offset(20);
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" LIMIT 10 OFFSET 20', $sql);
+        $this->assertSame('SELECT * FROM `posts` LIMIT 10 OFFSET 20', $sql);
     }
 
     public function test_search(): void
@@ -82,9 +83,9 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->search('hello', ['title', 'body']);
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertStringContainsString('LIKE', $sql);
-        $this->assertStringContainsString('"title"', $sql);
-        $this->assertStringContainsString('"body"', $sql);
+        $this->assertStringContainsString('ulike(?, `title`)', $sql);
+        $this->assertStringContainsString('`title`', $sql);
+        $this->assertStringContainsString('`body`', $sql);
         $this->assertContains('%hello%', $bindings);
     }
 
@@ -93,7 +94,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('title', 'LIKE', '%test%');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "title" LIKE ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE ulike(?, `title`)', $sql, 'SQLite matches by the text-matching rule');
         $this->assertSame(['%test%'], $bindings);
     }
 
@@ -102,7 +103,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active');
         [$sql, $bindings] = $this->compiler->compileCount('posts', $q);
 
-        $this->assertSame('SELECT COUNT(*) as total FROM "posts" WHERE "status" = ?', $sql);
+        $this->assertSame('SELECT COUNT(*) as total FROM `posts` WHERE `status` = ?', $sql);
         $this->assertSame(['active'], $bindings);
     }
 
@@ -117,7 +118,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE "status" = ? ORDER BY "title" ASC LIMIT 5 OFFSET 10',
+            'SELECT * FROM `posts` WHERE `status` = ? ORDER BY `title` ASC LIMIT 5 OFFSET 10',
             $sql
         );
     }
@@ -143,7 +144,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE ("status" = ?) AND ("title" LIKE ? ESCAPE \'!\' OR "id" IN (SELECT value FROM json_each(?)) OR "kind" = ?)',
+            'SELECT * FROM `posts` WHERE (`status` = ?) AND (ulike(?, `title`, \'!\') OR `id` IN (SELECT value FROM json_each(?)) OR `kind` = ?)',
             $sql,
         );
         $this->assertSame(['live', '%50!%!_!!%', '["a","b"]', 'x'], $bindings);
@@ -157,7 +158,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compileCount('posts', $q);
 
         $this->assertSame(
-            'SELECT COUNT(*) as total FROM "posts" WHERE (0 = 1) AND ("title" LIKE ? ESCAPE \'!\')',
+            'SELECT COUNT(*) as total FROM `posts` WHERE (0 = 1) AND (ulike(?, `title`, \'!\'))',
             $sql,
         );
         $this->assertSame(['%a%'], $bindings);
@@ -170,7 +171,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE (("tags" IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid("tags") THEN "tags" ELSE \'[]\' END) AS held WHERE held.value IN (SELECT value FROM json_each(?)))))',
+            'SELECT * FROM `posts` WHERE ((`tags` IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(`tags`) THEN `tags` ELSE \'[]\' END) AS held WHERE held.value IN (SELECT value FROM json_each(?)))))',
             $sql,
         );
         $this->assertSame(['["a","b"]', '["a","b"]'], $bindings);
@@ -196,7 +197,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM `posts` WHERE ((`tags` IN (?,?) OR EXISTS (SELECT 1 FROM JSON_TABLE(CASE WHEN JSON_VALID(`tags`) THEN `tags` ELSE \'[]\' END, \'$[*]\' COLUMNS(v VARCHAR(191) PATH \'$\')) AS held WHERE held.v IN (?,?))))',
+            'SELECT * FROM `posts` WHERE ((`tags` IN (?,?) OR EXISTS (SELECT 1 FROM JSON_TABLE(CASE WHEN JSON_VALID(`tags`) THEN `tags` ELSE \'[]\' END, \'$[*]\' COLUMNS(v VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PATH \'$\')) AS held WHERE held.v IN (?,?))))',
             $sql,
         );
         $this->assertSame(['a', 'b', 'a', 'b'], $bindings);
@@ -209,8 +210,8 @@ final class QueryCompilerTest extends TestCase
 
         [$sql] = $this->compiler->compile('posts', $q);
 
-        $this->assertStringContainsString("json_extract(\"title\", '$.\"de\"')", $sql);
-        $this->assertStringContainsString("LIKE ? ESCAPE '!'", $sql);
+        $this->assertStringContainsString("json_extract(`title`, '$.\"de\"')", $sql);
+        $this->assertStringContainsString("ulike(?, (CASE", $sql);
     }
 
     public function test_empty_has_matches_nothing(): void
@@ -219,7 +220,7 @@ final class QueryCompilerTest extends TestCase
 
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE (0 = 1)', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE (0 = 1)', $sql);
         $this->assertSame([], $bindings);
     }
 
@@ -231,7 +232,112 @@ final class QueryCompilerTest extends TestCase
         [$sql] = $this->compiler->compile('posts', $q);
         [$countSql] = $this->compiler->compileCount('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $sql);
-        $this->assertSame('SELECT COUNT(*) as total FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $countSql);
+        $this->assertSame('SELECT * FROM `posts` WHERE (`a` = ? OR `b` = ?) AND (`c` = ?)', $sql);
+        $this->assertSame('SELECT COUNT(*) as total FROM `posts` WHERE (`a` = ? OR `b` = ?) AND (`c` = ?)', $countSql);
     }
+
+    /**
+     * What MysqlDriver reads of a table's columns (QueryCompiler's $columns).
+     *
+     * @param array<string, array{bounded?: bool, rule?: bool}> $columns
+     */
+    private static function mysql(array $columns): QueryCompiler
+    {
+        $facts = array_map(static fn (array $c): array => ['bounded' => $c['bounded'] ?? false, 'rule' => $c['rule'] ?? false], $columns);
+
+        return new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci'), static fn (string $table): array => $facts);
+    }
+
+    /** MariaDB sorts long text by first-level weights only: WEIGHT_STRING there, a VARCHAR column as it is (its index stays usable). */
+    public function test_a_short_text_field_sorts_by_its_column_a_long_one_by_its_weights(): void
+    {
+        $compiler = self::mysql(['slug' => ['bounded' => true, 'rule' => true], 'title' => ['rule' => true]]);
+        $query = (new Query())->orderBy('slug')->orderBy('title', SortDirection::Desc);
+        $query->compareAsText(['slug', 'title']);
+
+        $this->assertSame('SELECT * FROM `page` ORDER BY `slug` ASC, WEIGHT_STRING(`title`) DESC', $compiler->compile('page', $query)[0]);
+
+        $unknown = (new Query())->orderBy('slug');
+        $unknown->compareAsText(['slug']);
+        $this->assertSame(
+            'SELECT * FROM `page` ORDER BY WEIGHT_STRING(`slug`) ASC',
+            (new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci')))->compile('page', $unknown)[0],
+            'without column facts: the safe way',
+        );
+    }
+
+    /** One read per table, a missing table included; forgetFacts() makes the next compile read it again. */
+    public function test_column_facts_are_read_once_also_for_a_missing_table_until_forgotten(): void
+    {
+        $reads = 0;
+        $present = false;
+        $compiler = new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci'), static function (string $table) use (&$reads, &$present): array {
+            $reads++;
+
+            return $present ? ['slug' => ['bounded' => true, 'rule' => true]] : [];
+        });
+        $query = (new Query())->orderBy('slug');
+        $query->compareAsText(['slug']);
+
+        $before = $compiler->compile('page', $query)[0];
+        $compiler->compile('page', $query);
+        $this->assertSame(1, $reads, 'a table that is not there is read once, not on every compile');
+
+        $present = true;
+        $this->assertSame($before, $compiler->compile('page', $query)[0], 'remembered until told');
+        $compiler->forgetFacts('other');
+        $this->assertSame(1, $reads, 'another table\'s entry is not touched');
+
+        $compiler->forgetFacts('page');
+        $this->assertSame('SELECT * FROM `page` ORDER BY `slug` ASC', $compiler->compile('page', $query)[0], 'the made table is read again');
+        $this->assertSame(2, $reads);
+
+        $compiler->forgetFacts();
+        $compiler->compile('page', $query);
+        $this->assertSame(3, $reads);
+    }
+
+    /** A list in a full-text index sits in a column of the rule's collation: a query naming its text fields compares it exactly. */
+    public function test_a_field_compared_exactly_names_the_exact_comparison(): void
+    {
+        $compiler = self::mysql(['code' => [], 'tags' => ['rule' => true], 'title' => ['rule' => true]]);
+        $query = (new Query())->where('code', 'AbC')->orderBy('tags')
+            ->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['PHP']], ['field' => 'tags', 'operator' => 'IN', 'value' => ['x']]]);
+        $query->compareAsText(['title']);
+
+        [$sql] = $compiler->compile('note', $query);
+        $this->assertStringContainsString('WHERE (`code` = ?)', $sql, 'an exact column needs nothing');
+        $this->assertStringContainsString('((CAST(`tags` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) IN (?)', $sql);
+        $this->assertStringContainsString('COLUMNS(v VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PATH', $sql, 'a list\'s members compare exactly');
+        $this->assertStringEndsWith('ORDER BY (CAST(`tags` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) ASC', $sql);
+
+        $byHand = (new Query())->whereAny([['field' => 'tags', 'operator' => 'IN', 'value' => ['x']]]);
+        $this->assertStringContainsString('(`tags` IN (?))', $compiler->compile('note', $byHand)[0], 'a query naming no text fields compares by the column');
+    }
+
+    /** A plain model's string() column is a VARCHAR: plain ORDER BY, index kept; its text() column by its weights. */
+    public function test_a_plain_models_short_text_field_sorts_by_its_column(): void
+    {
+        $dm = new \Preflow\Data\DataManager(['sqlite' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))], 'sqlite');
+        $query = $dm->query(SortedNote::class)->orderBy('slug')->orderBy('title')->aggregate()->query(); // the query as QueryBuilder prepares it
+
+        [$sql] = self::mysql(['slug' => ['bounded' => true, 'rule' => true], 'title' => ['rule' => true]])->compile('sorted_note', $query);
+        $this->assertSame('SELECT * FROM `sorted_note` ORDER BY `slug` ASC, WEIGHT_STRING(`title`) ASC', $sql);
+    }
+}
+
+#[\Preflow\Data\Attributes\Entity(table: 'sorted_note', storage: 'sqlite')]
+final class SortedNote extends \Preflow\Data\Model
+{
+    #[\Preflow\Data\Attributes\Id]
+    public string $uuid = '';
+
+    #[\Preflow\Data\Attributes\Field(unique: true)]
+    public string $slug = '';
+
+    #[\Preflow\Data\Attributes\Field]
+    public string $title = '';
+
+    #[\Preflow\Data\Attributes\Field(exact: true)]
+    public string $code = '';
 }

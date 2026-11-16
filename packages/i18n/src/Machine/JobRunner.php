@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Preflow\I18n\Machine;
 
 use Preflow\Ai\AiUnavailable;
+use Preflow\Ai\Limits\AiLimitReached;
+use Preflow\Ai\Limits\AiLimits;
+use Preflow\Ai\Limits\AiLimitsMisconfigured;
 
 /**
  * Runs a translation job one item at a time, so a request or cron tick stays short and a failure
@@ -17,6 +20,11 @@ use Preflow\Ai\AiUnavailable;
  * on that item as "progress" => {locale, done, total}: before the first request and after each
  * one, so a screen can show "120 of 410 texts" for a record that takes minutes. It is the
  * progress of the language in hand and goes away when the item is through (its counts take over).
+ *
+ * With AiLimits (since 0.78), each item of a job someone queued counts against that person's
+ * `translate` limit (Job::$queuedBy), whoever steps it (a browser or the cron worker). A job over
+ * its person's limit waits: step() throws AiLimitReached and the job is neither stopped nor failed.
+ * A job without a person (translate:plan from the command line) is not limited.
  */
 final class JobRunner
 {
@@ -27,6 +35,7 @@ final class JobRunner
         private readonly JobStore $store,
         private readonly RecordLease $lease,
         private readonly ?\Closure $now = null,
+        private readonly ?AiLimits $limits = null,
     ) {}
 
     /**
@@ -100,6 +109,11 @@ final class JobRunner
      * job never undo each other's results.
      *
      * @throws AiUnavailable after the job has been stopped and saved; items done so far stay done
+     * @throws AiLimitsMisconfigured after the job has been stopped and saved with its message: the limits
+     *         need a setting (APP_KEY) the site lacks, so no run can ever count an item
+     * @throws AiLimitReached when the item about to be translated passes the limit of the person who
+     *         queued the job: the item stays pending (its claim released), the job keeps its state
+     *         and message, and the cost of this step so far is saved
      */
     public function step(string $jobId, int $maxItems = 1): Job
     {
@@ -180,6 +194,10 @@ final class JobRunner
                         continue;
                     }
                     $taken++;
+                    // What costs money is counted against the person who queued it, before it is spent.
+                    if ($this->limits !== null && $job->queuedBy !== null && $job->queuedBy !== '') {
+                        $this->limits->take(AiLimits::TRANSLATE, $job->queuedBy);
+                    }
                     try {
                         $item = $this->processItem($source, $current, $id, $unmergedCost, $costMerged);
                     } catch (AiUnavailable $e) {
@@ -213,6 +231,20 @@ final class JobRunner
                     $stored->state = $stored->pending() === [] ? 'done' : 'queued';
                 }
             });
+        } catch (AiLimitReached $e) {
+            // The job waits for its person's limit: nothing about it changes but the cost already spent.
+            $this->update($jobId, $mergeCost);
+            throw $e;
+        } catch (AiLimitsMisconfigured $e) {
+            // A site's setup, not a wait: stopped with the reason, so no run retries it.
+            $this->update($jobId, static function (Job $stored) use ($e, $mergeCost): void {
+                $mergeCost($stored);
+                if ($stored->state !== 'done') {
+                    $stored->state = 'stopped';
+                    $stored->message = $e->getMessage();
+                }
+            });
+            throw $e;
         } catch (AiUnavailable $e) {
             $this->update($jobId, static function (Job $stored) use ($e, $mergeCost): void {
                 $mergeCost($stored);

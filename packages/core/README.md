@@ -339,17 +339,25 @@ $throttle->hit('login', $client, windowSeconds: 600);     // after a failed atte
 $throttle->clear('login', $client);                       // after a success
 ```
 
-- **Atomic hits.** Concurrent requests never lose a hit. On SQL, `hit()` is one upsert
-  (`DataManager::execute()`) that counts the attempt or restarts an expired window; on the
-  JSON driver an exclusive file lock in `storage/locks` guards the read-modify-write.
+- **Atomic hits.** Concurrent requests never lose a hit. `hit()` counts through
+  `DataManager::incrementIn()` with a `CounterReset` that restarts an expired window: on SQL one
+  upsert, on the JSON driver the type's own lock (no lock directory since 0.78; the
+  constructor's `$lockDir` is ignored). On a third-party storage without `AtomicCounters` it is
+  a read and a write, under the type's lock when the storage has `ExclusiveWrites`.
   The limit itself is still a fixed window, so a burst at a window's edge can double.
 - **Windows must be much shorter than a day.** The client hash rotates at 00:00 UTC, so a
   window spanning midnight starts over.
 - **No raw IP is stored**, only an HMAC of `REMOTE_ADDR` (forwarded headers are ignored).
   IPv6 clients count by their /64 prefix, since one subscriber usually holds a whole /64.
   Without a `REMOTE_ADDR` (CLI, tests) all requests are one `unknown` client; it never throws.
-- `prune(olderThanSeconds: 172800)` deletes old rows and returns how many; `hit()` runs it
-  opportunistically, once per request when a new window starts.
+- **Rows go when their window ends (0.78).** Each row stores when its window ends
+  (`expires_at`, set by `hit()`), and `prune()` deletes the rows whose window has ended (rows
+  from before 0.78, without `expires_at`, two days after their window started, as before). The
+  first hit that starts a window runs it (once per request), and `tooMany()`/`retryAfter()` delete
+  an ended row they find. A quiet site keeps a row until the next request that counts: when a
+  page promises a retention ("kept for one hour"), run `php preflow throttle:prune` from cron
+  (every few minutes) as well. `prune(olderThanSeconds: …)` deletes by window start instead, ended
+  or not, and returns how many. `definition()` is the rows' type (for reading them in tests).
 
 ### Activity log (0.77)
 
@@ -503,12 +511,15 @@ return [
     'exempt' => [],          // path prefixes without a check, added to '/--component/'
     'trusted_origins' => [], // other origins allowed to post, e.g. 'https://stage.example.com'
     'sign_in_paths' => [],   // sign-in forms of the site; packages register their own
+    'forget_input' => [],    // forms whose fields are never kept after an expired session (0.78)
+    'forget_fields' => [],   // field names never kept, on any form (0.78)
 ];
 ```
 
-Paths in `exempt` and `sign_in_paths` are compared without the locale prefix (`/de/login`
-is `/login`); sign-in paths match exactly (a trailing slash is ignored), exempt paths as
-prefixes of whole segments (`/hooks` covers `/hooks` and `/hooks/stripe`, not `/hookshot`).
+Paths in `exempt`, `sign_in_paths` and `forget_input` are compared without the locale prefix
+(`/de/login` is `/login`); sign-in paths match exactly (a trailing slash is ignored), exempt and
+forget-input paths as prefixes of whole segments (`/hooks` covers `/hooks` and `/hooks/stripe`,
+not `/hookshot`).
 
 **Failures** are a 403, in one of two kinds:
 
@@ -539,7 +550,10 @@ With a passing origin:
    in en/de/fr/it, or the site's `csrf.session_expired` translation) and the posted fields kept
    as old input, so the form shows them again (`Preflow\Core\Http\OldInput`, read by
    validation's `old()`, the form builder and members; never kept: `_csrf_token`, fields whose
-   name contains `password`, uploaded files, and nothing when the kept fields exceed 64 KB). htmx gets a 204 with `HX-Refresh: true`, a JSON
+   name contains `password`, the fields `csrf.forget_fields` names, uploaded files, and nothing
+   when the kept fields exceed 64 KB). A form that promises to store nothing (a contact form
+   whose privacy note says so) lists its path in `csrf.forget_input`: it comes back with the
+   warning and empty fields, so the visitor's text never sits in the session. htmx gets a 204 with `HX-Refresh: true`, a JSON
    client (`Accept: application/json`) a 409 `{"error":"session_expired"}`.
 
 Nothing runs in the visitor's name: a remember-me cookie could sign them in again, so the data

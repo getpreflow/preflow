@@ -4,16 +4,34 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Driver;
 
+use Preflow\Data\Text\TextMatch;
 use Preflow\Data\UniqueViolation;
 
-final class SqliteDialect implements Dialect, PatternMatching
+final class SqliteDialect implements Dialect, PatternMatching, TextComparison
 {
     /** The Unicode LIKE function prepare() registers on a connection: ulike(pattern, value[, escape]). @since 0.77 */
     public const string LIKE_FUNCTION = 'ulike';
 
+    /**
+     * The collation of the text rule (TextMatch::compare(): ignore case, respect accents) that
+     * prepare() registers on a connection; the columns of text fields declare it
+     * (SqliteGrammar::textColumnType()), so =, IN, ORDER BY, GROUP BY and a unique index on them
+     * follow the rule. A connection without it cannot compare or index such a column ("no such
+     * collation sequence").
+     *
+     * @since 0.78
+     */
+    public const string TEXT_COLLATION = 'preflow_text';
+
+    /**
+     * `name`, with backticks: SQLite reads a double-quoted name it cannot resolve as a string
+     * literal (its "double-quoted string" misfeature, which PDO cannot switch off), so a query on a
+     * missing column would quietly match nothing. A backtick-quoted name is always a name: a
+     * missing column is an error, as on MySQL. (Since 0.78; double quotes before.)
+     */
     public function quoteIdentifier(string $name): string
     {
-        return '"' . str_replace('"', '""', $name) . '"';
+        return '`' . str_replace('`', '``', $name) . '`';
     }
 
     public function updateSql(string $table, array $columns, string $idField): string
@@ -125,10 +143,22 @@ final class SqliteDialect implements Dialect, PatternMatching
         return "CAST(NULLIF({$expression}, '') AS INTEGER)";
     }
 
-    /** SQLite compares text with BINARY unless a column says otherwise; the tables here do not. */
+    /** By bytes, whatever the column's collation (the columns of text fields compare by the rule). */
     public function exactText(string $expression): string
     {
+        return "({$expression} COLLATE BINARY)";
+    }
+
+    /** SQLite sorts by the collation of the column, or of textValue(). @since 0.78 */
+    public function textOrder(string $expression): string
+    {
         return $expression;
+    }
+
+    /** By the rule (TEXT_COLLATION), for a value without the column's collation (a JSON value). @since 0.78 */
+    public function textValue(string $expression): string
+    {
+        return "({$expression} COLLATE " . self::TEXT_COLLATION . ')';
     }
 
     /**
@@ -141,15 +171,17 @@ final class SqliteDialect implements Dialect, PatternMatching
     }
 
     /**
-     * LIKE that ignores case for every letter ("über" finds "Über", as MySQL's utf8mb4 collations
-     * do): a pattern of ASCII characters only takes SQLite's native LIKE (it folds ASCII case, and
+     * LIKE under the text-matching rule (TextMatch: case and width ignored, accents count): a
+     * pattern TextMatch::asciiSafe() accepts takes SQLite's native LIKE (it folds ASCII case, and
      * its _ takes one character, an umlaut too), any other the PHP function ulike() that prepare()
-     * registers, which costs a PHP call per row compared.
+     * registers, which costs a PHP call per row compared. Native LIKE knows no other character
+     * than A for a, so every pattern with a character another one folds into goes to ulike():
+     * with the fullwidth forms (ａ is a, ％ is %), that is every printable ASCII character.
      */
     public function likeSql(string $column, string $pattern, bool $not = false, ?string $escape = null): string
     {
         $escapeSql = $escape === null ? null : "'" . str_replace("'", "''", $escape) . "'";
-        if (preg_match('/[^\x00-\x7F]/', $pattern) !== 1) {
+        if (TextMatch::asciiSafe($pattern)) {
             return $column . ($not ? ' NOT LIKE ?' : ' LIKE ?') . ($escapeSql === null ? '' : " ESCAPE {$escapeSql}");
         }
 
@@ -158,35 +190,39 @@ final class SqliteDialect implements Dialect, PatternMatching
 
     /**
      * Readies a connection: registers ulike() (LIKE_FUNCTION, like()), the Unicode match likeSql()
-     * uses for patterns with other than ASCII characters; SQLite's own like() stays. A Pdo\Sqlite
-     * (PDO::connect('sqlite:…')) registers it through createFunction(); a plain PDO only through
-     * sqliteCreateFunction(), deprecated since PHP 8.5, whose deprecation is kept out of this one call.
+     * uses for patterns native LIKE cannot match by the rule (SQLite's own like() stays), and the
+     * collation preflow_text (TEXT_COLLATION, TextMatch::compare()) that the columns of text fields
+     * declare. SqliteDriver calls it on its connection; code that opens its own PDO on a Preflow
+     * SQLite file calls it too (Grammars::for() refuses a connection without it). A Pdo\Sqlite
+     * (PDO::connect('sqlite:…')) registers through createFunction() and createCollation(); a
+     * plain PDO only through sqliteCreateFunction() and sqliteCreateCollation(), deprecated since
+     * PHP 8.5, whose deprecation is kept out of these calls.
      *
-     * @since 0.77
+     * @since 0.77 (the collation since 0.78)
      */
     public static function prepare(\PDO $pdo): void
     {
         $like = self::like(...);
+        $compare = TextMatch::compare(...);
         if ($pdo instanceof \Pdo\Sqlite) {
             $pdo->createFunction(self::LIKE_FUNCTION, $like, -1, \Pdo\Sqlite::DETERMINISTIC);
+            $pdo->createCollation(self::TEXT_COLLATION, $compare);
 
             return;
         }
         set_error_handler(static fn (int $level): bool => $level === E_DEPRECATED, E_DEPRECATED);
         try {
             $pdo->sqliteCreateFunction(self::LIKE_FUNCTION, $like, -1, \PDO::SQLITE_DETERMINISTIC);
+            $pdo->sqliteCreateCollation(self::TEXT_COLLATION, $compare);
         } finally {
             restore_error_handler();
         }
     }
 
-    /** @var array<string, string> LIKE pattern (with its escape) => regular expression */
-    private static array $patterns = [];
-
     /**
-     * SQL LIKE as ulike(pattern, value[, escape]) is called: % any text, _ one character,
-     * the escape character takes the next one literally; letters compared after mb_strtolower(),
-     * so case is ignored for every alphabet. NULL when the value or the pattern is NULL.
+     * SQL LIKE as ulike(pattern, value[, escape]) is called: TextMatch::like() (% any text, _ one
+     * character, the escape character takes the next one literally, case and width folded,
+     * accents count). NULL when the value or the pattern is NULL.
      *
      * @since 0.77
      */
@@ -195,32 +231,8 @@ final class SqliteDialect implements Dialect, PatternMatching
         if ($pattern === null || $value === null) {
             return null;
         }
-        $pattern = (string) $pattern;
-        $escape = $escape === null ? '' : (string) $escape;
-        $key = $escape . "\0" . $pattern;
-        if (!isset(self::$patterns[$key])) {
-            if (count(self::$patterns) > 500) {
-                self::$patterns = [];
-            }
-            $regex = '';
-            $chars = mb_str_split(mb_strtolower($pattern));
-            $escapeChar = mb_strtolower($escape);
-            for ($i = 0, $n = count($chars); $i < $n; $i++) {
-                $c = $chars[$i];
-                if ($escapeChar !== '' && $c === $escapeChar && $i + 1 < $n) {
-                    $regex .= preg_quote($chars[++$i], '~');
-                } elseif ($c === '%') {
-                    $regex .= '.*';
-                } elseif ($c === '_') {
-                    $regex .= '.';
-                } else {
-                    $regex .= preg_quote($c, '~');
-                }
-            }
-            self::$patterns[$key] = '~^' . $regex . '$~su';
-        }
 
-        return preg_match(self::$patterns[$key], mb_strtolower((string) $value)) === 1 ? 1 : 0;
+        return TextMatch::like((string) $value, (string) $pattern, $escape === null ? null : (string) $escape) ? 1 : 0;
     }
 
     /** "no such column: x" (a read), "table t has no column named x" (a write). */

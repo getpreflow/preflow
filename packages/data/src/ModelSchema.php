@@ -29,7 +29,7 @@ final class ModelSchema
      */
     public const array SCHEMA_FIELD_KEYS = [
         'type', 'validate', 'translatable', 'unique', 'index', 'length', 'searchable',
-        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields', 'multiple',
+        'transform', 'default', 'relation', 'options', 'accept', 'time', 'blocks', 'fields', 'multiple', 'exact',
     ];
 
     /**
@@ -78,6 +78,15 @@ final class ModelSchema
         if ($entity->titleField !== null) {
             $schema['titleField'] = $entity->titleField;
         }
+        if ($entity->fullText) {
+            $schema['fullText'] = true;
+        }
+        if ($entity->readonly) {
+            $schema['readonly'] = true;
+        }
+        if (!$entity->creatable) {
+            $schema['creatable'] = false;
+        }
 
         return $schema;
     }
@@ -105,6 +114,37 @@ final class ModelSchema
                 if (in_array($fieldKey, self::SCHEMA_FIELD_KEYS, true)) {
                     throw new \RuntimeException("Model file {$file} sets \"{$fieldKey}\" on the field \"{$name}\", but {$tail}.");
                 }
+            }
+        }
+    }
+
+    /**
+     * A class's #[Entity(readonly:, creatable:, fullText:)] and its admin file's "readonly" /
+     * "creatable" / "fullText" agree: the file may add an option the class leaves at its default,
+     * never contradict one the class sets. Run for every class-backed key when TypeRegistry is
+     * built (at boot).
+     *
+     * @param array<string, mixed> $adminFile
+     * @param class-string $modelClass
+     * @throws \RuntimeException naming the type, the option, the class and the file
+     * @since 0.78
+     */
+    public static function assertActionsAgree(array $adminFile, string $file, string $key, string $modelClass): void
+    {
+        $entity = (new \ReflectionClass($modelClass))->getAttributes(Entity::class)[0] ?? null;
+        $entity = $entity?->newInstance();
+        if ($entity === null) {
+            return;
+        }
+        $class = array_filter([
+            'readonly' => $entity->readonly ? true : null,
+            'creatable' => $entity->creatable ? null : false,
+            'fullText' => $entity->fullText ? true : null,
+        ], static fn (?bool $v): bool => $v !== null);
+        foreach ($class as $option => $value) {
+            if (array_key_exists($option, $adminFile) && $adminFile[$option] !== $value) {
+                throw new \RuntimeException('Type "' . $key . '" has "' . $option . '": ' . var_export($value, true) . ' on ' . $modelClass
+                    . ' and ' . json_encode($adminFile[$option]) . ' in ' . basename($file) . ': set it in one place.');
             }
         }
     }
@@ -213,6 +253,9 @@ final class ModelSchema
         if ($field->searchable !== null) {
             $out['searchable'] = $field->searchable;
         }
+        if ($field->exact) {
+            $out['exact'] = true;
+        }
         if ($field->transform !== null) {
             $out['transform'] = $field->transform;
         }
@@ -257,17 +300,40 @@ final class ModelSchema
 
     private static function inferType(string $modelClass, \ReflectionProperty $prop): string
     {
-        $type = $prop->getType();
-        $name = $type instanceof \ReflectionNamedType ? $type->getName() : null;
+        return self::typeOfProperty($prop) ?? throw new \LogicException(
+            "Property [{$modelClass}::\${$prop->getName()}] needs a field type: give the field a type: blocks, matrix, asset or relation "
+            . "(or a date, select, ... as #[Field(type: …)]); its PHP type does not say."
+        );
+    }
 
-        return match ($name) {
+    /**
+     * The field type a model property's PHP type says: "string" for string, "number" for int and
+     * float, "boolean" for bool; null when it says none (or the class has no such property). The
+     * one place plain models' field types are inferred: the schema, TextColumns and QueryBuilder
+     * ask it. A #[Field(type: …)] wins over it (fieldType()).
+     *
+     * @since 0.78
+     */
+    public static function propertyType(string $modelClass, string $property): ?string
+    {
+        return property_exists($modelClass, $property) ? self::typeOfProperty(new \ReflectionProperty($modelClass, $property)) : null;
+    }
+
+    /** A plain model field's type: its #[Field(type: …)], else what its PHP type says (propertyType()). @since 0.78 */
+    public static function fieldType(ModelMetadata $meta, string $name): ?string
+    {
+        return ($meta->fields[$name] ?? null)?->type ?? self::propertyType($meta->modelClass, $name);
+    }
+
+    private static function typeOfProperty(\ReflectionProperty $prop): ?string
+    {
+        $type = $prop->getType();
+
+        return match ($type instanceof \ReflectionNamedType ? $type->getName() : null) {
             'string' => 'string',
             'int', 'float' => 'number',
             'bool' => 'boolean',
-            default => throw new \LogicException(
-                "Property [{$modelClass}::\${$prop->getName()}] needs a field type: give the field a type: blocks, matrix, asset or relation "
-                . "(or a date, select, ... as #[Field(type: …)]); its PHP type does not say."
-            ),
+            default => null,
         };
     }
 }

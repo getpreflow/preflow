@@ -117,11 +117,12 @@ final class UniqueFieldFormTest extends TestCase
             // Another request saves slug "x" after this save checked it, before it writes (its
             // next statement on the record).
             $other = new \PDO('sqlite:' . $this->dir . '/db.sqlite');
+            \Preflow\Data\Driver\SqliteDialect::prepare($other); // its text columns declare preflow_text
             $checked = false;
             $this->pdo->beforePrepare = function (string $sql) use ($other, $type, &$checked): void {
-                if (str_contains($sql, "FROM \"{$type}\" WHERE \"slug\"")) {
+                if (str_contains($sql, "FROM `{$type}` WHERE `slug`")) {
                     $checked = true;
-                } elseif ($checked && (str_contains($sql, "FROM \"{$type}\" WHERE \"uuid\"") || str_starts_with($sql, "INSERT INTO \"{$type}\""))) {
+                } elseif ($checked && (str_contains($sql, "FROM `{$type}` WHERE `uuid`") || str_starts_with($sql, "INSERT INTO `{$type}`"))) {
                     $this->pdo->beforePrepare = null;
                     $other->exec("INSERT INTO \"{$type}\" (uuid, title, slug) VALUES ('a', 'A', 'x')");
                 }

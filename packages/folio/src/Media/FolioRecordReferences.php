@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Media;
 
 use Preflow\Data\DataManager;
-use Preflow\Data\Driver\PdoDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Query;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\TypeRegistry;
@@ -33,10 +33,10 @@ use Preflow\Media\Usage\CountsAssetUsage;
  * (PosterReferences).
  *
  * Runs on every delete, so it reads only what can hold a reference: types
- * without an asset or blocks field or a share image are skipped, and on SQL
- * storage only rows whose asset, blocks or `_seo` columns (a revision's "data")
- * contain the id (LIKE) are walked. A library page counts the usages of all its
- * assets at once (usageCounts(): one query per type and source for the page's ids, the
+ * without an asset or blocks field or a share image are skipped, and only rows
+ * whose asset, blocks or `_seo` columns (a revision's "data") contain the id
+ * (CONTAINS, the same on every storage) are walked. A library page counts the
+ * usages of all its assets at once (usageCounts(): one query per type and source for the page's ids, the
  * revisions left out unless asked: they hold no usage that blocks a delete).
  * Each entry's type is the record's type key.
  */
@@ -67,9 +67,10 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
 
     /**
      * The usages of a whole page of assets: the same walk as usagesOf(), with one query per
-     * type and source for all the ids (OR-ed LIKEs), counted here. An earlier revision does not
-     * block a delete, so the revisions are read only with $nonBlocking: a library page's cards
-     * count without them (scanning every revision's data on each page view is the slow part).
+     * type and source for all the ids (OR-ed CONTAINS conditions), counted here. An earlier
+     * revision does not block a delete, so the revisions are read only with $nonBlocking: a
+     * library page's cards count without them (scanning every revision's data on each page
+     * view is the slow part).
      *
      * @param list<string> $assetIds
      * @return array<string, int>
@@ -206,11 +207,13 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
     }
 
     /**
-     * The rows that may reference one of the assets. On SQL storage those whose asset or
-     * blocks columns (and `_seo` with $seo) contain one of the ids (a reference always holds it
-     * verbatim, in a list or block JSON too); elsewhere every row. A table without a
-     * `_seo` column (not migrated yet) holds no share image; one that cannot be
-     * filtered otherwise (a column missing) is read whole, as before.
+     * The rows that may reference one of the assets: those whose asset or blocks columns (and
+     * `_seo` with $seo) contain one of the ids (CONTAINS on the stored value, every locale of a
+     * translatable field; a reference always holds the id verbatim, in a list, a locale map or
+     * block JSON too): the same rows on every driver; JSON reads every file either way. Only
+     * the columns the table has are searched (DataManager::hasColumn()): one without a `_seo`
+     * column (not migrated yet) holds no share image, one without any of them no reference. The
+     * ids go in chunks of at most 500 conditions, within every database's bound-parameter limit.
      *
      * @param list<string> $columns
      * @param list<string> $assetIds
@@ -218,54 +221,29 @@ final class FolioRecordReferences implements AssetReferenceSource, CountsAssetUs
      */
     private function candidates(TypeDefinition $def, array $columns, array $assetIds, bool $seo = false): array
     {
-        $driver = $this->dm->driver($def->storage);
-        if (!$driver instanceof PdoDriver || $assetIds === []) {
-            return $this->dm->queryIn($def)->get()->items();
-        }
         if ($seo) {
-            try {
-                return $this->matching($driver, $def, [...$columns, SeoSection::KEY], $assetIds);
-            } catch (\PDOException) {
-                if ($columns === []) {
-                    return [];
-                }
-            }
+            $columns[] = SeoSection::KEY;
         }
-        try {
-            return $this->matching($driver, $def, $columns, $assetIds);
-        } catch (\PDOException) {
-            return $this->dm->queryIn($def)->get()->items();
+        $columns = array_values(array_filter($columns, fn (string $column): bool => $this->dm->hasColumn($def, $column)));
+        if ($columns === [] || $assetIds === []) {
+            return [];
         }
-    }
-
-    /**
-     * The rows whose $columns contain one of the ids (LIKE), each row once. The ids go in
-     * chunks, so a page of assets stays within every database's bound-parameter limit.
-     *
-     * @param list<string> $columns
-     * @param list<string> $assetIds
-     * @return list<DynamicRecord>
-     * @throws \PDOException when a column is missing
-     */
-    private function matching(PdoDriver $driver, TypeDefinition $def, array $columns, array $assetIds): array
-    {
-        $dialect = $driver->dialect();
-        $like = static fn (string $column): string => $dialect->quoteIdentifier($column) . " LIKE ? ESCAPE '!'";
+        // The stored columns as they are, not through queryIn(): it would compare a translatable
+        // field in one locale, and a reference in another locale's value would be missed.
+        $driver = $this->dm->driver($def->storage);
         $rows = [];
-        foreach (array_chunk($assetIds, max(1, intdiv(500, max(1, count($columns))))) as $chunk) {
+        foreach (array_chunk($assetIds, max(1, intdiv(500, count($columns)))) as $chunk) {
             $conditions = [];
-            $params = [];
             foreach ($chunk as $assetId) {
-                $pattern = '%' . strtr($assetId, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
                 foreach ($columns as $column) {
-                    $conditions[] = $like($column);
-                    $params[] = $pattern;
+                    $conditions[] = ['field' => $column, 'operator' => 'CONTAINS', 'value' => $assetId];
                 }
             }
-            foreach ($driver->rawQuery('SELECT * FROM ' . $dialect->quoteIdentifier($def->table) . ' WHERE ' . implode(' OR ', $conditions), $params) as $row) {
+            foreach ($driver->findMany($def->table, (new Query())->whereAny($conditions))->items() as $row) {
                 $rows[(string) ($row[$def->idField] ?? serialize($row))] = $row; // a row found by two chunks is walked once
             }
         }
+        $this->dm->reportRead($def->storage, $def->table);
 
         return array_values(array_map(static fn (array $row): DynamicRecord => DynamicRecord::fromArray($def, $row), $rows));
     }
