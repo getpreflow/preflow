@@ -247,13 +247,15 @@ final class DataManager
     }
 
     /**
-     * Reports again reads captured by captureReads() (a memo hit).
+     * Reports again reads captured by captureReads() (a memo hit): to the observer, and to every
+     * open captureReads(), with or without an observer, so a memo filled from another memo's hit
+     * holds the reads too.
      *
      * @param list<array<int, mixed>> $reads
      */
     public function replayReads(array $reads): void
     {
-        if ($this->observer === null) {
+        if ($this->observer === null && $this->captures === []) {
             return;
         }
         foreach ($reads as $read) {

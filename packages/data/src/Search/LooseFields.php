@@ -82,14 +82,18 @@ final class LooseFields
 
     /**
      * One word's conditions for whereAny(): CONTAINS (the text-matching rule) on each text field,
-     * = (exact) on each field compared whole. The one place that says how a word meets a field.
+     * = (exact) on each field compared whole, with the word and, for a term of several words, with
+     * the whole trimmed term too (an exact value with a space, "AB 12"). Every word's group holds
+     * the term's condition, so a record whose value is the whole term matches them all. The one
+     * place that says how a word meets a field.
      *
      * @param list<string> $text
      * @param list<string> $whole
+     * @param string|null $term the whole search term, trimmed (null or the word itself: none)
      * @return list<array{field: string, operator: string, value: string}>
      * @since 0.78
      */
-    public static function conditions(array $text, array $whole, string $word): array
+    public static function conditions(array $text, array $whole, string $word, ?string $term = null): array
     {
         $conditions = [];
         foreach ($text as $name) {
@@ -97,6 +101,9 @@ final class LooseFields
         }
         foreach ($whole as $name) {
             $conditions[] = ['field' => $name, 'operator' => '=', 'value' => $word];
+            if ($term !== null && $term !== $word) {
+                $conditions[] = ['field' => $name, 'operator' => '=', 'value' => $term];
+            }
         }
 
         return $conditions;

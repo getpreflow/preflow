@@ -140,8 +140,8 @@ final class TextRuleConversion
                 $lines[] = sprintf(self::NO_CONVERSION, $grammar::class);
                 continue;
             }
-            if (!$dryRun && $grammar->textCollationVersion() !== null) {
-                array_push($lines, ...$this->reindex($pdo, $grammar));
+            if ($grammar->textCollationVersion() !== null) {
+                array_push($lines, ...($dryRun ? $this->reindexRefusals($pdo, $grammar) : $this->reindex($pdo, $grammar)));
             }
             array_push($lines, ...$this->intents($pdo, $grammar, $driver, $dryRun));
         }
@@ -182,6 +182,26 @@ final class TextRuleConversion
         }
         if (!$migrated || $dryRun || !$bookkeeping->exists()) {
             return $lines;
+        }
+
+        // Tables with recorded intent for some columns only (made before 0.78, extended by a later
+        // migration): their older text columns are listed once, as a table without intent is.
+        $listed = $bookkeeping->listed();
+        foreach ($intents as $table => $columns) {
+            $table = (string) $table;
+            if (in_array($table, $this->skip, true) || in_array($table, $records, true) || in_array($table, $listed, true) || !in_array($table, $existing, true)) {
+                continue;
+            }
+            $older = array_diff_key(
+                array_filter($grammar->columnCollations($pdo, $table), static fn (?string $c): bool => $c !== null && !$grammar->isTextCollation($c)),
+                $columns,
+            );
+            if ($older === []) {
+                continue;
+            }
+            $lines[] = "warning: {$table} has columns without a recorded text rule (made before 0.78): "
+                . implode(', ', array_keys($older)) . ' keep their comparison. Adopt each with a migration (Schema::convertColumn(), see the data README) or list the table in text_rule.skip';
+            $bookkeeping->markListed($table);
         }
 
         // Tables with text columns and no known intent: listed once (made before 0.78, or not by Preflow).
@@ -230,6 +250,56 @@ final class TextRuleConversion
         return [...$lines, ...CollationChange::apply($pdo, $grammar, $table, null, $changes, $dryRun)];
     }
 
+    /** The rule's version the indexes were last built by, or null (none recorded). */
+    private function recordedVersion(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar): ?string
+    {
+        if (!$grammar->hasTable($pdo, self::VERSION_TABLE)) {
+            return null;
+        }
+        $statement = $pdo->query('SELECT icu FROM ' . $grammar->quote(self::VERSION_TABLE));
+        $recorded = $statement->fetchColumn();
+        $statement->closeCursor();
+
+        return $recorded === false ? null : (string) $recorded;
+    }
+
+    /**
+     * `migrate --pretend`: the "refused:" lines reindex() would print, without rebuilding: each
+     * unique index over a column of the rule whose values are equal under the rule as this
+     * application applies it now (counted in PHP, by TextMatch::key()), when the version changed.
+     *
+     * @return list<string>
+     */
+    private function reindexRefusals(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar): array
+    {
+        $recorded = $this->recordedVersion($pdo, $grammar);
+        if ($recorded === (string) $grammar->textCollationVersion()) {
+            return [];
+        }
+        $lines = [];
+        foreach ($grammar->tables($pdo) as $table) {
+            $table = (string) $table;
+            $collations = $grammar->columnCollations($pdo, $table);
+            $indexColumns = $grammar->indexColumns($pdo, $table);
+            foreach ($grammar->uniqueIndexes($pdo, $table) as $index) {
+                $columns = $indexColumns[$index] ?? [];
+                if (array_filter($columns, static fn (string $c): bool => $grammar->isTextCollation($collations[$c] ?? null)) === []) {
+                    continue;
+                }
+                $groups = TextDuplicates::scan($pdo, $grammar, $table, $this->idField($table), $columns);
+                if ($groups !== []) {
+                    array_push($lines, ...TextDuplicates::lines(
+                        "refused: {$table}.{$columns[0]}: " . TextDuplicates::counted(count($groups))
+                            . ' there more than once when case is ignored; its unique index keeps the order of ' . ($recorded ?? 'an earlier version') . ' until they differ',
+                        $groups,
+                    ));
+                }
+            }
+        }
+
+        return $lines;
+    }
+
     /**
      * Rebuilds the indexes over text columns when the rule's version differs from the recorded
      * one, or none is recorded.
@@ -240,13 +310,10 @@ final class TextRuleConversion
     {
         $version = (string) $grammar->textCollationVersion();
         $quoted = $grammar->quote(self::VERSION_TABLE);
+        $recorded = $this->recordedVersion($pdo, $grammar);
         if (!$grammar->hasTable($pdo, self::VERSION_TABLE)) {
             $pdo->exec($grammar->createTable(self::VERSION_TABLE, [['name' => 'icu', 'kind' => 'string', 'length' => 191, 'nullable' => false, 'primary' => false, 'exact' => true]]));
         }
-        $statement = $pdo->query("SELECT icu FROM {$quoted}");
-        $recorded = $statement->fetchColumn();
-        $statement->closeCursor();
-        $recorded = $recorded === false ? null : (string) $recorded;
         if ($recorded === $version) {
             return [];
         }

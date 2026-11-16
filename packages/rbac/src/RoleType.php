@@ -27,6 +27,9 @@ final class RoleType
 
     public const string FILE = __DIR__ . '/../models/rbac_role.json';
 
+    /** What `preflow migrate` says where rbac is not installed yet. @since 0.78 */
+    public const string NOT_INSTALLED = 'rbac is not installed: run php preflow rbac:install once to create its roles and staff tables (until then staff may do everything); migrate keeps them current afterwards';
+
     /** The schema as the package ships it (a model file's shape). @return array<string, mixed> */
     public static function schema(): array
     {
@@ -65,12 +68,18 @@ final class RoleType
         }
     }
 
-    /** The migrate step: seeds the roles where rbac is installed. @return list<string> what it seeded, and each undeclared permission it granted */
+    /**
+     * The migrate step: seeds the roles where rbac is installed. Where it is not, it says how:
+     * migrate does not install rbac itself, since installing switches can() from "staff may do
+     * everything" to the stored roles, which a site decides once (`rbac:install`).
+     *
+     * @return list<string> what it seeded, and each undeclared permission it granted
+     */
     private static function seed(Container $c): array
     {
         $store = $c->get(RoleStore::class);
         if (!$store->installed()) {
-            return [];
+            return [self::NOT_INSTALLED];
         }
         $count = static fn (): int => array_sum(array_map(static fn (string $p): int => count($store->rolesFor($p)), RoleStore::POPULATIONS));
         $before = $count();

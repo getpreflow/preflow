@@ -83,9 +83,11 @@ interface ConvertsCollations extends TextCollations
     public function tables(\PDO $pdo): array;
 
     /**
-     * The version of the rule's implementation where the application supplies the collation and
-     * the database keeps its indexes by it (SQLite: TextMatch::version()); null where the server
-     * supplies it (MySQL). When it changes, `preflow migrate` rebuilds those indexes (reindexText()).
+     * The version of the rule's implementation the indexes over text columns are ordered by, where
+     * the application supplies the collation (SQLite: TextMatch::version(), with PHP's ICU). Null
+     * only where the database keeps those indexes current itself (MySQL: the server supplies the
+     * collation and rebuilds what it needs on an upgrade). When it changes, `preflow migrate`
+     * rebuilds the indexes (reindexText()).
      */
     public function textCollationVersion(): ?string;
 

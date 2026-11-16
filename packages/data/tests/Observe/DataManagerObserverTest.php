@@ -351,4 +351,19 @@ final class DataManagerObserverTest extends TestCase
 
         $this->assertSame(['read default:object#o1', 'rawRead default: SELECT * FROM object'], $this->events());
     }
+
+    /** A memo hit inside another capture, with no observer attached, still hands its reads to that capture. */
+    public function test_a_replay_without_an_observer_reaches_an_open_capture(): void
+    {
+        $this->dm->saveType($this->object('o1'));
+        $this->dm->observe(null);
+        [, $inner] = $this->dm->captureReads(fn (): ?DynamicRecord => $this->dm->findType('object', 'o1'));
+
+        [, $outer] = $this->dm->captureReads(function () use ($inner): void {
+            $this->dm->replayReads($inner); // a memo hit while the outer memo is being filled
+        });
+
+        $this->assertSame($inner, $outer);
+        $this->assertCount(1, $outer);
+    }
 }

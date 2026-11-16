@@ -75,7 +75,12 @@ All methods return `$this` for chaining except the terminal methods.
 `NOT IN` (any case; `IN` / `NOT IN` take a list); `where($field, $value)` is `=`. Field names in
 `where()`, `orWhere()`, `whereAny()`, `orderBy()` and `search()` are identifiers
 (`[A-Za-z_][A-Za-z0-9_]*`). Anything else throws `\InvalidArgumentException` before any SQL is
-built: never pass a request's operator or column name unchecked.
+built: never pass a request's operator or column name unchecked. Since 0.78 a typed query (a type
+or a model class) also refuses a field the type or class does not have (its fields, the id field
+and system keys with a leading `_` are allowed): `Type "post" has no field "titel" to query by.`,
+the same on every driver, where SQL would name the missing column and JSON would match nothing.
+SQLite quotes identifiers with backticks, so a hand-built query on a missing column is an error
+there too (it read a double-quoted unknown name as a string).
 
 ### Storage drivers
 
@@ -1208,8 +1213,12 @@ A line says what changed: `converted collations of people: title, body`.
   application in a shared database) are left as they are. `migrate` lists each once, on the storage
   the migrations run on: `warning: notes has no recorded text rule (made by a migration before
   0.78, or not by Preflow): its columns id, title keep their comparison. Adopt it with a migration
-  (Schema::convertColumn(), see the data README) or list it in text_rule.skip`. To adopt a table,
-  write a migration that converts its columns; `Migrator` records their intent as it runs it:
+  (Schema::convertColumn(), see the data README) or list it in text_rule.skip`. A table made
+  before 0.78 that a later migration extended (`addColumns()`) has intent for the new columns
+  only: those are converted, and its older text columns are listed once the same way (`warning:
+  notes has columns without a recorded text rule (made before 0.78): id, title keep their
+  comparison. …`). To adopt a table, write a migration that converts its columns; `Migrator`
+  records their intent as it runs it:
 
   ```php
   $schema->convertColumn('notes', fn (Table $t) => $t->string('title'));           // the rule
@@ -1224,8 +1233,10 @@ A line says what changed: `converted collations of people: title, body`.
 - **SQLite after a PHP or ICU upgrade.** SQLite keeps the indexes over `preflow_text` columns in
   the order PHP's ICU and `TextMatch`'s tables give (`TextMatch::version()`). The step
   `data.text-rule` records the version in the table `preflow_text_collation` (in a transaction)
-  and, when it is another or none is recorded, rebuilds each of those indexes (`REINDEX`):
-  `rebuilt the indexes over text columns for icu 79.1, tables … (was …)`. A unique index whose
+  and, when it is another or none is recorded, rebuilds each of those indexes (`REINDEX`), and
+  says so when a version was recorded before: `rebuilt the indexes over text columns for icu 79.1,
+  tables 3f9c0e1a2b4d6c8e (was icu 78.2, tables 3f9c0e1a2b4d6c8e)` (the first run records the
+  version quietly). `migrate --pretend` lists the refusals below without rebuilding. A unique index whose
   values the new version takes as equal is left as it was, its groups are listed as `refused:`
   lines and the version is not recorded, so the next `migrate` tries again once they differ.
   Until then that index **stays in use** in its old order: a lookup of one of those values may
@@ -1347,7 +1358,10 @@ RecordTitle::of($record, 'de');  // a translatable title in German (with the loc
 ```
 
 `TypeDefinition::$titleField` is the field. Without one, the title is the first field of type
-`string` that is not hidden (`"hidden": true`), read as a string only. A declared `titleField` may
+`string` that is not hidden (`"hidden": true`) and holds no personal data, read as a string only
+(since 0.78; titles end up in the activity log and in lists): a field named `email` or ending in
+`_email`, one with `"format": "email"` or an `email` rule, and one marked `"personal": true` are
+skipped. Name it as `titleField` to use one anyway. A declared `titleField` may
 also be a number field (its value is cast to text). An empty title (or none) falls back to the
 record id. A `titleField` the type does not have is an error naming the type when the type
 registry is built (at boot; with a boot manifest, when `preflow optimize` builds it). A model class sets it on `#[Entity(titleField: …)]` or in its admin

@@ -587,6 +587,23 @@ final class CoreStaffTest extends TestCase
         $this->assertSame("This site has no staff accounts: config/auth.php names no user provider of class Preflow\\Auth\\Record\\RecordUserProvider with 'type' => 'staff'.\n", $out);
     }
 
+    /** A fresh app with rbac: migrate creates no rbac table (installing switches can() to the roles) and says how; after rbac:install it keeps them. */
+    #[RunInSeparateProcess]
+    public function test_migrate_names_the_install_and_keeps_the_tables_after_it(): void
+    {
+        [$code, $out] = $this->command('migrate');
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('[rbac.seed] ' . \Preflow\Rbac\RoleType::NOT_INSTALLED, $out);
+        $this->assertSame([1, "rbac is not installed here yet; run php preflow rbac:install first.\n"], $this->command('staff:list'));
+
+        $this->assertSame(0, $this->command('rbac:install')[0]);
+        (new \PDO('sqlite:' . $this->dir . '/storage/site.sqlite'))->exec('DROP TABLE staff');
+        [$code, $out] = $this->command('migrate');
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString(\Preflow\Rbac\RoleType::NOT_INSTALLED, $out);
+        $this->assertSame(0, $this->command('staff:create', ['ada@site.test', '--role=admin'])[0], 'migrate made the staff table again');
+    }
+
     #[RunInSeparateProcess]
     public function test_before_install_the_staff_commands_say_so(): void
     {
@@ -609,7 +626,7 @@ final class CoreStaffTest extends TestCase
         $this->assertSame(0, $this->command('rbac:role', ['reporter', '--grant=reports.view'])[0]);
         (new \PDO('sqlite:' . $this->dir . '/storage/site.sqlite'))->exec('DROP TABLE staff');
 
-        $message = "No staff table yet: run php preflow rbac:install (or php preflow migrate on a Folio site).\n";
+        $message = "No staff table yet: run php preflow migrate (or php preflow rbac:install).\n";
         foreach ([['staff:list', []], ['staff:create', ['ada@site.test']], ['staff:invite', ['ada@site.test']], ['staff:disable', ['ada@site.test']]] as [$command, $args]) {
             $this->assertSame([1, $message], $this->command($command, $args), $command);
         }

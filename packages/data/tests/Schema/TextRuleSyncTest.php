@@ -180,6 +180,50 @@ final class TextRuleSyncTest extends TestCase
         ], $lines);
         $this->assertSame(['0.1'], $this->pdo->query('SELECT icu FROM preflow_text_collation')->fetchAll(\PDO::FETCH_COLUMN), 'not recorded');
         $this->assertCount(2, $this->rows());
+
+        // --pretend predicts the same refusal without rebuilding anything (N2).
+        $this->pdo->clear();
+        $this->assertSame($lines, $this->conversion()->check());
+        $this->assertSame([], $this->pdo->matching('/^\s*(REINDEX|CREATE|DROP|INSERT|DELETE)\b/i'), 'nothing rebuilt or written');
+    }
+
+    /** N1: the bookkeeping follows a migration's drop, dropColumn and convertColumn. */
+    public function test_the_recorded_intent_follows_drops_and_conversions(): void
+    {
+        $dir = $this->migration('notes', <<<'PHP'
+                    $schema->create('notes', function (Table $t) {
+                        $t->uuid('id')->primary();
+                        $t->string('title');
+                        $t->string('code', 40)->exact();
+                        $t->string('gone');
+                    });
+                    $schema->create('temp', function (Table $t) { $t->uuid('id')->primary(); $t->string('x'); });
+                    $schema->dropColumn('notes', 'gone');
+                    $schema->drop('temp');
+                    $schema->convertColumn('notes', fn (Table $t) => $t->string('code', 40));
+                    $schema->convertColumn('notes', fn (Table $t) => $t->string('title')->exact());
+            PHP);
+
+        (new Migrator($this->pdo, $dir))->migrate();
+
+        $this->assertSame(
+            ['notes' => ['code' => 'text', 'id' => 'exact', 'title' => 'exact']],
+            (new MigrationColumns($this->pdo))->tables(),
+        );
+    }
+
+    /** N6: a table made before 0.78 and extended by a later migration: its older text columns are listed once. */
+    public function test_a_table_with_intent_for_some_columns_lists_the_older_ones_once(): void
+    {
+        $this->pdo->exec('CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT, n INTEGER)');
+        $dir = $this->migration('notes_more', "        \$schema->addColumns('notes', fn (Table \$t) => \$t->string('summary')->nullable());");
+        (new Migrator($this->pdo, $dir))->migrate();
+
+        $lines = $this->conversion()->convert();
+
+        $this->assertSame('preflow_text', Grammars::for($this->pdo)->columnCollations($this->pdo, 'notes')['summary'], 'the new column follows the rule already');
+        $this->assertContains('warning: notes has columns without a recorded text rule (made before 0.78): id, title keep their comparison. Adopt each with a migration (Schema::convertColumn(), see the data README) or list the table in text_rule.skip', $lines);
+        $this->assertSame([], array_values(array_filter($this->conversion()->convert(), static fn (string $l): bool => str_contains($l, 'notes'))), 'listed once');
     }
 
     public function test_a_conversion_refused_by_the_database_changes_nothing(): void

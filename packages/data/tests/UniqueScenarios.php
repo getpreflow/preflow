@@ -140,6 +140,12 @@ trait UniqueScenarios
         $this->assertSame(['b'], $found('secretword'), 'a case variant finds only its own record');
         $this->assertSame([], $found('Secret'), 'a part of it does not');
         $this->assertSame(['a'], $found('alpha SecretWord'), 'with the other words of the term');
+
+        // An exact value with a space is found by the whole trimmed term (R39).
+        $this->save($key, ['uuid' => 'e', 'title' => 'Epsilon', 'key' => 'AB 12']);
+        $this->assertSame(['e'], $found('  AB 12 '), 'the whole term');
+        $this->assertSame([], $found('ab 12'), 'compared exactly');
+        $this->assertSame([], $found('AB'), 'a word of it is not its whole value');
     }
 
     public function test_a_number_stored_as_text_is_still_a_duplicate(): void

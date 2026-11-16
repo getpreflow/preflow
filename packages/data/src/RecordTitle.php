@@ -6,8 +6,12 @@ namespace Preflow\Data;
 
 /**
  * The text that names a record wherever one is listed (search hits, activity rows, relation
- * labels): its type's titleField, or else the first field of type "string" that is not
- * hidden, read in a locale. A record without such text is named by its id.
+ * labels): its type's titleField, or else the first field of type "string" that is not hidden
+ * and holds no personal data, read in a locale. A record without such text is named by its id.
+ * Personal data never becomes a title by default (since 0.78), since titles are stored in the
+ * activity log and shown in lists: a field marked "personal": true, or one that holds an e-mail
+ * address (named "email" or ending in "_email"/"Email", "format": "email", or an "email" rule).
+ * A type that wants one as its title names it as titleField.
  *
  * @since 0.77
  */
@@ -32,15 +36,29 @@ final class RecordTitle
         return (string) $record->getId();
     }
 
-    /** The first field of type "string" that is not hidden, or null. */
+    /** The first field of type "string" that is not hidden and holds no personal data, or null. */
     private static function defaultField(TypeDefinition $type): ?string
     {
         foreach ($type->fields as $name => $def) {
-            if ($def->type === 'string' && ($def->config['hidden'] ?? false) !== true) {
+            if ($def->type === 'string' && ($def->config['hidden'] ?? false) !== true && !self::personal((string) $name, $def)) {
                 return $name;
             }
         }
 
         return null;
+    }
+
+    private static function personal(string $name, TypeFieldDefinition $field): bool
+    {
+        if (($field->config['personal'] ?? false) === true || ($field->config['format'] ?? null) === 'email') {
+            return true;
+        }
+        foreach ([...$field->validate, ...(array) ($field->config['validate'] ?? [])] as $rule) {
+            if (is_string($rule) && strtolower(strtok($rule, ':') ?: $rule) === 'email') {
+                return true;
+            }
+        }
+
+        return preg_match('/(^|_)e-?mail$|[a-z]Email$/', $name) === 1 || strcasecmp($name, 'email') === 0;
     }
 }

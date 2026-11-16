@@ -43,6 +43,34 @@ final class ModelClasses
         return $this->all()[$key] ?? null;
     }
 
+    /**
+     * The plain model classes (#[Entity] without a type) under the paths. Loads every model file,
+     * so it is for commands (`preflow migrate`'s check of their exact fields), not for a boot.
+     *
+     * @return list<class-string>
+     * @since 0.78
+     */
+    public function plain(): array
+    {
+        $plain = [];
+        foreach ($this->files() as $file) {
+            $source = (string) file_get_contents($file);
+            if (preg_match('/#\[[^\]]*\bEntity\b/', $source) !== 1) {
+                continue;
+            }
+            $class = self::className($source);
+            if ($class === null || !class_exists($class)) {
+                continue;
+            }
+            $attributes = (new \ReflectionClass($class))->getAttributes(Entity::class);
+            if ($attributes !== [] && $attributes[0]->newInstance()->type === null) {
+                $plain[] = $class;
+            }
+        }
+
+        return $plain;
+    }
+
     /** @return array<string, class-string> */
     private function scan(): array
     {

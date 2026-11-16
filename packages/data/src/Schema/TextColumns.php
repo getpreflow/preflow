@@ -6,6 +6,7 @@ namespace Preflow\Data\Schema;
 
 use Preflow\Data\FieldKinds;
 use Preflow\Data\ModelMetadata;
+use Preflow\Data\ModelSchema;
 use Preflow\Data\Search\LooseFields;
 use Preflow\Data\TypeDefinition;
 
@@ -70,23 +71,12 @@ final class TextColumns
         $text = [];
         foreach ($meta->fields as $name => $field) {
             $name = (string) $name;
-            $type = $field->type ?? self::propertyType($meta->modelClass, $name);
+            $type = ModelSchema::fieldType($meta, $name);
             if ($type !== null && $name !== $meta->idField && !$field->exact && $kinds->isText($type) && !$kinds->isList($type)) {
                 $text[] = $name;
             }
         }
 
         return $text;
-    }
-
-    /** "string" for a property typed string (or ?string), else null (not text). */
-    private static function propertyType(string $class, string $property): ?string
-    {
-        if (!property_exists($class, $property)) {
-            return null;
-        }
-        $type = (new \ReflectionProperty($class, $property))->getType();
-
-        return $type instanceof \ReflectionNamedType && $type->getName() === 'string' ? 'string' : null;
     }
 }

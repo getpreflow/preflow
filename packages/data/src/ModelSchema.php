@@ -300,17 +300,40 @@ final class ModelSchema
 
     private static function inferType(string $modelClass, \ReflectionProperty $prop): string
     {
-        $type = $prop->getType();
-        $name = $type instanceof \ReflectionNamedType ? $type->getName() : null;
+        return self::typeOfProperty($prop) ?? throw new \LogicException(
+            "Property [{$modelClass}::\${$prop->getName()}] needs a field type: give the field a type: blocks, matrix, asset or relation "
+            . "(or a date, select, ... as #[Field(type: …)]); its PHP type does not say."
+        );
+    }
 
-        return match ($name) {
+    /**
+     * The field type a model property's PHP type says: "string" for string, "number" for int and
+     * float, "boolean" for bool; null when it says none (or the class has no such property). The
+     * one place plain models' field types are inferred: the schema, TextColumns and QueryBuilder
+     * ask it. A #[Field(type: …)] wins over it (fieldType()).
+     *
+     * @since 0.78
+     */
+    public static function propertyType(string $modelClass, string $property): ?string
+    {
+        return property_exists($modelClass, $property) ? self::typeOfProperty(new \ReflectionProperty($modelClass, $property)) : null;
+    }
+
+    /** A plain model field's type: its #[Field(type: …)], else what its PHP type says (propertyType()). @since 0.78 */
+    public static function fieldType(ModelMetadata $meta, string $name): ?string
+    {
+        return ($meta->fields[$name] ?? null)?->type ?? self::propertyType($meta->modelClass, $name);
+    }
+
+    private static function typeOfProperty(\ReflectionProperty $prop): ?string
+    {
+        $type = $prop->getType();
+
+        return match ($type instanceof \ReflectionNamedType ? $type->getName() : null) {
             'string' => 'string',
             'int', 'float' => 'number',
             'bool' => 'boolean',
-            default => throw new \LogicException(
-                "Property [{$modelClass}::\${$prop->getName()}] needs a field type: give the field a type: blocks, matrix, asset or relation "
-                . "(or a date, select, ... as #[Field(type: …)]); its PHP type does not say."
-            ),
+            default => null,
         };
     }
 }

@@ -864,7 +864,7 @@ final class Application
             static fn (): \Preflow\Data\Search\RecordSearch => new \Preflow\Data\Search\RecordSearch($dataManager),
         );
         $this->bindActivityLog($dataManager, isset($drivers[\Preflow\Data\Activity\StoredActivityLog::STORAGE]) ? \Preflow\Data\Activity\StoredActivityLog::STORAGE : 'default');
-        $this->registerTextRuleSteps($dataManager, $migrations, $dataConfig['text_rule'] ?? []);
+        $this->registerTextRuleSteps($dataManager, $migrations, $dataConfig['text_rule'] ?? [], $modelPaths);
         if ($this->pageChanges !== null) {
             $dataManager->observe(new \Preflow\Core\PageCache\DataLayerObserver(
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
@@ -926,7 +926,11 @@ final class Application
      *
      * @param mixed $config config/data.php 'text_rule'
      */
-    private function registerTextRuleSteps(\Preflow\Data\DataManager $dataManager, \Preflow\Data\Migration\MigrationRegistry $migrations, mixed $config): void
+    /**
+     * @param list<string> $modelPaths data.model_paths: where `data.model-exactness` finds the plain
+     *        model classes whose #[Field(exact)] it compares with their migrations' columns
+     */
+    private function registerTextRuleSteps(\Preflow\Data\DataManager $dataManager, \Preflow\Data\Migration\MigrationRegistry $migrations, mixed $config, array $modelPaths = []): void
     {
         if (!class_exists(\Preflow\Data\Schema\TextRuleConversion::class)) {
             return;
@@ -947,6 +951,13 @@ final class Application
         $migrations->afterMigrate('data.text-rule', static fn (): array => $conversion()->convert());
         $migrations->afterMigrate('data.text-duplicates', static fn (): array => $conversion()->duplicates(), sqlOnly: false);
         $migrations->check('data.text-rule', static fn (): array => $conversion()->check(), sqlOnly: false);
+        if (class_exists(\Preflow\Data\Schema\ModelExactness::class)) {
+            $migrations->afterMigrate('data.model-exactness', static fn (): array => (new \Preflow\Data\Schema\ModelExactness(
+                $dataManager,
+                (new \Preflow\Data\ModelClasses($modelPaths))->plain(),
+                $migrations->storage(),
+            ))->check());
+        }
     }
 
     /**

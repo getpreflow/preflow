@@ -24,6 +24,24 @@
         "roles": {
             "type": "rbac_roles",
             "readonly": true
+        },
+        "language": {
+            "panel": "side"
+        },
+        "registered_at": {
+            "panel": "side"
+        },
+        "email_confirmed_at": {
+            "panel": "side"
+        },
+        "decided_at": {
+            "panel": "side"
+        },
+        "locked_at": {
+            "panel": "side"
+        },
+        "last_login_at": {
+            "panel": "side"
         }
     }
 }

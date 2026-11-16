@@ -308,7 +308,7 @@ final class CoreRbacTest extends TestCase
             return $out;
         };
 
-        $this->assertStringNotContainsString('rbac', $migrate());
+        $this->assertStringContainsString('[rbac.seed] ' . \Preflow\Rbac\RoleType::NOT_INSTALLED, $migrate(), 'migrate says how to install, and does not');
         $this->assertFalse($this->hasSqlTable('rbac_role'), 'without rbac:install, migrate leaves rbac uninstalled');
         $this->assertTrue($this->can($this->app(), [], 'page.edit'), 'the bootstrap still applies');
 

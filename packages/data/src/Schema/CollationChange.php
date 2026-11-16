@@ -59,7 +59,7 @@ final class CollationChange
                 continue;
             }
             array_push($lines, ...TextDuplicates::lines(
-                "refused: {$table}.{$columns[0]}: " . TextDuplicates::counted(count($groups))
+                "refused: {$table}." . implode(', ', $changing) . (count($columns) > 1 ? ' (unique together: ' . implode(', ', $columns) . ')' : '') . ': ' . TextDuplicates::counted(count($groups))
                     . ' there more than once when case is ignored; the column keeps its collation until they differ',
                 $groups,
             ));
