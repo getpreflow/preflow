@@ -180,13 +180,22 @@ class QueryCompiler
             return $column;
         }
 
-        return $query->comparesAsText($field) ? $this->compared($field, $query) : $this->dialect->exactText($column);
+        return $query->comparesAsText($field) && !$query->comparesExactly($field) ? $this->compared($field, $query) : $this->dialect->exactText($column);
     }
 
-    /** ORDER BY's expression for a field's value: a text field's by the rule (TextComparison::textOrder()). */
+    /**
+     * ORDER BY's expression for a field's value: a text field's by the rule through
+     * TextComparison::textOrder(), unless it is a plain column of a short text
+     * (Query::sortsAsShortText()), which its collation orders (its index stays usable).
+     */
     private function ordered(string $field, Query $query, string $expression): string
     {
-        return $this->dialect instanceof TextComparison && $query->comparesAsText($field) ? $this->dialect->textOrder($expression) : $expression;
+        if (!$this->dialect instanceof TextComparison || !$query->comparesAsText($field) || $query->comparesExactly($field)) {
+            return $expression;
+        }
+        $plain = $query->localizationFor($field) === null && $query->sortsAsShortText($field);
+
+        return $plain ? $expression : $this->dialect->textOrder($expression);
     }
 
     /**
@@ -198,6 +207,9 @@ class QueryCompiler
     private function compared(string $field, Query $query): string
     {
         $column = $this->column($field, $query);
+        if ($query->comparesExactly($field)) {
+            return $this->dialect->exactText($column); // its column may carry the rule (a full-text index)
+        }
         if ($this->dialect instanceof TextComparison && $query->comparesAsText($field) && $query->localizationFor($field) !== null) {
             return $this->dialect->textValue($column);
         }
@@ -330,7 +342,10 @@ class QueryCompiler
     private function compileAnyCondition(array $condition, Query $query, array &$bindings): string
     {
         // = and IN compare by the rule; CONTAINS matches the plain value, HAS a list's members exactly.
-        $column = in_array($condition['operator'], ['IN', '='], true) ? $this->compared($condition['field'], $query) : $this->column($condition['field'], $query);
+        $column = in_array($condition['operator'], ['IN', '='], true)
+            || ($condition['operator'] === 'HAS' && $query->comparesExactly($condition['field']))
+            ? $this->compared($condition['field'], $query)
+            : $this->column($condition['field'], $query);
         $value = $condition['value'];
 
         switch ($condition['operator']) {

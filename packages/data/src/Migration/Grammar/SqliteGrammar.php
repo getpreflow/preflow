@@ -22,6 +22,9 @@ final class SqliteGrammar implements SchemaGrammar, TextCollations
     /** The collation text columns name (on()), null for none. */
     private ?string $textCollation = null;
 
+    /** @var \WeakMap<\PDO, true>|null the connections found to have the collation */
+    private static ?\WeakMap $prepared = null;
+
     /** The collations a table rebuild carries over; any other refuses it. */
     private const array KEPT_COLLATIONS = ['binary', SqliteDialect::TEXT_COLLATION];
 
@@ -39,10 +42,18 @@ final class SqliteGrammar implements SchemaGrammar, TextCollations
      */
     public function on(\PDO $pdo): static
     {
-        $registered = array_map(static fn (array $row): string => strtolower((string) $row['name']), $pdo->query('PRAGMA collation_list')->fetchAll(\PDO::FETCH_ASSOC));
-        if (!in_array(SqliteDialect::TEXT_COLLATION, $registered, true)) {
-            throw new \LogicException('This SQLite connection has no collation ' . SqliteDialect::TEXT_COLLATION
-                . ', which the columns of text fields declare: call SqliteDialect::prepare() on it (SqliteDriver does).');
+        self::$prepared ??= new \WeakMap();
+        if (!isset(self::$prepared[$pdo])) {
+            $list = $pdo->query('PRAGMA collation_list');
+            if ($list === false) {
+                throw new \RuntimeException('Reading the collations of the SQLite connection failed: ' . ($pdo->errorInfo()[2] ?? 'unknown error'));
+            }
+            $registered = array_map(static fn (array $row): string => strtolower((string) $row['name']), $list->fetchAll(\PDO::FETCH_ASSOC));
+            if (!in_array(SqliteDialect::TEXT_COLLATION, $registered, true)) {
+                throw new \LogicException('This SQLite connection has no collation ' . SqliteDialect::TEXT_COLLATION
+                    . ', which the columns of text fields declare: call SqliteDialect::prepare() on it (SqliteDriver does).');
+            }
+            self::$prepared[$pdo] = true; // a collation cannot be unregistered
         }
         $bound = clone $this;
         $bound->textCollation = SqliteDialect::TEXT_COLLATION;

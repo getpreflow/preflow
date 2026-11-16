@@ -48,7 +48,7 @@ final class Tables
             if (!$entry['typed'] || isset($tables[$def->table]) || !self::storedIn($dm, $def, $driver)) {
                 continue;
             }
-            $specs = $sync->specs($def, $entry['extra'], true);
+            $specs = $sync->specs($def, $entry['extra'], true, $grammar);
             $tables[$def->table] = new Table(
                 $def->table,
                 $def->idField,

@@ -63,7 +63,7 @@ final class RecordTableSync
         $pdo = $driver->pdo();
         $schema = new Schema($pdo);
         $grammar = Grammars::for($pdo);
-        $specs = $this->specs($def, $extraColumns, $typed);
+        $specs = $this->specs($def, $extraColumns, $typed, $grammar);
 
         $lines = [];
         $drifted = [];
@@ -194,16 +194,24 @@ final class RecordTableSync
      * field and a field of a composite index count as indexed), free text for extra columns and
      * in untyped tables. A text field's column (TextColumns) is marked text, in untyped tables
      * too (they hold copies of the records, queried by the same type), so it compares by the
-     * text rule; every other column exactly. Public: the conversion of existing tables gives them
-     * the same columns.
+     * text rule; every other column exactly. On a grammar with full-text indexes the exact fields
+     * and lists a full-text type's index covers (TextColumns::exactInFullText()) take the rule's
+     * collation too, as the index needs one collation over its columns; queries compare them
+     * exactly (Query::compareExactly()). Public: the conversion of existing tables gives them the
+     * same columns.
      *
      * @param list<string> $extraColumns
+     * @param SchemaGrammar|null $grammar the table's grammar (null: no full-text index considered)
      * @return array<string, ColumnSpec>
      */
-    public function specs(TypeDefinition $def, array $extraColumns, bool $typed): array
+    public function specs(TypeDefinition $def, array $extraColumns, bool $typed, ?SchemaGrammar $grammar = null): array
     {
         $indexed = $def->indexedByOthers();
-        $text = array_fill_keys(TextColumns::of($def, $this->dm->fieldKinds()), true);
+        $kinds = $this->dm->fieldKinds();
+        $text = array_fill_keys([
+            ...TextColumns::of($def, $kinds),
+            ...($typed && $grammar instanceof FullTextIndexes ? TextColumns::exactInFullText($def, $kinds) : []),
+        ], true);
         $specs = [];
         foreach ($def->fields as $name => $field) {
             if (!$typed) {

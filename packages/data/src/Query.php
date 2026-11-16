@@ -235,6 +235,52 @@ final class Query
         return isset($this->textFields[$field]);
     }
 
+    /** @var array<string, true> */
+    private array $shortTextFields = [];
+
+    /** @var array<string, true> */
+    private array $exactFields = [];
+
+    /**
+     * Of the text fields (compareAsText()), those stored in a bounded, indexable column
+     * (TextColumns::short()): an SQL database orders them by the column itself and keeps using its
+     * index. Any other text field may need more to sort by the rule (MariaDB sorts long text by
+     * its first-level weights only, see TextComparison::textOrder()). A query that names none
+     * sorts every text field the safe way.
+     *
+     * @param list<string> $fields
+     * @since 0.78
+     */
+    public function shortText(array $fields): void
+    {
+        $this->shortTextFields = array_fill_keys(array_map('strval', $fields), true);
+    }
+
+    /** @since 0.78 */
+    public function sortsAsShortText(string $field): bool
+    {
+        return isset($this->shortTextFields[$field]);
+    }
+
+    /**
+     * Compare these fields exactly even where their column carries the text rule's collation
+     * (TextColumns::exactInFullText(): exact fields and lists in a full-text index): =, IN, ORDER
+     * BY, grouping and HAS then name an exact comparison (Dialect::exactText()).
+     *
+     * @param list<string> $fields
+     * @since 0.78
+     */
+    public function compareExactly(array $fields): void
+    {
+        $this->exactFields = array_fill_keys(array_map('strval', $fields), true);
+    }
+
+    /** @since 0.78 */
+    public function comparesExactly(string $field): bool
+    {
+        return isset($this->exactFields[$field]);
+    }
+
     public function getWheres(): array { return $this->wheres; }
 
     /** @return array<int, array{field: string, direction: SortDirection}> */

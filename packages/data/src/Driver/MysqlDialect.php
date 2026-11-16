@@ -257,7 +257,9 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
 
     /**
      * One IN list for the plain id and one for the array's members, read with JSON_TABLE
-     * (MariaDB 10.6+, MySQL 8): 2 bindings per id.
+     * (MariaDB 10.6+, MySQL 8): 2 bindings per id. A list's members compare exactly
+     * (utf8mb4_bin; the connection's default collation would ignore case); the plain value as the
+     * column (or the expression given) compares.
      */
     public function jsonArrayHasAny(string $quotedColumn, array $ids, array &$bindings): string
     {
@@ -267,6 +269,6 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
 
         return "({$quotedColumn} IN {$in} OR EXISTS (SELECT 1 FROM JSON_TABLE("
             . "CASE WHEN JSON_VALID({$quotedColumn}) THEN {$quotedColumn} ELSE '[]' END, '\$[*]'"
-            . " COLUMNS(v VARCHAR(191) PATH '\$')) AS held WHERE held.v IN {$in}))";
+            . " COLUMNS(v VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PATH '\$')) AS held WHERE held.v IN {$in}))";
     }
 }

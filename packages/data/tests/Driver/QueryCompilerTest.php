@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Driver;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\QueryCompiler;
 use Preflow\Data\Query;
 use Preflow\Data\SortDirection;
@@ -196,7 +197,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM `posts` WHERE ((`tags` IN (?,?) OR EXISTS (SELECT 1 FROM JSON_TABLE(CASE WHEN JSON_VALID(`tags`) THEN `tags` ELSE \'[]\' END, \'$[*]\' COLUMNS(v VARCHAR(191) PATH \'$\')) AS held WHERE held.v IN (?,?))))',
+            'SELECT * FROM `posts` WHERE ((`tags` IN (?,?) OR EXISTS (SELECT 1 FROM JSON_TABLE(CASE WHEN JSON_VALID(`tags`) THEN `tags` ELSE \'[]\' END, \'$[*]\' COLUMNS(v VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PATH \'$\')) AS held WHERE held.v IN (?,?))))',
             $sql,
         );
         $this->assertSame(['a', 'b', 'a', 'b'], $bindings);
@@ -233,5 +234,34 @@ final class QueryCompilerTest extends TestCase
 
         $this->assertSame('SELECT * FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $sql);
         $this->assertSame('SELECT COUNT(*) as total FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $countSql);
+    }
+
+    /** MariaDB sorts long text by first-level weights only: WEIGHT_STRING there, a short text's column as it is (its index stays usable). */
+    public function test_a_short_text_field_sorts_by_its_column_a_long_one_by_its_weights(): void
+    {
+        $compiler = new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci'));
+        $query = (new Query())->orderBy('slug')->orderBy('title', SortDirection::Desc);
+        $query->compareAsText(['slug', 'title']);
+        $query->shortText(['slug']);
+
+        $this->assertSame('SELECT * FROM `page` ORDER BY `slug` ASC, WEIGHT_STRING(`title`) DESC', $compiler->compile('page', $query)[0]);
+
+        $unknown = (new Query())->orderBy('slug');
+        $unknown->compareAsText(['slug']);
+        $this->assertSame('SELECT * FROM `page` ORDER BY WEIGHT_STRING(`slug`) ASC', $compiler->compile('page', $unknown)[0], 'not named short: the safe way');
+    }
+
+    /** An exact field or a list in a full-text index sits in a column of the rule's collation: the query compares it exactly. */
+    public function test_a_field_compared_exactly_names_the_exact_comparison(): void
+    {
+        $query = (new Query())->where('code', 'AbC')->orderBy('code')
+            ->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['PHP']]]);
+        $query->compareExactly(['code', 'tags']);
+
+        [$sql] = (new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci')))->compile('note', $query);
+        $this->assertStringContainsString('WHERE ((CAST(`code` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) = ?)', $sql);
+        $this->assertStringContainsString('((CAST(`tags` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) IN (?)', $sql);
+        $this->assertStringContainsString('COLUMNS(v VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PATH', $sql, 'a list\'s members compare exactly');
+        $this->assertStringEndsWith('ORDER BY (CAST(`code` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) ASC', $sql);
     }
 }

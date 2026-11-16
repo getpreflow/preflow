@@ -17,7 +17,7 @@ use Preflow\Data\Schema\ColumnSpec;
  */
 trait ContractTables
 {
-    /** @param array<string, 'string'|'text'|'number'|'boolean'|'json'> $fields the id field first ('text': a text field, the rest exact) */
+    /** @param array<string, 'string'|'text'|'short_text'|'number'|'boolean'|'json'> $fields the id field first ('text', 'short_text': text fields, the rest exact) */
     private static function createContractTable(PdoDriver $driver, string $type, array $fields, string $autoIdColumn): void
     {
         $idField = array_key_first($fields);
@@ -27,12 +27,16 @@ trait ContractTables
                 'number' => ColumnKind::Number,
                 'boolean' => ColumnKind::Boolean,
                 'string', 'text', 'json' => ColumnKind::Text,
-            }, text: $kind === 'text');
+                'short_text' => ColumnKind::Short,
+            }, text: in_array($kind, ['text', 'short_text'], true));
         }
         $grammar = Grammars::for($driver->pdo());
 
         if ($fields[$idField] !== 'number') {
             $driver->pdo()->exec($grammar->createRecordTable($type, $idField, $specs));
+            foreach (array_keys($fields, 'short_text', true) as $name) {
+                $driver->pdo()->exec($grammar->createRecordIndex($grammar->indexName('idx', $type, (string) $name), $type, [(string) $name], false));
+            }
 
             return;
         }

@@ -29,7 +29,7 @@ final class MysqlGrammarTest extends TestCase
 
         $this->assertSame(
             'CREATE TABLE `t` (`id` VARCHAR(64) COLLATE utf8mb4_bin PRIMARY KEY, `name` VARCHAR(255), `code` VARCHAR(32) NOT NULL, '
-            . '`n` BIGINT NOT NULL, `b` TINYINT(1) NOT NULL, `j` LONGTEXT NOT NULL, `x` TEXT NOT NULL) '
+            . '`n` BIGINT NOT NULL, `b` TINYINT(1) NOT NULL, `j` LONGTEXT COLLATE utf8mb4_bin NOT NULL, `x` TEXT NOT NULL) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
             $sql,
         );
@@ -68,7 +68,7 @@ final class MysqlGrammarTest extends TestCase
     public function test_migrations_table(): void
     {
         $this->assertSame(
-            'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '
+            'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) COLLATE utf8mb4_bin NOT NULL) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
             (new MysqlGrammar())->createMigrationsTable(),
         );
@@ -252,11 +252,14 @@ final class MysqlGrammarTest extends TestCase
         $table->text('body')->nullable();
         $table->text('blob')->exact()->nullable();
         $table->uuid('ref');
+        $table->json('data')->nullable();
+        $table->timestamps();
 
         $this->assertSame(
             'CREATE TABLE `t` (`id` VARCHAR(64) COLLATE utf8mb4_bin PRIMARY KEY, `email` VARCHAR(255) COLLATE utf8mb4_0900_as_ci NOT NULL, '
             . '`key` VARCHAR(255) COLLATE utf8mb4_bin NOT NULL, `body` TEXT COLLATE utf8mb4_0900_as_ci, `blob` TEXT COLLATE utf8mb4_bin, '
-            . '`ref` VARCHAR(64) COLLATE utf8mb4_bin NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci',
+            . '`ref` VARCHAR(64) COLLATE utf8mb4_bin NOT NULL, `data` LONGTEXT COLLATE utf8mb4_bin, `created_at` VARCHAR(32) COLLATE utf8mb4_bin, '
+            . '`updated_at` VARCHAR(32) COLLATE utf8mb4_bin) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_as_ci',
             (new MysqlGrammar())->on(new FakeMysqlPdo(['utf8mb4_0900_as_ci']))->createTable('t', $table->columns()),
         );
     }

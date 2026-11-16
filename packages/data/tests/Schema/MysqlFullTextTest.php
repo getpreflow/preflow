@@ -72,6 +72,39 @@ final class MysqlFullTextTest extends TestCase
         $this->assertSame([], $this->sync()->sync(self::post()));
     }
 
+    /**
+     * A FULLTEXT index takes columns of one collation: a full-text type's tags and exact fields get
+     * the rule's collation with the other text fields, and keep comparing exactly in queries.
+     */
+    public function test_tags_and_an_exact_field_join_the_index_and_stay_exact(): void
+    {
+        $dm = new DataManager(drivers: ['mysql' => new MysqlDriver($this->pdo)], defaultDriver: 'mysql');
+        $dm->fieldKinds()->text('tags');
+        $dm->fieldKinds()->list('tags');
+        $def = new TypeDefinition('note', 'note', 'mysql', [
+            'title' => new TypeFieldDefinition('title'),
+            'tags' => new TypeFieldDefinition('tags', 'tags'),
+            'code' => new TypeFieldDefinition('code', exact: true),
+        ], fullText: true);
+
+        $lines = (new RecordTableSync($dm))->sync($def);
+
+        $this->assertSame(['created table note', 'added full-text index ft_note_search'], $lines);
+        $this->assertSame(['ft_note_search' => ['title', 'tags', 'code']], (new MysqlGrammar())->fullTextIndexes($this->pdo, 'note'));
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'a', 'title' => 'Kartenspiel', 'tags' => ['PHP', 'Würfel'], 'code' => 'AbC']), validate: false);
+        $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => 'b', 'title' => 'Brettspiel', 'tags' => ['php'], 'code' => 'abc']), validate: false);
+
+        $this->assertTrue($dm->canScore($def));
+        foreach (['Kartenspiel', 'Würfel', 'AbC'] as $word) {
+            $this->assertGreaterThan(0.0, $dm->scoreIn($def, $word, ['a', 'b'])['a'], "full-text search finds {$word}");
+        }
+        $ids = static fn (iterable $records): array => array_map(static fn ($r): string => (string) $r->getId(), [...$records]);
+        $this->assertSame(['a'], $ids($dm->queryIn($def)->where('code', 'AbC')->get()->items()), '= on an exact field stays exact');
+        $this->assertSame(['b'], $ids($dm->queryIn($def)->where('code', 'IN', ['abc'])->get()->items()));
+        $this->assertSame(['a'], $ids($dm->queryIn($def)->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['PHP']]])->get()->items()), 'HAS on tags stays exact');
+        $this->assertSame(['b', 'a'], $ids($dm->queryIn($def)->orderBy('code', \Preflow\Data\SortDirection::Desc)->get()->items()), 'sorted by bytes: "abc" after "AbC"');
+    }
+
     private static function post(bool $fullText = true, bool $extra = false): TypeDefinition
     {
         $fields = [

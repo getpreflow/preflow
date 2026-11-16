@@ -518,6 +518,8 @@ final class QueryBuilder
             $this->query->localize($translatable, $this->locale ?? $default, $default, $this->typeDef->locales->available);
         }
         $this->query->compareAsText(TextColumns::of($this->typeDef, $kinds));
+        $this->query->shortText(TextColumns::short($this->typeDef, $kinds));
+        $this->query->compareExactly(TextColumns::exactInFullText($this->typeDef, $kinds));
 
         return $this->query;
     }

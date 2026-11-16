@@ -681,10 +681,10 @@ several SQL drivers pass `--storage`.
 | `uuid()` | TEXT | VARCHAR(64) COLLATE utf8mb4_bin |
 | `string($n = 255)` | TEXT COLLATE preflow_text (TEXT when `primary()` or `exact()`) | VARCHAR($n) COLLATE the text rule's collation (`utf8mb4_bin` when `primary()` or `exact()`) |
 | `text()` | TEXT COLLATE preflow_text (TEXT when `exact()`) | TEXT COLLATE the text rule's collation (`utf8mb4_bin` when `exact()`) |
-| `json()` | TEXT | LONGTEXT (not `JSON`: MySQL's type rewrites key order and spacing) |
+| `json()` | TEXT | LONGTEXT COLLATE utf8mb4_bin (not `JSON`: MySQL's type rewrites key order and spacing) |
 | `integer()` | INTEGER | BIGINT |
 | `boolean()` | INTEGER | TINYINT(1) |
-| `timestamps()` | TEXT, nullable | VARCHAR(32), nullable |
+| `timestamps()` | TEXT, nullable | VARCHAR(32) COLLATE utf8mb4_bin, nullable |
 | `addColumn()` default | TEXT | LONGTEXT |
 
 Since 0.78 `string()` and `text()` compare by the text rule (see "Exact comparisons"); `->exact()`
@@ -750,7 +750,7 @@ warning names is converted on purpose:
   `$schema->convertColumn('object', new ColumnSpec('state', ColumnKind::Short))` for a field that
   became indexed.
 
-`preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) NOT NULL`.
+`preflow_migrations` is `migration VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, ran_at VARCHAR(32) COLLATE utf8mb4_bin NOT NULL`.
 
 **64-character names.** MySQL caps table and index names at 64 characters. The index name is
 `idx_{table}_{column}` and Folio adds `{table}__published` and `{table}__revisions`, so long
@@ -1077,10 +1077,18 @@ Where the rule lives:
   156 ms instead of 21. With an index the lookup (`=` 0.01 ms) and `ORDER BY … LIMIT` (0.01 ms)
   cost the same as before. Index the text fields a site filters or sorts large types by.
 - **MySQL/MariaDB:** the columns of text fields name the rule's collation (see "On MySQL and
-  MariaDB" above for how it is found); the rest are `utf8mb4_bin`. `ORDER BY` on a text field sorts
-  by `WEIGHT_STRING()` of the value: MariaDB sorts a TEXT or LONGTEXT value by its first-level
-  weights only (so "äpfel" and "Apfel" in storage order), and the weight string holds every level.
-  Such an `ORDER BY` cannot use an index.
+  MariaDB" above for how it is found); the rest are `utf8mb4_bin`. `ORDER BY` on a text field in a
+  long column (TEXT, LONGTEXT: a field that is neither unique nor indexed) or on a translatable
+  one sorts by `WEIGHT_STRING()` of the value: MariaDB sorts a long text by its first-level
+  weights only (so "äpfel" and "Apfel" in storage order), and the weight string holds every level;
+  such an `ORDER BY` cannot use an index, which a long column has none of anyway. A unique or
+  indexed text field (`VARCHAR`, `TextColumns::short()`, which `QueryBuilder` names on the query
+  with `Query::shortText()`) sorts by its column and keeps its index.
+- **Full-text types on MySQL:** a FULLTEXT index takes columns of one collation, so the tags and
+  exact fields a `"fullText": true` type's index covers (`TextColumns::exactInFullText()`) get the
+  rule's collation too; queries still compare them exactly (`Query::compareExactly()`, which
+  `QueryBuilder` sets: `=`, `IN`, `ORDER BY`, grouping and `HAS` name `utf8mb4_bin`). A unique
+  index on such an exact field follows the rule.
 - **JSON:** the query names its text fields (`Query::compareAsText()`, set by `QueryBuilder` from
   the type, as `localize()` is) and the driver compares them with `TextMatch`; a query built by
   hand that names none compares every field exactly. `Validation\Unique` decides with

@@ -16,7 +16,7 @@ use Preflow\Data\Schema\ColumnSpec;
  * rule's collation the server has (TextCollations, MysqlDialect::MATCH_COLLATIONS, probed once
  * per connection by on()), which is also the table default; every other column of a record table
  * (ids, keys, machine values, dates, other free text) and a migration's uuid(), primary key and
- * exact() column are utf8mb4_bin, so they compare exactly ('A', 'a' and 'ä' are three rows, not
+ * exact() column, json() and timestamps are utf8mb4_bin, so they compare exactly ('A', 'a' and 'ä' are three rows, not
  * one upsert target). On a server without the collation, or unbound, text columns are exact too
  * and a migration's string() keeps the table default utf8mb4_unicode_ci.
  */
@@ -110,10 +110,10 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollatio
             'uuid' => 'VARCHAR(64)' . self::EXACT,
             'string' => 'VARCHAR(' . ($length ?? 255) . ')',
             'text' => 'TEXT',
-            'json' => 'LONGTEXT',
+            'json' => 'LONGTEXT' . self::EXACT,
             'integer' => 'BIGINT',
             'boolean' => 'TINYINT(1)',
-            'timestamp' => 'VARCHAR(32)',
+            'timestamp' => 'VARCHAR(32)' . self::EXACT,
             default => throw new \InvalidArgumentException("Unknown column kind \"{$kind}\"."),
         };
     }
@@ -396,7 +396,7 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollatio
 
     public function createMigrationsTable(): string
     {
-        return 'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '
+        return 'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) COLLATE utf8mb4_bin NOT NULL) '
             . $this->tableOptions();
     }
 
