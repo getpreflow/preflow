@@ -691,6 +691,7 @@ final class FolioServiceProvider extends ServiceProvider
             ) : null,
             pageMeta: $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\Folio\Seo\FolioPageMeta::class) : null,
             siteUrl: is_string($appUrl = $app->config()->get('app.url')) && $appUrl !== '' ? $appUrl : null,
+            typeActions: $c->get(\Preflow\Folio\Content\TypeActions::class),
             dashboard: new \Preflow\Folio\Dashboard\Dashboard(
                 $c->get(TypeCatalog::class),
                 $c->get(DataManager::class),
@@ -1643,6 +1644,14 @@ final class FolioServiceProvider extends ServiceProvider
             $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
                 name: 'folio_js_texts',
                 callable: static fn (): string => self::jsTexts(\Preflow\Folio\FolioText::translator()),
+            ));
+
+            // The admin's permission question for templates (Folio's and extensions'): the user's permission and, for a
+            // type's record verb ("faq.create"), whether the type allows it at all (data's "readonly" / "creatable"). @since 0.78
+            $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+                name: 'folio_can',
+                callable: static fn (string $permission): bool => (self::can($container))($permission),
+                isSafe: true,
             ));
 
             // The sidebar: sections and items from the nav model (extensions add theirs), filtered by permission.

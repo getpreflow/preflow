@@ -125,13 +125,15 @@ final class ReadonlyFieldDisplayTest extends TestCase
         $controller = $this->controller($engine);
         $controller->editForm((new Psr17Factory())->createServerRequest('GET', '/folio/member/m1/edit')->withAttribute('type', 'member')->withAttribute('id', 'm1'));
 
-        // Since 0.75 the editor lists read-only fields under the side panel's System fields: the value's display.
+        // Since 0.78 a read-only field is content in the form column (System fields only with "panel": "side"): the value's display.
         $context = json_decode($engine->context, true);
         $out = [];
-        foreach ($context['system_fields'] as $field) {
-            $out[$field['name']] = $field['html'];
+        foreach ($context['fields'] as $field) {
+            if (preg_match('~^<div class="form-group folio-readonly is-content(?: is-rich)?">.*?<div class="folio-readonly-value">(.*)</div>\n(?:  <small[^\n]*\n)?</div>$~s', $field['html'], $m) === 1) {
+                $out[$field['name']] = $m[1];
+            }
         }
-        $this->assertSame([], array_filter($context['fields'], static fn (array $f): bool => isset($out[$f['name']])), 'not in the form column');
+        $this->assertSame([], $context['system_fields'], 'not under System fields');
 
         return $out;
     }

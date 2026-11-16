@@ -31,15 +31,18 @@
             "help": "An inactive account can't sign in."
         },
         "auth_epoch": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "last_login_at": {
             "label": "Last sign-in",
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "created_at": {
             "label": "Created",
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         }
     }
 }

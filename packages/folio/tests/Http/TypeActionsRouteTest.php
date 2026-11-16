@@ -85,7 +85,7 @@ final class TypeActionsRouteTest extends TestCase
         $this->assertSame(200, $edit->getStatusCode());
         $page = $this->body($edit);
         $this->assertStringContainsString('class="folio-notice folio-readonly-note"', $page, 'a note says why it cannot be edited');
-        $this->assertStringContainsString('FAQ comes from the site itself', $page);
+        $this->assertStringContainsString('FAQ is kept outside this admin', $page);
         $this->assertStringContainsString('class="folio-badge is-readonly"', $page, 'a badge beside the title');
         $this->assertStringNotContainsString('data-folio-save', $page, 'no Save');
         $this->assertStringNotContainsString('/folio/faq/f1/delete', $page, 'no Delete');
@@ -118,18 +118,9 @@ final class TypeActionsRouteTest extends TestCase
         $this->assertSame(403, $form->getStatusCode(), 'the create form opens');
         $this->assertStringContainsString('folio-ink-error', (string) $form->getBody(), "Folio's styled page");
         $this->assertStringContainsString('FAQ is read-only', $this->body($form), 'it says why');
+        $this->assertMatchesRegularExpression('#<a href="/folio/faq">Back to FAQ</a>#', $this->body($form), 'and the way back');
+        $this->assertStringNotContainsString('Ask an administrator', $this->body($form), 'no role can lift it');
 
-        foreach ([
-            ['/folio/faq', ['question' => 'x']],                 // create
-            ['/folio/faq/f1', ['question' => 'x']],              // update
-            ['/folio/faq/f1/delete', []],                        // delete
-            ['/folio/faq/_bulk/delete', ['ids' => ['f1']]],      // bulk delete
-            ['/folio/faq/_delete-plan', ['ids' => ['f1']]],
-            ['/folio/faq/f1/duplicate', []],
-            ['/folio/faq/f1/move', ['direction' => 'up']],
-        ] as [$path, $body]) {
-            $this->assertSame(403, $this->send('POST', $path, $body)->getStatusCode(), $path);
-        }
         $stored = $this->stored('faq', 'f1');
         $this->assertNotNull($stored, 'the record stays');
         $this->assertSame('Is there a trial?', $stored->get('question'), 'unchanged');
@@ -156,6 +147,10 @@ final class TypeActionsRouteTest extends TestCase
         $this->assertStringContainsString('data-folio-save', $edit, 'its flags are saved');
         $this->assertStringContainsString('/folio/message/m1/delete', $edit, 'it can be deleted');
         $this->assertStringNotContainsString('folio-readonly-note', $edit);
+        // The visitor's message (a per-field "readonly" field) is the record's content: the main column, not System fields.
+        $this->assertMatchesRegularExpression('#<div class="form-group folio-readonly is-content">\s*<span class="form-label">Message</span>\s*<div class="folio-readonly-value">Hello there, a visitor.</div>#', $edit);
+        preg_match('#<dl class="folio-system-list">(.*?)</dl>#s', $edit, $system);
+        $this->assertStringNotContainsString('Hello there', $system[1] ?? '');
 
         $save = $this->send('POST', '/folio/message/m1', ['is_read' => '1']);
         $this->assertSame(302, $save->getStatusCode(), 'an edit of its flags');
@@ -182,6 +177,123 @@ final class TypeActionsRouteTest extends TestCase
         $this->assertStringNotContainsString('aria-label="Inbox: Create"', $page);
         $this->assertStringContainsString('aria-label="Inbox: Edit"', $page);
         $this->assertStringContainsString('aria-label="Inbox: Delete"', $page);
+    }
+
+    /** @return iterable<string, array{string, array<string, mixed>}> every POST route of a type, on the read-only "faq" */
+    public static function writeRoutes(): iterable
+    {
+        yield 'create' => ['/folio/faq', ['question' => 'x']];
+        yield 'preview of a new record' => ['/folio/faq/preview', ['question' => 'x']];
+        yield 'update' => ['/folio/faq/f1', ['question' => 'x']];
+        yield 'preview' => ['/folio/faq/f1/preview', ['question' => 'x']];
+        yield 'delete' => ['/folio/faq/f1/delete', []];
+        yield 'delete plan' => ['/folio/faq/_delete-plan', ['ids' => ['f1']]];
+        yield 'bulk delete' => ['/folio/faq/_bulk/delete', ['ids' => ['f1']]];
+        yield 'bulk action' => ['/folio/faq/_bulk/set-category', ['ids' => ['f1'], 'value' => 'start']];
+        yield 'record action' => ['/folio/faq/f1/_action/anything', []];
+        yield 'duplicate' => ['/folio/faq/f1/duplicate', []];
+        yield 'move' => ['/folio/faq/f1/move', ['direction' => 'up']];
+        yield 'confirm a translation' => ['/folio/faq/f1/_translations/confirm', ['_confirm_path' => 'question']];
+        yield 'autosave' => ['/folio/faq/f1/autosave', ['question' => 'x']];
+        yield 'discard' => ['/folio/faq/f1/discard', []];
+        yield 'unpublish' => ['/folio/faq/f1/unpublish', []];
+        yield 'restore a revision' => ['/folio/faq/f1/revisions/r1/restore', []];
+        yield 'share' => ['/folio/faq/f1/share', []];
+        yield 'revoke a share' => ['/folio/faq/f1/share/revoke', []];
+    }
+
+    /** @param array<string, mixed> $body */
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('writeRoutes')]
+    public function test_every_write_route_of_a_read_only_type_answers_403(string $path, array $body): void
+    {
+        $this->install();
+        $this->as('admin');
+        $this->seedFaq();
+
+        $res = $this->send('POST', $path, $body);
+
+        $this->assertSame(403, $res->getStatusCode(), $path);
+        $this->assertSame('Is there a trial?', $this->stored('faq', 'f1')?->get('question'));
+        $this->assertSame('buying', $this->stored('faq', 'f1')?->get('category'));
+        $this->assertCount(1, $this->container()->get(DataManager::class)->queryType('faq')->get()->items());
+    }
+
+    /**
+     * Every {type} route Folio has (AI, publishing and passwords on too): each carries the type
+     * middleware, and each that writes is refused for the read-only type (the AI run, its jobs,
+     * translate and the rest included); reads pass. The middleware runs as the kernel runs it.
+     */
+    #[RunInSeparateProcess]
+    public function test_every_type_route_that_writes_is_refused_by_the_middleware(): void
+    {
+        $this->install();
+        $middleware = $this->container()->get(\Preflow\Folio\Http\TypeActionsMiddleware::class);
+        $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
+            public function handle(\Psr\Http\Message\ServerRequestInterface $request): \Psr\Http\Message\ResponseInterface
+            {
+                return new \Nyholm\Psr7\Response(200);
+            }
+        };
+        $checked = [];
+        foreach (\Preflow\Folio\Routing\FolioRoutes::admin('/folio', true, true, true, true, true) as $entry) {
+            if (!in_array('type', $entry->paramNames, true)) {
+                continue;
+            }
+            $this->assertContains(\Preflow\Folio\Http\TypeActionsMiddleware::class, $entry->middleware, $entry->pattern);
+            $rule = \Preflow\Folio\Http\FolioPermissionMiddleware::rule($entry->handler);
+            $params = array_fill_keys($entry->paramNames, 'x');
+            $params['type'] = 'faq';
+            $route = new \Preflow\Core\Routing\Route(\Preflow\Core\Routing\RouteMode::Action, $entry->handler, $params);
+            $request = (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest($entry->method, '/x')->withAttribute(\Preflow\Core\Routing\Route::class, $route);
+            $expected = $rule === '{type}.view' ? 200 : 403;
+            $this->assertSame($expected, $middleware->process($request, $handler)->getStatusCode(), "{$entry->method} {$entry->pattern} ({$rule})");
+            $checked[] = $entry->method . ' ' . $entry->pattern;
+        }
+        foreach (['POST /folio/{type}/_ai/run', 'POST /folio/{type}/_ai/jobs/{job}/step', 'POST /folio/{type}/{id}/_ai/suggest', 'POST /folio/{type}/{id}/autosave', 'POST /folio/{type}/{id}/revisions/{rev}/restore', 'POST /folio/{type}/_bulk/{name}', 'POST /folio/{type}/{id}/_action/{name}'] as $route) {
+            $this->assertContains($route, $checked);
+        }
+    }
+
+    /** Templates (an extension's screen, a site page) ask folio_can(): the permission and what the type allows. */
+    #[RunInSeparateProcess]
+    public function test_folio_can_composes_the_permission_and_the_type(): void
+    {
+        $this->write('app/pages/can.twig', "{% for p in ['page.create', 'faq.view', 'faq.create', 'faq.edit', 'message.create', 'message.edit'] %}{{ p }}={{ folio_can(p) ? 'yes' : 'no' }} {% endfor %}");
+        $this->install();
+        $this->as('admin');
+
+        $this->assertSame(
+            'page.create=yes faq.view=yes faq.create=no faq.edit=no message.create=no message.edit=yes',
+            trim((string) $this->send('GET', '/can')->getBody()),
+        );
+    }
+
+    /** A role that holds a verb the type refuses keeps it through a save of the matrix (no grant is dropped). */
+    #[RunInSeparateProcess]
+    public function test_a_kept_grant_survives_a_save_of_the_roles_matrix(): void
+    {
+        $this->install();
+        $this->role('r-faq', 'staff', 'faqkeeper', ['folio.dashboard', 'faq.view', 'faq.edit', 'message.create', 'page.view']);
+        $this->as('admin');
+
+        $page = (string) $this->send('GET', '/folio/rbac_role/r-faq/edit')->getBody();
+        $this->assertStringContainsString('value="faq.edit" data-rbac-kept', $page, 'kept as a hidden input');
+        $permissions = [];
+        preg_match_all('#<input type="(?:checkbox|hidden)" name="permissions\[\]" value="([^"]*)"([^>]*)>#', $page, $inputs, PREG_SET_ORDER);
+        foreach ($inputs as [$tag, $value, $attrs]) {
+            if (str_starts_with($tag, '<input type="hidden"') || str_contains($attrs, ' checked')) {
+                $permissions[] = html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }
+        }
+
+        $save = $this->send('POST', '/folio/rbac_role/r-faq', ['name' => 'faqkeeper', 'label' => 'Faqkeeper', 'population' => 'staff', 'permissions' => $permissions]);
+
+        $this->assertSame(302, $save->getStatusCode(), substr((string) $save->getBody(), 0, 300));
+        $held = (array) $this->stored('rbac_role', 'r-faq')?->get('permissions');
+        foreach (['faq.view', 'faq.edit', 'message.create'] as $grant) {
+            $this->assertContains($grant, $held, $grant);
+        }
     }
 
     /** Folio without sign-in (no auth configured): no permission middleware, the type still refuses. */

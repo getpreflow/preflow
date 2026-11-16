@@ -106,7 +106,7 @@ final class TypeRegistry
      * says it is creatable) is an error when the registry is built (at boot), naming the option; as
      * the titleField check, run when a boot manifest is built and skipped when one is loaded. A
      * class's #[Entity] values are typed; its admin file's are checked here, a disagreement between
-     * the two on first use (ModelSchema::overlay()).
+     * the two in assertOneDefinitionPerKey() (ModelSchema::assertActionsAgree()).
      */
     private function assertActions(): void
     {
@@ -143,6 +143,7 @@ final class TypeRegistry
             $file = is_file($path) ? \Preflow\Core\Config\ParsedJsonFiles::read($path) : null;
             if (is_array($file) && ($file['extends'] ?? false) !== true) {
                 ModelSchema::assertAdminOnly($file, $path, $key, $class);
+                ModelSchema::assertActionsAgree($file, $path, (string) $key, $class);
             }
         }
     }
@@ -443,6 +444,8 @@ final class TypeRegistry
             }
         }
 
+        $actions = self::actions($schema, (string) $schema['key']);
+
         return new TypeDefinition(
             key: $schema['key'],
             table: $schema['table'],
@@ -455,8 +458,8 @@ final class TypeRegistry
             indexes: self::indexes($schema['indexes'] ?? null, (string) $schema['key']),
             titleField: self::titleField($schema['titleField'] ?? null, (string) $schema['key']),
             fullText: self::fullText($schema['fullText'] ?? null, (string) $schema['key']),
-            readonly: self::actions($schema, (string) $schema['key'])['readonly'],
-            creatable: self::actions($schema, (string) $schema['key'])['creatable'],
+            readonly: $actions['readonly'],
+            creatable: $actions['creatable'],
         );
     }
 }

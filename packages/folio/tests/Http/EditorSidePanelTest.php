@@ -118,24 +118,29 @@ final class EditorSidePanelTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_read_only_fields_move_to_system_fields(): void
+    public function test_read_only_fields_show_as_content_and_side_ones_in_system_fields(): void
     {
         $this->writeModel('event', ['label' => 'Events', 'fields' => [
             'name' => ['type' => 'string'],
-            'imported' => ['type' => 'string', 'readonly' => true, 'label' => 'Imported from'],
-            'closed' => ['type' => 'boolean', 'readonly' => true],
+            'imported' => ['type' => 'string', 'readonly' => true, 'label' => 'Imported from', 'panel' => 'side'],
+            'closed' => ['type' => 'boolean', 'readonly' => true, 'panel' => 'side'],
+            'note' => ['type' => 'text', 'readonly' => true, 'label' => 'Visitor note'],
         ]]);
-        $this->working('event', 'e1', ['name' => 'Fair', 'imported' => 'feed.xml']);
+        $this->working('event', 'e1', ['name' => 'Fair', 'imported' => 'feed.xml', 'note' => "First line\nSecond line"]);
 
         $page = (string) $this->get('/folio/event/e1/edit')->getBody();
         $side = self::side($page);
 
+        // Metadata ("panel": "side"): the side panel's System fields.
         $this->assertMatchesRegularExpression('~<details class="folio-side-section folio-side-system">~', $side);
         $this->assertMatchesRegularExpression('~<dt>Imported from</dt><dd>feed.xml</dd>~', $side);
         $this->assertMatchesRegularExpression('~<dt>Closed</dt><dd>—</dd>~', $side, 'nothing stored: a dash');
         $this->assertMatchesRegularExpression('~<dt>ID</dt><dd class="folio-system-id"><span class="folio-mono" title="e1">e1</span><button type="button" class="btn btn-ghost btn-icon btn-sm" data-copy="e1"~', $side);
-        $this->assertStringNotContainsString('folio-readonly', self::form($page), 'not in the main column');
         $this->assertStringNotContainsString('Imported from', self::form($page));
+        // Any other read-only field is the record's content: the main column.
+        $this->assertMatchesRegularExpression('~<div class="form-group folio-readonly is-content">\s*<span class="form-label">Visitor note</span>\s*<div class="folio-readonly-value">First line\nSecond line</div>~', self::form($page));
+        $this->assertStringNotContainsString('Visitor note', $side);
+        $this->assertStringNotContainsString('name="note"', $page);
     }
 
     #[RunInSeparateProcess]

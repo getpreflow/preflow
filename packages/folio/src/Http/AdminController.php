@@ -98,11 +98,13 @@ final class AdminController
         private readonly ?\Preflow\Folio\Dashboard\Dashboard $dashboard = null,
         // "Write a draft" in rich text (since 0.77): asked whether it can write now; null: never.
         private readonly ?\Preflow\Ai\Draft\DraftWriter $draftWriter = null,
+        // What each type allows (data's "readonly" / "creatable"; since 0.78): the container's; null builds one from the registry.
+        ?\Preflow\Folio\Content\TypeActions $typeActions = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
-        $this->typeActions = new \Preflow\Folio\Content\TypeActions($registry);
+        $this->typeActions = $typeActions ?? new \Preflow\Folio\Content\TypeActions($registry);
     }
 
     /** What each type allows (data's "readonly" / "creatable"), asked with every permission. */
@@ -1409,7 +1411,7 @@ final class AdminController
         // The fields the public address is built from: admin.js keeps them to a-z, digits and hyphens.
         $addressFields = $this->frontend->routeFor($type)?->addressModes() ?? [];
         // The editor frame (the full page, not the create drawer): the side panel takes the address
-        // fields, the "panel": "side" fields and the read-only ones (System fields).
+        // fields, the "panel": "side" fields, and read-only ones placed "panel": "side" (System fields).
         $framed = $layout !== '@folio/admin/_drawer_layout.twig';
         $systemFields = [];
         // A read-only type (data's "readonly"): every field is the page's content, shown as text in
@@ -1423,31 +1425,11 @@ final class AdminController
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
-            if ($typeReadonly) {
-                $stored = isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
-                $display = $this->readonlyDisplay($fieldDef, $stored === null || $stored === '' ? $stored : $fieldType->fromStorage($stored), $this->fieldConfig($type, $name, $fieldDef));
-                $fields[] = [
-                    'name' => $name,
-                    'html' => self::readonlyField($name, $this->labels->fieldText($type, $name), $this->labels->help($type, $name), $display, $fieldDef->type === 'richtext' ? 'is-content is-rich' : 'is-content'),
-                    'translatable' => isset($translatable[$name]),
-                    'structured' => false,
-                    'falls_back' => false,
-                    'reference' => null,
-                    'placement' => 'main',
-                    'half' => ($fieldDef->config['width'] ?? 'full') === 'half',
-                ];
-                continue;
-            }
-            if (($fieldDef->config['readonly'] ?? false) === true) {
-                $stored = isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
-                $display = $this->readonlyDisplay(
-                    $fieldDef,
-                    // nothing stored stays nothing (fromStorage would turn a missing boolean into false)
-                    $stored === null || $stored === '' ? $stored : $fieldType->fromStorage($stored),
-                    $this->fieldConfig($type, $name, $fieldDef),
-                );
-                if ($framed) {
-                    // The editor frame lists read-only fields under the side panel's "System fields".
+            // A read-only type's fields and a field marked "readonly": shown as content in the main
+            // column; one placed "panel": "side" goes to the side panel's System fields (metadata).
+            if ($typeReadonly || ($fieldDef->config['readonly'] ?? false) === true) {
+                $display = $this->readonlyValue($type, $name, $fieldDef, $values, $locales, $locale, isset($translatable[$name]));
+                if ($framed && ($fieldDef->config['panel'] ?? 'main') === 'side') {
                     $systemFields[] = [
                         'name' => $name,
                         'label' => $this->labels->fieldText($type, $name) ?? (new \Preflow\Form\FieldRenderer())->humanize($name),
@@ -1458,13 +1440,13 @@ final class AdminController
                 }
                 $fields[] = [
                     'name' => $name,
-                    'html' => self::readonlyField($name, $this->labels->fieldText($type, $name), $this->labels->help($type, $name), $display),
+                    'html' => self::readonlyField($name, $this->labels->fieldText($type, $name), $this->labels->help($type, $name), $display, $fieldDef->type === 'richtext' ? 'is-content is-rich' : 'is-content'),
                     'translatable' => isset($translatable[$name]),
                     'structured' => false,
                     'falls_back' => false,
                     'reference' => null,
                     'placement' => 'main',
-                    'half' => false,
+                    'half' => ($fieldDef->config['width'] ?? 'full') === 'half',
                 ];
                 continue;
             }
@@ -2360,6 +2342,23 @@ final class AdminController
         }
 
         return trim(strip_tags($html)) === '' ? '—' : $html;
+    }
+
+    /**
+     * A read-only field's stored value (this language's, for a translatable one) as display HTML
+     * (readonlyDisplay): nothing stored stays nothing (fromStorage would turn a missing boolean into false).
+     *
+     * @param array<string, mixed> $values
+     */
+    private function readonlyValue(string $type, string $name, \Preflow\Data\TypeFieldDefinition $fieldDef, array $values, \Preflow\Data\Locales $locales, string $locale, bool $translatable): string
+    {
+        $stored = $translatable ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
+
+        return $this->readonlyDisplay(
+            $fieldDef,
+            $stored === null || $stored === '' ? $stored : $this->fieldTypes->get($fieldDef->type)->fromStorage($stored),
+            $this->fieldConfig($type, $name, $fieldDef),
+        );
     }
 
     /**

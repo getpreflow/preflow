@@ -21,8 +21,11 @@ final class Forbidden
     /** The English text (folio.errors.forbidden); responses carry it in the user's interface language. */
     public const string MESSAGE = "You don't have access to this.";
 
-    /** @param string|null $message why, when it is not a missing permission (a read-only type, @since 0.78); null: the usual text */
-    public static function response(ServerRequestInterface $request, TemplateEngineInterface $engine, string $prefix, TypeCatalog $catalog, ?string $message = null): ResponseInterface
+    /**
+     * @param string|null $message why, when it is not a missing permission (a read-only type, @since 0.78); null: the usual text
+     * @param array{label: string, url: string}|null $back a way on instead of "ask an administrator" (the type's list, @since 0.78)
+     */
+    public static function response(ServerRequestInterface $request, TemplateEngineInterface $engine, string $prefix, TypeCatalog $catalog, ?string $message = null, ?array $back = null): ResponseInterface
     {
         $reason = $message !== null;
         $message ??= FolioText::get('folio.errors.forbidden');
@@ -43,6 +46,7 @@ final class Forbidden
             'message' => $message,
             // "Ask an administrator" helps with a missing permission, not with what the type itself refuses.
             'help' => !$reason,
+            'back' => $back,
             // Inside a drawer (asset picker, "New" related record): the drawer's own layout.
             'layout' => $request->getHeaderLine('Sec-Fetch-Dest') === 'iframe' || ($request->getQueryParams()['_drawer'] ?? null) === '1'
                 ? '@folio/admin/_drawer_layout.twig'

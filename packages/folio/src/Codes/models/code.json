@@ -24,10 +24,12 @@
             "help": "Empty: unlimited."
         },
         "uses": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "revoked_at": {
             "readonly": true,
+            "panel": "side",
             "exact": true
         },
         "payload": {
@@ -36,10 +38,12 @@
             "exact": true
         },
         "form": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "recipient": {
-            "readonly": true
+            "readonly": true,
+            "panel": "side"
         },
         "created_at": {
             "hidden": true,

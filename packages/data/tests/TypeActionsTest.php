@@ -154,14 +154,13 @@ final class TypeActionsTest extends TestCase
         $this->assertFalse($registry->get('ta_plain')->allows(TypeAction::Delete));
     }
 
-    public function test_a_class_and_its_admin_file_never_disagree_silently(): void
+    public function test_a_class_and_its_admin_file_never_disagree_silently_checked_at_boot(): void
     {
         file_put_contents($this->dir . '/models/ta_inbox.json', json_encode(['key' => 'ta_inbox', 'label' => 'Inbox', 'creatable' => true]));
-        $registry = new TypeRegistry($this->dir . '/models', classes: ['ta_inbox' => TypeActionsInbox::class]);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('"creatable"');
-        $registry->get('ta_inbox');
+        $this->expectExceptionMessage('Type "ta_inbox" has "creatable": false on ' . TypeActionsInbox::class . ' and true in ta_inbox.json: set it in one place.');
+        new TypeRegistry($this->dir . '/models', classes: ['ta_inbox' => TypeActionsInbox::class]); // at boot
     }
 
     public function test_an_adapter_is_refused_with_a_403_naming_the_type_and_action(): void

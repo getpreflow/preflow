@@ -119,6 +119,32 @@ final class ModelSchema
     }
 
     /**
+     * A class's #[Entity(readonly:, creatable:)] and its admin file's "readonly" / "creatable" agree:
+     * the file may add an option the class leaves at its default, never contradict one the class
+     * sets. Run for every class-backed key when TypeRegistry is built (at boot).
+     *
+     * @param array<string, mixed> $adminFile
+     * @param class-string $modelClass
+     * @throws \RuntimeException naming the type, the option, the class and the file
+     * @since 0.78
+     */
+    public static function assertActionsAgree(array $adminFile, string $file, string $key, string $modelClass): void
+    {
+        $entity = (new \ReflectionClass($modelClass))->getAttributes(Entity::class)[0] ?? null;
+        $entity = $entity?->newInstance();
+        if ($entity === null) {
+            return;
+        }
+        $class = array_filter(['readonly' => $entity->readonly ? true : null, 'creatable' => $entity->creatable ? null : false], static fn (?bool $v): bool => $v !== null);
+        foreach ($class as $option => $value) {
+            if (array_key_exists($option, $adminFile) && $adminFile[$option] !== $value) {
+                throw new \RuntimeException('Type "' . $key . '" has "' . $option . '": ' . var_export($value, true) . ' on ' . $modelClass
+                    . ' and ' . json_encode($adminFile[$option]) . ' in ' . basename($file) . ': set it in one place.');
+            }
+        }
+    }
+
+    /**
      * The titleField of a class-backed type: the class's (#[Entity(titleField: …)]) or its admin
      * file's. Both may name it only when they name the same field: never a silent override.
      *
@@ -165,14 +191,6 @@ final class ModelSchema
         }
 
         $titleField = self::titleField($classSchema, $adminFile, $file, $modelClass);
-        foreach (['readonly', 'creatable'] as $option) {
-            // The class says what differs from the default; its admin file may add it, never contradict it.
-            if (array_key_exists($option, $classSchema) && array_key_exists($option, $adminFile) && $adminFile[$option] !== $classSchema[$option]) {
-                throw new \RuntimeException('Type "' . $key . '" has "' . $option . '": ' . var_export($classSchema[$option], true) . ' on '
-                    . ($modelClass !== '' ? $modelClass : 'its model class') . ' and ' . json_encode($adminFile[$option]) . ' in '
-                    . basename($file) . ': set it in one place.');
-            }
-        }
         $schema = $classSchema + array_diff_key($adminFile, array_flip(self::SCHEMA_TYPE_KEYS));
         if ($titleField !== null) {
             $schema['titleField'] = $titleField;

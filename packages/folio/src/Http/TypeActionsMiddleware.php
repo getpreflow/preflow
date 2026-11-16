@@ -54,7 +54,12 @@ final class TypeActionsMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog, self::reason($this->actions, $type, $this->labels?->type($type) ?? $this->catalog->get($type)?->label ?? ucfirst($type)));
+        $label = $this->labels?->type($type) ?? $this->catalog->get($type)?->label ?? ucfirst($type);
+
+        return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog, self::reason($this->actions, $type, $label), [
+            'label' => FolioText::get('folio.form.back_to', ['label' => $label]),
+            'url' => $this->prefix . '/' . $type,
+        ]);
     }
 
     /** Why the type refuses: read-only, or not created here (folio.errors.readonly / not_creatable). */

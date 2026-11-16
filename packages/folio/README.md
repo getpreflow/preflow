@@ -904,9 +904,10 @@ Any field also takes:
   the stored value; a posted value is ignored.
 - `"readonly": true`: shown as its label and display value, without an input: a select its option
   label, a relation its record labels, a date formatted for the admin, rich text its sanitised
-  markup, "—" when empty. Since 0.75 the editor lists these under **System fields** in its side
-  panel, with the record's id (the create drawer keeps them in the form). A save keeps the stored
-  value; a posted value is ignored.
+  markup, "—" when empty. Since 0.78 it is the record's content in the form column (a text keeps
+  its line breaks); with `"panel": "side"` it is metadata, listed under **System fields** in the
+  side panel with the record's id (0.75 to 0.77 listed every read-only field there). A save keeps
+  the stored value; a posted value is ignored.
   A read-only field is not validated on save (not its `validate` rules, its type's rules or
   `required`): the editor can't change it, so checking it would only block the save.
 
@@ -1102,6 +1103,16 @@ renders it and refuses what the type refuses, for everyone (a role cannot lift i
   duplicate, publish, translate, …) answers 403 with Folio's page, saying why; with or without
   sign-in (`TypeActionsMiddleware`, on every admin route; the verb is the one the route's
   permission names). The Roles matrix shows "–" for a verb the type refuses.
+- **A field marked `"readonly"`** (on any type) shows as content in the main column too, so an
+  inbox shows the visitor's message where the editor reads it. Metadata (a received date, an IP
+  address) goes to the side panel's System fields with `"panel": "side"`.
+- **Extension authors:** in a template ask `folio_can('faq.create')` rather than `can()`: it answers
+  the user's permission and what the type allows. In PHP ask `TypeActions` (container singleton)
+  `allowsVerb($type, 'create')` or `permits('faq.create')`, or data's
+  `$registry->get($type)->allows(TypeAction::Create)`; an endpoint of your own that writes a type's
+  records for an editor calls `assertAllows()` first (a 403 Folio and an API both answer). Your
+  routes under Folio's `{type}` paths are covered by `TypeActionsMiddleware` only if their handler
+  has a rule in `FolioPermissionMiddleware`; a screen route is not, so check yourself.
 - In PHP: `Preflow\Folio\Content\TypeActions` (`allows()`, `allowsVerb()`, `permits()`,
   `readonly()`) maps Folio's verbs onto data's `TypeAction` (`create`, `edit`/`publish` = update,
   `delete`).

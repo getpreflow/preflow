@@ -6,7 +6,7 @@
    menu holds everything else. Without JS it opens in place; admin.js adds the keyboard (menu pattern). #}
 {% import '@folio/admin/partials/_type_icon.twig' as types %}
 {% import '@folio/admin/partials/_languages.twig' as langs %}
-{% set may = may|default({create: can(type ~ '.create'), edit: can(type ~ '.edit'), delete: can(type ~ '.delete')}) %}
+{% set may = may|default({create: folio_can(type ~ '.create'), edit: folio_can(type ~ '.edit'), delete: folio_can(type ~ '.delete')}) %}
 {% set icons = folio_asset('icons.svg') %}
 {% if list.chips is not empty %}
     <div class="folio-filter-chips">
