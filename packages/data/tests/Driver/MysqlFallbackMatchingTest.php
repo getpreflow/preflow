@@ -81,7 +81,8 @@ final class MysqlFallbackMatchingTest extends TestCase
         foreach ($probe->disagreements($pairs, new MysqlDialect(null)) as $disagreement) {
             [$a, $b, $server] = $disagreement;
             $kind = match (true) {
-                mb_ord($a, 'UTF-8') > 0xFFFF && mb_ord($b, 'UTF-8') > 0xFFFF => '𐐀',
+                // A case pair outside the BMP the rule matches and LOWER() does not fold (MariaDB 11.4).
+                !$server && mb_ord($a, 'UTF-8') > 0xFFFF && mb_ord($b, 'UTF-8') > 0xFFFF && TextMatch::matchFold($a) === TextMatch::matchFold($b) => '𐐀',
                 !$server && TextMatch::fold($a) !== TextMatch::fold($b) => 'uber', // accents and other marks count, as in "="
                 !$server => 'ａ', // only case is lowered: width, compatibility and other equal forms stay apart
                 in_array('ẞ', [$a, $b], true) && in_array('ß', [$a, $b], true) => 'ẞ',

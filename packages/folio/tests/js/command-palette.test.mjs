@@ -162,6 +162,48 @@ test('records come grouped by type after the screens, the match in <strong>, ass
     }
 });
 
+test('screens filter and titles mark ignoring accents, as the server\'s search does', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    try {
+        const p = page({ commands: { ...COMMANDS, screens: [...COMMANDS.screens, { label: 'Übersicht', url: '/folio/overview', icon: 'ui-dashboard', family: null }] } });
+        press(p, 'k', { meta: true });
+        type(p, 'ubersicht');
+        assert.deepEqual(titles(p), ['Übersicht'], '"ubersicht" lists "Übersicht"');
+        type(p, 'ÜBER');
+        assert.deepEqual(titles(p), ['Übersicht'], 'an accented term finds it too');
+
+        type(p, 'eli');
+        mock.timers.tick(150);
+        p.answer(p.requests[p.requests.length - 1], { groups: [{ type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [
+            { id: 'e', title: 'Élise Øre', url: '/folio/page/e/edit' },
+            { id: 's', title: 'Straße', url: '/folio/page/s/edit' },
+        ] }] });
+        await flush();
+        const marks = (i) => rows(p)[i].querySelector('.folio-command-title').children.map((c) => [c.tagName, c.textContent]);
+        assert.deepEqual(marks(0), [['STRONG', 'Éli'], ['SPAN', 'se Øre']], '"eli" marks "Éli"');
+
+        type(p, 'ore');
+        mock.timers.tick(150);
+        p.answer(p.requests[p.requests.length - 1], { groups: [{ type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [
+            { id: 'e', title: 'Élise Øre', url: '/folio/page/e/edit' },
+            { id: 'd', title: 'Cafe\u0301 ore', url: '/folio/page/d/edit' },
+        ] }] });
+        await flush();
+        assert.deepEqual(marks(0), [['SPAN', 'Élise '], ['STRONG', 'Øre']], 'ø is an o');
+        assert.deepEqual(marks(1), [['SPAN', 'Cafe\u0301 '], ['STRONG', 'ore']], 'a combining mark stays with its letter, unmarked');
+
+        type(p, 'strasse');
+        mock.timers.tick(150);
+        p.answer(p.requests[p.requests.length - 1], { groups: [{ type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [
+            { id: 's', title: 'Straße', url: '/folio/page/s/edit' },
+        ] }] });
+        await flush();
+        assert.deepEqual(marks(0), [['SPAN', 'Straße']], 'ß stays one letter: nothing marked');
+    } finally {
+        mock.timers.reset();
+    }
+});
+
 test('a title is text: markup in it stays text', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
     try {

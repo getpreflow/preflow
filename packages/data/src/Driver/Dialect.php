@@ -85,11 +85,14 @@ interface Dialect
     public function exactText(string $expression): string;
 
     /**
-     * The operator for pattern matching (where LIKE / NOT LIKE, search(), CONTAINS), as close
-     * to the text-matching rule (StorageDriver: case and width ignored, accents count) as the
-     * operator gets, e.g. 'ILIKE' in PostgreSQL. A dialect whose operator alone cannot give the
-     * rule (SQLite's LIKE folds ASCII case only, MySQL's follows the column's collation, which may
-     * ignore accents) implements PatternMatching, whose likeSql() QueryCompiler then uses instead.
+     * The operator for pattern matching (where LIKE / NOT LIKE, search(), CONTAINS) for a
+     * compiler that does not ask PatternMatching. The matching rule (StorageDriver, since 0.78.1)
+     * ignores case, accents and width; an operator that respects accents (PostgreSQL's ILIKE, a
+     * column's accent-sensitive collation) or folds ASCII case only (SQLite's LIKE) cannot meet
+     * it, so such a dialect implements PatternMatching, whose likeSql() QueryCompiler then uses
+     * instead. TextMatch::matchFold() is the reference fold, one character for one, for a store
+     * that folds text itself (an unaccent()-style function in PostgreSQL, a folded copy of the
+     * field in a document store).
      */
     public function likeOperator(): string;
 

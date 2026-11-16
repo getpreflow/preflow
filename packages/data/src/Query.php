@@ -167,8 +167,10 @@ final class Query
     }
 
     /**
-     * Records where one of $fields (every field when empty) holds $term, compared by the matching
-     * rule (StorageDriver: case and accents ignored, since 0.78.1; "uber" finds "Über").
+     * Records where one of $fields holds $term, compared by the matching rule (StorageDriver: case
+     * and accents ignored, since 0.78.1; "uber" finds "Über"). Name the fields: with an empty
+     * list the drivers differ today (the JSON driver searches every field, an SQL driver adds no
+     * condition and so returns every record).
      *
      * @param list<string> $fields
      */

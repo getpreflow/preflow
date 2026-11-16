@@ -980,7 +980,9 @@ Since 0.78 `LIKE`, `NOT LIKE`, `CONTAINS`, `search()`, `searchLoose()` and so �
 compare text **character by character, as MySQL/MariaDB's `LIKE` does under an
 accent-insensitive, case-insensitive collation**: case and accents are ignored, and so are width
 and compatibility forms. The same on JSON, SQLite and MySQL/MariaDB (`StorageDriverContract` pins
-it). Ranked search only orders the loose-search set, so it follows. Since 0.78.1 matching ignores
+it). Ranked search only orders the loose-search set, so it follows. On MySQL its FULLTEXT score
+runs on the text columns, which respect accents: a record that matches only by ignoring accents
+("uber" for "Über") is still found, but scores 0 and comes last. Since 0.78.1 matching ignores
 accents (0.78 respected them): almost nobody types them in a search box. Exact comparisons (`=`,
 `IN`, unique checks, sorting) keep respecting them (see "Exact comparisons"): `where('name',
 'muller')` finds "Muller" only, `where('name', 'LIKE', '%muller%')` finds "Müller" too.

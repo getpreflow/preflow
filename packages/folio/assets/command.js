@@ -51,23 +51,45 @@
         return svg;
     }
 
+    // Letters the server's matching table (preflow/data search-fold-table.php) folds that have no
+    // decomposition to strip; ß, æ, ı and ŧ stay letters of their own there, so here too.
+    var FOLD_LETTERS = { 'ø': 'o', 'ł': 'l', 'đ': 'd', 'ð': 'd', 'ħ': 'h', 'ſ': 's' };
+
+    // Matching as the server's search does it, near enough for screen labels and titles: case and
+    // accents ignored ("ubersicht" finds "Übersicht", "elise" finds "Élise").
+    function fold(text) {
+        return String(text).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+            .replace(/[øłđðħſ]/g, function (c) { return FOLD_LETTERS[c]; });
+    }
+
     function words(term) {
-        return term.toLowerCase().split(/\s+/).filter(function (w) { return w !== ''; });
+        return fold(term).split(/\s+/).filter(function (w) { return w !== ''; });
     }
 
     function matches(label, ws) {
-        var l = String(label).toLowerCase();
+        var l = fold(label);
         return ws.every(function (w) { return l.indexOf(w) !== -1; });
     }
 
     // The title in pieces: what any word matches in <strong>, the rest in plain spans (all textContent).
+    // The title is folded character by character, so a match in the fold marks the characters it came
+    // from ("eli" marks "Éli" in "Élise").
     function marked(title, ws) {
         var text = String(title == null ? '' : title);
-        var lower = text.toLowerCase();
+        var folded = '';
+        var from = [];
+        var to = [];
+        var pos = 0;
+        Array.from(text).forEach(function (ch) {
+            var f = fold(ch);
+            for (var k = 0; k < f.length; k++) { from.push(pos); to.push(pos + ch.length); }
+            folded += f;
+            pos += ch.length;
+        });
         var hit = [];
         ws.forEach(function (w) {
-            for (var at = lower.indexOf(w); at !== -1; at = lower.indexOf(w, at + w.length)) {
-                for (var i = at; i < at + w.length; i++) { hit[i] = true; }
+            for (var at = folded.indexOf(w); at !== -1; at = folded.indexOf(w, at + w.length)) {
+                for (var i = from[at]; i < to[at + w.length - 1]; i++) { hit[i] = true; }
             }
         });
         var out = document.createElement('span');

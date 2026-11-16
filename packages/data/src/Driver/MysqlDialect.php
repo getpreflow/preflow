@@ -178,8 +178,9 @@ final class MysqlDialect implements Dialect, PatternMatching, TextComparison
     }
 
     /**
-     * The plain operator, used only by a compiler that does not ask likeSql() (PatternMatching):
-     * it compares in the column's collation (the text rule's for a text field: accents count).
+     * The plain operator, used only by a compiler that does not ask likeSql() (PatternMatching).
+     * It does not follow the matching rule: it compares in the column's collation, which for a
+     * text field respects accents. Only likeSql() ignores them.
      */
     public function likeOperator(): string
     {
