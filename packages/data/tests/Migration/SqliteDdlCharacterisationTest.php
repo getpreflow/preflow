@@ -76,6 +76,13 @@ final class SqliteDdlCharacterisationTest extends TestCase
     "created_at" TEXT,
     "updated_at" TEXT
 )'],
+            // Since 0.78: the columns' intent each migration records (MigrationColumns).
+            ['type' => 'table', 'name' => 'preflow_migration_columns', 'sql' => 'CREATE TABLE "preflow_migration_columns" (
+    "id" TEXT PRIMARY KEY,
+    "table_name" TEXT NOT NULL,
+    "column_name" TEXT NOT NULL,
+    "intent" TEXT NOT NULL
+)'],
             ['type' => 'table', 'name' => 'preflow_migrations', 'sql' => 'CREATE TABLE preflow_migrations (
             migration TEXT PRIMARY KEY,
             ran_at TEXT NOT NULL

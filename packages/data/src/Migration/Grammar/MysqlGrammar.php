@@ -240,19 +240,72 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollatio
         return $collation !== null && in_array(strtolower($collation), MysqlDialect::MATCH_COLLATIONS, true);
     }
 
-    /**
-     * A utf8mb4 collation that ignores case and accents: its name ends in _ci but not _as_ci
-     * (utf8mb4_unicode_ci, _general_ci, _unicode_520_ci, _0900_ai_ci, MariaDB's uca1400_ai_ci).
-     * Another character set's (latin1, utf8mb3) is left alone: changing it would convert the data.
-     */
-    public function isLooseCollation(?string $collation): bool
+    public function exactCollation(): string
     {
-        if ($collation === null) {
-            return false;
-        }
-        $collation = strtolower($collation);
+        return 'utf8mb4_bin';
+    }
 
-        return str_starts_with($collation, 'utf8mb4_') && str_ends_with($collation, '_ci') && !str_ends_with($collation, '_as_ci');
+    public function isExactCollation(?string $collation): bool
+    {
+        return $collation !== null && strtolower($collation) === 'utf8mb4_bin';
+    }
+
+    /** "type COLLATE name": a MODIFY without a collation would take the table default. */
+    public function withCollation(string $type, bool $text): string
+    {
+        return $type . ' COLLATE ' . ($text ? ($this->textCollation ?? $this->exactCollation()) : $this->exactCollation());
+    }
+
+    /**
+     * An ENUM or SET (its values are written in the type, which columnTypes() lowers), or a column in
+     * another character set than utf8mb4 (latin1, utf8mb3): giving it a utf8mb4 collation would
+     * convert its values.
+     */
+    public function collationRefusal(string $type, ?string $collation): ?string
+    {
+        if (preg_match('/^\s*(enum|set)\s*\(/i', $type) === 1) {
+            return 'an ' . strtoupper((string) strtok(trim($type), '(')) . ' column';
+        }
+        if ($collation !== null && !str_starts_with(strtolower($collation), 'utf8mb4_')) {
+            return "in another character set ({$collation})";
+        }
+
+        return null;
+    }
+
+    public function collate(string $expression, string $collation): string
+    {
+        return $expression . ' COLLATE ' . $this->quote($collation);
+    }
+
+    public function uniquePrefixes(\PDO $pdo, string $table): array
+    {
+        $stmt = $pdo->prepare('SELECT INDEX_NAME, COLUMN_NAME, SUB_PART FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND NON_UNIQUE = 0 AND SUB_PART IS NOT NULL');
+        $stmt->execute([$table]);
+        $prefixes = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$index, $column, $length]) {
+            $prefixes[(string) $index][(string) $column] = (int) $length;
+        }
+
+        return $prefixes;
+    }
+
+    public function prefix(string $expression, int $length): string
+    {
+        return "LEFT({$expression}, {$length})";
+    }
+
+    /** The primary key's first column, else the table's first column. */
+    public function rowKey(\PDO $pdo, string $table): string
+    {
+        $key = $this->indexColumns($pdo, $table)['PRIMARY'][0] ?? null;
+
+        return $key ?? $this->columns($pdo, $table)[0] ?? throw new \LogicException("The table \"{$table}\" has no columns.");
+    }
+
+    public function tables(\PDO $pdo): array
+    {
+        return array_map('strval', $pdo->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME")->fetchAll(\PDO::FETCH_COLUMN));
     }
 
     /** The server supplies the collation: its indexes follow it. */

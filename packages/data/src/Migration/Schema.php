@@ -15,10 +15,28 @@ final class Schema
 {
     private readonly SchemaGrammar $grammar;
 
+    /**
+     * @param MigrationColumns|null $columns records each table this Schema makes or drops and each
+     *     column's intent (text or exact), as Migrator passes it (since 0.78); null records nothing
+     */
     public function __construct(
         private readonly \PDO $pdo,
+        private readonly ?MigrationColumns $columns = null,
     ) {
         $this->grammar = Grammars::for($pdo);
+    }
+
+    /**
+     * A builder column's intent: text for a string() or text() that is neither exact() nor a
+     * primary key, exact for every other column.
+     *
+     * @param array{kind: string, primary: bool, exact?: bool} $column
+     */
+    private static function intent(array $column): string
+    {
+        return in_array($column['kind'], ['string', 'text'], true) && !$column['primary'] && !($column['exact'] ?? false)
+            ? MigrationColumns::TEXT
+            : MigrationColumns::EXACT;
     }
 
     public function create(string $table, callable $callback): void
@@ -35,11 +53,18 @@ final class Schema
         foreach ($indexes as $sql) {
             $this->pdo->exec($sql);
         }
+        if ($this->columns !== null) {
+            $this->columns->forgetTable($builder->getName());
+            foreach ($builder->columns() as $column) {
+                $this->columns->record($builder->getName(), $column['name'], self::intent($column));
+            }
+        }
     }
 
     public function drop(string $table): void
     {
         $this->pdo->exec($this->grammar->dropTable($table));
+        $this->columns?->forgetTable($table);
     }
 
     public function hasTable(string $table): bool
@@ -96,6 +121,9 @@ final class Schema
         foreach ([...$statements, ...$indexes] as $sql) {
             $this->pdo->exec($sql);
         }
+        foreach ($this->columns !== null ? $builder->columns() : [] as $column) {
+            $this->columns->record($table, $column['name'], self::intent($column));
+        }
     }
 
     /**
@@ -141,6 +169,7 @@ final class Schema
             }
         }
         $this->pdo->exec($this->grammar->dropColumn($table, $own));
+        $this->columns?->forgetColumn($table, $own);
     }
 
     /** Sets the column to $value on every row where it is NULL (a backfill after addColumns()); returns how many rows. */
@@ -168,6 +197,7 @@ final class Schema
             throw new \LogicException("Cannot rename \"{$table}.{$from}\" to \"{$to}\": the table already has a column \"{$to}\".");
         }
         $this->pdo->exec($this->grammar->renameColumn($table, $own, $to));
+        $this->columns?->renameColumn($table, $own, $to);
     }
 
     /**
@@ -244,6 +274,9 @@ final class Schema
             }
         }
         $this->grammar->convertColumn($this->pdo, $table, $own, $type, $nullable);
+        $this->columns?->record($table, $own, $to instanceof ColumnSpec
+            ? ($to->text ? MigrationColumns::TEXT : MigrationColumns::EXACT)
+            : self::intent($column));
     }
 
     /**

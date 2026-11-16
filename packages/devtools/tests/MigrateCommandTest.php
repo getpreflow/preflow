@@ -18,6 +18,9 @@ final class MigrateCommandTest extends TestCase
     /** @var array<string, array{0: list<string>, 1: bool}> further steps: name => [lines, sqlOnly] */
     private array $steps = [];
 
+    /** @var array<string, array{0: list<string>, 1: bool}> further checks (--pretend): name => [lines, sqlOnly] */
+    private array $checks = [];
+
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/migrate_cmd_' . bin2hex(random_bytes(4));
@@ -68,12 +71,16 @@ final class MigrateCommandTest extends TestCase
         $dir = $this->dir;
         $pkg = $this->dir . '/pkg_migrations';
         $steps = $this->steps;
+        $checks = $this->checks;
 
-        return new MigrateCommand(function () use ($dir, $pkg, $steps): Application {
+        return new MigrateCommand(function () use ($dir, $pkg, $steps, $checks): Application {
             $app = Application::create($dir);
-            $app->registerProvider(new class($pkg, $steps) extends ServiceProvider {
-                /** @param array<string, array{0: list<string>, 1: bool}> $steps */
-                public function __construct(private readonly string $pkg, private readonly array $steps) {}
+            $app->registerProvider(new class($pkg, $steps, $checks) extends ServiceProvider {
+                /**
+                 * @param array<string, array{0: list<string>, 1: bool}> $steps
+                 * @param array<string, array{0: list<string>, 1: bool}> $checks
+                 */
+                public function __construct(private readonly string $pkg, private readonly array $steps, private readonly array $checks) {}
                 public function register(Container $container): void {}
                 public function boot(Container $container): void
                 {
@@ -83,6 +90,9 @@ final class MigrateCommandTest extends TestCase
                     $registry->afterMigrate('marks', static fn (): array => ['marked 2 rows'], sqlOnly: false);
                     foreach ($this->steps as $name => [$lines, $sqlOnly]) {
                         $registry->afterMigrate($name, static fn (): array => $lines, sqlOnly: $sqlOnly);
+                    }
+                    foreach ($this->checks as $name => [$lines, $sqlOnly]) {
+                        $registry->check($name, static fn (): array => $lines, sqlOnly: $sqlOnly);
                     }
                 }
             });
@@ -152,7 +162,7 @@ final class MigrateCommandTest extends TestCase
         $this->assertStringContainsString("[convert] refused: people.title: 1 value is there more than once", $out);
         $this->assertStringContainsString('[convert]   "Müller" in r1, r2', $out);
         $this->assertStringContainsString('[later] ran after it', $out, 'the later steps still ran');
-        $this->assertStringEndsWith("Some text columns were not converted; see \"refused:\" above. Nothing was changed or removed in them.\n", $out);
+        $this->assertStringEndsWith("Some values are there more than once under the text rule (see \"refused:\" above); nothing was changed or removed. Rename one record of each group, then run migrate again.\n", $out);
         $this->assertStringNotContainsString('Error', $out);
     }
 
@@ -165,6 +175,36 @@ final class MigrateCommandTest extends TestCase
 
         $this->assertSame(1, $code);
         $this->assertStringContainsString('[check] refused: people.title', $out);
+    }
+
+    public function test_pretend_runs_the_read_only_checks(): void
+    {
+        $this->sqliteConfig();
+        $this->checks = ['would' => [['refused: people.title: 1 value is there more than once when case is ignored; the column keeps its collation until they differ', '  "Müller" in r1, r2'], true]];
+
+        [$code, $out] = $this->migrate(['--pretend']);
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('[would]   "Müller" in r1, r2', $out);
+        $this->assertStringContainsString('Rename one record of each group, then run migrate again.', $out);
+        $this->assertStringNotContainsString('seeded', $out, 'no step ran');
+        $this->assertNotContains('apps', $this->tables());
+    }
+
+    /** The real text-rule steps on a fresh SQLite site: the migrations' tables are recorded, nothing refused. */
+    public function test_a_fresh_site_records_its_tables_and_has_nothing_to_refuse(): void
+    {
+        $this->sqliteConfig();
+
+        [$code, $out] = $this->migrate();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringNotContainsString('refused:', $out);
+        $this->assertStringNotContainsString('no recorded text rule', $out);
+        $pdo = new \PDO('sqlite:' . $this->dir . '/app.sqlite');
+        $this->assertSame(['apps', 'pkgs'], $pdo->query("SELECT DISTINCT table_name FROM preflow_migration_columns WHERE table_name IN ('apps', 'pkgs') ORDER BY table_name")->fetchAll(\PDO::FETCH_COLUMN));
+        [$code, $out] = $this->migrate(['--pretend']);
+        $this->assertSame([0, "Nothing to migrate.\n"], [$code, $out]);
     }
 
     public function test_pretend_runs_nothing(): void

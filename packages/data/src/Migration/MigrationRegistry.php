@@ -18,6 +18,60 @@ final class MigrationRegistry
     /** @var array<string, true> the steps that run on any storage (sqlOnly: false) */
     private array $anyStorage = [];
 
+    /** @var array<string, \Closure> read-only checks `preflow migrate --pretend` runs */
+    private array $checks = [];
+
+    /** @var array<string, true> the checks that run on any storage */
+    private array $anyStorageChecks = [];
+
+    /** The storage the migrations run on in this run (ranOn()), null before or without one. */
+    private ?string $storage = null;
+
+    /**
+     * Names the storage `preflow migrate` runs the migrations on, before it runs the steps: a step
+     * that works on what the migrations made (their tables, MigrationColumns) works there only.
+     *
+     * @since 0.78
+     */
+    public function ranOn(?string $storage): void
+    {
+        $this->storage = $storage;
+    }
+
+    /** @since 0.78 */
+    public function storage(): ?string
+    {
+        return $this->storage;
+    }
+
+    /**
+     * A read-only check `preflow migrate --pretend` runs instead of the steps: it reports what a
+     * step would refuse (lines starting with "refused:") and changes nothing. sqlOnly as for
+     * afterMigrate().
+     *
+     * @param \Closure(): list<string> $check
+     * @since 0.78
+     */
+    public function check(string $name, \Closure $check, bool $sqlOnly = true): void
+    {
+        if (isset($this->checks[$name])) {
+            throw new \RuntimeException("Migration check [{$name}] is already registered.");
+        }
+        $this->checks[$name] = $check;
+        if (!$sqlOnly) {
+            $this->anyStorageChecks[$name] = true;
+        }
+    }
+
+    /**
+     * @return array<string, \Closure> the checks, in the order registered (as steps())
+     * @since 0.78
+     */
+    public function checks(?bool $sql = null): array
+    {
+        return $sql === false ? array_intersect_key($this->checks, $this->anyStorageChecks) : $this->checks;
+    }
+
     /** Missing directories are ignored. */
     public function addPath(string $dir): void
     {

@@ -9,11 +9,13 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
+use Preflow\Data\Migration\MigrationColumns;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Schema\DeclaredTables;
 
 /**
  * Binds Codes (purposes and throttle from config/codes.php; a missing file means no purposes)
- * and registers the code_redemption migration. At boot it defines the type "code" (CodeType)
+ * and registers the code_redemption migration and its columns' intent (DeclaredTables). At boot it defines the type "code" (CodeType)
  * unless something did already (Folio's codes admin defines its own, richer one).
  */
 final class CodesServiceProvider extends ServiceProvider
@@ -21,6 +23,11 @@ final class CodesServiceProvider extends ServiceProvider
     public function register(Container $container): void
     {
         $container->get(MigrationRegistry::class)->addPath(dirname(__DIR__) . '/migrations');
+        // Its columns' intent, so `preflow migrate` gives a table made before 0.78 the same collations (data 0.78).
+        if ($container->bound(DeclaredTables::class)) {
+            $exact = MigrationColumns::EXACT;
+            $container->get(DeclaredTables::class)->add('code_redemption', ['id' => $exact, 'code_id' => $exact, 'purpose' => $exact, 'redeemer' => $exact]);
+        }
         $container->singleton(CodeEvents::class, static fn (): CodeEvents => new CodeEvents());
         $container->singleton(Codes::class, static fn (Container $c): Codes => new Codes(
             $c->get(DataManager::class),

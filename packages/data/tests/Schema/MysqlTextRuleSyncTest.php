@@ -12,6 +12,8 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\MysqlGrammar;
+use Preflow\Data\Migration\MigrationColumns;
+use Preflow\Data\Schema\DeclaredTables;
 use Preflow\Data\Schema\RecordTables;
 use Preflow\Data\Schema\RecordTableSync;
 use Preflow\Data\Schema\TextRuleConversion;
@@ -22,15 +24,14 @@ use Preflow\Testing\MysqlTestDatabase;
 /**
  * `preflow migrate` gives the tables MySQL/MariaDB sites made before 0.78 the text rule (data
  * README, "Exact comparisons"): one ALTER TABLE per table, a unique column whose values would
- * collide left exact with its duplicates listed, the loose columns of Preflow's other tables
- * made stricter, tables of other applications left alone.
+ * collide left as it is with its duplicates listed, declared and recorded tables given their
+ * columns' intent, tables without known intent listed and left alone.
  */
 #[Group('mysql')]
 final class MysqlTextRuleSyncTest extends TestCase
 {
     private StatementLog $pdo;
     private string $text;
-    private ?string $dir = null;
 
     protected function setUp(): void
     {
@@ -54,10 +55,6 @@ final class MysqlTextRuleSyncTest extends TestCase
         Grammars::forget('mysql');
         if (isset($this->pdo)) {
             MysqlTestDatabase::dropAllTables($this->pdo);
-        }
-        if ($this->dir !== null) {
-            array_map('unlink', glob($this->dir . '/*') ?: []);
-            rmdir($this->dir);
         }
     }
 
@@ -90,7 +87,7 @@ final class MysqlTextRuleSyncTest extends TestCase
         $lines = $this->sync()->sync(self::people());
 
         $this->assertSame([
-            'refused: people.title: 1 value is there more than once when case is ignored; the column keeps comparing exactly until they differ',
+            'refused: people.title: 1 value is there more than once when case is ignored; the column keeps its collation until they differ',
             '  "Müller" in r1, r2',
             'converted collations of people: body, d',
         ], $lines);
@@ -147,43 +144,91 @@ final class MysqlTextRuleSyncTest extends TestCase
         $this->assertSame(['p1'], $found);
     }
 
-    public function test_loose_columns_of_other_tables_become_the_rule(): void
+    /** R40/R41: a framework table made before 0.78 (unicode_ci strings) gets its declared intent: machine values exact. */
+    public function test_declared_tables_get_their_intent(): void
     {
-        $this->pdo->exec('CREATE TABLE notes (id VARCHAR(64) COLLATE utf8mb4_bin PRIMARY KEY, title VARCHAR(255) NOT NULL DEFAULT \'none\', summary TEXT, code VARCHAR(40) COLLATE utf8mb4_bin, n BIGINT) '
+        $this->pdo->exec('CREATE TABLE auth_tokens (id VARCHAR(255) COLLATE utf8mb4_bin PRIMARY KEY, purpose VARCHAR(255) NOT NULL, subject VARCHAR(255) NOT NULL DEFAULT \'none\', expires_at BIGINT NOT NULL) '
             . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
-        $this->pdo->exec("INSERT INTO notes (id, title, code) VALUES ('a', 'Müller', 'Ab'), ('b', 'MÜLLER', 'aB')");
+        $this->pdo->exec("INSERT INTO auth_tokens VALUES ('t1', 'Reset', 'U1', 1), ('t2', 'reset', 'u1', 2)");
+        $this->pdo->exec('CREATE TABLE notes (id VARCHAR(64) COLLATE utf8mb4_bin PRIMARY KEY, title VARCHAR(255) NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
         $this->pdo->exec('CREATE TABLE other_app (id INT PRIMARY KEY, name VARCHAR(40)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+        (new MigrationColumns($this->pdo))->ensure();
+        (new MigrationColumns($this->pdo))->record('notes', 'title', 'text');
         $this->pdo->clear();
 
-        $lines = $this->conversion($this->migrations())->convert();
+        $lines = $this->conversion($this->declared())->convert();
 
-        $this->assertSame(['converted collations of notes: title, summary'], $lines);
-        $this->assertCount(1, $this->pdo->matching('/^ALTER TABLE/'));
-        $this->assertSame(['id' => 'utf8mb4_bin', 'title' => $this->text, 'summary' => $this->text, 'code' => 'utf8mb4_bin', 'n' => null], Grammars::for($this->pdo)->columnCollations($this->pdo, 'notes'));
-        $column = $this->pdo->query("SELECT IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'notes' AND COLUMN_NAME = 'title'")->fetch(\PDO::FETCH_NUM);
+        $this->assertSame([
+            'converted collations of auth_tokens: purpose, subject',
+            'converted collations of notes: title',
+            'warning: other_app has no recorded text rule (made by a migration before 0.78, or not by Preflow): its columns name keep their comparison. Adopt it with a migration (Schema::convertColumn(), see the data README) or list it in text_rule.skip',
+        ], $lines);
+        $collations = Grammars::for($this->pdo)->columnCollations($this->pdo, 'auth_tokens');
+        $this->assertSame(['id' => 'utf8mb4_bin', 'purpose' => 'utf8mb4_bin', 'subject' => 'utf8mb4_bin', 'expires_at' => null], $collations);
+        $this->assertSame($this->text, Grammars::for($this->pdo)->columnCollations($this->pdo, 'notes')['title']);
+        $this->assertSame('utf8mb4_unicode_ci', Grammars::for($this->pdo)->columnCollations($this->pdo, 'other_app')['name'], 'a table without known intent is left alone');
+        $column = $this->pdo->query("SELECT IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'auth_tokens' AND COLUMN_NAME = 'subject'")->fetch(\PDO::FETCH_NUM);
         $this->assertSame('NO', $column[0], 'NOT NULL kept');
         $this->assertStringContainsString('none', (string) $column[1], 'the default kept');
-        $this->assertSame('utf8mb4_unicode_ci', Grammars::for($this->pdo)->columnCollations($this->pdo, 'other_app')['name'], 'a table Preflow did not make is left alone');
-        $this->assertSame([], $this->conversion($this->migrations())->convert(), 'converted once');
+        $this->assertSame([['t1', 'Reset', 'U1'], ['t2', 'reset', 'u1']], $this->pdo->query('SELECT id, purpose, subject FROM auth_tokens ORDER BY id')->fetchAll(\PDO::FETCH_NUM));
+        $this->assertSame([], $this->conversion($this->declared())->convert(), 'converted once, listed once');
+    }
+
+    /** An older case-insensitive collation (unicode_ci) is not the rule: "STRAẞE" and "Straße" differ there and collide under it. */
+    public function test_a_loose_unique_column_that_would_collide_is_listed(): void
+    {
+        $this->pdo->exec('CREATE TABLE auth_tokens (id VARCHAR(255) COLLATE utf8mb4_bin PRIMARY KEY, purpose VARCHAR(191), subject VARCHAR(191), UNIQUE KEY uniq_tokens (purpose)) '
+            . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+        $this->pdo->exec("INSERT INTO auth_tokens VALUES ('t1', 'Straße', 'a'), ('t2', 'STRAẞE', 'b')");
+        $declared = new DeclaredTables();
+        $declared->add('auth_tokens', ['purpose' => 'text', 'subject' => 'exact']);
+
+        $this->assertSame([
+            'refused: auth_tokens.purpose: 1 value is there more than once when case is ignored; the column keeps its collation until they differ',
+            '  "Straße" in t1, t2',
+            'converted collations of auth_tokens: subject',
+        ], $this->conversion($declared)->convert());
+        $this->assertSame('utf8mb4_unicode_ci', Grammars::for($this->pdo)->columnCollations($this->pdo, 'auth_tokens')['purpose']);
+    }
+
+    /** A column in another character set is never converted (it would convert its values). */
+    public function test_a_column_in_another_character_set_is_left_with_a_warning(): void
+    {
+        $this->pdo->exec('CREATE TABLE people (uuid VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, title VARCHAR(191) CHARACTER SET latin1 COLLATE latin1_swedish_ci, body LONGTEXT, d VARCHAR(32)) '
+            . 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+
+        $lines = $this->sync()->sync(self::people());
+
+        $this->assertContains('warning: people.title is in another character set (latin1_swedish_ci); it keeps its collation (convert the table, see the data README)', $lines);
+        $this->assertContains('converted collations of people: body, d', $lines);
+        $this->assertSame('latin1_swedish_ci', Grammars::for($this->pdo)->columnCollations($this->pdo, 'people')['title']);
     }
 
     public function test_skipped_tables_are_left_alone(): void
     {
         $this->pdo->exec('CREATE TABLE notes (id VARCHAR(64) COLLATE utf8mb4_bin PRIMARY KEY, title VARCHAR(255)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+        (new MigrationColumns($this->pdo))->record('notes', 'title', 'text');
 
-        $this->assertSame([], $this->conversion($this->migrations(), skip: ['notes'])->convert());
+        $this->assertSame([], $this->conversion(skip: ['notes'])->convert());
         $this->assertSame('utf8mb4_unicode_ci', Grammars::for($this->pdo)->columnCollations($this->pdo, 'notes')['title']);
     }
 
-    public function test_untyped_record_tables_lose_their_loose_columns(): void
+    public function test_untyped_record_tables_get_the_rule_from_their_sync(): void
     {
-        $this->pdo->exec('CREATE TABLE people__revisions (uuid VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, title LONGTEXT, body LONGTEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
+        $this->pdo->exec('CREATE TABLE people__revisions (uuid VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, title LONGTEXT, body LONGTEXT, record_id LONGTEXT) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci');
         $history = new TypeDefinition('people', 'people__revisions', 'mysql', ['title' => new TypeFieldDefinition('title'), 'body' => new TypeFieldDefinition('body', 'text')]);
-        $tables = new RecordTables();
-        $tables->add('test', static fn (): array => [RecordTables::entry($history, typed: false, unique: false)]);
 
-        $this->assertSame([], $this->sync()->sync($history, typed: false), 'the sync leaves history alone');
-        $this->assertSame(['converted collations of people__revisions: title, body'], (new TextRuleConversion($this->dm(), $tables))->convert());
+        $this->assertSame(['converted collations of people__revisions: title, body, record_id'], $this->sync()->sync($history, ['record_id'], typed: false));
+        $this->assertSame(['uuid' => 'utf8mb4_bin', 'title' => $this->text, 'body' => $this->text, 'record_id' => 'utf8mb4_bin'], Grammars::for($this->pdo)->columnCollations($this->pdo, 'people__revisions'));
+    }
+
+    private function declared(): DeclaredTables
+    {
+        $declared = new DeclaredTables();
+        $declared->add('preflow_migrations', ['migration' => 'exact', 'ran_at' => 'exact']);
+        $declared->add('auth_tokens', ['id' => 'exact', 'purpose' => 'exact', 'subject' => 'exact']);
+
+        return $declared;
     }
 
     /** The table as a site made it before 0.78 (utf8mb4_unicode_ci default; short columns and ids utf8mb4_bin). */
@@ -197,35 +242,6 @@ final class MysqlTextRuleSyncTest extends TestCase
     private function rows(): array
     {
         return $this->pdo->query('SELECT uuid, title, body, d FROM people ORDER BY uuid')->fetchAll(\PDO::FETCH_ASSOC);
-    }
-
-    /** A migration folder whose migration makes the table notes. */
-    private function migrations(): string
-    {
-        if ($this->dir === null) {
-            $this->dir = sys_get_temp_dir() . '/textrule_mig_' . bin2hex(random_bytes(4));
-            mkdir($this->dir);
-            file_put_contents($this->dir . '/2026_01_01_000000_notes.php', <<<'PHP'
-            <?php
-            use Preflow\Data\Migration\Migration;
-            use Preflow\Data\Migration\Schema;
-            use Preflow\Data\Migration\Table;
-            return new class extends Migration {
-                public function up(Schema $schema): void
-                {
-                    $schema->create('notes', function (Table $t) {
-                        $t->uuid('id')->primary();
-                        $t->string('title');
-                        $t->text('summary')->nullable();
-                        $t->string('code', 40)->exact()->nullable();
-                        $t->integer('n')->nullable();
-                    });
-                }
-            };
-            PHP);
-        }
-
-        return $this->dir;
     }
 
     private static function people(): TypeDefinition
@@ -270,8 +286,8 @@ final class MysqlTextRuleSyncTest extends TestCase
     }
 
     /** @param list<string> $skip */
-    private function conversion(?string $migrations = null, array $skip = []): TextRuleConversion
+    private function conversion(?DeclaredTables $declared = null, array $skip = []): TextRuleConversion
     {
-        return new TextRuleConversion($this->dm(), new RecordTables(), $migrations === null ? [] : [$migrations], $skip);
+        return new TextRuleConversion($this->dm(), new RecordTables(), $declared, 'mysql', $skip);
     }
 }

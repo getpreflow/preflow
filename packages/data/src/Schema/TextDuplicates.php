@@ -27,22 +27,33 @@ final class TextDuplicates
 
     /**
      * The duplicate groups in a SQL table when its columns compare by the given collations: one
-     * GROUP BY of the columns, each under its collation (none named: as the column has it), with
-     * HAVING COUNT(*) > 1, joined back to the rows for their ids.
+     * GROUP BY of the columns, each under its collation (none named: as the column has it) and
+     * by the prefix a unique index keeps of it, with HAVING COUNT(*) > 1, joined back to the rows
+     * for their ids.
      *
+     * @param string|null $idField the column naming a row in the report (null: TextCollations::rowKey())
      * @param list<string> $columns the unique column first, then its scope
      * @param array<string, ?string> $collations column => the collation to compare it in (missing or null: its own)
+     * @param array<string, int> $prefixes column => the characters a prefix index keeps of it
      * @return list<array{value: string, ids: list<string>}>
      */
-    public static function sql(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, string $idField, array $columns, array $collations): array
+    public static function sql(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, ?string $idField, array $columns, array $collations, array $prefixes = []): array
     {
         $q = $grammar->quote(...);
-        $in = static fn (string $alias, string $column): string => $alias . '.' . $q($column)
-            . (($collations[$column] ?? null) !== null ? ' COLLATE ' . $collations[$column] : '');
+        $idField ??= $grammar->rowKey($pdo, $table);
+        $in = static function (string $alias, string $column) use ($q, $grammar, $collations, $prefixes): string {
+            $sql = $alias . '.' . $q($column);
+            if (isset($prefixes[$column])) {
+                $sql = $grammar->prefix($sql, $prefixes[$column]);
+            }
+
+            return ($collations[$column] ?? null) !== null ? $grammar->collate($sql, (string) $collations[$column]) : $sql;
+        };
+        $columns = array_values($columns);
         $keys = [];
         $present = [];
         $on = [];
-        foreach (array_values($columns) as $i => $column) {
+        foreach ($columns as $i => $column) {
             $keys[] = $in('s', $column) . ' AS ' . $q("k{$i}");
             $present[] = 's.' . $q($column) . ' IS NOT NULL';
             $on[] = $in('t', $column) . ' = d.' . $q("k{$i}");
@@ -58,13 +69,11 @@ final class TextDuplicates
         $statement = $pdo->query($sql);
         foreach ($statement->fetchAll(\PDO::FETCH_NUM) as $row) {
             [$id, $value] = $row;
-            $key = serialize(array_slice($row, 2));
-            $groups[$key] ??= ['value' => (string) $value, 'ids' => []];
-            $groups[$key]['ids'][] = (string) $id;
+            $groups[serialize(array_slice($row, 2))][(string) $id] = (string) $value;
         }
         $statement->closeCursor();
 
-        return self::byId(array_values($groups));
+        return self::found($groups);
     }
 
     /**
@@ -78,8 +87,9 @@ final class TextDuplicates
      * @param list<string> $columns the unique column first, then its scope
      * @return list<array{value: string, ids: list<string>}>
      */
-    public static function scan(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, string $idField, array $columns): array
+    public static function scan(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, ?string $idField, array $columns): array
     {
+        $idField ??= $grammar->rowKey($pdo, $table);
         $collations = $grammar->columnCollations($pdo, $table);
         $q = $grammar->quote(...);
         $statement = $pdo->query('SELECT ' . $q($idField) . ', ' . implode(', ', array_map($q, $columns)) . ' FROM ' . $q($table));

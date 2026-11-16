@@ -757,6 +757,20 @@ final class Application
         if (class_exists(\Preflow\Data\Schema\RecordTables::class)) {
             $this->container->instance(\Preflow\Data\Schema\RecordTables::class, new \Preflow\Data\Schema\RecordTables());
         }
+        // The tables migrations make, with each column's intent (text or exact), for `preflow migrate`
+        // to give existing ones the text rule (data 0.78): the framework's own here, packages' in theirs.
+        if (class_exists(\Preflow\Data\Schema\DeclaredTables::class)) {
+            $declared = new \Preflow\Data\Schema\DeclaredTables();
+            $exact = \Preflow\Data\Migration\MigrationColumns::EXACT;
+            $declared->add('preflow_migrations', ['migration' => $exact, 'ran_at' => $exact]);
+            $declared->add(\Preflow\Data\Migration\MigrationColumns::TABLE, ['id' => $exact, 'table_name' => $exact, 'column_name' => $exact, 'intent' => $exact]);
+            $declared->add('preflow_throttle', ['id' => $exact, 'purpose' => $exact]);
+            if (class_exists(\Preflow\Auth\Tokens\Tokens::class)) {
+                $declared->add('auth_tokens', ['id' => $exact, 'purpose' => $exact, 'subject' => $exact]);
+                $declared->add('auth_remember', ['id' => $exact, 'guard' => $exact, 'user_id' => $exact, 'validator_hash' => $exact, 'previous_hash' => $exact]);
+            }
+            $this->container->instance(\Preflow\Data\Schema\DeclaredTables::class, $declared);
+        }
 
         $dataConfig = $this->configFile('data');
         if ($dataConfig === null) {
@@ -900,19 +914,15 @@ final class Application
     }
 
     /**
-     * The stored activity log (tables preflow_activity and preflow_activity_last, on the storage
-     * alias "activity" when the site has one), config/activity.php "keep_days" and "keep_rows";
-     * `preflow migrate` creates its tables (the step "activity.table"), `preflow activity:prune`
-     * applies the retention.
-     */
-    /**
-     * The migrate steps of the text rule (data 0.78, the data README's "Exact comparisons"):
-     * `data.text-rule` makes the loose columns of Preflow's tables follow the rule and rebuilds
-     * SQLite's text indexes when the rule's version changed; `data.text-duplicates` lists the
-     * case-variant duplicates of unique text fields no index holds (JSON). The record tables'
-     * own columns are converted by their sync steps (RecordTableSync). config/data.php
-     * 'text_rule' => ['skip' => [table, …]] leaves tables alone (a database shared with another
-     * application).
+     * The migrate steps of the text rule (data 0.78, the data README's "Existing tables (`preflow
+     * migrate`)"): `data.text-rule` gives the declared tables (DeclaredTables: the framework's own,
+     * declared here and by packages) and the tables migrations made since 0.78 (MigrationColumns)
+     * the collation of each column's intent on the storage the migrations run on, lists the tables
+     * without known intent once, and rebuilds SQLite's text indexes when the rule's version
+     * changed; `data.text-duplicates` lists the case-variant duplicates of unique text fields no
+     * index holds (JSON). The record tables' own columns are converted by their sync steps
+     * (RecordTableSync). `migrate --pretend` runs the check `data.text-rule` (every refusal, nothing
+     * changed). config/data.php 'text_rule' => ['skip' => [table, …]] leaves tables alone.
      *
      * @param mixed $config config/data.php 'text_rule'
      */
@@ -930,13 +940,21 @@ final class Application
         $conversion = static fn (): \Preflow\Data\Schema\TextRuleConversion => new \Preflow\Data\Schema\TextRuleConversion(
             $dataManager,
             $container->bound(\Preflow\Data\Schema\RecordTables::class) ? $container->get(\Preflow\Data\Schema\RecordTables::class) : null,
-            $migrations->paths(),
+            $container->bound(\Preflow\Data\Schema\DeclaredTables::class) ? $container->get(\Preflow\Data\Schema\DeclaredTables::class) : null,
+            $migrations->storage(),
             $skip,
         );
         $migrations->afterMigrate('data.text-rule', static fn (): array => $conversion()->convert());
         $migrations->afterMigrate('data.text-duplicates', static fn (): array => $conversion()->duplicates(), sqlOnly: false);
+        $migrations->check('data.text-rule', static fn (): array => $conversion()->check(), sqlOnly: false);
     }
 
+    /**
+     * The stored activity log (tables preflow_activity and preflow_activity_last, on the storage
+     * alias "activity" when the site has one), config/activity.php "keep_days" and "keep_rows";
+     * `preflow migrate` creates its tables (the step "activity.table"), `preflow activity:prune`
+     * applies the retention.
+     */
     private function bindActivityLog(\Preflow\Data\DataManager $dataManager, string $storage): void
     {
         if (!class_exists(\Preflow\Data\Activity\StoredActivityLog::class)) {

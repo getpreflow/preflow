@@ -14,6 +14,8 @@ use Preflow\Data\Migration\Migrator;
  * Boots the app, runs every registered migration path, then the post-migrate steps. A site
  * without SQL storage runs only the steps registered for any storage (sqlOnly: false). Exits 1
  * when a step refused something (a line starting with "refused:"), after every step has run.
+ * --pretend lists the pending migrations and runs the read-only checks
+ * (MigrationRegistry::check(): what the steps would refuse), changing nothing.
  */
 final class MigrateCommand implements CommandInterface
 {
@@ -53,12 +55,13 @@ final class MigrateCommand implements CommandInterface
                     return 0;
                 }
                 echo "No SQL storage configured: no schema migrations.\n";
-                if (!$pretend) {
-                    $refused = $this->runSteps($container->get(MigrationRegistry::class)->steps(sql: false));
-                    echo "Done.\n";
-                    return $refused ? $this->refused() : 0;
+                $registry = $container->get(MigrationRegistry::class);
+                if ($pretend) {
+                    return $this->runSteps($registry->checks(sql: false)) ? $this->refused() : 0;
                 }
-                return 0;
+                $refused = $this->runSteps($registry->steps(sql: false));
+                echo "Done.\n";
+                return $refused ? $this->refused() : 0;
             }
             if ($dm === null) {
                 throw new \RuntimeException('No data configuration found (config/data.php).');
@@ -88,16 +91,15 @@ final class MigrateCommand implements CommandInterface
                 }
             }
 
-            if (!$pretend && $this->runSteps($registry->steps(sql: true))) {
-                echo "Done.\n";
-
-                return $this->refused();
+            $registry->ranOn($storage);
+            if ($pretend) {
+                // The read-only checks: what the steps would refuse, nothing changed.
+                return $this->runSteps($registry->checks(sql: true)) ? $this->refused() : 0;
             }
-            if (!$pretend) {
-                echo "Done.\n";
-            }
+            $refused = $this->runSteps($registry->steps(sql: true));
+            echo "Done.\n";
 
-            return 0;
+            return $refused ? $this->refused() : 0;
         } catch (\Throwable $e) {
             fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
             return 1;
@@ -147,7 +149,7 @@ final class MigrateCommand implements CommandInterface
     /** Exit code 1 after every step ran, with the closing line. */
     private function refused(): int
     {
-        echo "Some text columns were not converted; see \"refused:\" above. Nothing was changed or removed in them.\n";
+        echo "Some values are there more than once under the text rule (see \"refused:\" above); nothing was changed or removed. Rename one record of each group, then run migrate again.\n";
 
         return 1;
     }

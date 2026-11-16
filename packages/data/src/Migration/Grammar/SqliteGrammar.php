@@ -119,10 +119,58 @@ final class SqliteGrammar implements SchemaGrammar, TextCollations
         return $collation !== null && strtolower($collation) === SqliteDialect::TEXT_COLLATION;
     }
 
-    /** SQLite's collations (BINARY, NOCASE, RTRIM) ignore no accents: none is looser than the rule. */
-    public function isLooseCollation(?string $collation): bool
+    public function exactCollation(): string
     {
-        return false;
+        return 'BINARY';
+    }
+
+    public function isExactCollation(?string $collation): bool
+    {
+        return $collation !== null && strtoupper($collation) === 'BINARY';
+    }
+
+    /** The rule as "type COLLATE preflow_text"; exact as the bare type (SQLite compares a column without COLLATE by bytes). */
+    public function withCollation(string $type, bool $text): string
+    {
+        return $text && $this->textCollation !== null ? $type . ' COLLATE ' . $this->textCollation : $type;
+    }
+
+    /** SQLite keeps every value as it is whatever the collation. */
+    public function collationRefusal(string $type, ?string $collation): ?string
+    {
+        return null;
+    }
+
+    public function collate(string $expression, string $collation): string
+    {
+        return $expression . ' COLLATE ' . $this->quote($collation);
+    }
+
+    /** SQLite indexes whole values. */
+    public function uniquePrefixes(\PDO $pdo, string $table): array
+    {
+        return [];
+    }
+
+    public function prefix(string $expression, int $length): string
+    {
+        return "substr({$expression}, 1, {$length})";
+    }
+
+    /** The single-column primary key, else rowid. */
+    public function rowKey(\PDO $pdo, string $table): string
+    {
+        $keys = array_values(array_filter(
+            $pdo->query('PRAGMA table_info(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC),
+            static fn (array $c): bool => (int) $c['pk'] > 0,
+        ));
+
+        return count($keys) === 1 ? (string) $keys[0]['name'] : 'rowid';
+    }
+
+    public function tables(\PDO $pdo): array
+    {
+        return array_map('strval', $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name")->fetchAll(\PDO::FETCH_COLUMN));
     }
 
     /** preflow_text is PHP's (TextMatch::compare()): its version, null when unbound. */
@@ -138,7 +186,7 @@ final class SqliteGrammar implements SchemaGrammar, TextCollations
      */
     public function reindexText(\PDO $pdo): array
     {
-        $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name")->fetchAll(\PDO::FETCH_COLUMN);
+        $tables = $this->tables($pdo);
         $failed = [];
         foreach ($tables as $table) {
             $table = (string) $table;
