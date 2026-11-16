@@ -30,7 +30,9 @@ interface RankedSearch extends StorageDriver
     /**
      * The score of each record $ids names for $term over $fields: higher is better, 0.0 for a
      * record that does not match or does not exist. Every given id is a key, in the given order.
-     * Only called when canScore($table, $fields) is true.
+     * Only called when canScore($table, $fields) is true. A driver that keeps canScore() answers
+     * forgets the table's when score() fails, so canScore() then asks the database again
+     * (DataManager::scoreIn() keeps storage order when the index is gone, and rethrows otherwise).
      *
      * @param list<string> $fields
      * @param list<string|int> $ids

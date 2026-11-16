@@ -283,6 +283,30 @@ final class RecordSearchTest extends TestCase
         $this->assertSame([], $driver->scored);
     }
 
+    /** canScore() said yes, then the index went away: the hits keep storage order, and the next search does not score. */
+    public function test_an_index_dropped_after_can_score_keeps_storage_order(): void
+    {
+        $dm = $this->posts($driver = $this->rankedDriver(), ['x' => ['Zoo', ''], 'y' => ['Zoo zoo', 'zoo']]);
+        $def = $dm->getTypeRegistry()->get('post');
+        $this->assertTrue($dm->canScore($def));
+        $driver->drop('post');
+
+        $hits = (new RecordSearch($dm))->search('zoo', ['post']);
+
+        $this->assertSame(self::looseIds($dm, 'zoo'), array_map(static fn (RecordHit $h): string => $h->id, $hits));
+        $this->assertSame([0.0, 0.0], array_map(static fn (RecordHit $h): ?float => $h->score, $hits));
+        $this->assertFalse($dm->canScore($def), 'the driver asked again');
+    }
+
+    public function test_another_scoring_failure_is_not_hidden(): void
+    {
+        $dm = $this->posts($driver = $this->rankedDriver(), ['x' => ['Zoo', '']]);
+        $driver->failure = new \RuntimeException('connection lost');
+
+        $this->expectExceptionMessage('connection lost');
+        $dm->scoreIn($dm->getTypeRegistry()->get('post'), 'zoo', ['x']);
+    }
+
     public function test_score_in_refuses_a_storage_that_cannot_score_the_type(): void
     {
         $plain = $this->posts(new JsonFileDriver($this->dir . '/plain'), ['x' => ['Zoo', '']]);

@@ -34,16 +34,34 @@ final class RankedFakeDriver implements StorageDriver, RankedSearch
         $this->declared[$table][] = $fields;
     }
 
+    /** @var array<string, bool> canScore() answers, kept as MysqlDriver keeps them */
+    private array $answers = [];
+
+    /** A failure score() throws although the index is there (a lost connection). */
+    public ?\RuntimeException $failure = null;
+
+    /** The index goes away behind the driver's back (another process ran a migration): cached answers stay. */
+    public function drop(string $table): void
+    {
+        unset($this->declared[$table]);
+    }
+
     public function canScore(string $table, array $fields): bool
     {
         sort($fields);
 
-        return in_array($fields, $this->declared[$table] ?? [], true);
+        return $this->answers[$table . '|' . implode(',', $fields)] ??= in_array($fields, $this->declared[$table] ?? [], true);
     }
 
     public function score(string $table, string $term, array $fields, array $ids, string $idField = 'uuid'): array
     {
         $this->scored[] = ['table' => $table, 'term' => $term, 'ids' => $ids];
+        sort($fields);
+        if ($this->failure !== null || !in_array($fields, $this->declared[$table] ?? [], true)) {
+            // As MysqlDriver: a failed score() forgets the table's answers, so canScore() asks again.
+            $this->answers = array_filter($this->answers, static fn (string $key): bool => !str_starts_with($key, $table . '|'), ARRAY_FILTER_USE_KEY);
+            throw $this->failure ?? new \RuntimeException("Can't find FULLTEXT index matching the column list");
+        }
         $words = preg_split('/\s+/u', mb_strtolower(trim($term)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $scores = [];
         foreach ($ids as $id) {

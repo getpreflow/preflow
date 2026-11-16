@@ -165,8 +165,26 @@ final class MysqlDriver extends PdoDriver implements RankedSearch
         return $this->scorable[$key] = $found;
     }
 
-    /** MATCH (fields) AGAINST (term IN NATURAL LANGUAGE MODE) for the given ids, in chunks. */
+    /**
+     * MATCH (fields) AGAINST (term IN NATURAL LANGUAGE MODE) for the given ids, in chunks. A
+     * failure (the index dropped since canScore() looked) forgets the table's canScore() answers.
+     */
     public function score(string $table, string $term, array $fields, array $ids, string $idField = 'uuid'): array
+    {
+        try {
+            return $this->scoreChunks($table, $term, $fields, $ids, $idField);
+        } catch (\PDOException $e) {
+            $this->scorable = array_filter($this->scorable, static fn (string $key): bool => !str_starts_with($key, $table . '|'), ARRAY_FILTER_USE_KEY);
+            throw $e;
+        }
+    }
+
+    /**
+     * @param list<string> $fields
+     * @param list<string|int> $ids
+     * @return array<string|int, float>
+     */
+    private function scoreChunks(string $table, string $term, array $fields, array $ids, string $idField): array
     {
         $scores = [];
         $quote = $this->dialect()->quoteIdentifier(...);

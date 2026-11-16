@@ -107,4 +107,20 @@ final class MysqlRecordSearchTest extends TestCase
         $this->assertSame(self::looseIds($dm, 'garden'), array_map(static fn (RecordHit $h): string => $h->id, $hits));
         $this->assertSame([null, null, null], array_map(static fn (RecordHit $h): ?float => $h->score, $hits));
     }
+
+    /** The index is dropped after canScore() said yes (cached for the driver's life): storage order, no error. */
+    public function test_an_index_dropped_after_can_score_keeps_storage_order(): void
+    {
+        $dm = $this->manager();
+        $this->assertTrue($dm->canScore($dm->getTypeRegistry()->get('post')));
+        $grammar = new MysqlGrammar();
+        foreach (array_keys($grammar->fullTextIndexes($this->pdo, 'post')) as $index) {
+            $this->pdo->exec($grammar->dropIndex('post', $index));
+        }
+
+        $hits = (new RecordSearch($dm))->search('garden', ['post']);
+
+        $this->assertSame(self::looseIds($dm, 'garden'), array_map(static fn (RecordHit $h): string => $h->id, $hits));
+        $this->assertFalse($dm->canScore($dm->getTypeRegistry()->get('post')), 'asked again after the failure');
+    }
 }

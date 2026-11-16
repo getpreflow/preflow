@@ -119,7 +119,9 @@ final class DataManager
      * The score of each of $ids (records of $def) for $term, through the storage's RankedSearch
      * over the type's loose-search text fields: higher is better, 0.0 for one that does not
      * match or does not exist; every given id is a key. Scoring orders records a search found,
-     * it never finds any. Ask canScore() first.
+     * it never finds any. Ask canScore() first. When scoring fails and the storage, asked again,
+     * can no longer score the type (its index was dropped or rebuilt since canScore() said yes),
+     * every id scores 0.0, so the records keep storage order; any other failure is rethrown.
      *
      * @since 0.78
      *
@@ -141,8 +143,16 @@ final class DataManager
             return [];
         }
         $this->reportRead($def->storage, $def->table);
+        $fields = LooseFields::text($def, $this->fieldKinds());
+        try {
+            return $driver->score($def->table, $term, $fields, $ids, $def->idField);
+        } catch (\RuntimeException $e) {
+            if ($driver->canScore($def->table, $fields)) {
+                throw $e;
+            }
 
-        return $driver->score($def->table, $term, LooseFields::text($def, $this->fieldKinds()), $ids, $def->idField);
+            return array_fill_keys($ids, 0.0);
+        }
     }
 
     /**
