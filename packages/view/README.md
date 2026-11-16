@@ -383,7 +383,8 @@ It only adds tags a page doesn't already have: a robots meta, `og:image` or `the
 Locale URLs (since 0.78): the sitemap, `hreflang` alternates and canonicals follow
 `config/i18n.php` `prefix_default` (`/en/about`, the default language's home `/en`), and so do the
 URLs llms.txt lists; `/llms.txt` itself stays at the root for the default language (`/de/llms.txt`
-for the others). `robots.txt`, `sitemap.xml` and `llms.txt` are never sent through the bare-path
+for the others). A page served at its bare address on a `prefix_default` site gets the prefixed
+address as its `og:url` and JSON-LD `url`. `robots.txt`, `sitemap.xml` and `llms.txt` are never sent through the bare-path
 redirect (`redirect_bare`).
 
 ### Turning it on

@@ -177,7 +177,7 @@ final class SeoMiddleware implements MiddlewareInterface
         $meta = $page->with([
             'title' => $page->title !== '' ? $page->title : self::documentTitle($html),
             'description' => $description,
-            'url' => $page->url !== '' ? PageSignals::absolute($page->url, $origin) : $origin . $path,
+            'url' => $page->url !== '' ? PageSignals::absolute($page->url, $origin) : $origin . $this->addressOf($path),
             'locale' => $page->locale !== '' ? $page->locale : $locale,
             'image' => $image !== null && ($image['url'] ?? '') !== ''
                 ? ['url' => PageSignals::absolute($image['url'], $origin)] + $image
@@ -377,6 +377,19 @@ final class SeoMiddleware implements MiddlewareInterface
         return $prefix !== '' && $prefix !== $this->defaultLocale && in_array($prefix, $this->locales, true)
             ? $prefix
             : $this->defaultLocale;
+    }
+
+    /**
+     * The page's own address: with prefix_default a bare path served in the default locale is
+     * the prefixed one ('/about' is '/en/about'), so the bare copy never names itself.
+     */
+    private function addressOf(string $path): string
+    {
+        if ($this->localeUrls === null || !$this->localeUrls->prefixDefault || $this->localeUrls->localeOf($path) !== null) {
+            return $path;
+        }
+
+        return $this->localeUrls->path($this->localeUrls->default, $path);
     }
 
     /**

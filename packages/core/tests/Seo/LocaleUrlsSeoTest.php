@@ -101,6 +101,18 @@ final class LocaleUrlsSeoTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_bare_default_page_points_at_its_prefixed_address(): void
+    {
+        $this->i18n(['prefix_default' => true]);
+
+        // Served bare (no redirect_bare), but the page's address is the prefixed one, not a duplicate.
+        $bare = (string) $this->get('/about')->getBody();
+        $this->assertStringContainsString('<meta property="og:url" content="https://site.test/en/about">', $bare);
+        $this->assertStringContainsString('<meta property="og:url" content="https://site.test/en/about">', (string) $this->get('/en/about')->getBody());
+        $this->assertStringContainsString('<meta property="og:url" content="https://site.test/de/about">', (string) $this->get('/de/about')->getBody());
+    }
+
+    #[RunInSeparateProcess]
     public function test_llms_txt_stays_at_the_root_with_prefix_default(): void
     {
         $this->i18n(['prefix_default' => true, 'redirect_bare' => true]);

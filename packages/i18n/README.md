@@ -45,6 +45,10 @@ else stops the boot with a message naming the option. Core reads all three into
 `Preflow\Core\Http\LocaleUrls`, the one rule every package builds locale URLs with (see
 preflow/core).
 
+`prefix_default` alone keeps the bare addresses answering (`/about` and `/en/about` are both
+200); the bare copy's page address (`og:url`, the JSON-LD `url`) names the prefixed one, so search
+engines see one page. Turn on `redirect_bare` as well to send visitors to `/en/about`.
+
 ## Translation files
 
 `lang/en/blog.php`:
