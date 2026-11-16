@@ -230,7 +230,11 @@ account cannot run up the bill. `config/ai.php`:
 - A limit that is on needs `APP_KEY` (`app.key`, not empty and not the default) wherever AI can
   run (`enabled` true, or a `translation.translator` or `draft.writer` of the app's own): without
   it the boot stops and says so. Set the key, or set every `max` to 0. A missing key never means
-  "unlimited"; with AI off there is nothing to limit and the app boots without one.
+  "unlimited": a draft writer or translator an app binds in a provider (not named in
+  `config/ai.php`) is limited too, and without the key its first AI action is refused naming
+  `APP_KEY` (`AiLimits::assertKey()`). With AI off the app boots without a key, as before.
+- A refused `take()` counts too: counting is one atomic step, so two requests at once never both
+  get the last one. It never moves the window's end, so the wait does not grow.
 - `Preflow\Ai\Limits\AiLimits` is the guard: `take($action, $authId)` counts one and throws
   `AiLimitReached` when it passes the limit; `check()` only asks whether budget is left (before
   queueing work that is counted later); `limit()` gives `['max', 'per']`, or null when off.

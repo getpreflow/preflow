@@ -91,6 +91,28 @@ final class AiLimitsTest extends DataTestCase
         $this->addToAssertionCount(1);
     }
 
+    /** A refused take() counts (one atomic step), but never moves the window's end: the wait stays the same. */
+    public function test_a_refused_take_does_not_prolong_the_wait(): void
+    {
+        $limits = $this->limits(['draft' => ['max' => 1]]);
+        $limits->take(AiLimits::DRAFT, 'p1');
+        $waits = [];
+        foreach ([0, 100, 100] as $later) {
+            $this->now += $later;
+            try {
+                $limits->take(AiLimits::DRAFT, 'p1');
+                $this->fail('refused');
+            } catch (AiLimitReached $e) {
+                $waits[] = $e->retryAfter;
+            }
+        }
+
+        $this->assertSame([3600, 3500, 3400], $waits);
+        $this->now += 3400;
+        $limits->take(AiLimits::DRAFT, 'p1');
+        $this->addToAssertionCount(1);
+    }
+
     #[DataProvider('storages')]
     public function test_a_limit_of_zero_is_off(string $storage = 'sqlite'): void
     {
@@ -148,10 +170,17 @@ final class AiLimitsTest extends DataTestCase
         foreach ([Throttle::DEFAULT_KEY, ''] as $key) {
             $throttle = new Throttle($this->dataManager(), $key, $this->storage, fn (): int => $this->now);
             $message = null;
+            $limits = new AiLimits($throttle, ['draft' => ['max' => 0]]); // building it needs no key
             try {
-                new AiLimits($throttle, ['draft' => ['max' => 0]]);
+                $limits->take(AiLimits::TRANSLATE, 'p1');
             } catch (\RuntimeException $e) {
                 $message = $e->getMessage();
+            }
+            $this->assertSame(0, $this->rows(), 'refused, not counted, never unlimited');
+            try {
+                $limits->assertKey();
+                $this->fail('assertKey() refuses too');
+            } catch (\RuntimeException) {
             }
             $this->assertNotNull($message, "key \"{$key}\"");
             $this->assertStringContainsString('APP_KEY', $message);

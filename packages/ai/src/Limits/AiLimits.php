@@ -15,10 +15,16 @@ use Preflow\Core\Throttle\Throttle;
  *
  * Any admin UI calls it before AI work it starts on a person's behalf: take() counts one, check()
  * only asks whether budget is left (before queueing work that take() counts later). A counted call
- * that then fails stays counted: the provider may have charged for it. Work started
- * from the command line has no person and is not limited. Bound only when a Throttle is (an app
- * with config/data.php); without it nothing is limited. A limit that is on needs the app key (the
- * person's id is hashed with it): without one the constructor, and so the boot, stops.
+ * that then fails stays counted: the provider may have charged for it. A refused take() counts
+ * too: the count is one atomic step (Throttle::hit()), so two requests at once can never both get
+ * the last one; the window's end stays where it was, so the person waits no longer for it. Work
+ * started from the command line has no person and is not limited.
+ *
+ * Bound whenever a Throttle is (an app with config/data.php), whoever binds the AI work: a draft
+ * writer or translator an app binds in a provider is limited as one config/ai.php names. A limit
+ * that is on needs the app key (the person's id is hashed with it): without one, take() and
+ * check() refuse naming APP_KEY (never unlimited), and the boot stops where config/ai.php lets AI
+ * work run (assertKey()).
  *
  * @since 0.78
  */
@@ -40,7 +46,6 @@ final class AiLimits
     /**
      * @param array<string, mixed> $limits config/ai.php `limits`, merged over DEFAULTS per action
      * @throws \InvalidArgumentException naming the setting (ai.limits.{action}.max / .per) that is not a whole number in range
-     * @throws \RuntimeException when a limit is on and the app key is empty or the default (Throttle::hasKey())
      */
     public function __construct(
         private readonly Throttle $throttle,
@@ -62,11 +67,20 @@ final class AiLimits
             $merged[$action] = ['max' => $limit['max'], 'per' => $limit['per']];
         }
         $this->limits = $merged;
+    }
 
-        // Decided at boot, never per request: a limit that is on hashes the person's id with the app
-        // key, which must be set (a missing key never means "unlimited").
-        $on = array_filter($merged, static fn (array $limit): bool => $limit['max'] > 0);
-        if ($on !== [] && !$throttle->hasKey()) {
+    /**
+     * Refuses limits that are on without the app key: each person is counted under their id hashed
+     * with it, and a missing key never means "unlimited". The provider calls it at boot where
+     * config/ai.php lets AI work run; take() and check() call it too.
+     *
+     * @throws \RuntimeException naming APP_KEY and the limits that are on
+     * @since 0.78
+     */
+    public function assertKey(): void
+    {
+        $on = array_filter($this->limits, static fn (array $limit): bool => $limit['max'] > 0);
+        if ($on !== [] && !$this->throttle->hasKey()) {
             throw new \RuntimeException('config/ai.php ai.limits (' . implode(', ', array_map(static fn (string $a): string => "ai.limits.{$a}.max", array_keys($on)))
                 . ') need APP_KEY (app.key) to be set: each person is counted under their id hashed with it. Set APP_KEY, or turn the limits off with max 0.');
         }
@@ -77,6 +91,7 @@ final class AiLimits
      *
      * @throws AiLimitReached when this one passes the limit
      * @throws \InvalidArgumentException for an unknown action
+     * @throws \RuntimeException when the limit is on and the app key is missing (assertKey())
      */
     public function take(string $action, string $authId): void
     {
@@ -84,6 +99,7 @@ final class AiLimits
         if ($limit === null) {
             return;
         }
+        $this->assertKey();
         $client = $this->throttle->forPerson($authId);
         $hits = $this->throttle->hit(self::purpose($action), $client, $limit['per']);
         if ($hits > $limit['max']) {
@@ -103,6 +119,7 @@ final class AiLimits
         if ($limit === null) {
             return;
         }
+        $this->assertKey();
         $client = $this->throttle->forPerson($authId);
         if ($this->throttle->tooMany(self::purpose($action), $client, $limit['max'], $limit['per'])) {
             throw $this->reached($action, $limit, $client);

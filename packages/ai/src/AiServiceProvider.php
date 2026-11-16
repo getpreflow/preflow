@@ -68,10 +68,11 @@ final class AiServiceProvider extends ServiceProvider
         });
 
         // Per-person limits count through the Throttle, which needs the data layer: without it nothing is limited.
-        // Without an app key they cannot count; that stops the boot (AiLimits' constructor, built in boot())
-        // wherever AI work can run. Where none can (AI off, no translator or draft writer of the app's
-        // own), there is nothing to limit and the site boots without a key, as before 0.78.
-        if ($container->bound(Throttle::class) && ($container->get(Throttle::class)->hasKey() || self::aiCanWork($container))) {
+        // Bound whenever the Throttle is, whoever binds the AI work (config/ai.php or an app's provider).
+        // Without an app key they cannot count: the boot stops where config/ai.php lets AI work run
+        // (boot()), and take()/check() refuse naming APP_KEY everywhere else; never unlimited. An AI-off
+        // site still boots without a key, as before 0.78.
+        if ($container->bound(Throttle::class)) {
             $container->singleton(AiLimits::class, static function (Container $c): AiLimits {
                 $limits = self::config($c)['limits'] ?? [];
 
@@ -83,9 +84,13 @@ final class AiServiceProvider extends ServiceProvider
     public function boot(Container $container): void
     {
         self::draftWriterClass($container);
-        // A limit config/ai.php can't mean stops the boot, naming the setting.
+        // A limit config/ai.php can't mean stops the boot, naming the setting; so do limits that are on
+        // without an app key where config/ai.php lets AI work run.
         if ($container->bound(AiLimits::class)) {
-            $container->get(AiLimits::class);
+            $limits = $container->get(AiLimits::class);
+            if (self::aiCanWork($container)) {
+                $limits->assertKey();
+            }
         }
 
         // A provider name config/ai.php can't mean stops the boot, naming the accepted forms.
@@ -94,7 +99,7 @@ final class AiServiceProvider extends ServiceProvider
 
         // Declared in composer.json (extra.preflow.translations); this covers apps whose Composer metadata doesn't list the package.
         if ($container->has(Translator::class)) {
-            $container->get(Translator::class)->addDefaultsIfMissing('ai', dirname(__DIR__) . '/lang', 'admin');
+            $container->get(Translator::class)->addDefaultsIfMissing('ai', Ai::langPath(), 'admin');
         }
     }
 

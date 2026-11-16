@@ -123,10 +123,18 @@ final class AiServiceProviderTest extends TestCase
             $c = $this->app()->container();
             $this->assertNull($c->get(\Preflow\Ai\Limits\AiLimits::class)->limit('translate'), $key);
 
-            // AI off and nothing of the app's own: no AI work can run, nothing to limit; boots as before.
+            // AI off and nothing of the app's own in config/ai.php: boots as before. A writer an app binds in
+            // a provider is still limited: without the key its first draft is refused naming APP_KEY.
             foreach (["<?php\nreturn ['enabled' => false];\n", null] as $config) {
                 $config === null ? @unlink($this->dir . '/config/ai.php') : file_put_contents($this->dir . '/config/ai.php', $config);
-                $this->assertFalse($this->app()->container()->bound(\Preflow\Ai\Limits\AiLimits::class), $key);
+                $c = $this->app()->container();
+                $this->assertTrue($c->bound(\Preflow\Ai\Limits\AiLimits::class), $key);
+                try {
+                    $c->get(\Preflow\Ai\Limits\AiLimits::class)->take(\Preflow\Ai\Limits\AiLimits::DRAFT, 'person-1');
+                    $this->fail("expected the draft to be refused ({$key})");
+                } catch (\RuntimeException $e) {
+                    $this->assertStringContainsString('APP_KEY', $e->getMessage(), $key);
+                }
             }
         }
     }
