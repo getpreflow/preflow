@@ -32,8 +32,16 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollatio
     /** The collation text columns name (on()), null for none. */
     private ?string $textCollation = null;
 
-    /** @var \WeakMap<\PDO, array{0: ?string}>|null each connection's probed collation */
+    /** @var \WeakMap<\PDO, array<string, ?string>>|null each connection's probed collation, by the candidates probed */
     private static ?\WeakMap $probed = null;
+
+    /**
+     * @param list<string>|null $collations the collations on() probes, in preference order (null:
+     *     MysqlDialect::MATCH_COLLATIONS); [] binds to none, as on a server without them (tests)
+     */
+    public function __construct(private readonly ?array $collations = null)
+    {
+    }
 
     /**
      * Bound to the first of MysqlDialect::MATCH_COLLATIONS the server accepts: each is probed
@@ -44,12 +52,16 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollatio
      */
     public function on(\PDO $pdo): static
     {
+        $candidates = $this->collations ?? MysqlDialect::MATCH_COLLATIONS;
+        $key = implode(',', $candidates);
         self::$probed ??= new \WeakMap();
-        if (!isset(self::$probed[$pdo])) {
-            self::$probed[$pdo] = [self::probe($pdo)];
+        $known = self::$probed[$pdo] ?? [];
+        if (!array_key_exists($key, $known)) {
+            $known[$key] = self::probe($pdo, $candidates);
+            self::$probed[$pdo] = $known;
         }
         $bound = clone $this;
-        $bound->textCollation = self::$probed[$pdo][0];
+        $bound->textCollation = $known[$key];
 
         return $bound;
     }
@@ -59,9 +71,10 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollatio
         return $this->textCollation;
     }
 
-    private static function probe(\PDO $pdo): ?string
+    /** @param list<string> $candidates */
+    private static function probe(\PDO $pdo, array $candidates): ?string
     {
-        foreach (MysqlDialect::MATCH_COLLATIONS as $collation) {
+        foreach ($candidates as $collation) {
             try {
                 $statement = $pdo->query("SELECT _utf8mb4'a' COLLATE {$collation}");
             } catch (\PDOException $e) {
@@ -219,6 +232,38 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollatio
             $clauses[] = $this->modifyClause($pdo, $table, (string) $column, $type, null);
         }
         $pdo->exec('ALTER TABLE ' . $this->quote($table) . ' ' . implode(', ', $clauses));
+    }
+
+    /** Any of MysqlDialect::MATCH_COLLATIONS: the server may have more than one name of the rule. */
+    public function isTextCollation(?string $collation): bool
+    {
+        return $collation !== null && in_array(strtolower($collation), MysqlDialect::MATCH_COLLATIONS, true);
+    }
+
+    /**
+     * A utf8mb4 collation that ignores case and accents: its name ends in _ci but not _as_ci
+     * (utf8mb4_unicode_ci, _general_ci, _unicode_520_ci, _0900_ai_ci, MariaDB's uca1400_ai_ci).
+     * Another character set's (latin1, utf8mb3) is left alone: changing it would convert the data.
+     */
+    public function isLooseCollation(?string $collation): bool
+    {
+        if ($collation === null) {
+            return false;
+        }
+        $collation = strtolower($collation);
+
+        return str_starts_with($collation, 'utf8mb4_') && str_ends_with($collation, '_ci') && !str_ends_with($collation, '_as_ci');
+    }
+
+    /** The server supplies the collation: its indexes follow it. */
+    public function textCollationVersion(): ?string
+    {
+        return null;
+    }
+
+    public function reindexText(\PDO $pdo): array
+    {
+        return [];
     }
 
     /** A TEXT or BLOB column (one made before it was indexed) is indexed by its first 191 characters. */

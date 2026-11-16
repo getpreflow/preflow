@@ -7,6 +7,7 @@ namespace Preflow\Data\Migration\Grammar;
 use Preflow\Data\Driver\SqliteDialect;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Schema\ColumnSpec;
+use Preflow\Data\Text\TextMatch;
 
 /**
  * The DDL text here is pinned by SqliteDdlCharacterisationTest: existing sites must not see
@@ -111,6 +112,63 @@ final class SqliteGrammar implements SchemaGrammar, TextCollations
             return;
         }
         $this->rebuild($pdo, $table, array_map(static fn (string $type): array => [$type, null], $types), 'the collations of "' . $table . '"');
+    }
+
+    public function isTextCollation(?string $collation): bool
+    {
+        return $collation !== null && strtolower($collation) === SqliteDialect::TEXT_COLLATION;
+    }
+
+    /** SQLite's collations (BINARY, NOCASE, RTRIM) ignore no accents: none is looser than the rule. */
+    public function isLooseCollation(?string $collation): bool
+    {
+        return false;
+    }
+
+    /** preflow_text is PHP's (TextMatch::compare()): its version, null when unbound. */
+    public function textCollationVersion(): ?string
+    {
+        return $this->textCollation === null ? null : TextMatch::version();
+    }
+
+    /**
+     * REINDEX of each index (automatic ones of UNIQUE constraints too) that has a column compared by
+     * preflow_text (PRAGMA index_xinfo), each in its own savepoint: one that fails (a unique index
+     * whose values are now equal) is rolled back to how it was and returned.
+     */
+    public function reindexText(\PDO $pdo): array
+    {
+        $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name")->fetchAll(\PDO::FETCH_COLUMN);
+        $failed = [];
+        foreach ($tables as $table) {
+            $table = (string) $table;
+            foreach ($pdo->query('PRAGMA index_list(' . $this->quote($table) . ')')->fetchAll(\PDO::FETCH_ASSOC) as $index) {
+                $name = (string) $index['name'];
+                $columns = [];
+                $text = false;
+                foreach ($pdo->query('PRAGMA index_xinfo(' . $this->quote($name) . ')')->fetchAll(\PDO::FETCH_ASSOC) as $part) {
+                    if ((int) $part['key'] !== 1) {
+                        continue;
+                    }
+                    $columns[] = (string) $part['name'];
+                    $text = $text || strtolower((string) $part['coll']) === SqliteDialect::TEXT_COLLATION;
+                }
+                if (!$text) {
+                    continue;
+                }
+                $pdo->exec('SAVEPOINT preflow_reindex');
+                try {
+                    $pdo->exec('REINDEX ' . $this->quote($name));
+                    $pdo->exec('RELEASE preflow_reindex');
+                } catch (\PDOException $e) {
+                    $pdo->exec('ROLLBACK TO preflow_reindex');
+                    $pdo->exec('RELEASE preflow_reindex');
+                    $failed[] = ['table' => $table, 'index' => $name, 'columns' => $columns, 'error' => $e->getMessage()];
+                }
+            }
+        }
+
+        return $failed;
     }
 
     public function quote(string $identifier): string

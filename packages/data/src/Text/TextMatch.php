@@ -173,6 +173,22 @@ final class TextMatch
         return $form ?? self::equalityForm(mb_scrub($text, 'UTF-8'));
     }
 
+    /**
+     * The version of the rule as this PHP applies it: intl's ICU version and a digest of the fold
+     * and equality tables. compare() and key() may order or equate some texts differently under
+     * another version, so an index a database keeps by them (SQLite's preflow_text) is rebuilt
+     * when it changes (`preflow migrate`, the data README's "Exact comparisons").
+     *
+     * @since 0.78
+     */
+    public static function version(): string
+    {
+        static $tables = null;
+        $tables ??= substr(hash('sha256', (string) file_get_contents(__DIR__ . '/fold-table.php') . "\0" . (string) file_get_contents(__DIR__ . '/equality-table.php')), 0, 16);
+
+        return 'icu ' . (defined('INTL_ICU_VERSION') ? INTL_ICU_VERSION : 'none') . ', tables ' . $tables;
+    }
+
     /** @return array{ignore: array<string, true>, expand: array<string, string>} */
     private static function equalityTable(): array
     {

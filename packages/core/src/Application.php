@@ -850,6 +850,7 @@ final class Application
             static fn (): \Preflow\Data\Search\RecordSearch => new \Preflow\Data\Search\RecordSearch($dataManager),
         );
         $this->bindActivityLog($dataManager, isset($drivers[\Preflow\Data\Activity\StoredActivityLog::STORAGE]) ? \Preflow\Data\Activity\StoredActivityLog::STORAGE : 'default');
+        $this->registerTextRuleSteps($dataManager, $migrations, $dataConfig['text_rule'] ?? []);
         if ($this->pageChanges !== null) {
             $dataManager->observe(new \Preflow\Core\PageCache\DataLayerObserver(
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class),
@@ -904,6 +905,38 @@ final class Application
      * `preflow migrate` creates its tables (the step "activity.table"), `preflow activity:prune`
      * applies the retention.
      */
+    /**
+     * The migrate steps of the text rule (data 0.78, the data README's "Exact comparisons"):
+     * `data.text-rule` makes the loose columns of Preflow's tables follow the rule and rebuilds
+     * SQLite's text indexes when the rule's version changed; `data.text-duplicates` lists the
+     * case-variant duplicates of unique text fields no index holds (JSON). The record tables'
+     * own columns are converted by their sync steps (RecordTableSync). config/data.php
+     * 'text_rule' => ['skip' => [table, …]] leaves tables alone (a database shared with another
+     * application).
+     *
+     * @param mixed $config config/data.php 'text_rule'
+     */
+    private function registerTextRuleSteps(\Preflow\Data\DataManager $dataManager, \Preflow\Data\Migration\MigrationRegistry $migrations, mixed $config): void
+    {
+        if (!class_exists(\Preflow\Data\Schema\TextRuleConversion::class)) {
+            return;
+        }
+        $skip = is_array($config) ? ($config['skip'] ?? []) : null;
+        if (!is_array($skip) || !array_is_list($skip) || array_filter($skip, static fn (mixed $table): bool => !is_string($table)) !== []
+            || array_diff(array_keys(is_array($config) ? $config : []), ['skip']) !== []) {
+            throw new \RuntimeException("config/data.php: 'text_rule' takes ['skip' => [table names]].");
+        }
+        $container = $this->container;
+        $conversion = static fn (): \Preflow\Data\Schema\TextRuleConversion => new \Preflow\Data\Schema\TextRuleConversion(
+            $dataManager,
+            $container->bound(\Preflow\Data\Schema\RecordTables::class) ? $container->get(\Preflow\Data\Schema\RecordTables::class) : null,
+            $migrations->paths(),
+            $skip,
+        );
+        $migrations->afterMigrate('data.text-rule', static fn (): array => $conversion()->convert());
+        $migrations->afterMigrate('data.text-duplicates', static fn (): array => $conversion()->duplicates(), sqlOnly: false);
+    }
+
     private function bindActivityLog(\Preflow\Data\DataManager $dataManager, string $storage): void
     {
         if (!class_exists(\Preflow\Data\Activity\StoredActivityLog::class)) {

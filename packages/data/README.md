@@ -716,7 +716,8 @@ Columns are typed only when sync creates them (with the table, or added later). 
 (`uniq_{table}_{field}`, over the field and its scope), plain (`idx_{table}_{field}`) and composite
 (`idx_{table}_{field1}_{field2}…`) indexes are made whenever they are missing (see
 [Unique fields and indexes](#unique-fields-and-indexes)); names past 64 characters are shortened
-with a crc32 hash. An existing column is never altered: a column whose type differs from its kind,
+with a crc32 hash. An existing column's type is never altered (since 0.78 its collation is: see
+"Existing tables (`preflow migrate`)"): a column whose type differs from its kind,
 or a unique field without its index, is printed as a warning (`warning: post.seats is text, expected number;
 convert the table (see the data README)`; see Converting record tables below). Packages register
 their tables with `RecordTables`: it lists every record table, whichever package syncs it.
@@ -743,7 +744,11 @@ warning names is converted on purpose:
   (`mysql --defaults-extra-file=<option file> <database> < <backup>.sql`). Until a site is
   converted, `preflow migrate` prints the drift warnings on every run.
 - `RecordTableSync::specs()` and `RecordTableSync::indexes()` are public (the script builds its columns
-  and indexes with them, so it makes the indexes migrate would).
+  and indexes with them, so it makes the indexes migrate would). Since 0.78 its text fields' columns
+  take the text rule's collation, and `--check` counts a unique text field's duplicates by the rule
+  ("Cafe" is a duplicate of "cafe", "café" is not).
+- A column's collation (since 0.78) is converted by `preflow migrate` itself: see "Existing tables
+  (`preflow migrate`)" under "Exact comparisons".
 - A column whose kind changed later (a field turned translatable, a relation became `multiple`,
   a field's type was edited or it became unique) is converted with a migration in the project,
   with `Schema::convertColumn()` (since 0.75; see "Converting a column"), for example
@@ -781,7 +786,7 @@ primary and `exact()` `string()` columns, Folio record ids, migration names) and
 column that is not a text field's are `utf8mb4_bin`, so they compare exactly: `A`, `a` and `ä` are
 three records. (`utf8mb4_bin` pads, so an id with a trailing space still equals the one without;
 the rule's collations do not pad.) Tables made before 0.78 keep their columns' collations until
-`migrate` converts them.
+`migrate` converts them (see "Existing tables (`preflow migrate`)" under "Exact comparisons").
 
 **Connection.** `createMysqlDriver` builds the `PDO` with `MysqlDriver::connectionOptions()`, and
 `MysqlDriver` sets the session; together they give:
@@ -1110,8 +1115,80 @@ a store that cannot follow the rule says why in `textRuleMissing()`.
 
 **Servers without the collation** (MariaDB before 10.10, MySQL before 8.0): text columns stay
 exact (`utf8mb4_bin`), translatable values compare exactly, a migration's `string()` keeps the
-table default `utf8mb4_unicode_ci`, and the contract's exact-comparison tests skip. A known
-difference, documented here.
+table default `utf8mb4_unicode_ci`, and the contract's exact-comparison tests skip. `preflow
+migrate` changes no collation there and says so once (`warning: this server has no
+accent-sensitive, case-insensitive collation (MariaDB 10.10+ or MySQL 8.0+); text columns keep
+their comparison`). A known difference, documented here.
+
+### Existing tables (`preflow migrate`)
+
+Tables made before 0.78 get the rule when `preflow migrate` runs (back the database up first, as
+for every upgrade). Nothing in a row is ever changed or removed, and every step is safe to run
+again: a second run finds nothing to do.
+
+- **Record tables** (the types' tables and their `__published` snapshots, as `RecordTables` lists
+  them): their sync step (`folio.tables`, `publishing.tables`, `codes.table`, …,
+  `RecordTableSync`) gives each column the collation of its kind, text fields the rule's and every
+  other column the exact one, in **one statement per table**: MySQL one `ALTER TABLE … MODIFY …,
+  MODIFY …` (it copies the table and blocks writes while it runs; a FULLTEXT index refuses
+  columns of mixed collations, so they change together), SQLite one table rebuild that keeps every
+  column's collation, index and trigger. A line says what changed:
+  `converted collations of people: title, body`.
+- **Duplicates under the rule.** A unique text field compared exactly before (a `VARCHAR …
+  utf8mb4_bin` or SQLite column), so it may hold "Müller" and "MÜLLER". Right before the change
+  its values are counted under the new collation (`TextDuplicates::sql()`, the unique field with
+  its scope). When some are there more than once, that column is left as it is (with the other
+  columns of a full-text index it shares), the rest of the table is converted, and every group is
+  listed with its records, up to 20 and then a count:
+
+  ```
+  [folio.tables] refused: people.title: 1 value is there more than once when case is ignored; the column keeps comparing exactly until they differ
+  [folio.tables]   "Müller" in r1, r2
+  [folio.tables] converted collations of people: body
+  Some text columns were not converted; see "refused:" above. Nothing was changed or removed in them.
+  ```
+
+  `migrate` then exits 1, after every step has run. Rename one record of each group (in Folio) and
+  run `migrate` again: it converts the column. A save that adds a duplicate between the count and
+  the change makes the server refuse the change; nothing changes, and the line is `refused:
+  people: the server refused the conversion (…); run migrate again`.
+- **Preflow's other tables on MySQL** (the step `data.text-rule`): a column still under a
+  collation that ignores accents as well as case (`utf8mb4_unicode_ci`, `_general_ci`,
+  `_unicode_520_ci`, `_0900_ai_ci`, `uca1400_ai_ci`, …) gets the rule's, one `ALTER TABLE` per
+  table. That is stricter, so it cannot create duplicates. These are the tables the migrations
+  make (the app's and the packages': `users`, `auth_tokens`, `preflow_throttle`, …; found by
+  running the migrations against an empty in-memory SQLite database, `Migration\MigrationTables`),
+  `preflow_migrations`, history tables (`__revisions`) and columns of record tables that no field
+  types any more. Tables of another application in the same database are never touched; list any
+  table to leave alone in `config/data.php`:
+
+  ```php
+  'text_rule' => ['skip' => ['legacy_orders', 'wp_posts']],
+  ```
+
+  Columns a migration made `utf8mb4_bin` (ids, `exact()`) stay as they are.
+- **SQLite tables made by migrations** are left as they are (on SQLite a `uuid()` and a
+  `string()` column look the same, so migrate cannot tell text from ids). Give a column the rule
+  with a migration: `Schema::convertColumn($table, fn (Table $t) => $t->string('email'))`.
+- **SQLite after a PHP or ICU upgrade.** SQLite keeps the indexes over `preflow_text` columns in
+  the order PHP's ICU and `TextMatch`'s tables give (`TextMatch::version()`). The step
+  `data.text-rule` records the version in the table `preflow_text_collation` and, when it
+  changed, rebuilds each of those indexes (`REINDEX`): `rebuilt the indexes over text columns
+  for icu 79.1, tables … (was …)`. A unique index whose values the new version takes as equal is
+  left as it was, its groups are listed as `refused:` lines and the version is not recorded, so the
+  next `migrate` tries again once they differ.
+- **JSON** (the step `data.text-duplicates`, also on a site without SQL storage): nothing to
+  convert, since the rule applies in PHP. Case-variant duplicates of a unique text field saved
+  before 0.78 are listed in the same form (`refused: people.title: 1 value is there more than once
+  when case is ignored; saving one of these records is refused until they differ`), and `migrate`
+  exits 1: saving either record is refused (`validation.unique`) until they differ. The same
+  check covers translatable unique fields on every storage (no index holds them), per locale
+  (`people.slug (en)`).
+- **Servers without the collation** change nothing (see above).
+
+`GROUP BY`, `COUNT(DISTINCT)` and `MIN`/`MAX` on a text field follow the column's collation
+after the change, so they group and compare by the rule as `=` does (values equal under `=`
+form one group).
 
 **A grammar of your own** (`Grammars::register()`) that implements
 `Migration\Grammar\TextCollations` gets the same: `Grammars::for($pdo)` binds it to the connection

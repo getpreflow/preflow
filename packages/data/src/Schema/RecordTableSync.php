@@ -20,10 +20,13 @@ use Preflow\Data\TypeDefinition;
  * primary key; every other column is nullable and typed by its field's column kind (FieldKinds),
  * or free text when the table is untyped. A declared index (a field's, or a composite one) is
  * made whenever it is missing, on new and existing columns alike; a unique index too, but only
- * over columns of their expected type that hold no value twice. An existing column is never
- * altered, so a column whose type differs from its kind (or a unique field without its index)
- * is reported as a warning naming the column to convert (data README, "Converting record
- * tables"). Nothing is ever dropped; JSON-stored definitions are left alone.
+ * over columns of their expected type that hold no value twice. An existing column's type is
+ * never altered, so a column whose type differs from its kind (or a unique field without its
+ * index) is reported as a warning naming the column to convert (data README, "Converting record
+ * tables"). Since 0.78 an existing typed table's columns get the collation of their kind (text
+ * fields the text rule's, the rest exact; collations()), listing and leaving exact a unique
+ * column whose values would collide. Nothing is ever dropped; JSON-stored definitions are left
+ * alone.
  *
  * @phpstan-import-type Entry from RecordTables
  */
@@ -67,8 +70,10 @@ final class RecordTableSync
 
         $lines = [];
         $drifted = [];
+        $added = [];
         $types = [];
-        if (!$schema->hasTable($def->table)) {
+        $existed = $schema->hasTable($def->table);
+        if (!$existed) {
             $pdo->exec($grammar->createRecordTable($def->table, $def->idField, array_values($specs)));
             $lines[] = "created table {$def->table}";
         } else {
@@ -80,6 +85,7 @@ final class RecordTableSync
                 if (!isset($types[$name])) {
                     $schema->addColumn($def->table, $name, $expected);
                     $lines[] = "added column {$def->table}.{$name}";
+                    $added[] = $name;
                 } elseif ($types[$name] !== self::reported($expected)) {
                     $lines[] = "warning: {$def->table}.{$name} is {$types[$name]}, expected {$spec->kind->value}; " . self::CONVERT;
                     $drifted[] = $name;
@@ -88,6 +94,9 @@ final class RecordTableSync
         }
         if (!$typed) {
             return $lines;
+        }
+        if ($existed && $grammar instanceof TextCollations && $grammar->textCollation() !== null) {
+            array_push($lines, ...$this->collations($def, $pdo, $grammar, $specs, [...$drifted, ...$added]));
         }
 
         $existing = $grammar->indexColumns($pdo, $def->table);
@@ -144,6 +153,106 @@ final class RecordTableSync
         array_push($lines, ...$this->fullText($def, $pdo, $grammar));
 
         return $lines;
+    }
+
+    /**
+     * The collation pass (since 0.78; the data README's "Exact comparisons"): each column of the
+     * definition gets the collation of its kind, text fields the rule's (TextCollations), every other
+     * column the exact one, all of the table's in one convertCollations() (a FULLTEXT index refuses
+     * columns of mixed collations). A column already under any name of the rule
+     * (TextCollations::isTextCollation()) stays. A text column that compared exactly so far
+     * and sits in a unique index is counted first (TextDuplicates::sql(), the index's columns under
+     * their new collations): when some of its values become equal it is left as it is, with the
+     * columns of a full-text index it shares, and its groups are listed ("refused:"); no row is
+     * changed. A column that compared more loosely (utf8mb4_unicode_ci) gets stricter, which
+     * cannot make values collide. Drifted and just added columns are left out.
+     *
+     * @param array<string, ColumnSpec> $specs
+     * @param list<string> $leave
+     * @return list<string>
+     */
+    private function collations(TypeDefinition $def, \PDO $pdo, SchemaGrammar&TextCollations $grammar, array $specs, array $leave): array
+    {
+        $current = $grammar->columnCollations($pdo, $def->table);
+        $plan = [];
+        $fromExact = [];
+        foreach ($specs as $name => $spec) {
+            if (!array_key_exists($name, $current) || in_array($name, $leave, true)) {
+                continue;
+            }
+            $collation = $current[$name];
+            if ($spec->text) {
+                if ($grammar->isTextCollation($collation)) {
+                    continue;
+                }
+                $plan[$name] = $grammar->textColumnType($spec->kind, $spec->length);
+                if (!$grammar->isLooseCollation($collation)) {
+                    $fromExact[] = $name;
+                }
+                continue;
+            }
+            $type = $grammar->recordColumnType($spec->kind, $spec->length);
+            if (strcasecmp($collation ?? 'binary', self::collationOf($type) ?? 'binary') !== 0) {
+                $plan[$name] = $type;
+            }
+        }
+        if ($plan === []) {
+            return [];
+        }
+
+        $lines = [];
+        if ($fromExact !== []) {
+            $indexColumns = $grammar->indexColumns($pdo, $def->table);
+            $refused = [];
+            foreach ($grammar->uniqueIndexes($pdo, $def->table) as $index) {
+                $columns = $indexColumns[$index] ?? [];
+                if (array_diff(array_intersect($columns, $fromExact), $refused) === []) {
+                    continue;
+                }
+                $collations = [];
+                foreach ($columns as $column) {
+                    $collations[$column] = isset($plan[$column]) && !in_array($column, $refused, true) ? self::collationOf($plan[$column]) : $current[$column] ?? null;
+                }
+                $groups = TextDuplicates::sql($pdo, $grammar, $def->table, $def->idField, $columns, $collations);
+                if ($groups === []) {
+                    continue;
+                }
+                array_push($lines, ...TextDuplicates::lines(
+                    "refused: {$def->table}.{$columns[0]}: " . TextDuplicates::counted(count($groups))
+                        . ' there more than once when case is ignored; the column keeps comparing exactly until they differ',
+                    $groups,
+                ));
+                array_push($refused, ...array_intersect($columns, $fromExact));
+            }
+            if ($refused !== [] && $grammar instanceof FullTextIndexes) {
+                foreach ($grammar->fullTextIndexes($pdo, $def->table) as $over) {
+                    if (array_intersect($over, $refused) !== []) {
+                        array_push($refused, ...$over); // one collation over a FULLTEXT index's columns
+                    }
+                }
+            }
+            $plan = array_diff_key($plan, array_flip($refused));
+        }
+        if ($plan === []) {
+            return $lines;
+        }
+        try {
+            $grammar->convertCollations($pdo, $def->table, $plan);
+        } catch (\PDOException | \LogicException $e) {
+            // A save wrote a duplicate since the count (MySQL refuses the ALTER, 1062), or the rebuild failed: nothing changed.
+            $lines[] = "refused: {$def->table}: the server refused the conversion ({$e->getMessage()}); run migrate again";
+
+            return $lines;
+        }
+        $lines[] = "converted collations of {$def->table}: " . implode(', ', array_keys($plan));
+
+        return $lines;
+    }
+
+    /** The collation a column type names (… COLLATE name), or null for none. */
+    private static function collationOf(string $type): ?string
+    {
+        return preg_match('/\bCOLLATE\s+(\S+)/i', $type, $m) === 1 ? $m[1] : null;
     }
 
     /**

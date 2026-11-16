@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Tools\Convert;
 
+use Preflow\Data\Migration\Grammar\TextCollations;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Schema\ColumnSpec;
 use Preflow\Data\Schema\RecordIndex;
@@ -108,7 +109,7 @@ final class Converter
             if ($spec->kind === ColumnKind::Boolean) {
                 $pdo->exec("UPDATE {$t} SET {$c} = CASE WHEN LOWER({$c}) IN ('1', 'true') THEN '1' ELSE '0' END WHERE {$c} IS NOT NULL");
             }
-            $clauses[] = "MODIFY {$c} " . $g->recordColumnType($spec->kind, $spec->length);
+            $clauses[] = "MODIFY {$c} " . ($spec->text && $g instanceof TextCollations ? $g->textColumnType($spec->kind, $spec->length) : $g->recordColumnType($spec->kind, $spec->length));
         }
         foreach ($work->missing as $index) {
             $clauses[] = 'ADD ' . ($index->unique ? 'UNIQUE ' : '') . 'INDEX ' . $g->quote($index->name)

@@ -15,6 +15,9 @@ final class MigrateCommandTest extends TestCase
 {
     private string $dir;
 
+    /** @var array<string, array{0: list<string>, 1: bool}> further steps: name => [lines, sqlOnly] */
+    private array $steps = [];
+
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/migrate_cmd_' . bin2hex(random_bytes(4));
@@ -64,11 +67,13 @@ final class MigrateCommandTest extends TestCase
     {
         $dir = $this->dir;
         $pkg = $this->dir . '/pkg_migrations';
+        $steps = $this->steps;
 
-        return new MigrateCommand(function () use ($dir, $pkg): Application {
+        return new MigrateCommand(function () use ($dir, $pkg, $steps): Application {
             $app = Application::create($dir);
-            $app->registerProvider(new class($pkg) extends ServiceProvider {
-                public function __construct(private readonly string $pkg) {}
+            $app->registerProvider(new class($pkg, $steps) extends ServiceProvider {
+                /** @param array<string, array{0: list<string>, 1: bool}> $steps */
+                public function __construct(private readonly string $pkg, private readonly array $steps) {}
                 public function register(Container $container): void {}
                 public function boot(Container $container): void
                 {
@@ -76,6 +81,9 @@ final class MigrateCommandTest extends TestCase
                     $registry->addPath($this->pkg);
                     $registry->afterMigrate('seed', static fn (): array => ['seeded 3 rows']);
                     $registry->afterMigrate('marks', static fn (): array => ['marked 2 rows'], sqlOnly: false);
+                    foreach ($this->steps as $name => [$lines, $sqlOnly]) {
+                        $registry->afterMigrate($name, static fn (): array => $lines, sqlOnly: $sqlOnly);
+                    }
                 }
             });
             $app->boot();
@@ -128,6 +136,35 @@ final class MigrateCommandTest extends TestCase
         $this->assertSame(0, $code);
         $this->assertStringContainsString('[seed] seeded 3 rows', $out);
         $this->assertStringContainsString('[marks] marked 2 rows', $out, 'a storage-neutral step runs on SQL too');
+    }
+
+    public function test_a_refused_conversion_exits_one_after_all_steps(): void
+    {
+        $this->sqliteConfig();
+        $this->steps = [
+            'convert' => [['refused: people.title: 1 value is there more than once when case is ignored; the column keeps comparing exactly until they differ', '  "Müller" in r1, r2'], true],
+            'later' => [['ran after it'], true],
+        ];
+
+        [$code, $out] = $this->migrate();
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString("[convert] refused: people.title: 1 value is there more than once", $out);
+        $this->assertStringContainsString('[convert]   "Müller" in r1, r2', $out);
+        $this->assertStringContainsString('[later] ran after it', $out, 'the later steps still ran');
+        $this->assertStringEndsWith("Some text columns were not converted; see \"refused:\" above. Nothing was changed or removed in them.\n", $out);
+        $this->assertStringNotContainsString('Error', $out);
+    }
+
+    public function test_a_json_only_site_with_a_refusal_exits_one(): void
+    {
+        file_put_contents($this->dir . '/config/data.php', '<?php return ["default" => "json", "drivers" => ["json" => ["path" => ' . var_export($this->dir . '/data', true) . ']]];');
+        $this->steps = ['check' => [['refused: people.title: 1 value is there more than once when case is ignored; saving one of these records is refused until they differ'], false]];
+
+        [$code, $out] = $this->migrate();
+
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('[check] refused: people.title', $out);
     }
 
     public function test_pretend_runs_nothing(): void

@@ -12,7 +12,8 @@ use Preflow\Data\Migration\Migrator;
 
 /**
  * Boots the app, runs every registered migration path, then the post-migrate steps. A site
- * without SQL storage runs only the steps registered for any storage (sqlOnly: false).
+ * without SQL storage runs only the steps registered for any storage (sqlOnly: false). Exits 1
+ * when a step refused something (a line starting with "refused:"), after every step has run.
  */
 final class MigrateCommand implements CommandInterface
 {
@@ -53,8 +54,9 @@ final class MigrateCommand implements CommandInterface
                 }
                 echo "No SQL storage configured: no schema migrations.\n";
                 if (!$pretend) {
-                    $this->runSteps($container->get(MigrationRegistry::class)->steps(sql: false));
+                    $refused = $this->runSteps($container->get(MigrationRegistry::class)->steps(sql: false));
                     echo "Done.\n";
+                    return $refused ? $this->refused() : 0;
                 }
                 return 0;
             }
@@ -86,8 +88,12 @@ final class MigrateCommand implements CommandInterface
                 }
             }
 
+            if (!$pretend && $this->runSteps($registry->steps(sql: true))) {
+                echo "Done.\n";
+
+                return $this->refused();
+            }
             if (!$pretend) {
-                $this->runSteps($registry->steps(sql: true));
                 echo "Done.\n";
             }
 
@@ -118,14 +124,32 @@ final class MigrateCommand implements CommandInterface
         return count($sql) === 1 ? array_key_first($sql) : null;
     }
 
-    /** @param array<string, \Closure(): list<string>> $steps */
-    private function runSteps(array $steps): void
+    /**
+     * Runs every step, printing its lines.
+     *
+     * @param array<string, \Closure(): list<string>> $steps
+     * @return bool whether a step refused something (a line starting with "refused:", such as a
+     *     text column whose values would collide under the text rule; data README, "Exact comparisons")
+     */
+    private function runSteps(array $steps): bool
     {
+        $refused = false;
         foreach ($steps as $name => $step) {
             foreach ($step() as $line) {
                 echo "[{$name}] {$line}\n";
+                $refused = $refused || str_starts_with($line, 'refused:');
             }
         }
+
+        return $refused;
+    }
+
+    /** Exit code 1 after every step ran, with the closing line. */
+    private function refused(): int
+    {
+        echo "Some text columns were not converted; see \"refused:\" above. Nothing was changed or removed in them.\n";
+
+        return 1;
     }
 
     private function hasSqlStorage(?DataManager $dm): bool
