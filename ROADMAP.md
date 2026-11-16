@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-15 (v0.77.1)
+> Last updated: 2026-11-16 (v0.78.0)
 
 ## Current State
 
-**v0.77.1** — 8185 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.78.0** — 8950 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Storage contracts (v0.78.0, not released):** every storage driver keeps the same contract, and nothing above the drivers asks which driver it is. A new driver implements `StorageDriver` and opts into named capabilities; the shared `StorageDriverContract` proves each one on JSON, SQLite and MySQL.
+- **Storage contracts and locale URLs (v0.78.0, released 2026-11-16):** every storage driver keeps the same contract, and nothing above the drivers asks which driver it is. A new driver implements `StorageDriver` and opts into named capabilities; the shared `StorageDriverContract` proves each one on JSON, SQLite and MySQL.
   - **Capabilities (data):**
     - `RunsSql` (`rawQuery()`, `execute()`, `dialect()`) and `PdoConnection` (`pdo()`, for migrations). `rawQuery()` left `StorageDriver`.
     - `Transactions` (`transaction()`, `inTransaction()`) and `DataManager::transaction()` across storages (`PartialCommit` when a later commit fails).
