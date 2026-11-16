@@ -89,6 +89,25 @@ final class LocaleMiddlewareTest extends TestCase
         $this->assertSame('/blog/post', $captured->getUri()->getPath());
     }
 
+    public function test_locale_urls_decide_the_prefix_for_any_configured_code(): void
+    {
+        $locales = ['en', 'de-ch'];
+        $mw = new LocaleMiddleware($this->translator, $locales, 'en', 'prefix', urls: new \Preflow\Core\Http\LocaleUrls($locales, 'en'));
+
+        $captured = null;
+        $mw->process($this->createRequest('/de-ch/blog/post'), $this->createHandler($captured));
+        $this->assertSame('/blog/post', $captured->getUri()->getPath());
+        $this->assertSame('de-ch', $captured->getAttribute('locale'));
+
+        $mw->process($this->createRequest('/de-ch'), $this->createHandler($captured));
+        $this->assertSame('/', $captured->getUri()->getPath());
+        $this->assertSame('de-ch', $captured->getAttribute('locale'));
+
+        $mw->process($this->createRequest('/de-chx/blog'), $this->createHandler($captured));
+        $this->assertSame('/de-chx/blog', $captured->getUri()->getPath());
+        $this->assertSame('en', $captured->getAttribute('locale'));
+    }
+
     public function test_no_prefix_uses_default(): void
     {
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');

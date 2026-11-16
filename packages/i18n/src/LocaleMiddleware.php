@@ -219,7 +219,20 @@ final class LocaleMiddleware implements MiddlewareInterface
     {
         $path = $request->getUri()->getPath();
 
-        // Match /xx or /xx/...
+        // The site's rule decides when the app passes it: any configured code ('/de-ch/about').
+        if ($this->urls !== null && $this->urls->prefixed) {
+            $candidate = $this->urls->localeOf($path);
+            if ($candidate === null || !in_array($candidate, $this->availableLocales, true)) {
+                return null;
+            }
+
+            return [
+                'locale' => $candidate,
+                'request' => $request->withUri($request->getUri()->withPath($this->urls->strip($path))),
+            ];
+        }
+
+        // Without LocaleUrls: two-letter codes (/xx or /xx/...)
         if (preg_match('#^/([a-z]{2})(?:/|$)#', $path, $matches)) {
             $candidate = $matches[1];
 
