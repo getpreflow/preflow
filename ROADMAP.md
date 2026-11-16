@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-16 (v0.78.1)
+> Last updated: 2026-11-16 (v0.78.2)
 
 ## Current State
 
-**v0.78.1** — 8963 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.78.2** — 9008 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,6 +525,16 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **Locale URL gaps (v0.78.2, released 2026-11-16):** four places where 0.78's language URLs could not keep a site's existing addresses.
+  - `config/i18n.php` `home_slash` (default false, needs `url_strategy` `prefix`): a prefixed language's home is `/de/` instead of `/de`, in `locale_url()`, the bare-path redirect and the switch endpoint's default `to`. `LocaleUrls::$homeSlash`, `LocaleUrls::isHome()`. With `canonical_paths` the clean form of a language home is then `/de/` (`/de` answers 301 `/de/`); `/` is always clean.
+  - `/robots.txt`, `/sitemap.xml` and `/llms.txt` are never sent to a language by `redirect_bare` (the README promised it; a route there was redirected).
+  - A bare address that only a redirect entry answers (no page) goes to the visitor's language like a page does: `/old-help` with a German browser → `302 /de/old-help` → the entry's `301`. core `PageLookups::addAnswer()`/`answers()` (lookups asked by the bare redirect only; an answer is not a page), routing `Redirect\RedirectEntryExists`. With `prefix_default` and `redirect_bare`, the redirect rules accept a bare target (`/old-help.php` → `/old-help`): bare addresses always pass the language redirect first (optional `Redirect\LanguageRedirectedAddresses`, implemented by Folio's site addresses).
+  - With `canonical_paths`, an untidy address whose clean form has a redirect entry answers with the entry's target in one hop (`/de/old-help/` → `301 /de/help`), unless a page answers the clean address (a page wins over an entry, as for a 404). `Redirect\RedirectResolver` holds the lookup `RedirectMiddleware` and `CanonicalPathMiddleware` share.
+  - Upgrading:
+    - Nothing to do; sites without `home_slash`, redirect entries and `canonical_paths` answer exactly as on 0.78.1.
+    - With `redirect_bare`: a bare address with a redirect entry and no page now gets the language redirect first (before: the default language's entry answered at once). `robots.txt`, `sitemap.xml` and `llms.txt` no longer get `Vary: Accept-Language, Cookie` from the locale middleware. A site that added `/sitemap.xml` to `NonPublicPaths` to stop the redirect can remove that line.
+    - With `canonical_paths`: an untidy address with a redirect entry is one hop instead of two, and counts one hit.
+    - `CanonicalPathMiddleware` takes optional trailing constructor arguments (resolver, LocaleUrls, hit, page lookup); existing calls keep working.
 - **Search ignores accents (v0.78.1, released 2026-11-16):** `LIKE`, `NOT LIKE`, `CONTAINS`, `search()` and loose search (Folio's lists, ⌘K, the relation and block pickers) now ignore accents as well as case and width, on every driver: "uber" finds "Über", "elise" finds "Élise", "istanbul" finds "İstanbul", "lodz" finds "Łódź". Matching still goes character by character, as MySQL/MariaDB's LIKE does under an accent-insensitive collation: "strasse" does not find "Straße", "ilik" does not find "ılık", "aegir" does not find "Ægir"; the long s ſ is an s. Exact comparisons (`=`, `IN`, unique checks, sorting) keep 0.78.0's rule: case ignored, accents count ("Muller" is not "Müller").
   - `TextMatch::matchFold()` is the matching rule in PHP, from a second generated table (`search-fold-table.php`, `bin/text-fold-table --search`, checked against the server in the MySQL suite); `like()`, `contains()` and `asciiSafe()` use it. `fold()`, `equals()`, `compare()`, `key()` and `TextMatch::version()` are unchanged.
   - MySQL/MariaDB matches in `utf8mb4_uca1400_nopad_ai_ci` (MariaDB 10.10+) or `utf8mb4_0900_ai_ci` (MySQL 8), found by probing (`MysqlDialect::SEARCH_COLLATIONS`); columns keep their accent-sensitive collation.
