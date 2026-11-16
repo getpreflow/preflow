@@ -7,12 +7,18 @@ namespace Preflow\Routing;
 use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Core\Exceptions\MethodNotAllowedHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Routing\PageExists;
 use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouterInterface;
 
-final class Router implements RouterInterface
+final class Router implements RouterInterface, PageExists
 {
     private ?RouteCollection $collection = null;
+
+    /** The matcher over $collection, made once (it reads the collection on every match, so routes added later count). */
+    private ?RouteMatcher $matcher = null;
+
+    private ?RouteCollection $matcherCollection = null;
 
     /** @var list<string> the sets compiled live (not taken from the route store), in order */
     private array $liveSets = [];
@@ -117,10 +123,32 @@ final class Router implements RouterInterface
         return $this->liveSets;
     }
 
-    public function match(ServerRequestInterface $request): Route
+    /**
+     * Whether a GET route that is not a catch-all answers at $path; a catch-all (Folio's frontend,
+     * a file catch-all) answers every path, so it cannot tell. The locale plays no part: routes
+     * are the same in every language.
+     */
+    public function exists(string $locale, string $path): bool
+    {
+        $match = $this->matcher()->match('GET', $path);
+
+        return $match !== null && !$match['entry']->isCatchAll;
+    }
+
+    private function matcher(): RouteMatcher
     {
         $collection = $this->getCollection();
-        $matcher = new RouteMatcher($collection);
+        if ($this->matcher === null || $this->matcherCollection !== $collection) {
+            $this->matcher = new RouteMatcher($collection);
+            $this->matcherCollection = $collection;
+        }
+
+        return $this->matcher;
+    }
+
+    public function match(ServerRequestInterface $request): Route
+    {
+        $matcher = $this->matcher();
 
         $method = $request->getMethod();
         $uri = $request->getUri()->getPath();

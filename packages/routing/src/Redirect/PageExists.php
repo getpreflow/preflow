@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\Routing\Redirect;
 
-/** What only the site knows: whether a page answers at an address. */
-interface PageExists
+/**
+ * What only the site knows: whether a page holds an address. The redirect rules' name for core's
+ * contract ({@see \Preflow\Core\Routing\PageExists}), so a lookup bound under either answers both.
+ */
+interface PageExists extends \Preflow\Core\Routing\PageExists
 {
-    /** Whether a page holds the path in the entry locale ('' is the site's default language). */
-    public function exists(string $locale, string $path): bool;
 }

@@ -67,8 +67,12 @@ final class CanonicalPathsBootTest extends TestCase
         // A locale's home has one spelling, without the slash; the root stays '/'.
         $this->assertSame('/de', $this->get('/de/')->getHeaderLine('Location'));
         $this->assertSame(200, $this->get('/')->getStatusCode());
-        // A POST is never redirected.
-        $this->assertNotSame(301, $this->get('/about/', 'POST')->getStatusCode());
+        // A POST is never redirected: it goes on to the app like the clean path's (CSRF refuses
+        // both here, as the test sends no token).
+        $post = $this->get('/about/', 'POST');
+        $this->assertSame(403, $post->getStatusCode());
+        $this->assertFalse($post->hasHeader('Location'));
+        $this->assertSame(403, $this->get('/about', 'POST')->getStatusCode());
     }
 
     public function test_canonical_paths_off_by_default(): void

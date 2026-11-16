@@ -128,4 +128,18 @@ final class LocaleUrlsSeoTest extends TestCase
         // A page is still redirected.
         $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'])->getHeaderLine('Location'));
     }
+
+    #[RunInSeparateProcess]
+    public function test_markdown_view_of_a_prefixed_default_page(): void
+    {
+        $this->i18n(['prefix_default' => true, 'redirect_bare' => true]);
+
+        // The address llms.txt lists: rendered in its locale, never bare-redirected.
+        $response = $this->get('/en/about.md', ['Accept-Language' => 'de']);
+        $body = (string) $response->getBody();
+        $this->assertSame(200, $response->getStatusCode(), $body);
+        $this->assertStringStartsWith('text/markdown', $response->getHeaderLine('Content-Type'));
+        $this->assertStringContainsString('Welcome', $body);
+        $this->assertFalse($response->hasHeader('Location'));
+    }
 }

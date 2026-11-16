@@ -45,7 +45,8 @@ final class SeoMiddleware implements MiddlewareInterface
      * @param \Closure(): \DateTimeImmutable $now security.txt's Expires counts from it
      * @param ?string      $sessionCookie the session cookie's name (config); session_name() when null
      * @param ?\Closure(): list<string> $sentHeaders headers PHP queued natively; headers_list() by default
-     * @param ?LocaleUrls  $localeUrls    the site's locale URL rule: a locale's home is its prefix ('/en' with prefix_default)
+     * @param ?LocaleUrls  $localeUrls    the site's locale URL rule: a locale's home is its prefix ('/en' with prefix_default);
+     *                                    null is deprecated (the home rule then assumes an unprefixed default locale)
      */
     public function __construct(
         private readonly SeoConfig $config,
@@ -388,6 +389,8 @@ final class SeoMiddleware implements MiddlewareInterface
             return $this->localeUrls->prefix($locale);
         }
 
+        // Deprecated fallback for a middleware built without LocaleUrls (the application always
+        // passes it since 0.78): today's rule, the default locale unprefixed. LocaleUrls is the rule.
         return $locale === $this->defaultLocale ? '' : '/' . $locale;
     }
 

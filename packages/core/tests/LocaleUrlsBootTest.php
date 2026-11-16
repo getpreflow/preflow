@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests;
 
+require_once __DIR__ . '/Fixtures/LocaleUrls/PageLookupFixtures.php';
+
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
+use Preflow\Core\Routing\PageExists;
+use Preflow\Core\Tests\Fixtures\LocaleUrls\AnsweringRouter;
+use Preflow\Core\Tests\Fixtures\LocaleUrls\PageLookupProvider;
+use Preflow\Core\Tests\Fixtures\LocaleUrls\PlainRouter;
 use Psr\Http\Message\ResponseInterface;
 
 /** The application wires LocaleUrls, the bare-path redirect and the language switch (config/i18n.php). */
@@ -30,6 +36,7 @@ final class LocaleUrlsBootTest extends TestCase
 
     protected function tearDown(): void
     {
+        PageLookupProvider::reset();
         $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
         foreach ($it as $f) {
             $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
@@ -46,23 +53,33 @@ final class LocaleUrlsBootTest extends TestCase
         ) . ';');
     }
 
-    private function app(): Application
+    private function app(?\Preflow\Core\Routing\RouterInterface $router = null): Application
     {
         $app = Application::create($this->dir);
+        if ($router !== null) {
+            $app->setRouter($router);
+        }
         $app->boot();
 
         return $app;
     }
 
     /** @param array<string, string> $headers */
-    private function get(string $uri, array $headers = []): ResponseInterface
+    private function get(string $uri, array $headers = [], ?\Preflow\Core\Routing\RouterInterface $router = null): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest('GET', $uri);
         foreach ($headers as $name => $value) {
             $request = $request->withHeader($name, $value);
         }
 
-        return $this->app()->handle($request);
+        return $this->app($router)->handle($request);
+    }
+
+    private function provide(string $binding, string ...$paths): void
+    {
+        PageLookupProvider::$binding = $binding;
+        PageLookupProvider::$paths = array_values($paths);
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(PageLookupProvider::class, true) . "];\n");
     }
 
     public function test_bare_file_page_redirects_with_redirect_bare(): void
@@ -148,17 +165,23 @@ final class LocaleUrlsBootTest extends TestCase
         $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'])->getHeaderLine('Location'));
     }
 
-    public function test_cookie_name_must_be_a_non_empty_string(): void
+    /** @return iterable<string, array{mixed}> */
+    public static function badCookieNames(): iterable
     {
-        foreach (['', 12, 'a;b', "a\r\nb"] as $name) {
-            $this->i18n(['redirect_bare' => true, 'cookie_name' => $name]);
-            try {
-                $this->app();
-                $this->fail('accepted cookie_name ' . var_export($name, true));
-            } catch (\RuntimeException $e) {
-                $this->assertSame('config/i18n.php: cookie_name must be a non-empty cookie name (letters, digits and !#$%&\'*+-.^_`|~).', $e->getMessage());
-            }
-        }
+        yield 'empty' => [''];
+        yield 'not a string' => [12];
+        yield 'separator' => ['a;b'];
+        yield 'line break' => ["a\r\nb"];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('badCookieNames')]
+    public function test_cookie_name_must_be_a_non_empty_string(mixed $name): void
+    {
+        $this->i18n(['redirect_bare' => true, 'cookie_name' => $name]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('config/i18n.php: cookie_name must be a non-empty cookie name (letters, digits and !#$%&\'*+-.^_`|~).');
+        $this->app();
     }
 
     public function test_invalid_flags_stop_the_boot(): void
@@ -168,5 +191,45 @@ final class LocaleUrlsBootTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('config/i18n.php: redirect_bare needs url_strategy "prefix".');
         $this->app();
+    }
+
+    public function test_redirect_bare_stops_the_boot_when_nothing_can_tell_a_page(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('config/i18n.php: redirect_bare needs to know which paths are pages: use preflow/routing\'s Router, or bind Preflow\Core\Routing\PageExists (a router that implements it counts too).');
+        $this->app(new PlainRouter());
+    }
+
+    public function test_any_router_boots_without_redirect_bare(): void
+    {
+        $this->i18n(['prefix_default' => true]);
+
+        $this->assertInstanceOf(Application::class, $this->app(new PlainRouter()));
+    }
+
+    public function test_a_router_answering_page_exists_drives_the_redirect(): void
+    {
+        $router = new AnsweringRouter(['/about']);
+
+        $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'], $router)->getHeaderLine('Location'));
+        $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], $router)->getStatusCode());
+    }
+
+    public function test_a_bound_page_exists_answers_for_a_router_that_cannot(): void
+    {
+        $this->provide(PageExists::class, '/about');
+
+        $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
+        $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], new PlainRouter())->getStatusCode());
+    }
+
+    public function test_a_bound_redirect_page_exists_adds_pages_the_router_cannot_see(): void
+    {
+        // A catch-all site's pages (as Folio binds them): no file page at /blog, the lookup knows it.
+        $this->provide(\Preflow\Routing\Redirect\PageExists::class, '/blog');
+
+        $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'])->getHeaderLine('Location'));
+        $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'])->getHeaderLine('Location'), 'the router still answers');
+        $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'])->getStatusCode());
     }
 }

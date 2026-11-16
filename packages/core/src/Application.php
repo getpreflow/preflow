@@ -419,6 +419,9 @@ final class Application
         // Redirects and the not-found list — after the site's middleware, so a site route wins
         $this->bootRedirects($debug);
 
+        // The site's page lookups are all set up now (providers ran): redirect_bare must have one.
+        $this->checkPageLookup();
+
         // SEO files, head tags and ETag — prepended, then GEO is prepended around it
         $this->bootSeo();
 
@@ -2093,9 +2096,10 @@ final class Application
         $localized = is_dir($langDir) || $i18nFile !== null;
 
         $locale = $urls->default;
+        // The translation fallback is not part of the URL rule: read from the config itself.
         $fallback = (string) ($i18nConfig['fallback'] ?? $locale);
         $available = $urls->locales;
-        $strategy = (string) ($i18nConfig['url_strategy'] ?? 'prefix');
+        $strategy = $urls->prefixed ? 'prefix' : 'none';
 
         $translator = new \Preflow\I18n\Translator($langDir, $locale, $fallback);
         $this->container->instance(\Preflow\I18n\Translator::class, $translator);
@@ -2129,7 +2133,7 @@ final class Application
                 (bool) ($i18nConfig['cookie'] ?? $strategy !== 'prefix'),
                 urls: $urls,
                 cookieName: $cookieName,
-                pageExists: $this->pageExists(),
+                pageExists: $this->pageExists($urls),
                 nonPublic: $nonPublic,
             );
             $this->container->instance(\Preflow\I18n\LocaleMiddleware::class, $localeMiddleware);
@@ -2167,34 +2171,75 @@ final class Application
     }
 
     /**
-     * Whether a page answers at a bare path, for the locale middleware's redirect (redirect_bare):
-     * a route that is not a catch-all, or the site's PageExists (Folio binds one for its pages; a
-     * site with its own catch-all pages binds its own). Null without preflow/routing's Router,
-     * which leaves bare paths alone. The router is read when a request asks, so a router a
-     * provider sets later counts.
+     * Whether a page answers at a bare path, for the locale middleware's redirect (redirect_bare);
+     * null when redirect_bare is off. Asks every page lookup there is ({@see pageLookups()}),
+     * when a request runs, so lookups and a router that providers set up count.
      *
      * @return (\Closure(string $locale, string $path): bool)|null
      */
-    private function pageExists(): ?\Closure
+    private function pageExists(\Preflow\Core\Http\LocaleUrls $urls): ?\Closure
     {
-        if (!class_exists(\Preflow\Routing\Router::class) || !$this->router instanceof \Preflow\Routing\Router) {
+        if (!$urls->redirectBare) {
             return null;
         }
 
         $container = $this->container;
 
         return static function (string $locale, string $path) use ($container): bool {
-            $router = $container->get(RouterInterface::class);
-            if ($router instanceof \Preflow\Routing\Router) {
-                $match = (new \Preflow\Routing\RouteMatcher($router->getCollection()))->match('GET', $path);
-                if ($match !== null && !$match['entry']->isCatchAll) {
+            foreach (self::pageLookups($container) as $lookup) {
+                if ($lookup->exists($locale, $path)) {
                     return true;
                 }
             }
 
-            return $container->bound(\Preflow\Routing\Redirect\PageExists::class)
-                && $container->get(\Preflow\Routing\Redirect\PageExists::class)->exists($locale, $path);
+            return false;
         };
+    }
+
+    /**
+     * What can tell whether a page answers at a path (core's Routing\PageExists): a lookup bound
+     * in the container (under core's name or preflow/routing's Redirect\PageExists, as Folio binds
+     * its pages), then the router when it implements the contract (preflow/routing's Router does,
+     * for routes that are not catch-alls).
+     *
+     * @return list<\Preflow\Core\Routing\PageExists>
+     */
+    private static function pageLookups(Container $container): array
+    {
+        $lookups = [];
+        $candidates = [\Preflow\Core\Routing\PageExists::class, 'Preflow\\Routing\\Redirect\\PageExists', RouterInterface::class];
+        foreach ($candidates as $id) {
+            if (!$container->bound($id)) {
+                continue;
+            }
+            $lookup = $container->get($id);
+            if ($lookup instanceof \Preflow\Core\Routing\PageExists && !in_array($lookup, $lookups, true)) {
+                $lookups[] = $lookup;
+            }
+        }
+
+        return $lookups;
+    }
+
+    /**
+     * redirect_bare redirects only paths a page answers at, so it needs something that can tell
+     * (pageLookups()); without it, it would do nothing. Checked once providers ran.
+     *
+     * @throws \RuntimeException when redirect_bare is on and nothing can tell
+     */
+    private function checkPageLookup(): void
+    {
+        if (!$this->container->get(\Preflow\Core\Http\LocaleUrls::class)->redirectBare
+            || !class_exists(\Preflow\I18n\LocaleMiddleware::class)
+            || !$this->container->bound(\Preflow\I18n\LocaleMiddleware::class)
+            || self::pageLookups($this->container) !== []) {
+            return;
+        }
+
+        throw new \RuntimeException(
+            'config/i18n.php: redirect_bare needs to know which paths are pages: use preflow/routing\'s Router, '
+            . 'or bind Preflow\\Core\\Routing\\PageExists (a router that implements it counts too).',
+        );
     }
 
     /** Binds RequestContext for the request being handled (handle(), and again once the locale prefix is stripped). */
