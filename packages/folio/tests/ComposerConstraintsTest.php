@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.78.2: routing 0.78.2 (Redirect\LanguageRedirectedAddresses, which SiteTarget implements).
  * Since 0.78: core 0.78 (Http\LocaleUrls, which FrontendResolver builds every page URL with, "/en/…" with prefix_default; Routing\PageExists, under which Folio binds SiteTarget for the bare-path redirect); routing 0.78 (Redirect\PageExists extends core's PageExists, so SiteTarget answers under core's name); ai 0.78 (Limits\AiLimits and AiLimitReached, the per-person limits the draft and translate endpoints answer with); i18n 0.78 (JobRunner::step() throws AiLimitReached for a job over its person's limit); data 0.78 (TypeFieldDefinition's exact, which Folio's redirect, address, translation, extension and permission tables give their ids, keys and times).
  * Since 0.77.1: data 0.77.1 (MigrationRegistry::afterMigrate()'s sqlOnly, which folio.permissions and folio.addresses pass).
  * Since 0.77: core 0.77 (Activity\ActivityLog and ActivityActors, for the dashboard's recent changes and AuthorNames); data 0.77 (RecordTitle, which RecordLabeler uses); ai 0.77 (Draft\DraftWriter, behind "Write a draft"); i18n 0.77 (Machine\WritesAs, which FolioTextSource implements); media 0.77 (activity recording of asset changes); publishing 0.77 (Publisher::stateCounts() for the dashboard and status links, PersonalTypes, which MemberPersonalTypes implements); members 0.77 (raised in step with the release; members is only suggested, and records its activity through core's ActivityLog); devtools 0.77 (raised in step with the release; src calls no 0.77-only devtools API).
@@ -71,7 +72,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.78', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.78', 'preflow/media' => '<0.77', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.77', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.78', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.78', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.78', 'preflow/media' => '<0.77', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.77', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; members, codes and rbac are suggested, not required.

@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.78.2: routing 0.78.2 (Redirect\RedirectResolver, which the clean-path one hop asks).
  * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which Throttle gives its purpose field); i18n 0.78
  * (LocaleMiddleware takes urls:, cookieName:, pageExists: and nonPublic:, the bare-path redirect and the
  * language switch); view 0.78 (SeoMiddleware takes localeUrls:, the home of a prefixed default locale);
@@ -54,7 +55,7 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/data' => '<0.78',
             'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.78',
-            'preflow/routing' => '<0.78',
+            'preflow/routing' => '<0.78.2',
             'preflow/view' => '<0.78',
             'preflow/twig' => '<0.60',
             'preflow/blade' => '<0.60',
