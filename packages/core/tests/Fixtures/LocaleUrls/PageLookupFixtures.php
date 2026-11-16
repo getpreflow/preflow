@@ -33,33 +33,29 @@ final class AnsweringRouter extends PlainRouter implements PageExists
     }
 }
 
-/** A site's page lookup bound under the contract named in $binding (core's or routing's). */
+/** Site page lookups, each bound under the contract it names (core's or routing's), with the paths it knows. */
 final class PageLookupProvider extends ServiceProvider
 {
-    /** @var list<string> */
-    public static array $paths = [];
-
-    /** @var class-string */
-    public static string $binding = PageExists::class;
+    /** @var array<class-string, list<string>> binding => paths */
+    public static array $lookups = [];
 
     public function register(Container $container): void
     {
-        $paths = self::$paths;
-        $lookup = new class ($paths) implements \Preflow\Routing\Redirect\PageExists {
-            /** @param list<string> $paths */
-            public function __construct(private readonly array $paths) {}
+        foreach (self::$lookups as $binding => $paths) {
+            $container->instance($binding, new class ($paths) implements \Preflow\Routing\Redirect\PageExists {
+                /** @param list<string> $paths */
+                public function __construct(private readonly array $paths) {}
 
-            public function exists(string $locale, string $path): bool
-            {
-                return in_array($path, $this->paths, true);
-            }
-        };
-        $container->instance(self::$binding, $lookup);
+                public function exists(string $locale, string $path): bool
+                {
+                    return in_array($path, $this->paths, true);
+                }
+            });
+        }
     }
 
     public static function reset(): void
     {
-        self::$paths = [];
-        self::$binding = PageExists::class;
+        self::$lookups = [];
     }
 }

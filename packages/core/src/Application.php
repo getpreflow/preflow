@@ -2028,6 +2028,10 @@ final class Application
             return;
         }
 
+        // What preflow/routing sets up itself (its Redirect\PageExists answers as core's PageExists),
+        // with a router of the app's own too.
+        \Preflow\Routing\RoutingRegistration::register($this);
+
         if ($this->router !== null) {
             return; // manually configured
         }
@@ -2198,16 +2202,17 @@ final class Application
 
     /**
      * What can tell whether a page answers at a path (core's Routing\PageExists): a lookup bound
-     * in the container (under core's name or preflow/routing's Redirect\PageExists, as Folio binds
-     * its pages), then the router when it implements the contract (preflow/routing's Router does,
-     * for routes that are not catch-alls).
+     * in the container under core's name (Folio binds its pages there; a package with a name of
+     * its own for the contract binds that under core's, as preflow/routing does for its
+     * Redirect\PageExists), then the router when it implements the contract (preflow/routing's
+     * Router does, for routes that are not catch-alls).
      *
      * @return list<\Preflow\Core\Routing\PageExists>
      */
     private static function pageLookups(Container $container): array
     {
         $lookups = [];
-        $candidates = [\Preflow\Core\Routing\PageExists::class, 'Preflow\\Routing\\Redirect\\PageExists', RouterInterface::class];
+        $candidates = [\Preflow\Core\Routing\PageExists::class, RouterInterface::class];
         foreach ($candidates as $id) {
             if (!$container->bound($id)) {
                 continue;

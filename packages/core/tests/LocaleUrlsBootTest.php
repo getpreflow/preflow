@@ -77,8 +77,13 @@ final class LocaleUrlsBootTest extends TestCase
 
     private function provide(string $binding, string ...$paths): void
     {
-        PageLookupProvider::$binding = $binding;
-        PageLookupProvider::$paths = array_values($paths);
+        $this->provideEach([$binding => array_values($paths)]);
+    }
+
+    /** @param array<class-string, list<string>> $lookups binding => the paths its lookup knows */
+    private function provideEach(array $lookups): void
+    {
+        PageLookupProvider::$lookups = $lookups;
         file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(PageLookupProvider::class, true) . "];\n");
     }
 
@@ -231,5 +236,25 @@ final class LocaleUrlsBootTest extends TestCase
         $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'])->getHeaderLine('Location'));
         $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'])->getHeaderLine('Location'), 'the router still answers');
         $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'])->getStatusCode());
+    }
+
+    public function test_a_site_binding_only_routings_page_exists_still_answers(): void
+    {
+        // preflow/routing answers its own name under core's: core asks only core's contract.
+        $this->provide(\Preflow\Routing\Redirect\PageExists::class, '/blog');
+
+        $app = $this->app(new PlainRouter());
+        $this->assertTrue($app->container()->bound(PageExists::class));
+        $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
+        $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], new PlainRouter())->getStatusCode());
+    }
+
+    public function test_lookups_bound_under_both_names_both_answer(): void
+    {
+        $this->provideEach([PageExists::class => ['/about'], \Preflow\Routing\Redirect\PageExists::class => ['/blog']]);
+
+        $this->assertSame('/de/about', $this->get('/about', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
+        $this->assertSame('/de/blog', $this->get('/blog', ['Accept-Language' => 'de'], new PlainRouter())->getHeaderLine('Location'));
+        $this->assertSame(404, $this->get('/nope', ['Accept-Language' => 'de'], new PlainRouter())->getStatusCode());
     }
 }
