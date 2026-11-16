@@ -269,6 +269,20 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame([], $this->recordIds((new Query())->where('amount', '7')));
     }
 
+    /** IN and NOT IN compare as = does: a number equals the same value given as text (0.78). */
+    public function test_in_matches_a_number_given_as_text(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'two', ['uuid' => 'two', 'amount' => 2]);
+        $this->driver->save('records', 'half', ['uuid' => 'half', 'amount' => 2.5]);
+        $this->driver->save('records', 'none', ['uuid' => 'none', 'amount' => null]);
+
+        $this->assertSame(['two'], $this->recordIds((new Query())->where('amount', 'IN', ['02'])));
+        $this->assertSame(['half', 'two'], $this->recordIds((new Query())->where('amount', 'IN', ['2.50', 2])));
+        $this->assertSame(['two'], $this->recordIds((new Query())->whereAny([['field' => 'amount', 'operator' => 'IN', 'value' => ['02']]])));
+        $this->assertSame(['half'], $this->recordIds((new Query())->where('amount', 'NOT IN', ['02'])), 'a NULL field is never in or not in');
+    }
+
     public function test_inequality_of_a_number_given_as_text(): void
     {
         $this->createRecords();

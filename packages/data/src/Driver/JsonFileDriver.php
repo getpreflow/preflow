@@ -946,7 +946,8 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
     }
 
     /**
-     * Whether a scalar stored value is in the list (IN): compared as text (listText()), by the
+     * Whether a scalar stored value is in the list (IN): each member compared as = compares
+     * (sqlEquals(): a number equals the same value given as text, a yes/no value 1/0), by the
      * text rule for a text field's text ($given, see givenForms()).
      *
      * @param array<mixed> $list
@@ -958,7 +959,13 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
             return isset($given['set'][TextMatch::equalityForm($stored)]);
         }
 
-        return in_array(self::listText($stored), array_map(self::listText(...), array_filter($list, 'is_scalar')), true);
+        foreach ($list as $value) {
+            if (is_scalar($value) && self::sqlEquals($stored, $value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** A value as IN compares it: as text, a yes/no value as '1' or '0' (as SQL stores it). */
