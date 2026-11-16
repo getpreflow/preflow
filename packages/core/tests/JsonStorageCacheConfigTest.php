@@ -59,16 +59,37 @@ final class JsonStorageCacheConfigTest extends TestCase
         $this->assertNotNull($this->manager('')->driver('json')->cacheDir());
     }
 
+    /**
+     * A file edited in place outside the app (a git pull): same size and modification time, so the
+     * cache's signature cannot see it. With the cache on the old text stays (the README's edge
+     * case); with 'cache' => false the new text is read at once.
+     */
     public function test_a_file_changed_outside_the_app_is_read_at_once_without_cache(): void
     {
-        $driver = $this->manager(", 'cache' => false")->driver('json');
-        $driver->save('notes', 'a', ['uuid' => 'a', 'title' => 'one']);
+        $stale = $this->manager('')->driver('json');
+        $stale->save('notes', 'a', ['uuid' => 'a', 'title' => 'one']);
+        $this->assertSame('one', $stale->findMany('notes', new Query())->items()[0]['title']);
+        $this->editInPlace();
+        $this->assertSame('one', $stale->findMany('notes', new Query())->items()[0]['title'], 'the cache does not see the edit');
 
-        $this->assertSame('one', $driver->findMany('notes', new Query())->items()[0]['title']);
+        $fresh = $this->manager(", 'cache' => false")->driver('json');
+        $this->assertSame('two', $fresh->findMany('notes', new Query())->items()[0]['title']);
+        $this->editInPlace('two', 'six');
+        $this->assertSame('six', $fresh->findMany('notes', new Query())->items()[0]['title'], 'without the cache it reads the edit at once');
+    }
 
+    /** Replaces $from with $to (same length) in the record file, keeping its size and modification time. */
+    private function editInPlace(string $from = 'one', string $to = 'two'): void
+    {
         $file = glob($this->dir . '/json/notes/*.json')[0];
-        file_put_contents($file, json_encode(['uuid' => 'a', 'title' => 'two']));
-
-        $this->assertSame('two', $driver->findMany('notes', new Query())->items()[0]['title']);
+        clearstatcache(true, $file);
+        $mtime = (int) filemtime($file);
+        $bytes = (string) file_get_contents($file);
+        $edited = str_replace('"' . $from . '"', '"' . $to . '"', $bytes);
+        $this->assertNotSame($bytes, $edited);
+        $this->assertSame(strlen($bytes), strlen($edited));
+        file_put_contents($file, $edited);
+        touch($file, $mtime);
+        clearstatcache(true, $file);
     }
 }
