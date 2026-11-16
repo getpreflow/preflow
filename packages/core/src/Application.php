@@ -2193,7 +2193,7 @@ final class Application
         $container = $this->container;
 
         return static function (string $locale, string $path) use ($container): bool {
-            foreach (self::pageLookups($container) as $lookup) {
+            foreach (self::pageLookups($container, true) as $lookup) {
                 if ($lookup->exists($locale, $path)) {
                     return true;
                 }
@@ -2210,26 +2210,24 @@ final class Application
      * contract (preflow/routing's Router does, for routes that are not catch-alls). Called when a
      * request asks, never at boot.
      *
-     * With $pagesOnly the redirect-entry lookup (preflow/routing's RedirectEntryExists, bound for the
-     * bare redirect) is left out: the clean-path one hop asks pages alone.
+     * With $withAnswers the lookups registered with PageLookups::addAnswer() are asked too (the
+     * bare redirect does: an address something answers is worth redirecting); without, pages alone
+     * (the clean-path one hop does: a page wins over a redirect entry).
      *
      * @return list<\Preflow\Core\Routing\PageExists>
      */
-    private static function pageLookups(Container $container, bool $pagesOnly = false): array
+    private static function pageLookups(Container $container, bool $withAnswers = false): array
     {
         $lookups = [];
-        foreach ([...self::pageLookupIds($container), RouterInterface::class] as $id) {
-            // Pages only: never the redirect-entry lookup (a page wins over an entry).
-            if ($pagesOnly && $id === \Preflow\Routing\Redirect\RedirectEntryExists::class) {
-                continue;
-            }
+        $ids = self::pageLookupIds($container);
+        if ($withAnswers && $container->bound(\Preflow\Core\Routing\PageLookups::class)) {
+            $ids = [...$ids, ...$container->get(\Preflow\Core\Routing\PageLookups::class)->answers()];
+        }
+        foreach ([...$ids, RouterInterface::class] as $id) {
             if (!$container->bound($id)) {
                 continue;
             }
             $lookup = $container->get($id);
-            if ($pagesOnly && $lookup instanceof \Preflow\Routing\Redirect\RedirectEntryExists) {
-                continue;
-            }
             if ($lookup instanceof \Preflow\Core\Routing\PageExists && !in_array($lookup, $lookups, true)) {
                 $lookups[] = $lookup;
             }
@@ -2711,7 +2709,7 @@ final class Application
             },
             // A page at the clean path wins over an entry there, as it does for a 404.
             static function (string $locale, string $path) use ($container): bool {
-                foreach (self::pageLookups($container, true) as $lookup) {
+                foreach (self::pageLookups($container) as $lookup) {
                     if ($lookup->exists($locale, $path)) {
                         return true;
                     }

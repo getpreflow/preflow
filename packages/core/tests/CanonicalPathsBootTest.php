@@ -169,4 +169,31 @@ final class CanonicalPathsBootTest extends TestCase
         $this->assertSame(200, $this->get('/de')->getStatusCode());
         $this->assertSame(200, $this->get('/de/')->getStatusCode());
     }
+
+    public function test_an_address_answer_makes_the_bare_redirect_fire_but_is_no_page_for_the_one_hop(): void
+    {
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default'=>'en','available'=>['en','de'],'url_strategy'=>'prefix','prefix_default'=>true,'redirect_bare'=>true];\n");
+        $this->routing("['canonical_paths' => true]");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $app->container()->instance(RedirectStore::class, $this->store());
+        $app->container()->singleton('test.answers', static fn (): \Preflow\Core\Routing\PageExists => new class implements \Preflow\Core\Routing\PageExists {
+            public function exists(string $locale, string $path): bool
+            {
+                return $path === '/old-help' || $path === '/gone';
+            }
+        });
+        $app->container()->get(\Preflow\Core\Routing\PageLookups::class)->addAnswer('test.answers');
+        $this->assertNotContains('test.answers', $app->container()->get(\Preflow\Core\Routing\PageLookups::class)->ids());
+
+        // The bare redirect asks the answer: no page, yet it goes to the visitor's language.
+        $bare = $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/gone')->withHeader('Accept-Language', 'de'));
+        $this->assertSame(302, $bare->getStatusCode());
+        $this->assertSame('/de/gone', $bare->getHeaderLine('Location'));
+
+        // The one hop asks pages only: the answer is no page, so the entry still answers at once.
+        $one = $app->handle((new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/old-help/'));
+        $this->assertSame(301, $one->getStatusCode());
+        $this->assertSame('/de/help', $one->getHeaderLine('Location'));
+    }
 }

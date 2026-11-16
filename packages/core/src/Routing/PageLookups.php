@@ -30,7 +30,35 @@ final class PageLookups
         }
     }
 
-    /** @return list<string> core's PageExists first, then the ids added, in order */
+    /** @var list<string> */
+    private array $answers = [];
+
+    /**
+     * Ask the lookup bound under $id (one that implements PageExists) for the bare redirect only: it
+     * says whether something answers an address where no page is, such as a redirect entry. It is not a
+     * page: whatever must tell pages apart from answers (a page wins over a redirect entry) asks ids()
+     * and never these.
+     *
+     * @since 0.78.2
+     */
+    public function addAnswer(string $id): void
+    {
+        if (!in_array($id, $this->answers, true)) {
+            $this->answers[] = $id;
+        }
+    }
+
+    /**
+     * @return list<string> the ids added with addAnswer(), in order
+     *
+     * @since 0.78.2
+     */
+    public function answers(): array
+    {
+        return $this->answers;
+    }
+
+    /** @return list<string> core's PageExists first, then the ids added, in order; pages only (see answers()) */
     public function ids(): array
     {
         return $this->ids;
