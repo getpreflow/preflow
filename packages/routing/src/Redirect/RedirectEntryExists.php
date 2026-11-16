@@ -7,8 +7,8 @@ namespace Preflow\Routing\Redirect;
 use Preflow\Core\Routing\PageExists as CorePageExists;
 
 /**
- * Whether a redirect entry (exact, or an area above it) answers an address in a language, whatever
- * its target. Core's bare redirect (config/i18n.php redirect_bare) asks it, registered with
+ * Whether a redirect entry for that language (exact, or an area above it) answers an address,
+ * whatever its target; an entry for every language does not count (since 0.78.3). Core's bare redirect (config/i18n.php redirect_bare) asks it, registered with
  * PageLookups::addAnswer(): an old address that an entry answers goes to the visitor's language
  * first, and the entry answers there (two hops).
  *
@@ -39,7 +39,11 @@ final class RedirectEntryExists implements CorePageExists
         }
 
         try {
-            return ($this->resolver)()?->has($clean, $locale) ?? false;
+            $entry = ($this->resolver)()?->find($clean, $locale)[0];
+
+            // An entry for every language ('') gives the same target whatever the language, so the
+            // language redirect would only add a hop: it does not count.
+            return $entry !== null && $entry->locale !== '';
         } catch (\Throwable) {
             return false;
         }

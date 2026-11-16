@@ -38,6 +38,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   answer is that entry's status and target in one response, not the clean 301 and then the
  *   entry's; the query is kept and the same Location rules apply. An entry that points back at
  *   the clean address itself, or at a protocol-relative Location, is skipped: the clean 301 runs.
+ * - With LocaleUrls::$prefixDefault and $redirectBare a bare address (no locale segment) takes only an
+ *   entry for every language here; a language's entry answers after the language redirect.
  * - With LocaleUrls::$homeSlash a prefixed locale's root keeps its slash ('/de' becomes '/de/').
  * - The 301 depends on the URL alone (no cookie, no Vary), so caches may keep it per URL.
  *
@@ -164,6 +166,14 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
             }
 
             [$entry, $rest] = $resolver->find($path, $locale);
+
+            // On a site that sends every bare address through the language redirect, a bare
+            // address may only take an entry for every language; a language's entry answers after it.
+            if ($entry !== null && $entry->locale !== '' && $this->urls->prefixDefault && $this->urls->redirectBare
+                && $this->urls->localeOf($canonical) === null) {
+                return null;
+            }
+
             $url = $entry === null ? null : $resolver->url($entry, $rest, $locale);
         } catch (\Throwable) {
             return null;

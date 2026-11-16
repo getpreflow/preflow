@@ -261,8 +261,8 @@ What is never redirected:
 - admin, API and component paths (`NonPublicPaths`) and every path whose first segment starts
   with `--`;
 - a path neither a page nor a redirect entry answers at in the picked language: it is served as it
-  is (normally a 404), and redirect entries still apply to it. A path a redirect entry answers goes
-  to the visitor's language like a page (since 0.78.2; preflow/routing registers it with
+  is (normally a 404), and redirect entries still apply to it. A path a redirect entry for one language answers goes
+  to the visitor's language like a page (an entry for every language does not: its answer is the same in any language, so it answers at once) (since 0.78.2; preflow/routing registers it with
   `PageLookups::addAnswer()`, so the entry then answers at the prefixed address: two hops, and i18n
   never reads the redirect store). "A page answers" is asked of core's
   `Preflow\Core\Routing\PageExists` (`exists(locale, path)`): preflow/routing's `Router`

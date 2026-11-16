@@ -23,6 +23,8 @@ final class RedirectEntryExistsTest extends TestCase
             new Redirect('1', '/old-help', 'de', false, AreaMode::One, null, null, '/de/help', 301),
             new Redirect('2', '/old-area', 'de', true, AreaMode::One, null, null, '/de/area', 301),
             new Redirect('3', '/broken', 'de', false, AreaMode::One, null, null, null, 301),
+            new Redirect('4', '/favicon/old.ico', '', false, AreaMode::One, null, null, '/favicon.ico', 301),
+            new Redirect('5', '/old-files', '', true, AreaMode::Prefix, null, null, '/files', 301),
         ]));
     }
 
@@ -35,6 +37,15 @@ final class RedirectEntryExistsTest extends TestCase
         $this->assertTrue($lookup->exists('de', '/broken'), 'an entry with no target is still an entry');
         $this->assertFalse($lookup->exists('en', '/old-help'));
         $this->assertFalse($lookup->exists('de', '/help'));
+    }
+
+    public function test_an_entry_for_every_language_does_not_count(): void
+    {
+        $lookup = new RedirectEntryExists($this->resolver());
+
+        // The answer is the same in every language, so the language redirect adds nothing.
+        $this->assertFalse($lookup->exists('de', '/favicon/old.ico'));
+        $this->assertFalse($lookup->exists('en', '/old-files/a.png'));
     }
 
     public function test_the_path_is_read_in_its_clean_form(): void

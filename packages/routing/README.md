@@ -268,7 +268,10 @@ loop). Both are found per request, so a redirect store bound after boot (Folio's
 entry answers (`/old-help` with an entry `/old-help` in German) would stay unredirected for a visitor
 whose language is German. Routing registers `Redirect\RedirectEntryExists` with core's
 `PageLookups::addAnswer()`: the bare redirect asks it too, so `/old-help` goes `302 /de/old-help`
-and the entry answers there (two hops, as i18n never reads the redirect store). It looks the store
+and the entry answers there (two hops, as i18n never reads the redirect store). An entry for every
+language does not count (its answer is the same in any language, so it answers in one `301`), and
+on a site with `prefix_default` and `redirect_bare` the clean-path one hop takes only such an entry
+for a bare address (since 0.78.3). It looks the store
 up per question (a store bound after boot counts) and says no without one. It is no page lookup:
 the redirect rules and the clean-path one hop ask pages only, so a page still wins over an entry
 and entries never count as pages. On a site with both `prefix_default` and `redirect_bare`, the

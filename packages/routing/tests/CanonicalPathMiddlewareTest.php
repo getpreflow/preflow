@@ -290,6 +290,52 @@ final class CanonicalPathMiddlewareTest extends TestCase
         $this->assertCount(1, $store->hits);
     }
 
+    private function bareUrls(): LocaleUrls
+    {
+        return new LocaleUrls(['en', 'de'], 'en', true, true, true);
+    }
+
+    public function test_with_prefix_default_and_redirect_bare_a_language_entry_is_not_taken_for_a_bare_address(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'en', '/en/help')]);
+
+        $r = $this->sendWith('/old-help/', $store, $this->bareUrls());
+
+        // The language redirect always runs first for a bare address: only the plain clean 301.
+        $this->assertSame(301, $r->getStatusCode());
+        $this->assertSame('/old-help', $r->getHeaderLine('Location'));
+        $this->assertCount(0, $store->hits);
+    }
+
+    public function test_with_prefix_default_and_redirect_bare_an_entry_for_every_language_is_taken_for_a_bare_address(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', '', '/help')]);
+
+        $r = $this->sendWith('/old-help/', $store, $this->bareUrls());
+
+        $this->assertSame(301, $r->getStatusCode());
+        $this->assertSame('/help', $r->getHeaderLine('Location'));
+        $this->assertCount(1, $store->hits);
+    }
+
+    public function test_with_prefix_default_and_redirect_bare_a_prefixed_address_still_takes_its_language_entry(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help')]);
+
+        $r = $this->sendWith('/de/old-help/', $store, $this->bareUrls());
+
+        $this->assertSame('/de/help', $r->getHeaderLine('Location'));
+    }
+
+    public function test_without_prefix_default_a_bare_address_takes_the_default_language_entry_as_before(): void
+    {
+        $store = new InMemoryRedirectStore([$this->entry('/old-help', 'en', '/help')]);
+
+        $r = $this->sendWith('/old-help/', $store, new LocaleUrls(['en', 'de'], 'en', true, false, true));
+
+        $this->assertSame('/help', $r->getHeaderLine('Location'));
+    }
+
     public function test_a_page_at_the_clean_path_wins_over_the_entry(): void
     {
         $store = new InMemoryRedirectStore([$this->entry('/old-help', 'en', '/help')]);
