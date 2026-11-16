@@ -34,9 +34,9 @@ final class MysqlDriver extends PdoDriver implements RankedSearch
 
     /**
      * @param \PDO|\Closure(): \PDO $pdo A connection, or a closure that opens it on the first query.
-     * @param string|false|null $matchCollation The collation LIKE compares with: null asks the
-     *     server (MysqlDialect::serverMatchCollation(), once, on the first LIKE), false takes the
-     *     LOWER() fallback, a string names it.
+     * @param string|false|null $matchCollation The collation LIKE and translatable text values
+     *     compare with: null asks the server (matchCollation(), once, on first use), false takes
+     *     the LOWER() fallback, a string names it.
      */
     public function __construct(\PDO|\Closure $pdo, ?\Preflow\Core\Debug\DebugCollector $collector = null, string|false|null $matchCollation = null)
     {
@@ -49,16 +49,18 @@ final class MysqlDriver extends PdoDriver implements RankedSearch
     }
 
     /**
-     * The accent-sensitive, case-insensitive collation LIKE, NOT LIKE, CONTAINS and search()
-     * compare with (one of MysqlDialect::MATCH_COLLATIONS), or null when the server has none and
-     * they lower both sides instead (see the data README, "Text matching").
+     * The text rule's collation (one of MysqlDialect::MATCH_COLLATIONS): LIKE, NOT LIKE, CONTAINS
+     * and search() compare with it, as the columns of text fields do (MysqlGrammar names the same
+     * one); null when the server has none: LIKE then lowers both sides and the columns stay exact
+     * (see the data README, "Text matching" and "Exact comparisons"). The server is probed once
+     * per connection (MysqlGrammar::on()).
      *
      * @since 0.78
      */
     public function matchCollation(): ?string
     {
         if (!$this->collationKnown) {
-            $this->matchCollation = MysqlDialect::serverMatchCollation($this->pdo());
+            $this->matchCollation = (new MysqlGrammar())->on($this->pdo())->textCollation();
             $this->collationKnown = true;
         }
 

@@ -103,7 +103,10 @@ class QueryCompiler
 
         $orders = [];
         foreach ($aggregate->orders() as $order) {
-            $orders[] = ($groups[$order['name']] ?? $measures[$order['name']]) . ' ' . $order['direction']->value;
+            $name = $order['name'];
+            $orders[] = (isset($groups[$name])
+                ? $this->ordered($name, $query, $groups[$name])
+                : $this->orderedMeasure($aggregate, $name, $measures[$name])) . ' ' . $order['direction']->value;
         }
         if ($orders !== []) {
             $sql .= ' ORDER BY ' . implode(', ', $orders);
@@ -120,6 +123,18 @@ class QueryCompiler
         }
 
         return [$sql, $bindings];
+    }
+
+    /** A MIN or MAX of a text field sorts by the rule, as the field does; any other result as it is. */
+    private function orderedMeasure(AggregateQuery $aggregate, string $alias, string $expression): string
+    {
+        foreach ($aggregate->measures() as $measure) {
+            if ($measure['as'] === $alias && in_array($measure['fn'], ['min', 'max'], true) && !in_array($measure['field'], $aggregate->numericFields(), true)) {
+                return $this->ordered((string) $measure['field'], $aggregate->query(), $expression);
+            }
+        }
+
+        return $expression;
     }
 
     /**
@@ -150,8 +165,10 @@ class QueryCompiler
     }
 
     /**
-     * A field's value as grouped and compared as stored: text exactly (case and all, on every
-     * storage), numbers and booleans as their columns hold them.
+     * A field's value as grouped and compared as stored: numbers and booleans as their columns
+     * hold them, a text field (Query::comparesAsText()) by the text rule (its column's collation;
+     * a translatable one's locale value through the dialect, compared()), any other value exactly
+     * (case and all).
      *
      * @param array<string, true> $numeric
      * @param array<string, true> $boolean
@@ -159,8 +176,33 @@ class QueryCompiler
     private function stored(string $field, Query $query, array $numeric, array $boolean): string
     {
         $column = $this->column($field, $query);
+        if (isset($numeric[$field]) || isset($boolean[$field])) {
+            return $column;
+        }
 
-        return isset($numeric[$field]) || isset($boolean[$field]) ? $column : $this->dialect->exactText($column);
+        return $query->comparesAsText($field) ? $this->compared($field, $query) : $this->dialect->exactText($column);
+    }
+
+    /** ORDER BY's expression for a field's value: a text field's by the rule (TextComparison::textOrder()). */
+    private function ordered(string $field, Query $query, string $expression): string
+    {
+        return $this->dialect instanceof TextComparison && $query->comparesAsText($field) ? $this->dialect->textOrder($expression) : $expression;
+    }
+
+    /**
+     * A field's value as =, !=, IN, NOT IN, ranges and ORDER BY compare it: a translatable text
+     * field's locale value (a JSON value, without the column's collation) by the text rule where
+     * the dialect has it (TextComparison); anything else as the column is, left to its collation
+     * (a text field's column carries the rule), so its indexes stay usable.
+     */
+    private function compared(string $field, Query $query): string
+    {
+        $column = $this->column($field, $query);
+        if ($this->dialect instanceof TextComparison && $query->comparesAsText($field) && $query->localizationFor($field) !== null) {
+            return $this->dialect->textValue($column);
+        }
+
+        return $column;
     }
 
     /**
@@ -199,8 +241,11 @@ class QueryCompiler
      */
     private function compileWhere(array $where, Query $query, array &$bindings): string
     {
-        $column = $this->column($where['field'], $query);
         $operator = $where['operator'];
+        // LIKE keeps the plain value: the dialect matches it by the rule itself.
+        $column = in_array(strtoupper((string) $operator), ['LIKE', 'NOT LIKE'], true)
+            ? $this->column($where['field'], $query)
+            : $this->compared($where['field'], $query);
         if (!in_array($operator, Query::OPERATORS, true)) {
             throw new \InvalidArgumentException('Unsupported operator in a where condition.');
         }
@@ -284,7 +329,8 @@ class QueryCompiler
      */
     private function compileAnyCondition(array $condition, Query $query, array &$bindings): string
     {
-        $column = $this->column($condition['field'], $query);
+        // = and IN compare by the rule; CONTAINS matches the plain value, HAS a list's members exactly.
+        $column = in_array($condition['operator'], ['IN', '='], true) ? $this->compared($condition['field'], $query) : $this->column($condition['field'], $query);
         $value = $condition['value'];
 
         switch ($condition['operator']) {
@@ -359,8 +405,9 @@ class QueryCompiler
 
         $parts = [];
         foreach ($orders as $order) {
-            $column = $this->column($order['field'], $query);
-            $parts[] = (($order['numeric'] ?? false) ? $this->dialect->numericOrder($column) : $column) . " {$order['direction']->value}";
+            $parts[] = (($order['numeric'] ?? false)
+                ? $this->dialect->numericOrder($this->column($order['field'], $query))
+                : $this->ordered($order['field'], $query, $this->compared($order['field'], $query))) . " {$order['direction']->value}";
         }
 
         return 'ORDER BY ' . implode(', ', $parts);

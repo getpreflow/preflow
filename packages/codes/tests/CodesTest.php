@@ -886,6 +886,13 @@ final class ThirdPartyDriver extends PdoDriver
         parent::__construct(static fn (): \PDO => new \PDO('sqlite:' . $path), $dialect, new QueryCompiler($dialect));
     }
 
+    /** A driver on a SQLite file readies its connection as SqliteDriver does (the text rule's collation). */
+    protected function configure(\PDO $pdo): void
+    {
+        parent::configure($pdo);
+        \Preflow\Data\Driver\SqliteDialect::prepare($pdo);
+    }
+
     /** One test process writes: running $fn is enough (a real driver takes its database's lock). */
     public function exclusive(string $type, \Closure $fn): mixed
     {

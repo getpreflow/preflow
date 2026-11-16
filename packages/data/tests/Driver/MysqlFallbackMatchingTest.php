@@ -9,6 +9,7 @@ require_once __DIR__ . '/../Text/CollationProbe.php';
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDialect;
+use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Query;
 use Preflow\Data\Tests\Text\CollationProbe;
@@ -68,7 +69,7 @@ final class MysqlFallbackMatchingTest extends TestCase
         $probe = new CollationProbe($this->pdo);
         $version = $probe->version();
         $table = require __DIR__ . '/../../src/Text/fold-table.php';
-        $pairs = $probe->candidatePairs(CollationProbe::codePoints(), $table, MysqlDialect::serverMatchCollation($this->pdo));
+        $pairs = $probe->candidatePairs(CollationProbe::codePoints(), $table, (new MysqlGrammar())->on($this->pdo)->textCollation());
 
         $kinds = [];
         $unexplained = [];

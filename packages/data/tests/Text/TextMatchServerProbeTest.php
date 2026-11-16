@@ -9,6 +9,7 @@ require_once __DIR__ . '/CollationProbe.php';
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDialect;
+use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Text\TextMatch;
 use Preflow\Testing\MysqlTestDatabase;
 
@@ -25,7 +26,7 @@ final class TextMatchServerProbeTest extends TestCase
     public function test_text_match_agrees_with_the_servers_collation_character_by_character(): void
     {
         $pdo = MysqlTestDatabase::pdo();
-        $collation = MysqlDialect::serverMatchCollation($pdo);
+        $collation = (new MysqlGrammar())->on($pdo)->textCollation();
         if ($collation === null) {
             $this->markTestSkipped('The server has no accent-sensitive, case-insensitive collation (see MysqlFallbackMatchingTest).');
         }
@@ -54,7 +55,7 @@ final class TextMatchServerProbeTest extends TestCase
     public function test_equals_agrees_with_the_servers_equality(): void
     {
         $pdo = MysqlTestDatabase::pdo();
-        $collation = MysqlDialect::serverMatchCollation($pdo);
+        $collation = (new MysqlGrammar())->on($pdo)->textCollation();
         if ($collation === null) {
             $this->markTestSkipped('The server has no accent-sensitive, case-insensitive collation (see MysqlFallbackMatchingTest).');
         }

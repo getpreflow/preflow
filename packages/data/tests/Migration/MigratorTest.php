@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Migration;
 
+use Preflow\Data\Driver\SqliteDialect;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Migration\Migration;
 use Preflow\Data\Migration\Migrator;
@@ -18,6 +19,7 @@ final class MigratorTest extends TestCase
     protected function setUp(): void
     {
         $this->pdo = new \PDO('sqlite::memory:');
+        SqliteDialect::prepare($this->pdo);
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 
         $this->migrationsDir = sys_get_temp_dir() . '/preflow_migration_test_' . uniqid();

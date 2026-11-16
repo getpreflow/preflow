@@ -72,7 +72,9 @@ final class StarterStaffTableTest extends TestCase
         // The starter's account, made before the switch (staff:create or its demo seed).
         $this->runCommand(new MigrateCommand(fn () => $this->app()));
         session_write_close(); // that app's session: the switched app below starts its own
-        (new \PDO('sqlite:' . $db))->exec("INSERT INTO staff (uuid, email, name, password_hash, roles, active, auth_epoch, created_at) VALUES ('ada-1', 'ada@site.test', 'Ada', '"
+        $raw = new \PDO('sqlite:' . $db);
+        \Preflow\Data\Driver\SqliteDialect::prepare($raw); // its text columns declare preflow_text
+        $raw->exec("INSERT INTO staff (uuid, email, name, password_hash, roles, active, auth_epoch, created_at) VALUES ('ada-1', 'ada@site.test', 'Ada', '"
             . password_hash('secret', PASSWORD_DEFAULT) . "', '[\"admin\"]', 1, '0', '2026-09-01 08:00:00')");
         $columns = $this->columns($db);
 

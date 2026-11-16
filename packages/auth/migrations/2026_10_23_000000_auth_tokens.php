@@ -10,8 +10,8 @@ return new class extends Migration
     {
         $schema->create('auth_tokens', function (Table $table) {
             $table->string('id')->primary();
-            $table->string('purpose');
-            $table->string('subject');
+            $table->string('purpose')->exact();
+            $table->string('subject')->exact();
             $table->integer('expires_at');
         });
     }

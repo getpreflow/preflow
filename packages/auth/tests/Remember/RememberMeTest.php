@@ -615,6 +615,7 @@ final class RememberMeTest extends DataTestCase
         mkdir($dir . '/config', 0777, true);
         mkdir($dir . '/storage', 0777, true);
         $pdo = new \PDO('sqlite:' . $dir . '/storage/app.sqlite');
+        \Preflow\Data\Driver\SqliteDialect::prepare($pdo);
         /** @var Migration $migration */
         $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_23_000001_auth_remember.php';
         $migration->up(new Schema($pdo));

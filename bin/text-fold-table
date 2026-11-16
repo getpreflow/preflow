@@ -23,6 +23,7 @@
 declare(strict_types=1);
 
 use Preflow\Data\Driver\MysqlDialect;
+use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Tests\Text\CollationProbe;
 
 $root = dirname(__DIR__);
@@ -44,7 +45,7 @@ $pdo = new PDO(
 );
 $arguments = array_slice($argv, 1);
 $equalityOnly = in_array('--equality-only', $arguments, true);
-$collation = array_values(array_filter($arguments, static fn (string $a): bool => !str_starts_with($a, '--')))[0] ?? MysqlDialect::serverMatchCollation($pdo);
+$collation = array_values(array_filter($arguments, static fn (string $a): bool => !str_starts_with($a, '--')))[0] ?? (new MysqlGrammar())->on($pdo)->textCollation();
 if ($collation === null) {
     fwrite(STDERR, "The server has none of MysqlDialect::MATCH_COLLATIONS.\n");
     exit(1);

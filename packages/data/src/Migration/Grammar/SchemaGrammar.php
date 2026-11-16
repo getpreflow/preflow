@@ -18,7 +18,9 @@ interface SchemaGrammar
     public function columnType(string $kind, ?int $length = null): string;
 
     /**
-     * @param list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool}> $columns
+     * @param list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, exact?: bool}> $columns
+     *        exact (since 0.78): a string or text column that compares exactly (Table::exact()); a
+     *        grammar with TextCollations gives the others its text type
      */
     public function createTable(string $table, array $columns): string;
 

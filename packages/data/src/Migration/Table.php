@@ -6,7 +6,7 @@ namespace Preflow\Data\Migration;
 
 final class Table
 {
-    /** @var array<int, array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, index: bool, unique: bool}> */
+    /** @var array<int, array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, index: bool, unique: bool, exact: bool}> */
     private array $columns = [];
 
     /** @var list<array{columns: list<string>, unique: bool}> */
@@ -71,6 +71,26 @@ final class Table
         return $this;
     }
 
+    /**
+     * The last column (a string() or text()) holds a machine value that compares exactly (case
+     * counts: an API key, base64, a hash) instead of by the text rule (ignore case, respect
+     * accents) that string() and text() columns follow since 0.78. uuid() and primary keys are
+     * exact anyway.
+     *
+     * @throws \LogicException for another kind of column, or without one
+     * @since 0.78
+     */
+    public function exact(): self
+    {
+        $last = array_key_last($this->columns);
+        if ($last === null || !in_array($this->columns[$last]['kind'], ['string', 'text'], true)) {
+            throw new \LogicException('exact() marks a string() or text() column; ' . ($last === null ? 'there is none.' : "\"{$this->columns[$last]['name']}\" is {$this->columns[$last]['kind']}."));
+        }
+        $this->columns[$last]['exact'] = true;
+
+        return $this;
+    }
+
     /** Without arguments, indexes the last column; with columns, declares one index over them, in that order. */
     public function index(string ...$columns): self
     {
@@ -84,9 +104,10 @@ final class Table
     }
 
     /**
-     * Column definitions in the shape SchemaGrammar::createTable() takes.
+     * Column definitions in the shape SchemaGrammar::createTable() takes; 'exact' (since 0.78) marks
+     * a string or text column that compares exactly (exact()).
      *
-     * @return list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool}>
+     * @return list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, exact: bool}>
      */
     public function columns(): array
     {
@@ -96,6 +117,7 @@ final class Table
             'length' => $col['length'],
             'nullable' => $col['nullable'],
             'primary' => $col['primary'],
+            'exact' => $col['exact'],
         ], array_values($this->columns));
     }
 
@@ -161,6 +183,7 @@ final class Table
             'primary' => false,
             'index' => false,
             'unique' => false,
+            'exact' => false,
         ];
         return $this;
     }

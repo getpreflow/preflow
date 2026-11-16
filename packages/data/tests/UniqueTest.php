@@ -131,7 +131,8 @@ final class UniqueTest extends TestCase
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'ABC', 'purpose' => 'p2']));
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose' => 'p2']), ['code' => 'ABC']), 'a fixed scope value');
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose'], exceptId: 'a'), ['code' => 'ABC', 'purpose' => 'p1']));
-        $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'abc', 'purpose' => 'p1']), 'compared exactly');
+        $this->assertSame(['code' => ['This value is already taken.']], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'abc', 'purpose' => 'p1']), 'case is ignored');
+        $this->assertSame([], $validate(new Unique($this->dm, $code, 'code', ['purpose']), ['code' => 'ÀBC', 'purpose' => 'p1']), 'accents count');
         $this->assertSame([], $validate(new Unique($this->dm, $code, 'code'), ['code' => '']));
     }
 

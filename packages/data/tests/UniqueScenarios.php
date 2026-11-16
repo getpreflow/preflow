@@ -91,6 +91,32 @@ trait UniqueScenarios
         $this->assertNull($this->dm->findIn($page, 'b'));
     }
 
+    /**
+     * A unique text field refuses a case variant and takes an accent variant, on every storage:
+     * through the column's unique index on SQL (the save that skips validation too), through the
+     * check (Validation\Unique, TextMatch) on JSON. An exact field takes a case variant.
+     */
+    public function test_a_case_variant_is_a_duplicate_on_every_storage(): void
+    {
+        $page = $this->page();
+        $this->save($page, ['uuid' => 'a', 'slug' => 'MÜLLER']);
+        $taken = ['slug' => ['This value is already taken.']];
+
+        $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'b', 'slug' => 'Müller']));
+        $this->assertSame($taken, $this->errorsOf($page, ['uuid' => 'b', 'slug' => 'müller'], validate: false), 'the storage itself refuses it');
+        $this->assertNull($this->dm->findIn($page, 'b'));
+        $this->assertSame([], $this->errorsOf($page, ['uuid' => 'c', 'slug' => 'Muller']), 'an accent variant is another value');
+        $this->assertSame([], $this->errorsOf($page, ['uuid' => 'd', 'slug' => 'Mueller'], validate: false));
+
+        $key = $this->synced(new TypeDefinition('apikey', 'apikey', $this->storage(), [
+            'key' => new TypeFieldDefinition('key', unique: true, exact: true),
+        ]));
+        $this->save($key, ['uuid' => 'a', 'key' => 'aBc']);
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'b', 'key' => 'abc']), 'an exact field compares case');
+        $this->assertSame([], $this->errorsOf($key, ['uuid' => 'c', 'key' => 'ABC'], validate: false));
+        $this->assertSame(['key' => ['This value is already taken.']], $this->errorsOf($key, ['uuid' => 'd', 'key' => 'aBc'], validate: false));
+    }
+
     public function test_a_number_stored_as_text_is_still_a_duplicate(): void
     {
         $page = $this->page();

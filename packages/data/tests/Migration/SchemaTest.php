@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Migration;
 
+use Preflow\Data\Driver\SqliteDialect;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SqliteGrammar;
@@ -18,6 +19,7 @@ final class SchemaTest extends TestCase
     protected function setUp(): void
     {
         $this->pdo = new \PDO('sqlite::memory:');
+        SqliteDialect::prepare($this->pdo);
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $this->schema = new Schema($this->pdo);
     }

@@ -66,7 +66,7 @@ final class MysqlFullTextTest extends TestCase
     {
         $this->sync()->sync(self::post());
 
-        (new Schema($this->pdo))->convertColumn('post', new ColumnSpec('body', ColumnKind::Text));
+        (new Schema($this->pdo))->convertColumn('post', new ColumnSpec('body', ColumnKind::Text, text: true)); // a FULLTEXT index needs one collation over its columns
 
         $this->assertSame(['ft_post_search' => ['title', 'body']], (new MysqlGrammar())->fullTextIndexes($this->pdo, 'post'));
         $this->assertSame([], $this->sync()->sync(self::post()));

@@ -6,26 +6,29 @@ namespace Preflow\Data\Driver;
 
 use Preflow\Data\UniqueViolation;
 
-final class MysqlDialect implements Dialect, PatternMatching
+final class MysqlDialect implements Dialect, PatternMatching, TextComparison
 {
     /**
-     * The accent-sensitive, case-insensitive collations LIKE compares with, in order of
-     * preference: MariaDB 10.10+'s UCA 14 one, MySQL 8's UCA 9 one (MariaDB 11.4.5+ knows it too,
-     * as an alias). Both fold case as the rule does and keep accents.
+     * The text rule's collations (ignore case, respect accents, NO PAD), in order of preference:
+     * MariaDB 10.10+'s UCA 14 one, MySQL 8's UCA 9 one (MariaDB 11.4.5+ knows it too, as an
+     * alias). Not utf8mb4_uca1400_as_ci: it is PAD SPACE, so 'abc' would equal 'abc '. LIKE, the
+     * text fields' columns (MysqlGrammar::textColumnType()) and textValue() use the first one the
+     * server accepts (MysqlGrammar::on() probes it).
      *
      * @since 0.78
      */
-    public const array MATCH_COLLATIONS = ['utf8mb4_uca1400_as_ci', 'utf8mb4_0900_as_ci'];
+    public const array MATCH_COLLATIONS = ['utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_0900_as_ci'];
 
-    /** @var \Closure(): ?string|null resolves the collation on the first LIKE */
+    /** @var \Closure(): ?string|null resolves the collation on the first LIKE or text comparison */
     private ?\Closure $resolveCollation = null;
 
     private ?string $matchCollation = null;
 
     /**
-     * @param \Closure(): ?string|string|null $matchCollation The collation LIKE compares with (one
-     *     of MATCH_COLLATIONS the server has); null for none (LIKE lowers both sides instead, see
-     *     likeSql()); a closure naming it (or null), called once, on the first LIKE.
+     * @param \Closure(): ?string|string|null $matchCollation The collation LIKE and textValue()
+     *     compare with (one of MATCH_COLLATIONS the server has); null for none (LIKE lowers both
+     *     sides instead, see likeSql(); textValue() compares exactly); a closure naming it (or
+     *     null), called once, on first use.
      */
     public function __construct(\Closure|string|null $matchCollation = null)
     {
@@ -34,42 +37,6 @@ final class MysqlDialect implements Dialect, PatternMatching
         } else {
             $this->matchCollation = self::collationName($matchCollation);
         }
-    }
-
-    /**
-     * The first of MATCH_COLLATIONS the server has for utf8mb4, or null when it has none
-     * (MariaDB 10.6 to 10.9). Read from the server's collation list, not inferred from
-     * its version: MariaDB 10.10+ lists its UCA 14 collations without a character set
-     * ("uca1400_as_ci", applicable to utf8mb4, used as utf8mb4_uca1400_as_ci), which a lookup by
-     * the full name misses; MySQL 8 and MariaDB 11.4.5+ list utf8mb4_0900_as_ci itself.
-     * information_schema.COLLATION_CHARACTER_SET_APPLICABILITY has both forms on every version.
-     *
-     * @since 0.78
-     */
-    public static function serverMatchCollation(\PDO $pdo): ?string
-    {
-        $names = [];
-        foreach (self::MATCH_COLLATIONS as $collation) {
-            $names[$collation] = $collation;
-            $names[substr($collation, strlen('utf8mb4_'))] = $collation; // MariaDB's name without the character set
-        }
-        $statement = $pdo->prepare(
-            "SELECT COLLATION_NAME FROM information_schema.COLLATION_CHARACTER_SET_APPLICABILITY WHERE CHARACTER_SET_NAME = 'utf8mb4' AND COLLATION_NAME IN ("
-            . implode(', ', array_fill(0, count($names), '?')) . ')',
-        );
-        $statement->execute(array_keys($names));
-        $listed = [];
-        foreach ($statement->fetchAll(\PDO::FETCH_COLUMN) as $name) {
-            $listed[$names[(string) $name] ?? ''] = true;
-        }
-        $statement->closeCursor();
-        foreach (self::MATCH_COLLATIONS as $collation) {
-            if (isset($listed[$collation])) {
-                return $collation;
-            }
-        }
-
-        return null;
     }
 
     public function quoteIdentifier(string $name): string
@@ -215,6 +182,29 @@ final class MysqlDialect implements Dialect, PatternMatching
         return "LOWER(CAST({$column} AS CHAR CHARACTER SET utf8mb4)) COLLATE utf8mb4_bin{$like}LOWER(CONVERT(? USING utf8mb4)) COLLATE utf8mb4_bin{$escapeSql}";
     }
 
+    /**
+     * A value compared by the text rule: cast to utf8mb4 (a JSON value, a number) in the rule's
+     * collation. Without one (a server older than MariaDB 10.10 / MySQL 8) exactly, as the
+     * columns of text fields are there (exactText()).
+     */
+    public function textValue(string $expression): string
+    {
+        $collation = $this->matchCollation();
+
+        return $collation === null ? $this->exactText($expression) : "(CAST({$expression} AS CHAR CHARACTER SET utf8mb4) COLLATE {$collation})";
+    }
+
+    /**
+     * By the value's weights in its collation (WEIGHT_STRING()). MariaDB (checked on 13.0) sorts a
+     * TEXT or LONGTEXT value (and a CAST one) by its first-level weights only, so "äpfel" and
+     * "Apfel" come in storage order, where its "<" and a VARCHAR column put "Apfel" first; the
+     * weight string holds every level. ORDER BY then cannot use an index on the column.
+     */
+    public function textOrder(string $expression): string
+    {
+        return "WEIGHT_STRING({$expression})";
+    }
+
     /** The collation LIKE compares with, or null for the LOWER() fallback (a closure resolved once). */
     private function matchCollation(): ?string
     {
@@ -249,7 +239,7 @@ final class MysqlDialect implements Dialect, PatternMatching
     }
 
     /**
-     * The tables' collations ignore case; utf8mb4_bin compares code points. The cast first
+     * The columns of text fields ignore case; utf8mb4_bin compares code points. The cast first
      * gives any expression (a JSON value, a column of another charset) the charset utf8mb4_bin
      * belongs to.
      */

@@ -14,10 +14,12 @@ namespace Preflow\Data;
  * - count() counts records; every other measure skips missing values: NULL, and '' in number
  *   fields.
  * - sum() and avg() take number fields only; min(), max() and countDistinct() compare numbers
- *   for number fields and stored values as they are, case and all, for any other field.
+ *   for number fields, by the text rule for a text field (TextColumns: case ignored, accents
+ *   count) and stored values as they are, case and all, for any other field.
  * - avg/min/max of no values are null, sum of no values is 0; numbers come back as int when
  *   integral, else as float, and booleans as bool (also among the group values).
- * - Text groups are exact: 'a' and 'A' are two groups.
+ * - A text field's groups follow the text rule ('Über' and 'über' are one group, 'Uber' another;
+ *   since 0.78); an exact field's are exact ('a' and 'A' are two groups).
  * - Ordered by orderBy() first, then by the group fields ascending (also as tie-breakers).
  *
  * The builder's own orderBy(), limit() and offset() do not apply; this query has its own.

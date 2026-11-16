@@ -157,7 +157,10 @@ names, so the "run `preflow migrate`" message works on that database) and regist
 Grammars::register('pgsql', new PgsqlGrammar()); // a SchemaGrammar; in the driver or a provider's register()
 ```
 
-Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/testing).
+Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/testing). Since 0.78 its schema
+grammar may implement `TextCollations` and its dialect `TextComparison`, so text fields compare by
+the text rule in the database (see "Exact comparisons"); a driver on SQLite calls
+`SqliteDialect::prepare()` on its connection.
 
 #### Driver-author checklist
 
@@ -538,8 +541,10 @@ final class Job extends Model { … }
   the unique fields; `DataManager::validateStorable($record)` checks what the storage itself
   would refuse, the unique fields and the length of every bounded column (`validation.max.string`),
   for a save that skips the other rules (Folio uses it for draft saves and restored revisions). Empty values (`null`, `''`) and values with
-  a `null` scope are never duplicates. Comparison is exact: case and accents count, on every
-  database. App forms use the rule directly:
+  a `null` scope are never duplicates. Since 0.78 a text field compares by the text rule on every
+  database (see "Exact comparisons"): case is ignored, accents count, so "Müller" is taken once
+  "MÜLLER" is, "Muller" is not; a field marked `"exact": true` (and an id, a relation) compares
+  exactly. App forms use the rule directly:
   `new Unique($dm, 'job', 'slug', scope: ['company'], exceptId: $id)` (the scope is read from the
   validated data, or given as `['company' => 'acme']`).
 - **Database guard.** On SQL the unique index is the last line: two requests passing the
@@ -556,7 +561,8 @@ final class Job extends Model { … }
 - **Empty is NULL.** An empty value in a unique field is stored as `NULL` (a unique index would
   refuse a second `''`). For a `Model`, the property must accept `null`.
 - **Index and length.** `unique` and `index` make a short text column: `VARCHAR(length)` (default
-  191) with `utf8mb4_bin` on MySQL, so the index compares exactly; validation then limits the
+  191) on MySQL, in the text rule's collation for a text field and `utf8mb4_bin` for an exact one
+  or a relation, so the index compares as the field does; validation then limits the
   value to `length` characters, also for the scope fields of a unique field and the fields of a
   composite index. Free text, blocks and translatable fields get no index. `__revisions` tables
   are never checked or indexed; `__published` tables are typed like their working table and carry
@@ -673,13 +679,19 @@ several SQL drivers pass `--storage`.
 | `Table` method | SQLite | MySQL |
 |---|---|---|
 | `uuid()` | TEXT | VARCHAR(64) COLLATE utf8mb4_bin |
-| `string($n = 255)` | TEXT | VARCHAR($n) (`COLLATE utf8mb4_bin` when `primary()`) |
-| `text()` | TEXT | TEXT |
+| `string($n = 255)` | TEXT COLLATE preflow_text (TEXT when `primary()` or `exact()`) | VARCHAR($n) COLLATE the text rule's collation (`utf8mb4_bin` when `primary()` or `exact()`) |
+| `text()` | TEXT COLLATE preflow_text (TEXT when `exact()`) | TEXT COLLATE the text rule's collation (`utf8mb4_bin` when `exact()`) |
 | `json()` | TEXT | LONGTEXT (not `JSON`: MySQL's type rewrites key order and spacing) |
 | `integer()` | INTEGER | BIGINT |
 | `boolean()` | INTEGER | TINYINT(1) |
 | `timestamps()` | TEXT, nullable | VARCHAR(32), nullable |
 | `addColumn()` default | TEXT | LONGTEXT |
+
+Since 0.78 `string()` and `text()` compare by the text rule (see "Exact comparisons"); `->exact()`
+after one marks a machine value that compares exactly (an API key, a hash, base64, an id of
+another table). On a MySQL server without the rule's collation `string()` and `text()` keep the
+table default (`utf8mb4_unicode_ci`), as before. `addColumns()` and `convertColumn()` type their
+columns the same way.
 
 **Record tables** (the tables `RecordTableSync` makes from a type definition: Folio's types,
 codes, members, media assets) use `id VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY` (TEXT on
@@ -689,10 +701,16 @@ SQLite), and every other column is nullable and typed by its field's column kind
 | Kind | Field types | SQLite | MySQL |
 |---|---|---|---|
 | text | text, blocks, translatable fields, JSON, strings that are neither unique nor indexed | TEXT | LONGTEXT |
-| short | a string, select or single relation that is unique or indexed | TEXT | VARCHAR(`length`, default 191) COLLATE utf8mb4_bin |
+| short | a string, select or single relation that is unique or indexed | TEXT | VARCHAR(`length`, default 191) |
 | number | number | NUMERIC (`'12'` stays 12, sorts numerically) | DOUBLE |
 | boolean | boolean | INTEGER | TINYINT(1) |
-| date | date | TEXT | VARCHAR(32) (ISO text) |
+| date | date | TEXT | VARCHAR(32) COLLATE utf8mb4_bin (ISO text) |
+
+Since 0.78 the column of a text field (`TextColumns`: string, text, rich text, select, translatable
+ones too; not a list, not `"exact": true`) declares the text rule: `COLLATE preflow_text` on SQLite,
+the rule's collation on MySQL (also the table default there). Every other text column compares
+exactly: `utf8mb4_bin` on MySQL (ids, relations, JSON, lists, dates, exact fields), no COLLATE
+(BINARY) on SQLite. See "Exact comparisons".
 
 Columns are typed only when sync creates them (with the table, or added later). The unique
 (`uniq_{table}_{field}`, over the field and its scope), plain (`idx_{table}_{field}`) and composite
@@ -750,20 +768,20 @@ column just defined (`$t->string('slug')->unique()`). Names are `uniq_{table}_{c
 `idx_{table}_{columns}` (columns joined by `_`), shortened with a crc32 past 64 characters; a
 one-column `index()` keeps its name `idx_{table}_{column}`. Every column must exist and not be
 `text()`, checked before anything is created. Empty (`NULL`) values never collide in a unique index.
-On MySQL, `string()` columns compare case-insensitively (`utf8mb4_unicode_ci`), so `Ab` and `ab`
-collide there but not on SQLite.
+Since 0.78 `string()` columns compare by the text rule on SQLite and MySQL alike, so `Ab` and `ab`
+collide on both (an `exact()` column keeps them apart).
 
-**Charset and collation.** Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-COLLATE=utf8mb4_unicode_ci` (MariaDB 10.6 has no `utf8mb4_0900_*`), identifiers in backticks.
-Ids and keys (`uuid()` columns, primary `string()` columns, Folio record ids,
-migration names) are `utf8mb4_bin`, so they compare exactly, as on SQLite and JSON: `A`, `a` and
-`ä` are three records. **Known difference from SQLite:** value columns stay
-`utf8mb4_unicode_ci`, which compares case-, accent- and trailing-space-insensitively, so values
-that differ only in case, accents or trailing spaces (`Abc` and `abc`, `cafe` and `café`) are
-equal in `WHERE` and collide in a unique index on MySQL while SQLite keeps them apart. (`LIKE`,
-`CONTAINS` and `search()` follow the text-matching rule instead since 0.78, see "Text matching".) Slugs are
-values: on MySQL a page with slug `cafe` can shadow one with `café`. (`utf8mb4_bin` pads too, so
-an id with a trailing space still equals the one without.)
+**Charset and collation.** Tables are created `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=…`
+with the text rule's collation as the default (`utf8mb4_uca1400_nopad_as_ci` on MariaDB 10.10+,
+`utf8mb4_0900_as_ci` on MySQL 8; `utf8mb4_unicode_ci` on a server without either), identifiers in
+backticks. Since 0.78 the columns of text fields and a migration's `string()` and `text()` name the
+rule's collation, so `=`, `IN`, `ORDER BY`, `GROUP BY` and unique indexes ignore case and respect
+accents there as on SQLite and JSON (see "Exact comparisons"). Ids and keys (`uuid()` columns,
+primary and `exact()` `string()` columns, Folio record ids, migration names) and every record-table
+column that is not a text field's are `utf8mb4_bin`, so they compare exactly: `A`, `a` and `ä` are
+three records. (`utf8mb4_bin` pads, so an id with a trailing space still equals the one without;
+the rule's collations do not pad.) Tables made before 0.78 keep their columns' collations until
+`migrate` converts them.
 
 **Connection.** `createMysqlDriver` builds the `PDO` with `MysqlDriver::connectionOptions()`, and
 `MysqlDriver` sets the session; together they give:
@@ -883,11 +901,12 @@ Rows are arrays keyed by the group fields and the result names. Fields are the o
 Group values and `min`/`max` of boolean fields are PHP `bool` on every storage; those of text and date fields are
 strings as stored.
 
-**Case.** Text group values are case-sensitive everywhere: `'a'` and `'A'` are two groups. On MySQL/MariaDB the
-group fields (and `countDistinct`, `min`, `max`, `orderBy`, `having` on text) use a binary collation
-(`utf8mb4_bin`), so the rows match SQLite and JSON. The `where()` filters keep the table's collation, so a
-`where('grade', 'a')` still matches `'A'` on a `_ci` table. The binary comparison keeps MySQL from using an index
-for the GROUP BY; aggregates scan the filtered rows anyway.
+**Case.** Since 0.78 a text field's group values, `countDistinct`, `min` and `max` follow the text rule on
+every storage (see "Exact comparisons"): `'Über'` and `'über'` are one group (which of the two spellings the
+row shows is not promised), `'Über'` and `'Uber'` two. Any other field's values are exact: on an exact field
+(`"exact": true`, an id, a relation) `'a'` and `'A'` are two groups; on SQL they are compared with
+`exactText()` (`COLLATE BINARY` on SQLite, `utf8mb4_bin` on MySQL/MariaDB), which keeps the database from
+using an index for the GROUP BY; aggregates scan the filtered rows anyway.
 
 **Refused** (`\InvalidArgumentException`, when the method is called unless noted):
 
@@ -993,13 +1012,14 @@ practice every `LIKE`, `CONTAINS` and search on SQLite costs a PHP call per row 
 
 ### On MySQL and MariaDB
 
-The query compares in an accent-sensitive, case-insensitive collation:
-`utf8mb4_uca1400_as_ci` (MariaDB 10.10+) or `utf8mb4_0900_as_ci` (MySQL 8, MariaDB 11.4.5+),
-the first of `MysqlDialect::MATCH_COLLATIONS` the server lists. `MysqlDriver` asks the server once,
-on the first LIKE (`MysqlDialect::serverMatchCollation()` reads
-`information_schema.COLLATION_CHARACTER_SET_APPLICABILITY`, not the version string;
-`MysqlDriver::matchCollation()` returns the answer). Tables are not changed: the column is cast to
-utf8mb4 and given the collation in the query, so a prefix `LIKE` (`'abc%'`) no longer uses an index
+The query compares in an accent-sensitive, case-insensitive NO PAD collation:
+`utf8mb4_uca1400_nopad_as_ci` (MariaDB 10.10+) or `utf8mb4_0900_as_ci` (MySQL 8, MariaDB 11.4.5+),
+the first of `MysqlDialect::MATCH_COLLATIONS` the server accepts; the columns of text fields use the
+same one (see "Exact comparisons"). It is found once per connection by probing
+(`SELECT _utf8mb4'a' COLLATE …` for each name until one does not fail with "unknown collation",
+`MysqlGrammar::on($pdo)->textCollation()`; `MysqlDriver::matchCollation()` returns it), not from
+the version string or `information_schema.COLLATIONS`, which does not list MariaDB's
+`utf8mb4_uca1400_*` names. The column is cast to utf8mb4 and given the collation in the query, so a prefix `LIKE` (`'abc%'`) no longer uses an index
 (none of Preflow's own do: they start with `%`). `new MysqlDriver($pdo, matchCollation: false)`
 takes the fallback below; a string names the collation.
 
@@ -1013,6 +1033,76 @@ checks that this list names exactly the kinds it finds):
 - Only case is lowered: width and compatibility forms ("ａ" and "a", "①" and "1"), the other characters the collation takes as one (some marks and symbols), and the characters it ignores match only themselves.
 - "istanbul" finds "İstanbul": `LOWER()` turns İ into a plain i.
 - Case pairs outside the Basic Multilingual Plane ("𐐀" and "𐐨") match: `LOWER()` folds them, the collation does not.
+
+## Exact comparisons
+
+Since 0.78 `=`, `!=`, `IN`, `NOT IN`, ranges, `ORDER BY`, `GROUP BY`, `COUNT(DISTINCT)`, `MIN`/`MAX`,
+`HAS` on a single value, unique checks and unique indexes compare a type's **text fields** by the
+same rule as matching, over the whole text: **case is ignored, accents count**. The rule exactly:
+the Unicode Collation Algorithm, root order, secondary strength, no padding (ICU's `Collator` at
+`SECONDARY`, MariaDB's `utf8mb4_uca1400_nopad_as_ci`, MySQL's `utf8mb4_0900_as_ci`;
+`Preflow\Data\Text\TextMatch::equals()`, `compare()` and `key()` in PHP).
+
+| Values | Equal? | Why |
+|---|---|---|
+| "Müller", "MÜLLER" | yes | case |
+| "Müller", "Muller" | **no** | accents count |
+| "Straße", "STRAẞE" / "strasse" | yes / **no** | ẞ is ß; ß is not ss |
+| "Kelvin" with the Kelvin sign, "kelvin" | yes | the sign is a k |
+| "İstanbul", "istanbul" | **no** | İ is not i |
+| "abc", "abc " | **no** | no padding |
+
+Texts sort as "Apfel", "äpfel", "eagle", "Émile", "Zebra"; rows equal under the rule come in no
+promised order among themselves. Text fields are those `TextColumns` names: `string`, `text`
+and the text types extensions register (rich text, select), translatable ones too, except list
+fields (tags, which compare exactly), the id field and fields marked `"exact": true`
+(`#[Field(exact: true)]`). Slugs and e-mail addresses are text: "About" and "about" are one slug.
+Everything else compares exactly: ids, relations, assets, numbers, dates, yes/no values, exact
+fields ("ab" is not "Ab"). A migration's `string()` and `text()` are text unless `->exact()`.
+
+Where the rule lives:
+
+- **SQLite:** the columns of text fields declare `COLLATE preflow_text`, a collation backed by
+  `TextMatch::compare()` that `SqliteDialect::prepare()` registers on every connection
+  `SqliteDriver` opens. A unique index on such a column refuses a case variant. Code that opens
+  its own PDO on a Preflow SQLite file calls `SqliteDialect::prepare($pdo)` before it compares or
+  writes indexed text columns (`Grammars::for()`, so `Schema` and `Migrator`, refuse a connection
+  without it; so does a third-party driver's connection on SQLite: call it in its `configure()`).
+  The `sqlite3` command-line tool does not have it: it reads such a table, but cannot filter, sort
+  or write an indexed `preflow_text` column ("no such collation sequence"). Measured on a table of
+  10,000 rows (PHP 8.5, ICU 79): each comparison is a PHP call (about 2 µs), so
+  work that compares many values costs more than with BINARY: `ORDER BY` over all rows 107 ms
+  instead of 7, `GROUP BY` 143 ms instead of 7, `=` without an index (a scan) 19 ms instead of
+  0.4, making a unique index 107 ms instead of 5, inserting 10,000 rows into a table with one
+  156 ms instead of 21. With an index the lookup (`=` 0.01 ms) and `ORDER BY … LIMIT` (0.01 ms)
+  cost the same as before. Index the text fields a site filters or sorts large types by.
+- **MySQL/MariaDB:** the columns of text fields name the rule's collation (see "On MySQL and
+  MariaDB" above for how it is found); the rest are `utf8mb4_bin`. `ORDER BY` on a text field sorts
+  by `WEIGHT_STRING()` of the value: MariaDB sorts a TEXT or LONGTEXT value by its first-level
+  weights only (so "äpfel" and "Apfel" in storage order), and the weight string holds every level.
+  Such an `ORDER BY` cannot use an index.
+- **JSON:** the query names its text fields (`Query::compareAsText()`, set by `QueryBuilder` from
+  the type, as `localize()` is) and the driver compares them with `TextMatch`; a query built by
+  hand that names none compares every field exactly. `Validation\Unique` decides with
+  `TextMatch::equals()`.
+- **Translatable fields:** a locale's value is a JSON value without the column's collation; the
+  dialect compares it by the rule (`TextComparison::textValue()`: `COLLATE preflow_text`, or a cast
+  into the rule's collation).
+
+A plain column keeps its own collation in the query, so its indexes stay usable. `StorageDriverContract`
+pins the rule on every driver: its field kind `text` is a text field (`string` stays exact), and
+a store that cannot follow the rule says why in `textRuleMissing()`.
+
+**Servers without the collation** (MariaDB before 10.10, MySQL before 8.0): text columns stay
+exact (`utf8mb4_bin`), translatable values compare exactly, a migration's `string()` keeps the
+table default `utf8mb4_unicode_ci`, and the contract's exact-comparison tests skip. A known
+difference, documented here.
+
+**A grammar of your own** (`Grammars::register()`) that implements
+`Migration\Grammar\TextCollations` gets the same: `Grammars::for($pdo)` binds it to the connection
+(`on()`), and the table sync gives text fields its `textColumnType()`. Without it, its columns
+keep its own comparison. A dialect implements `Driver\TextComparison` for translatable values and
+the sort order.
 
 ## `searchLoose`
 

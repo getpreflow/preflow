@@ -26,4 +26,9 @@ final class SqliteContractTest extends StorageDriverContract
     {
         self::createContractTable($this->sqlite, $type, $fields, 'INTEGER PRIMARY KEY AUTOINCREMENT');
     }
+
+    protected function declareUnique(string $type, string $field): void
+    {
+        self::createContractUnique($this->sqlite, $type, $field);
+    }
 }

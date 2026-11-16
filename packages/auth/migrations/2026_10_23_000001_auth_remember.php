@@ -10,10 +10,10 @@ return new class extends Migration
     {
         $schema->create('auth_remember', function (Table $table) {
             $table->string('id')->primary();
-            $table->string('guard');
-            $table->string('user_id');
-            $table->string('validator_hash');
-            $table->string('previous_hash')->nullable();
+            $table->string('guard')->exact();
+            $table->string('user_id')->exact();
+            $table->string('validator_hash')->exact();
+            $table->string('previous_hash')->exact()->nullable();
             $table->integer('rotated_at')->nullable();
             $table->integer('expires_at');
         });

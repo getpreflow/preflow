@@ -34,6 +34,18 @@ final class MysqlContractTest extends StorageDriverContract
         self::createContractTable($this->mysql, $type, $fields, 'BIGINT AUTO_INCREMENT PRIMARY KEY');
     }
 
+    protected function declareUnique(string $type, string $field): void
+    {
+        self::createContractUnique($this->mysql, $type, $field);
+    }
+
+    protected function textRuleMissing(): ?string
+    {
+        return (new MysqlGrammar())->on($this->mysql->pdo())->textCollation() === null
+            ? 'The server has none of MysqlDialect::MATCH_COLLATIONS: its columns keep exact comparisons (see the data README).'
+            : null;
+    }
+
     protected function declareFullText(string $type, array $fields): void
     {
         $grammar = new MysqlGrammar();

@@ -7,6 +7,7 @@ namespace Preflow\Data\Tests\Driver;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\Driver\PatternMatching;
+use Preflow\Data\Driver\TextComparison;
 
 final class MysqlDialectTest extends TestCase
 {
@@ -121,35 +122,19 @@ final class MysqlDialectTest extends TestCase
         new MysqlDialect('utf8mb4_bin) OR (1');
     }
 
-    /**
-     * The lookup reads the server's collation list, not its version. MariaDB 10.10+ lists its UCA
-     * 14 collations without a character set (uca1400_as_ci, applicable to utf8mb4); 11.4.5+ adds
-     * utf8mb4_0900_as_ci as an alias; MySQL 8 lists utf8mb4_0900_as_ci; MariaDB before 10.10 none.
-     */
-    public function test_the_collation_lookup_reads_what_the_server_lists(): void
+    /** The rule's collations, NO PAD first: utf8mb4_uca1400_as_ci (PAD SPACE) would take 'abc' for 'abc '. */
+    public function test_the_match_collations_are_no_pad(): void
     {
-        $server = static function (array $applicable): \PDO {
-            $pdo = new \PDO('sqlite::memory:');
-            $pdo->exec("ATTACH DATABASE ':memory:' AS information_schema");
-            $pdo->exec('CREATE TABLE information_schema.COLLATION_CHARACTER_SET_APPLICABILITY (COLLATION_NAME TEXT, CHARACTER_SET_NAME TEXT)');
-            $insert = $pdo->prepare('INSERT INTO information_schema.COLLATION_CHARACTER_SET_APPLICABILITY VALUES (?, ?)');
-            foreach ($applicable as [$collation, $charset]) {
-                $insert->execute([$collation, $charset]);
-            }
+        $this->assertSame(['utf8mb4_uca1400_nopad_as_ci', 'utf8mb4_0900_as_ci'], MysqlDialect::MATCH_COLLATIONS);
+    }
 
-            return $pdo;
-        };
+    public function test_text_value_names_the_collation(): void
+    {
+        $dialect = new MysqlDialect('utf8mb4_uca1400_nopad_as_ci');
 
-        $mariadb1010 = [['uca1400_as_ci', 'utf8mb4'], ['uca1400_as_ci', 'utf8mb3'], ['utf8mb4_unicode_ci', 'utf8mb4']];
-        $mariadb1145 = [['utf8mb4_0900_as_ci', 'utf8mb4'], ['uca1400_as_ci', 'utf8mb4'], ['uca1400_as_ci', 'ucs2']];
-        $mysql8 = [['utf8mb4_0900_as_ci', 'utf8mb4'], ['utf8mb4_0900_ai_ci', 'utf8mb4']];
-        $mariadb106 = [['utf8mb4_unicode_ci', 'utf8mb4'], ['utf8mb4_unicode_520_ci', 'utf8mb4']];
-        $otherCharset = [['uca1400_as_ci', 'utf8mb3']];
-
-        $this->assertSame('utf8mb4_uca1400_as_ci', MysqlDialect::serverMatchCollation($server($mariadb1010)));
-        $this->assertSame('utf8mb4_uca1400_as_ci', MysqlDialect::serverMatchCollation($server($mariadb1145)), 'preference order');
-        $this->assertSame('utf8mb4_0900_as_ci', MysqlDialect::serverMatchCollation($server($mysql8)));
-        $this->assertNull(MysqlDialect::serverMatchCollation($server($mariadb106)));
-        $this->assertNull(MysqlDialect::serverMatchCollation($server($otherCharset)), 'only for utf8mb4');
+        $this->assertInstanceOf(TextComparison::class, $dialect);
+        $this->assertSame('(CAST(`s` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_uca1400_nopad_as_ci)', $dialect->textValue('`s`'));
+        $this->assertSame($this->dialect->exactText('`s`'), $this->dialect->textValue('`s`'), 'without the collation: exact, as the columns are');
+        $this->assertSame('WEIGHT_STRING(`s`)', $dialect->textOrder('`s`'), 'MariaDB sorts a TEXT value by its first-level weights only');
     }
 }

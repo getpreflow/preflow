@@ -19,12 +19,20 @@ final class Grammars
     /** @var array<string, SchemaGrammar> */
     private static array $registered = [];
 
+    /**
+     * The grammar for the connection, bound to it (TextCollations::on()) when it carries the text
+     * rule, so its text columns name the connection's collation.
+     *
+     * @throws \LogicException when the connection cannot have it (an SQLite PDO not readied by SqliteDialect::prepare())
+     */
     public static function for(\PDO $pdo): SchemaGrammar
     {
-        return self::named((string) $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME));
+        $grammar = self::named((string) $pdo->getAttribute(\PDO::ATTR_DRIVER_NAME));
+
+        return $grammar instanceof TextCollations ? $grammar->on($pdo) : $grammar;
     }
 
-    /** The grammar for a PDO driver name ('sqlite', 'mysql', or one registered). */
+    /** The grammar for a PDO driver name ('sqlite', 'mysql', or one registered), not bound to a connection. */
     public static function named(string $driver): SchemaGrammar
     {
         return self::$registered[$driver] ?? match ($driver) {

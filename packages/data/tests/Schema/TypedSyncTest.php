@@ -7,6 +7,7 @@ namespace Preflow\Data\Tests\Schema;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\SqliteDriver;
+use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\Migration\Grammar\SqliteGrammar;
 use Preflow\Data\Migration\Schema;
@@ -179,6 +180,38 @@ final class TypedSyncTest extends TestCase
             $this->assertSame('uniq_' . mb_substr("{$table}_{$field}", 0, 50) . '_' . sprintf('%08x', crc32($full)), $name);
             $this->assertSame(64, strlen($name));
         }
+    }
+
+    /** Text fields' columns compare by the rule (preflow_text), the rest exactly (BINARY): ids, machine values, dates. */
+    public function test_a_new_table_gets_text_and_exact_columns(): void
+    {
+        $def = new TypeDefinition('person', 'person', 'sqlite', [
+            'name' => new TypeFieldDefinition('name', unique: true),
+            'bio' => new TypeFieldDefinition('bio', 'text'),
+            'key' => new TypeFieldDefinition('key', exact: true),
+            'born' => new TypeFieldDefinition('born', 'date'),
+            'age' => new TypeFieldDefinition('age', 'number'),
+            'title' => new TypeFieldDefinition('title', translatable: true),
+        ]);
+        $this->sync()->sync($def);
+
+        $this->assertSame(
+            ['uuid' => 'BINARY', 'name' => 'preflow_text', 'bio' => 'preflow_text', 'key' => 'BINARY', 'born' => 'BINARY', 'age' => null, 'title' => 'preflow_text'],
+            Grammars::for($this->pdo)->columnCollations($this->pdo, 'person'),
+        );
+        $driver = $this->dm()->driver('sqlite');
+        $driver->save('person', 'a', ['uuid' => 'a', 'name' => 'MÜLLER']);
+        $driver->save('person', 'b', ['uuid' => 'b', 'name' => 'Muller']);
+        $this->expectException(\Preflow\Data\UniqueViolation::class);
+        $driver->save('person', 'c', ['uuid' => 'c', 'name' => 'Müller']);
+    }
+
+    public function test_a_text_column_is_not_reported_as_drifted(): void
+    {
+        $sync = $this->sync();
+        $sync->sync(self::def());
+
+        $this->assertSame([], $sync->sync(self::def()));
     }
 
     public function testRegistryCollectsEveryTable(): void

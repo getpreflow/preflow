@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Migration\Grammar;
 
+use Preflow\Data\Driver\MysqlDialect;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Schema\ColumnKind;
 use Preflow\Data\Schema\ColumnSpec;
@@ -11,16 +12,83 @@ use Preflow\Data\Schema\ColumnSpec;
 /**
  * MariaDB 10.6+ / MySQL 8. InnoDB utf8mb4 limits index keys to 3072 bytes (767 on old row formats),
  * so primary keys and indexed columns stay VARCHAR; TEXT/LONGTEXT cannot be indexed without a prefix.
- * Ids and keys are utf8mb4_bin so they compare exactly, as on SQLite ('A', 'a' and 'ä' are three
- * rows, not one upsert target); value columns keep the case- and accent-insensitive table default.
+ * Since 0.78 the columns of text fields (and a migration's string() and text()) take the text
+ * rule's collation the server has (TextCollations, MysqlDialect::MATCH_COLLATIONS, probed once
+ * per connection by on()), which is also the table default; every other column of a record table
+ * (ids, keys, machine values, dates, other free text) and a migration's uuid(), primary key and
+ * exact() column are utf8mb4_bin, so they compare exactly ('A', 'a' and 'ä' are three rows, not
+ * one upsert target). On a server without the collation, or unbound, text columns are exact too
+ * and a migration's string() keeps the table default utf8mb4_unicode_ci.
  */
-final class MysqlGrammar implements SchemaGrammar, FullTextIndexes
+final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollations
 {
     use RecordIndexNames;
 
-    private const TABLE_OPTIONS = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
-
     private const EXACT = ' COLLATE utf8mb4_bin';
+
+    /** MySQL's error numbers for a collation the server does not have (1273) or not for utf8mb4 (1253). */
+    private const array UNKNOWN_COLLATION = [1273, 1253];
+
+    /** The collation text columns name (on()), null for none. */
+    private ?string $textCollation = null;
+
+    /** @var \WeakMap<\PDO, array{0: ?string}>|null each connection's probed collation */
+    private static ?\WeakMap $probed = null;
+
+    /**
+     * Bound to the first of MysqlDialect::MATCH_COLLATIONS the server accepts: each is probed
+     * (SELECT _utf8mb4'a' COLLATE name) until one does not fail with "unknown collation", once per
+     * connection. The server's collation list is not read: information_schema.COLLATIONS does not
+     * list MariaDB's utf8mb4_uca1400_* names (it lists uca1400_*). Runs on the connection itself, so
+     * MysqlDriver's SET NAMES utf8mb4 is in force.
+     */
+    public function on(\PDO $pdo): static
+    {
+        self::$probed ??= new \WeakMap();
+        if (!isset(self::$probed[$pdo])) {
+            self::$probed[$pdo] = [self::probe($pdo)];
+        }
+        $bound = clone $this;
+        $bound->textCollation = self::$probed[$pdo][0];
+
+        return $bound;
+    }
+
+    public function textCollation(): ?string
+    {
+        return $this->textCollation;
+    }
+
+    private static function probe(\PDO $pdo): ?string
+    {
+        foreach (MysqlDialect::MATCH_COLLATIONS as $collation) {
+            try {
+                $statement = $pdo->query("SELECT _utf8mb4'a' COLLATE {$collation}");
+            } catch (\PDOException $e) {
+                if (in_array((int) ($e->errorInfo[1] ?? 0), self::UNKNOWN_COLLATION, true)) {
+                    continue;
+                }
+                throw $e;
+            }
+            if ($statement === false) {
+                if (in_array((int) ($pdo->errorInfo()[1] ?? 0), self::UNKNOWN_COLLATION, true)) {
+                    continue;
+                }
+                throw new \RuntimeException('Probing the collation ' . $collation . ' failed: ' . ($pdo->errorInfo()[2] ?? 'unknown error'));
+            }
+            $statement->closeCursor();
+
+            return $collation;
+        }
+
+        return null;
+    }
+
+    /** The table default: the rule's collation where the server has it, else the one tables had before 0.78. */
+    private function tableOptions(): string
+    {
+        return 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=' . ($this->textCollation ?? 'utf8mb4_unicode_ci');
+    }
 
     /**
      * MySQL caps table, column and index names at 64 characters; idx_{table}_{column} and
@@ -55,11 +123,13 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes
         $parts = [];
 
         foreach ($columns as $col) {
-            $def = $this->quote($col['name']) . ' ' . $this->columnType($col['kind'], $col['length']);
-
+            $type = $this->columnType($col['kind'], $col['length']);
             if ($col['primary'] && $col['kind'] === 'string') {
-                $def .= self::EXACT;
+                $type .= self::EXACT;
+            } elseif (in_array($col['kind'], ['string', 'text'], true)) {
+                $type = ($col['exact'] ?? false) ? $this->exactType($col['kind'], $col['length']) : $this->textType($col['kind'], $col['length']);
             }
+            $def = $this->quote($col['name']) . ' ' . $type;
 
             if ($col['primary']) {
                 $def .= ' PRIMARY KEY';
@@ -70,27 +140,85 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes
             $parts[] = $def;
         }
 
-        return 'CREATE TABLE ' . $this->quote($table) . ' (' . implode(', ', $parts) . ') ' . self::TABLE_OPTIONS;
+        return 'CREATE TABLE ' . $this->quote($table) . ' (' . implode(', ', $parts) . ') ' . $this->tableOptions();
     }
 
     public function createRecordTable(string $table, string $idField, array $columns): string
     {
-        $defs = array_map(fn (ColumnSpec $c): string => $this->quote($c->name) . ' ' . $this->recordColumnType($c->kind, $c->length), $columns);
+        $defs = array_map(fn (ColumnSpec $c): string => $this->quote($c->name) . ' '
+            . ($c->text ? $this->textColumnType($c->kind, $c->length) : $this->recordColumnType($c->kind, $c->length)), $columns);
 
         return 'CREATE TABLE ' . $this->quote($table) . ' (' . $this->quote($idField) . ' VARCHAR(191)' . self::EXACT . ' PRIMARY KEY, '
-            . implode(', ', $defs) . ') ' . self::TABLE_OPTIONS;
+            . implode(', ', $defs) . ') ' . $this->tableOptions();
     }
 
-    /** Short columns are unique or indexed: they compare exactly, as ids do. Dates stay ISO text. */
+    /**
+     * A column that is not a text field's compares exactly (utf8mb4_bin, also a free-text one: it
+     * holds JSON, lists, machine values). Short columns are unique or indexed. Dates stay ISO text.
+     * Every text type names its collation: an ALTER TABLE … MODIFY without one would take the
+     * table default.
+     */
     public function recordColumnType(ColumnKind $kind, ?int $length = null): string
     {
         return match ($kind) {
-            ColumnKind::Text => 'LONGTEXT',
+            ColumnKind::Text => 'LONGTEXT' . self::EXACT,
             ColumnKind::Short => 'VARCHAR(' . ($length ?? FieldKinds::DEFAULT_LENGTH) . ')' . self::EXACT,
             ColumnKind::Number => 'DOUBLE',
             ColumnKind::Boolean => 'TINYINT(1)',
-            ColumnKind::Date => 'VARCHAR(32)',
+            ColumnKind::Date => 'VARCHAR(32)' . self::EXACT,
         };
+    }
+
+    public function textColumnType(ColumnKind $kind, ?int $length = null): string
+    {
+        if ($this->textCollation === null) {
+            return $this->recordColumnType($kind, $length);
+        }
+
+        return match ($kind) {
+            ColumnKind::Text => 'LONGTEXT COLLATE ' . $this->textCollation,
+            ColumnKind::Short => 'VARCHAR(' . ($length ?? FieldKinds::DEFAULT_LENGTH) . ') COLLATE ' . $this->textCollation,
+            default => $this->recordColumnType($kind, $length),
+        };
+    }
+
+    public function textType(string $kind, ?int $length = null): string
+    {
+        if ($this->textCollation === null || !in_array($kind, ['string', 'text'], true)) {
+            return $this->columnType($kind, $length);
+        }
+
+        return $this->columnType($kind, $length) . ' COLLATE ' . $this->textCollation;
+    }
+
+    public function exactType(string $kind, ?int $length = null): string
+    {
+        return $this->columnType($kind, $length) . (in_array($kind, ['string', 'text'], true) ? self::EXACT : '');
+    }
+
+    public function columnCollations(\PDO $pdo, string $table): array
+    {
+        $stmt = $pdo->prepare('SELECT COLUMN_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION');
+        $stmt->execute([$table]);
+        $collations = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$name, $collation]) {
+            $collations[(string) $name] = $collation === null ? null : (string) $collation;
+        }
+
+        return $collations;
+    }
+
+    /** One ALTER TABLE … MODIFY a …, MODIFY b …, each column keeping NULL / NOT NULL and its DEFAULT. */
+    public function convertCollations(\PDO $pdo, string $table, array $types): void
+    {
+        if ($types === []) {
+            return;
+        }
+        $clauses = [];
+        foreach ($types as $column => $type) {
+            $clauses[] = $this->modifyClause($pdo, $table, (string) $column, $type, null);
+        }
+        $pdo->exec('ALTER TABLE ' . $this->quote($table) . ' ' . implode(', ', $clauses));
     }
 
     /** A TEXT or BLOB column (one made before it was indexed) is indexed by its first 191 characters. */
@@ -226,16 +354,24 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes
     /** ALTER TABLE … MODIFY, with the column's NULL / NOT NULL and DEFAULT carried over unless changed. */
     public function convertColumn(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): void
     {
+        $pdo->exec('ALTER TABLE ' . $this->quote($table) . ' ' . $this->modifyClause($pdo, $table, $column, $type, $nullable));
+    }
+
+    /** "MODIFY `column` type NULL|NOT NULL [DEFAULT …]", nullability and default as the column has them unless $nullable says. */
+    private function modifyClause(\PDO $pdo, string $table, string $column, string $type, ?bool $nullable): string
+    {
         $stmt = $pdo->prepare('SELECT IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
         $stmt->execute([$table, $column]);
         [$isNullable, $default, $extra] = $stmt->fetch(\PDO::FETCH_NUM) ?: throw new \LogicException("Cannot convert \"{$table}.{$column}\": no such column.");
+        $stmt->closeCursor();
         $nullable ??= $isNullable === 'YES';
-        $sql = 'ALTER TABLE ' . $this->quote($table) . ' MODIFY ' . $this->quote($column) . ' ' . $type . ($nullable ? ' NULL' : ' NOT NULL');
+        $sql = 'MODIFY ' . $this->quote($column) . ' ' . $type . ($nullable ? ' NULL' : ' NOT NULL');
         $default = self::defaultClause($pdo, $default, (string) $extra);
         if ($default !== null) {
             $sql .= ' DEFAULT ' . $default;
         }
-        $pdo->exec($sql);
+
+        return $sql;
     }
 
     /**
@@ -261,7 +397,7 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes
     public function createMigrationsTable(): string
     {
         return 'CREATE TABLE IF NOT EXISTS `preflow_migrations` (`migration` VARCHAR(191) COLLATE utf8mb4_bin PRIMARY KEY, `ran_at` VARCHAR(32) NOT NULL) '
-            . self::TABLE_OPTIONS;
+            . $this->tableOptions();
     }
 
     public function canIndex(string $kind): bool

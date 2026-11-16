@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Migration;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Driver\SqliteDialect;
+use Preflow\Data\Migration\Grammar\Grammars;
+use Preflow\Data\Migration\Grammar\SqliteGrammar;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Migration\Table;
 use Preflow\Data\Schema\ColumnKind;
@@ -20,6 +23,7 @@ final class ConvertColumnTest extends TestCase
     {
         $this->pdo = new \PDO('sqlite::memory:');
         $this->pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        SqliteDialect::prepare($this->pdo);
         $this->schema = new Schema($this->pdo);
     }
 
@@ -152,5 +156,89 @@ final class ConvertColumnTest extends TestCase
         $this->pdo->exec("INSERT INTO object (uuid, state) VALUES ('e', 'sold')");
         $this->assertSame(['e'], $this->pdo->query('SELECT what FROM log')->fetchAll(\PDO::FETCH_COLUMN), 'trigger kept');
         $this->assertSame(['a', 'e'], $this->pdo->query('SELECT uuid FROM sold ORDER BY uuid')->fetchAll(\PDO::FETCH_COLUMN), 'view still works');
+    }
+
+    // --- collations (the text rule, @since 0.78) ----------------------------------------------
+
+    /** A table converted once keeps COLLATE preflow_text on its other columns when a later convert rebuilds it. */
+    public function test_convert_column_keeps_the_other_columns_collations(): void
+    {
+        $this->pdo->exec('CREATE TABLE "object" ("uuid" TEXT PRIMARY KEY, "title" TEXT COLLATE preflow_text, "code" TEXT COLLATE BINARY, "other" TEXT)');
+        $this->pdo->exec('CREATE UNIQUE INDEX "uniq_object_title" ON "object" ("title")');
+        $this->pdo->exec("INSERT INTO object VALUES ('a', 'Müller', 'Ab', '1')");
+
+        $this->schema->convertColumn('object', new ColumnSpec('other', ColumnKind::Number));
+
+        $grammar = Grammars::for($this->pdo);
+        $this->assertSame(['uuid' => 'BINARY', 'title' => 'preflow_text', 'code' => 'BINARY', 'other' => null], $grammar->columnCollations($this->pdo, 'object'));
+        $this->assertStringContainsString('"title" TEXT COLLATE preflow_text', $this->createSql('object'));
+        $this->expectException(\PDOException::class);
+        $this->pdo->exec("INSERT INTO object VALUES ('b', 'MÜLLER', 'x', 2)"); // the remade unique index still applies the rule
+    }
+
+    public function test_a_foreign_collate_still_refuses_the_rebuild(): void
+    {
+        $this->pdo->exec('CREATE TABLE "object" ("uuid" TEXT PRIMARY KEY, "title" TEXT COLLATE NOCASE, "n" TEXT)');
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('COLLATE');
+        $this->schema->convertColumn('object', new ColumnSpec('n', ColumnKind::Number));
+    }
+
+    public function test_a_unique_index_on_a_text_column_refuses_a_case_variant(): void
+    {
+        $this->pdo->exec('CREATE TABLE "object" ("uuid" TEXT PRIMARY KEY, "title" TEXT)');
+        $this->pdo->exec("INSERT INTO object VALUES ('a', 'Müller')");
+        $this->schema->convertColumn('object', new ColumnSpec('title', ColumnKind::Short, text: true));
+        $this->pdo->exec('CREATE UNIQUE INDEX "uniq_object_title" ON "object" ("title")');
+
+        $this->pdo->exec("INSERT INTO object VALUES ('b', 'Muller')"); // an accent variant is another value
+        try {
+            $this->pdo->exec("INSERT INTO object VALUES ('c', 'MÜLLER')");
+            $this->fail('a case variant is a duplicate');
+        } catch (\PDOException $e) {
+            $this->assertSame(19, $e->errorInfo[1] ?? null, $e->getMessage());
+        }
+    }
+
+    public function test_convert_collations_rebuilds_once_keeping_data_and_indexes(): void
+    {
+        $this->recordTable();
+        $grammar = Grammars::for($this->pdo);
+        $this->assertSame('preflow_text', $grammar->textCollation());
+
+        $grammar->convertCollations($this->pdo, 'object', ['state' => 'TEXT COLLATE preflow_text', 'notes' => 'TEXT COLLATE preflow_text']);
+
+        $this->assertSame(['uuid' => 'BINARY', 'state' => 'preflow_text', 'price' => 'BINARY', 'notes' => 'preflow_text'], $grammar->columnCollations($this->pdo, 'object'));
+        $this->assertSame(['idx_object_notes', 'uniq_object_state_notes'], $this->indexNames());
+        $this->assertSame(3, (int) $this->pdo->query('SELECT COUNT(*) FROM object')->fetchColumn());
+        $this->assertSame('a', $this->pdo->query("SELECT uuid FROM object WHERE state = 'SOLD'")->fetchColumn());
+        $grammar->convertCollations($this->pdo, 'object', []); // nothing to do
+    }
+
+    public function test_column_collations_reads_the_grammars_own_form(): void
+    {
+        $this->pdo->exec('CREATE TABLE "t" ("id" TEXT PRIMARY KEY, "a b" TEXT COLLATE preflow_text NOT NULL, "n" NUMERIC, "i" INTEGER, "v" VARCHAR(20), "d" TEXT DEFAULT \'x, COLLATE NOCASE\')');
+
+        $this->assertSame(
+            ['id' => 'BINARY', 'a b' => 'preflow_text', 'n' => null, 'i' => null, 'v' => 'BINARY', 'd' => 'BINARY'],
+            (new SqliteGrammar())->columnCollations($this->pdo, 't'),
+        );
+    }
+
+    private function createSql(string $table): string
+    {
+        $find = $this->pdo->prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?");
+        $find->execute([$table]);
+
+        return (string) $find->fetchColumn();
+    }
+
+    /** @return list<string> */
+    private function indexNames(): array
+    {
+        $names = $this->pdo->query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'object' AND sql IS NOT NULL ORDER BY name")->fetchAll(\PDO::FETCH_COLUMN);
+
+        return array_map('strval', $names);
     }
 }

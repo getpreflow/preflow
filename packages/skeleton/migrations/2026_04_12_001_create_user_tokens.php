@@ -10,10 +10,10 @@ return new class extends Migration
     {
         $schema->create('user_tokens', function (Table $table) {
             $table->uuid('uuid')->primary();
-            $table->string('tokenHash')->index();
-            $table->string('userId');
+            $table->string('tokenHash')->exact()->index();
+            $table->string('userId')->exact();
             $table->string('name')->nullable();
-            $table->string('createdAt')->nullable();
+            $table->string('createdAt')->exact()->nullable();
         });
     }
 

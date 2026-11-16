@@ -5,11 +5,19 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Migration;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Data\Driver\SqliteDialect;
+use Preflow\Data\Migration\Grammar\SqliteGrammar;
 use Preflow\Data\Migration\Migrator;
+use Preflow\Data\Migration\Schema;
+use Preflow\Data\Migration\Table;
+use Preflow\Data\Schema\ColumnKind;
+use Preflow\Data\Schema\ColumnSpec;
 
 /**
  * Pins the exact SQLite DDL of every package migration, so the grammar refactor
- * (and later changes) can never alter what existing sites already have.
+ * (and later changes) can never alter what existing sites already have. Since 0.78 string()
+ * and text() columns that are not exact() declare COLLATE preflow_text (tables that sites
+ * made before keep theirs: their migrations do not run again); machine values are exact().
  */
 final class SqliteDdlCharacterisationTest extends TestCase
 {
@@ -17,6 +25,7 @@ final class SqliteDdlCharacterisationTest extends TestCase
     {
         $pdo = new \PDO('sqlite::memory:');
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        SqliteDialect::prepare($pdo);
 
         // The starters are apps, not packages: their migrations repeat each other's names
         // (starter and starter-folio both create users), so they are not part of this pin.
@@ -60,10 +69,10 @@ final class SqliteDdlCharacterisationTest extends TestCase
             ['type' => 'index', 'name' => 'idx_users_email', 'sql' => 'CREATE INDEX "idx_users_email" ON "users" ("email")'],
             ['type' => 'table', 'name' => 'posts', 'sql' => 'CREATE TABLE "posts" (
     "uuid" TEXT PRIMARY KEY,
-    "title" TEXT NOT NULL,
-    "slug" TEXT NOT NULL,
-    "body" TEXT,
-    "status" TEXT NOT NULL,
+    "title" TEXT COLLATE preflow_text NOT NULL,
+    "slug" TEXT COLLATE preflow_text NOT NULL,
+    "body" TEXT COLLATE preflow_text,
+    "status" TEXT COLLATE preflow_text NOT NULL,
     "created_at" TEXT,
     "updated_at" TEXT
 )'],
@@ -81,16 +90,51 @@ final class SqliteDdlCharacterisationTest extends TestCase
     "uuid" TEXT PRIMARY KEY,
     "tokenHash" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
-    "name" TEXT,
+    "name" TEXT COLLATE preflow_text,
     "createdAt" TEXT
 )'],
             ['type' => 'table', 'name' => 'users', 'sql' => 'CREATE TABLE "users" (
     "uuid" TEXT PRIMARY KEY,
-    "email" TEXT NOT NULL,
+    "email" TEXT COLLATE preflow_text NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "roles" TEXT,
     "createdAt" TEXT
 )'],
         ], $actual);
+    }
+
+    /** Since 0.78 string() and text() columns (not exact, not primary) and text fields' record columns compare by the rule. */
+    public function test_text_columns_declare_preflow_text(): void
+    {
+        $pdo = new \PDO('sqlite::memory:');
+        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+        SqliteDialect::prepare($pdo);
+        (new Schema($pdo))->create('t', function (Table $table): void {
+            $table->string('id')->primary();
+            $table->string('email');
+            $table->string('key')->exact();
+            $table->text('body')->nullable();
+            $table->uuid('ref');
+            $table->integer('n');
+        });
+
+        $this->assertSame('CREATE TABLE "t" (
+    "id" TEXT PRIMARY KEY,
+    "email" TEXT COLLATE preflow_text NOT NULL,
+    "key" TEXT NOT NULL,
+    "body" TEXT COLLATE preflow_text,
+    "ref" TEXT NOT NULL,
+    "n" INTEGER NOT NULL
+)', $pdo->query("SELECT sql FROM sqlite_master WHERE name = 't'")->fetchColumn());
+
+        $grammar = (new SqliteGrammar())->on($pdo);
+        $this->assertSame(
+            'CREATE TABLE "e" ("uuid" TEXT PRIMARY KEY, "title" TEXT COLLATE preflow_text, "blocks" TEXT, "n" NUMERIC)',
+            $grammar->createRecordTable('e', 'uuid', [new ColumnSpec('title', ColumnKind::Short, text: true), new ColumnSpec('blocks'), new ColumnSpec('n', ColumnKind::Number)]),
+        );
+        $this->assertSame('TEXT COLLATE preflow_text', $grammar->textColumnType(ColumnKind::Text));
+        $this->assertSame('TEXT COLLATE preflow_text', $grammar->textType('string'));
+        $this->assertSame('ALTER TABLE "e" ADD COLUMN "x" TEXT COLLATE preflow_text', $grammar->addColumn('e', 'x', $grammar->textColumnType(ColumnKind::Short)));
+        $this->assertSame('CREATE TABLE "e" ("uuid" TEXT PRIMARY KEY, "title" TEXT)', (new SqliteGrammar())->createRecordTable('e', 'uuid', [new ColumnSpec('title', text: true)]), 'an unbound grammar: as before');
     }
 }

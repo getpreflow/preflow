@@ -10,6 +10,7 @@ use Preflow\Data\FieldKinds;
 use Preflow\Data\Migration\Grammar\FullTextIndexes;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
+use Preflow\Data\Migration\Grammar\TextCollations;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Search\LooseFields;
 use Preflow\Data\TypeDefinition;
@@ -73,7 +74,9 @@ final class RecordTableSync
         } else {
             $types = $schema->columnTypes($def->table);
             foreach ($specs as $name => $spec) {
-                $expected = $grammar->recordColumnType($spec->kind, $spec->length);
+                $expected = $spec->text && $grammar instanceof TextCollations
+                    ? $grammar->textColumnType($spec->kind, $spec->length)
+                    : $grammar->recordColumnType($spec->kind, $spec->length);
                 if (!isset($types[$name])) {
                     $schema->addColumn($def->table, $name, $expected);
                     $lines[] = "added column {$def->table}.{$name}";
@@ -189,7 +192,10 @@ final class RecordTableSync
     /**
      * The columns besides the id, each with its kind: the field's (a scope field of a unique
      * field and a field of a composite index count as indexed), free text for extra columns and
-     * in untyped tables. Public: the conversion of existing tables gives them the same columns.
+     * in untyped tables. A text field's column (TextColumns) is marked text, in untyped tables
+     * too (they hold copies of the records, queried by the same type), so it compares by the
+     * text rule; every other column exactly. Public: the conversion of existing tables gives them
+     * the same columns.
      *
      * @param list<string> $extraColumns
      * @return array<string, ColumnSpec>
@@ -197,16 +203,17 @@ final class RecordTableSync
     public function specs(TypeDefinition $def, array $extraColumns, bool $typed): array
     {
         $indexed = $def->indexedByOthers();
+        $text = array_fill_keys(TextColumns::of($def, $this->dm->fieldKinds()), true);
         $specs = [];
         foreach ($def->fields as $name => $field) {
             if (!$typed) {
-                $specs[$name] = new ColumnSpec($name);
+                $specs[$name] = new ColumnSpec($name, text: isset($text[$name]));
                 continue;
             }
             if (in_array($name, $indexed, true) && !$field->index) {
                 $field = $field->withIndex();
             }
-            $specs[$name] = new ColumnSpec($name, $this->dm->fieldKinds()->columnKindOf($field), $field->length);
+            $specs[$name] = new ColumnSpec($name, $this->dm->fieldKinds()->columnKindOf($field), $field->length, isset($text[$name]));
         }
         foreach ($extraColumns as $name) {
             $specs[$name] ??= new ColumnSpec($name);
@@ -343,9 +350,13 @@ final class RecordTableSync
         return null;
     }
 
-    /** A type as the server reports it: lower case, without its collation (MySQL's COLUMN_TYPE has none). */
+    /**
+     * A type as the server reports it: lower case, without its character set and collation
+     * (MySQL's COLUMN_TYPE and SQLite's table_info have neither). A column's collation is not
+     * drift here: migrate converts it (the data README, "Exact comparisons").
+     */
     private static function reported(string $type): string
     {
-        return strtolower(trim((string) preg_replace('/\s+COLLATE\s+\S+/i', '', $type)));
+        return strtolower(trim((string) preg_replace('/\s+(?:COLLATE|CHARACTER\s+SET|CHARSET)\s+\S+/i', '', $type)));
     }
 }
