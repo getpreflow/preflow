@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Routing;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\NonPublicPaths;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -24,7 +25,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   meaning: a dot segment (raw or percent-encoded), a backslash (raw or %5C; browsers read
  *   '/\host' as '//host'), a percent-encoded slash (%2F), or a control byte. The same goes for
  *   a query string with control bytes. Percent-encoding is never decoded or re-encoded.
- * - Paths under NonPublicPaths (checked before and after normalising) are left alone.
+ * - Paths under NonPublicPaths (checked before and after normalising) are left alone, and so
+ *   is every path whose first segment starts with '--' (framework endpoints such as
+ *   '/--component' and '/--locale'), whether or not it is registered as non-public.
+ * - Internal renders (InternalRender::is) are left alone: the app asked for that exact path.
  * - The 301 depends on the URL alone (no cookie, no Vary), so caches may keep it per URL.
  *
  * Register it first in the pipeline (prepend), before any middleware that reads the path,
@@ -75,7 +79,7 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $method = $request->getMethod();
-        if ($method !== 'GET' && $method !== 'HEAD') {
+        if (($method !== 'GET' && $method !== 'HEAD') || InternalRender::is($request)) {
             return $handler->handle($request);
         }
 
@@ -87,8 +91,10 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
+        // $path starts with '/' and canonical() collapses every run of slashes, so $canonical
+        // starts with exactly one '/': the Location below can never name another host.
         $canonical = self::canonical($path);
-        if ($canonical === $path || $canonical[0] !== '/' || ($canonical[1] ?? '') === '/') {
+        if ($canonical === $path || str_starts_with($canonical, '/--')) {
             return $handler->handle($request);
         }
 
@@ -106,7 +112,7 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
         }
 
         foreach (explode('/', $path) as $segment) {
-            $decoded = strtolower(str_replace('%2e', '.', strtolower($segment)));
+            $decoded = str_replace('%2e', '.', strtolower($segment));
             if ($decoded === '.' || $decoded === '..') {
                 return false;
             }

@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Routing\CanonicalPathMiddleware;
 use Psr\Http\Message\ResponseInterface;
@@ -115,6 +116,37 @@ final class CanonicalPathMiddlewareTest extends TestCase
         $this->assertSame(200, $this->send('GET', '/folio/pages/', $np)->getStatusCode());
         $this->assertSame(200, $this->send('GET', '//folio/pages/', $np)->getStatusCode());
         $this->assertSame(200, $this->send('GET', '/--component/x/', $np)->getStatusCode());
+    }
+
+    public function test_double_dash_first_segment_is_left_alone_without_non_public_paths(): void
+    {
+        foreach (['/--locale/de/', '/--anything//x/', '//--locale/de/', '/--/'] as $path) {
+            $r = $this->send('GET', $path);
+            $this->assertSame(200, $r->getStatusCode(), $path);
+            $this->assertSame(1, $this->handled, $path);
+        }
+    }
+
+    public function test_internal_render_is_left_alone(): void
+    {
+        $request = InternalRender::mark($this->request('GET', '/faq/'));
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return new Response(200);
+            }
+        };
+        $r = (new CanonicalPathMiddleware())->process($request, $handler);
+        $this->assertSame(200, $r->getStatusCode());
+        $this->assertSame('', $r->getHeaderLine('Location'));
+    }
+
+    public function test_root_with_query_only_is_not_rewritten(): void
+    {
+        $r = $this->send('GET', '/?x');
+        $this->assertSame(200, $r->getStatusCode());
+        $this->assertSame('', $r->getHeaderLine('Location'));
+        $this->assertSame(1, $this->handled);
     }
 
     public function test_clean_path_passes_through(): void
