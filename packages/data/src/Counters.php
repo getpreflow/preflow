@@ -14,7 +14,8 @@ namespace Preflow\Data;
 final class Counters
 {
     /**
-     * Refuses an $insert naming the counter or the id, and a reset writing the counter.
+     * Refuses an $insert naming the counter or the id, and a reset reading or writing the counter
+     * (SQL would compare the counter before or after its own addition, depending on the database).
      *
      * @param array<string, mixed> $insert
      * @throws \InvalidArgumentException
@@ -23,6 +24,9 @@ final class Counters
     {
         if (array_key_exists($field, $insert) || array_key_exists($idField, $insert)) {
             throw new \InvalidArgumentException("increment(): the insert values name neither the counter ({$field}) nor the id ({$idField}).");
+        }
+        if ($reset !== null && $reset->field === $field) {
+            throw new \InvalidArgumentException("increment(): a CounterReset compares another field than the counter ({$field}).");
         }
         if ($reset !== null && array_key_exists($field, $reset->set)) {
             throw new \InvalidArgumentException("increment(): a CounterReset does not write the counter ({$field}); the restart sets it to the increment.");

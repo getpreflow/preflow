@@ -748,6 +748,21 @@ abstract class StorageDriverContract extends TestCase
         $this->assertNumber(100, $row['window_start'] ?? null);
     }
 
+    /** A reset that compares the counter itself is refused: databases differ on whether it sees the old or the new count. */
+    public function test_increment_refuses_a_reset_on_the_counter_itself(): void
+    {
+        $driver = $this->counters();
+        $driver->save('counters', 'c1', ['id' => 'c1', 'purpose' => 'p', 'hits' => 5, 'window_start' => 100], 'id');
+
+        try {
+            $driver->increment('counters', 'c1', 'hits', 1, ['purpose' => 'p', 'window_start' => 100], new CounterReset('hits', 10, ['window_start' => 200]), 'id');
+            $this->fail('a reset on the counter is refused');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('hits', $e->getMessage());
+        }
+        $this->assertNumber(5, ($driver->findOne('counters', 'c1', 'id') ?? [])['hits'] ?? null, 'nothing written');
+    }
+
     /**
      * Four processes, each with its own driver on the store, increment one row 25 times each.
      * reopenDriver() is called only in the children (in the parent it could take over a shared
