@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Data\Tests\Schema;
 
 require_once __DIR__ . '/StatementLog.php';
+require_once __DIR__ . '/RuleOnlyGrammar.php';
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
@@ -292,6 +293,30 @@ final class TextRuleSyncTest extends TestCase
         $this->assertSame([], $this->pdo->matching('/^\s*(ALTER|CREATE|DROP|REINDEX)\b.*notes/is'));
         $this->assertSame([], $this->conversion()->convert(), 'listed once');
         $this->assertSame([], $this->conversion(migrated: null)->convert(), 'nothing listed where the migrations did not run');
+    }
+
+    /** I4: a grammar with TextCollations alone makes new columns right and says once that it leaves old ones. */
+    public function test_a_grammar_that_cannot_convert_is_reported_once_and_changes_nothing(): void
+    {
+        $this->oldPeople();
+        $this->pdo->exec("INSERT INTO people (uuid, title, body) VALUES ('r1', 'Müller', 'eins')");
+        $declared = new DeclaredTables();
+        $declared->add('users', ['uuid' => 'exact', 'email' => 'text']);
+        $this->pdo->exec('CREATE TABLE users (uuid TEXT PRIMARY KEY, email TEXT)');
+        Grammars::register('sqlite', new RuleOnlyGrammar());
+        try {
+            $this->pdo->clear();
+
+            $this->assertSame([sprintf(TextRuleConversion::NO_CONVERSION, RuleOnlyGrammar::class)], $this->conversion($declared)->convert());
+            $this->assertSame([], $this->sync()->sync(self::people()), 'the record table keeps its columns, quietly');
+            $this->assertSame([], $this->pdo->matching('/^\s*(ALTER|CREATE|DROP|REINDEX)\b/i'), 'nothing changed');
+
+            $this->pdo->exec('DROP TABLE people');
+            $this->sync()->sync(self::people());
+            $this->assertStringContainsString('COLLATE preflow_text', (string) $this->pdo->query("SELECT sql FROM sqlite_master WHERE name = 'people'")->fetchColumn(), 'a new table gets the rule');
+        } finally {
+            Grammars::forget('sqlite');
+        }
     }
 
     /** --pretend: the refusals, nothing changed. */

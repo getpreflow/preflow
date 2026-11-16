@@ -8,6 +8,7 @@ use Preflow\Data\DataManager;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
 use Preflow\Data\Migration\Grammar\TextCollations;
+use Preflow\Data\Migration\Grammar\ConvertsCollations;
 use Preflow\Data\Migration\MigrationColumns;
 use Preflow\Data\PdoConnection;
 use Preflow\Data\StorageDriver;
@@ -31,12 +32,13 @@ use Preflow\Data\UniqueIndexes;
  *     Record tables (RecordTables) and tables in config/data.php 'text_rule' => ['skip' => [...]]
  *     are not touched here.
  *   - On every SQL storage where the application supplies the collation (SQLite's preflow_text,
- *     TextCollations::textCollationVersion()): the indexes over text columns are rebuilt when the
+ *     ConvertsCollations::textCollationVersion()): the indexes over text columns are rebuilt when the
  *     rule's version is not the one recorded in the table preflow_text_collation (or none is). A
  *     unique index whose values are now equal is left as it was (and stays in use), its groups are
  *     listed ("refused:") and the version is not recorded, so the next migrate tries again.
  *   - A server without the rule's collation (MariaDB before 10.10, MySQL before 8.0) is reported
- *     once; its columns keep their comparison.
+ *     once; its columns keep their comparison. So is a grammar with TextCollations but without
+ *     ConvertsCollations (NO_CONVERSION): its new columns follow the rule, existing ones stay.
  * - duplicates() (the step `data.text-duplicates`, any storage): the values of unique text fields
  *   no unique index holds (every unique field on storage without UniqueIndexes, such as JSON; a
  *   translatable one anywhere, per locale) that are there more than once under the rule. Listed as
@@ -56,6 +58,9 @@ final class TextRuleConversion
 
     /** The line for a server without the rule's collation. */
     public const string NO_COLLATION = 'warning: this server has no accent-sensitive, case-insensitive collation (MariaDB 10.10+ or MySQL 8.0+); text columns keep their comparison';
+
+    /** The line for a grammar that gives new columns the rule but cannot convert existing ones (%s: its class). */
+    public const string NO_CONVERSION = 'warning: this storage\'s grammar (%s) gives new text columns the rule but cannot convert existing ones (no ConvertsCollations); tables made before keep their columns';
 
     /**
      * @param string|null $migrated the storage the migrations run on (MigrationRegistry::storage()); null: none in this run
@@ -131,6 +136,10 @@ final class TextRuleConversion
                 $lines[] = self::NO_COLLATION;
                 continue;
             }
+            if (!$grammar instanceof ConvertsCollations) {
+                $lines[] = sprintf(self::NO_CONVERSION, $grammar::class);
+                continue;
+            }
             if (!$dryRun && $grammar->textCollationVersion() !== null) {
                 array_push($lines, ...$this->reindex($pdo, $grammar));
             }
@@ -146,7 +155,7 @@ final class TextRuleConversion
      *
      * @return list<string>
      */
-    private function intents(\PDO $pdo, SchemaGrammar&TextCollations $grammar, PdoConnection $driver, bool $dryRun): array
+    private function intents(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar, PdoConnection $driver, bool $dryRun): array
     {
         $migrated = $this->migrated !== null && $this->dm->driver($this->migrated) === $driver;
         $records = array_map(static fn (array $entry): string => $entry['def']->table, $this->entries($driver));
@@ -194,7 +203,7 @@ final class TextRuleConversion
      * @param array<string, string> $columns column => MigrationColumns::TEXT or ::EXACT
      * @return list<string>
      */
-    private function toIntent(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, array $columns, bool $dryRun): array
+    private function toIntent(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar, string $table, array $columns, bool $dryRun): array
     {
         $current = $grammar->columnCollations($pdo, $table);
         $types = $grammar->columnTypes($pdo, $table);
@@ -227,7 +236,7 @@ final class TextRuleConversion
      *
      * @return list<string>
      */
-    private function reindex(\PDO $pdo, SchemaGrammar&TextCollations $grammar): array
+    private function reindex(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar): array
     {
         $version = (string) $grammar->textCollationVersion();
         $quoted = $grammar->quote(self::VERSION_TABLE);
@@ -279,7 +288,7 @@ final class TextRuleConversion
         return $recorded === null ? [] : ["rebuilt the indexes over text columns for {$version} (was {$recorded})"];
     }
 
-    /** The id column of a record table; null for another table (TextCollations::rowKey()). */
+    /** The id column of a record table; null for another table (ConvertsCollations::rowKey()). */
     private function idField(string $table): ?string
     {
         foreach ($this->records?->all() ?? [] as $entry) {

@@ -160,7 +160,13 @@ Grammars::register('pgsql', new PgsqlGrammar()); // a SchemaGrammar; in the driv
 Check a driver with `Preflow\Testing\Contract\StorageDriverContract` (preflow/testing). Since 0.78 its schema
 grammar may implement `TextCollations` and its dialect `TextComparison`, so text fields compare by
 the text rule in the database (see "Exact comparisons"); a driver on SQLite calls
-`SqliteDialect::prepare()` on its connection.
+`SqliteDialect::prepare()` on its connection. `TextCollations` is what new tables need (six
+methods: bind to the connection, name the collation, the text, exact and record column types,
+`collate()`). Converting tables made before is a second, optional interface,
+`ConvertsCollations` (it extends `TextCollations`: read and change column collations, refusals,
+unique prefixes, row keys, and where the application supplies the collation its version and
+the index rebuild). A grammar for a database whose tables get the rule from the start implements
+the first alone; `preflow migrate` then says once per storage that existing columns stay.
 
 #### Driver-author checklist
 
@@ -1230,9 +1236,11 @@ after the change, so they group and compare by the rule as `=` does (values equa
 form one group).
 
 **A grammar of your own** (`Grammars::register()`) that implements
-`Migration\Grammar\TextCollations` gets the same: `Grammars::for($pdo)` binds it to the connection
-(`on()`), and the table sync gives text fields its `textColumnType()`. Without it, its columns
-keep its own comparison. A dialect implements `Driver\TextComparison` for translatable values and
+`Migration\Grammar\TextCollations` gets the same for new tables and columns: `Grammars::for($pdo)`
+binds it to the connection (`on()`), and the table sync gives text fields its `textColumnType()`.
+The conversion of existing tables above needs `Migration\Grammar\ConvertsCollations` too; without
+it `migrate` prints one warning line per storage and leaves those columns as they are. Without
+either, its columns keep its own comparison. A dialect implements `Driver\TextComparison` for translatable values and
 the sort order.
 
 ## `searchLoose`

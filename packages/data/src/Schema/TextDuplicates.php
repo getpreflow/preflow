@@ -6,7 +6,7 @@ namespace Preflow\Data\Schema;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
-use Preflow\Data\Migration\Grammar\TextCollations;
+use Preflow\Data\Migration\Grammar\ConvertsCollations;
 use Preflow\Data\Query;
 use Preflow\Data\Text\TextMatch;
 use Preflow\Data\TypeDefinition;
@@ -31,13 +31,13 @@ final class TextDuplicates
      * by the prefix a unique index keeps of it, with HAVING COUNT(*) > 1, joined back to the rows
      * for their ids.
      *
-     * @param string|null $idField the column naming a row in the report (null: TextCollations::rowKey())
+     * @param string|null $idField the column naming a row in the report (null: ConvertsCollations::rowKey())
      * @param list<string> $columns the unique column first, then its scope
      * @param array<string, ?string> $collations column => the collation to compare it in (missing or null: its own)
      * @param array<string, int> $prefixes column => the characters a prefix index keeps of it
      * @return list<array{value: string, ids: list<string>}>
      */
-    public static function sql(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, ?string $idField, array $columns, array $collations, array $prefixes = []): array
+    public static function sql(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar, string $table, ?string $idField, array $columns, array $collations, array $prefixes = []): array
     {
         $q = $grammar->quote(...);
         $idField ??= $grammar->rowKey($pdo, $table);
@@ -79,7 +79,7 @@ final class TextDuplicates
     /**
      * The duplicate groups in a SQL table whose index cannot be trusted to find them (one built
      * under another version of the rule): every row read in table order, without a condition an
-     * index could serve, and grouped here, a column under the rule (TextCollations::isTextCollation()
+     * index could serve, and grouped here, a column under the rule (ConvertsCollations::isTextCollation()
      * of its collation) by TextMatch::key(), any other by its exact value. For a collation the
      * application supplies (SQLite's preflow_text is TextMatch::compare()), so this is the rule
      * the column compares by.
@@ -87,7 +87,7 @@ final class TextDuplicates
      * @param list<string> $columns the unique column first, then its scope
      * @return list<array{value: string, ids: list<string>}>
      */
-    public static function scan(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, ?string $idField, array $columns): array
+    public static function scan(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar, string $table, ?string $idField, array $columns): array
     {
         $idField ??= $grammar->rowKey($pdo, $table);
         $collations = $grammar->columnCollations($pdo, $table);

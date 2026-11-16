@@ -6,7 +6,7 @@ namespace Preflow\Data\Schema;
 
 use Preflow\Data\Migration\Grammar\FullTextIndexes;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
-use Preflow\Data\Migration\Grammar\TextCollations;
+use Preflow\Data\Migration\Grammar\ConvertsCollations;
 
 /**
  * Gives some columns of one existing table a new collation (the text rule's or the exact one)
@@ -19,7 +19,7 @@ use Preflow\Data\Migration\Grammar\TextCollations;
  * (utf8mb4_unicode_ci) values the rule takes as one ("ẞ" and "ß"). When some values become equal,
  * the changing columns of that index are left as they are (and the other columns of a FULLTEXT
  * index they share, which takes one collation), every group is listed ("refused:"), and the rest
- * changes in one statement (TextCollations::convertCollations()). When the database refuses the
+ * changes in one statement (ConvertsCollations::convertCollations()). When the database refuses the
  * statement (a save added a duplicate since the count), nothing changes.
  *
  * @since 0.78
@@ -27,12 +27,12 @@ use Preflow\Data\Migration\Grammar\TextCollations;
 final class CollationChange
 {
     /**
-     * @param string|null $idField the column naming a row in the lists (null: TextCollations::rowKey())
+     * @param string|null $idField the column naming a row in the lists (null: ConvertsCollations::rowKey())
      * @param array<string, array{type: string, text: bool}> $changes column => its new full type, and whether that is the rule's collation
      * @param bool $dryRun only count and list ("refused:" lines); change nothing (`migrate --pretend`)
      * @return list<string> the refusals and the change made, one line each
      */
-    public static function apply(\PDO $pdo, SchemaGrammar&TextCollations $grammar, string $table, ?string $idField, array $changes, bool $dryRun = false): array
+    public static function apply(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar, string $table, ?string $idField, array $changes, bool $dryRun = false): array
     {
         if ($changes === []) {
             return [];

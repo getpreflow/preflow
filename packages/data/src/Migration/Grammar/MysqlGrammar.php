@@ -20,7 +20,7 @@ use Preflow\Data\Schema\ColumnSpec;
  * one upsert target). On a server without the collation, or unbound, text columns are exact too
  * and a migration's string() keeps the table default utf8mb4_unicode_ci.
  */
-final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, TextCollations
+final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsCollations
 {
     use RecordIndexNames;
 

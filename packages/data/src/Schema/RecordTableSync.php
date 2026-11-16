@@ -10,6 +10,7 @@ use Preflow\Data\FieldKinds;
 use Preflow\Data\Migration\Grammar\FullTextIndexes;
 use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
+use Preflow\Data\Migration\Grammar\ConvertsCollations;
 use Preflow\Data\Migration\Grammar\TextCollations;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Search\LooseFields;
@@ -160,9 +161,11 @@ final class RecordTableSync
      * (CollationChange: unique indexes counted first, a column whose values would collide left as
      * it is and listed). A column already under any name of the rule (or exact) stays. Drifted and
      * missing columns are left out, and so is one the grammar cannot change without changing its
-     * values (another character set: a warning). Public for `migrate --pretend` ($dryRun: only the
-     * refusals, nothing changed).
+     * values (another character set: a warning). Nothing with a grammar that does not convert
+     * (no ConvertsCollations; TextRuleConversion says so once per storage). Public for `migrate
+     * --pretend` (TextRuleConversion::check(); $dryRun: only the refusals, nothing changed).
      *
+     * @internal
      * @param list<string> $extraColumns
      * @return list<string>
      */
@@ -174,7 +177,7 @@ final class RecordTableSync
         }
         $pdo = $driver->pdo();
         $grammar = Grammars::for($pdo);
-        if (!$grammar instanceof TextCollations || $grammar->textCollation() === null || !$grammar->hasTable($pdo, $def->table)) {
+        if (!$grammar instanceof ConvertsCollations || $grammar->textCollation() === null || !$grammar->hasTable($pdo, $def->table)) {
             return [];
         }
         $specs = $this->specs($def, $extraColumns, $typed, $grammar);
@@ -259,6 +262,7 @@ final class RecordTableSync
      * exactly (Query::compareExactly()). Public: the conversion of existing tables gives them the
      * same columns.
      *
+     * @internal
      * @param list<string> $extraColumns
      * @param SchemaGrammar|null $grammar the table's grammar (null: no full-text index considered)
      * @return array<string, ColumnSpec>

@@ -16,7 +16,7 @@ use Preflow\Data\Text\TextMatch;
  * (SqliteDialect::TEXT_COLLATION): they compare, sort, group and keep a unique index by the text
  * rule. Every other column compares by bytes (BINARY), as before.
  */
-final class SqliteGrammar implements SchemaGrammar, TextCollations
+final class SqliteGrammar implements SchemaGrammar, ConvertsCollations
 {
     use RecordIndexNames;
 
