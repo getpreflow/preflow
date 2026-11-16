@@ -1216,8 +1216,8 @@ A line says what changed: `converted collations of people: title, body`.
   (Schema::convertColumn(), see the data README) or list it in text_rule.skip`. A table made
   before 0.78 that a later migration extended (`addColumns()`) has intent for the new columns
   only: those are converted, and its older text columns are listed once the same way (`warning:
-  notes has columns without a recorded text rule (made before 0.78): id, title keep their
-  comparison. …`). To adopt a table, write a migration that converts its columns; `Migrator`
+  notes has columns without a recorded text rule (made before 0.78): title keep their
+  comparison. …`; its key column is not listed). To adopt a table, write a migration that converts its columns; `Migrator`
   records their intent as it runs it:
 
   ```php

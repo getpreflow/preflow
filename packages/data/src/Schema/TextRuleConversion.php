@@ -192,9 +192,11 @@ final class TextRuleConversion
             if (in_array($table, $this->skip, true) || in_array($table, $records, true) || in_array($table, $listed, true) || !in_array($table, $existing, true)) {
                 continue;
             }
+            // The key column names a row and compares exactly anyway: not listed.
             $older = array_diff_key(
                 array_filter($grammar->columnCollations($pdo, $table), static fn (?string $c): bool => $c !== null && !$grammar->isTextCollation($c)),
                 $columns,
+                [$grammar->rowKey($pdo, $table) => true],
             );
             if ($older === []) {
                 continue;

@@ -222,7 +222,7 @@ final class TextRuleSyncTest extends TestCase
         $lines = $this->conversion()->convert();
 
         $this->assertSame('preflow_text', Grammars::for($this->pdo)->columnCollations($this->pdo, 'notes')['summary'], 'the new column follows the rule already');
-        $this->assertContains('warning: notes has columns without a recorded text rule (made before 0.78): id, title keep their comparison. Adopt each with a migration (Schema::convertColumn(), see the data README) or list the table in text_rule.skip', $lines);
+        $this->assertContains('warning: notes has columns without a recorded text rule (made before 0.78): title keep their comparison. Adopt each with a migration (Schema::convertColumn(), see the data README) or list the table in text_rule.skip', $lines);
         $this->assertSame([], array_values(array_filter($this->conversion()->convert(), static fn (string $l): bool => str_contains($l, 'notes'))), 'listed once');
     }
 
