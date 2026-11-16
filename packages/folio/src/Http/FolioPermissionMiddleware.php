@@ -130,6 +130,8 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         private readonly TemplateEngineInterface $engine,
         private readonly string $prefix,
         private readonly ScreenRegistry $screens,
+        /** What each type allows (data's "readonly" / "creatable"): a block fragment needs a type that may be edited or created. @since 0.78 */
+        private readonly ?\Preflow\Folio\Content\TypeActions $actions = null,
     ) {}
 
     /** The permission a handler requires; null for handlers that need none (or are unknown). */
@@ -189,7 +191,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
     private function anyType(string $action): bool
     {
         foreach ($this->catalog->all() as $listing) {
-            if ($this->access->can($listing->key . '.' . $action)) {
+            if ($this->access->can($listing->key . '.' . $action) && ($this->actions?->allowsVerb($listing->key, $action) ?? true)) {
                 return true;
             }
         }

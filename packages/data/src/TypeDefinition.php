@@ -6,6 +6,9 @@ namespace Preflow\Data;
 
 final readonly class TypeDefinition
 {
+    /** Whether editors and APIs may create its records (never for a read-only type). @since 0.78 */
+    public bool $creatable;
+
     /**
      * @param array<string, TypeFieldDefinition> $fields
      * @param string[] $searchableFields
@@ -15,6 +18,10 @@ final readonly class TypeDefinition
      *        that is not hidden. @since 0.77
      * @param bool $fullText the type declares full-text search: on a server with full-text indexes the table
      *        sync indexes its loosely searchable text fields (Search\LooseFields::text()). @since 0.78
+     * @param bool $readonly editors and APIs may read its records, never create, change or delete them
+     *        ("readonly": true; a site whose records come from files or code). @since 0.78
+     * @param bool $creatable editors and APIs may create its records ("creatable": false: an inbox of
+     *        what visitors sent, still changed and deleted by staff); false for a read-only type. @since 0.78
      * @throws \InvalidArgumentException an index without fields, over a field the type does not have (or twice
      *         over one), over a translatable field, or named as another index (a field's own, a unique field's,
      *         another composite's); a titleField the type does not have
@@ -31,10 +38,41 @@ final readonly class TypeDefinition
         public array $indexes = [],
         public ?string $titleField = null,
         public bool $fullText = false,
+        public bool $readonly = false,
+        bool $creatable = true,
     ) {
+        $this->creatable = $creatable && !$readonly;
         $this->assertIndexes();
         if ($titleField !== null && !isset($fields[$titleField])) {
             throw new \InvalidArgumentException("Type \"{$key}\" has the titleField \"{$titleField}\", which is not one of its fields.");
+        }
+    }
+
+    /**
+     * Whether an editor or an API may do this with the type's records: a read-only type allows no
+     * create, update or delete, a type that is not creatable no create. Every adapter (Folio, an API)
+     * asks this; code writing through DataManager is not restricted by it.
+     *
+     * @since 0.78
+     */
+    public function allows(TypeAction $action): bool
+    {
+        return match ($action) {
+            TypeAction::Create => $this->creatable,
+            TypeAction::Update, TypeAction::Delete => !$this->readonly,
+        };
+    }
+
+    /**
+     * allows(), as a refusal an adapter lets through: a 403 (TypeActionRefused).
+     *
+     * @throws TypeActionRefused
+     * @since 0.78
+     */
+    public function assertAllows(TypeAction $action): void
+    {
+        if (!$this->allows($action)) {
+            throw new TypeActionRefused($this->key, $action, $this->readonly);
         }
     }
 

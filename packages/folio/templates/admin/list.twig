@@ -5,13 +5,13 @@
 {% block title %}Folio — {{ label }}{% endblock %}
 {% block title_lead %}{{ types.type_icon(family|default(null), glyph|default('ui-file'), 28) }}{% endblock %}
 {% block page_title %}{{ label }}{% endblock %}
-{% block title_after %}{% if has_records %}<span class="folio-title-count">{{ t('folio.list.count', {count: folio_number(type_total|default(0))}, type_total|default(0)) }}</span>{% endif %}{% endblock %}
+{% block title_after %}{% if has_records %}<span class="folio-title-count">{{ t('folio.list.count', {count: folio_number(type_total|default(0))}, type_total|default(0)) }}</span>{% endif %}{% if readonly|default(null) %} <span class="folio-badge is-readonly" title="{{ readonly }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-lock"></use></svg>{{ t('folio.list.readonly') }}<span class="folio-sr">: {{ readonly }}</span></span>{% endif %}{% endblock %}
 {% block actions %}
     {# The whole filtered and sorted list (not just this page); the bulk bar exports the ticked rows.
        The live search keeps the view in the URL (admin.js), so a click takes the query from there. #}
     {% if ai_run_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ ai_run_url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-spark"></use></svg>{{ t('folio.ai_run.translate_all') }}</a>{% endif %}
     {% if export_url|default(null) and has_records %}<a class="btn btn-secondary" href="{{ export_url }}{{ list_query ? '?' ~ list_query }}" data-folio-export-all="{{ export_url }}"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-download"></use></svg>{{ t('folio.common.export') }}</a>{% endif %}
-    {% if can(type ~ '.create') %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new" data-folio-new aria-keyshortcuts="N"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.common.new') }}</a>{% endif %}
+    {% if may.create ?? can(type ~ '.create') %}<a class="btn btn-primary" href="{{ prefix }}/{{ type }}/new" data-folio-new aria-keyshortcuts="N"><svg class="folio-icon" aria-hidden="true"><use href="{{ folio_asset('icons.svg') }}#ui-plus"></use></svg>{{ t('folio.common.new') }}</a>{% endif %}
 {% endblock %}
 {% block content %}
     {% set icons = folio_asset('icons.svg') %}

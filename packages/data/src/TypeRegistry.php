@@ -28,6 +28,7 @@ final class TypeRegistry
         if ($this->manifest === null) {
             $this->assertOneDefinitionPerKey();
             $this->assertTitleFields();
+            $this->assertActions();
         } else {
             // Checked when the manifest is built (and live while none is loaded); a loaded one skips the scans.
             $sources = $this->manifest->isRecording() ? $this->checkSources() : [];
@@ -38,6 +39,11 @@ final class TypeRegistry
             }, $sources);
             $this->manifest->remember('data.title_fields', function (): bool {
                 $this->assertTitleFields();
+
+                return true;
+            }, $sources);
+            $this->manifest->remember('data.type_actions', function (): bool {
+                $this->assertActions();
 
                 return true;
             }, $sources);
@@ -92,6 +98,25 @@ final class TypeRegistry
             }
             $type = is_string($file['key'] ?? null) ? $file['key'] : $key;
             self::assertTitleField($type, self::titleField($file['titleField'], $type), is_array($file['fields'] ?? null) ? $file['fields'] : []);
+        }
+    }
+
+    /**
+     * A model file's "readonly" or "creatable" that is not true or false (or a read-only type that
+     * says it is creatable) is an error when the registry is built (at boot), naming the option; as
+     * the titleField check, run when a boot manifest is built and skipped when one is loaded. A
+     * class's #[Entity] values are typed; its admin file's are checked here, a disagreement between
+     * the two on first use (ModelSchema::overlay()).
+     */
+    private function assertActions(): void
+    {
+        foreach (glob($this->modelsPath . '/*.json') ?: [] as $path) {
+            $file = \Preflow\Core\Config\ParsedJsonFiles::read($path);
+            if (!is_array($file) || ($file['extends'] ?? false) === true
+                || (!array_key_exists('readonly', $file) && !array_key_exists('creatable', $file))) {
+                continue;
+            }
+            self::actions($file, is_string($file['key'] ?? null) ? $file['key'] : basename($path, '.json'));
         }
     }
 
@@ -325,6 +350,29 @@ final class TypeRegistry
         return $value;
     }
 
+    /**
+     * The editor actions a model file allows ("readonly": true, "creatable": false; both absent: all).
+     * A value other than true or false, or a read-only type that says it is creatable, is refused.
+     *
+     * @param array<string, mixed> $schema
+     * @return array{readonly: bool, creatable: bool}
+     * @since 0.78
+     */
+    public static function actions(array $schema, string $key): array
+    {
+        foreach (['readonly', 'creatable'] as $option) {
+            if (array_key_exists($option, $schema) && !is_bool($schema[$option])) {
+                throw new \InvalidArgumentException("Type \"{$key}\": \"{$option}\" is true or false.");
+            }
+        }
+        $readonly = ($schema['readonly'] ?? false) === true;
+        if ($readonly && ($schema['creatable'] ?? null) === true) {
+            throw new \InvalidArgumentException("Type \"{$key}\" is read-only, so it creates nothing: drop \"creatable\" (or \"readonly\").");
+        }
+
+        return ['readonly' => $readonly, 'creatable' => !$readonly && ($schema['creatable'] ?? true) === true];
+    }
+
     /** A field's "exact": true or false (a case-significant machine value compares exactly). */
     private static function exact(mixed $value, string $key, string $field): bool
     {
@@ -407,6 +455,8 @@ final class TypeRegistry
             indexes: self::indexes($schema['indexes'] ?? null, (string) $schema['key']),
             titleField: self::titleField($schema['titleField'] ?? null, (string) $schema['key']),
             fullText: self::fullText($schema['fullText'] ?? null, (string) $schema['key']),
+            readonly: self::actions($schema, (string) $schema['key'])['readonly'],
+            creatable: self::actions($schema, (string) $schema['key'])['creatable'],
         );
     }
 }

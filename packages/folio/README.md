@@ -1086,6 +1086,26 @@ The editor saves at most `config/blocks.php` `'max_depth'` levels of blocks in a
   language, or `null` before the first save, loaded once per request. In PHP, inject
   `Preflow\Folio\Content\Singletons`.
 
+## Read-only and no-create types (0.78)
+
+A type's model file says what Folio may do with its records (data's `"readonly"` and
+`"creatable"`, see [preflow/data](../data/README.md#read-only-and-no-create-types-078)); Folio only
+renders it and refuses what the type refuses, for everyone (a role cannot lift it):
+
+- **`"readonly": true`** (an FAQ kept as files and seeded on every deploy): the list and the record
+  stay. There is no "New" (header, empty state, dashboard, ⌘K), no Save, Delete, Duplicate, bulk
+  action or move. The record opens as "View …" with a *Read-only* badge and a note saying why, and
+  every field is shown as content in the main column (a text keeps its line breaks), not under
+  System fields. Per-field `"readonly"` is not needed on such a type.
+- **`"creatable": false`** (an inbox): no "New" anywhere; editing (its flags, bulk set) and delete stay.
+- A direct request to a refused route (the create form, a create, save, delete, bulk delete,
+  duplicate, publish, translate, …) answers 403 with Folio's page, saying why; with or without
+  sign-in (`TypeActionsMiddleware`, on every admin route; the verb is the one the route's
+  permission names). The Roles matrix shows "–" for a verb the type refuses.
+- In PHP: `Preflow\Folio\Content\TypeActions` (`allows()`, `allowsVerb()`, `permits()`,
+  `readonly()`) maps Folio's verbs onto data's `TypeAction` (`create`, `edit`/`publish` = update,
+  `delete`).
+
 ## Drafts and publishing
 
 Publishing is its own package, [preflow/publishing](../publishing/README.md) (`Preflow\Publishing`,

@@ -366,4 +366,28 @@ final class AdminCssTest extends TestCase
         $this->assertMatchesRegularExpression('/\.folio-skip \{[^}]*position: fixed;[^}]*transform: translateY\(calc\(-100% - 16px\)\);/', $css);
         $this->assertStringContainsString('.folio-skip:focus { transform: none; }', $css);
     }
+
+    /**
+     * The editor's content-language switch (one link per language; a site may have 14) wraps inside
+     * its own row: at 375 px it never pushes the page sideways (0.78).
+     */
+    public function test_the_content_language_switch_wraps_in_its_own_row(): void
+    {
+        $css = $this->css();
+
+        $this->assertMatchesRegularExpression('/\.folio-content-languages \{[^}]*flex-wrap: wrap;[^}]*\}/', $css);
+        $this->assertMatchesRegularExpression('/\.folio-content-languages \{[^}]*max-width: 100%;[^}]*\}/', $css);
+        // Phone: the switch takes the topbar's full width as a row of its own.
+        $this->assertMatchesRegularExpression('/@media \(max-width: [0-9]+px\) \{[^@]*\.folio-shell\.is-rail \.folio-topbar \.folio-content-languages \{ flex: 1 1 100%;/s', $css);
+    }
+
+    /** A read-only type's fields read as content, with a note and a badge (0.78). */
+    public function test_read_only_content_note_and_badge(): void
+    {
+        $css = $this->css();
+
+        $this->assertMatchesRegularExpression('/\.folio-readonly\.is-content:not\(\.is-rich\) \.folio-readonly-value \{ white-space: pre-line; \}/', $css);
+        $this->assertStringContainsString('.folio-notice.folio-readonly-note { --folio-glyph: var(--folio-glyph-lock); }', $css);
+        $this->assertStringContainsString('.folio-badge.is-readonly {', $css);
+    }
 }

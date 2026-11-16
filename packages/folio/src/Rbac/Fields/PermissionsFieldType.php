@@ -50,6 +50,8 @@ final class PermissionsFieldType implements FieldType
         private readonly ?PermissionCoverage $coverage = null,
         private readonly ?DisplayLabels $labels = null,
         private readonly ?\Closure $fresh = null,
+        /** What each type allows (data's "readonly" / "creatable"): a verb it refuses gets "–", as one that cannot apply. @since 0.78 */
+        private readonly ?\Preflow\Folio\Content\TypeActions $actions = null,
     ) {}
 
     public function key(): string
@@ -251,8 +253,8 @@ final class PermissionsFieldType implements FieldType
 
     /**
      * The matrix rows (each content type with a declared standard verb: its label, declared
-     * verbs that can apply, i.e. no create or delete on a singleton and no publish without
-     * publishing, and "{type}.*" if declared) by sidebar section label, in sidebar order; and every
+     * verbs that can apply, i.e. no create or delete on a singleton, no publish without
+     * publishing, none the type refuses (TypeActions), and "{type}.*" if declared) by sidebar section label, in sidebar order; and every
      * other declared name by group in declaration order, with the group's patterns: a pattern
      * "x.*" goes to the first group with a name starting "x." (patterns without one to "Other").
      *
@@ -274,6 +276,11 @@ final class PermissionsFieldType implements FieldType
             }
             $taken += array_fill_keys($names, true); // declared, so never a chip; only shown where they can apply
             $inapplicable = [...($listing->singleton ? ['create', 'delete'] : []), ...($listing->publishing ? [] : ['publish'])];
+            foreach (['create', 'edit', 'publish', 'delete'] as $verb) {
+                if ($this->actions !== null && !$this->actions->allowsVerb($listing->key, $verb)) {
+                    $inapplicable[] = $verb; // the type itself refuses it (a read-only type, an inbox without "New")
+                }
+            }
             $names = array_values(array_filter($names, static fn (string $permission): bool => !in_array(substr($permission, strlen($listing->key) + 1), $inapplicable, true)));
             $pattern = in_array($listing->key . '.*', $patterns, true) ? $listing->key . '.*' : null;
             $bySection[$listing->section][] = ['key' => $listing->key, 'label' => $this->labels?->type($listing->key) ?? $listing->label, 'names' => $names, 'pattern' => $pattern, 'family' => $listing->family?->value, 'glyph' => $listing->glyph()];

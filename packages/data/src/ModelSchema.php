@@ -81,6 +81,12 @@ final class ModelSchema
         if ($entity->fullText) {
             $schema['fullText'] = true;
         }
+        if ($entity->readonly) {
+            $schema['readonly'] = true;
+        }
+        if (!$entity->creatable) {
+            $schema['creatable'] = false;
+        }
 
         return $schema;
     }
@@ -159,6 +165,14 @@ final class ModelSchema
         }
 
         $titleField = self::titleField($classSchema, $adminFile, $file, $modelClass);
+        foreach (['readonly', 'creatable'] as $option) {
+            // The class says what differs from the default; its admin file may add it, never contradict it.
+            if (array_key_exists($option, $classSchema) && array_key_exists($option, $adminFile) && $adminFile[$option] !== $classSchema[$option]) {
+                throw new \RuntimeException('Type "' . $key . '" has "' . $option . '": ' . var_export($classSchema[$option], true) . ' on '
+                    . ($modelClass !== '' ? $modelClass : 'its model class') . ' and ' . json_encode($adminFile[$option]) . ' in '
+                    . basename($file) . ': set it in one place.');
+            }
+        }
         $schema = $classSchema + array_diff_key($adminFile, array_flip(self::SCHEMA_TYPE_KEYS));
         if ($titleField !== null) {
             $schema['titleField'] = $titleField;

@@ -102,7 +102,11 @@ final class AdminController
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
+        $this->typeActions = new \Preflow\Folio\Content\TypeActions($registry);
     }
+
+    /** What each type allows (data's "readonly" / "creatable"), asked with every permission. */
+    private readonly \Preflow\Folio\Content\TypeActions $typeActions;
 
     public function index(ServerRequestInterface $request): ResponseInterface
     {
@@ -455,6 +459,8 @@ final class AdminController
             'bulk' => $this->bulkBar($type, $typeDef, $listConfig),
             // What this user may do with the rows (the row menu's Edit, moves and Delete).
             'may' => ['create' => $this->can($type . '.create'), 'edit' => $this->can($type . '.edit'), 'delete' => $this->can($type . '.delete')],
+            // A read-only type (data's "readonly"): the header says so, its tooltip why.
+            'readonly' => $this->typeActions->readonly($type) ? FolioText::get('folio.form.readonly_note', ['label' => $this->labelFor($type)]) : null,
             // The row "…" menu's items that do not depend on the row.
             'row_menu' => [
                 'duplicate' => $this->duplicable($type) && $this->can($type . '.create') && $this->can($type . '.view'),
@@ -1406,11 +1412,32 @@ final class AdminController
         // fields, the "panel": "side" fields and the read-only ones (System fields).
         $framed = $layout !== '@folio/admin/_drawer_layout.twig';
         $systemFields = [];
+        // A read-only type (data's "readonly"): every field is the page's content, shown as text in
+        // the main column (never tucked away under System fields), with a note saying why.
+        $typeReadonly = !$isNew && $this->typeActions->readonly($type);
+        if ($typeReadonly) {
+            $heading = FolioText::get('folio.form.view_record', ['label' => $this->labelFor($type)]); // nothing to edit here
+        }
         foreach ($typeDef->fields as $name => $fieldDef) {
             if ($name === $typeDef->idField || ($fieldDef->config['hidden'] ?? false) === true) {
                 continue;
             }
             $fieldType = $this->fieldTypes->get($fieldDef->type);
+            if ($typeReadonly) {
+                $stored = isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
+                $display = $this->readonlyDisplay($fieldDef, $stored === null || $stored === '' ? $stored : $fieldType->fromStorage($stored), $this->fieldConfig($type, $name, $fieldDef));
+                $fields[] = [
+                    'name' => $name,
+                    'html' => self::readonlyField($name, $this->labels->fieldText($type, $name), $this->labels->help($type, $name), $display, $fieldDef->type === 'richtext' ? 'is-content is-rich' : 'is-content'),
+                    'translatable' => isset($translatable[$name]),
+                    'structured' => false,
+                    'falls_back' => false,
+                    'reference' => null,
+                    'placement' => 'main',
+                    'half' => ($fieldDef->config['width'] ?? 'full') === 'half',
+                ];
+                continue;
+            }
             if (($fieldDef->config['readonly'] ?? false) === true) {
                 $stored = isset($translatable[$name]) ? LocaleValue::pick($values[$name] ?? null, $locales, $locale) : LocaleValue::default($values[$name] ?? null, $locales);
                 $display = $this->readonlyDisplay(
@@ -1580,6 +1607,8 @@ final class AdminController
             'type' => $type,
             // Read-only form (disabled fieldset, no save buttons) without the right to save it.
             'can_save' => $this->can($type . ($isNew ? '.create' : '.edit')),
+            // A read-only type: the note above its fields (what it is and why it cannot be changed here).
+            'readonly_note' => $typeReadonly ? FolioText::get('folio.form.readonly_note', ['label' => $this->labelFor($type)]) : null,
             'can_publish' => $this->can($type . '.publish'),
             'label' => $this->labelFor($type),
             'types' => $this->catalog->all(),
@@ -2110,10 +2139,13 @@ final class AdminController
             : null;
     }
 
-    /** Without an Access service (unit tests, no auth) everything is allowed, as before. */
+    /**
+     * The user's permission (without an Access service, unit tests and no auth: allowed, as before)
+     * and, for a type's record verb, what the type allows (TypeActions).
+     */
     private function can(string $permission): bool
     {
-        return $this->access?->can($permission) ?? true;
+        return ($this->access?->can($permission) ?? true) && $this->typeActions->permits($permission);
     }
 
     private function publishes(string $type): bool
@@ -2330,12 +2362,15 @@ final class AdminController
         return trim(strip_tags($html)) === '' ? '—' : $html;
     }
 
-    /** A read-only field: its label and value (ready HTML from readonlyDisplay), no input. */
-    private static function readonlyField(string $name, ?string $label, ?string $help, string $valueHtml): string
+    /**
+     * A read-only field: its label and value (ready HTML from readonlyDisplay), no input. $modifier:
+     * "is-content" for a field of a read-only type (shown as content), plus "is-rich" for rich text.
+     */
+    private static function readonlyField(string $name, ?string $label, ?string $help, string $valueHtml, string $modifier = ''): string
     {
         $e = static fn (string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-        return '<div class="form-group folio-readonly">' . "\n"
+        return '<div class="form-group folio-readonly' . ($modifier !== '' ? ' ' . $modifier : '') . '">' . "\n"
             . '  <span class="form-label">' . $e($label ?? (new \Preflow\Form\FieldRenderer())->humanize($name)) . '</span>' . "\n"
             . '  <div class="folio-readonly-value">' . $valueHtml . '</div>' . "\n"
             . ($help !== null && $help !== '' ? '  <small class="form-help">' . $e($help) . '</small>' . "\n" : '')

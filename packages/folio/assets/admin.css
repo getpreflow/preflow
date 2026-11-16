@@ -125,6 +125,7 @@
   --folio-glyph-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L20 7'/%3E%3C/svg%3E");
   --folio-glyph-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l10 18H2zM12 10v5M12 18h.01'/%3E%3C/svg%3E");
   --folio-glyph-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 11v6M12 7.5h.01'/%3E%3C/svg%3E");
+  --folio-glyph-lock: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='10.5' width='14' height='10' rx='2'/%3E%3Cpath d='M8 10.5V7.5a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E");
   --folio-glyph-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18M12 8v5M12 16h.01'/%3E%3C/svg%3E");
 }
 
@@ -1941,6 +1942,15 @@ input[type="file"]::file-selector-button:hover { background: var(--c-row-hover);
 
 /* Read-only values: plain text ("—" when empty). */
 .folio-readonly .folio-readonly-value { padding: 7px 0; color: var(--c-text-muted); }
+/* A read-only type's fields (data's "readonly"): the record's content, so in the text colour, a text's
+   line breaks kept (rich text keeps its own markup); the note above them says why there is no Save. */
+.folio-readonly.is-content .folio-readonly-value { padding: 2px 0 0; color: var(--c-text); font-size: 14px; line-height: 1.55; }
+.folio-readonly.is-content:not(.is-rich) .folio-readonly-value { white-space: pre-line; }
+.folio-notice.folio-readonly-note { --folio-glyph: var(--folio-glyph-lock); }
+.folio-readonly-note .folio-readonly-note-title { font-weight: 600; }
+.folio-badge.is-readonly { gap: 5px; background: var(--c-surface-2); color: var(--c-text-muted); box-shadow: inset 0 0 0 1px var(--c-border); }
+.folio-badge.is-readonly::before { content: none; }
+.folio-badge.is-readonly .folio-icon { width: 13px; height: 13px; }
 
 /* A row of a form's buttons (settings forms, the account, AI runs). */
 .folio-form-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
@@ -3912,6 +3922,8 @@ th.folio-cache-num { font-family: inherit; font-size: inherit; }
 
 /* The content language: mono codes with a 6px dot (filled = complete, warning ring = partial, subtle
    ring = missing); a 4px warning dot after the code when it holds outdated or unchecked texts. */
+/* Many languages (a site may have 14) wrap inside the switch's own track, never past the page's edge. */
+.folio-content-languages { flex-wrap: wrap; max-width: 100%; }
 .folio-content-languages > a { gap: 5px; padding: 0 9px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
 .folio-content-languages > a[aria-current="true"] { background: var(--c-surface); color: var(--c-text); box-shadow: var(--shadow-sm); }
 .folio-locale-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--c-accent); }
@@ -4160,6 +4172,8 @@ th.folio-cache-num { font-family: inherit; font-size: inherit; }
   /* Phone topbar: the back button and the title in one row, the controls wrap under them. */
   .folio-back + .folio-topbar-title { flex: 1 1 0; }
   .folio-shell.is-rail .folio-topbar .folio-actions { flex: 1 1 100%; justify-content: flex-start; }
+  /* The content languages: a row of their own, wrapping inside it (no sideways page scroll at 375 px). */
+  .folio-shell.is-rail .folio-topbar .folio-content-languages { flex: 1 1 100%; }
 }
 @keyframes folio-sheet-in { from { opacity: 0; transform: translateY(12px); } }
 

@@ -5,6 +5,6 @@
     {% include '@folio/admin/partials/_ink_error.twig' with {
         title: t('folio.errors.forbidden_card_title'),
         message: message,
-        line: t('folio.errors.forbidden_help'),
+        line: (help ?? true) ? t('folio.errors.forbidden_help') : null,
     } only %}
 {% endblock %}

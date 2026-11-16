@@ -1261,6 +1261,44 @@ literally. Unlike `search()`, which keeps using exactly the `searchable: true` f
   both sides. They need a `DataManager`; a builder made without one searches the type's own
   fields only.
 
+## Read-only and no-create types (0.78)
+
+A type says what editors and APIs may do with its records. The core reads it; every adapter
+(Folio, an API, one of your own) asks the same question and refuses the same things:
+
+```json
+{ "key": "faq",     "table": "faq",      "readonly": true,   "fields": { … } }
+{ "key": "message", "table": "messages", "creatable": false, "fields": { … } }
+```
+
+```php
+#[Entity(table: 'faq', type: 'faq', readonly: true)]
+#[Entity(table: 'messages', type: 'message', creatable: false)]
+
+use Preflow\Data\TypeAction;
+$def = $data->getTypeRegistry()->get('faq');
+$def->allows(TypeAction::Create);        // false
+$def->assertAllows(TypeAction::Update);  // throws TypeActionRefused, a 403
+```
+
+| Option | Create | Update | Delete | For |
+|---|---|---|---|---|
+| (none) | yes | yes | yes | every type, as before |
+| `"readonly": true` | no | no | no | records that come from files or code (an FAQ kept in git and seeded on every deploy): listed and viewed only |
+| `"creatable": false` | no | yes | yes | an inbox of what visitors sent: no "New", but its flags are changed and its records deleted |
+
+- **Reading is never restricted**, and **code is not either**: seeders, migrations and the app's own
+  `DataManager` calls (`saveType()`, `deleteType()`, …) write as before. The option is about editors
+  and adapters, not storage.
+- `TypeDefinition::allows(TypeAction)` answers; `assertAllows()` throws
+  `Preflow\Data\TypeActionRefused` (a `ForbiddenHttpException`: `$type`, `$action`), so an API
+  controller that lets it through answers a JSON 403 under its API prefixes (and a page the error
+  page). `TypeDefinition::$readonly`, `$creatable` (false for a read-only type).
+- **Checked at boot:** a value other than `true` or `false`, or `"readonly": true` together with
+  `"creatable": true`, stops the boot naming the type and the option (with a boot manifest, when
+  `preflow optimize` builds it). A model class sets them on `#[Entity]` or in its admin file; both
+  may set one only to the same value.
+
 ## Record titles and cross-type search (0.77)
 
 **A record's title** is the text that names it in lists, search hits and activity rows:
