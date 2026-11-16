@@ -186,15 +186,28 @@ final class SqliteDriver extends PdoDriver implements Maintenance, Dumps
         if ($sql === false) {
             throw new \RuntimeException('Could not read the dump.');
         }
+        // The restore is one transaction of its own, whatever the text says: the dump's own header
+        // (foreign keys off, BEGIN) and trailer (COMMIT) are taken off, so a dump without them (a
+        // hand-edited one, or the sqlite3 shell's) is all-or-nothing too. Foreign keys cannot change
+        // inside a transaction, so they go off before it and back to what they were after it.
+        $sql = (string) preg_replace(['/\A((?:\s*--[^\n]*(?:\n|\z))*)\s*(?:PRAGMA\s+foreign_keys\s*=\s*OFF\s*;\s*)?(?:BEGIN(?:\s+TRANSACTION)?\s*;\s*)?/i', '/\s*COMMIT(?:\s+TRANSACTION)?\s*;\s*\z/i'], ['$1', ''], $sql);
+        $foreignKeys = $this->pdo->query('PRAGMA foreign_keys')->fetchColumn();
+        $this->pdo->exec('PRAGMA foreign_keys=OFF');
         try {
-            $this->pdo->exec($sql);
-        } catch (\Throwable $e) {
+            $this->pdo->exec('BEGIN');
             try {
-                $this->pdo->exec('ROLLBACK');
-            } catch (\PDOException) {
-                // No transaction open (the dump failed before its BEGIN, or SQLite rolled back).
+                $this->pdo->exec($sql);
+                $this->pdo->exec('COMMIT');
+            } catch (\Throwable $e) {
+                try {
+                    $this->pdo->exec('ROLLBACK');
+                } catch (\PDOException) {
+                    // SQLite already rolled back.
+                }
+                throw $e;
             }
-            throw $e;
+        } finally {
+            $this->pdo->exec('PRAGMA foreign_keys=' . ((int) $foreignKeys === 1 ? 'ON' : 'OFF'));
         }
     }
 }

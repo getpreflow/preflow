@@ -104,4 +104,44 @@ final class SqliteMaintenanceTest extends TestCase
         }
         $this->assertSame([], $target->rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'"));
     }
+
+    public function test_a_dump_without_its_own_transaction_restores_all_or_nothing(): void
+    {
+        $target = new SqliteDriver(new \PDO('sqlite:' . $this->file));
+        $stream = fopen('php://memory', 'w+');
+        fwrite($stream, "CREATE TABLE \"a\" (\"id\" INTEGER);\nINSERT INTO \"a\" VALUES(1);\nINSERT INTO \"missing\" VALUES(1);\n");
+        rewind($stream);
+
+        try {
+            $target->restore($stream);
+            $this->fail('a broken dump throws');
+        } catch (\PDOException) {
+        }
+        $this->assertSame([], $target->rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'"), 'nothing of it stays');
+
+        $ok = fopen('php://memory', 'w+');
+        fwrite($ok, "CREATE TABLE \"a\" (\"id\" INTEGER);\nINSERT INTO \"a\" VALUES(1);\n");
+        rewind($ok);
+        $target->restore($ok);
+        $this->assertSame([['id' => 1]], $target->rawQuery('SELECT "id" FROM "a"'));
+    }
+
+    public function test_a_restore_leaves_foreign_keys_as_it_found_them(): void
+    {
+        foreach ([true, false] as $on) {
+            foreach (['good' => "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCREATE TABLE \"a\" (\"id\" INTEGER);\nCOMMIT;\n", 'bad' => "CREATE TABLE \"b\" (\"id\" INTEGER);\nINSERT INTO \"nope\" VALUES(1);\n"] as $case => $text) {
+                $pdo = new \PDO('sqlite::memory:');
+                $pdo->exec('PRAGMA foreign_keys=' . ($on ? 'ON' : 'OFF'));
+                $target = new SqliteDriver($pdo);
+                $stream = fopen('php://memory', 'w+');
+                fwrite($stream, $text);
+                rewind($stream);
+                try {
+                    $target->restore($stream);
+                } catch (\PDOException) {
+                }
+                $this->assertSame($on ? 1 : 0, (int) $pdo->query('PRAGMA foreign_keys')->fetchColumn(), "{$case}, was " . ($on ? 'on' : 'off'));
+            }
+        }
+    }
 }
