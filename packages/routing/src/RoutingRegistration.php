@@ -18,7 +18,7 @@ use Preflow\Routing\Redirect\RedirectTargets;
  * sources (PageLookups). A lookup a site binds under it is asked, when a request needs to know,
  * beside one bound under core's PageExists; nothing is built at boot.
  *
- * Also its RedirectEntryExists, registered as an answer (PageLookups::addAnswer(), @since 0.78.2): the
+ * Also its RedirectEntryExists, registered as an answer (PageLookups::addAnswer(), new in 0.78.2): the
  * bare redirect counts an address a redirect entry answers; no page lookup ever does. It looks the
  * store up per question, so a store bound after boot counts.
  *

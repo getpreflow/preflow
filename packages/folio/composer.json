@@ -10,7 +10,7 @@
         "preflow/data": "^0.78 || @dev",
         "preflow/view": "^0.74 || @dev",
         "preflow/twig": "^0.65 || @dev",
-        "preflow/routing": "^0.78 || @dev",
+        "preflow/routing": "^0.78.2 || @dev",
         "preflow/form": "^0.75 || @dev",
         "preflow/validation": "^0.52 || @dev",
         "preflow/auth": "^0.69 || @dev",
@@ -50,7 +50,7 @@
         "preflow/notify": "<0.69",
         "preflow/publishing": "<0.77",
         "preflow/rbac": "<0.69.1",
-        "preflow/routing": "<0.78",
+        "preflow/routing": "<0.78.2",
         "preflow/twig": "<0.65",
         "preflow/validation": "<0.52",
         "preflow/view": "<0.74"
