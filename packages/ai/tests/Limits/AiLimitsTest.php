@@ -173,14 +173,15 @@ final class AiLimitsTest extends DataTestCase
             $limits = new AiLimits($throttle, ['draft' => ['max' => 0]]); // building it needs no key
             try {
                 $limits->take(AiLimits::TRANSLATE, 'p1');
-            } catch (\RuntimeException $e) {
+            } catch (\Preflow\Ai\Limits\AiLimitsMisconfigured $e) {
                 $message = $e->getMessage();
+                $this->assertSame('APP_KEY', $e->setting);
             }
             $this->assertSame(0, $this->rows(), 'refused, not counted, never unlimited');
             try {
                 $limits->assertKey();
                 $this->fail('assertKey() refuses too');
-            } catch (\RuntimeException) {
+            } catch (\Preflow\Ai\Limits\AiLimitsMisconfigured) {
             }
             $this->assertNotNull($message, "key \"{$key}\"");
             $this->assertStringContainsString('APP_KEY', $message);

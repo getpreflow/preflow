@@ -12,6 +12,7 @@ use Preflow\Ai\Draft\DraftRequest;
 use Preflow\Ai\Draft\DraftWriter;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimits;
+use Preflow\Ai\Limits\AiLimitsMisconfigured;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Data\DataManager;
@@ -114,6 +115,9 @@ final class AiDraftController
                 $this->limits->take(AiLimits::DRAFT, $person->getAuthId());
             } catch (AiLimitReached $e) {
                 return self::json(429, ['error' => FolioText::get($e->textKey(), $e->textParams())], ['Retry-After' => (string) $e->retryAfter]);
+            } catch (AiLimitsMisconfigured $e) {
+                // The site's setup (APP_KEY), not the person's limit: 503 with the text that names the setting.
+                return self::json(503, ['error' => $e->getMessage()]);
             }
         }
 

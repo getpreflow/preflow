@@ -74,14 +74,14 @@ final class AiLimits
      * with it, and a missing key never means "unlimited". The provider calls it at boot where
      * config/ai.php lets AI work run; take() and check() call it too.
      *
-     * @throws \RuntimeException naming APP_KEY and the limits that are on
+     * @throws AiLimitsMisconfigured naming APP_KEY and the limits that are on
      * @since 0.78
      */
     public function assertKey(): void
     {
         $on = array_filter($this->limits, static fn (array $limit): bool => $limit['max'] > 0);
         if ($on !== [] && !$this->throttle->hasKey()) {
-            throw new \RuntimeException('config/ai.php ai.limits (' . implode(', ', array_map(static fn (string $a): string => "ai.limits.{$a}.max", array_keys($on)))
+            throw new AiLimitsMisconfigured('APP_KEY', 'config/ai.php ai.limits (' . implode(', ', array_map(static fn (string $a): string => "ai.limits.{$a}.max", array_keys($on)))
                 . ') need APP_KEY (app.key) to be set: each person is counted under their id hashed with it. Set APP_KEY, or turn the limits off with max 0.');
         }
     }
@@ -91,7 +91,7 @@ final class AiLimits
      *
      * @throws AiLimitReached when this one passes the limit
      * @throws \InvalidArgumentException for an unknown action
-     * @throws \RuntimeException when the limit is on and the app key is missing (assertKey())
+     * @throws AiLimitsMisconfigured when the limit is on and the app key is missing (assertKey())
      */
     public function take(string $action, string $authId): void
     {
@@ -112,6 +112,7 @@ final class AiLimits
      *
      * @throws AiLimitReached when none is left
      * @throws \InvalidArgumentException for an unknown action
+     * @throws AiLimitsMisconfigured when the limit is on and the app key is missing (assertKey())
      */
     public function check(string $action, string $authId): void
     {

@@ -6,6 +6,7 @@ namespace Preflow\I18n\Machine;
 
 use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
+use Preflow\Ai\Limits\AiLimitsMisconfigured;
 
 /**
  * The background side of queued translation jobs: a cron job calls work() every minute, which
@@ -15,7 +16,8 @@ use Preflow\Ai\Limits\AiLimitReached;
  * so an admin screen can tell whether the cron job runs at all, also when the translator is not available. An error in
  * one job is logged (error_log) and the run goes on with the next job. A job over the AI limit of
  * the person who queued it (AiLimitReached, since 0.78) waits: it is left as it is for the rest of
- * the run, with one log line, and a later run tries it again.
+ * the run, with one log line, and a later run tries it again. A job whose AI limits lack a setting
+ * (AiLimitsMisconfigured: APP_KEY) is stopped with that reason and logged, never retried.
  */
 final class TranslationWorker
 {
@@ -73,6 +75,10 @@ final class TranslationWorker
                             if ($log !== null) {
                                 $log("{$job->collection}: waits for its person's AI limit ({$e->retryAfter} s)");
                             }
+                            break;
+                        } catch (AiLimitsMisconfigured $e) {
+                            // The runner stopped the job with the reason: it is not retried on every run.
+                            error_log(sprintf('translate:work: job %s (%s) stopped, %s setting is missing for the AI limits: %s', $job->id, $job->collection, $e->setting, $e->getMessage()));
                             break;
                         } catch (\InvalidArgumentException $e) {
                             // The job was removed meanwhile, or its collection has no text source any

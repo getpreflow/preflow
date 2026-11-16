@@ -113,6 +113,42 @@ final class TranslationWorkerTest extends TestCase
         $this->assertMatchesRegularExpression("/^games: waits for its person's AI limit \\(\\d+ s\\)$/", $waits[0]);
     }
 
+    public function test_a_job_whose_limits_lack_the_app_key_is_stopped_for_good_with_the_reason(): void
+    {
+        $data = $this->dir . '/nokey';
+        $limits = new AiLimits(new Throttle(new DataManager(['default' => new JsonFileDriver($data)]), ''), ['translate' => ['max' => 1]]);
+        $worker = $this->worker([self::echo(), self::echo()], runner: $runner, limits: $limits);
+        $a = $this->queued($runner, '2026-10-30T10:00:00+00:00', by: 'u1');
+        $b = $this->queued($runner, '2026-10-30T11:00:00+00:00');
+
+        $logged = $this->dir . '/php-errors.log';
+        $before = ini_set('error_log', $logged);
+        try {
+            $worker->work(50);
+            $second = $worker->work(50);
+        } finally {
+            ini_set('error_log', (string) $before);
+            if (is_dir($data)) {
+                $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($data, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
+                foreach ($it as $f) {
+                    $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+                }
+                @rmdir($data);
+            }
+        }
+
+        $job = $this->store->get($a);
+        $this->assertSame('stopped', $job->state, 'not retried on every run');
+        $this->assertStringContainsString('APP_KEY', (string) $job->message);
+        $this->assertSame(['pending', 'pending'], array_column($job->items, 'status'));
+        $this->assertSame('done', $this->store->get($b)->state, 'a job without a person is not limited');
+        $this->assertSame(0, $second->records, 'the stopped job is not worked again');
+        $log = (string) file_get_contents($logged);
+        $this->assertStringContainsString('APP_KEY setting is missing', $log);
+        $this->assertSame(1, substr_count($log, 'APP_KEY setting is missing'), 'logged once, not on every run');
+        @unlink($logged);
+    }
+
     public function test_works_queued_jobs_oldest_first_within_budget(): void
     {
         $worker = $this->worker([self::echo()], runner: $runner);

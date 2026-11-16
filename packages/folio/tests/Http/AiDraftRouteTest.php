@@ -363,6 +363,22 @@ final class AiDraftRouteTest extends TestCase
     }
 
     #[RunInSeparateProcess]
+    public function test_draft_limits_without_the_app_key_answer_503_naming_it(): void
+    {
+        $this->oneDraftAllowed();
+        $this->staff('drafter', ['drafter' => self::DRAFTER]);
+        $dir = sys_get_temp_dir() . '/preflow-nokey-' . bin2hex(random_bytes(4));
+        $throttle = new \Preflow\Core\Throttle\Throttle(new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\JsonFileDriver($dir)]), '');
+        $this->session->container()->instance(\Preflow\Ai\Limits\AiLimits::class, new \Preflow\Ai\Limits\AiLimits($throttle, ['draft' => ['max' => 1]]));
+
+        $res = $this->draft();
+
+        $this->assertSame(503, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertStringContainsString('APP_KEY', self::json($res)['error']);
+        $this->assertCount(0, $this->fake->requests());
+    }
+
+    #[RunInSeparateProcess]
     public function test_without_ai_draft_refused_and_no_button(): void
     {
         $this->staff('noai', ['noai' => ['folio.dashboard', 'article.view', 'article.edit']]);

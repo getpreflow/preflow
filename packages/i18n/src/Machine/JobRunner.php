@@ -7,6 +7,7 @@ namespace Preflow\I18n\Machine;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimits;
+use Preflow\Ai\Limits\AiLimitsMisconfigured;
 
 /**
  * Runs a translation job one item at a time, so a request or cron tick stays short and a failure
@@ -108,6 +109,8 @@ final class JobRunner
      * job never undo each other's results.
      *
      * @throws AiUnavailable after the job has been stopped and saved; items done so far stay done
+     * @throws AiLimitsMisconfigured after the job has been stopped and saved with its message: the limits
+     *         need a setting (APP_KEY) the site lacks, so no run can ever count an item
      * @throws AiLimitReached when the item about to be translated passes the limit of the person who
      *         queued the job: the item stays pending (its claim released), the job keeps its state
      *         and message, and the cost of this step so far is saved
@@ -231,6 +234,16 @@ final class JobRunner
         } catch (AiLimitReached $e) {
             // The job waits for its person's limit: nothing about it changes but the cost already spent.
             $this->update($jobId, $mergeCost);
+            throw $e;
+        } catch (AiLimitsMisconfigured $e) {
+            // A site's setup, not a wait: stopped with the reason, so no run retries it.
+            $this->update($jobId, static function (Job $stored) use ($e, $mergeCost): void {
+                $mergeCost($stored);
+                if ($stored->state !== 'done') {
+                    $stored->state = 'stopped';
+                    $stored->message = $e->getMessage();
+                }
+            });
             throw $e;
         } catch (AiUnavailable $e) {
             $this->update($jobId, static function (Job $stored) use ($e, $mergeCost): void {

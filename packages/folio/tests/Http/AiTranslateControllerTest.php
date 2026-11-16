@@ -324,6 +324,28 @@ final class AiTranslateControllerTest extends TestCase
         $this->assertSame("You have reached your limit of 1 AI translations. You can translate again in {$minutes} min.", self::json($res)['error'], $what);
     }
 
+    /** The limits as an app without a usable APP_KEY gets them (sign-in needs a key, so the binding is swapped after it). */
+    private function limitsWithoutKey(): void
+    {
+        $dir = sys_get_temp_dir() . '/preflow-nokey-' . bin2hex(random_bytes(4));
+        $throttle = new \Preflow\Core\Throttle\Throttle(new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\JsonFileDriver($dir)]), '');
+        $this->session->container()->instance(\Preflow\Ai\Limits\AiLimits::class, new \Preflow\Ai\Limits\AiLimits($throttle, ['translate' => ['max' => 5]]));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_limits_without_the_app_key_answer_503_naming_it_not_500(): void
+    {
+        $this->limitedTranslator(5);
+        $this->limitsWithoutKey();
+
+        $res = $this->call('/folio/post/p1/_ai/suggest', ['locale' => 'de', 'scope' => 'needed']);
+
+        $this->assertSame(503, $res->getStatusCode(), (string) $res->getBody());
+        $this->assertStringContainsString('APP_KEY', self::json($res)['error']);
+        $this->assertStringContainsString('ai.limits.translate.max', self::json($res)['error']);
+        $this->assertCount(0, $this->fake->requests(), 'nothing reached the translator');
+    }
+
     #[RunInSeparateProcess]
     public function test_suggest_over_the_limit_answers_429(): void
     {

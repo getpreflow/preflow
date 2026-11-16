@@ -8,6 +8,7 @@ use Nyholm\Psr7\Response;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimits;
+use Preflow\Ai\Limits\AiLimitsMisconfigured;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Data\DataManager;
@@ -193,6 +194,8 @@ final class AiTranslateController
                 $this->checkLimit($request);
             } catch (AiLimitReached $e) {
                 return $this->progress($request, $job, null, 429, $e);
+            } catch (AiLimitsMisconfigured $e) {
+                return $this->progress($request, $job, $e->getMessage(), 503);
             }
         }
 
@@ -225,6 +228,9 @@ final class AiTranslateController
             } catch (AiLimitReached $e) {
                 // The job waits for its person's limit; the progress says so and polls again after Retry-After.
                 return $this->progress($request, $this->jobs->get($job->id) ?? $job, null, 429, $e);
+            } catch (AiLimitsMisconfigured $e) {
+                // The runner stopped the job with the reason; the screen shows it and stops polling.
+                return $this->progress($request, $this->jobs->get($job->id) ?? $job, $e->getMessage(), 503);
             }
         }
 
@@ -301,6 +307,8 @@ final class AiTranslateController
             $this->checkLimit($request);
         } catch (AiLimitReached $e) {
             return self::limitReached($e);
+        } catch (AiLimitsMisconfigured $e) {
+            return self::json(503, ['error' => $e->getMessage()]);
         }
         $note = trim(is_string($body['note'] ?? null) ? $body['note'] : '');
         $job = $this->runner->plan($type, [$locale], $target['scope'], [$id], $note === '' ? null : $note, $prefix);
@@ -317,6 +325,7 @@ final class AiTranslateController
      * Counts one translated item against the signed-in person's limit (nothing without limits or sign-in).
      *
      * @throws AiLimitReached
+     * @throws AiLimitsMisconfigured
      */
     private function takeLimit(ServerRequestInterface $request): void
     {
@@ -330,6 +339,7 @@ final class AiTranslateController
      * Whether the signed-in person has budget left, before a job is queued; counts nothing.
      *
      * @throws AiLimitReached
+     * @throws AiLimitsMisconfigured
      */
     private function checkLimit(ServerRequestInterface $request): void
     {
@@ -453,6 +463,8 @@ final class AiTranslateController
             $this->takeLimit($request);
         } catch (AiLimitReached $e) {
             return self::limitReached($e);
+        } catch (AiLimitsMisconfigured $e) {
+            return self::json(503, ['error' => $e->getMessage()]);
         }
         LongRequest::allow($request, self::TIME_LIMIT);
         $cost = 0.0;

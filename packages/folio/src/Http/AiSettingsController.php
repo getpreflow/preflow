@@ -10,6 +10,7 @@ use Preflow\Ai\AiCheck;
 use Preflow\Ai\AiCheckResult;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimits;
+use Preflow\Ai\Limits\AiLimitsMisconfigured;
 use Preflow\Auth\Authenticatable;
 use Preflow\Ai\Usage\UsageLog;
 use Preflow\Data\TypeRegistry;
@@ -68,6 +69,8 @@ final class AiSettingsController
                 $this->limits->take(AiLimits::DRAFT, $person->getAuthId());
             } catch (AiLimitReached $e) {
                 return $this->statusPage($request, ['ok' => false, 'text' => FolioText::get($e->textKey(), $e->textParams())], 429, ['Retry-After' => (string) $e->retryAfter]);
+            } catch (AiLimitsMisconfigured $e) {
+                return $this->statusPage($request, ['ok' => false, 'text' => $e->getMessage()], 503);
             }
         }
         $result = (new AiCheck($this->ai))->run();

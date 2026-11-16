@@ -232,7 +232,9 @@ account cannot run up the bill. `config/ai.php`:
   it the boot stops and says so. Set the key, or set every `max` to 0. A missing key never means
   "unlimited": a draft writer or translator an app binds in a provider (not named in
   `config/ai.php`) is limited too, and without the key its first AI action is refused naming
-  `APP_KEY` (`AiLimits::assertKey()`). With AI off the app boots without a key, as before.
+  `APP_KEY` (`AiLimits::assertKey()`) by throwing `AiLimitsMisconfigured` (its `$setting` is
+  `APP_KEY`; its message names the setting, never a value). Folio's AI endpoints answer it as 503
+  with that message, and the translation worker stops the job with it instead of retrying. With AI off the app boots without a key, as before.
 - A refused `take()` counts too: counting is one atomic step, so two requests at once never both
   get the last one. It never moves the window's end, so the wait does not grow.
 - `Preflow\Ai\Limits\AiLimits` is the guard: `take($action, $authId)` counts one and throws
