@@ -521,12 +521,14 @@ abstract class StorageDriverContract extends TestCase
         $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One']);
 
         foreach (['where' => (new Query())->where('nope', 'One'), 'order' => (new Query())->orderBy('nope')] as $what => $query) {
+            $message = null;
             try {
                 $this->driver->findMany('records', $query);
-                $this->fail("a {$what} on a missing column must fail");
             } catch (\Throwable $e) {
-                $this->assertStringContainsStringIgnoringCase('nope', $e->getMessage(), $what);
+                $message = $e->getMessage();
             }
+            $this->assertNotNull($message, "a {$what} on a missing column must fail");
+            $this->assertStringContainsStringIgnoringCase('nope', $message, $what);
         }
     }
 
