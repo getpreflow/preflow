@@ -165,7 +165,7 @@ test('records come grouped by type after the screens, the match in <strong>, ass
 test('screens filter and titles mark ignoring accents, as the server\'s search does', async () => {
     mock.timers.enable({ apis: ['setTimeout'] });
     try {
-        const p = page({ commands: { ...COMMANDS, screens: [...COMMANDS.screens, { label: 'Übersicht', url: '/folio/overview', icon: 'ui-dashboard', family: null }] } });
+        const p = page({ commands: { ...COMMANDS, screens: [...COMMANDS.screens, { label: 'Übersicht', url: '/folio/overview', icon: 'ui-dashboard', family: null }, { label: 'Οδός', url: '/folio/street', icon: 'ui-dashboard', family: null }] } });
         press(p, 'k', { meta: true });
         type(p, 'ubersicht');
         assert.deepEqual(titles(p), ['Übersicht'], '"ubersicht" lists "Übersicht"');
@@ -191,6 +191,21 @@ test('screens filter and titles mark ignoring accents, as the server\'s search d
         await flush();
         assert.deepEqual(marks(0), [['SPAN', 'Élise '], ['STRONG', 'Øre']], 'ø is an o');
         assert.deepEqual(marks(1), [['SPAN', 'Cafe\u0301 '], ['STRONG', 'ore']], 'a combining mark stays with its letter, unmarked');
+
+        type(p, 'cafe');
+        mock.timers.tick(150);
+        p.answer(p.requests[p.requests.length - 1], { groups: [{ type: 'page', label: 'Pages', family: 'page', icon: 'ui-file', items: [
+            { id: 'd', title: 'Cafe\u0301 ore', url: '/folio/page/d/edit' },
+        ] }] });
+        await flush();
+        assert.deepEqual(marks(0), [['STRONG', 'Cafe\u0301'], ['SPAN', ' ore']], 'a match ending at "e" takes its combining accent along');
+
+        // The screens filter at once; the records of the last answer stay until the next one.
+        type(p, 'ΟΔΟΣ');
+        assert.deepEqual(titles(p).slice(0, 2), ['Οδός', 'Cafe\u0301 ore'], 'a word-final Σ in the term (ς once lowered) finds the screen');
+        type(p, 'οδοσ');
+        assert.deepEqual(titles(p).slice(0, 2), ['Οδός', 'Cafe\u0301 ore'], 'σ and ς are one letter');
+        assert.deepEqual(marks(0), [['STRONG', 'Οδός']], 'and the whole word is marked');
 
         type(p, 'strasse');
         mock.timers.tick(150);
