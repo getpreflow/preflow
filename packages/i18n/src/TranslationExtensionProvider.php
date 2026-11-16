@@ -94,7 +94,7 @@ final class TranslationExtensionProvider implements TemplateExtensionProvider
         $url = $this->localeUrl($path, $locale);
 
         return $this->urls?->redirectBare === true
-            ? '/--locale/' . $locale . '?to=' . rawurlencode(self::encodePath($url))
+            ? '/--locale/' . rawurlencode($locale) . '?to=' . rawurlencode(self::encodePath($url))
             : $url;
     }
 

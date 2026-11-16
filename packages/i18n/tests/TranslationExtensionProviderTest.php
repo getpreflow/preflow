@@ -138,6 +138,24 @@ final class TranslationExtensionProviderTest extends TestCase
         $this->assertSame('/--locale/de?to=%2Fde%2F%25C3%25BCber-uns', $switch('/über-uns', 'de'));
     }
 
+    public function test_locale_switch_url_for_the_root(): void
+    {
+        $bare = $this->fn($this->providerWith(new LocaleUrls(['en', 'de'], 'en', true, false, true)), 'locale_switch_url');
+        $this->assertSame('/--locale/en?to=%2F', $bare('/', 'en'));
+        $this->assertSame('/--locale/de?to=%2Fde', $bare('/', 'de'));
+
+        $prefixed = $this->fn($this->providerWith(new LocaleUrls(['en', 'de'], 'en', true, true, true)), 'locale_switch_url');
+        $this->assertSame('/--locale/en?to=%2Fen', $prefixed('/', 'en'));
+        $this->assertSame('/--locale/de?to=%2Fde', $prefixed('', 'de'));
+    }
+
+    public function test_locale_switch_url_encodes_the_locale(): void
+    {
+        $switch = $this->fn($this->providerWith(new LocaleUrls(['en', 'de'], 'en', true, false, true)), 'locale_switch_url');
+
+        $this->assertStringStartsWith('/--locale/x%2Fy%3F%23?to=', $switch('/faq', 'x/y?#'));
+    }
+
     public function test_locale_switch_url_is_locale_url_without_redirect_bare(): void
     {
         $switch = $this->fn($this->providerWith(new LocaleUrls(['en', 'de'], 'en')), 'locale_switch_url');
