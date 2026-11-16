@@ -594,6 +594,9 @@ final class CoreStaffTest extends TestCase
         [$code, $out] = $this->command('migrate');
         $this->assertSame(0, $code, $out);
         $this->assertStringContainsString('[rbac.seed] ' . \Preflow\Rbac\RoleType::NOT_INSTALLED, $out);
+        $this->assertStringContainsString('rbac:install', \Preflow\Rbac\RoleType::NOT_INSTALLED);
+        $this->assertStringContainsString('folio:extensions:apply', \Preflow\Rbac\RoleType::NOT_INSTALLED, 'a Folio site has its own step');
+        $this->assertSame(1, substr_count($out, 'rbac is not installed'), 'said once');
         $this->assertSame([1, "rbac is not installed here yet; run php preflow rbac:install first.\n"], $this->command('staff:list'));
 
         $this->assertSame(0, $this->command('rbac:install')[0]);
