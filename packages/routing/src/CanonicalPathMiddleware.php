@@ -27,7 +27,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   a query string with control bytes. Percent-encoding is never decoded or re-encoded.
  * - Paths under NonPublicPaths (checked before and after normalising) are left alone, and so
  *   is every path whose first segment starts with '--' (framework endpoints such as
- *   '/--component' and '/--locale'), whether or not it is registered as non-public.
+ *   '/--component' and '/--locale'), or whose second does behind a locale prefix
+ *   ('/de/--component/x'), whether or not it is registered as non-public.
  * - Internal renders (InternalRender::is) are left alone: the app asked for that exact path.
  * - The 301 depends on the URL alone (no cookie, no Vary), so caches may keep it per URL.
  *
@@ -94,7 +95,7 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
         // $path starts with '/' and canonical() collapses every run of slashes, so $canonical
         // starts with exactly one '/': the Location below can never name another host.
         $canonical = self::canonical($path);
-        if ($canonical === $path || str_starts_with($canonical, '/--')) {
+        if ($canonical === $path || self::isEndpoint($canonical)) {
             return $handler->handle($request);
         }
 
@@ -103,6 +104,18 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
         }
 
         return new Response(301, ['Location' => $canonical . ($query !== '' ? '?' . $query : '')]);
+    }
+
+    /**
+     * A framework endpoint: the first segment starts with '--' ('/--locale/de'), or the second
+     * does behind a locale prefix ('/de/--component/x'; any first segment counts, so no locale
+     * list is needed here).
+     */
+    private static function isEndpoint(string $canonical): bool
+    {
+        $segments = explode('/', ltrim($canonical, '/'), 3);
+
+        return str_starts_with($segments[0], '--') || str_starts_with($segments[1] ?? '', '--');
     }
 
     private function isUnambiguous(string $path): bool

@@ -241,11 +241,14 @@ query string. It runs first in the pipeline, before the locale prefix is read, s
 `//de//about/` reaches `/de/about` in one hop; a locale's home is `/de`, never `/de/`. A POST
 (or any other method) is never redirected. Left alone as well: admin, API and component paths
 (`NonPublicPaths`), every path whose first segment starts with `--` (framework endpoints such as
-`/--component` and `/--locale`), internal renders (the SEO audit's), and paths whose meaning
+`/--component` and `/--locale`) or whose second does behind a locale prefix
+(`/de/--component/x/`), internal renders (the SEO audit's), and paths whose meaning
 normalising could change (dot segments, backslashes, `%2F`, control bytes). The `Location` is
 site-relative and starts with exactly one `/` (`//evil.example/x/` goes to `/evil.example/x`).
-The 301 depends on the URL alone (no cookie, no `Vary`), so caches may keep it. A value other
-than `true` or `false` stops the boot.
+The 301 depends on the URL alone (no cookie, no `Vary`), so caches may keep it. It is answered
+before the security headers middleware, as the SEO and GEO files are, so it carries no
+`Strict-Transport-Security` or CSP: send HSTS from the web server if the redirect needs it. A
+value other than `true` or `false` stops the boot.
 
 **Trailing slashes in links and routes.** With clean paths on, a link that ends in a slash
 (`href="/faq/"`) costs every visitor a 301 hop, and a route declared with a trailing slash is

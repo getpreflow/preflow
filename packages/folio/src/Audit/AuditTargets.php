@@ -35,13 +35,13 @@ final class AuditTargets
     /**
      * @param \Closure(): FrontendResolver $resolverFactory built on the first page looked up
      * @param \Closure(): string           $mediaUrlFactory the media core's URL (config/media.php "url"), read on first use
-     * @param string                       $defaultLocale   the site's default language (unused; kept for
-     *                                                      compatibility: the resolver knows the prefixes)
+     * @param string                       $defaultLocale   deprecated since 0.78 and unused (the resolver knows
+     *                                                      the prefixes); optional now, removed in a later minor
      */
     public function __construct(
         private readonly \Closure $resolverFactory,
         private readonly \Closure $mediaUrlFactory,
-        private readonly string $defaultLocale,
+        private readonly string $defaultLocale = '',
     ) {}
 
     /** The record or asset behind $url (an absolute URL or a path) in $locale; null when there is none. */

@@ -120,7 +120,7 @@ final class CanonicalPathMiddlewareTest extends TestCase
 
     public function test_double_dash_first_segment_is_left_alone_without_non_public_paths(): void
     {
-        foreach (['/--locale/de/', '/--anything//x/', '//--locale/de/', '/--/'] as $path) {
+        foreach (['/--locale/de/', '/--anything//x/', '//--locale/de/', '/--/', '/de/--component/x/', '//de-ch//--component/x/'] as $path) {
             $r = $this->send('GET', $path);
             $this->assertSame(200, $r->getStatusCode(), $path);
             $this->assertSame(1, $this->handled, $path);
