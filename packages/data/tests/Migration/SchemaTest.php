@@ -191,7 +191,7 @@ final class SchemaTest extends TestCase
 
     public function test_the_rename_is_quoted_by_the_grammar(): void
     {
-        $this->assertSame('ALTER TABLE "staff" RENAME COLUMN "a" TO "b"', (new \Preflow\Data\Migration\Grammar\SqliteGrammar())->renameColumn('staff', 'a', 'b'));
+        $this->assertSame('ALTER TABLE `staff` RENAME COLUMN `a` TO `b`', (new \Preflow\Data\Migration\Grammar\SqliteGrammar())->renameColumn('staff', 'a', 'b'));
         $this->assertSame('ALTER TABLE `staff` RENAME COLUMN `a` TO `b`', (new \Preflow\Data\Migration\Grammar\MysqlGrammar())->renameColumn('staff', 'a', 'b'));
     }
 

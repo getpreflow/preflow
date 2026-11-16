@@ -171,7 +171,7 @@ final class ConvertColumnTest extends TestCase
 
         $grammar = Grammars::for($this->pdo);
         $this->assertSame(['uuid' => 'BINARY', 'title' => 'preflow_text', 'code' => 'BINARY', 'other' => null], $grammar->columnCollations($this->pdo, 'object'));
-        $this->assertStringContainsString('"title" TEXT COLLATE preflow_text', $this->createSql('object'));
+        $this->assertStringContainsString('`title` TEXT COLLATE preflow_text', $this->createSql('object'));
         $this->expectException(\PDOException::class);
         $this->pdo->exec("INSERT INTO object VALUES ('b', 'MÜLLER', 'x', 2)"); // the remade unique index still applies the rule
     }

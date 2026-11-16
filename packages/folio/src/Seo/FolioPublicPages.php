@@ -60,7 +60,7 @@ final class FolioPublicPages
     {
         $query = $this->publisher->query($type);
         if (!$route->publishing) {
-            $query = $query->where($route->publishedField, $route->publishedValue);
+            $query = $route->published($query, $this->resolver->definition($type));
         }
 
         return $query->get()->items();

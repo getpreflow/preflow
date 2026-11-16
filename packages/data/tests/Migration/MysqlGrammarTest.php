@@ -125,7 +125,7 @@ final class MysqlGrammarTest extends TestCase
     public function test_record_table_sqlite_matches_what_folio_builds_today(): void
     {
         $this->assertSame(
-            'CREATE TABLE "posts" ("id" TEXT PRIMARY KEY, "title" TEXT, "body" TEXT)',
+            'CREATE TABLE `posts` (`id` TEXT PRIMARY KEY, `title` TEXT, `body` TEXT)',
             (new SqliteGrammar())->createRecordTable('posts', 'id', [new ColumnSpec('title'), new ColumnSpec('body')]),
         );
     }
@@ -148,14 +148,14 @@ final class MysqlGrammarTest extends TestCase
             (new MysqlGrammar())->createRecordTable('e', 'uuid', $columns),
         );
         $this->assertSame(
-            'CREATE TABLE "e" ("uuid" TEXT PRIMARY KEY, "body" TEXT, "slug" TEXT, "code" TEXT, "seats" NUMERIC, "open" INTEGER, "starts" TEXT)',
+            'CREATE TABLE `e` (`uuid` TEXT PRIMARY KEY, `body` TEXT, `slug` TEXT, `code` TEXT, `seats` NUMERIC, `open` INTEGER, `starts` TEXT)',
             (new SqliteGrammar())->createRecordTable('e', 'uuid', $columns),
         );
         $this->assertSame(
             'CREATE UNIQUE INDEX `uniq_e_code` ON `e` (`code`, `purpose`)',
             (new MysqlGrammar())->createRecordIndex('uniq_e_code', 'e', ['code', 'purpose'], true),
         );
-        $this->assertSame('CREATE INDEX "idx_e_slug" ON "e" ("slug")', (new SqliteGrammar())->createRecordIndex('idx_e_slug', 'e', ['slug'], false));
+        $this->assertSame('CREATE INDEX `idx_e_slug` ON `e` (`slug`)', (new SqliteGrammar())->createRecordIndex('idx_e_slug', 'e', ['slug'], false));
     }
 
     /** A column made before it was indexed may be TEXT: MySQL indexes its first 191 characters, SQLite the whole value. */
@@ -168,7 +168,7 @@ final class MysqlGrammarTest extends TestCase
             (new MysqlGrammar())->createRecordIndex('idx_e_company_state_body', 'e', ['company', 'state', 'body'], false, $types),
         );
         $this->assertSame(
-            'CREATE INDEX "idx_e_company" ON "e" ("company")',
+            'CREATE INDEX `idx_e_company` ON `e` (`company`)',
             (new SqliteGrammar())->createRecordIndex('idx_e_company', 'e', ['company'], false, ['company' => 'text']),
         );
     }

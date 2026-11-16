@@ -40,72 +40,72 @@ final class SqliteDdlCharacterisationTest extends TestCase
             ->fetchAll(\PDO::FETCH_ASSOC);
 
         $this->assertSame([
-            ['type' => 'table', 'name' => 'auth_remember', 'sql' => 'CREATE TABLE "auth_remember" (
-    "id" TEXT PRIMARY KEY,
-    "guard" TEXT NOT NULL,
-    "user_id" TEXT NOT NULL,
-    "validator_hash" TEXT NOT NULL,
-    "previous_hash" TEXT,
-    "rotated_at" INTEGER,
-    "expires_at" INTEGER NOT NULL
+            ['type' => 'table', 'name' => 'auth_remember', 'sql' => 'CREATE TABLE `auth_remember` (
+    `id` TEXT PRIMARY KEY,
+    `guard` TEXT NOT NULL,
+    `user_id` TEXT NOT NULL,
+    `validator_hash` TEXT NOT NULL,
+    `previous_hash` TEXT,
+    `rotated_at` INTEGER,
+    `expires_at` INTEGER NOT NULL
 )'],
-            ['type' => 'table', 'name' => 'auth_tokens', 'sql' => 'CREATE TABLE "auth_tokens" (
-    "id" TEXT PRIMARY KEY,
-    "purpose" TEXT NOT NULL,
-    "subject" TEXT NOT NULL,
-    "expires_at" INTEGER NOT NULL
+            ['type' => 'table', 'name' => 'auth_tokens', 'sql' => 'CREATE TABLE `auth_tokens` (
+    `id` TEXT PRIMARY KEY,
+    `purpose` TEXT NOT NULL,
+    `subject` TEXT NOT NULL,
+    `expires_at` INTEGER NOT NULL
 )'],
-            ['type' => 'table', 'name' => 'code_redemption', 'sql' => 'CREATE TABLE "code_redemption" (
-    "id" TEXT PRIMARY KEY,
-    "code_id" TEXT NOT NULL,
-    "purpose" TEXT NOT NULL,
-    "redeemer" TEXT,
-    "redeemed_at" INTEGER NOT NULL
+            ['type' => 'table', 'name' => 'code_redemption', 'sql' => 'CREATE TABLE `code_redemption` (
+    `id` TEXT PRIMARY KEY,
+    `code_id` TEXT NOT NULL,
+    `purpose` TEXT NOT NULL,
+    `redeemer` TEXT,
+    `redeemed_at` INTEGER NOT NULL
 )'],
-            ['type' => 'index', 'name' => 'idx_code_redemption_code_id', 'sql' => 'CREATE INDEX "idx_code_redemption_code_id" ON "code_redemption" ("code_id")'],
-            ['type' => 'index', 'name' => 'idx_posts_slug', 'sql' => 'CREATE INDEX "idx_posts_slug" ON "posts" ("slug")'],
-            ['type' => 'index', 'name' => 'idx_posts_title', 'sql' => 'CREATE INDEX "idx_posts_title" ON "posts" ("title")'],
-            ['type' => 'index', 'name' => 'idx_user_tokens_tokenHash', 'sql' => 'CREATE INDEX "idx_user_tokens_tokenHash" ON "user_tokens" ("tokenHash")'],
-            ['type' => 'index', 'name' => 'idx_users_email', 'sql' => 'CREATE INDEX "idx_users_email" ON "users" ("email")'],
-            ['type' => 'table', 'name' => 'posts', 'sql' => 'CREATE TABLE "posts" (
-    "uuid" TEXT PRIMARY KEY,
-    "title" TEXT COLLATE preflow_text NOT NULL,
-    "slug" TEXT COLLATE preflow_text NOT NULL,
-    "body" TEXT COLLATE preflow_text,
-    "status" TEXT COLLATE preflow_text NOT NULL,
-    "created_at" TEXT,
-    "updated_at" TEXT
+            ['type' => 'index', 'name' => 'idx_code_redemption_code_id', 'sql' => 'CREATE INDEX `idx_code_redemption_code_id` ON `code_redemption` (`code_id`)'],
+            ['type' => 'index', 'name' => 'idx_posts_slug', 'sql' => 'CREATE INDEX `idx_posts_slug` ON `posts` (`slug`)'],
+            ['type' => 'index', 'name' => 'idx_posts_title', 'sql' => 'CREATE INDEX `idx_posts_title` ON `posts` (`title`)'],
+            ['type' => 'index', 'name' => 'idx_user_tokens_tokenHash', 'sql' => 'CREATE INDEX `idx_user_tokens_tokenHash` ON `user_tokens` (`tokenHash`)'],
+            ['type' => 'index', 'name' => 'idx_users_email', 'sql' => 'CREATE INDEX `idx_users_email` ON `users` (`email`)'],
+            ['type' => 'table', 'name' => 'posts', 'sql' => 'CREATE TABLE `posts` (
+    `uuid` TEXT PRIMARY KEY,
+    `title` TEXT COLLATE preflow_text NOT NULL,
+    `slug` TEXT COLLATE preflow_text NOT NULL,
+    `body` TEXT COLLATE preflow_text,
+    `status` TEXT COLLATE preflow_text NOT NULL,
+    `created_at` TEXT,
+    `updated_at` TEXT
 )'],
             // Since 0.78: the columns' intent each migration records (MigrationColumns).
-            ['type' => 'table', 'name' => 'preflow_migration_columns', 'sql' => 'CREATE TABLE "preflow_migration_columns" (
-    "id" TEXT PRIMARY KEY,
-    "table_name" TEXT NOT NULL,
-    "column_name" TEXT NOT NULL,
-    "intent" TEXT NOT NULL
+            ['type' => 'table', 'name' => 'preflow_migration_columns', 'sql' => 'CREATE TABLE `preflow_migration_columns` (
+    `id` TEXT PRIMARY KEY,
+    `table_name` TEXT NOT NULL,
+    `column_name` TEXT NOT NULL,
+    `intent` TEXT NOT NULL
 )'],
             ['type' => 'table', 'name' => 'preflow_migrations', 'sql' => 'CREATE TABLE preflow_migrations (
             migration TEXT PRIMARY KEY,
             ran_at TEXT NOT NULL
         )'],
-            ['type' => 'table', 'name' => 'preflow_throttle', 'sql' => 'CREATE TABLE "preflow_throttle" (
-    "id" TEXT PRIMARY KEY,
-    "purpose" TEXT NOT NULL,
-    "hits" INTEGER NOT NULL,
-    "window_start" INTEGER NOT NULL
+            ['type' => 'table', 'name' => 'preflow_throttle', 'sql' => 'CREATE TABLE `preflow_throttle` (
+    `id` TEXT PRIMARY KEY,
+    `purpose` TEXT NOT NULL,
+    `hits` INTEGER NOT NULL,
+    `window_start` INTEGER NOT NULL
+, `expires_at` INTEGER)'],
+            ['type' => 'table', 'name' => 'user_tokens', 'sql' => 'CREATE TABLE `user_tokens` (
+    `uuid` TEXT PRIMARY KEY,
+    `tokenHash` TEXT NOT NULL,
+    `userId` TEXT NOT NULL,
+    `name` TEXT COLLATE preflow_text,
+    `createdAt` TEXT
 )'],
-            ['type' => 'table', 'name' => 'user_tokens', 'sql' => 'CREATE TABLE "user_tokens" (
-    "uuid" TEXT PRIMARY KEY,
-    "tokenHash" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "name" TEXT COLLATE preflow_text,
-    "createdAt" TEXT
-)'],
-            ['type' => 'table', 'name' => 'users', 'sql' => 'CREATE TABLE "users" (
-    "uuid" TEXT PRIMARY KEY,
-    "email" TEXT COLLATE preflow_text NOT NULL,
-    "passwordHash" TEXT NOT NULL,
-    "roles" TEXT,
-    "createdAt" TEXT
+            ['type' => 'table', 'name' => 'users', 'sql' => 'CREATE TABLE `users` (
+    `uuid` TEXT PRIMARY KEY,
+    `email` TEXT COLLATE preflow_text NOT NULL,
+    `passwordHash` TEXT NOT NULL,
+    `roles` TEXT,
+    `createdAt` TEXT
 )'],
         ], $actual);
     }
@@ -125,23 +125,23 @@ final class SqliteDdlCharacterisationTest extends TestCase
             $table->integer('n');
         });
 
-        $this->assertSame('CREATE TABLE "t" (
-    "id" TEXT PRIMARY KEY,
-    "email" TEXT COLLATE preflow_text NOT NULL,
-    "key" TEXT NOT NULL,
-    "body" TEXT COLLATE preflow_text,
-    "ref" TEXT NOT NULL,
-    "n" INTEGER NOT NULL
+        $this->assertSame('CREATE TABLE `t` (
+    `id` TEXT PRIMARY KEY,
+    `email` TEXT COLLATE preflow_text NOT NULL,
+    `key` TEXT NOT NULL,
+    `body` TEXT COLLATE preflow_text,
+    `ref` TEXT NOT NULL,
+    `n` INTEGER NOT NULL
 )', $pdo->query("SELECT sql FROM sqlite_master WHERE name = 't'")->fetchColumn());
 
         $grammar = (new SqliteGrammar())->on($pdo);
         $this->assertSame(
-            'CREATE TABLE "e" ("uuid" TEXT PRIMARY KEY, "title" TEXT COLLATE preflow_text, "blocks" TEXT, "n" NUMERIC)',
+            'CREATE TABLE `e` (`uuid` TEXT PRIMARY KEY, `title` TEXT COLLATE preflow_text, `blocks` TEXT, `n` NUMERIC)',
             $grammar->createRecordTable('e', 'uuid', [new ColumnSpec('title', ColumnKind::Short, text: true), new ColumnSpec('blocks'), new ColumnSpec('n', ColumnKind::Number)]),
         );
         $this->assertSame('TEXT COLLATE preflow_text', $grammar->textColumnType(ColumnKind::Text));
         $this->assertSame('TEXT COLLATE preflow_text', $grammar->textType('string'));
-        $this->assertSame('ALTER TABLE "e" ADD COLUMN "x" TEXT COLLATE preflow_text', $grammar->addColumn('e', 'x', $grammar->textColumnType(ColumnKind::Short)));
-        $this->assertSame('CREATE TABLE "e" ("uuid" TEXT PRIMARY KEY, "title" TEXT)', (new SqliteGrammar())->createRecordTable('e', 'uuid', [new ColumnSpec('title', text: true)]), 'an unbound grammar: as before');
+        $this->assertSame('ALTER TABLE `e` ADD COLUMN `x` TEXT COLLATE preflow_text', $grammar->addColumn('e', 'x', $grammar->textColumnType(ColumnKind::Short)));
+        $this->assertSame('CREATE TABLE `e` (`uuid` TEXT PRIMARY KEY, `title` TEXT)', (new SqliteGrammar())->createRecordTable('e', 'uuid', [new ColumnSpec('title', text: true)]), 'an unbound grammar: as before');
     }
 }

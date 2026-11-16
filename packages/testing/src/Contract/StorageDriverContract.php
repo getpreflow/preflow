@@ -509,6 +509,27 @@ abstract class StorageDriverContract extends TestCase
         return $this->driver;
     }
 
+    /**
+     * A query on a column the table does not have fails instead of matching nothing (0.78: SQLite
+     * read a double-quoted unknown name as a string). A store without columns (JSON) cannot tell;
+     * QueryBuilder refuses a field the type lacks on every driver.
+     */
+    public function test_a_query_on_a_missing_column_fails(): void
+    {
+        $this->runsSql();
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One']);
+
+        foreach (['where' => (new Query())->where('nope', 'One'), 'order' => (new Query())->orderBy('nope')] as $what => $query) {
+            try {
+                $this->driver->findMany('records', $query);
+                $this->fail("a {$what} on a missing column must fail");
+            } catch (\Throwable $e) {
+                $this->assertStringContainsStringIgnoringCase('nope', $e->getMessage(), $what);
+            }
+        }
+    }
+
     // --- table existence (DescribesColumns, @since 0.78) ---------------------------------------
 
     public function test_has_table_tells_a_made_type_from_a_missing_one(): void
@@ -1106,6 +1127,25 @@ abstract class StorageDriverContract extends TestCase
 
         // "äpfel" sorts with a, "Apfel" after "a": by bytes neither is in [a, b).
         $this->assertSame(['p8', 'p9'], $this->people((new Query())->where('name', '>=', 'a')->where('name', '<', 'b')));
+    }
+
+    /** HAS on a text field holding a JSON list compares its members exactly, as on a list field (tags); a plain text value by the rule. */
+    public function test_has_on_a_text_field_holding_a_json_list_compares_its_members_exactly(): void
+    {
+        $this->requireTextRule();
+        $this->createType('notes', ['uuid' => 'exact', 'body' => 'text']);
+        $this->driver->save('notes', 'n1', ['uuid' => 'n1', 'body' => '["PHP","Go"]']);
+        $this->driver->save('notes', 'n2', ['uuid' => 'n2', 'body' => 'Rust']);
+        $has = function (array $values): array {
+            $query = (new Query())->whereAny([['field' => 'body', 'operator' => 'HAS', 'value' => $values]]);
+            $query->compareAsText(['body']);
+
+            return $this->sortedIds($this->driver->findMany('notes', $query));
+        };
+
+        $this->assertSame(['n1'], $has(['PHP']));
+        $this->assertSame([], $has(['php']), 'a list member compares exactly');
+        $this->assertSame(['n2'], $has(['rust']), 'a plain text value by the rule');
     }
 
     public function test_exact_fields_compare_exactly(): void

@@ -144,7 +144,7 @@ final class UniqueTest extends TestCase
         $other->setAttribute(\PDO::ATTR_TIMEOUT, 0);
         $locked = null;
         $this->pdo->beforePrepare = function (string $sql) use ($other, &$locked): void {
-            if (!str_starts_with($sql, 'INSERT INTO "doc"')) {
+            if (!str_starts_with($sql, 'INSERT INTO `doc`')) {
                 return;
             }
             try {

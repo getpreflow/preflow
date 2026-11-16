@@ -23,9 +23,15 @@ final class SqliteDialect implements Dialect, PatternMatching, TextComparison
      */
     public const string TEXT_COLLATION = 'preflow_text';
 
+    /**
+     * `name`, with backticks: SQLite reads a double-quoted name it cannot resolve as a string
+     * literal (its "double-quoted string" misfeature, which PDO cannot switch off), so a query on a
+     * missing column would quietly match nothing. A backtick-quoted name is always a name: a
+     * missing column is an error, as on MySQL. (Since 0.78; double quotes before.)
+     */
     public function quoteIdentifier(string $name): string
     {
-        return '"' . str_replace('"', '""', $name) . '"';
+        return '`' . str_replace('`', '``', $name) . '`';
     }
 
     public function updateSql(string $table, array $columns, string $idField): string

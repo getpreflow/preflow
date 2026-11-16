@@ -136,7 +136,7 @@ final class FrontendResolver
                 $query = $query->locale($locale);
             }
             if (!$route->publishing) {
-                $query = $query->where($route->publishedField, $route->publishedValue);
+                $query = $route->published($query, $this->definition($route->type));
             }
             foreach ($params as $field => $value) {
                 $query = $query->where($field, $value);
@@ -283,7 +283,8 @@ final class FrontendResolver
         return sprintf('"%s" and "%s"', ...$types);
     }
 
-    private function definition(string $type): \Preflow\Data\TypeDefinition
+    /** The definition of a routed type (for FrontendRoute::published()). @internal */
+    public function definition(string $type): \Preflow\Data\TypeDefinition
     {
         $registry = $this->dm->getTypeRegistry() ?? throw new \LogicException('Folio frontend routes need a TypeRegistry.');
 

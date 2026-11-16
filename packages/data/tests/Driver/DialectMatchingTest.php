@@ -32,7 +32,7 @@ final class DialectMatchingTest extends TestCase
 
         [$sql] = $compiler->compile('posts', (new Query())->where('title', 'like', 'a%')->where('body', 'not like', '%b'));
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "title" ILIKE ? AND "body" NOT ILIKE ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE `title` ILIKE ? AND `body` NOT ILIKE ?', $sql);
     }
 
     public function test_search_and_contains_use_the_dialects_operator(): void
@@ -43,7 +43,7 @@ final class DialectMatchingTest extends TestCase
             ->search('hello', ['title'])
             ->whereAny([['field' => 'body', 'operator' => 'CONTAINS', 'value' => 'x']]));
 
-        $this->assertSame('SELECT * FROM "posts" WHERE ("title" ILIKE ?) AND ("body" ILIKE ? ESCAPE \'!\')', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE (`title` ILIKE ?) AND (`body` ILIKE ? ESCAPE \'!\')', $sql);
     }
 
     /**
@@ -56,11 +56,11 @@ final class DialectMatchingTest extends TestCase
         $compiler = new QueryCompiler(new SqliteDialect());
 
         [$sql, $bindings] = $compiler->compile('posts', (new Query())->where('title', 'like', 'a%')->where('body', 'not like', '%É'));
-        $this->assertSame('SELECT * FROM "posts" WHERE ulike(?, "title") AND NOT ulike(?, "body")', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE ulike(?, `title`) AND NOT ulike(?, `body`)', $sql);
         $this->assertSame(['a%', '%É'], $bindings);
 
         [$sql] = $compiler->compile('posts', (new Query())->search('über', ['title'])->whereAny([['field' => 'body', 'operator' => 'CONTAINS', 'value' => 'x']]));
-        $this->assertSame('SELECT * FROM "posts" WHERE (ulike(?, "title")) AND (ulike(?, "body", \'!\'))', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE (ulike(?, `title`)) AND (ulike(?, `body`, \'!\'))', $sql);
 
         $dialect = new SqliteDialect();
         $this->assertStringStartsWith('ulike(', $dialect->likeSql('t', '%kart%'));
@@ -117,7 +117,7 @@ final class DialectMatchingTest extends TestCase
     {
         [$sql] = (new QueryCompiler(new IlikeDialect()))->compile('posts', (new Query())->orderBy('_order', numeric: true));
 
-        $this->assertSame('SELECT * FROM "posts" ORDER BY CAST("_order" AS NUMERIC) ASC', $sql);
+        $this->assertSame('SELECT * FROM `posts` ORDER BY CAST(`_order` AS NUMERIC) ASC', $sql);
     }
 }
 

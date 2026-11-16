@@ -221,7 +221,7 @@ final class SqliteGrammar implements SchemaGrammar, ConvertsCollations
 
     public function quote(string $identifier): string
     {
-        return '"' . str_replace('"', '""', $identifier) . '"';
+        return '`' . str_replace('`', '``', $identifier) . '`'; // as SqliteDialect::quoteIdentifier(): never read as a string
     }
 
     public function columnType(string $kind, ?int $length = null): string

@@ -145,7 +145,7 @@ final class LocalizedQueryTest extends TestCase
         $plain = (new Query())->where('title', 'MÜLLER');
         $plain->compareAsText(['title']);
         [$sql] = (new QueryCompiler(new SqliteDialect()))->compile('page', $plain);
-        $this->assertSame('SELECT * FROM "page" WHERE "title" = ?', $sql, 'a plain column is left to its collation (its index stays usable)');
+        $this->assertSame('SELECT * FROM `page` WHERE `title` = ?', $sql, 'a plain column is left to its collation (its index stays usable)');
     }
 
     public function test_pdo_round_trips_map(): void

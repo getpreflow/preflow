@@ -23,7 +23,7 @@ final class QueryCompilerTest extends TestCase
     {
         [$sql, $bindings] = $this->compiler->compile('posts', new Query());
 
-        $this->assertSame('SELECT * FROM "posts"', $sql);
+        $this->assertSame('SELECT * FROM `posts`', $sql);
         $this->assertSame([], $bindings);
     }
 
@@ -32,7 +32,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "status" = ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE `status` = ?', $sql);
         $this->assertSame(['active'], $bindings);
     }
 
@@ -41,7 +41,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active')->where('type', 'blog');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "status" = ? AND "type" = ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE `status` = ? AND `type` = ?', $sql);
         $this->assertSame(['active', 'blog'], $bindings);
     }
 
@@ -50,7 +50,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active')->orWhere('status', 'pending');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE "status" = ? OR "status" = ?', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE `status` = ? OR `status` = ?', $sql);
         $this->assertSame(['active', 'pending'], $bindings);
     }
 
@@ -59,7 +59,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->orderBy('created', SortDirection::Desc)->orderBy('title');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" ORDER BY "created" DESC, "title" ASC', $sql);
+        $this->assertSame('SELECT * FROM `posts` ORDER BY `created` DESC, `title` ASC', $sql);
     }
 
     public function test_numeric_order_by(): void
@@ -67,7 +67,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->orderBy('_order', numeric: true)->orderBy('uuid');
         [$sql] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" ORDER BY ("_order" + 0) ASC, "uuid" ASC', $sql);
+        $this->assertSame('SELECT * FROM `posts` ORDER BY (`_order` + 0) ASC, `uuid` ASC', $sql);
     }
 
     public function test_limit_offset(): void
@@ -75,7 +75,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->limit(10)->offset(20);
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" LIMIT 10 OFFSET 20', $sql);
+        $this->assertSame('SELECT * FROM `posts` LIMIT 10 OFFSET 20', $sql);
     }
 
     public function test_search(): void
@@ -83,9 +83,9 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->search('hello', ['title', 'body']);
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertStringContainsString('ulike(?, "title")', $sql);
-        $this->assertStringContainsString('"title"', $sql);
-        $this->assertStringContainsString('"body"', $sql);
+        $this->assertStringContainsString('ulike(?, `title`)', $sql);
+        $this->assertStringContainsString('`title`', $sql);
+        $this->assertStringContainsString('`body`', $sql);
         $this->assertContains('%hello%', $bindings);
     }
 
@@ -94,7 +94,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('title', 'LIKE', '%test%');
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE ulike(?, "title")', $sql, 'SQLite matches by the text-matching rule');
+        $this->assertSame('SELECT * FROM `posts` WHERE ulike(?, `title`)', $sql, 'SQLite matches by the text-matching rule');
         $this->assertSame(['%test%'], $bindings);
     }
 
@@ -103,7 +103,7 @@ final class QueryCompilerTest extends TestCase
         $q = (new Query())->where('status', 'active');
         [$sql, $bindings] = $this->compiler->compileCount('posts', $q);
 
-        $this->assertSame('SELECT COUNT(*) as total FROM "posts" WHERE "status" = ?', $sql);
+        $this->assertSame('SELECT COUNT(*) as total FROM `posts` WHERE `status` = ?', $sql);
         $this->assertSame(['active'], $bindings);
     }
 
@@ -118,7 +118,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE "status" = ? ORDER BY "title" ASC LIMIT 5 OFFSET 10',
+            'SELECT * FROM `posts` WHERE `status` = ? ORDER BY `title` ASC LIMIT 5 OFFSET 10',
             $sql
         );
     }
@@ -144,7 +144,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE ("status" = ?) AND (ulike(?, "title", \'!\') OR "id" IN (SELECT value FROM json_each(?)) OR "kind" = ?)',
+            'SELECT * FROM `posts` WHERE (`status` = ?) AND (ulike(?, `title`, \'!\') OR `id` IN (SELECT value FROM json_each(?)) OR `kind` = ?)',
             $sql,
         );
         $this->assertSame(['live', '%50!%!_!!%', '["a","b"]', 'x'], $bindings);
@@ -158,7 +158,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compileCount('posts', $q);
 
         $this->assertSame(
-            'SELECT COUNT(*) as total FROM "posts" WHERE (0 = 1) AND (ulike(?, "title", \'!\'))',
+            'SELECT COUNT(*) as total FROM `posts` WHERE (0 = 1) AND (ulike(?, `title`, \'!\'))',
             $sql,
         );
         $this->assertSame(['%a%'], $bindings);
@@ -171,7 +171,7 @@ final class QueryCompilerTest extends TestCase
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
         $this->assertSame(
-            'SELECT * FROM "posts" WHERE (("tags" IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid("tags") THEN "tags" ELSE \'[]\' END) AS held WHERE held.value IN (SELECT value FROM json_each(?)))))',
+            'SELECT * FROM `posts` WHERE ((`tags` IN (SELECT value FROM json_each(?)) OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(`tags`) THEN `tags` ELSE \'[]\' END) AS held WHERE held.value IN (SELECT value FROM json_each(?)))))',
             $sql,
         );
         $this->assertSame(['["a","b"]', '["a","b"]'], $bindings);
@@ -210,7 +210,7 @@ final class QueryCompilerTest extends TestCase
 
         [$sql] = $this->compiler->compile('posts', $q);
 
-        $this->assertStringContainsString("json_extract(\"title\", '$.\"de\"')", $sql);
+        $this->assertStringContainsString("json_extract(`title`, '$.\"de\"')", $sql);
         $this->assertStringContainsString("ulike(?, (CASE", $sql);
     }
 
@@ -220,7 +220,7 @@ final class QueryCompilerTest extends TestCase
 
         [$sql, $bindings] = $this->compiler->compile('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE (0 = 1)', $sql);
+        $this->assertSame('SELECT * FROM `posts` WHERE (0 = 1)', $sql);
         $this->assertSame([], $bindings);
     }
 
@@ -232,8 +232,8 @@ final class QueryCompilerTest extends TestCase
         [$sql] = $this->compiler->compile('posts', $q);
         [$countSql] = $this->compiler->compileCount('posts', $q);
 
-        $this->assertSame('SELECT * FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $sql);
-        $this->assertSame('SELECT COUNT(*) as total FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $countSql);
+        $this->assertSame('SELECT * FROM `posts` WHERE (`a` = ? OR `b` = ?) AND (`c` = ?)', $sql);
+        $this->assertSame('SELECT COUNT(*) as total FROM `posts` WHERE (`a` = ? OR `b` = ?) AND (`c` = ?)', $countSql);
     }
 
     /**

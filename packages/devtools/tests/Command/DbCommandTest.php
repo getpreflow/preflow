@@ -105,7 +105,7 @@ final class DbCommandTest extends TestCase
 
         [$code, , $err] = $this->db('db:dump', [$file]);
         $this->assertSame(0, $code, $err);
-        $this->assertStringContainsString('INSERT INTO "pages"', (string) file_get_contents($file));
+        $this->assertStringContainsString('INSERT INTO `pages`', (string) file_get_contents($file));
 
         [$code, , $err] = $this->db('db:dump', [$file]);
         $this->assertSame(1, $code);

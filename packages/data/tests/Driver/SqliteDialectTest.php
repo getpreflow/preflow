@@ -20,8 +20,8 @@ final class SqliteDialectTest extends TestCase
 
     public function test_quotes_identifier_with_double_quotes(): void
     {
-        $this->assertSame('"users"', $this->dialect->quoteIdentifier('users'));
-        $this->assertSame('"title"" OR 1=1 --"', $this->dialect->quoteIdentifier('title" OR 1=1 --'));
+        $this->assertSame('`users`', $this->dialect->quoteIdentifier('users'));
+        $this->assertSame('`title`` OR 1=1 --`', $this->dialect->quoteIdentifier('title` OR 1=1 --'));
     }
 
     public function test_numeric_value_keeps_zero_and_drops_empty(): void
@@ -87,7 +87,7 @@ final class SqliteDialectTest extends TestCase
     public function test_update_targets_one_row_by_id(): void
     {
         $this->assertSame(
-            'UPDATE "posts" SET "title" = ?, "body" = ? WHERE "uuid" = ?',
+            'UPDATE `posts` SET `title` = ?, `body` = ? WHERE `uuid` = ?',
             $this->dialect->updateSql('posts', ['title', 'body'], 'uuid'),
         );
     }
@@ -95,7 +95,7 @@ final class SqliteDialectTest extends TestCase
     public function test_upsert_conflicts_on_the_id_only(): void
     {
         $this->assertSame(
-            'INSERT INTO "posts" ("uuid", "title") VALUES (?, ?) ON CONFLICT("uuid") DO UPDATE SET "title" = excluded."title"',
+            'INSERT INTO `posts` (`uuid`, `title`) VALUES (?, ?) ON CONFLICT(`uuid`) DO UPDATE SET `title` = excluded.`title`',
             $this->dialect->upsertSql('posts', ['uuid', 'title'], 'uuid'),
         );
         $this->assertStringEndsWith('DO NOTHING', $this->dialect->upsertSql('posts', ['uuid'], 'uuid'));
@@ -120,7 +120,7 @@ final class SqliteDialectTest extends TestCase
     public function test_insert_or_update_conflicts_on_the_id(): void
     {
         $this->assertSame(
-            'INSERT INTO "c" ("id", "n") VALUES (?, ?) ON CONFLICT("id") DO UPDATE SET "n" = "n" + 1',
+            'INSERT INTO `c` (`id`, `n`) VALUES (?, ?) ON CONFLICT(`id`) DO UPDATE SET `n` = "n" + 1',
             $this->dialect->insertOrUpdateSql('c', ['id', 'n'], 'id', ['n' => '"n" + 1']),
         );
     }

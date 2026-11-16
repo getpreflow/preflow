@@ -715,10 +715,10 @@ final class CodesTest extends TestCase
         $driver = $this->app()->container()->get(DataManager::class)->driver('codes');
         $this->assertInstanceOf(ThirdPartyDriver::class, $driver);
         $this->assertContains('wholeNumber', $driver->dialect()->asked);
-        $counting = array_filter($driver->executed, static fn (string $sql): bool => str_contains($sql, '"uses"'));
+        $counting = array_filter($driver->executed, static fn (string $sql): bool => str_contains($sql, '`uses`'));
         $this->assertNotEmpty($counting);
         $dialect = $driver->dialect();
-        $own = [$dialect->wholeNumber('"uses"'), $dialect->wholeNumber('"max_uses"')];
+        $own = [$dialect->wholeNumber('`uses`'), $dialect->wholeNumber('`max_uses`')];
         foreach ($counting as $sql) {
             // What the dialect wrote is its own business; the rest is the package's SQL.
             $this->assertStringNotContainsString("''", str_replace($own, 'N', $sql), 'no comparison of a number column with the empty string');

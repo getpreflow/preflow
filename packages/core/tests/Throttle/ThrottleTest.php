@@ -272,8 +272,8 @@ final class ThrottleTest extends DataTestCase
         $sets = $driver->dialect()->sets;
         $this->assertCount(1, $sets);
         foreach ($sets[0] as $column => $expression) {
-            $this->assertMatchesRegularExpression('/"preflow_throttle"\."[a-z_]+"/', $expression, $column);
-            $this->assertStringNotContainsString('"', (string) preg_replace('/"preflow_throttle"\."[a-z_]+"/', '', $expression), "{$column}: a bare column in {$expression}");
+            $this->assertMatchesRegularExpression('/`preflow_throttle`\.`[a-z_]+`/', $expression, $column);
+            $this->assertStringNotContainsString('`', (string) preg_replace('/`preflow_throttle`\.`[a-z_]+`/', '', $expression), "{$column}: a bare column in {$expression}");
         }
     }
 
