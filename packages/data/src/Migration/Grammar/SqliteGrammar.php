@@ -114,6 +114,17 @@ final class SqliteGrammar implements SchemaGrammar, ConvertsCollations
         $this->rebuild($pdo, $table, array_map(static fn (string $type): array => [$type, null], $types), 'the collations of "' . $table . '"');
     }
 
+    /** None: a column added without COLLATE compares exactly (BINARY), as a free-text one should. */
+    public function tableCollation(\PDO $pdo, string $table): ?string
+    {
+        return null;
+    }
+
+    public function convertTableCollation(\PDO $pdo, string $table): void
+    {
+        throw new \LogicException('SQLite tables have no default collation.');
+    }
+
     public function isTextCollation(?string $collation): bool
     {
         return $collation !== null && strtolower($collation) === SqliteDialect::TEXT_COLLATION;

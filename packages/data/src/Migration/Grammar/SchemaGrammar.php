@@ -72,7 +72,7 @@ interface SchemaGrammar
     /** Throws LogicException when this server cannot drop a column (before any SQL runs); a no-op when it can. */
     public function assertCanDropColumn(\PDO $pdo): void;
 
-    /** Adds a nullable column; a null type means the grammar's free-text type. */
+    /** Adds a nullable column; a null type means the grammar's free-text type, compared exactly (it names its collation where a table default could differ). */
     public function addColumn(string $table, string $column, ?string $type = null): string;
 
     /** ALTER TABLE … RENAME COLUMN … TO … (SQLite 3.25+, MySQL 8, PostgreSQL); the data stays. Since 0.65. */

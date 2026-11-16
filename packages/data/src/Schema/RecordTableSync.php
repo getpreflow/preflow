@@ -13,6 +13,7 @@ use Preflow\Data\Migration\Grammar\Grammars;
 use Preflow\Data\Migration\Grammar\SchemaGrammar;
 use Preflow\Data\Migration\Grammar\ConvertsCollations;
 use Preflow\Data\Migration\Grammar\TextCollations;
+use Preflow\Data\Migration\MigrationColumns;
 use Preflow\Data\Migration\Schema;
 use Preflow\Data\Search\LooseFields;
 use Preflow\Data\TypeDefinition;
@@ -176,10 +177,12 @@ final class RecordTableSync
 
     /**
      * The collation pass (since 0.78; the data README's "Existing tables (`preflow migrate`)"):
-     * each column of the definition gets the collation of its kind, text fields the rule's
-     * (TextCollations), every other column the exact one, all of the table's in one statement
+     * each column of the table gets the collation plan() gives it, text fields the rule's
+     * (TextCollations), every other column (also one the entry does not list, such as a system
+     * column an earlier version made) the exact one, all of the table's in one statement
      * (CollationChange: unique indexes counted first, a column whose values would collide left as
-     * it is and listed). A column already under any name of the rule (or exact) stays. Drifted and
+     * it is and listed), then the table default the rule's (CollationChange). A column already
+     * under any name of the rule (or exact) stays. Drifted and
      * missing columns are left out, and so is one the grammar cannot change without changing its
      * values (another character set: a warning). Nothing with a grammar that does not convert
      * (no ConvertsCollations; TextRuleConversion says so once per storage). Public for `migrate
@@ -210,21 +213,31 @@ final class RecordTableSync
         if (!$grammar instanceof ConvertsCollations || $grammar->textCollation() === null || !$grammar->hasTable($pdo, $def->table)) {
             return [];
         }
-        $specs = $this->specs($def, $extraColumns, $typed, $grammar);
         $current = $grammar->columnCollations($pdo, $def->table);
         $types = $grammar->columnTypes($pdo, $def->table);
         $lines = [];
         $changes = [];
-        foreach ($specs as $name => $spec) {
+        foreach ($this->plan($pdo, $grammar, $def, $extraColumns, $typed, $current) as $name => $column) {
             $collation = $current[$name] ?? null;
             if ($collation === null) {
                 continue; // not there yet (the sync adds it), or no text (numbers)
             }
-            $type = $spec->text ? $grammar->textColumnType($spec->kind, $spec->length) : $grammar->recordColumnType($spec->kind, $spec->length);
-            if (($types[$name] ?? null) !== self::reported($type)) {
-                continue; // drift: the sync warns, the table is converted on purpose
+            [$text, $spec] = $column;
+            if ($text === null) {
+                if ($grammar->isTextCollation($collation) || $grammar->isExactCollation($collation)) {
+                    continue; // no stated intent, and it follows the rule or compares exactly already
+                }
+                $text = false;
             }
-            if ($spec->text ? $grammar->isTextCollation($collation) : $grammar->isExactCollation($collation)) {
+            if ($spec !== null) {
+                $type = $text ? $grammar->textColumnType($spec->kind, $spec->length) : $grammar->recordColumnType($spec->kind, $spec->length);
+                if (($types[$name] ?? null) !== self::reported($type)) {
+                    continue; // drift: the sync warns, the table is converted on purpose
+                }
+            } else {
+                $type = $grammar->withCollation($types[$name], $text); // its own type, only the collation changes
+            }
+            if ($text ? $grammar->isTextCollation($collation) : $grammar->isExactCollation($collation)) {
                 continue;
             }
             $refusal = $grammar->collationRefusal($types[$name], $collation);
@@ -232,10 +245,49 @@ final class RecordTableSync
                 $lines[] = "warning: {$def->table}.{$name} is {$refusal}; it keeps its collation (convert the table, see the data README)";
                 continue;
             }
-            $changes[$name] = ['type' => $type, 'text' => $spec->text];
+            $changes[$name] = ['type' => $type, 'text' => $text];
         }
 
         return [...$lines, ...CollationChange::apply($pdo, $grammar, $def->table, $def->idField, $changes, $dryRun)];
+    }
+
+    /**
+     * The full column plan of an existing record table, the one place that decides how each of its
+     * columns compares (since 0.78): column => [true for the text rule / false for exact, its
+     * ColumnSpec or null]. The definition's columns (specs(): text fields the rule, every other
+     * column exact) and then every other column the table holds: the id (exact), a column a
+     * migration added with a recorded intent (MigrationColumns: that intent), and any other one
+     * (a system column such as _locales, _order, _share_token whichever package wrote it, listed
+     * by its entry or not, or the column of a field since removed: null, it keeps the rule or the
+     * exact collation it has, and an older collation becomes exact). So a package lists only the
+     * columns it makes, never the ones a conversion has to find.
+     *
+     * @param list<string> $extraColumns
+     * @param array<string, ?string> $current the table's columns (ConvertsCollations::columnCollations())
+     * @return array<string, array{0: ?bool, 1: ?ColumnSpec}>
+     */
+    private function plan(\PDO $pdo, SchemaGrammar $grammar, TypeDefinition $def, array $extraColumns, bool $typed, array $current): array
+    {
+        $plan = [];
+        foreach ($this->specs($def, $extraColumns, $typed, $grammar) as $name => $spec) {
+            $plan[$name] = [$spec->text, $spec];
+        }
+        $others = array_diff(array_keys($current), array_keys($plan));
+        if ($others === []) {
+            return $plan;
+        }
+        $bookkeeping = new MigrationColumns($pdo);
+        $recorded = $bookkeeping->exists() ? $bookkeeping->tables()[$def->table] ?? [] : [];
+        foreach ($others as $name) {
+            $name = (string) $name;
+            $plan[$name] = [match (true) {
+                $name === $def->idField => false,
+                isset($recorded[$name]) => $recorded[$name] === MigrationColumns::TEXT,
+                default => null,
+            }, null];
+        }
+
+        return $plan;
     }
 
     /**

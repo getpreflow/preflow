@@ -921,7 +921,9 @@ final class Application
      * without known intent once, and rebuilds SQLite's text indexes when the rule's version
      * changed; `data.text-duplicates` lists the case-variant duplicates of unique text fields no
      * index holds (JSON). The record tables' own columns are converted by their sync steps
-     * (RecordTableSync). `migrate --pretend` runs the check `data.text-rule` (every refusal, nothing
+     * (RecordTableSync). Every conversion also makes the rule's collation the table default.
+     * `data.collations`, after every other step, lists as warnings each text column of a table
+     * Preflow manages that still compares otherwise (`db:check` lists them too). `migrate --pretend` runs the check `data.text-rule` (every refusal, nothing
      * changed). config/data.php 'text_rule' => ['skip' => [table, …]] leaves tables alone.
      *
      * @param mixed $config config/data.php 'text_rule'
@@ -948,8 +950,12 @@ final class Application
             $migrations->storage(),
             $skip,
         );
+        // `preflow db:check` lists what still compares otherwise (TextRuleConversion::unconverted()).
+        $container->bind(\Preflow\Data\Schema\TextRuleConversion::class, $conversion);
         $migrations->afterMigrate('data.text-rule', static fn (): array => $conversion()->convert());
         $migrations->afterMigrate('data.text-duplicates', static fn (): array => $conversion()->duplicates(), sqlOnly: false);
+        // After every package's table step: any text column of a Preflow table still on an older collation, as a warning.
+        $migrations->afterMigrate('data.collations', static fn (): array => $conversion()->unconverted(), last: true);
         $migrations->check('data.text-rule', static fn (): array => $conversion()->check(), sqlOnly: false);
         if (class_exists(\Preflow\Data\Schema\ModelExactness::class)) {
             $migrations->afterMigrate('data.model-exactness', static fn (): array => (new \Preflow\Data\Schema\ModelExactness(

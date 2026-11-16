@@ -22,6 +22,11 @@ use Preflow\Data\Migration\Grammar\ConvertsCollations;
  * changes in one statement (ConvertsCollations::convertCollations()). When the database refuses the
  * statement (a save added a duplicate since the count), nothing changes.
  *
+ * The table's default collation (where the database has one: ConvertsCollations::tableCollation())
+ * becomes the rule's too, as a table made since 0.78 has it, so a column added later without
+ * naming a collation compares by the rule rather than by an older one. That changes metadata
+ * only, and waits for the next run when the columns' statement was refused.
+ *
  * @since 0.78
  */
 final class CollationChange
@@ -30,12 +35,31 @@ final class CollationChange
      * @param string|null $idField the column naming a row in the lists (null: ConvertsCollations::rowKey())
      * @param array<string, array{type: string, text: bool}> $changes column => its new full type, and whether that is the rule's collation
      * @param bool $dryRun only count and list ("refused:" lines); change nothing (`migrate --pretend`)
-     * @return list<string> the refusals and the change made, one line each
+     * @return list<string> the refusals and the changes made, one line each
      */
     public static function apply(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar, string $table, ?string $idField, array $changes, bool $dryRun = false): array
     {
+        [$lines, $refusedByServer] = self::columns($pdo, $grammar, $table, $idField, $changes, $dryRun);
+        if ($dryRun || $refusedByServer || $grammar->textCollation() === null) {
+            return $lines;
+        }
+        $default = $grammar->tableCollation($pdo, $table);
+        if ($default !== null && !$grammar->isTextCollation($default)) {
+            $grammar->convertTableCollation($pdo, $table);
+            $lines[] = "converted the default collation of {$table} to {$grammar->textCollation()}";
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @param array<string, array{type: string, text: bool}> $changes
+     * @return array{0: list<string>, 1: bool} the lines, and whether the database refused the statement
+     */
+    private static function columns(\PDO $pdo, SchemaGrammar&ConvertsCollations $grammar, string $table, ?string $idField, array $changes, bool $dryRun): array
+    {
         if ($changes === []) {
-            return [];
+            return [[], false];
         }
         $current = $grammar->columnCollations($pdo, $table);
         $indexColumns = $grammar->indexColumns($pdo, $table);
@@ -74,7 +98,7 @@ final class CollationChange
         }
         $plan = array_map(static fn (array $change): string => $change['type'], array_diff_key($changes, array_flip($refused)));
         if ($dryRun || $plan === []) {
-            return $lines;
+            return [$lines, false];
         }
         try {
             $grammar->convertCollations($pdo, $table, $plan);
@@ -82,15 +106,15 @@ final class CollationChange
             // A save wrote a duplicate since the count (MySQL refuses the ALTER, 1062): nothing changed.
             $lines[] = "refused: {$table}: the server refused the conversion ({$e->getMessage()}); run migrate again";
 
-            return $lines;
+            return [$lines, true];
         } catch (\LogicException $e) {
             // The table cannot be rebuilt as it is (an SQLite constraint the rebuild cannot keep): nothing changed.
             $lines[] = "refused: {$table}: " . rtrim($e->getMessage(), '.') . '; convert the table (see the data README)';
 
-            return $lines;
+            return [$lines, true];
         }
         $lines[] = "converted collations of {$table}: " . implode(', ', array_keys($plan));
 
-        return $lines;
+        return [$lines, false];
     }
 }

@@ -1161,7 +1161,12 @@ nothing to do. A column gets the collation of its **intent**: text (the rule's) 
 from:
 
 - **Record tables** (the types' tables, their `__published` snapshots and `__revisions` history,
-  as `RecordTables` lists them): from the type. Their sync step (`folio.tables`,
+  as `RecordTables` lists them): from the type, text fields the rule and its other columns exact.
+  A column the entry does not list is converted too (`RecordTableSync`'s column plan): the id
+  becomes exact, one a migration added gets its recorded intent, and any other (a system column
+  such as `_share_token` an earlier version made, a removed field's) keeps the rule or the exact
+  collation it has, while an older one becomes exact.
+  Their sync step (`folio.tables`,
   `publishing.tables`, `codes.table`, …, `RecordTableSync::collations()`) converts them, on any
   storage: MySQL one `ALTER TABLE … MODIFY …, MODIFY …` (it copies the table and blocks writes
   while it runs; a FULLTEXT index refuses columns of mixed collations, so they change together),
@@ -1183,7 +1188,17 @@ from:
 Declared and recorded tables are converted by the step `data.text-rule`, on the storage the
 migrations run on only (a table on another storage only when its declaration names that storage).
 
-A line says what changed: `converted collations of people: title, body`.
+A line says what changed: `converted collations of people: title, body`. Converting a table also
+makes the rule's collation its default where the database has one (MySQL: `ALTER TABLE …
+DEFAULT CHARACTER SET utf8mb4 COLLATE …`, metadata only, no row rewritten), as a table made since
+0.78 has it: `converted the default collation of people to utf8mb4_uca1400_nopad_as_ci`. A column
+added without a type (`Schema::addColumn()`) is free text and compares exactly on every storage.
+
+The last step of `migrate`, `data.collations` (`TextRuleConversion::unconverted()`), lists as a
+warning every text column of a table Preflow manages (record, declared and recorded tables) whose
+collation is still neither the rule's nor the exact one, and every such table default, with the
+fix; `migrate` still succeeds. `preflow db:check` lists them too. Tables Preflow does not know are
+not listed there (see below).
 
 - **Duplicates under the rule.** Before a column under a unique index changes collation, whatever
   its old one, its values are counted under the new one (`TextDuplicates::sql()`, the unique

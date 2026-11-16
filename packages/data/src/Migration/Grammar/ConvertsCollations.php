@@ -37,6 +37,20 @@ interface ConvertsCollations extends TextCollations
     public function convertCollations(\PDO $pdo, string $table, array $types): void;
 
     /**
+     * The collation a column added to the table without naming one takes (MySQL: the table
+     * default), or null where the database has no such default (SQLite: a column without COLLATE
+     * compares exactly, as a free-text one should).
+     */
+    public function tableCollation(\PDO $pdo, string $table): ?string;
+
+    /**
+     * Makes the rule's collation (textCollation()) the table's default, as a table made since 0.78
+     * has it, without changing any column or row (MySQL: ALTER TABLE … DEFAULT CHARACTER SET
+     * utf8mb4 COLLATE …, a change of metadata only). Called only where tableCollation() is not null.
+     */
+    public function convertTableCollation(\PDO $pdo, string $table): void;
+
+    /**
      * Whether a column of this collation (a columnCollations() value) compares by the rule
      * already: textCollation(), or another name of the rule the database has (MySQL: any of
      * MysqlDialect::MATCH_COLLATIONS). `preflow migrate` leaves such a text column as it is.

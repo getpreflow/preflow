@@ -80,6 +80,21 @@ final class DbCommandTest extends TestCase
         $this->assertStringContainsString('[default] Compacted.', $err);
     }
 
+    /** A framework table whose text column compares otherwise (an older NOCASE) is listed, as a warning only. */
+    public function test_check_lists_text_columns_that_compare_otherwise_as_warnings(): void
+    {
+        $driver = new SqliteDriver(new \PDO('sqlite:' . $this->dir . '/app.sqlite'));
+        $driver->execute('CREATE TABLE "preflow_throttle" ("id" TEXT PRIMARY KEY, "purpose" TEXT COLLATE NOCASE)');
+        $driver->execute('CREATE TABLE "other_app" ("id" TEXT PRIMARY KEY, "name" TEXT COLLATE NOCASE)');
+
+        [$code, , $err] = $this->db('db:check');
+
+        $this->assertSame(0, $code, $err);
+        $this->assertStringContainsString('[default] warning: preflow_throttle.purpose compares as NOCASE, neither by the text rule nor exactly', $err);
+        $this->assertStringNotContainsString('other_app', $err, 'a table Preflow does not know is not listed');
+        $this->assertStringContainsString('[default] No problems found.', $err);
+    }
+
     public function test_dump_to_standard_output_restores_into_an_empty_storage(): void
     {
         [$code, $dump, $err] = $this->db('db:dump');

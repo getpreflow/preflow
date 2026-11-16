@@ -61,7 +61,7 @@ final class MysqlGrammarTest extends TestCase
 
         $this->assertSame('CREATE INDEX `idx_t_name` ON `t` (`name`)', $g->createIndex('t', 'name'));
         $this->assertSame('DROP TABLE IF EXISTS `t`', $g->dropTable('t'));
-        $this->assertSame('ALTER TABLE `t` ADD COLUMN `c` LONGTEXT', $g->addColumn('t', 'c'));
+        $this->assertSame('ALTER TABLE `t` ADD COLUMN `c` LONGTEXT COLLATE utf8mb4_bin', $g->addColumn('t', 'c'), 'free text compares exactly, whatever the table default');
         $this->assertSame('ALTER TABLE `t` ADD COLUMN `c` BIGINT', $g->addColumn('t', 'c', 'BIGINT'));
     }
 

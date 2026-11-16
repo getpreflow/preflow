@@ -122,6 +122,72 @@ final class TextRuleConversion
         return $lines;
     }
 
+    /**
+     * What still compares otherwise once the conversion ran (the step `data.collations`, the last
+     * of `preflow migrate`): every text column of a table Preflow manages (the record tables, the
+     * declared tables and, on the storage the migrations run on, the tables with recorded
+     * intent) whose collation is neither the rule's nor the exact one, and every such table whose
+     * default is not the rule's, one warning each with its fix. Warnings only (migrate succeeds):
+     * a column left by a refusal is listed by that refusal too. Tables Preflow does not know and
+     * those in text_rule.skip are not listed (convert() lists the unknown ones once, with the way
+     * to adopt them). Reads only.
+     *
+     * @param string|null $storage only this storage's tables (`db:check --storage=…`); null: every SQL storage
+     * @return list<string>
+     */
+    public function unconverted(?string $storage = null): array
+    {
+        $lines = [];
+        foreach ($this->sqlStorages() as $driver) {
+            if ($storage !== null && $this->dm->driver($storage) !== $driver) {
+                continue;
+            }
+            $pdo = $driver->pdo();
+            $grammar = Grammars::for($pdo);
+            if (!$grammar instanceof ConvertsCollations || $grammar->textCollation() === null) {
+                continue;
+            }
+            $tables = array_values(array_diff(array_intersect($this->managed($driver), $grammar->tables($pdo)), $this->skip));
+            sort($tables, SORT_STRING);
+            foreach ($tables as $table) {
+                foreach ($grammar->columnCollations($pdo, $table) as $column => $collation) {
+                    if ($collation !== null && !$grammar->isTextCollation($collation) && !$grammar->isExactCollation($collation)) {
+                        $lines[] = "warning: {$table}.{$column} compares as {$collation}, neither by the text rule nor exactly; "
+                            . 'convert it with a migration (Schema::convertColumn(), see the data README)';
+                    }
+                }
+                $default = $grammar->tableCollation($pdo, $table);
+                if ($default !== null && !$grammar->isTextCollation($default)) {
+                    $lines[] = "warning: {$table} has the default collation {$default} (a column added without naming one takes it); run migrate again to convert it";
+                }
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The tables Preflow manages on this storage: its record tables, the tables declared for it
+     * and, on the storage the migrations run on, the tables with recorded intent.
+     *
+     * @return list<string>
+     */
+    private function managed(PdoConnection $driver): array
+    {
+        $migrated = $this->migrated !== null && $this->dm->driver($this->migrated) === $driver;
+        $tables = array_map(static fn (array $entry): string => $entry['def']->table, $this->entries($driver));
+        foreach ($this->declared?->all() ?? [] as $declared) {
+            if ($declared['storage'] === null ? $migrated : $this->dm->driver($declared['storage']) === $driver) {
+                $tables[] = $declared['table'];
+            }
+        }
+        if ($migrated) {
+            array_push($tables, ...array_map('strval', array_keys((new MigrationColumns($driver->pdo()))->tables())));
+        }
+
+        return array_values(array_unique($tables));
+    }
+
     /** @return list<string> */
     private function run(bool $dryRun): array
     {

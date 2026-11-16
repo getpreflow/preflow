@@ -296,7 +296,7 @@ final class Schema
             : $this->grammar->textType($column['kind'], $column['length']);
     }
 
-    /** Adds a nullable column to an existing table; a null type is free text (TEXT / LONGTEXT). */
+    /** Adds a nullable column to an existing table; a null type is free text compared exactly (TEXT / LONGTEXT COLLATE utf8mb4_bin). */
     public function addColumn(string $table, string $column, ?string $type = null): void
     {
         $this->pdo->exec($this->grammar->addColumn($table, $column, $type));

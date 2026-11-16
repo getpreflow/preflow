@@ -234,6 +234,25 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
         $pdo->exec('ALTER TABLE ' . $this->quote($table) . ' ' . implode(', ', $clauses));
     }
 
+    public function tableCollation(\PDO $pdo, string $table): ?string
+    {
+        $stmt = $pdo->prepare('SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
+        $stmt->execute([$table]);
+        $collation = $stmt->fetchColumn();
+        $stmt->closeCursor();
+
+        return $collation === false || $collation === null ? null : (string) $collation;
+    }
+
+    /** Without CONVERT TO: the columns keep their collations and the rows are not rewritten. */
+    public function convertTableCollation(\PDO $pdo, string $table): void
+    {
+        if ($this->textCollation === null) {
+            throw new \LogicException("Cannot give \"{$table}\" the text rule's collation as its default: the server has none of MysqlDialect::MATCH_COLLATIONS.");
+        }
+        $pdo->exec('ALTER TABLE ' . $this->quote($table) . ' DEFAULT CHARACTER SET utf8mb4 COLLATE ' . $this->textCollation);
+    }
+
     /** Any of MysqlDialect::MATCH_COLLATIONS: the server may have more than one name of the rule. */
     public function isTextCollation(?string $collation): bool
     {
@@ -429,9 +448,10 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
     {
     }
 
+    /** Free text without a type compares exactly (as on SQLite) and names it: the table default may be another collation. */
     public function addColumn(string $table, string $column, ?string $type = null): string
     {
-        return 'ALTER TABLE ' . $this->quote($table) . ' ADD COLUMN ' . $this->quote($column) . ' ' . ($type ?? 'LONGTEXT');
+        return 'ALTER TABLE ' . $this->quote($table) . ' ADD COLUMN ' . $this->quote($column) . ' ' . ($type ?? 'LONGTEXT' . self::EXACT);
     }
 
     public function renameColumn(string $table, string $from, string $to): string

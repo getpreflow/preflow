@@ -8,13 +8,17 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\Dumps;
 use Preflow\Data\Maintenance;
+use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Data\Schema\TextRuleConversion;
 
 /**
  * The database commands that run through the storage's own, prepared connection, where the
  * database's tools cannot (a SQLite file's text columns use the preflow_text collation, which the
  * sqlite3 tool lacks: its VACUUM, PRAGMA integrity_check and restoring a .dump fail there):
  *
- *   db:check    Maintenance::check(): every problem found, exit 1 when there is one
+ *   db:check    Maintenance::check(): every problem found, exit 1 when there is one; then, as
+ *               warnings, the text columns of Preflow's tables that compare neither by the text
+ *               rule nor exactly (TextRuleConversion::unconverted())
  *   db:vacuum   Maintenance::compact()
  *   db:dump     Dumps::dump() to a file, or to standard output without one
  *   db:restore  Dumps::restore() from a file ("-": standard input) into an empty database
@@ -91,7 +95,7 @@ final class DbCommand implements CommandInterface
             [$storage, $driver] = $this->storage($dm, $capability, $storage);
 
             return match ($this->name) {
-                'db:check' => $this->check($storage, $driver),
+                'db:check' => $this->check($storage, $driver, $this->collations($app, $dm)),
                 'db:vacuum' => $this->vacuum($storage, $driver),
                 'db:dump' => $this->dump($storage, $driver, $file),
                 'db:restore' => $this->restore($storage, $driver, $file),
@@ -103,11 +107,35 @@ final class DbCommand implements CommandInterface
         }
     }
 
-    private function check(string $storage, Maintenance $driver): int
+    /**
+     * The text rule's conversion as `preflow migrate` sees it: on the storage migrate runs the
+     * migrations on without --storage (MigrateCommand::defaultStorage()), where the framework's
+     * declared tables and the tables with recorded intent are. Null without the data layer's
+     * conversion (an application that does not bind it).
+     */
+    private function collations(Application $app, DataManager $dm): ?TextRuleConversion
+    {
+        $container = $app->container();
+        if (!$container->bound(TextRuleConversion::class)) {
+            return null;
+        }
+        $registry = $container->get(MigrationRegistry::class);
+        if ($registry->storage() === null) {
+            $registry->ranOn(MigrateCommand::defaultStorage($dm));
+        }
+
+        return $container->get(TextRuleConversion::class);
+    }
+
+    /** Text columns that compare neither by the rule nor exactly are listed as warnings: they do not fail the check. */
+    private function check(string $storage, Maintenance $driver, ?TextRuleConversion $collations): int
     {
         $problems = $driver->check();
         foreach ($problems as $problem) {
             $this->say("[{$storage}] {$problem}");
+        }
+        foreach ($collations?->unconverted($storage) ?? [] as $warning) {
+            $this->say("[{$storage}] {$warning}");
         }
         $this->say($problems === [] ? "[{$storage}] No problems found." : "[{$storage}] " . count($problems) . ' problem(s) found.');
 
