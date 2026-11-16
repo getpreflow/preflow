@@ -199,13 +199,15 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `RankedSearch::canScore()`, `score()` (0.78) | Scores the hits loose search found, so ⌘K puts a type's best matches first (`DataManager::canScore()`, `scoreIn()`; only for a type with `"fullText": true`). It orders, it never finds: the hits are the same on every driver. `MysqlDriver` scores with `MATCH … AGAINST` over the FULLTEXT index `migrate` adds. | hits stay in storage order; `scoreIn()` throws `UnsupportedStorage`. | Read only. |
 | `RunsSql::rawQuery()`, `execute()`, `dialect()` (0.78) | Raw SQL through `DataManager::raw()` and `execute()`; the auth tokens, remember-me and codes use it for their conditional single-statement writes. | `raw()` and `execute()` throw `UnsupportedStorage` (a `LogicException`), never a different result; tokens, remember-me and codes read and write under their own lock instead. | As the SQL runs. |
 | `PdoConnection::pdo()` (0.78, extends `RunsSql`) | The PDO connection itself, for `preflow migrate`, `Migration\Schema`, the table sync and the convert tool. | `migrate` runs only the steps registered for any storage; the table sync skips the type. | — |
+| `Maintenance::check()`, `compact()` (0.78) | Checks the whole store (structure, indexes, references) and compacts it, through the driver's own prepared connection (`preflow db:check`, `db:vacuum`). For storage whose database tools can't do it once Preflow owns it (SQLite: the `preflow_text` collation). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqlcheck`). | — |
+| `Dumps::dump()`, `restore()` (0.78) | The whole store as text the same driver restores into an empty store (`preflow db:dump`, `db:restore`). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqldump`; JSON: copy the folder). | `restore()` is all or nothing. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
 `RunsSql`), `Transactions` and `UniqueIndexes` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
-`RankedSearch`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`,
+`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`,
 `ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
 `AggregatingStorage`.
 
@@ -1074,7 +1076,14 @@ Where the rule lives:
   writes indexed text columns (`Grammars::for()`, so `Schema` and `Migrator`, refuse a connection
   without it; so does a third-party driver's connection on SQLite: call it in its `configure()`).
   The `sqlite3` command-line tool does not have it: it reads such a table, but cannot filter, sort
-  or write an indexed `preflow_text` column ("no such collation sequence"). Measured on a table of
+  or write an indexed `preflow_text` column ("no such collation sequence"), nor restore a `.dump`
+  of the database (it fails at the first `CREATE TABLE`, so nothing is restored), `VACUUM` it or
+  run `PRAGMA integrity_check`. Use the commands that run through `SqliteDriver`'s connection:
+  `preflow db:check` (integrity and foreign keys), `db:vacuum`, `db:dump [file]` and
+  `db:restore <file>` (into an empty database; `Maintenance`, `Dumps`). A copy of the file taken
+  while the site writes nothing stays a backup. The order of a `preflow_text` index comes from the
+  ICU of the PHP that built it: run `migrate` with the PHP binary the site serves with (it rebuilds
+  the indexes when `TextMatch::version()` changes, as that PHP sees it). Measured on a table of
   10,000 rows (PHP 8.5, ICU 79): each comparison is a PHP call (about 2 µs), so
   work that compares many values costs more than with BINARY: `ORDER BY` over all rows 107 ms
   instead of 7, `GROUP BY` 143 ms instead of 7, `=` without an index (a scan) 19 ms instead of

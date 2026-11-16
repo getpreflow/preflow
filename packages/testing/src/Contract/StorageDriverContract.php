@@ -12,6 +12,8 @@ use Preflow\Data\AtomicCounters;
 use Preflow\Data\ConditionalUpdates;
 use Preflow\Data\CounterReset;
 use Preflow\Data\DescribesColumns;
+use Preflow\Data\Dumps;
+use Preflow\Data\Maintenance;
 use Preflow\Data\Query;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\RankedSearch;
@@ -106,6 +108,8 @@ use Preflow\Data\UniqueViolation;
  * - declareUnique() (default: skips): a unique index over one field, for a store that guards
  *   unique fields itself (UniqueIndexes); a store without one leaves uniqueness to DataManager's
  *   check (Validation\Unique), which UniqueScenarios in preflow/data pins on every built-in store.
+ * - emptyDriver() (default null): a driver on a second, empty store of the same kind, for the
+ *   tests that restore a dump into it (Dumps); null skips them.
  * - textRuleMissing() (default null): a reason the store cannot compare by the text rule (a MySQL
  *   server without an accent-sensitive, case-insensitive collation); the exact-comparison tests
  *   then skip with it.
@@ -116,6 +120,10 @@ use Preflow\Data\UniqueViolation;
  * - AtomicCounters (@since 0.78): increment() inserts a missing row, adds to a stored one,
  *   restarts when the CounterReset field is below its bound (exactly at the boundary too), and
  *   concurrent increments lose no count (with reopenDriver(), pcntl and posix).
+ * - Maintenance (@since 0.78): check() finds a sound store sound, compact() keeps every record and
+ *   the text rule, and refuses inside a transaction.
+ * - Dumps (@since 0.78): a dump() restored into emptyDriver() holds the same records, compared by
+ *   the same rule; restore() refuses a store that holds tables.
  * - RankedSearch (@since 0.78): score() ranks the better match higher, gives every given id a
  *   score (0.0 for an unmatched or unknown one); canScore() is true only for the declared fields.
  */
@@ -142,6 +150,18 @@ abstract class StorageDriverContract extends TestCase
      * (the default) skips the tests that need one. Called in the child, after the fork.
      */
     protected function reopenDriver(): ?StorageDriver
+    {
+        return null;
+    }
+
+    /**
+     * A driver on a second, empty store of the same kind as createDriver()'s (a new database
+     * file, an empty database), for the tests that restore a dump into it; null (the default)
+     * skips them.
+     *
+     * @since 0.78
+     */
+    protected function emptyDriver(): ?StorageDriver
     {
         return null;
     }
@@ -486,6 +506,94 @@ abstract class StorageDriverContract extends TestCase
 
         $this->assertTrue($this->driver->hasTable('records'));
         $this->assertFalse($this->driver->hasTable('never_made'));
+    }
+
+    // --- maintenance and dumps (Maintenance, Dumps, @since 0.78) -------------------------------
+
+    public function test_check_finds_a_sound_store_sound_and_compact_keeps_every_record(): void
+    {
+        if (!$this->driver instanceof Maintenance) {
+            $this->markTestSkipped('The driver does not implement Maintenance.');
+        }
+        $this->seedPeople();
+        foreach (['p10', 'p11'] as $id) {
+            $this->driver->delete('people', $id);
+        }
+
+        $this->assertSame([], $this->driver->check());
+        $this->driver->compact();
+
+        $this->assertSame(['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9'], $this->people(new Query()));
+        $this->assertSame(['p1', 'p2'], $this->people((new Query())->where('name', 'müller')), 'the text rule holds after compacting');
+        $this->assertSame([], $this->driver->check());
+    }
+
+    public function test_compact_refuses_inside_a_transaction(): void
+    {
+        if (!$this->driver instanceof Maintenance || !$this->driver instanceof Transactions) {
+            $this->markTestSkipped('The driver does not implement Maintenance and Transactions.');
+        }
+        $this->createRecords();
+        $driver = $this->driver;
+
+        $this->expectException(\LogicException::class);
+        $driver->transaction(static fn () => $driver->compact());
+    }
+
+    public function test_a_dump_restores_into_an_empty_store_under_the_same_rule(): void
+    {
+        if (!$this->driver instanceof Dumps) {
+            $this->markTestSkipped('The driver does not implement Dumps.');
+        }
+        $target = $this->emptyDriver();
+        if ($target === null) {
+            $this->markTestSkipped('emptyDriver() gives no second, empty store.');
+        }
+        $this->assertInstanceOf(Dumps::class, $target);
+        $this->seedPeople();
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => "It's \"quoted\";\n-- not a comment", 'amount' => 1.25, 'active' => false, 'meta' => ['a' => ['b' => 1], 'list' => ['x', 'ü']]]);
+        $this->driver->save('records', 'r2', ['uuid' => 'r2', 'label' => null, 'amount' => null, 'active' => true, 'meta' => null]);
+
+        $stream = fopen('php://memory', 'w+');
+        $this->driver->dump($stream);
+        rewind($stream);
+        $target->restore($stream);
+        fclose($stream);
+
+        foreach (['people', 'records'] as $type) {
+            $all = (new Query())->orderBy('uuid');
+            $this->assertEquals(
+                self::keysSorted($this->driver->findMany($type, $all)->items()),
+                self::keysSorted($target->findMany($type, $all)->items()),
+                $type,
+            );
+        }
+        $query = (new Query())->where('name', 'müller');
+        $query->compareAsText(['name']);
+        $this->assertSame(['p1', 'p2'], $this->sortedIds($target->findMany('people', $query)), 'the restored store compares by the rule');
+    }
+
+    public function test_restore_refuses_a_store_that_holds_tables(): void
+    {
+        if (!$this->driver instanceof Dumps) {
+            $this->markTestSkipped('The driver does not implement Dumps.');
+        }
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'One']);
+        $stream = fopen('php://memory', 'w+');
+        $this->driver->dump($stream);
+        rewind($stream);
+
+        try {
+            $this->driver->restore($stream);
+            $this->fail('restore() into a store with tables must refuse');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('records', $e->getMessage(), 'names what is there');
+        } finally {
+            fclose($stream);
+        }
+        $this->assertSame('One', ($this->driver->findOne('records', 'r1') ?? [])['label'] ?? null, 'nothing changed');
     }
 
     // --- transactions (Transactions, @since 0.78) ----------------------------------------------

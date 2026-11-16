@@ -19,6 +19,9 @@ final class Console
         $basePath ??= getcwd() ?: '.';
         $this->register(new Command\ServeCommand());
         $this->register(new Command\MigrateCommand());
+        foreach (Command\DbCommand::all() as $command) {
+            $this->register($command);
+        }
         $this->register(new Command\ActivityPruneCommand());
         $this->register(new Command\MakeComponentCommand());
         $this->register(new Command\MakeControllerCommand());

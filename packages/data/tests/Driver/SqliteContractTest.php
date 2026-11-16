@@ -34,6 +34,11 @@ final class SqliteContractTest extends StorageDriverContract
         return new SqliteDriver(new \PDO('sqlite:' . $this->file));
     }
 
+    protected function emptyDriver(): ?StorageDriver
+    {
+        return new SqliteDriver(new \PDO('sqlite:' . $this->file . '.restored'));
+    }
+
     protected function createType(string $type, array $fields): void
     {
         self::createContractTable($this->sqlite, $type, $fields, 'INTEGER PRIMARY KEY AUTOINCREMENT');
