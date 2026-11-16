@@ -40,7 +40,8 @@ final class SafeReturnPath
         }
         // Browsers decode %2e and friends before resolving dot segments: judge every decoded form,
         // the final one included, and refuse a value still changing after MAX_DECODES decodes.
-        $start = '#^(?:' . implode('|', array_unique($bases)) . ')/@#';
+        // A lone '.' segment is dropped by the browser, so '/./@x' lands on '/@x' too.
+        $start = '#^(?:' . implode('|', array_unique($bases)) . ')(?:/\.)*/@#';
         $seen = $next;
         for ($decodes = 0; ; $decodes++) {
             if (self::refused($seen, $decodes === 0, $start)) {

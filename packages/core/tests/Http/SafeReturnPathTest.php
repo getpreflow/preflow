@@ -18,7 +18,7 @@ final class SafeReturnPathTest extends TestCase
             'javascript:alert(1)', 'employer', '?a=b', '/employerx', '/employer.evil', '/employer/../folio', '/employer//x',
             '/employer\\x', '/employer/%2e%2e/folio', '/employer/.%2E/x', '/employer/%252e%252e/folio', '/employer/%25252e%25252e/x',
             '/employer/%2f/x', '/employer/%5cx', "/employer\nSet-Cookie: x=1", "/employer?a\x00", '/employer?a%00', '/employer/ä',
-            '/employer#top', '/other', '/employer?q=a%20b', '/employer/%40evil', '/employer%2F%40evil',
+            '/employer#top', '/other', '/employer?q=a%20b', '/employer/%40evil', '/employer%2F%40evil', '/employer/./@x', '/employer/%2e/%40x',
         ] as $next) {
             yield 'refuse ' . json_encode($next) => [$next];
         }
@@ -34,6 +34,7 @@ final class SafeReturnPathTest extends TestCase
             '/de/../x', '/de/%252e%252e/x', "/de/\xC3\xBCber", "/de/%C0%AF", '/de/%FF', '/de/%E2%80', '/de\\evil', '/ /evil',
             "/\x0B/evil", '/%0B/evil', '/%20/evil', '/%40evil.com', '/%2540evil.com', '/%252540evil.com',
             '/a/%252525252e%252525252e', '/a/%25252525252e%25252525252e/x', '/%25252525252F%25252525252Fevil',
+            '/./@evil.com', '/%2e/%40evil.com', '/././@evil.com', '/%2E/./%2540evil.com',
         ] as $next) {
             yield 'refuse ' . json_encode($next) => [$next];
         }
