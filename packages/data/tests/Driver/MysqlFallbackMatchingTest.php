@@ -53,7 +53,9 @@ final class MysqlFallbackMatchingTest extends TestCase
         $this->assertSame(['e'], $this->ids('été'));
         $this->assertSame([], $this->ids('ete'));
         $this->assertSame([], $this->ids('strasse'), 'ß is one letter');
-        $this->assertSame(['s'], $this->ids('STRAẞE'));
+        // LOWER('ẞ') is 'ß' only on some servers; where it is not, this is the documented ẞ difference (see the README).
+        $lowersCapitalSharpS = (int) $this->pdo->query("SELECT LOWER('ẞ') = 'ß' COLLATE utf8mb4_bin")->fetchColumn() === 1;
+        $this->assertSame($lowersCapitalSharpS ? ['s'] : [], $this->ids('STRAẞE'));
         $this->assertSame(['l', 'x'], $this->ids('kelvin'), 'the Kelvin sign is a k');
         $this->assertSame(['l', 'x'], $this->ids("\u{212A}ELVIN"));
         $this->assertSame([], $this->ids('super'), 'the long s is a letter of its own');
@@ -62,7 +64,8 @@ final class MysqlFallbackMatchingTest extends TestCase
 
     /**
      * The same probe as TextMatchServerProbeTest, through the fallback's SQL: every disagreement
-     * falls into one of the kinds the data README lists, and every listed kind occurs.
+     * falls into one of the kinds the data README lists, and every kind found is listed. A listed kind
+     * need not occur: some are specific to a server version.
      */
     public function test_the_fallbacks_known_differences_are_documented(): void
     {
@@ -78,6 +81,7 @@ final class MysqlFallbackMatchingTest extends TestCase
             $kind = match (true) {
                 !$server => 'ａ', // only case is lowered: width, compatibility and other equal forms stay apart
                 $server && in_array('İ', [$a, $b], true) => 'İstanbul',
+                $server && in_array('ẞ', [$a, $b], true) && in_array('ß', [$a, $b], true) => 'ẞ',
                 $server && mb_ord($a, 'UTF-8') > 0xFFFF && mb_ord($b, 'UTF-8') > 0xFFFF => '𐐀',
                 default => null,
             };
@@ -92,9 +96,8 @@ final class MysqlFallbackMatchingTest extends TestCase
         $readme = (string) file_get_contents(__DIR__ . '/../../README.md');
         $this->assertSame(1, preg_match('/^#### Without an accent-sensitive collation\n(.*?)(?=^#)/ms', $readme, $m), 'the README has the fallback section');
         $bullets = array_values(array_filter(explode("\n", $m[1]), static fn (string $line): bool => str_starts_with($line, '- ')));
-        $this->assertCount(count($kinds), $bullets, "The README lists exactly the kinds of difference found on {$version}: " . implode(', ', array_keys($kinds)));
         foreach (array_keys($kinds) as $marker) {
-            $this->assertCount(1, array_filter($bullets, static fn (string $b): bool => str_contains($b, (string) $marker)), "The README lists the difference {$marker} (found on {$version}).");
+            $this->assertCount(1, array_filter($bullets, static fn (string $b): bool => str_contains($b, (string) $marker)), "The README lists the difference {$marker} (found on {$version}), once.");
         }
     }
 

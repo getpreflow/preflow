@@ -1046,11 +1046,13 @@ takes the fallback below; a string names the collation.
 On a server without either collation (MariaDB 10.6 to 10.9) both sides are lowered
 with `LOWER()` and compared by code point (`utf8mb4_bin`). It follows the rule except for these
 kinds of difference (`MysqlFallbackMatchingTest` runs the fold table's probe through this SQL and
-checks that this list names exactly the kinds it finds):
+checks that every kind it finds is listed; a kind that is version-specific says where it occurs, and
+a server need not show every kind):
 
 - Only case is lowered: width and compatibility forms ("ａ" and "a", "①" and "1"), the other characters the collation takes as one (some marks and symbols), and the characters it ignores match only themselves.
 - "istanbul" finds "İstanbul": `LOWER()` turns İ into a plain i.
-- Case pairs outside the Basic Multilingual Plane ("𐐀" and "𐐨") match: `LOWER()` folds them, the collation does not.
+- Case pairs outside the Basic Multilingual Plane ("𐐀" and "𐐨") match: `LOWER()` folds them, the collation does not. Where `LOWER()` does not fold them (MariaDB 11.4), they do not match, as under the rule.
+- The capital sharp s "ẞ" and "ß" match only where `LOWER()` turns ẞ into ß; where it leaves ẞ as it is (MariaDB 11.4) "STRAẞE" does not find "Straße", unlike the rule.
 
 ## Exact comparisons
 
