@@ -9,8 +9,9 @@ use Preflow\Core\Http\Session\SessionInterface;
 /**
  * Posted fields kept for the next request as a flash, so a form sent back (after an expired
  * session) shows them again. Validation's old(), the form builder and members read it.
- * Never kept: the CSRF token, any field whose name contains "password", uploaded files, and
- * nothing at all when the kept fields come to more than 64 KB (anyone can send a big body).
+ * Never kept: the CSRF token, any field whose name contains "password", the fields a site names
+ * (config/csrf.php forget_fields, $forget), uploaded files, and nothing at all when the kept fields
+ * come to more than 64 KB (anyone can send a big body).
  */
 final class OldInput
 {
@@ -21,10 +22,16 @@ final class OldInput
     /** @param \Closure(): ?SessionInterface $session the current request's session, if any */
     public function __construct(private readonly \Closure $session) {}
 
-    /** @param array<array-key, mixed> $parsedBody */
-    public static function keep(SessionInterface $session, array $parsedBody): void
+    /**
+     * @param array<array-key, mixed> $parsedBody
+     * @param list<string> $forget top-level field names not to keep (since 0.78)
+     */
+    public static function keep(SessionInterface $session, array $parsedBody, array $forget = []): void
     {
         unset($parsedBody['_csrf_token']);
+        foreach ($forget as $field) {
+            unset($parsedBody[$field]);
+        }
         $kept = self::filter($parsedBody);
         if ($kept !== [] && strlen(serialize($kept)) <= self::MAX_BYTES) {
             $session->flash(self::FLASH_KEY, $kept);

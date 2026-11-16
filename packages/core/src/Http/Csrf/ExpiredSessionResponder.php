@@ -15,7 +15,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * ExpiredSessionHandler of its own. The request is never applied: nothing runs in the
  * visitor's name (a remember-me cookie could sign them in again), so the data waits for
  * one more click from a page with a fresh token. A form is sent back with a warning and
- * its fields kept as old input; htmx reloads the page; JSON clients get a 409.
+ * its fields kept as old input (except on the paths and fields config/csrf.php forget_input and
+ * forget_fields name, for forms that promise to store nothing); htmx reloads the page; JSON
+ * clients get a 409.
  */
 final class ExpiredSessionResponder
 {
@@ -36,12 +38,14 @@ final class ExpiredSessionResponder
      *                                 csrf.session_expired wins over the built-in one
      * @param ?string   $appUrl        app.url: its origin counts as this site's (behind a TLS proxy
      *                                 the request itself looks like http://...)
+     * @param ?CsrfConfig $config      where and which fields are never kept (forget_input, forget_fields; since 0.78)
      */
     public function __construct(
         private readonly string $defaultLocale = 'en',
         private readonly ?\Closure $translator = null,
         ?string $appUrl = null,
         private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
+        private readonly ?CsrfConfig $config = null,
     ) {
         $this->appOrigin = $appUrl !== null ? OriginCheck::normalize($appUrl) : null;
     }
@@ -59,8 +63,8 @@ final class ExpiredSessionResponder
         $session = $request->getAttribute(SessionInterface::class);
         if ($session instanceof SessionInterface) {
             $body = $request->getParsedBody();
-            if (is_array($body)) {
-                OldInput::keep($session, $body);
+            if (is_array($body) && !($this->config?->forgetsInputOf($request->getUri()->getPath()) ?? false)) {
+                OldInput::keep($session, $body, $this->config->forgetFields ?? []);
             }
             $session->flash('warning', $this->message($request));
         }

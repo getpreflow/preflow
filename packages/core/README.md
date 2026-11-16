@@ -511,12 +511,15 @@ return [
     'exempt' => [],          // path prefixes without a check, added to '/--component/'
     'trusted_origins' => [], // other origins allowed to post, e.g. 'https://stage.example.com'
     'sign_in_paths' => [],   // sign-in forms of the site; packages register their own
+    'forget_input' => [],    // forms whose fields are never kept after an expired session (0.78)
+    'forget_fields' => [],   // field names never kept, on any form (0.78)
 ];
 ```
 
-Paths in `exempt` and `sign_in_paths` are compared without the locale prefix (`/de/login`
-is `/login`); sign-in paths match exactly (a trailing slash is ignored), exempt paths as
-prefixes of whole segments (`/hooks` covers `/hooks` and `/hooks/stripe`, not `/hookshot`).
+Paths in `exempt`, `sign_in_paths` and `forget_input` are compared without the locale prefix
+(`/de/login` is `/login`); sign-in paths match exactly (a trailing slash is ignored), exempt and
+forget-input paths as prefixes of whole segments (`/hooks` covers `/hooks` and `/hooks/stripe`,
+not `/hookshot`).
 
 **Failures** are a 403, in one of two kinds:
 
@@ -547,7 +550,10 @@ With a passing origin:
    in en/de/fr/it, or the site's `csrf.session_expired` translation) and the posted fields kept
    as old input, so the form shows them again (`Preflow\Core\Http\OldInput`, read by
    validation's `old()`, the form builder and members; never kept: `_csrf_token`, fields whose
-   name contains `password`, uploaded files, and nothing when the kept fields exceed 64 KB). htmx gets a 204 with `HX-Refresh: true`, a JSON
+   name contains `password`, the fields `csrf.forget_fields` names, uploaded files, and nothing
+   when the kept fields exceed 64 KB). A form that promises to store nothing (a contact form
+   whose privacy note says so) lists its path in `csrf.forget_input`: it comes back with the
+   warning and empty fields, so the visitor's text never sits in the session. htmx gets a 204 with `HX-Refresh: true`, a JSON
    client (`Accept: application/json`) a 409 `{"error":"session_expired"}`.
 
 Nothing runs in the visitor's name: a remember-me cookie could sign them in again, so the data

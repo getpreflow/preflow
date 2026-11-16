@@ -2733,6 +2733,7 @@ final class Application
                 : null,
             $appUrl,
             $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+            $config,
         );
 
         // A site's ExpiredSessionHandler is bound by its providers, which run after this:
