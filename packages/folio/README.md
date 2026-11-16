@@ -1099,6 +1099,9 @@ renders it and refuses what the type refuses, for everyone (a role cannot lift i
   every field is shown as content in the main column (a text keeps its line breaks), not under
   System fields. Per-field `"readonly"` is not needed on such a type.
 - **`"creatable": false`** (an inbox): no "New" anywhere; editing (its flags, bulk set) and delete stay.
+- **Machine translation** counts as editing: a read-only type is not offered under AI → Translate
+  (nor to `translate:plan`), and a job queued before the type became read-only stops with a message
+  instead of translating.
 - A direct request to a refused route (the create form, a create, save, delete, bulk delete,
   duplicate, publish, translate, …) answers 403 with Folio's page, saying why; with or without
   sign-in (`TypeActionsMiddleware`, on every admin route; the verb is the one the route's

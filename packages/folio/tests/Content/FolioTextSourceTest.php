@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Tests\Content;
 
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Content\FolioTextSource;
@@ -17,6 +18,7 @@ use Preflow\Publishing\Publisher;
 use Preflow\Publishing\PublishState;
 use Preflow\Folio\Content\RecordValidator;
 use Preflow\Folio\Tests\Publishing\RacingDriver;
+use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextFormat;
@@ -29,6 +31,7 @@ use Preflow\I18n\Machine\WriteOutcomeStatus;
 final class FolioTextSourceTest extends TestCase
 {
     use PublishingScaffold;
+    use AiScaffold;
 
     private const A = 'aaaaaaaaaaaaaaaa';
 
@@ -75,6 +78,7 @@ final class FolioTextSourceTest extends TestCase
 
     protected function tearDown(): void
     {
+        putenv(self::aiKeyEnv());
         $this->removeScaffold();
     }
 
@@ -428,6 +432,63 @@ final class FolioTextSourceTest extends TestCase
 
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en'], 'fallback' => 'en'];\n");
         $this->assertFalse($this->app()->container()->get(TextSources::class)->has('article'), 'a single-locale app has nothing to translate');
+    }
+
+    public function test_a_read_only_type_is_not_offered_and_its_source_writes_nothing(): void
+    {
+        $this->writeModel('faq', [
+            'label' => 'FAQ',
+            'readonly' => true,
+            'publishing' => false,
+            'fields' => ['question' => ['type' => 'string', 'translatable' => true]],
+        ]);
+        $this->working('faq', 'f1', ['question' => ['en' => 'Why?']]);
+        $c = $this->app()->container();
+
+        $sources = $c->get(TextSources::class);
+        $this->assertFalse($sources->has('faq'), 'editors may not change its records: not offered');
+        $this->assertNotContains('faq', $sources->collections());
+        $this->assertTrue($sources->has('memo'), 'an editable type still is');
+
+        $source = new FolioTextSource(
+            'faq',
+            $c->get(TypeCatalog::class),
+            $c->get(DataManager::class),
+            $c->get(TranslationStatus::class),
+            $c->get(FieldTypeRegistry::class),
+            $c->get(Publisher::class),
+            new RecordLabeler(),
+            $c->get(TranslationSettings::class),
+            $c->get(\Preflow\Publishing\RecordWriter::class),
+        );
+        $this->assertSame([], $source->units('f1', 'de', Scope::All), 'no text is sent to a model');
+        $outcome = $source->write('f1', 'de', ['question' => 'Warum?']);
+        $this->assertSame(WriteOutcomeStatus::Skipped, $outcome->status);
+        $this->assertStringContainsString('read-only', (string) $outcome->message);
+        $this->assertSame(['en' => 'Why?'], $this->stored('faq', 'f1')->get('question'));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_job_queued_before_its_type_became_read_only_stops_without_translating(): void
+    {
+        $this->aiConfig(true);
+        $this->working('memo', 'm1', ['text' => ['en' => 'Hello']]);
+        $runner = $this->aiApp()->container()->get(\Preflow\I18n\Machine\JobRunner::class);
+        $job = $runner->plan('memo', ['de'], Scope::Needed, ['m1']);
+        $runner->start($job->id, true, 'Anna');
+
+        $this->writeModel('memo', [
+            'label' => 'Memos',
+            'readonly' => true,
+            'publishing' => false,
+            'fields' => ['text' => ['type' => 'string', 'translatable' => true]],
+        ]);
+        $job = $this->aiApp()->container()->get(\Preflow\I18n\Machine\JobRunner::class)->step($job->id);
+
+        $this->assertSame('stopped', $job->state, 'marked, not crashed');
+        $this->assertStringContainsString('"memo" has no text source any more', (string) $job->message);
+        $this->assertSame([], $this->fake?->requests() ?? [], 'nothing was sent to the model');
+        $this->assertSame(['en' => 'Hello'], $this->stored('memo', 'm1')->get('text'));
     }
 
     public function test_units_and_write_on_sql(): void

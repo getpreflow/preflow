@@ -1979,7 +1979,8 @@ final class FolioServiceProvider extends ServiceProvider
      * One machine-translation text source per type of a multilingual app (types share the app's
      * locales), so the core job runner can translate Folio records. Lazy: no type definition is
      * read and no source is built until a run asks for it; a type with nothing translatable (roles,
-     * staff accounts) is not offered.
+     * staff accounts) or whose records editors may not change (read-only) is not offered
+     * (FolioTextSource::offers()).
      */
     private function registerTextSources(Container $container): void
     {
@@ -2000,8 +2001,9 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
                 $container->get(\Preflow\Publishing\RecordWriter::class),
                 $container->get(FrontendResolver::class),
-            ), static fn (): bool => $container->get(\Preflow\Folio\Content\TranslationStatus::class)->translatable(
+            ), static fn (): bool => \Preflow\Folio\Content\FolioTextSource::offers(
                 $container->get(DataManager::class)->getTypeRegistry()?->get($key) ?? throw new \LogicException('Text sources need a TypeRegistry.'),
+                $container->get(\Preflow\Folio\Content\TranslationStatus::class),
             ));
         }
     }

@@ -7,6 +7,7 @@ namespace Preflow\Folio\Content;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
+use Preflow\Data\TypeAction;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Field\AcceptsTranslatedTexts;
 use Preflow\Folio\Field\FieldTypeRegistry;
@@ -50,6 +51,11 @@ use Preflow\Validation\ValidationException;
  * save only guards the moment between write()'s own read and its save; a save landing there makes
  * write() start over once from a fresh read, and a second one is a Conflict.
  * The memory lives in this instance, which TextSources keeps for the request a run step runs in.
+ *
+ * Machine translation is an adapter like the admin's edit form, not code: a type whose records
+ * editors may not change (TypeDefinition::allows(TypeAction::Update) is false, "readonly": true) is
+ * never offered (offers()), and a job queued before the type became read-only reads no units and
+ * writes nothing (write() answers Skipped with the reason), so no text is sent to a model for it.
  */
 final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesAs
 {
@@ -100,9 +106,23 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
         return $record === null ? $id : $this->labeler->label($record);
     }
 
+    /**
+     * Whether a type is offered for machine translation: it has something to translate
+     * (TranslationStatus::translatable()) and editors may change its records.
+     *
+     * @since 0.78
+     */
+    public static function offers(TypeDefinition $def, TranslationStatus $translations): bool
+    {
+        return $def->allows(TypeAction::Update) && $translations->translatable($def);
+    }
+
     public function units(string $id, string $to, Scope $scope): array
     {
         $def = $this->definition();
+        if (!$def->allows(TypeAction::Update)) {
+            return [];
+        }
         $record = $this->dm->findType($this->typeKey, $id);
         if ($record === null || !$this->translatesInto($def, $to)) {
             return [];
@@ -165,6 +185,9 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
     public function writeAs(string $id, string $to, array $texts, ?string $by): WriteOutcome
     {
         $def = $this->definition();
+        if (!$def->allows(TypeAction::Update)) {
+            return new WriteOutcome(WriteOutcomeStatus::Skipped, "\"{$this->typeKey}\" is read-only: its records are not translated here.");
+        }
         if (!$this->translatesInto($def, $to)) {
             return new WriteOutcome(WriteOutcomeStatus::Skipped, "\"{$to}\" is not a language to translate into.");
         }

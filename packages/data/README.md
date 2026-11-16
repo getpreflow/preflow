@@ -1290,10 +1290,15 @@ $def->assertAllows(TypeAction::Update);  // throws TypeActionRefused, a 403
 - **Reading is never restricted**, and **code is not either**: seeders, migrations and the app's own
   `DataManager` calls (`saveType()`, `deleteType()`, …) write as before. The option is about editors
   and adapters, not storage.
+- **Machine translation is an adapter**, not code: it writes for editors. A read-only type is never
+  offered for translation (Folio's text source asks `allows(TypeAction::Update)`), and a job queued
+  before the type became read-only stops without sending a text to the model.
 - `TypeDefinition::allows(TypeAction)` answers; `assertAllows()` throws
   `Preflow\Data\TypeActionRefused` (a `ForbiddenHttpException`: `$type`, `$action`), so an API
   controller that lets it through answers a JSON 403 under its API prefixes (and a page the error
-  page). `TypeDefinition::$readonly`, `$creatable` (false for a read-only type).
+  page). No built-in adapter throws it yet: Folio asks `allows()` and answers its own 403 page;
+  `assertAllows()` is there for an API or an adapter of your own. `TypeDefinition::$readonly`,
+  `$creatable` (false for a read-only type).
 - **Checked at boot:** a value other than `true` or `false`, or `"readonly": true` together with
   `"creatable": true`, stops the boot naming the type and the option (with a boot manifest, when
   `preflow optimize` builds it). A model class sets them on `#[Entity]` or in its admin file; both
