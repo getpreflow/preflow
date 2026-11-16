@@ -102,10 +102,19 @@ final class RecordTitleTest extends TestCase
             'named …_email' => ['contact_email' => ['type' => 'string']],
             'an email rule' => ['mail' => ['type' => 'string', 'validate' => ['required', 'email']]],
             'format email' => ['mail' => ['type' => 'string', 'format' => 'email']],
+            'named email_address' => ['email_address' => ['type' => 'string']],
+            'named emailAddress' => ['emailAddress' => ['type' => 'string']],
+            'named mail' => ['mail' => ['type' => 'string']],
+            'named e_mail' => ['e_mail' => ['type' => 'string']],
+            'named in capitals' => ['E_MAIL' => ['type' => 'string']],
+            'named Contact_Email' => ['Contact_Email' => ['type' => 'string']],
+            'type email' => ['address' => ['type' => 'email']],
             'marked personal' => ['phone' => ['type' => 'string', 'personal' => true]],
         ] as $case => $first) {
             $this->assertSame('Anna', $record($this->type($first + ['name' => ['type' => 'string']])), $case);
         }
+        // Names that merely contain the letters are not e-mail fields.
+        $this->assertSame('Anna', RecordTitle::of(DynamicRecord::fromArray($this->type(['mailing_list' => ['type' => 'string'], 'name' => ['type' => 'string']]), ['uuid' => 'm1', 'mailing_list' => 'Anna', 'name' => 'Bob'])));
         $this->assertSame('m1', $record($this->type(['email' => ['type' => 'string']])), 'nothing else: the id, never the address');
         $this->assertSame('anna@example.org', $record($this->type(['email' => ['type' => 'string'], 'name' => ['type' => 'string']], 'email')), 'a titleField that names it is taken');
     }
