@@ -112,6 +112,17 @@ final class DebugToolbarTest extends TestCase
         $this->assertStringContainsString('#preflow-debug-toolbar.pdt-collapsed .pdt-tab', $html);
     }
 
+    /** The site's own button styles never reach the toolbar's buttons, and its markup has no inline handler or style (a strict CSP blocks both). */
+    public function test_buttons_start_from_nothing_and_markup_has_no_inline_handlers_or_styles(): void
+    {
+        $html = (new DebugToolbar())->render(new DebugCollector());
+
+        $this->assertMatchesRegularExpression('{#preflow-debug-toolbar button \{\s*all: unset;}', $html);
+        $markup = (string) preg_replace('{<(script|style)\b[^>]*>.*?</\1>}s', '', $html);
+        $this->assertDoesNotMatchRegularExpression('{<[^>]*\s(on[a-z]+|style)\s*=}i', $markup);
+        $this->assertStringNotContainsString("tab.setAttribute('aria-expanded'", $html, 'the tab shows only while collapsed: always "false"');
+    }
+
     public function test_the_state_is_remembered_safely(): void
     {
         $html = (new DebugToolbar())->render(new DebugCollector());

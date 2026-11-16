@@ -73,11 +73,11 @@ final class DebugToolbar
             color: #666;
         }
         #preflow-debug-toolbar button {
+            all: unset;
+            display: inline-block;
+            box-sizing: border-box;
             font: inherit;
             color: inherit;
-            background: none;
-            border: 0;
-            padding: 0;
             cursor: pointer;
         }
         #preflow-debug-toolbar button:focus-visible {
@@ -439,7 +439,6 @@ final class DebugToolbar
                     toolbar.classList.remove('expanded');
                 }
                 collapse.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                tab.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
                 toggle.setAttribute('aria-expanded', toolbar.classList.contains('expanded') ? 'true' : 'false');
             }
 
