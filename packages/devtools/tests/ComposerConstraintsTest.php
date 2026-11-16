@@ -7,7 +7,8 @@ namespace Preflow\DevTools\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Since 0.78: data 0.78 (PdoConnection, which migrate asks for; the text-rule conversion and the recorded column intent migrate runs).
+ * Since 0.78: data 0.78 (PdoConnection, which migrate asks for; the text-rule conversion and the recorded column intent migrate runs);
+ * core 0.78 (Throttle::prune() deleting ended rows, which throttle:prune runs).
  * Since 0.77.1: data 0.77.1 (MigrationRegistry::steps(sql:), which migrate calls on a JSON-only site).
  * Since 0.77: core 0.77 (Activity\ActivityLog::prune(), which the activity:prune command calls).
  *
@@ -21,8 +22,8 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.77 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame('^0.78 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.78 || @dev', $composer['require']['preflow/data'] ?? null);
-        $this->assertSame(['preflow/auth' => '<0.62', 'preflow/core' => '<0.77', 'preflow/data' => '<0.78'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.62', 'preflow/core' => '<0.78', 'preflow/data' => '<0.78'], $composer['conflict'] ?? null);
     }
 }

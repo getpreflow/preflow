@@ -5,13 +5,13 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.77 || @dev",
+        "preflow/core": "^0.78 || @dev",
         "preflow/routing": "^0.1 || @dev",
         "preflow/data": "^0.78 || @dev"
     },
     "conflict": {
         "preflow/auth": "<0.62",
-        "preflow/core": "<0.77",
+        "preflow/core": "<0.78",
         "preflow/data": "<0.78"
     },
     "suggest": {
