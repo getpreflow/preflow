@@ -28,9 +28,11 @@ final class AiLimitsTest extends DataTestCase
 
     private function migrate(\PDO $pdo): void
     {
-        /** @var Migration $migration */
-        $migration = require dirname(__DIR__, 3) . '/core/migrations/2026_10_22_000000_preflow_throttle.php';
-        $migration->up(new Schema($pdo));
+        foreach (glob(dirname(__DIR__, 3) . '/core/migrations/*preflow_throttle*.php') ?: [] as $file) {
+            /** @var Migration $migration */
+            $migration = require $file;
+            $migration->up(new Schema($pdo));
+        }
     }
 
     private function onMysql(): void
@@ -59,9 +61,7 @@ final class AiLimitsTest extends DataTestCase
     /** The throttle rows stored, read straight from the storage (any purpose, any person). */
     private function rows(): int
     {
-        $type = (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle());
-
-        return count($this->dataManager()->queryIn($type)->get());
+        return count($this->dataManager()->queryIn($this->throttle()->definition())->get());
     }
 
     #[DataProvider('storages')]

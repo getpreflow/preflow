@@ -21,8 +21,14 @@ use Psr\Http\Message\ServerRequestInterface;
  * DataManager::incrementIn(): on a storage with AtomicCounters (every built-in
  * driver: one upsert on SQL, the type's lock on JSON) concurrent requests never
  * lose a hit; on another storage the count is a read and a write, under the
- * type's lock when the storage has ExclusiveWrites. Rows of earlier days are
- * orphaned by the rotation; hit() prunes them (see prune()).
+ * type's lock when the storage has ExclusiveWrites.
+ *
+ * Retention (since 0.78): a row stores when its window ends (expires_at) and is deleted once it
+ * has: by prune(), which the first hit that starts a window runs (once per instance), by
+ * tooMany() and retryAfter() when they find it ended, and by `preflow throttle:prune` from cron
+ * for a site that promises a retention however quiet it is. So a row lives for its window plus
+ * at most the time until the next request that counts, or the next cron run. Rows of earlier
+ * days are orphaned by the client hash's rotation and go the same way.
  *
  * client() refuses an empty or the well-known default key: a hash salted with a
  * public key could be brute-forced back to the IP. forPerson() (since 0.78) does the
@@ -32,7 +38,11 @@ final class Throttle
 {
     public const string DEFAULT_KEY = 'preflow-default-key-change-me!!';
 
-    private const TABLE = 'preflow_throttle';
+    /** The table (and type key) the rows are stored in. @since 0.78 public */
+    public const string TABLE = 'preflow_throttle';
+
+    /** Rows stored before 0.78 have no expires_at: prune() deletes them after this many seconds, as it did. */
+    private const int LEGACY_RETENTION = 172800;
 
     private readonly TypeDefinition $type;
     private readonly \Closure $clock;
@@ -58,9 +68,21 @@ final class Throttle
                 'purpose' => new TypeFieldDefinition('purpose', 'string', exact: true),
                 'hits' => new TypeFieldDefinition('hits', 'number'),
                 'window_start' => new TypeFieldDefinition('window_start', 'number'),
+                'expires_at' => new TypeFieldDefinition('expires_at', 'number'),
             ],
             idField: 'id',
         );
+    }
+
+    /**
+     * The type the rows are stored as (table preflow_throttle: id, purpose, hits, window_start,
+     * expires_at), for code that reads them, such as tests.
+     *
+     * @since 0.78
+     */
+    public function definition(): TypeDefinition
+    {
+        return $this->type;
     }
 
     /**
@@ -125,8 +147,8 @@ final class Throttle
 
     public function tooMany(string $purpose, string $client, int $max, int $windowSeconds): bool
     {
-        $record = $this->dm->findIn($this->type, $this->id($purpose, $client));
-        if ($record === null || $this->expired($record, $windowSeconds)) {
+        $record = $this->current($purpose, $client, $windowSeconds);
+        if ($record === null) {
             return false;
         }
 
@@ -135,8 +157,9 @@ final class Throttle
 
     /**
      * Counts an attempt: the first of a window starts it at now, one at window_start +
-     * $windowSeconds or later starts a new window (as tooMany() sees it expired). A hit that
-     * starts a window prunes old rows, once per instance.
+     * $windowSeconds or later starts a new window (as tooMany() sees it expired); either stores
+     * when the window ends (expires_at). A hit that starts a window prunes ended rows, once per
+     * instance.
      *
      * @return int the hits in the window, this one included (since 0.78; before, nothing)
      */
@@ -148,8 +171,8 @@ final class Throttle
             $this->id($purpose, $client),
             'hits',
             1,
-            ['purpose' => $purpose, 'window_start' => $now],
-            new CounterReset('window_start', $now - $windowSeconds + 1, ['window_start' => $now]),
+            ['purpose' => $purpose, 'window_start' => $now, 'expires_at' => $now + $windowSeconds],
+            new CounterReset('window_start', $now - $windowSeconds + 1, ['window_start' => $now, 'expires_at' => $now + $windowSeconds]),
         );
 
         if ($hits === 1 && !$this->pruned) {
@@ -168,8 +191,8 @@ final class Throttle
      */
     public function retryAfter(string $purpose, string $client, int $windowSeconds): int
     {
-        $record = $this->dm->findIn($this->type, $this->id($purpose, $client));
-        if ($record === null || $this->expired($record, $windowSeconds)) {
+        $record = $this->current($purpose, $client, $windowSeconds);
+        if ($record === null) {
             return 0;
         }
 
@@ -182,19 +205,40 @@ final class Throttle
     }
 
     /**
-     * Delete rows whose window started before now - $olderThanSeconds
-     * (default two days). Returns how many were deleted.
+     * Delete the rows whose window has ended (expires_at at or before now; a row stored before
+     * 0.78, without expires_at, once its window started two days ago). With $olderThanSeconds:
+     * the rows whose window started before now - $olderThanSeconds, ended or not. Returns how
+     * many were deleted.
      */
-    public function prune(int $olderThanSeconds = 172800): int
+    public function prune(?int $olderThanSeconds = null): int
     {
-        $cutoff = ($this->clock)() - $olderThanSeconds;
-        $count = 0;
-        foreach ($this->dm->queryIn($this->type)->where('window_start', '<', $cutoff)->get() as $record) {
-            $this->dm->deleteIn($this->type, (string) $record->getId());
-            $count++;
+        $now = ($this->clock)();
+        $records = $olderThanSeconds === null
+            ? [
+                ...$this->dm->queryIn($this->type)->where('expires_at', '<=', $now)->get(),
+                ...$this->dm->queryIn($this->type)->where('expires_at', null)->where('window_start', '<', $now - self::LEGACY_RETENTION)->get(),
+            ]
+            : [...$this->dm->queryIn($this->type)->where('window_start', '<', $now - $olderThanSeconds)->get()];
+        $ids = array_map(static fn (DynamicRecord $record): string => (string) $record->getId(), $records);
+        if ($ids !== []) {
+            $this->dm->deleteManyIn($this->type, $ids);
         }
 
-        return $count;
+        return count($ids);
+    }
+
+    /** The row of $purpose and $client while its window runs; one whose window has ended is deleted. */
+    private function current(string $purpose, string $client, int $windowSeconds): ?DynamicRecord
+    {
+        $id = $this->id($purpose, $client);
+        $record = $this->dm->findIn($this->type, $id);
+        if ($record !== null && $this->expired($record, $windowSeconds)) {
+            $this->dm->deleteIn($this->type, $id);
+
+            return null;
+        }
+
+        return $record;
     }
 
     private function id(string $purpose, string $client): string

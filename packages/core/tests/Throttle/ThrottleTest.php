@@ -33,9 +33,11 @@ final class ThrottleTest extends DataTestCase
 
     private function migrate(?\PDO $pdo = null): void
     {
-        /** @var Migration $migration */
-        $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_22_000000_preflow_throttle.php';
-        $migration->up(new Schema($pdo ?? $this->getPdo()));
+        foreach (glob(dirname(__DIR__, 2) . '/migrations/*preflow_throttle*.php') ?: [] as $file) {
+            /** @var Migration $migration */
+            $migration = require $file;
+            $migration->up(new Schema($pdo ?? $this->getPdo()));
+        }
     }
 
     /** The rest of the test on MySQL: 'default' is a migrated MySQL storage. */
@@ -172,17 +174,14 @@ final class ThrottleTest extends DataTestCase
     private function oldRow(string $id, int $start): void
     {
         $this->dataManager()->saveType(new \Preflow\Data\DynamicRecord(
-            (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle),
+            $this->throttle->definition(),
             ['id' => $id, 'purpose' => 'code', 'hits' => 1, 'window_start' => $start],
         ), validate: false);
     }
 
     private function rowExists(string $id): bool
     {
-        return $this->dataManager()->findIn(
-            (new \ReflectionProperty(Throttle::class, 'type'))->getValue($this->throttle),
-            $id,
-        ) !== null;
+        return $this->dataManager()->findIn($this->throttle->definition(), $id) !== null;
     }
 
     private Throttle $throttle;
@@ -208,6 +207,45 @@ final class ThrottleTest extends DataTestCase
         $this->oldRow('old2', $this->now - 2 * 86400 - 10);
         $t->hit('code', 'c2', 60);
         $this->assertTrue($this->rowExists('old2'));
+    }
+
+    /** Retention: a row says when its window ends and is deleted once it has (a privacy statement's "kept for one hour"). */
+    public function test_a_row_is_deleted_once_its_window_has_ended(): void
+    {
+        foreach ($this->usesMysql() ? ['mysql'] : ['sqlite', 'json'] as $storage) {
+            $start = $this->now;
+            $this->throttle = $t = $this->throttle($storage);
+            $t->hit('contact', 'c1', 3600);
+            $id = hash('sha256', 'contact|c1');
+            $this->assertSame($start + 3600, (int) $this->dataManager()->findIn($t->definition(), $id)?->get('expires_at'), $storage);
+
+            $this->now = $start + 3599;
+            $this->assertSame(0, $t->prune(), "{$storage}: still in its window");
+            $this->now = $start + 3600;
+            $this->assertSame(1, $t->prune(), "{$storage}: the window has ended");
+            $this->assertFalse($this->rowExists($id), $storage);
+
+            $t->hit('contact', 'c1', 3600);
+            $this->now += 3600;
+            $this->assertFalse($t->tooMany('contact', 'c1', 1, 3600), $storage);
+            $this->assertFalse($this->rowExists($id), "{$storage}: tooMany() deletes an ended row it finds");
+
+            $t->hit('contact', 'c2', 60);
+            $this->now += 60;
+            $this->throttle($storage)->hit('login', 'c3', 600); // another request: its first window start prunes
+            $this->assertFalse($this->rowExists(hash('sha256', 'contact|c2')), "{$storage}: a hit that starts a window prunes ended rows of every purpose");
+            $this->now = $start;
+        }
+    }
+
+    public function test_a_restarted_window_moves_its_end(): void
+    {
+        $this->throttle = $t = $this->throttle();
+        $t->hit('code', 'c1', 60);
+        $this->now += 60;
+        $t->hit('code', 'c1', 60);
+
+        $this->assertSame($this->now + 60, (int) $this->dataManager()->findIn($t->definition(), hash('sha256', 'code|c1'))?->get('expires_at'));
     }
 
     /** A third-party SQL database: the hit is one statement its Dialect writes, not MySQL's or SQLite's. */
@@ -392,6 +430,13 @@ final class ThrottleTest extends DataTestCase
     }
 
     #[Group('mysql')]
+    public function test_a_row_is_deleted_once_its_window_has_ended_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_a_row_is_deleted_once_its_window_has_ended();
+    }
+
+    #[Group('mysql')]
     public function test_works_on_mysql(): void
     {
         $this->onMysql();
@@ -491,9 +536,7 @@ final class ThrottleTest extends DataTestCase
         $this->tempFiles[] = $file;
         $dm = static fn (): DataManager => new DataManager(['default' => new SqliteDriver(new \PDO('sqlite:' . $file))]);
         $dmA = $dm();
-        /** @var Migration $migration */
-        $migration = require dirname(__DIR__, 2) . '/migrations/2026_10_22_000000_preflow_throttle.php';
-        $migration->up(new Schema($dmA->driver('default')->pdo()));
+        $this->migrate($dmA->driver('default')->pdo());
 
         $hook = null;
         $a = new Throttle($dmA, 'secret', 'default', function () use (&$hook): int {

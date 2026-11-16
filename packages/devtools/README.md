@@ -53,6 +53,16 @@ php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite
   shared deploy step can always run it. An explicit `--storage=<key>` that is unknown or not SQL
   still exits 1.
 
+### `throttle:prune` — delete attempt-limit rows whose window has ended (since 0.78)
+
+Deletes the rows of `preflow_throttle` whose window has ended (`Throttle::prune()`) and prints
+how many. The throttle does this itself on the next request that counts; run the command from
+cron when a site promises how long it keeps them:
+
+```
+*/5 * * * * cd /path/to/site/current && php preflow throttle:prune
+```
+
 ### `db:check`, `db:vacuum`, `db:dump`, `db:restore` — the database through Preflow's connection (since 0.78)
 
 A SQLite database's text columns use the collation `preflow_text`, which only Preflow's

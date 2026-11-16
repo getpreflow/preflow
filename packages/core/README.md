@@ -350,8 +350,14 @@ $throttle->clear('login', $client);                       // after a success
 - **No raw IP is stored**, only an HMAC of `REMOTE_ADDR` (forwarded headers are ignored).
   IPv6 clients count by their /64 prefix, since one subscriber usually holds a whole /64.
   Without a `REMOTE_ADDR` (CLI, tests) all requests are one `unknown` client; it never throws.
-- `prune(olderThanSeconds: 172800)` deletes old rows and returns how many; `hit()` runs it
-  opportunistically, once per request when a new window starts.
+- **Rows go when their window ends (0.78).** Each row stores when its window ends
+  (`expires_at`, set by `hit()`), and `prune()` deletes the rows whose window has ended (rows
+  from before 0.78, without `expires_at`, two days after their window started, as before). The
+  first hit that starts a window runs it (once per request), and `tooMany()`/`retryAfter()` delete
+  an ended row they find. A quiet site keeps a row until the next request that counts: when a
+  page promises a retention ("kept for one hour"), run `php preflow throttle:prune` from cron
+  (every few minutes) as well. `prune(olderThanSeconds: …)` deletes by window start instead, ended
+  or not, and returns how many. `definition()` is the rows' type (for reading them in tests).
 
 ### Activity log (0.77)
 

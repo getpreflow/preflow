@@ -130,7 +130,7 @@ final class MigrateCommandTest extends TestCase
         $this->assertContains('preflow_throttle', $this->tables());
         $this->assertContains('auth_tokens', $this->tables());
         $this->assertContains('auth_remember', $this->tables());
-        $this->assertStringContainsString('5 pending migration(s)', $out);
+        $this->assertStringContainsString('6 pending migration(s)', $out);
         // The activity log's tables, by the post-migrate step (0.77).
         $this->assertContains('preflow_activity', $this->tables());
         $this->assertContains('preflow_activity_last', $this->tables());

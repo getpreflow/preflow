@@ -23,6 +23,7 @@ final class Console
             $this->register($command);
         }
         $this->register(new Command\ActivityPruneCommand());
+        $this->register(new Command\ThrottlePruneCommand());
         $this->register(new Command\MakeComponentCommand());
         $this->register(new Command\MakeControllerCommand());
         $this->register(new Command\MakeModelCommand($basePath));
