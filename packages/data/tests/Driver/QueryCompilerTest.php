@@ -236,42 +236,61 @@ final class QueryCompilerTest extends TestCase
         $this->assertSame('SELECT COUNT(*) as total FROM "posts" WHERE ("a" = ? OR "b" = ?) AND ("c" = ?)', $countSql);
     }
 
-    /** MariaDB sorts long text by first-level weights only: WEIGHT_STRING there, a short text's column as it is (its index stays usable). */
+    /**
+     * What MysqlDriver reads of a table's columns (QueryCompiler's $columns).
+     *
+     * @param array<string, array{bounded?: bool, rule?: bool}> $columns
+     */
+    private static function mysql(array $columns): QueryCompiler
+    {
+        $facts = array_map(static fn (array $c): array => ['bounded' => $c['bounded'] ?? false, 'rule' => $c['rule'] ?? false], $columns);
+
+        return new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci'), static fn (string $table): array => $facts);
+    }
+
+    /** MariaDB sorts long text by first-level weights only: WEIGHT_STRING there, a VARCHAR column as it is (its index stays usable). */
     public function test_a_short_text_field_sorts_by_its_column_a_long_one_by_its_weights(): void
     {
-        $compiler = new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci'));
+        $compiler = self::mysql(['slug' => ['bounded' => true, 'rule' => true], 'title' => ['rule' => true]]);
         $query = (new Query())->orderBy('slug')->orderBy('title', SortDirection::Desc);
         $query->compareAsText(['slug', 'title']);
-        $query->shortText(['slug']);
 
         $this->assertSame('SELECT * FROM `page` ORDER BY `slug` ASC, WEIGHT_STRING(`title`) DESC', $compiler->compile('page', $query)[0]);
 
         $unknown = (new Query())->orderBy('slug');
         $unknown->compareAsText(['slug']);
-        $this->assertSame('SELECT * FROM `page` ORDER BY WEIGHT_STRING(`slug`) ASC', $compiler->compile('page', $unknown)[0], 'not named short: the safe way');
+        $this->assertSame(
+            'SELECT * FROM `page` ORDER BY WEIGHT_STRING(`slug`) ASC',
+            (new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci')))->compile('page', $unknown)[0],
+            'without column facts: the safe way',
+        );
     }
 
-    /** An exact field or a list in a full-text index sits in a column of the rule's collation: the query compares it exactly. */
+    /** A list in a full-text index sits in a column of the rule's collation: a query naming its text fields compares it exactly. */
     public function test_a_field_compared_exactly_names_the_exact_comparison(): void
     {
-        $query = (new Query())->where('code', 'AbC')->orderBy('code')
-            ->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['PHP']]]);
-        $query->compareExactly(['code', 'tags']);
+        $compiler = self::mysql(['code' => [], 'tags' => ['rule' => true], 'title' => ['rule' => true]]);
+        $query = (new Query())->where('code', 'AbC')->orderBy('tags')
+            ->whereAny([['field' => 'tags', 'operator' => 'HAS', 'value' => ['PHP']], ['field' => 'tags', 'operator' => 'IN', 'value' => ['x']]]);
+        $query->compareAsText(['title']);
 
-        [$sql] = (new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci')))->compile('note', $query);
-        $this->assertStringContainsString('WHERE ((CAST(`code` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) = ?)', $sql);
+        [$sql] = $compiler->compile('note', $query);
+        $this->assertStringContainsString('WHERE (`code` = ?)', $sql, 'an exact column needs nothing');
         $this->assertStringContainsString('((CAST(`tags` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) IN (?)', $sql);
         $this->assertStringContainsString('COLUMNS(v VARCHAR(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PATH', $sql, 'a list\'s members compare exactly');
-        $this->assertStringEndsWith('ORDER BY (CAST(`code` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) ASC', $sql);
+        $this->assertStringEndsWith('ORDER BY (CAST(`tags` AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin) ASC', $sql);
+
+        $byHand = (new Query())->whereAny([['field' => 'tags', 'operator' => 'IN', 'value' => ['x']]]);
+        $this->assertStringContainsString('(`tags` IN (?))', $compiler->compile('note', $byHand)[0], 'a query naming no text fields compares by the column');
     }
 
-    /** A plain model's unique or indexed string is a VARCHAR (its migration's string()): plain ORDER BY, index kept. */
+    /** A plain model's string() column is a VARCHAR: plain ORDER BY, index kept; its text() column by its weights. */
     public function test_a_plain_models_short_text_field_sorts_by_its_column(): void
     {
         $dm = new \Preflow\Data\DataManager(['sqlite' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))], 'sqlite');
         $query = $dm->query(SortedNote::class)->orderBy('slug')->orderBy('title')->aggregate()->query(); // the query as QueryBuilder prepares it
 
-        [$sql] = (new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci')))->compile('sorted_note', $query);
+        [$sql] = self::mysql(['slug' => ['bounded' => true, 'rule' => true], 'title' => ['rule' => true]])->compile('sorted_note', $query);
         $this->assertSame('SELECT * FROM `sorted_note` ORDER BY `slug` ASC, WEIGHT_STRING(`title`) ASC', $sql);
     }
 }

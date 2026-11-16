@@ -9,13 +9,33 @@ use Preflow\Data\Query;
 
 class QueryCompiler
 {
-    public function __construct(private readonly Dialect $dialect = new SqliteDialect()) {}
+    /** The table being compiled, for the column facts. */
+    private ?string $table = null;
+
+    /** @var array<string, array<string, array{bounded: bool, rule: bool}>> table => column => facts, as read once */
+    private array $facts = [];
+
+    /**
+     * @param (\Closure(string): array<string, array{bounded: bool, rule: bool}>)|null $columns what the
+     *     database says about a table's columns, read once per table (since 0.78): `bounded`, a
+     *     column of bounded length (VARCHAR) its collation sorts with every level, so ORDER BY on
+     *     a text field keeps it and its index (a long one, TEXT/LONGTEXT, goes through
+     *     TextComparison::textOrder()); `rule`, a column whose collation is the text rule's (a
+     *     field the query does not name as text, such as a list in a full-text index, is then
+     *     compared through Dialect::exactText()). MysqlDriver gives it; without it every text
+     *     field is sorted the safe way and every column compared by its own collation.
+     */
+    public function __construct(
+        private readonly Dialect $dialect = new SqliteDialect(),
+        private readonly ?\Closure $columns = null,
+    ) {}
 
     /**
      * @return array{0: string, 1: array<int, mixed>}
      */
     public function compile(string $table, Query $query): array
     {
+        $this->table = $table;
         $bindings = [];
         $sql = 'SELECT * FROM ' . $this->dialect->quoteIdentifier($table);
 
@@ -45,6 +65,7 @@ class QueryCompiler
      */
     public function compileCount(string $table, Query $query): array
     {
+        $this->table = $table;
         $bindings = [];
         $sql = 'SELECT COUNT(*) as total FROM ' . $this->dialect->quoteIdentifier($table);
 
@@ -65,6 +86,7 @@ class QueryCompiler
      */
     public function compileAggregate(AggregateQuery $aggregate): array
     {
+        $this->table = $aggregate->table();
         $query = $aggregate->query();
         $numeric = array_fill_keys($aggregate->numericFields(), true);
         $boolean = array_fill_keys($aggregate->booleanFields(), true);
@@ -180,20 +202,20 @@ class QueryCompiler
             return $column;
         }
 
-        return $query->comparesAsText($field) && !$query->comparesExactly($field) ? $this->compared($field, $query) : $this->dialect->exactText($column);
+        return $query->comparesAsText($field) ? $this->compared($field, $query) : $this->dialect->exactText($column);
     }
 
     /**
      * ORDER BY's expression for a field's value: a text field's by the rule through
-     * TextComparison::textOrder(), unless it is a plain column of a short text
-     * (Query::sortsAsShortText()), which its collation orders (its index stays usable).
+     * TextComparison::textOrder(), unless it is a plain column of bounded length (the column
+     * facts), which its collation orders (its index stays usable).
      */
     private function ordered(string $field, Query $query, string $expression): string
     {
-        if (!$this->dialect instanceof TextComparison || !$query->comparesAsText($field) || $query->comparesExactly($field)) {
+        if (!$this->dialect instanceof TextComparison || !$query->comparesAsText($field)) {
             return $expression;
         }
-        $plain = $query->localizationFor($field) === null && $query->sortsAsShortText($field);
+        $plain = $query->localizationFor($field) === null && ($this->facts($field)['bounded'] ?? false);
 
         return $plain ? $expression : $this->dialect->textOrder($expression);
     }
@@ -207,8 +229,8 @@ class QueryCompiler
     private function compared(string $field, Query $query): string
     {
         $column = $this->column($field, $query);
-        if ($query->comparesExactly($field)) {
-            return $this->dialect->exactText($column); // its column may carry the rule (a full-text index)
+        if ($this->exactOnRuleColumn($field, $query)) {
+            return $this->dialect->exactText($column); // a list in a full-text index: its column carries the rule
         }
         if ($this->dialect instanceof TextComparison && $query->comparesAsText($field) && $query->localizationFor($field) !== null) {
             return $this->dialect->textValue($column);
@@ -343,7 +365,7 @@ class QueryCompiler
     {
         // = and IN compare by the rule; CONTAINS matches the plain value, HAS a list's members exactly.
         $column = in_array($condition['operator'], ['IN', '='], true)
-            || ($condition['operator'] === 'HAS' && $query->comparesExactly($condition['field']))
+            || ($condition['operator'] === 'HAS' && $this->exactOnRuleColumn($condition['field'], $query))
             ? $this->compared($condition['field'], $query)
             : $this->column($condition['field'], $query);
         $value = $condition['value'];
@@ -429,6 +451,33 @@ class QueryCompiler
     }
 
     /** A quoted column, or its localized expression for translatable fields. */
+    /**
+     * Whether a field the query compares exactly sits in a column of the rule's collation (a list
+     * or an exact field in a full-text index, MySQL): only a query that names its text fields
+     * (Query::namesTextFields()) says the others are exact.
+     */
+    private function exactOnRuleColumn(string $field, Query $query): bool
+    {
+        return $query->namesTextFields() && !$query->comparesAsText($field) && ($this->facts($field)['rule'] ?? false);
+    }
+
+    /** @return array{bounded?: bool, rule?: bool} what the column facts say about the field's column */
+    private function facts(string $field): array
+    {
+        if ($this->columns === null || $this->table === null) {
+            return [];
+        }
+        if (!isset($this->facts[$this->table])) {
+            $facts = ($this->columns)($this->table);
+            if ($facts === []) {
+                return []; // no such table (yet): asked again next time
+            }
+            $this->facts[$this->table] = $facts;
+        }
+
+        return $this->facts[$this->table][$field] ?? [];
+    }
+
     private function column(string $field, Query $query): string
     {
         $quoted = $this->dialect->quoteIdentifier($field);

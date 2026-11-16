@@ -45,7 +45,30 @@ final class MysqlDriver extends PdoDriver implements RankedSearch
             $this->collationKnown = true;
         }
         $dialect = new MysqlDialect($this->collationKnown ? $this->matchCollation : $this->matchCollation(...));
-        parent::__construct($pdo, $dialect, new QueryCompiler($dialect), $collector);
+        parent::__construct($pdo, $dialect, new QueryCompiler($dialect, $this->columnFacts(...)), $collector);
+    }
+
+    /**
+     * What the compiler needs to know of a table's columns (QueryCompiler's $columns), read once
+     * per table from information_schema: so a query sorts a VARCHAR text field by its column (and
+     * index) and compares a list in a full-text index exactly, whether QueryBuilder made it or
+     * someone built it by hand. Empty for a table that is not there.
+     *
+     * @return array<string, array{bounded: bool, rule: bool}>
+     */
+    private function columnFacts(string $table): array
+    {
+        $stmt = $this->pdo()->prepare('SELECT COLUMN_NAME, DATA_TYPE, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
+        $stmt->execute([$table]);
+        $facts = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_NUM) as [$name, $type, $collation]) {
+            $facts[(string) $name] = [
+                'bounded' => in_array(strtolower((string) $type), ['varchar', 'char'], true),
+                'rule' => $collation !== null && in_array(strtolower((string) $collation), MysqlDialect::MATCH_COLLATIONS, true),
+            ];
+        }
+
+        return $facts;
     }
 
     /**

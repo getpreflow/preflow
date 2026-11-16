@@ -1101,18 +1101,27 @@ Where the rule lives:
   long column (TEXT, LONGTEXT: a field that is neither unique nor indexed) or on a translatable
   one sorts by `WEIGHT_STRING()` of the value: MariaDB sorts a long text by its first-level
   weights only (so "äpfel" and "Apfel" in storage order), and the weight string holds every level;
-  such an `ORDER BY` cannot use an index, which a long column has none of anyway. A unique or
-  indexed text field (`VARCHAR`, `TextColumns::short()`, which `QueryBuilder` names on the query
-  with `Query::shortText()`) sorts by its column and keeps its index; for a plain model class that
-  is a `#[Field]` with `unique` or `index` (its migration's `string()`, `TextColumns::shortOfModel()`).
+  such an `ORDER BY` cannot use an index, which a long column has none of anyway. A text field in
+  a `VARCHAR` column (a unique or indexed field of a type; a plain model's migration `string()`)
+  sorts by its column and keeps its index. `MysqlDriver` reads which columns are `VARCHAR` from
+  the table itself (`information_schema`, once per table and request), so this holds for every
+  query, also one built by hand.
 - **Full-text types on MySQL:** a FULLTEXT index takes columns of one collation, so the tags a
   `"fullText": true` type's index covers (`TextColumns::exactInFullText()`) get the rule's
-  collation too; queries still compare them exactly (`Query::compareExactly()`, which
-  `QueryBuilder` sets: `=`, `IN`, `ORDER BY`, grouping and `HAS` name `utf8mb4_bin`).
+  collation too; queries still compare them exactly: `MysqlDriver` sees the column's collation,
+  and a query that names its text fields (`Query::compareAsText()`, as `QueryBuilder` does) names
+  `utf8mb4_bin` for every other field whose column carries the rule (`=`, `IN`, `ORDER BY`,
+  grouping and `HAS`).
 - **JSON:** the query names its text fields (`Query::compareAsText()`, set by `QueryBuilder` from
-  the type, as `localize()` is) and the driver compares them with `TextMatch`; a query built by
-  hand that names none compares every field exactly. `Validation\Unique` decides with
-  `TextMatch::equals()`.
+  the type, as `localize()` is) and the driver compares them with `TextMatch`. `Validation\Unique`
+  decides with `TextMatch::equals()`.
+- **A query built by hand** (`new Query()` handed to a driver's `findMany()`) carries what its
+  author gives it, and the only text hint a query has is `compareAsText()`. Name the text fields
+  with it, and the query compares the same on every driver: those by the rule, every other field
+  exactly. A query that names none is compared as each store keeps its fields: JSON exactly, SQL by
+  each column's collation (the rule's for a type's text fields, exact for the rest, in tables
+  Preflow made). Everything else a database needs (MySQL: which columns are `VARCHAR`, which carry
+  the rule) its driver reads from the table, not from the query.
 - **Translatable fields:** a locale's value is a JSON value without the column's collation; the
   dialect compares it by the rule (`TextComparison::textValue()`: `COLLATE preflow_text`, or a cast
   into the rule's collation).

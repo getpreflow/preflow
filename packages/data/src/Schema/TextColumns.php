@@ -37,39 +37,13 @@ final class TextColumns
     }
 
     /**
-     * The text fields (of()) stored in a bounded, indexable column (ColumnKind::Short: unique or
-     * indexed strings and selects, not translatable), as RecordTableSync types them. A database may
-     * order such a column by its collation where a long text (TEXT, LONGTEXT) needs more
-     * (TextComparison::textOrder()), and keep using its index.
-     *
-     * @return list<string>
-     * @since 0.78
-     */
-    public static function short(TypeDefinition $def, FieldKinds $kinds): array
-    {
-        $indexed = $def->indexedByOthers();
-        $short = [];
-        foreach (self::of($def, $kinds) as $name) {
-            $field = $def->fields[$name];
-            if (in_array($name, $indexed, true) && !$field->index) {
-                $field = $field->withIndex();
-            }
-            if ($kinds->columnKindOf($field) === ColumnKind::Short) {
-                $short[] = $name;
-            }
-        }
-
-        return $short;
-    }
-
-    /**
      * The fields of a full-text type ("fullText": true) that compare exactly although a full-text
      * index puts them in a column of the rule's collation: the loosely searchable text fields
      * (LooseFields::text()) that are not text fields (of()), that is lists such as tags. Fields
      * marked exact are no searchable text (LooseFields leaves them out), so their columns stay
      * exact. A full-text index takes columns of one collation only (MySQL), so their columns carry
-     * the rule's; queries compare them exactly (Query::compareExactly()). Empty for a type without
-     * full-text search.
+     * the rule's; queries compare them exactly (QueryCompiler sees the column's collation). Empty
+     * for a type without full-text search.
      *
      * @return list<string>
      * @since 0.78
@@ -103,29 +77,6 @@ final class TextColumns
         }
 
         return $text;
-    }
-
-    /**
-     * The text fields of a plain model class (ofModel()) in a bounded, indexable column: those whose
-     * #[Field] is unique or indexed (not translatable, not of type "text"). A plain model's table
-     * comes from its migration, which can index only a bounded column (string(); MySQL refuses an
-     * index over text()), so these are VARCHAR there. Any other one is sorted the safe way
-     * (Query::shortText()).
-     *
-     * @return list<string>
-     * @since 0.78
-     */
-    public static function shortOfModel(ModelMetadata $meta, FieldKinds $kinds): array
-    {
-        $short = [];
-        foreach (self::ofModel($meta, $kinds) as $name) {
-            $field = $meta->fields[$name];
-            if (($field->unique !== false || $field->index) && !$field->translatable && $field->type !== 'text') {
-                $short[] = $name;
-            }
-        }
-
-        return $short;
     }
 
     /** "string" for a property typed string (or ?string), else null (not text). */

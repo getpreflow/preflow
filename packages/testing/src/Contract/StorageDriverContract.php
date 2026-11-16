@@ -1102,7 +1102,7 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame(['Zebra', 'Émile', 'eagle', 'äpfel', 'Apfel'], $sorted(SortDirection::Desc));
     }
 
-    /** A text field in an indexed, bounded column sorts by the rule too (Query::shortText(), as QueryBuilder names it). */
+    /** A text field in an indexed, bounded column sorts by the rule too (an SQL store sorts it by the column, keeping its index). */
     public function test_a_short_text_field_sorts_by_the_rule(): void
     {
         $this->requireTextRule();
@@ -1113,7 +1113,6 @@ abstract class StorageDriverContract extends TestCase
         $sorted = function (SortDirection $direction): array {
             $query = (new Query())->orderBy('slug', $direction)->orderBy('uuid');
             $query->compareAsText(['slug']);
-            $query->shortText(['slug']);
 
             return array_map('strval', array_column($this->driver->findMany('slugs', $query)->items(), 'slug'));
         };

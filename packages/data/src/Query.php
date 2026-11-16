@@ -212,14 +212,17 @@ final class Query
         return ['locale' => $this->localization['locale'], 'default' => $this->localization['default'], 'available' => $this->localization['available']];
     }
 
-    /** @var array<string, true> */
-    private array $textFields = [];
+    /** @var array<string, true>|null null until compareAsText() named the text fields */
+    private ?array $textFields = null;
 
     /**
      * Compare these fields by the text rule (ignore case, respect accents; TextMatch): =, !=,
-     * IN, NOT IN, range comparisons, ORDER BY and grouping. For storage whose columns do not carry
-     * the rule themselves (JSON); QueryBuilder names a type's text fields (TextColumns). A query
-     * that names none compares every field exactly.
+     * IN, NOT IN, range comparisons, ORDER BY and grouping; every other field exactly.
+     * QueryBuilder names a type's or a model class's text fields (TextColumns), so a query it
+     * builds compares the same on every driver. A query built by hand names them itself: one that
+     * names none is compared field by field as the store keeps it (JSON exactly; SQL by each
+     * column's collation, which for a type's table made by Preflow is the rule's for text fields
+     * and exact for the rest; see the data README, "Exact comparisons").
      *
      * @param list<string> $fields
      * @since 0.78
@@ -229,56 +232,21 @@ final class Query
         $this->textFields = array_fill_keys(array_map('strval', $fields), true);
     }
 
+    /**
+     * Whether compareAsText() named the query's text fields (it may have named none): then every
+     * field it did not name compares exactly, also where its column carries the rule.
+     *
+     * @since 0.78
+     */
+    public function namesTextFields(): bool
+    {
+        return $this->textFields !== null;
+    }
+
     /** @since 0.78 */
     public function comparesAsText(string $field): bool
     {
         return isset($this->textFields[$field]);
-    }
-
-    /** @var array<string, true> */
-    private array $shortTextFields = [];
-
-    /** @var array<string, true> */
-    private array $exactFields = [];
-
-    /**
-     * Of the text fields (compareAsText()), those stored in a bounded, indexable column
-     * (TextColumns::short()): an SQL database orders them by the column itself and keeps using its
-     * index. Any other text field may need more to sort by the rule (MariaDB sorts long text by
-     * its first-level weights only, see TextComparison::textOrder()). A query that names none
-     * sorts every text field the safe way.
-     *
-     * @param list<string> $fields
-     * @since 0.78
-     */
-    public function shortText(array $fields): void
-    {
-        $this->shortTextFields = array_fill_keys(array_map('strval', $fields), true);
-    }
-
-    /** @since 0.78 */
-    public function sortsAsShortText(string $field): bool
-    {
-        return isset($this->shortTextFields[$field]);
-    }
-
-    /**
-     * Compare these fields exactly even where their column carries the text rule's collation
-     * (TextColumns::exactInFullText(): exact fields and lists in a full-text index): =, IN, ORDER
-     * BY, grouping and HAS then name an exact comparison (Dialect::exactText()).
-     *
-     * @param list<string> $fields
-     * @since 0.78
-     */
-    public function compareExactly(array $fields): void
-    {
-        $this->exactFields = array_fill_keys(array_map('strval', $fields), true);
-    }
-
-    /** @since 0.78 */
-    public function comparesExactly(string $field): bool
-    {
-        return isset($this->exactFields[$field]);
     }
 
     public function getWheres(): array { return $this->wheres; }
