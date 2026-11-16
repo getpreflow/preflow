@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\I18n;
 
+use Preflow\Core\Http\LocaleUrls;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateExtensionProvider;
 
@@ -12,11 +13,13 @@ final class TranslationExtensionProvider implements TemplateExtensionProvider
     /**
      * @param list<string> $available configured locales (for locale_url / available_locales)
      * @param string|null  $default   the default locale (served without a URL prefix)
+     * @param LocaleUrls|null $urls   the locale URL rule (core 0.78, Http\LocaleUrls); null keeps the plain rule
      */
     public function __construct(
         private readonly Translator $translator,
         private readonly array $available = [],
         private readonly ?string $default = null,
+        private readonly ?LocaleUrls $urls = null,
     ) {}
 
     public function getTemplateFunctions(): array
@@ -49,6 +52,10 @@ final class TranslationExtensionProvider implements TemplateExtensionProvider
                 name: 'locale_url',
                 callable: fn (string $path, ?string $locale = null): string => $this->localeUrl($path, $locale),
             ),
+            new TemplateFunctionDefinition(
+                name: 'locale_switch_url',
+                callable: fn (string $path, ?string $locale = null): string => $this->localeSwitchUrl($path, $locale),
+            ),
         ];
     }
 
@@ -61,6 +68,13 @@ final class TranslationExtensionProvider implements TemplateExtensionProvider
     public function localeUrl(string $path, ?string $locale = null): string
     {
         $locale ??= $this->translator->getLocale();
+
+        // A known locale on a prefixed site follows LocaleUrls (prefix_default). Anything
+        // else (unknown locale, url_strategy "none") keeps today's output.
+        if ($this->urls !== null && $this->urls->prefixed && in_array($locale, $this->urls->locales, true)) {
+            return $this->urls->path($locale, '/' . trim($path, '/'));
+        }
+
         $path = trim($path, '/');
 
         if ($locale === ($this->default ?? $locale)) {
@@ -68,6 +82,30 @@ final class TranslationExtensionProvider implements TemplateExtensionProvider
         }
 
         return '/' . $locale . ($path !== '' ? '/' . $path : '');
+    }
+
+    /**
+     * The URL a language switcher links to: through the switch endpoint (which remembers the
+     * pick) when bare paths redirect, otherwise the locale URL itself.
+     */
+    public function localeSwitchUrl(string $path, ?string $locale = null): string
+    {
+        $locale ??= $this->translator->getLocale();
+        $url = $this->localeUrl($path, $locale);
+
+        return $this->urls?->redirectBare === true
+            ? '/--locale/' . $locale . '?to=' . rawurlencode(self::encodePath($url))
+            : $url;
+    }
+
+    /** Percent-encodes what a return target may not carry raw (non-ASCII, spaces); keeps '%' and path/query characters. */
+    private static function encodePath(string $url): string
+    {
+        return preg_replace_callback(
+            '#[^A-Za-z0-9._~%/?&!$\'()*+,;=:@-]#',
+            static fn (array $m): string => rawurlencode($m[0]),
+            $url,
+        ) ?? $url;
     }
 
     /**

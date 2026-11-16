@@ -24,6 +24,43 @@ final class SafeReturnPathTest extends TestCase
         }
     }
 
+    /** @return iterable<string, array{0: string}> */
+    public static function refusedOffSite(): iterable
+    {
+        foreach ([
+            '//evil', '/%2F%2Fevil', '/%2f/evil', 'https://evil.example', 'HTTPS://evil.example', 'hTtP://evil', 'javascript:alert(1)',
+            'JaVaScRiPt:x', '/%5Cevil', '/%5cevil', '/%255Cevil', '/%25252Fevil', "/\tevil", "/\t/evil", "/%09/evil", "/\r\n/evil",
+            "/x\r\nSet-Cookie: a=b", '/x%0d%0aSet-Cookie:a=b', '/x%0A', "/x\0", '/x%00', '/@evil', '/de#//evil', '/%2e%2e/x', '/%2E%2E/x',
+            '/de/../x', '/de/%252e%252e/x', "/de/\xC3\xBCber", "/de/%C0%AF", '/de/%FF', '/de/%E2%80', '/de\\evil', '/ /evil',
+            "/\x0B/evil", '/%0B/evil', '/%20/evil',
+        ] as $next) {
+            yield 'refuse ' . json_encode($next) => [$next];
+        }
+    }
+
+    #[DataProvider('refusedOffSite')]
+    public function test_every_off_site_form_stays_refused_under_a_root_prefix(string $next): void
+    {
+        $this->assertNull(SafeReturnPath::check($next, ['/']));
+    }
+
+    /** @return iterable<string, array{0: string}> */
+    public static function acceptedSlugs(): iterable
+    {
+        foreach ([
+            '/de/%C3%BCber-uns', '/de/a+b', '/de/a,b', '/de/x:y', '/de/a@b', '/de/(x)', '/de/a;b=c', "/de/it's", '/de/a!$*b',
+            '/de/%E6%97%A5%E6%9C%AC', '/de/a%2Bb', '/de/.', '/de/%C3%BCber-uns?x=%C3%BC',
+        ] as $next) {
+            yield 'accept ' . $next => [$next];
+        }
+    }
+
+    #[DataProvider('acceptedSlugs')]
+    public function test_accepts_encoded_utf8_and_sub_delims_in_path_segments(string $next): void
+    {
+        $this->assertSame($next, SafeReturnPath::check($next, ['/']));
+    }
+
     #[DataProvider('refused')]
     public function test_refuses_urls_traversal_and_other_paths(?string $next): void
     {

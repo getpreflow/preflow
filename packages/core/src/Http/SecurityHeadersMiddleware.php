@@ -156,7 +156,6 @@ final class SecurityHeadersMiddleware implements MiddlewareInterface
 
     private function isHttps(ServerRequestInterface $request): bool
     {
-        return $request->getUri()->getScheme() === 'https'
-            || strtolower($request->getHeaderLine('X-Forwarded-Proto')) === 'https';
+        return IsHttps::request($request);
     }
 }

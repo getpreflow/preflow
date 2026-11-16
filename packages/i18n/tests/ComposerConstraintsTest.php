@@ -7,8 +7,8 @@ namespace Preflow\I18n\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Since 0.78: ai 0.78 (Limits\AiLimits and AiLimitReached, which JobRunner and TranslationWorker use).
- * Since 0.77: ai 0.77 (Settings\ProjectTuning, the project-level AI tuning that TranslationSettings reads); core 0.77 (raised in step with the release; no 0.77-only core API is called from src).
+ * Since 0.78: ai 0.78 (Limits\AiLimits and AiLimitReached, which JobRunner and TranslationWorker use); core 0.78 (Http\LocaleUrls).
+ * Since 0.77: ai 0.77 (Settings\ProjectTuning, the project-level AI tuning that TranslationSettings reads).
  *
  * "^0.58 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing i18n with a release that lacks what it calls: core 0.67
@@ -21,8 +21,8 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/ai' => '<0.78', 'preflow/core' => '<0.77'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.77 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/ai' => '<0.78', 'preflow/core' => '<0.78'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.78 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.78 || @dev', $composer['require']['preflow/ai'] ?? null);
     }
 }
