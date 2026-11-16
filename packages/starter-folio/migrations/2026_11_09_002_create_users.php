@@ -11,7 +11,7 @@ return new class extends Migration
         $schema->create('users', function (Table $table) {
             $table->uuid('uuid')->primary();
             $table->string('email')->nullable()->unique();
-            $table->string('passwordHash')->nullable();
+            $table->string('passwordHash')->nullable()->exact();
             $table->text('roles')->nullable();
             $table->string('name')->nullable();
             $table->string('company')->nullable();
