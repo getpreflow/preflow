@@ -222,6 +222,31 @@ When no route matches the method but the path exists for other methods, the rout
 a wrong method on a path that only a catch-all serves is still a 404. Before 0.62 every such
 request was a 404.
 
+## Clean paths (`canonical_paths`)
+
+By default `/faq/` answers like `/faq` (the matcher ignores a trailing slash). A site that
+wants one address per page turns on clean paths in `config/routing.php` (since 0.78):
+
+```php
+<?php
+
+return [
+    // 301 to the clean path: no trailing slash (the root stays '/'), no repeated slashes.
+    'canonical_paths' => true,
+];
+```
+
+Then a GET or HEAD of `/faq/` or `//en//faq` answers 301 to `/faq` or `/en/faq`, keeping the
+query string. It runs first in the pipeline, before the locale prefix is read, so
+`//de//about/` reaches `/de/about` in one hop; a locale's home is `/de`, never `/de/`. A POST
+(or any other method) is never redirected, and admin, API and component paths
+(`NonPublicPaths`) are left alone, as are paths whose meaning normalising could change (dot
+segments, backslashes, `%2F`). A value other than `true` or `false` stops the boot.
+
+**Trailing slashes in links and routes.** With clean paths on, a link that ends in a slash
+(`href="/faq/"`) costs every visitor a 301 hop, and a route declared with a trailing slash is
+only ever reached through one. Write links and routes without it (`locale_url()` already does).
+
 ## Redirects and the not-found list
 
 When a public page is not found, `RedirectMiddleware` looks the address up in a redirect store
