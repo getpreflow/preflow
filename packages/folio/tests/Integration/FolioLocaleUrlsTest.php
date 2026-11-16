@@ -193,4 +193,47 @@ final class FolioLocaleUrlsTest extends TestCase
         $this->assertStringContainsString('(https://club.test/hello.md)', $this->body('/llms.txt'));
         $this->assertStringContainsString('<span class="folio-input-prefix" aria-hidden="true">/</span>', $this->body('/folio/page/p1/edit'));
     }
+
+    /** @return iterable<string, array{0: bool}> */
+    public static function siteLookupOrder(): iterable
+    {
+        yield 'site provider after Folio' => [true];
+        yield 'site provider before Folio' => [false];
+    }
+
+    #[RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\DataProvider('siteLookupOrder')]
+    public function test_folio_pages_and_a_site_page_lookup_both_redirect(bool $siteLast): void
+    {
+        $providers = [var_export(\Preflow\Folio\FolioServiceProvider::class, true), var_export(SiteToolsProvider::class, true)];
+        if (!$siteLast) {
+            $providers = array_reverse($providers);
+        }
+        $this->write('config/providers.php', "<?php\nreturn [" . implode(', ', $providers) . "];\n");
+        $this->publishHello();
+
+        // Core's PageExists stays free for the site; Folio adds its own lookup beside it.
+        $this->assertSame('/en/hello', $this->get('/hello')->getHeaderLine('Location'));
+        $this->assertSame('/en/tools', $this->get('/tools')->getHeaderLine('Location'));
+        $this->assertSame(404, $this->get('/no-such-page')->getStatusCode());
+        $this->assertInstanceOf(SiteToolsLookup::class, $this->app()->container()->get(\Preflow\Core\Routing\PageExists::class));
+    }
+}
+
+/** A site's own catch-all pages: '/tools' in every language. */
+final class SiteToolsLookup implements \Preflow\Core\Routing\PageExists
+{
+    public function exists(string $locale, string $path): bool
+    {
+        return $path === '/tools';
+    }
+}
+
+/** Binds the site's lookup under core's PageExists. */
+final class SiteToolsProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(\Preflow\Core\Container\Container $container): void
+    {
+        $container->singleton(\Preflow\Core\Routing\PageExists::class, static fn (): SiteToolsLookup => new SiteToolsLookup());
+    }
 }

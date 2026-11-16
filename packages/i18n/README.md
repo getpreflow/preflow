@@ -253,13 +253,14 @@ What is never redirected:
   redirect entries still apply to it. "A page answers" is asked of core's
   `Preflow\Core\Routing\PageExists` (`exists(locale, path)`): preflow/routing's `Router`
   answers for its routes that are not catch-alls, Folio answers for its pages, and a site with
-  catch-all pages of its own binds a `PageExists`. Packages that bind the contract under a name of
-  their own add that name to `Preflow\Core\Routing\PageLookups` (`add(string $id)`; routing adds
-  its `Redirect\PageExists`). The lookups are asked when a request needs them; one bound in an
-  `onRequest` hook is asked too, but the boot check below doesn't see it. When `redirect_bare` is on
-  and nothing can answer (no router that implements `PageExists`, nothing bound under a
-  `PageLookups` id once the providers and their `onProvidersBooted` hooks ran), the boot stops
-  rather than redirect nothing.
+  catch-all pages of its own binds a `PageExists` (on a Folio site too: both are asked). Packages
+  bind their lookup under a name of their own and add that name to
+  `Preflow\Core\Routing\PageLookups` (`add(string $id)`; routing adds its `Redirect\PageExists`,
+  Folio its `SiteTarget`), so core's id stays free for the site. The lookups are asked when a
+  request needs them; one bound in an `onRequest` hook is asked too, but the boot check below
+  doesn't see it. When `redirect_bare` is on and nothing can answer (no router that implements
+  `PageExists`, nothing bound under a `PageLookups` id once the providers and their
+  `onProvidersBooted` hooks ran), the boot stops rather than redirect nothing.
 
 The redirect carries `Vary: Accept-Language, Cookie` and `Cache-Control: private, no-store`, so no
 shared cache keeps it. A bare page served without a redirect gets `Vary: Accept-Language, Cookie`

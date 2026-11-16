@@ -373,8 +373,9 @@ final class FolioServiceProvider extends ServiceProvider
                 \Preflow\Folio\Redirects\SiteTarget::hostOf($app->config()->get('app.url')),
             ));
             // Whether a Folio page holds an address: the bare-path redirect (config/i18n.php redirect_bare)
-            // asks core's PageExists, so "/hello" goes to "/en/hello" and "/no-such-page" stays a 404.
-            $container->singleton(\Preflow\Core\Routing\PageExists::class, static fn (Container $c) => $c->get(\Preflow\Folio\Redirects\SiteTarget::class));
+            // asks SiteTarget as one of core's page lookups, so "/hello" goes to "/en/hello" and
+            // "/no-such-page" stays a 404. Core's own PageExists id stays free for the site's pages.
+            $container->get(\Preflow\Core\Routing\PageLookups::class)->add(\Preflow\Folio\Redirects\SiteTarget::class);
             // The write rules of a redirect entry (routing's), for every writer: the entries' save() and
             // Settings → Redirects. What only the site knows is answered by Folio's own classes.
             $container->singleton(\Preflow\Routing\Redirect\RedirectRules::class, static fn (Container $c) => new \Preflow\Routing\Redirect\RedirectRules(
