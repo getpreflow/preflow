@@ -6,6 +6,7 @@ namespace Preflow\Data\Schema;
 
 use Preflow\Data\DataManager;
 use Preflow\Data\PdoConnection;
+use Preflow\Data\RemembersColumns;
 use Preflow\Data\FieldKinds;
 use Preflow\Data\Migration\Grammar\FullTextIndexes;
 use Preflow\Data\Migration\Grammar\Grammars;
@@ -58,6 +59,25 @@ final class RecordTableSync
      * @return list<string> the changes made and the warnings, one line each
      */
     public function sync(TypeDefinition $def, array $extraColumns = [], bool $typed = true, bool $unique = true): array
+    {
+        try {
+            return $this->syncTable($def, $extraColumns, $typed, $unique);
+        } finally {
+            $this->forgetColumns($def);
+        }
+    }
+
+    /** A driver that remembers column facts is told the table may have changed (RemembersColumns). */
+    private function forgetColumns(TypeDefinition $def): void
+    {
+        $driver = $this->dm->driver($def->storage);
+        if ($driver instanceof RemembersColumns) {
+            $driver->forgetColumns($def->table);
+        }
+    }
+
+    /** @return list<string> */
+    private function syncTable(TypeDefinition $def, array $extraColumns, bool $typed, bool $unique): array
     {
         $driver = $this->dm->driver($def->storage);
         if (!$driver instanceof PdoConnection) {
@@ -170,6 +190,16 @@ final class RecordTableSync
      * @return list<string>
      */
     public function collations(TypeDefinition $def, array $extraColumns = [], bool $typed = true, bool $dryRun = false): array
+    {
+        try {
+            return $this->convertCollations($def, $extraColumns, $typed, $dryRun);
+        } finally {
+            $this->forgetColumns($def);
+        }
+    }
+
+    /** @return list<string> */
+    private function convertCollations(TypeDefinition $def, array $extraColumns, bool $typed, bool $dryRun): array
     {
         $driver = $this->dm->driver($def->storage);
         if (!$driver instanceof PdoConnection) {

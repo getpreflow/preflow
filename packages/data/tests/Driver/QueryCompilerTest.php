@@ -266,6 +266,37 @@ final class QueryCompilerTest extends TestCase
         );
     }
 
+    /** One read per table, a missing table included; forgetFacts() makes the next compile read it again. */
+    public function test_column_facts_are_read_once_also_for_a_missing_table_until_forgotten(): void
+    {
+        $reads = 0;
+        $present = false;
+        $compiler = new QueryCompiler(new MysqlDialect('utf8mb4_uca1400_nopad_as_ci'), static function (string $table) use (&$reads, &$present): array {
+            $reads++;
+
+            return $present ? ['slug' => ['bounded' => true, 'rule' => true]] : [];
+        });
+        $query = (new Query())->orderBy('slug');
+        $query->compareAsText(['slug']);
+
+        $before = $compiler->compile('page', $query)[0];
+        $compiler->compile('page', $query);
+        $this->assertSame(1, $reads, 'a table that is not there is read once, not on every compile');
+
+        $present = true;
+        $this->assertSame($before, $compiler->compile('page', $query)[0], 'remembered until told');
+        $compiler->forgetFacts('other');
+        $this->assertSame(1, $reads, 'another table\'s entry is not touched');
+
+        $compiler->forgetFacts('page');
+        $this->assertSame('SELECT * FROM `page` ORDER BY `slug` ASC', $compiler->compile('page', $query)[0], 'the made table is read again');
+        $this->assertSame(2, $reads);
+
+        $compiler->forgetFacts();
+        $compiler->compile('page', $query);
+        $this->assertSame(3, $reads);
+    }
+
     /** A list in a full-text index sits in a column of the rule's collation: a query naming its text fields compares it exactly. */
     public function test_a_field_compared_exactly_names_the_exact_comparison(): void
     {

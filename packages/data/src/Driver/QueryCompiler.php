@@ -461,6 +461,16 @@ class QueryCompiler
         return $query->namesTextFields() && !$query->comparesAsText($field) && ($this->facts($field)['rule'] ?? false);
     }
 
+    /** Drops the column facts read for $table (null: for every table); the next compile reads them again. */
+    public function forgetFacts(?string $table = null): void
+    {
+        if ($table === null) {
+            $this->facts = [];
+        } else {
+            unset($this->facts[$table]);
+        }
+    }
+
     /** @return array{bounded?: bool, rule?: bool} what the column facts say about the field's column */
     private function facts(string $field): array
     {
@@ -468,11 +478,9 @@ class QueryCompiler
             return [];
         }
         if (!isset($this->facts[$this->table])) {
-            $facts = ($this->columns)($this->table);
-            if ($facts === []) {
-                return []; // no such table (yet): asked again next time
-            }
-            $this->facts[$this->table] = $facts;
+            // A table that is not there (yet) is remembered as empty too: one read per table, not one per
+            // compile. forgetFacts() drops it once the table is made or changed through the driver.
+            $this->facts[$this->table] = ($this->columns)($this->table);
         }
 
         return $this->facts[$this->table][$field] ?? [];

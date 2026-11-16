@@ -6,8 +6,9 @@ namespace Preflow\Data\Driver;
 
 use Preflow\Data\Migration\Grammar\MysqlGrammar;
 use Preflow\Data\RankedSearch;
+use Preflow\Data\RemembersColumns;
 
-final class MysqlDriver extends PdoDriver implements RankedSearch
+final class MysqlDriver extends PdoDriver implements RankedSearch, RemembersColumns
 {
     /** Strict, portable session mode; ANSI_QUOTES is deliberately absent (we quote with backticks). */
     public const SQL_MODE = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
@@ -46,6 +47,12 @@ final class MysqlDriver extends PdoDriver implements RankedSearch
         }
         $dialect = new MysqlDialect($this->collationKnown ? $this->matchCollation : $this->matchCollation(...));
         parent::__construct($pdo, $dialect, new QueryCompiler($dialect, $this->columnFacts(...)), $collector);
+    }
+
+    /** @since 0.78 */
+    public function forgetColumns(?string $table = null): void
+    {
+        $this->compiler->forgetFacts($table);
     }
 
     /**
