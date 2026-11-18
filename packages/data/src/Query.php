@@ -68,7 +68,7 @@ final class Query
 
     /**
      * IN / NOT IN of the values another query selects, run by the database (see Subselect). Only
-     * for a driver that implements SelectsColumns; QueryBuilder::whereIn() decides.
+     * for a driver that implements SelectsSubqueries; QueryBuilder::whereIn() decides.
      *
      * @param 'IN'|'NOT IN' $operator
      * @since 0.79.0
@@ -76,6 +76,10 @@ final class Query
     public function whereInSubselect(string $field, string $operator, Subselect $subselect): self
     {
         self::assertField($field);
+        self::assertField($subselect->field);
+        if ($operator !== 'IN' && $operator !== 'NOT IN') {
+            throw new \InvalidArgumentException(sprintf('A subquery takes IN or NOT IN, not %s.', self::shown($operator)));
+        }
         $this->wheres[] = ['field' => $field, 'operator' => $operator, 'value' => $subselect, 'boolean' => 'AND'];
 
         return $this;

@@ -152,20 +152,30 @@ $visits = $dm->query(Visit::class)
 ```
 
 On the SQL drivers (SQLite, MySQL) a subquery on the same driver runs in the database as
-`IN (SELECT ...)` / `NOT IN (SELECT ...)` and `pluck()` is a one-column `SELECT`: no values travel
-through PHP, so there is no limit on bindings and no large list to build. A subquery with a
-`limit()` or `offset()` (MySQL refuses them in `IN`), on another storage, or on a driver without
-the `SelectsColumns` capability (JSON storage, a third-party driver) is run first and its values
-are passed as a list; both ways give the same rows. An empty list or subquery matches nothing for
-`whereIn()` and everything for `whereNotIn()`; a null among the values is left out in both.
-`pluck()` reads the field as the records read it; for a model field with a transformer or a `bool`
-type it reads the records instead of one column, so the converted values come back.
+`IN (SELECT ...)` / `NOT IN (SELECT ...)` (capability `SelectsSubqueries`): no values travel
+through PHP, so there is no limit on bindings and no large list to build, and the inner records
+are read when the outer query runs. A subquery with a `limit()` or `offset()` (MySQL refuses them
+in `IN`), on another storage, or on a driver without the capability (JSON storage, a third-party
+driver) is run at the `whereIn()` call and its values are passed as a list; the conditions are
+fixed at the call either way, but a write in between can change the rows. Otherwise both ways give
+the same rows: the values are compared as stored (a type's transformer does not run), by the outer
+field's rule (a text field ignores case, an exact one does not), and a null among them is left
+out. An empty list or subquery matches nothing for `whereIn()` and everything for `whereNotIn()`.
 In the list form the values are bound, so a list of tens of thousands meets the database's limit
 on bindings (SQLite 32766, MySQL 65535).
 
-A driver author implements `Preflow\Data\SelectsColumns` (`pluck(type, field, Query)`) and
-compiles a `Subselect` as the value of an IN / NOT IN condition; the contract case "the column
-capability gives the same rows as the fallback" checks it.
+`pluck()` returns the values a record reads: a type's transformer runs, a class-backed type's
+arrays are decoded and numbers converted. On the SQL drivers (capability `SelectsColumns`) it is a
+one-column `SELECT` where that cannot change a value (a plain type without a transformer on the
+field, a class field typed `string`); any other field reads the records. The result is the same
+either way.
+
+A driver author implements either or both capabilities: `Preflow\Data\SelectsColumns`
+(`pluck(type, field, Query)`, the column as stored) and `Preflow\Data\SelectsSubqueries` (accept a
+`Subselect` as the value of an IN / NOT IN condition, the inner column compared by the outer field's
+rule; a driver without SQL may run its own `pluck()` and use the result as a list). The contract
+cases "the column and subquery capabilities give the same rows as the fallback" and "a subquery
+compares by the outer field's rule" check them, skipped without the capability.
 
 A median is the middle of an ordered `pluck()`:
 
@@ -293,6 +303,8 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `InsertsNew::insertNew()` (0.79) | Writes a record only while no record has its id, in one step: `insert()` never overwrites a record another writer stored in between, and `insertIgnoring()` and `insertMany()` skip duplicates without a race. The contract tests it (also a duplicate behind another unique index, and inside a transaction), skipped without it. | checks that the id is free, then saves; a second writer in between is overwritten (`insert()`) or both write (`insertIgnoring()`). | Yes with it; the fallback is not. |
+| `SelectsColumns::pluck()` (0.79) | Reads one column of the records a query selects, in the query's order and within its limit: `pluck()` is one `SELECT` of that column where its values are what a record reads. The contract compares it with the fallback, skipped without it. | reads the records and takes the field. | Yes, same values. |
+| `SelectsSubqueries` (0.79) | Accepts a `Subselect` as the value of an IN / NOT IN condition in every query it runs: `whereIn()` / `whereNotIn()` with a subquery on the same driver become `IN (SELECT ...)`, compared by the outer field's rule, nulls left out. The contract compares it with the fallback and checks the rule, skipped without it. | the subquery runs first and its stored values are an `IN` list (also for another driver or a limited subquery). | Yes, same rows (a long list meets the binding limit). |
 | `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
 | `Transactions::transaction()`, `inTransaction()` (0.78) | Writes that commit together or not at all; inside an open transaction (whoever opened it) `transaction()` joins it. `DataManager::transaction()` spans storages: it begins on each storage with it once (aliases of one driver count once), commits the innermost first, and throws `PartialCommit` (a `RuntimeException`, the failed commit as previous) when a commit fails after another storage committed (publishing, deletes, the permission sync). | `DataManager::transaction()` runs the writes as they come: a failure part-way leaves the earlier writes stored (JSON files). | Yes with it. |
 | `UniqueIndexes` (0.78, a marker) | Says `save()` refuses a duplicate in every unique index the table sync made (`UniqueViolation`, nothing written). DataManager then checks before the write only the unique fields no index can hold (translatable ones). | DataManager checks every unique field before the write, under the type's lock (`ExclusiveWrites`) where the driver has one, else without. | Yes with it or `ExclusiveWrites`; the plain check is not. |
@@ -310,7 +322,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
-`RunsSql`), `Transactions` and `UniqueIndexes` from it and implements `exclusive()` itself (as
+`RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
 `RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
 `ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and

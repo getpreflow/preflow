@@ -85,15 +85,18 @@ class QueryCompiler
      *
      * @param array<int, mixed> $bindings
      */
-    private function subselect(Subselect $subselect, array &$bindings): string
+    private function subselect(Subselect $subselect, string $outerField, Query $outer, array &$bindings): string
     {
-        $outer = $this->table;
+        $outerTable = $this->table;
         $this->table = $subselect->table;
         $column = $this->dialect->quoteIdentifier($subselect->field);
+        // Compared as the outer field's bound values would be: by the text rule where the outer
+        // field is text (a column of another collation does not decide), else as the column is.
+        $compared = $this->dialect instanceof TextComparison && $outer->comparesAsText($outerField) ? $this->dialect->textValue($column) : $column;
         $conditions = $this->compileConditions($subselect->query, $bindings);
-        $this->table = $outer;
+        $this->table = $outerTable;
 
-        return "SELECT {$column} FROM " . $this->dialect->quoteIdentifier($subselect->table)
+        return "SELECT {$compared} FROM " . $this->dialect->quoteIdentifier($subselect->table)
             . ' WHERE ' . ($conditions === '' ? '' : "({$conditions}) AND ") . "{$column} IS NOT NULL";
     }
 
@@ -323,7 +326,7 @@ class QueryCompiler
         $value = $where['value'];
 
         if ($value instanceof Subselect) {
-            return "{$column} {$operator} (" . $this->subselect($value, $bindings) . ')';
+            return "{$column} {$operator} (" . $this->subselect($value, $where['field'], $query, $bindings) . ')';
         }
         if ($operator === 'IN' || $operator === 'NOT IN') {
             $values = array_values((array) $value);

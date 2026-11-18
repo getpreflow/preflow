@@ -20,7 +20,9 @@ use Preflow\Data\QueryBuilder;
 use Preflow\Data\RankedSearch;
 use Preflow\Data\ResultSet;
 use Preflow\Data\RunsSql;
+use Preflow\Data\FieldTransformer;
 use Preflow\Data\SelectsColumns;
+use Preflow\Data\SelectsSubqueries;
 use Preflow\Data\SortDirection;
 use Preflow\Data\StorageDriver;
 use Preflow\Data\Transactions;
@@ -1379,15 +1381,15 @@ abstract class StorageDriverContract extends TestCase
     }
 
     /**
-     * A driver with SelectsColumns gives the same rows as the fallback (the records read, the
+     * A driver with SelectsColumns or SelectsSubqueries gives the same rows as the fallback (the records read, the
      * subquery run first and passed as a list), which PlainDriver proves on the same storage.
      *
      * @since 0.79.0
      */
-    public function test_the_column_capability_gives_the_same_rows_as_the_fallback(): void
+    public function test_the_column_and_subquery_capabilities_give_the_same_rows_as_the_fallback(): void
     {
-        if (!$this->driver instanceof SelectsColumns) {
-            $this->markTestSkipped('The driver does not implement SelectsColumns: it has only the fallback, which the other cases cover.');
+        if (!$this->driver instanceof SelectsColumns && !$this->driver instanceof SelectsSubqueries) {
+            $this->markTestSkipped('The driver implements neither SelectsColumns nor SelectsSubqueries: it has only the fallback, which the other cases cover.');
         }
         $this->seedVisits();
         $this->driver->save('visits', 'v7', ['uuid' => 'v7', 'install' => null, 'ms' => 5]);
@@ -1408,6 +1410,70 @@ abstract class StorageDriverContract extends TestCase
             $this->assertEquals($run($plain), $run($this->driver), $name);
         }
         $this->assertSame(['v7'], array_slice(QueryBuilder::forType($this->driver, $this->visitsType())->orderBy('uuid')->pluck('uuid'), -1), 'sanity');
+    }
+
+    /**
+     * pluck() gives what a record reads (a type's transformer runs), and a subquery compares the
+     * values as stored, on a driver with the capabilities and on the fallback alike.
+     *
+     * @since 0.79.0
+     */
+    public function test_pluck_and_subqueries_with_a_type_transformer_read_like_records(): void
+    {
+        $upper = new class implements FieldTransformer {
+            public function toStorage(mixed $value): mixed
+            {
+                return is_string($value) ? strtolower($value) : $value;
+            }
+
+            public function fromStorage(mixed $value): mixed
+            {
+                return is_string($value) ? strtoupper($value) : $value;
+            }
+        };
+        $this->createType('parts', ['uuid' => 'exact', 'code' => 'exact']);
+        $this->driver->save('parts', 'p1', ['uuid' => 'p1', 'code' => 'xy']);
+        $this->createType('uses', ['uuid' => 'exact', 'part_code' => 'exact']);
+        $this->driver->save('uses', 'u1', ['uuid' => 'u1', 'part_code' => 'xy']);
+        $this->driver->save('uses', 'u2', ['uuid' => 'u2', 'part_code' => 'zz']);
+        $parts = new TypeDefinition('parts', 'parts', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'code' => new TypeFieldDefinition('code', exact: true)], transformers: ['code' => $upper]);
+        $uses = new TypeDefinition('uses', 'uses', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'part_code' => new TypeFieldDefinition('part_code', exact: true)]);
+
+        foreach ([$this->driver, new PlainDriver($this->driver)] as $driver) {
+            $this->assertSame(['XY'], QueryBuilder::forType($driver, $parts)->pluck('code'));
+            $this->assertSame(['u1'], QueryBuilder::forType($driver, $uses)->whereIn('part_code', QueryBuilder::forType($driver, $parts), 'code')->pluck('uuid'));
+            $this->assertSame(['u2'], QueryBuilder::forType($driver, $uses)->whereNotIn('part_code', QueryBuilder::forType($driver, $parts), 'code')->pluck('uuid'));
+        }
+    }
+
+    /**
+     * A subquery compares as the list of its values would: by the outer field's rule (a text field
+     * ignores case, an exact one does not), whatever the inner column's own collation.
+     *
+     * @since 0.79.0
+     */
+    public function test_a_subquery_compares_by_the_outer_fields_rule(): void
+    {
+        $this->requireTextRule();
+        $this->createType('labels', ['uuid' => 'exact', 'name' => 'text']);
+        foreach (['L1' => 'Web', 'L2' => 'APP', 'L3' => 'Other', 'L4' => 'web'] as $id => $name) {
+            $this->driver->save('labels', $id, ['uuid' => $id, 'name' => $name]);
+        }
+        $this->createType('codes', ['uuid' => 'exact', 'code' => 'exact']);
+        foreach (['C1' => 'web', 'C2' => 'app', 'C3' => 'other'] as $id => $code) {
+            $this->driver->save('codes', $id, ['uuid' => $id, 'code' => $code]);
+        }
+        $labels = new TypeDefinition('labels', 'labels', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'name' => new TypeFieldDefinition('name')]);
+        $codes = new TypeDefinition('codes', 'codes', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'code' => new TypeFieldDefinition('code', exact: true)]);
+
+        foreach ([$this->driver, new PlainDriver($this->driver)] as $driver) {
+            $textInExact = QueryBuilder::forType($driver, $labels)->whereIn('name', QueryBuilder::forType($driver, $codes), 'code')->orderBy('uuid')->pluck('uuid');
+            $this->assertSame(['L1', 'L2', 'L3', 'L4'], $textInExact, 'a text field matches case-insensitively');
+            $exactInText = QueryBuilder::forType($driver, $codes)->whereIn('code', QueryBuilder::forType($driver, $labels), 'name')->orderBy('uuid')->pluck('uuid');
+            $this->assertSame(['C1'], $exactInText, 'an exact field matches only the same case');
+            $textNotIn = QueryBuilder::forType($driver, $labels)->whereNotIn('name', QueryBuilder::forType($driver, $codes)->where('code', 'web'), 'code')->orderBy('uuid')->pluck('uuid');
+            $this->assertSame(['L2', 'L3'], $textNotIn);
+        }
     }
 
     /** @return list<string> */
