@@ -163,9 +163,12 @@ final class AiSettingsTest extends TestCase
         $this->aiConfig(false);
         putenv(self::aiKeyEnv());
 
-        foreach (['/folio/ai', '/folio/ai/tuning', '/folio/ai/glossary'] as $uri) {
-            // Since 0.79 a path that has a POST-only route answers a GET with 405 rather than the page route's 404.
-            $this->assertContains($this->get($uri)->getStatusCode(), [404, 405], $uri);
+        // /folio/ai/tuning and /folio/ai/glossary look like POST /folio/{type}/{id} (the AI routes are not
+        // registered with the switch off): since 0.79 a GET there is a 405 with Allow, where a catch-all
+        // used to answer 404. /folio/ai has no route of any method.
+        $this->assertSame(404, $this->get('/folio/ai')->getStatusCode());
+        foreach (['/folio/ai/tuning', '/folio/ai/glossary'] as $uri) {
+            $this->assertSame(405, $this->get($uri)->getStatusCode(), $uri);
         }
         $this->assertSame(404, $this->post('/folio/ai/test')->getStatusCode());
         $this->assertStringNotContainsString('href="/folio/ai"', (string) $this->get('/folio')->getBody());

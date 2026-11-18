@@ -221,8 +221,13 @@ When no route matches the method but the path exists for other methods, the rout
 (`GET` also lists `HEAD`; `OPTIONS` handling stays with CORS). A catch-all route never makes a
 path exist by itself: a wrong method on a path that only a catch-all serves is still a 404. But a
 catch-all does not hide a wrong method either: with a `GET` catch-all and `POST /x`, `GET /x`
-answers 405 with `Allow: POST` (since 0.79; before, the catch-all page answered). Before 0.62
-every such request was a 404.
+answers 405 with `Allow: POST` (since 0.79; before, the catch-all answered). Only where no page
+answers the path: a content page at an address that also has a POST route (a form posting back
+to its own page) still answers GET. Core wires that check to the page lookups (`PageLookups`;
+Folio registers its pages) and asks them when a request runs, with the request's locale and path;
+with none registered (an API-only app) the 405 stands. A router set up by hand can be given the
+check with `$router->answerPagesWith(fn (string $locale, string $path): bool => ...)`
+(`Application::setRouter()` does it for you). Before 0.62 every such request was a 404.
 
 ## Clean paths (`canonical_paths`)
 

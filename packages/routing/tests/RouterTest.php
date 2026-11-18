@@ -333,4 +333,42 @@ final class RouterTest extends TestCase
             $this->assertStringContainsString('application/json', $response->getHeaderLine('Content-Type'));
         }
     }
+
+    public function test_a_page_that_answers_the_path_wins_over_the_405(): void
+    {
+        $router = $this->catchAllRouter();
+        $asked = [];
+        $router->answerPagesWith(function (string $locale, string $path) use (&$asked): bool {
+            $asked[] = [$locale, $path];
+
+            return $path === '/x';
+        });
+
+        $request = $this->createRequest('GET', '/x')->withAttribute('locale', 'de');
+
+        $this->assertSame('page', $router->match($request)->handler);
+        $this->assertSame([['de', '/x']], $asked);
+    }
+
+    public function test_no_page_at_the_path_is_a_405_with_allow(): void
+    {
+        $router = $this->catchAllRouter();
+        $router->answerPagesWith(static fn (string $locale, string $path): bool => false);
+
+        try {
+            $router->match($this->createRequest('GET', '/x'));
+            $this->fail('Expected a 405');
+        } catch (MethodNotAllowedHttpException $e) {
+            $this->assertSame('POST', $e->headers['Allow']);
+        }
+    }
+
+    public function test_without_a_page_check_the_405_stands(): void
+    {
+        $router = $this->catchAllRouter();
+        $router->answerPagesWith(null);
+
+        $this->expectException(MethodNotAllowedHttpException::class);
+        $router->match($this->createRequest('GET', '/x'));
+    }
 }
