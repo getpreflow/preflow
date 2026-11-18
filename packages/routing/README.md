@@ -227,7 +227,7 @@ to its own page) still answers GET. Core wires that check to the page lookups (`
 Folio registers its pages) and asks them when a request runs, with the request's locale and path;
 with none registered (an API-only app) the 405 stands. A router set up by hand can be given the
 check with `$router->answerPagesWith(fn (string $locale, string $path): bool => ...)`
-(`Application::setRouter()` does it for you). Before 0.62 every such request was a 404.
+(`Application::setRouter()` does it for you; the seam is core's `AnswersPages` interface, which `Router` implements). Before 0.62 every such request was a 404.
 
 ## Clean paths (`canonical_paths`)
 

@@ -7,11 +7,12 @@ namespace Preflow\Routing;
 use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Core\Exceptions\MethodNotAllowedHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Routing\AnswersPages;
 use Preflow\Core\Routing\PageExists;
 use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouterInterface;
 
-final class Router implements RouterInterface, PageExists
+final class Router implements RouterInterface, PageExists, AnswersPages
 {
     private ?RouteCollection $collection = null;
 

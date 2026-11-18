@@ -233,9 +233,9 @@ final class Application
         $this->router = $router;
         $this->container->instance(RouterInterface::class, $router);
 
-        // preflow/routing's router answers 405 for a wrong method behind a catch-all only where no
+        // A router that can ask answers 405 for a wrong method behind a catch-all only where no
         // page answers the path: it asks the page lookups, when a request runs.
-        if ($router instanceof \Preflow\Routing\Router) {
+        if ($router instanceof \Preflow\Core\Routing\AnswersPages) {
             $container = $this->container;
             $router->answerPagesWith(static function (string $locale, string $path) use ($container): bool {
                 foreach (self::pageLookups($container) as $lookup) {
