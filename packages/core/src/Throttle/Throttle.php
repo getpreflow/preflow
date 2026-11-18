@@ -26,9 +26,12 @@ use Psr\Http\Message\ServerRequestInterface;
  * Retention (since 0.78): a row stores when its window ends (expires_at) and is deleted once it
  * has: by prune(), which the first hit that starts a window runs (once per instance), by
  * tooMany() and retryAfter() when they find it ended, and by `preflow throttle:prune` from cron
- * for a site that promises a retention however quiet it is. So a row lives for its window plus
- * at most the time until the next request that counts, or the next cron run. Rows of earlier
- * days are orphaned by the client hash's rotation and go the same way.
+ * for a site that promises a retention however quiet it is. So a row lives for at most its
+ * window plus the prune interval (the time until the next request that counts, or the next cron
+ * run; `--every=30` makes it 30 seconds). An expired row never counts: hit() restarts an ended
+ * window and tooMany() ignores it, so the bound is about privacy and size, not correctness.
+ * Calling prune() on every request is unneeded, hit() already prunes. Rows of earlier days are
+ * orphaned by the client hash's rotation and go the same way.
  *
  * client() refuses an empty or the well-known default key: a hash salted with a
  * public key could be brute-forced back to the IP. forPerson() (since 0.78) does the

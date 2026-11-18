@@ -56,11 +56,21 @@ php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite
 ### `throttle:prune` — delete attempt-limit rows whose window has ended (since 0.78)
 
 Deletes the rows of `preflow_throttle` whose window has ended (`Throttle::prune()`) and prints
-how many. The throttle does this itself on the next request that counts; run the command from
-cron when a site promises how long it keeps them:
+how many. The throttle does this itself on the first hit of a window (so calling `prune()` on
+every request is unneeded); run the command from cron when a site promises how long it keeps
+them. A row lives at most its window plus the interval between runs; an expired row never
+counts, so this is about privacy and size, not correctness.
 
 ```
 */5 * * * * cd /path/to/site/current && php preflow throttle:prune
+```
+
+`--every=<seconds>` (1 to 59, since 0.79.0) prunes, waits and prunes again until the next run
+would start at or after 55 seconds from the start. One cron line a minute then gives a bound
+under a minute (here: window + 30 seconds); other values are refused with exit code 1:
+
+```
+* * * * * cd /path/to/site/current && php preflow throttle:prune --every=30
 ```
 
 ### `db:check`, `db:vacuum`, `db:dump`, `db:restore` — the database through Preflow's connection (since 0.78)

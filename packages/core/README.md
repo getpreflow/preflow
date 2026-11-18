@@ -376,7 +376,12 @@ $throttle->clear('login', $client);                       // after a success
   first hit that starts a window runs it (once per request), and `tooMany()`/`retryAfter()` delete
   an ended row they find. A quiet site keeps a row until the next request that counts: when a
   page promises a retention ("kept for one hour"), run `php preflow throttle:prune` from cron
-  (every few minutes) as well. `prune(olderThanSeconds: …)` deletes by window start instead, ended
+  as well. **The bound:** a row lives at most its window plus the prune interval. An expired row
+  never counts (`hit()` restarts an ended window, `tooMany()` ignores it), so the bound is about
+  privacy and size, not correctness. `hit()` already prunes, so calling `prune()` on every
+  request is unneeded. For a bound under a minute use one cron line with `--every`
+  (since 0.79.0): `* * * * * cd /path/to/site/current && php preflow throttle:prune --every=30`.
+  `prune(olderThanSeconds: …)` deletes by window start instead, ended
   or not, and returns how many. `definition()` is the rows' type (for reading them in tests).
 
 ### Activity log (0.77)
