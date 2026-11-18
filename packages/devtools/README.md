@@ -140,7 +140,7 @@ php preflow db:seed --class=DemoSeeder      # one seeder; a short name under App
 ```
 
 - `.env` is loaded, so a seeder can read `$_ENV` / `getenv()`.
-- `--class=<Name>` runs one seeder, which suits demo data you don't want in every run. `db:seed` doesn't know about environments, so a demo seeder guards itself: the example reads `app.debug` from `Config` and returns early when it is off, so running it on a live server leaves the data alone.
+- `--class=<Name>` runs one seeder, which suits demo data you don't want in every run. `db:seed` doesn't know about environments, so a demo seeder guards itself: the `DemoSeeder` above takes `Config` in its constructor and starts `run()` with `if (!$this->config->get('app.debug')) { return; }`, so running it on a live server leaves the data alone.
 - `save()` validates: the container's `DataManager` has the validator, so `#[Validate]` rules apply.
 - An unknown `--class` prints `Seeder <Name> not found.` and exits 1; a seeder that throws prints `Seeder <Name> failed: <message>` and exits 1.
 - A project without `app/Seeds/` prints `No seeders directory found (app/Seeds/).` and exits 0.

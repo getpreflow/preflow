@@ -111,6 +111,7 @@ To use it as `#[Config('<name>.key')]` or `Config::get()`, put it into `Config` 
 ```php
 use Preflow\Core\Application;
 use Preflow\Core\Config\Config;
+use Preflow\Core\Container\Container;
 
 public function register(Container $container): void
 {
