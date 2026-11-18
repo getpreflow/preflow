@@ -1268,6 +1268,31 @@ abstract class StorageDriverContract extends TestCase
     }
 
     /**
+     * MIN and MAX of a text field with a condition compare by the rule (case ignored, accents
+     * count), of an exact field by bytes: the same answer on every driver (@since 0.79.0).
+     */
+    public function test_conditional_min_and_max_follow_the_text_rule(): void
+    {
+        $this->seedPeople();
+        $rows = $this->aggregatePeople(['p1', 'p2', 'p3', 'p7', 'p8', 'p9', 'p10'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->min('name', 'first', where: [['name', 'IN', ['MÜLLER', 'Muller', 'Zebra']]])
+            ->max('name', 'last', where: [['name', 'IN', ['MÜLLER', 'Muller', 'äpfel']]])
+            ->max('name', 'cased', where: [['name', '=', 'müller']])
+            ->min('name', 'none', where: [['name', '=', 'Mueller']]));
+        $row = $rows[0];
+        $this->assertSame('Muller', $row['first'], '"Muller" sorts before "Müller" and "MÜLLER" (accents count), "Zebra" after');
+        $this->assertSame('müller', mb_strtolower((string) $row['last']), 'Müller or MÜLLER (either spelling), after "Muller"; "äpfel" sorts before');
+        $this->assertSame('müller', mb_strtolower((string) $row['cased']), 'the condition ignores case');
+        $this->assertNull($row['none']);
+
+        $exact = $this->aggregatePeople(['p1', 'p2'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->min('code', 'lowest', where: [['code', 'IN', ['Ab', 'aB']]])
+            ->max('code', 'highest', where: [['code', 'IN', ['Ab', 'aB']]])
+            ->min('code', 'wrong_case', where: [['code', '=', 'ab']]));
+        $this->assertSame(['Ab', 'aB', null], [$exact[0]['lowest'], $exact[0]['highest'], $exact[0]['wrong_case']], 'by bytes: "Ab" before "aB"; "ab" is neither');
+    }
+
+    /**
      * A measure's own condition follows each field's text rule, as where() does: a text field's
      * ignores case and respects accents, an exact field's compares exactly (@since 0.79.0).
      */
