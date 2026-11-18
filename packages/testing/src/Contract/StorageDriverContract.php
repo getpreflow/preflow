@@ -13,18 +13,23 @@ use Preflow\Data\ConditionalUpdates;
 use Preflow\Data\CounterReset;
 use Preflow\Data\DescribesColumns;
 use Preflow\Data\Dumps;
+use Preflow\Data\InsertsNew;
 use Preflow\Data\Maintenance;
 use Preflow\Data\Query;
 use Preflow\Data\QueryBuilder;
 use Preflow\Data\RankedSearch;
 use Preflow\Data\ResultSet;
 use Preflow\Data\RunsSql;
+use Preflow\Data\FieldTransformer;
+use Preflow\Data\SelectsColumns;
+use Preflow\Data\SelectsSubqueries;
 use Preflow\Data\SortDirection;
 use Preflow\Data\StorageDriver;
 use Preflow\Data\Transactions;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\UniqueViolation;
+use Preflow\Testing\PlainDriver;
 
 /**
  * What every StorageDriver does, as tests. Extend it, implement the two hooks, and run it with
@@ -94,6 +99,8 @@ use Preflow\Data\UniqueViolation;
  *   OR in SQL. `total()` counts every match, ignoring limit and offset.
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
+ * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
+ *   which: true when written, false when the id exists (the stored record stays as it is).
  * - A driver with ConditionalUpdates (@since 0.77) writes only the named fields, and only while the
  *   version field holds the expected whole number (as text or number; null: none, NULL or '', and
  *   never 0); a match that changes no value is still a match.
@@ -1260,6 +1267,54 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame(['Ab', 'aB'], $codes);
     }
 
+    /**
+     * MIN and MAX of a text field with a condition compare by the rule (case ignored, accents
+     * count), of an exact field by bytes: the same answer on every driver (@since 0.79.0).
+     */
+    public function test_conditional_min_and_max_follow_the_text_rule(): void
+    {
+        $this->seedPeople();
+        $rows = $this->aggregatePeople(['p1', 'p2', 'p3', 'p7', 'p8', 'p9', 'p10'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->min('name', 'first', where: [['name', 'IN', ['MÜLLER', 'Muller', 'Zebra']]])
+            ->max('name', 'last', where: [['name', 'IN', ['MÜLLER', 'Muller', 'äpfel']]])
+            ->max('name', 'cased', where: [['name', '=', 'müller']])
+            ->min('name', 'none', where: [['name', '=', 'Mueller']]));
+        $row = $rows[0];
+        $this->assertSame('Muller', $row['first'], '"Muller" sorts before "Müller" and "MÜLLER" (accents count), "Zebra" after');
+        $this->assertSame('müller', mb_strtolower((string) $row['last']), 'Müller or MÜLLER (either spelling), after "Muller"; "äpfel" sorts before');
+        $this->assertSame('müller', mb_strtolower((string) $row['cased']), 'the condition ignores case');
+        $this->assertNull($row['none']);
+
+        $exact = $this->aggregatePeople(['p1', 'p2'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->min('code', 'lowest', where: [['code', 'IN', ['Ab', 'aB']]])
+            ->max('code', 'highest', where: [['code', 'IN', ['Ab', 'aB']]])
+            ->min('code', 'wrong_case', where: [['code', '=', 'ab']]));
+        $this->assertSame(['Ab', 'aB', null], [$exact[0]['lowest'], $exact[0]['highest'], $exact[0]['wrong_case']], 'by bytes: "Ab" before "aB"; "ab" is neither');
+    }
+
+    /**
+     * A measure's own condition follows each field's text rule, as where() does: a text field's
+     * ignores case and respects accents, an exact field's compares exactly (@since 0.79.0).
+     */
+    public function test_a_measure_condition_follows_the_text_rule(): void
+    {
+        $this->seedPeople();
+        $rows = $this->aggregatePeople(['p1', 'p2', 'p3'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->count('mueller', where: [['name', '=', 'müller']])
+            ->count('plain', where: [['name', '=', 'Muller']])
+            ->count('listed', where: [['name', 'IN', ['MÜLLER', 'Muller']]])
+            ->count('not_plain', where: [['name', '!=', 'muller']])
+            ->countDistinct('name', 'kinds', where: [['name', 'IN', ['MÜLLER', 'Muller']]])
+            ->count('exact_hit', where: [['code', '=', 'Ab']])
+            ->count('exact_miss', where: [['code', '=', 'ab']]));
+        $this->assertSame([2, 1, 3, 2, 2, 1, 0], array_map('intval', array_values($rows[0])));
+
+        $none = $this->aggregatePeople(['p1', 'p2', 'p3'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->count('hit', where: [['name', '=', 'Müller']])
+            ->count('miss', where: [['name', '=', 'Mueller']]));
+        $this->assertSame([2, 0], array_map('intval', array_values($none[0])));
+    }
+
     /** UniqueIndexes: a refused save inside an open transaction leaves it usable (a savepoint where the database would abort it). */
     public function test_a_refused_unique_save_leaves_the_open_transaction_usable(): void
     {
@@ -1303,6 +1358,179 @@ abstract class StorageDriverContract extends TestCase
 
         $this->assertFalse($this->driver->exists('accounts', 'a2'));
         $this->assertTrue($this->driver->exists('accounts', 'a3'), 'an accent variant is another value');
+    }
+
+    /** @since 0.79.0 */
+    private function seedVisits(): void
+    {
+        $this->createType('installs', ['uuid' => 'exact', 'kind' => 'exact']);
+        foreach (['i1' => 'web', 'i2' => 'app', 'i3' => 'web', 'i4' => 'bot'] as $id => $kind) {
+            $this->driver->save('installs', $id, ['uuid' => $id, 'kind' => $kind]);
+        }
+        $this->createType('visits', ['uuid' => 'exact', 'install' => 'exact', 'ms' => 'number']);
+        foreach ([['v1', 'i1', 40], ['v2', 'i1', 10], ['v3', 'i2', 30], ['v4', 'i3', 20], ['v5', 'i4', 50], ['v6', 'i2', 60]] as [$id, $install, $ms]) {
+            $this->driver->save('visits', $id, ['uuid' => $id, 'install' => $install, 'ms' => $ms]);
+        }
+    }
+
+    private function visitsType(): TypeDefinition
+    {
+        return new TypeDefinition('visits', 'visits', 'default', [
+            'uuid' => new TypeFieldDefinition('uuid'), 'install' => new TypeFieldDefinition('install'), 'ms' => new TypeFieldDefinition('ms', 'number'),
+        ]);
+    }
+
+    private function installsType(): TypeDefinition
+    {
+        return new TypeDefinition('installs', 'installs', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'kind' => new TypeFieldDefinition('kind')]);
+    }
+
+    /** @since 0.79.0 */
+    public function test_pluck_reads_one_field_of_the_selected_records_in_order_with_limit(): void
+    {
+        $this->seedVisits();
+        $visits = fn (): QueryBuilder => QueryBuilder::forType($this->driver, $this->visitsType());
+
+        $ms = $visits()->where('install', 'i2')->orderBy('ms', SortDirection::Desc)->pluck('ms');
+        $this->assertCount(2, $ms);
+        $this->assertNumber(60, $ms[0]);
+        $this->assertNumber(30, $ms[1]);
+
+        $top = $visits()->orderBy('ms', SortDirection::Desc)->limit(2)->offset(1)->pluck('uuid');
+        $this->assertSame(['v5', 'v1'], $top, 'a list, in order, after the offset');
+        $this->assertSame(['v1', 'v2', 'v3', 'v4', 'v5', 'v6'], $this->sorted($visits()->pluck('uuid')), 'every record, one value each');
+        $this->assertSame([], $visits()->where('install', 'none')->pluck('ms'));
+    }
+
+    /** @since 0.79.0 */
+    public function test_where_in_takes_a_subquery_and_gives_the_same_rows_on_every_driver(): void
+    {
+        $this->seedVisits();
+        $installs = QueryBuilder::forType($this->driver, $this->installsType())->where('kind', 'web');
+        $in = QueryBuilder::forType($this->driver, $this->visitsType())->whereIn('install', $installs, 'uuid');
+        $this->assertSame(['v1', 'v2', 'v4'], $this->sorted(array_map(static fn ($r): string => (string) $r->get('uuid'), $in->get()->items())));
+
+        $notIn = QueryBuilder::forType($this->driver, $this->visitsType())
+            ->whereNotIn('install', QueryBuilder::forType($this->driver, $this->installsType())->where('kind', 'web'), 'uuid');
+        $this->assertSame(['v3', 'v5', 'v6'], $this->sorted(array_map(static fn ($r): string => (string) $r->get('uuid'), $notIn->get()->items())));
+
+        $list = QueryBuilder::forType($this->driver, $this->visitsType())->whereIn('install', ['i2', 'i4'])->where('ms', '>', 40);
+        $this->assertSame(['v5', 'v6'], $this->sorted($list->pluck('uuid')));
+    }
+
+    /** @since 0.79.0 */
+    public function test_where_in_with_an_empty_subquery(): void
+    {
+        $this->seedVisits();
+        $none = fn (): QueryBuilder => QueryBuilder::forType($this->driver, $this->installsType())->where('kind', 'nothing');
+
+        $this->assertSame([], QueryBuilder::forType($this->driver, $this->visitsType())->whereIn('install', $none(), 'uuid')->pluck('uuid'), 'IN of nothing matches nothing');
+        $this->assertCount(6, QueryBuilder::forType($this->driver, $this->visitsType())->whereNotIn('install', $none(), 'uuid')->pluck('uuid'), 'NOT IN of nothing matches everything');
+    }
+
+    /**
+     * A driver with SelectsColumns or SelectsSubqueries gives the same rows as the fallback (the records read, the
+     * subquery run first and passed as a list), which PlainDriver proves on the same storage.
+     *
+     * @since 0.79.0
+     */
+    public function test_the_column_and_subquery_capabilities_give_the_same_rows_as_the_fallback(): void
+    {
+        if (!$this->driver instanceof SelectsColumns && !$this->driver instanceof SelectsSubqueries) {
+            $this->markTestSkipped('The driver implements neither SelectsColumns nor SelectsSubqueries: it has only the fallback, which the other cases cover.');
+        }
+        $this->seedVisits();
+        $this->driver->save('visits', 'v7', ['uuid' => 'v7', 'install' => null, 'ms' => 5]);
+        $this->driver->save('installs', 'i5', ['uuid' => 'i5', 'kind' => null]);
+        $plain = new PlainDriver($this->driver);
+
+        $cases = [
+            'pluck' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->where('ms', '>', 10)->orderBy('ms', SortDirection::Desc)->limit(3)->offset(1)->pluck('uuid'),
+            'pluck nulls' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->orderBy('uuid')->pluck('install'),
+            'in' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'web'), 'uuid')->orderBy('uuid')->pluck('uuid'),
+            'not in' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereNotIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'web'), 'uuid')->orderBy('uuid')->pluck('uuid'),
+            'in with nulls' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->installsType())->whereNotIn('kind', QueryBuilder::forType($d, $this->installsType()), 'kind')->orderBy('uuid')->pluck('uuid'),
+            'in nothing' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'nothing'), 'uuid')->pluck('uuid'),
+            'not in nothing' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereNotIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'nothing'), 'uuid')->orderBy('uuid')->pluck('uuid'),
+            'limited subquery' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereIn('install', QueryBuilder::forType($d, $this->installsType())->orderBy('uuid')->limit(2), 'uuid')->orderBy('uuid')->pluck('uuid'),
+        ];
+        foreach ($cases as $name => $run) {
+            $this->assertEquals($run($plain), $run($this->driver), $name);
+        }
+        $this->assertSame(['v7'], array_slice(QueryBuilder::forType($this->driver, $this->visitsType())->orderBy('uuid')->pluck('uuid'), -1), 'sanity');
+    }
+
+    /**
+     * pluck() gives what a record reads (a type's transformer runs), and a subquery compares the
+     * values as stored, on a driver with the capabilities and on the fallback alike.
+     *
+     * @since 0.79.0
+     */
+    public function test_pluck_and_subqueries_with_a_type_transformer_read_like_records(): void
+    {
+        $upper = new class implements FieldTransformer {
+            public function toStorage(mixed $value): mixed
+            {
+                return is_string($value) ? strtolower($value) : $value;
+            }
+
+            public function fromStorage(mixed $value): mixed
+            {
+                return is_string($value) ? strtoupper($value) : $value;
+            }
+        };
+        $this->createType('parts', ['uuid' => 'exact', 'code' => 'exact']);
+        $this->driver->save('parts', 'p1', ['uuid' => 'p1', 'code' => 'xy']);
+        $this->createType('uses', ['uuid' => 'exact', 'part_code' => 'exact']);
+        $this->driver->save('uses', 'u1', ['uuid' => 'u1', 'part_code' => 'xy']);
+        $this->driver->save('uses', 'u2', ['uuid' => 'u2', 'part_code' => 'zz']);
+        $parts = new TypeDefinition('parts', 'parts', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'code' => new TypeFieldDefinition('code', exact: true)], transformers: ['code' => $upper]);
+        $uses = new TypeDefinition('uses', 'uses', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'part_code' => new TypeFieldDefinition('part_code', exact: true)]);
+
+        foreach ([$this->driver, new PlainDriver($this->driver)] as $driver) {
+            $this->assertSame(['XY'], QueryBuilder::forType($driver, $parts)->pluck('code'));
+            $this->assertSame(['u1'], QueryBuilder::forType($driver, $uses)->whereIn('part_code', QueryBuilder::forType($driver, $parts), 'code')->pluck('uuid'));
+            $this->assertSame(['u2'], QueryBuilder::forType($driver, $uses)->whereNotIn('part_code', QueryBuilder::forType($driver, $parts), 'code')->pluck('uuid'));
+        }
+    }
+
+    /**
+     * A subquery compares as the list of its values would: by the outer field's rule (a text field
+     * ignores case, an exact one does not), whatever the inner column's own collation.
+     *
+     * @since 0.79.0
+     */
+    public function test_a_subquery_compares_by_the_outer_fields_rule(): void
+    {
+        $this->requireTextRule();
+        $this->createType('labels', ['uuid' => 'exact', 'name' => 'text']);
+        foreach (['L1' => 'Web', 'L2' => 'APP', 'L3' => 'Other', 'L4' => 'web'] as $id => $name) {
+            $this->driver->save('labels', $id, ['uuid' => $id, 'name' => $name]);
+        }
+        $this->createType('codes', ['uuid' => 'exact', 'code' => 'exact']);
+        foreach (['C1' => 'web', 'C2' => 'app', 'C3' => 'other'] as $id => $code) {
+            $this->driver->save('codes', $id, ['uuid' => $id, 'code' => $code]);
+        }
+        $labels = new TypeDefinition('labels', 'labels', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'name' => new TypeFieldDefinition('name')]);
+        $codes = new TypeDefinition('codes', 'codes', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'code' => new TypeFieldDefinition('code', exact: true)]);
+
+        foreach ([$this->driver, new PlainDriver($this->driver)] as $driver) {
+            $textInExact = QueryBuilder::forType($driver, $labels)->whereIn('name', QueryBuilder::forType($driver, $codes), 'code')->orderBy('uuid')->pluck('uuid');
+            $this->assertSame(['L1', 'L2', 'L3', 'L4'], $textInExact, 'a text field matches case-insensitively');
+            $exactInText = QueryBuilder::forType($driver, $codes)->whereIn('code', QueryBuilder::forType($driver, $labels), 'name')->orderBy('uuid')->pluck('uuid');
+            $this->assertSame(['C1'], $exactInText, 'an exact field matches only the same case');
+            $textNotIn = QueryBuilder::forType($driver, $labels)->whereNotIn('name', QueryBuilder::forType($driver, $codes)->where('code', 'web'), 'code')->orderBy('uuid')->pluck('uuid');
+            $this->assertSame(['L2', 'L3'], $textNotIn);
+        }
+    }
+
+    /** @return list<string> */
+    private function sorted(array $values): array
+    {
+        $values = array_map('strval', $values);
+        sort($values);
+
+        return $values;
     }
 
     /**
@@ -1461,6 +1689,100 @@ abstract class StorageDriverContract extends TestCase
         $this->assertTrue($driver->updateIfVersion('versioned', 'none', ['version' => '7'], 'version', -1));
         $this->assertFalse($driver->updateIfVersion('versioned', 'empty', ['label' => 'B'], 'version', 0), "'' is no version 0");
         $this->assertSame('7', (string) ($driver->findOne('versioned', 'none') ?? [])['version']);
+    }
+
+    // --- insert only if new (InsertsNew, @since 0.79.0) -------------------------------------------
+
+    private function inserting(): InsertsNew
+    {
+        if (!$this->driver instanceof InsertsNew) {
+            $this->markTestSkipped('The driver does not implement InsertsNew (DataManager checks, then writes instead).');
+        }
+        $this->createRecords();
+
+        return $this->driver;
+    }
+
+    public function test_insert_new_writes_a_new_id_and_leaves_an_existing_one_untouched(): void
+    {
+        $driver = $this->inserting();
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'First', 'amount' => 1]));
+        $this->assertSame('First', ($driver->findOne('records', 'n1') ?? [])['label']);
+
+        $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Second', 'amount' => 2]), 'the id exists: not written');
+        $row = $driver->findOne('records', 'n1') ?? [];
+        $this->assertSame('First', $row['label'], 'the stored record is untouched');
+        $this->assertNumber(1, $row['amount'] ?? null);
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n2', 'label' => 'Other', 'amount' => 3]), 'another id is new');
+    }
+
+    public function test_insert_new_after_a_delete_writes_again(): void
+    {
+        $driver = $this->inserting();
+        $driver->insertNew('records', ['uuid' => 'n1', 'label' => 'First', 'amount' => 1]);
+        $driver->delete('records', 'n1');
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Again', 'amount' => 1]));
+        $this->assertSame('Again', ($driver->findOne('records', 'n1') ?? [])['label']);
+    }
+
+    public function test_insert_new_stores_structured_values_as_save_does(): void
+    {
+        $driver = $this->inserting();
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'A', 'meta' => ['a' => 1]]));
+        $stored = ($driver->findOne('records', 'n1') ?? [])['meta'] ?? null;
+        $this->assertSame(['a' => 1], is_string($stored) ? json_decode($stored, true) : $stored);
+    }
+
+    public function test_insert_new_needs_an_id(): void
+    {
+        $driver = $this->inserting();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $driver->insertNew('records', ['label' => 'No id']);
+    }
+
+    public function test_insert_new_of_an_existing_id_is_false_even_when_a_unique_index_fails_too(): void
+    {
+        $driver = $this->inserting();
+        $this->declareUnique('records', 'label');
+        $driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Same', 'amount' => 1]);
+
+        $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Same', 'amount' => 1]), 'the same record again: the id exists');
+        $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Other', 'amount' => 2]));
+        $this->assertSame('Same', ($driver->findOne('records', 'n1') ?? [])['label']);
+
+        try {
+            $driver->insertNew('records', ['uuid' => 'n2', 'label' => 'Same', 'amount' => 3]);
+            if ($this->driver->exists('records', 'n2')) {
+                $this->markTestSkipped('The driver has no unique index to declare.');
+            }
+            $this->fail('a new id with a taken unique value is refused');
+        } catch (UniqueViolation) {
+            $this->assertFalse($driver->exists('records', 'n2'));
+        }
+    }
+
+    public function test_insert_new_of_an_existing_id_leaves_an_open_transaction_usable(): void
+    {
+        $driver = $this->inserting();
+        if (!$driver instanceof Transactions) {
+            $this->markTestSkipped('The driver does not implement Transactions.');
+        }
+
+        $driver->transaction(function () use ($driver): void {
+            $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'First']));
+            $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Second']), 'a duplicate');
+            $this->assertTrue($driver->insertNew('records', ['uuid' => 'n2', 'label' => 'After']), 'the transaction goes on');
+            $driver->save('records', 'n3', ['uuid' => 'n3', 'label' => 'Saved']);
+        });
+
+        $this->assertSame('First', ($driver->findOne('records', 'n1') ?? [])['label']);
+        $this->assertTrue($driver->exists('records', 'n2'));
+        $this->assertTrue($driver->exists('records', 'n3'), 'committed');
     }
 
     private function createRecords(): void

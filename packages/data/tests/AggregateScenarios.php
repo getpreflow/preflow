@@ -409,4 +409,112 @@ trait AggregateScenarios
         $this->assertSame([['count' => 4]], $aggregate->get());
         $this->assertSame([['count' => 1]], $builder->aggregate()->count()->get());
     }
+
+    /** @since 0.79.0 A measure with its own condition counts only the group's records that meet it. */
+    public function test_measures_with_a_condition(): void
+    {
+        $rows = $this->dm->queryIn($this->answers())->aggregate()
+            ->groupBy('member')
+            ->count()
+            ->count('wrong', where: [['correct', '=', false]])
+            ->sum('tries', 'late_tries', where: [['step', 'IN', ['s3', 's4']]])
+            ->avg('seconds', 'fast_average', where: [['tries', '=', 1]])
+            ->min('seconds', 'fast_min', where: [['tries', '=', 1]])
+            ->max('seconds', 'slow_max', where: [['tries', '>=', 2]])
+            ->countDistinct('step', 'right_steps', where: [['correct', '=', true]])
+            ->get();
+
+        $this->assertSame([
+            ['member' => 'm1', 'count' => 4, 'wrong' => 2, 'late_tries' => 4, 'fast_average' => 6.25, 'fast_min' => 5, 'slow_max' => 10, 'right_steps' => 2],
+            ['member' => 'm2', 'count' => 4, 'wrong' => 1, 'late_tries' => 5, 'fast_average' => 6, 'fast_min' => 4, 'slow_max' => 12, 'right_steps' => 3],
+            ['member' => 'm3', 'count' => 4, 'wrong' => 1, 'late_tries' => 1, 'fast_average' => 4, 'fast_min' => 1, 'slow_max' => null, 'right_steps' => 2],
+        ], $rows);
+    }
+
+    public function test_a_condition_with_several_parts_needs_all_of_them(): void
+    {
+        $rows = $this->dm->queryIn($this->answers())->aggregate()
+            ->groupBy('member')
+            ->count('hard_right', where: [['correct', '=', true], ['tries', '>=', 2]])
+            ->count('shorthand', where: [['step', 's1']])
+            ->count('no_step', where: [['step', '=', null]])
+            ->count('has_step', where: [['step', '!=', null]])
+            ->get();
+
+        $this->assertSame([
+            ['member' => 'm1', 'hard_right' => 0, 'shorthand' => 1, 'no_step' => 0, 'has_step' => 4],
+            ['member' => 'm2', 'hard_right' => 1, 'shorthand' => 1, 'no_step' => 0, 'has_step' => 4],
+            ['member' => 'm3', 'hard_right' => 0, 'shorthand' => 1, 'no_step' => 1, 'has_step' => 3],
+        ], $rows);
+    }
+
+    /** A text field's condition follows the text rule, an exact field's compares exactly: the same as where(). */
+    public function test_a_condition_follows_each_fields_text_rule(): void
+    {
+        $answer = $this->answers();
+        $rows = $this->dm->queryIn($answer)->aggregate()
+            ->count('text_upper', where: [['step', '=', 'S1']])
+            ->count('exact_upper', where: [['grade', '=', 'A']])
+            ->count('exact_lower', where: [['grade', '=', 'a']])
+            ->count('exact_in', where: [['grade', 'IN', ['A', 'b']]])
+            ->countDistinct('step', 'text_in', where: [['step', 'IN', ['S1', 'S2']]])
+            ->get();
+        $this->assertSame([['text_upper' => 3, 'exact_upper' => 3, 'exact_lower' => 6, 'exact_in' => 6, 'text_in' => 2]], $rows);
+
+        $this->assertSame(
+            count($this->dm->queryIn($answer)->where('step', '=', 'S1')->get()->items()),
+            $rows[0]['text_upper'],
+            'a normal where() counts the same',
+        );
+        $this->assertSame(count($this->dm->queryIn($answer)->where('grade', 'IN', ['A', 'b'])->get()->items()), $rows[0]['exact_in']);
+    }
+
+    public function test_a_condition_reads_a_translatable_field_in_the_query_locale(): void
+    {
+        $answer = $this->answers();
+        $de = $this->dm->queryIn($answer)->aggregate()->count('game', where: [['topic', '=', 'spiel']])->get();
+        $en = $this->dm->queryIn($answer)->locale('en')->aggregate()->count('game', where: [['topic', '=', 'game']])->get();
+        $this->assertSame([['game' => 8]], $de);
+        $this->assertSame([['game' => 6]], $en);
+    }
+
+    /** The condition's values are bound where the measure is used: in the select, having and order by. */
+    public function test_a_conditioned_result_can_be_filtered_and_ordered(): void
+    {
+        $rows = $this->dm->queryIn($this->answers())
+            ->where('tries', '>=', 1)
+            ->aggregate()
+            ->groupBy('member')
+            ->count('wrong', where: [['correct', '=', false]])
+            ->sum('tries', 'late', where: [['step', '=', 's3']])
+            ->having('wrong', '>=', 1)
+            ->having('late', '>', 0)
+            ->orderBy('wrong', SortDirection::Desc)
+            ->orderBy('late', SortDirection::Asc)
+            ->get();
+
+        $this->assertSame([
+            ['member' => 'm1', 'wrong' => 2, 'late' => 1],
+            ['member' => 'm3', 'wrong' => 1, 'late' => 1],
+            ['member' => 'm2', 'wrong' => 1, 'late' => 4],
+        ], $rows);
+    }
+
+    public function test_a_condition_that_nothing_meets_gives_the_empty_result(): void
+    {
+        $rows = $this->dm->queryIn($this->answers())->aggregate()
+            ->groupBy('member')
+            ->count('none', where: [['step', '=', 'nowhere']])
+            ->sum('tries', 'total', where: [['step', '=', 'nowhere']])
+            ->avg('tries', 'average', where: [['step', '=', 'nowhere']])
+            ->min('step', 'first', where: [['step', '=', 'nowhere']])
+            ->countDistinct('step', 'steps', where: [['step', '=', 'nowhere']])
+            ->get();
+
+        $this->assertSame([
+            ['member' => 'm1', 'none' => 0, 'total' => 0, 'average' => null, 'first' => null, 'steps' => 0],
+            ['member' => 'm2', 'none' => 0, 'total' => 0, 'average' => null, 'first' => null, 'steps' => 0],
+            ['member' => 'm3', 'none' => 0, 'total' => 0, 'average' => null, 'first' => null, 'steps' => 0],
+        ], $rows);
+    }
 }

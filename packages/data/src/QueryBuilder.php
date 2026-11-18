@@ -169,6 +169,163 @@ final class QueryBuilder
         return $this;
     }
 
+    /**
+     * Only the records whose $field is one of $values: a list, or the $column of the records
+     * another query selects ($column defaults to $field; the subquery's own filters, order and
+     * limit apply). Values are compared as stored (a transformer's fromStorage does not run). A
+     * null among the values is dropped: it matches nothing in SQL, and so nowhere. An empty list
+     * or subquery matches nothing.
+     *
+     * A list is bound as it is, so a very long one meets the database's limit on bindings. A
+     * subquery on the same SQL driver (SelectsSubqueries) is compiled into this query as
+     * `IN (SELECT ...)`: no values travel through PHP, no limit on bindings; the inner records are
+     * then read when this query runs. Any other subquery (another driver, JSON storage, a limit or
+     * offset on it) is run now, at the call, and its stored values passed as a list. The conditions
+     * are fixed at the call either way, but a write in between can give different rows. Both ways
+     * give the same rows otherwise.
+     *
+     * @param QueryBuilder<*>|list<mixed> $values
+     * @throws \InvalidArgumentException for a column given with a list, or a name that is no field
+     * @since 0.79.0
+     */
+    public function whereIn(string $field, QueryBuilder|array $values, ?string $column = null): self
+    {
+        return $this->whereList($field, 'IN', $values, $column);
+    }
+
+    /** As whereIn(), the records whose $field is none of $values (an empty list matches every record). @since 0.79.0 */
+    public function whereNotIn(string $field, QueryBuilder|array $values, ?string $column = null): self
+    {
+        return $this->whereList($field, 'NOT IN', $values, $column);
+    }
+
+    /** @param QueryBuilder<*>|list<mixed> $values */
+    private function whereList(string $field, string $operator, QueryBuilder|array $values, ?string $column): self
+    {
+        if ($values instanceof self) {
+            $column ??= $field;
+            if ($this->sharesSqlWith($values)) {
+                // The database runs the subquery: no values travel through PHP.
+                $values->assertField($column);
+                $inner = $values->prepared();
+                $this->assertField($field);
+                $this->filters++;
+                $this->query->whereInSubselect($field, $operator, new Subselect((string) $values->table(), $column, clone $inner));
+                $values->reportListing();
+
+                return $this;
+            }
+            $values = $values->values($column, true);
+        } elseif ($column !== null) {
+            throw new \InvalidArgumentException('A column names a field of a subquery; a list has none.');
+        }
+
+        return $this->where($field, $operator, array_values(array_filter($values, static fn (mixed $value): bool => $value !== null)));
+    }
+
+    /**
+     * One field of each record this query selects, in the query's order and within its limit
+     * and offset: a list of the values, as the records read them. Median, for instance: order by
+     * the field, then take the middle of the list.
+     *
+     * @return list<mixed>
+     * @throws \InvalidArgumentException when the type or model class has no such field
+     * @since 0.79.0
+     */
+    public function pluck(string $field): array
+    {
+        return $this->values($field, false);
+    }
+
+    /**
+     * Whether $inner can run inside this query as SQL: one driver instance that implements
+     * SelectsSubqueries, and an inner query a database takes in IN (no limit, no offset).
+     */
+    private function sharesSqlWith(self $inner): bool
+    {
+        return $this->driver instanceof SelectsSubqueries
+            && $this->driver === $inner->driver
+            && $inner->table() !== null
+            && $this->table() !== null
+            && $inner->query->getLimit() === null
+            && $inner->query->getOffset() === null;
+    }
+
+    /**
+     * Whether the column's values can be what a record reads, so the database may hand them over
+     * (the values are then checked by readsAsStored()): a plain record without a transformer on
+     * the field, or a class field typed string (a conversion changes the other types: bool, numbers,
+     * arrays) without one. Anything else reads the records.
+     */
+    private function mayReadColumn(string $field): bool
+    {
+        if ($this->typeDef !== null && $this->typeDef->translatableFields() !== []) {
+            return false;
+        }
+        if ($this->hydrate === null && $this->modelClass === null) {
+            return $this->typeDef !== null && !isset($this->typeDef->transformers[$field]);
+        }
+        $class = $this->meta?->modelClass ?? $this->modelClass;
+        if ($class === null || isset($this->meta?->transformers[$field]) || !property_exists($class, $field)) {
+            return false;
+        }
+        $type = (new \ReflectionProperty($class, $field))->getType();
+
+        return $type instanceof \ReflectionNamedType && $type->getName() === 'string';
+    }
+
+    /** Whether column values, a class field's, are all taken as they are (a string; null where the type allows it). */
+    private function readsAsStored(string $field, array $values): bool
+    {
+        if ($this->hydrate === null && $this->modelClass === null) {
+            return true; // a plain record reads the column as it is
+        }
+        $class = $this->meta?->modelClass ?? $this->modelClass;
+        $nullable = (new \ReflectionProperty((string) $class, $field))->getType()?->allowsNull() ?? true;
+        foreach ($values as $value) {
+            if (!is_string($value) && !($value === null && $nullable)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param bool $stored the values as storage holds them (no transformer, no conversion to the
+     *        property's type): what an IN list is compared with. Else as the records read them.
+     * @return list<mixed>
+     */
+    private function values(string $field, bool $stored): array
+    {
+        if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/D', $field) !== 1) {
+            throw new \InvalidArgumentException(sprintf('Invalid field name "%s": a field name has letters, digits and underscores and does not start with a digit.', substr($field, 0, 64)));
+        }
+        $this->assertField($field);
+        $table = $this->table();
+        $column = $this->driver instanceof SelectsColumns && $table !== null;
+        if ($column && ($stored || $this->mayReadColumn($field))) {
+            $values = $this->driver->pluck($table, $field, $this->prepared());
+            if ($stored || $this->readsAsStored($field, $values)) {
+                $this->reportListing();
+
+                return $values;
+            }
+        }
+        if ($stored) {
+            $rows = $this->driver->findMany((string) $table, $this->prepared())->items();
+            $this->reportListing();
+
+            return array_map(static fn (array $row): mixed => $row[$field] ?? null, $rows);
+        }
+        $values = [];
+        foreach ($this->get()->items() as $record) {
+            $values[] = $record instanceof DynamicRecord ? $record->get($field) : ($record->{$field} ?? null);
+        }
+
+        return $values;
+    }
+
     /** @param bool $numeric compare as numbers even where the column stores text */
     public function orderBy(string $field, SortDirection $direction = SortDirection::Asc, bool $numeric = false): self
     {

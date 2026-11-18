@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data\Tests\Migration;
 
+require_once __DIR__ . '/IncrementsTest.php';
+
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\Driver\MysqlDriver;
@@ -308,6 +310,35 @@ final class MysqlMigrationsTest extends TestCase
         $this->assertNotContains('uniq_t_a_b', $schema->indexes('t'));
         $schema->dropColumn('t', 'b');
         $this->assertSame(['uuid', 'a'], $schema->columns('t'));
+    }
+
+    public function test_increments_round_trip_numbers_the_rows_and_convert_column_keeps_it(): void
+    {
+        $schema = new Schema($this->pdo);
+        $schema->create('visits', fn (Table $t) => $t->increments()->string('page')->nullable());
+        $dm = new \Preflow\Data\DataManager(['default' => new MysqlDriver($this->pdo)], 'default');
+
+        $first = new IncrementsVisit();
+        $first->page = '/a';
+        $dm->insert($first);
+        $second = new IncrementsVisit();
+        $second->page = '/b';
+        $dm->insert($second);
+        $this->assertSame([1, 2], [$first->id, $second->id]);
+        $this->assertSame('/b', $dm->find(IncrementsVisit::class, 2)?->page);
+
+        $extra = fn (): string => (string) $this->pdo->query(
+            "SELECT EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'visits' AND COLUMN_NAME = 'id'"
+        )->fetchColumn();
+        $this->assertStringContainsString('auto_increment', strtolower($extra()));
+
+        $schema->convertColumn('visits', fn (Table $t) => $t->integer('id'));
+        $this->assertStringContainsString('auto_increment', strtolower($extra()), 'MODIFY keeps AUTO_INCREMENT');
+
+        $third = new IncrementsVisit();
+        $third->page = '/c';
+        $dm->insert($third);
+        $this->assertSame(3, $third->id);
     }
 }
 

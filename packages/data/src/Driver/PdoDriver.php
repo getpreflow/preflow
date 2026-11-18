@@ -9,9 +9,10 @@ use Preflow\Data\AggregatingStorage;
 use Preflow\Data\ExclusiveWrites;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
+use Preflow\Data\UniqueViolation;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns, \Preflow\Data\SelectsSubqueries
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -120,6 +121,13 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         }
 
         return new ResultSet($items, $total);
+    }
+
+    public function pluck(string $type, string $field, Query $query): array
+    {
+        [$sql, $bindings] = $this->compiler->compilePluck($type, $field, $query);
+
+        return $this->read($type, $sql, $bindings)->fetchAll(\PDO::FETCH_COLUMN);
     }
 
     public function aggregate(AggregateQuery $query): array
@@ -412,13 +420,19 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
     }
 
     /**
-     * A plain INSERT (no upsert) for a record expected not to exist yet; a concurrent insert of
-     * the same id makes it fail on the primary key, which is a lost race and not an error.
+     * A plain INSERT (never an upsert, never MySQL's INSERT IGNORE, which also swallows other
+     * errors): a second writer of the same id fails on the primary key, which is a lost race and
+     * not an error. A duplicate on another unique index is still a UniqueViolation.
      *
      * @param array<string, mixed> $data
+     * @since 0.79.0
      */
-    private function insertNew(string $type, array $data, string $idField): bool
+    public function insertNew(string $type, array $data, string $idField = 'uuid'): bool
     {
+        $id = $data[$idField] ?? null;
+        if ($id === null || $id === '' || $id === 0 || $id === '0') {
+            throw new \InvalidArgumentException("insertNew() needs the id in [{$idField}].");
+        }
         $data = array_map(
             static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) : $v,
             $data,
@@ -431,8 +445,24 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
             if ($this->dialect->isPrimaryKeyViolation($e, $type, $idField)) {
                 return false;
             }
+            // A database reports the first index that fails, and SQLite checks a unique index made
+            // later before the primary key: the same record stored twice then fails on that index.
+            // A record with the id is a duplicate id whichever index said so (a locking read, as
+            // claim() does, so a MySQL snapshot does not hide a row committed since).
+            if ($e instanceof UniqueViolation && $this->idStored($type, $id, $idField)) {
+                return false;
+            }
             throw $e;
         }
+    }
+
+    private function idStored(string $type, string|int $id, string $idField): bool
+    {
+        $table = $this->dialect->quoteIdentifier($type);
+        $col = $this->dialect->quoteIdentifier($idField);
+        $sql = "SELECT 1 FROM {$table} WHERE {$col} = ? LIMIT 1" . $this->dialect->lockingRead();
+
+        return $this->read($type, $sql, [$id])->fetchColumn() !== false;
     }
 
     /**

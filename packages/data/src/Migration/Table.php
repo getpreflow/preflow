@@ -6,7 +6,7 @@ namespace Preflow\Data\Migration;
 
 final class Table
 {
-    /** @var array<int, array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, index: bool, unique: bool, exact: bool}> */
+    /** @var array<int, array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, index: bool, unique: bool, exact: bool, auto: bool}> */
     private array $columns = [];
 
     /** @var list<array{columns: list<string>, unique: bool}> */
@@ -34,6 +34,23 @@ final class Table
     public function integer(string $name): self
     {
         return $this->addColumn($name, 'integer');
+    }
+
+    /**
+     * An integer primary key the database numbers itself (MySQL: BIGINT AUTO_INCREMENT PRIMARY KEY;
+     * SQLite: INTEGER PRIMARY KEY, which numbers itself). Use it for a table whose model has an
+     * `int` #[Id]; integer()->primary() is a plain key the app must number on MySQL.
+     *
+     * @since 0.79.0
+     */
+    public function increments(string $name = 'id'): self
+    {
+        $this->addColumn($name, 'integer');
+        $last = array_key_last($this->columns);
+        $this->columns[$last]['primary'] = true;
+        $this->columns[$last]['auto'] = true;
+
+        return $this;
     }
 
     public function json(string $name): self
@@ -105,9 +122,9 @@ final class Table
 
     /**
      * Column definitions in the shape SchemaGrammar::createTable() takes; 'exact' (since 0.78) marks
-     * a string or text column that compares exactly (exact()).
+     * a string or text column that compares exactly (exact()); 'auto' (since 0.79.0) marks an increments() key.
      *
-     * @return list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, exact: bool}>
+     * @return list<array{name: string, kind: string, length: ?int, nullable: bool, primary: bool, exact: bool, auto: bool}>
      */
     public function columns(): array
     {
@@ -118,6 +135,7 @@ final class Table
             'nullable' => $col['nullable'],
             'primary' => $col['primary'],
             'exact' => $col['exact'],
+            'auto' => $col['auto'],
         ], array_values($this->columns));
     }
 
@@ -184,6 +202,7 @@ final class Table
             'index' => false,
             'unique' => false,
             'exact' => false,
+            'auto' => false,
         ];
         return $this;
     }

@@ -31,7 +31,7 @@ final class AggregateQuery
     /** @var list<string> */
     private array $groups = [];
 
-    /** @var list<array{fn: string, field: ?string, as: string}> */
+    /** @var list<array{fn: string, field: ?string, as: string, condition?: Query}> */
     private array $measures = [];
 
     /** @var list<array{alias: string, operator: string, value: int|float}> */
@@ -79,38 +79,63 @@ final class AggregateQuery
         return $this;
     }
 
-    /** The number of records. */
-    public function count(string $as = 'count'): self
+    /**
+     * The number of records.
+     *
+     * Every measure takes an optional $where: conditions the measure alone applies, on top of the
+     * query's filters and the group, as [field, value] or [field, operator, value] (the shape of
+     * where(); several are AND'd), e.g. `where: [['day', '=', $day]]`. A field is compared by its
+     * own rule, as in where(). A group with no record that meets it counts 0 (sum 0, the others
+     * null).
+     *
+     * @param list<array{0: string, 1: mixed}|array{0: string, 1: mixed, 2: mixed}> $where
+     * @since 0.79.0 the $where parameter (of every measure)
+     */
+    public function count(string $as = 'count', array $where = []): self
     {
-        return $this->measure('count', null, $as);
+        return $this->measure('count', null, $as, $where);
     }
 
-    /** The number of different values of a field. */
-    public function countDistinct(string $field, string $as): self
+    /**
+     * The number of different values of a field.
+     *
+     * @param list<array{0: string, 1: mixed}|array{0: string, 1: mixed, 2: mixed}> $where see count()
+     */
+    public function countDistinct(string $field, string $as, array $where = []): self
     {
-        return $this->measure('countDistinct', $field, $as);
+        return $this->measure('countDistinct', $field, $as, $where);
     }
 
-    /** The sum of a number field. */
-    public function sum(string $field, string $as): self
+    /**
+     * The sum of a number field.
+     *
+     * @param list<array{0: string, 1: mixed}|array{0: string, 1: mixed, 2: mixed}> $where see count()
+     */
+    public function sum(string $field, string $as, array $where = []): self
     {
-        return $this->measure('sum', $this->numberField($field, 'sum'), $as);
+        return $this->measure('sum', $this->numberField($field, 'sum'), $as, $where);
     }
 
-    /** The average of a number field. */
-    public function avg(string $field, string $as): self
+    /**
+     * The average of a number field.
+     *
+     * @param list<array{0: string, 1: mixed}|array{0: string, 1: mixed, 2: mixed}> $where see count()
+     */
+    public function avg(string $field, string $as, array $where = []): self
     {
-        return $this->measure('avg', $this->numberField($field, 'avg'), $as);
+        return $this->measure('avg', $this->numberField($field, 'avg'), $as, $where);
     }
 
-    public function min(string $field, string $as): self
+    /** @param list<array{0: string, 1: mixed}|array{0: string, 1: mixed, 2: mixed}> $where see count() */
+    public function min(string $field, string $as, array $where = []): self
     {
-        return $this->measure('min', $field, $as);
+        return $this->measure('min', $field, $as, $where);
     }
 
-    public function max(string $field, string $as): self
+    /** @param list<array{0: string, 1: mixed}|array{0: string, 1: mixed, 2: mixed}> $where see count() */
+    public function max(string $field, string $as, array $where = []): self
     {
-        return $this->measure('max', $field, $as);
+        return $this->measure('max', $field, $as, $where);
     }
 
     /**
@@ -188,6 +213,19 @@ final class AggregateQuery
             ));
         }
 
+        if (!$this->driver instanceof ConditionalMeasures) {
+            foreach ($this->measures as $measure) {
+                if (isset($measure['condition'])) {
+                    throw new \LogicException(sprintf(
+                        'Storage driver %s cannot run an aggregate measure with a condition (result "%s"): it does not implement %s.',
+                        $this->driver::class,
+                        $measure['as'],
+                        ConditionalMeasures::class,
+                    ));
+                }
+            }
+        }
+
         $rows = $this->driver->aggregate($this);
         if ($this->onRun !== null) {
             ($this->onRun)();
@@ -202,7 +240,11 @@ final class AggregateQuery
         return $this->groups;
     }
 
-    /** @return list<array{fn: string, field: ?string, as: string}> fn: count, countDistinct, sum, avg, min or max */
+    /**
+     * @return list<array{fn: string, field: ?string, as: string, condition?: Query}> fn: count,
+     *         countDistinct, sum, avg, min or max; condition: the measure's own conditions as a
+     *         Query (getWheres()) reading fields as the query does; the key is absent for none (since 0.79.0)
+     */
     public function measures(): array
     {
         return $this->measures;
@@ -265,18 +307,25 @@ final class AggregateQuery
         return $this->table;
     }
 
-    private function measure(string $fn, ?string $field, string $as): self
+    /** @param list<array<mixed>> $where */
+    private function measure(string $fn, ?string $field, string $as, array $where = []): self
     {
         if ($field !== null) {
             $this->field($field);
         }
+        foreach ($where as $condition) {
+            if (is_array($condition) && is_string($condition[0] ?? null)) {
+                $this->field($condition[0]);
+            }
+        }
+        $condition = $where === [] ? null : $this->query->withConditionsOnly($where);
         if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $as) !== 1) {
             throw new \InvalidArgumentException(sprintf('Invalid result name "%s": use letters, digits and _.', $as));
         }
         if (in_array($as, array_column($this->measures, 'as'), true)) {
             throw new \InvalidArgumentException(sprintf('The result name "%s" is used twice.', $as));
         }
-        $this->measures[] = ['fn' => $fn, 'field' => $field, 'as' => $as];
+        $this->measures[] = ['fn' => $fn, 'field' => $field, 'as' => $as] + ($condition === null ? [] : ['condition' => $condition]);
 
         return $this;
     }

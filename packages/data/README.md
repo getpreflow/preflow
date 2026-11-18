@@ -43,7 +43,9 @@ before, such a property threw a `TypeError` on a SQL storage).
 $dm->find(Post::class, $id): ?Post
 $dm->query(Post::class): QueryBuilder<Post>
 $dm->save(Model $model): void           // INSERT when ID is empty, UPDATE otherwise
-$dm->insert(Model $model): void         // explicit INSERT; an int id reads back lastInsertId()
+$dm->insert(Model $model): void         // explicit INSERT; an int id reads back lastInsertId(); throws for an id that exists
+$dm->insertIgnoring(Model $model): bool // INSERT unless the id exists (0.79); true = written
+$dm->insertMany(iterable $models, bool $ignoreDuplicates = false): int // many inserts in one transaction (0.79)
 $dm->update(Model $model): void         // explicit UPDATE
 $dm->delete(Post::class, $id): void     // delete by class + ID
 $dm->delete($model): void               // delete by model instance
@@ -51,7 +53,54 @@ $dm->raw(string $sql, array $bindings, string $storage): array  // raw SQL query
 $dm->saveTypeIfVersion(DynamicRecord $record, int $expected): bool // compare-and-set, see below
 ```
 
-`save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables. A `string` id that is empty (or unset) gets a UUID v4 before the write instead; `insert()` refuses an id that exists.
+`save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables. A `string` id that is empty (or unset) gets a UUID v4 before the write instead; `insert()` refuses an id that exists (see "Inserting" below).
+
+### Inserting (0.79)
+
+`insert()` writes a new record and never writes over a stored one. Giving an id that exists throws a
+`RuntimeException` ("a record with this id exists"), and so does losing a race: when another request
+stores the same id between `insert()`'s check and its write, your `insert()` throws and the first row
+stays as it was. (Before 0.79 the second writer silently overwrote the first.) On the built-in drivers
+the check and the write are one step (`InsertsNew`: SQL a plain `INSERT` that fails on the primary
+key, JSON files a create under the type's lock). A storage without `InsertsNew` is checked, then
+written, as before, and a second writer can still get in between there.
+
+For rows that may repeat, such as an event log or a visit that counts once, skip the duplicate
+instead of catching the error:
+
+```php
+// true: written. false: a record with this id exists; it is left as it is, and no event or
+// observer report is made for the skipped model.
+$written = $dm->insertIgnoring($visit);
+
+// Many at once, in one transaction on a storage that has transactions (the SQL drivers):
+$count = $dm->insertMany($events);          // a duplicate throws; nothing of the batch is kept
+$count = $dm->insertMany($events, true);    // duplicates are skipped; $count is the number written
+```
+
+```php
+#[Entity(table: 'events', storage: 'sqlite')]
+final class Event extends Model
+{
+    #[Id]
+    public string $uuid = '';   // empty: a UUID is given, as insert() does
+
+    #[Field]
+    public string $name = '';
+}
+
+// An event delivered twice (a retry, a double click) is stored once:
+$event = new Event();
+$event->uuid = $deliveryId;
+$event->name = 'signup';
+$dm->insertIgnoring($event);
+```
+
+Validation, the generated id, `#[Timestamps]` and events run as for `insert()`; a model skipped as a
+duplicate runs no write. `insertMany()` inserts the models in the order given; where the storage has
+no transactions (JSON files) the models written before a duplicate stay. A plain model whose `int` id is
+left at `0` gets a new id from the storage and is always written. A class-backed type with a given id
+returns `false` for a duplicate.
 
 ### `QueryBuilder`
 
@@ -81,6 +130,60 @@ and system keys with a leading `_` are allowed): `Unknown field "titel": type "p
 the same on every driver, where SQL would name the missing column and JSON would match nothing.
 SQLite quotes identifiers with backticks, so a hand-built query on a missing column is an error
 there too (it read a double-quoted unknown name as a string).
+
+#### `pluck()` and `whereIn()` with a subquery (0.79)
+
+`pluck($field)` returns one field of each record the query selects, as a list, in the query's
+order and within its limit and offset:
+
+```php
+$slow = $dm->query(Visit::class)->where('ms', '>', 500)->orderBy('ms')->limit(10)->pluck('ms');
+```
+
+`whereIn($field, $values)` and `whereNotIn()` take a list, or another query: the records whose
+`$field` is (not) among the values the other query selects. The third argument names the field of
+the subquery (default: the same name as `$field`):
+
+```php
+// visits of installs that are on the web
+$visits = $dm->query(Visit::class)
+    ->whereIn('install', $dm->query(Install::class)->where('kind', 'web'), 'uuid')
+    ->get();
+```
+
+On the SQL drivers (SQLite, MySQL) a subquery on the same driver runs in the database as
+`IN (SELECT ...)` / `NOT IN (SELECT ...)` (capability `SelectsSubqueries`): no values travel
+through PHP, so there is no limit on bindings and no large list to build, and the inner records
+are read when the outer query runs. A subquery with a `limit()` or `offset()` (MySQL refuses them
+in `IN`), on another storage, or on a driver without the capability (JSON storage, a third-party
+driver) is run at the `whereIn()` call and its values are passed as a list; the conditions are
+fixed at the call either way, but a write in between can change the rows. Otherwise both ways give
+the same rows: the values are compared as stored (a type's transformer does not run), by the outer
+field's rule (a text field ignores case, an exact one does not), and a null among them is left
+out. An empty list or subquery matches nothing for `whereIn()` and everything for `whereNotIn()`.
+In the list form the values are bound, so a list of tens of thousands meets the database's limit
+on bindings (SQLite 32766, MySQL 65535).
+
+`pluck()` returns the values a record reads: a type's transformer runs, a class-backed type's
+arrays are decoded and numbers converted. On the SQL drivers (capability `SelectsColumns`) it is a
+one-column `SELECT` where that cannot change a value (a plain type without a transformer on the
+field, a class field typed `string`); any other field reads the records. The result is the same
+either way.
+
+A driver author implements either or both capabilities: `Preflow\Data\SelectsColumns`
+(`pluck(type, field, Query)`, the column as stored) and `Preflow\Data\SelectsSubqueries` (accept a
+`Subselect` as the value of an IN / NOT IN condition, the inner column compared by the outer field's
+rule; a driver without SQL may run its own `pluck()` and use the result as a list). The contract
+cases "the column and subquery capabilities give the same rows as the fallback" and "a subquery
+compares by the outer field's rule" check them, skipped without the capability.
+
+A median is the middle of an ordered `pluck()`:
+
+```php
+$values = $dm->query(Visit::class)->where('page', '/home')->orderBy('ms')->pluck('ms');
+$n = count($values);
+$median = $n === 0 ? null : ($n % 2 ? $values[intdiv($n, 2)] : ($values[$n / 2 - 1] + $values[$n / 2]) / 2);
+```
 
 ### Storage drivers
 
@@ -199,11 +302,15 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 |---|---|---|---|
 | `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
+| `InsertsNew::insertNew()` (0.79) | Writes a record only while no record has its id, in one step: `insert()` never overwrites a record another writer stored in between, and `insertIgnoring()` and `insertMany()` skip duplicates without a race. The contract tests it (also a duplicate behind another unique index, and inside a transaction), skipped without it. | checks that the id is free, then saves; a second writer in between is overwritten (`insert()`) or both write (`insertIgnoring()`). | Yes with it; the fallback is not. |
+| `SelectsColumns::pluck()` (0.79) | Reads one column of the records a query selects, in the query's order and within its limit: `pluck()` is one `SELECT` of that column where its values are what a record reads. The contract compares it with the fallback, skipped without it. | reads the records and takes the field. | Yes, same values. |
+| `SelectsSubqueries` (0.79) | Accepts a `Subselect` as the value of an IN / NOT IN condition in every query it runs: `whereIn()` / `whereNotIn()` with a subquery on the same driver become `IN (SELECT ...)`, compared by the outer field's rule, nulls left out. The contract compares it with the fallback and checks the rule, skipped without it. | the subquery runs first and its stored values are an `IN` list (also for another driver or a limited subquery). | Yes, same rows (a long list meets the binding limit). |
 | `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
 | `Transactions::transaction()`, `inTransaction()` (0.78) | Writes that commit together or not at all; inside an open transaction (whoever opened it) `transaction()` joins it. `DataManager::transaction()` spans storages: it begins on each storage with it once (aliases of one driver count once), commits the innermost first, and throws `PartialCommit` (a `RuntimeException`, the failed commit as previous) when a commit fails after another storage committed (publishing, deletes, the permission sync). | `DataManager::transaction()` runs the writes as they come: a failure part-way leaves the earlier writes stored (JSON files). | Yes with it. |
 | `UniqueIndexes` (0.78, a marker) | Says `save()` refuses a duplicate in every unique index the table sync made (`UniqueViolation`, nothing written). DataManager then checks before the write only the unique fields no index can hold (translatable ones). | DataManager checks every unique field before the write, under the type's lock (`ExclusiveWrites`) where the driver has one, else without. | Yes with it or `ExclusiveWrites`; the plain check is not. |
 | `AtomicCounters::increment()` (0.78) | Counts on a row in one step: inserts it, adds to it, or restarts it when a `CounterReset` field is below a bound (`incrementIn()`: the throttle's fixed windows). The contract tests it, also with four processes at once. | reads, adds and writes under the type's lock (`ExclusiveWrites`) when the driver has one, else plainly. | Yes with it or `ExclusiveWrites`; the plain fallback is not. |
 | `AggregatingStorage::aggregate()` | Group, count, sum, avg, min, max (`AggregateQuery`): Folio's dashboard and not-found counts, publish states, the activity people filter. | `AggregateQuery::get()` throws (never wrong numbers); `Publisher::states()` and `StoredActivityLog::people()` read the records instead. | Read only. |
+| `ConditionalMeasures` (0.79, a marker) | Says `aggregate()` honours a measure's own `where:` condition (each `measures()` entry then has a `condition`, a `Query` of only that measure's conditions). | `AggregateQuery::get()` throws for a measure with a condition (never counts every record); measures without one still run. | Read only. |
 | `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
 | `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
@@ -214,11 +321,11 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `Dumps::dump()`, `restore()` (0.78) | The whole store as text the same driver restores into an empty store (`preflow db:dump`, `db:restore`). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqldump`; JSON: copy the folder). | `restore()` is all or nothing. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
-A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `BulkDeletes`,
+A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
-`RunsSql`), `Transactions` and `UniqueIndexes` from it and implements `exclusive()` itself (as
+`RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
-`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`,
+`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
 `ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
 `AggregatingStorage`.
 
@@ -353,6 +460,22 @@ $comment->body = 'Great post!';
 $dm->save($comment);
 echo $comment->id; // e.g. 42 — populated after insert
 ```
+
+The table needs a key the database numbers. In a migration declare it with `increments()`
+(since 0.79.0):
+
+```php
+$schema->create('comments', function (Table $t) {
+    $t->increments();            // `id`; pass another name to change it
+    $t->text('body');
+});
+```
+
+On MySQL/MariaDB that is `BIGINT AUTO_INCREMENT PRIMARY KEY`; on SQLite `INTEGER PRIMARY KEY`,
+which numbers itself (without the `AUTOINCREMENT` keyword, so the table can still be rebuilt by
+`convertColumn()`). `integer('id')->primary()` is **not** numbered on MySQL: it is a plain key
+and every insert must set the id itself. `convertColumn()` on an `increments()` column keeps its
+`AUTO_INCREMENT`.
 
 ### Raw SQL
 
@@ -907,6 +1030,26 @@ totals, also when no record matches. Translatable group fields use the builder's
 Rows are arrays keyed by the group fields and the result names. Fields are the ones of the type (or the model's
 `#[Field]` properties and its id); a field name is never SQL.
 
+**A condition on one measure (0.79).** Every measure (`count`, `countDistinct`, `sum`, `avg`, `min`, `max`) takes an
+optional `where:` list that only that measure applies, so one query can count different slices of each group. A
+condition is `[field, value]` (equals) or `[field, operator, value]`, with the operators and the null rule of `where()`;
+several are all required.
+
+```php
+$rows = $dm->queryIn($visitType)->aggregate()
+    ->groupBy('page')
+    ->count('visits')
+    ->countDistinct('visitor', 'today', where: [['day', '=', $today]])
+    ->sum('seconds', 'long_stay', where: [['seconds', '>=', 60], ['bot', '=', false]])
+    ->get();
+```
+
+The group and the query's filters are decided first; the condition then picks which of the group's records the measure
+looks at. A text field in a condition compares by the text rule, an exact field exactly, a translatable field in the
+builder's locale, the same as in `where()` and on every storage. A group where nothing meets the condition gives `0`
+for `count`, `countDistinct` and `sum`, and `null` for `avg`, `min` and `max`. A result with a condition can be used in
+`having()` and `orderBy()`. A measure without one runs exactly as in 0.78.
+
 **Null rules.**
 
 - `count()` counts rows, whatever their values.
@@ -936,9 +1079,12 @@ using an index for the GROUP BY; aggregates scan the filtered rows anyway.
   `<`, `<=`, `>`, `>=`) or a non-finite value;
 - at `get()`: an `orderBy()` name that is neither a result name nor a group field, and a query with neither group
   nor measure;
+- a condition with a field that does not exist, an unknown operator, a shape other than the two above, or a subquery as its value;
 - negative limit or offset.
 
-A storage driver that does not implement `AggregatingStorage` gives a `\LogicException` naming the driver. A custom
+A storage driver that does not implement `AggregatingStorage` gives a `\LogicException` naming the driver; one that does
+not implement `ConditionalMeasures` (the three built-in drivers do) gives one at `get()` when a measure has a condition,
+never counting every record instead. A custom
 `Dialect` implementation must now provide `numericValue()` and `exactText()` (see the 0.44 notes).
 
 ## `whereAny` operators
@@ -1098,6 +1244,25 @@ fields (tags, which compare exactly), the id field and fields marked `"exact": t
 (`#[Field(exact: true)]`). Slugs and e-mail addresses are text: "About" and "about" are one slug.
 Everything else compares exactly: ids, relations, assets, numbers, dates, yes/no values, exact
 fields ("ab" is not "Ab"). A migration's `string()` and `text()` are text unless `->exact()`.
+
+**Why a plain model says it twice.** A plain `#[Entity]` model's table comes from your own
+migration, not from the model, so the same fact lives in two places that nothing else connects:
+
+- the model's `#[Field(exact: true)]` is the driver-neutral truth: JSON storage, loose search and
+  `Validation\Unique` follow it, whatever database is behind the model;
+- the migration's `->exact()` states the SQL column: the database's `=`, `IN`, `ORDER BY` and the
+  unique index follow the column's collation, not the model.
+
+Write both. `preflow migrate` checks them (the step `data.model-exactness`) and warns for every text
+field of a plain model where they disagree, for example `exact: true` on the model but no `->exact()`
+in the migration. It only warns, never changes a column; fix a column with `Schema::convertColumn()`.
+It checks the storage the migrations ran on, and only tables a migration made since 0.78 (their
+recorded intent); older tables are covered by the text-rule conversion below. Id fields and list
+fields (tags) are not checked.
+
+A class-backed type (`#[Entity(type: …)]`) states it once: its table is made by sync from the
+type's definition, so `#[Field(exact: true)]` decides the column as well as JSON, search and
+`Unique`, and there is nothing to disagree.
 
 Where the rule lives:
 

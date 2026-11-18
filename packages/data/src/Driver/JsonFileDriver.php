@@ -15,7 +15,7 @@ use Preflow\Data\SortDirection;
 use Preflow\Data\Text\TextMatch;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters, \Preflow\Data\InsertsNew
 {
     /** How a record file is encoded (0.78): the same bytes for the same record, whoever writes it. */
     private const int RECORD_FLAGS = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR;
@@ -399,11 +399,16 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
      * One measure over a group's records. count counts records; the others skip missing values
      * (null, and '' where a number is read).
      *
-     * @param array{fn: string, field: ?string, as: string} $measure
+     * @param array{fn: string, field: ?string, as: string, condition?: ?Query} $measure
      * @param list<array<string, mixed>> $items
      */
     private function measure(array $measure, array $items, Query $query, bool $numericField): int|float|string|bool|null
     {
+        // The measure's own condition, by the where() rules, before anything is counted.
+        $condition = $measure['condition'] ?? null;
+        if ($condition !== null) {
+            $items = $this->applyWheres($items, $condition->getWheres(), $condition);
+        }
         if ($measure['fn'] === 'count') {
             return count($items);
         }
@@ -572,6 +577,30 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
 
         $this->bumpGeneration($type);
         $this->clearCache($type);
+    }
+
+    /**
+     * Creates the record only when no file has its id: the check and the write run under the
+     * type's lock (exclusive()), so of two writers of one id only the first writes.
+     *
+     * @since 0.79.0
+     */
+    public function insertNew(string $type, array $data, string $idField = 'uuid'): bool
+    {
+        $id = $data[$idField] ?? null;
+        if (!is_string($id) && !is_int($id) || $id === '' || $id === 0 || $id === '0') {
+            throw new \InvalidArgumentException("insertNew() needs the id in [{$idField}].");
+        }
+        self::assertSafe($type, $id);
+
+        return $this->exclusive($type, function () use ($type, $id, $data, $idField): bool {
+            if (is_file($this->filePath($type, $id))) {
+                return false;
+            }
+            $this->save($type, $id, $data, $idField);
+
+            return true;
+        });
     }
 
     /**
