@@ -21,6 +21,8 @@ final readonly class ApiConfig
      * @param list<string> $corsMethods
      * @param list<string> $corsHeaders  request headers a browser may send
      * @param list<string> $corsExpose   response headers a browser may read
+     * @param ?int $maxBody      @since 0.79.0 largest JSON body (bytes) under an API prefix; null = no limit
+     * @param ?int $maxJsonBody  @since 0.79.0 largest JSON body (bytes) on every other path; null = no limit
      */
     public function __construct(
         array $prefixes = ['/api'],
@@ -30,6 +32,8 @@ final readonly class ApiConfig
         public array $corsExpose = [],
         public int $corsMaxAge = 600,
         public bool $corsCredentials = false,
+        public ?int $maxBody = null,
+        public ?int $maxJsonBody = null,
     ) {
         $clean = [];
         foreach ($prefixes as $prefix) {
@@ -67,7 +71,17 @@ final readonly class ApiConfig
             corsExpose: array_values(array_map('strval', (array) ($cors['expose'] ?? $defaults->corsExpose))),
             corsMaxAge: (int) ($cors['max_age'] ?? $defaults->corsMaxAge),
             corsCredentials: $credentials,
+            maxBody: self::bytes($config['max_body'] ?? null),
+            maxJsonBody: self::bytes($config['max_json_body'] ?? null),
         );
+    }
+
+    /** A size in bytes; null, 0 and anything not positive mean no limit. */
+    private static function bytes(mixed $value): ?int
+    {
+        $bytes = (int) $value;
+
+        return $bytes > 0 ? $bytes : null;
     }
 
     public function isApi(ServerRequestInterface $request): bool

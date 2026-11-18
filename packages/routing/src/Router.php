@@ -7,11 +7,12 @@ namespace Preflow\Routing;
 use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Core\Exceptions\MethodNotAllowedHttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
+use Preflow\Core\Routing\AnswersPages;
 use Preflow\Core\Routing\PageExists;
 use Preflow\Core\Routing\Route;
 use Preflow\Core\Routing\RouterInterface;
 
-final class Router implements RouterInterface, PageExists
+final class Router implements RouterInterface, PageExists, AnswersPages
 {
     private ?RouteCollection $collection = null;
 
@@ -19,6 +20,9 @@ final class Router implements RouterInterface, PageExists
     private ?RouteMatcher $matcher = null;
 
     private ?RouteCollection $matcherCollection = null;
+
+    /** @var (\Closure(string, string): bool)|null */
+    private ?\Closure $pageAnswers = null;
 
     /** @var list<string> the sets compiled live (not taken from the route store), in order */
     private array $liveSets = [];
@@ -135,6 +139,21 @@ final class Router implements RouterInterface, PageExists
         return $match !== null && !$match['entry']->isCatchAll;
     }
 
+    /**
+     * Tells the router whether a page answers at a path (the page lookups: Folio's pages, a site's
+     * own), for the one case where it matters: a catch-all matched and the path has routes for other
+     * methods only. A page that answers wins (the catch-all serves it); with no page, or with no
+     * check set, the router answers 405. Core sets it, asking the lookups when a request runs.
+     *
+     * @param (\Closure(string $locale, string $path): bool)|null $check
+     *
+     * @since 0.79.0
+     */
+    public function answerPagesWith(?\Closure $check): void
+    {
+        $this->pageAnswers = $check;
+    }
+
     private function matcher(): RouteMatcher
     {
         $collection = $this->getCollection();
@@ -166,6 +185,18 @@ final class Router implements RouterInterface, PageExists
         }
 
         $entry = $result['entry'];
+
+        // A catch-all answers every path, so it must not hide a wrong method: when the path has
+        // routes for other methods only, that is a 405, unless a page answers there (a form posting
+        // back to its page's own address): then the catch-all serves the page. A path with no
+        // other-method route reaches the catch-all as before.
+        if ($entry->isCatchAll) {
+            $allowed = $matcher->allowedMethods($uri);
+            if ($allowed !== [] && !in_array($method, $allowed, true)
+                && !($this->pageAnswers !== null && ($this->pageAnswers)((string) $request->getAttribute('locale', ''), $uri))) {
+                throw new MethodNotAllowedHttpException($allowed);
+            }
+        }
 
         return new Route(
             mode: $entry->mode,

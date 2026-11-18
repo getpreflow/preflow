@@ -58,6 +58,7 @@ would. An id bound to a class (`bind(Contract::class, Impl::class)`) passes them
 a factory closure gets them as its second argument, and one that takes no second parameter
 throws a `ContainerException` rather than drop them (as does an instance registered under a
 name that is no class).
+A constructor parameter with a default value takes that default when the container cannot build its type (an unbound interface, an abstract class, `\Closure`); a bound type or a buildable class is still injected.
 Route middleware with arguments (`MiddlewareWith`, see `preflow/routing`) is built this way.
 
 ### Attribute injection
@@ -100,6 +101,26 @@ $config->has('db.host');           // true
 $config->set('app.debug', true);
 $config->all();                    // full array
 ```
+
+### Your own config files
+
+`Config` holds the keys of `config/app.php` as `app.*`, plus `image` and `view` when those files exist. Every other `config/<name>.php` belongs to the package that reads it. Your own file is read with `Application::configFile('<name>')`: it returns the file's array, or `null` when there is no such file. The file is loaded once per application, and with a [boot manifest](#boot-manifest-preflow-optimize) it comes from the manifest.
+
+To use it as `#[Config('<name>.key')]` or `Config::get()`, put it into `Config` in a provider's `register()`:
+
+```php
+use Preflow\Core\Application;
+use Preflow\Core\Config\Config;
+use Preflow\Core\Container\Container;
+
+public function register(Container $container): void
+{
+    $app = $container->get(Application::class);
+    $container->get(Config::class)->set('alerts', $app->configFile('alerts') ?? []);
+}
+```
+
+After that `#[Config('alerts.from')]` resolves, with or without a boot manifest.
 
 ### ServiceProvider
 
@@ -375,7 +396,12 @@ $throttle->clear('login', $client);                       // after a success
   first hit that starts a window runs it (once per request), and `tooMany()`/`retryAfter()` delete
   an ended row they find. A quiet site keeps a row until the next request that counts: when a
   page promises a retention ("kept for one hour"), run `php preflow throttle:prune` from cron
-  (every few minutes) as well. `prune(olderThanSeconds: …)` deletes by window start instead, ended
+  as well. **The bound:** a row lives at most its window plus the prune interval. An expired row
+  never counts (`hit()` restarts an ended window, `tooMany()` ignores it), so the bound is about
+  privacy and size, not correctness. `hit()` already prunes, so calling `prune()` on every
+  request is unneeded. For a bound under a minute use one cron line with `--every`
+  (since 0.79.0): `* * * * * cd /path/to/site/current && php preflow throttle:prune --every=30`.
+  `prune(olderThanSeconds: …)` deletes by window start instead, ended
   or not, and returns how many. `definition()` is the rows' type (for reading them in tests).
 
 ### Activity log (0.77)
@@ -1317,6 +1343,8 @@ return [
         'max_age' => 600,          // seconds a preflight answer may be cached
         'credentials' => false,    // cannot be true together with origins ['*']
     ],
+    'max_body' => null,            // bytes: largest JSON body under an API prefix (null = no limit)
+    'max_json_body' => null,       // bytes: largest JSON body on every other path (null = no limit)
 ];
 ```
 
@@ -1330,7 +1358,13 @@ Get a token with `preflow auth:token <email-or-id>` (`preflow/devtools`, see
 `preflow/auth`'s README).
 
 **Request bodies.** A malformed JSON body answers 400 on every path,
-instead of arriving as an empty body.
+instead of arriving as an empty body. Set `max_body` (API paths) and `max_json_body` (every other
+path) in `config/api.php` to cap JSON bodies: a body over the limit answers 413 before it is
+parsed, and a request whose `Content-Length` is already over the limit is refused without reading
+its body. A body without `Content-Length` is read in chunks and stopped one byte past the limit.
+An API path without its own `max_body` uses `max_json_body`. Both default to no limit; `post_max_size`
+does not limit a raw JSON body, so set one if the API takes uploads from the open internet.
+Under an API prefix the 413 is the JSON error shape below. Since 0.79.0.
 
 **Errors.** For a path under an API prefix, or a request whose `Accept` asks for JSON without
 `text/html`, an error answers `{"message": "<text>"}` instead of the HTML error page. A 422 adds

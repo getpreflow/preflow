@@ -188,4 +188,48 @@ final class CorsBootTest extends TestCase
             $this->assertNotSame('vary', strtolower((string) $name));
         }
     }
+
+    #[RunInSeparateProcess]
+    public function test_oversized_json_body_answers_413_as_json_on_an_api_path(): void
+    {
+        $this->site(['max_body' => 50]);
+        $app = $this->app();
+        $json = json_encode(['pad' => str_repeat('a', 200)]);
+
+        $response = $app->handle(
+            (new ServerRequest('POST', 'https://example.com/api/x', ['Content-Type' => 'application/json'], $json))
+                ->withHeader('Content-Length', (string) strlen($json)),
+        );
+
+        $this->assertSame(413, $response->getStatusCode());
+        $this->assertSame('application/json', $response->getHeaderLine('Content-Type'));
+        $this->assertSame('The request body is too large.', json_decode((string) $response->getBody(), true)['message'] ?? null);
+    }
+
+    #[RunInSeparateProcess]
+    public function test_max_json_body_limits_paths_outside_the_api(): void
+    {
+        $this->site(['max_json_body' => 50]);
+        $app = $this->app();
+        $json = json_encode(['pad' => str_repeat('a', 200)]);
+
+        $response = $app->handle(
+            (new ServerRequest('POST', 'https://example.com/form', ['Content-Type' => 'application/json'], $json))
+                ->withHeader('Content-Length', (string) strlen($json)),
+        );
+
+        $this->assertSame(413, $response->getStatusCode());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_without_limits_a_large_json_body_is_not_a_413(): void
+    {
+        $this->site([]);
+        $app = $this->app();
+        $json = json_encode(['pad' => str_repeat('a', 200000)]);
+
+        $response = $app->handle(new ServerRequest('POST', 'https://example.com/api/x', ['Content-Type' => 'application/json'], $json));
+
+        $this->assertNotSame(413, $response->getStatusCode());
+    }
 }

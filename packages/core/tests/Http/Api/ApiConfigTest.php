@@ -94,4 +94,16 @@ final class ApiConfigTest extends TestCase
 
         ApiConfig::fromArray(['cors' => ['origins' => ['*'], 'credentials' => true]]);
     }
+
+    public function test_max_body_and_max_json_body(): void
+    {
+        $this->assertNull(ApiConfig::fromArray(null)->maxBody);
+        $this->assertNull(ApiConfig::fromArray(null)->maxJsonBody);
+
+        $config = ApiConfig::fromArray(['max_body' => 1048576, 'max_json_body' => '2048']);
+        $this->assertSame(1048576, $config->maxBody);
+        $this->assertSame(2048, $config->maxJsonBody);
+
+        $this->assertNull(ApiConfig::fromArray(['max_body' => 0])->maxBody, '0 means no limit');
+    }
 }

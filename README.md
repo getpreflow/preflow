@@ -1,6 +1,6 @@
 # Preflow
 
-A modern PHP 8.5+ framework for component-based web development. HTML over the wire.
+A modern PHP 8.4+ framework for component-based web development. HTML over the wire.
 
 ## Philosophy
 
@@ -10,7 +10,7 @@ Browsers handle HTML best. Instead of shipping JSON to the client and hydrating 
 - **Zero external asset requests** — all CSS/JS inline in the HTML, deduplicated by hash, minified in production
 - **Hypermedia-driven** — HTMX by default, abstracted behind a driver interface
 - **Security first** — HMAC-signed component tokens, CSP nonces, component-level auth guards
-- **PHP 8.5+ only** — attributes for DI, routing, models. No legacy patterns.
+- **PHP 8.4+ only** — attributes for DI, routing, models. No legacy patterns.
 
 ## Quick Start
 

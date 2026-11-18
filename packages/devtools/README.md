@@ -56,11 +56,21 @@ php preflow migrate --storage=sqlite   # the storage to migrate (default: sqlite
 ### `throttle:prune` — delete attempt-limit rows whose window has ended (since 0.78)
 
 Deletes the rows of `preflow_throttle` whose window has ended (`Throttle::prune()`) and prints
-how many. The throttle does this itself on the next request that counts; run the command from
-cron when a site promises how long it keeps them:
+how many. The throttle does this itself on the first hit of a window (so calling `prune()` on
+every request is unneeded); run the command from cron when a site promises how long it keeps
+them. A row lives at most its window plus the interval between runs; an expired row never
+counts, so this is about privacy and size, not correctness.
 
 ```
 */5 * * * * cd /path/to/site/current && php preflow throttle:prune
+```
+
+`--every=<seconds>` (1 to 59, since 0.79.0) prunes, waits and prunes again until the next run
+would start at or after 55 seconds from the start. One cron line a minute then gives a bound
+under a minute (here: window + 30 seconds); other values are refused with exit code 1:
+
+```
+* * * * * cd /path/to/site/current && php preflow throttle:prune --every=30
 ```
 
 ### `db:check`, `db:vacuum`, `db:dump`, `db:restore` — the database through Preflow's connection (since 0.78)
@@ -130,6 +140,7 @@ php preflow db:seed --class=DemoSeeder      # one seeder; a short name under App
 ```
 
 - `.env` is loaded, so a seeder can read `$_ENV` / `getenv()`.
+- `--class=<Name>` runs one seeder, which suits demo data you don't want in every run. `db:seed` doesn't know about environments, so a demo seeder guards itself: the `DemoSeeder` above takes `Config` in its constructor and starts `run()` with `if (!$this->config->get('app.debug')) { return; }`, so running it on a live server leaves the data alone.
 - `save()` validates: the container's `DataManager` has the validator, so `#[Validate]` rules apply.
 - An unknown `--class` prints `Seeder <Name> not found.` and exits 1; a seeder that throws prints `Seeder <Name> failed: <message>` and exits 1.
 - A project without `app/Seeds/` prints `No seeders directory found (app/Seeds/).` and exits 0.

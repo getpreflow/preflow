@@ -13,6 +13,45 @@ class SimpleService
 {
 }
 
+interface UnboundContract
+{
+}
+
+abstract class AbstractBase
+{
+}
+
+class BoundImpl implements UnboundContract
+{
+}
+
+class BrokenDependency
+{
+    public function __construct()
+    {
+        throw new \RuntimeException('broken inside');
+    }
+}
+
+class DefaultsConsumer
+{
+    public function __construct(
+        public readonly ?\Closure $callback = null,
+        public readonly ?UnboundContract $contract = null,
+        public readonly ?AbstractBase $base = null,
+    ) {}
+}
+
+class BuildableDefaultConsumer
+{
+    public function __construct(public readonly ?SimpleService $dep = null) {}
+}
+
+class BrokenDefaultConsumer
+{
+    public function __construct(public readonly ?BrokenDependency $dep = null) {}
+}
+
 class ServiceWithDependency
 {
     public function __construct(
@@ -354,5 +393,38 @@ final class ContainerTest extends TestCase
         $container->bind('consumer', fn (Container $c) => $c->get(SharedService::class));
 
         $this->assertSame($first, $container->get('consumer'));
+    }
+
+    public function test_a_default_wins_when_the_type_cannot_be_built(): void
+    {
+        $consumer = (new Container())->get(DefaultsConsumer::class);
+
+        $this->assertNull($consumer->callback);
+        $this->assertNull($consumer->contract);
+        $this->assertNull($consumer->base);
+    }
+
+    public function test_a_bound_interface_is_still_injected_despite_a_default(): void
+    {
+        $container = new Container();
+        $container->bind(UnboundContract::class, BoundImpl::class);
+
+        $this->assertInstanceOf(BoundImpl::class, $container->get(DefaultsConsumer::class)->contract);
+    }
+
+    public function test_a_concrete_class_with_a_default_is_still_built(): void
+    {
+        $this->assertInstanceOf(
+            SimpleService::class,
+            (new Container())->get(BuildableDefaultConsumer::class)->dep,
+        );
+    }
+
+    public function test_an_error_inside_a_buildable_dependency_still_surfaces(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('broken inside');
+
+        (new Container())->get(BrokenDefaultConsumer::class);
     }
 }

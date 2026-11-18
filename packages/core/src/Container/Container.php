@@ -244,7 +244,12 @@ final class Container implements ContainerInterface
         $type = $param->getType();
 
         if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
-            return $this->get($type->getName());
+            // A parameter with a default takes it when the container cannot build the type
+            // (an unbound interface, an abstract class, \Closure); errors while building a
+            // buildable dependency still surface.
+            if (!$param->isDefaultValueAvailable() || $this->canAutowire($type->getName())) {
+                return $this->get($type->getName());
+            }
         }
 
         if ($param->isDefaultValueAvailable()) {
@@ -255,6 +260,12 @@ final class Container implements ContainerInterface
             "Unable to resolve parameter [\${$param->getName()}] "
             . "in class [{$context}]."
         );
+    }
+
+    private function canAutowire(string $id): bool
+    {
+        return $this->bound($id)
+            || (class_exists($id) && (new \ReflectionClass($id))->isInstantiable());
     }
 
     private function resolveConfigAttribute(Attributes\Config $attr): mixed

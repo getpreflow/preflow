@@ -5,10 +5,10 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.78.2 || @dev"
+        "preflow/core": "^0.79.0 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.78.2"
+        "preflow/core": "<0.79.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0"
