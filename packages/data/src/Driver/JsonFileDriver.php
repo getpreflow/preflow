@@ -15,7 +15,7 @@ use Preflow\Data\SortDirection;
 use Preflow\Data\Text\TextMatch;
 use Preflow\Data\VersionedStorage;
 
-final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters, \Preflow\Data\InsertsNew
+final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\ConditionalUpdates, \Preflow\Data\ChangeTokens, \Preflow\Data\DescribesColumns, \Preflow\Data\AtomicCounters, \Preflow\Data\InsertsNew
 {
     /** How a record file is encoded (0.78): the same bytes for the same record, whoever writes it. */
     private const int RECORD_FLAGS = JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR;
@@ -399,11 +399,16 @@ final class JsonFileDriver implements VersionedStorage, ExclusiveWrites, Aggrega
      * One measure over a group's records. count counts records; the others skip missing values
      * (null, and '' where a number is read).
      *
-     * @param array{fn: string, field: ?string, as: string} $measure
+     * @param array{fn: string, field: ?string, as: string, condition?: ?Query} $measure
      * @param list<array<string, mixed>> $items
      */
     private function measure(array $measure, array $items, Query $query, bool $numericField): int|float|string|bool|null
     {
+        // The measure's own condition, by the where() rules, before anything is counted.
+        $condition = $measure['condition'] ?? null;
+        if ($condition !== null) {
+            $items = $this->applyWheres($items, $condition->getWheres(), $condition);
+        }
         if ($measure['fn'] === 'count') {
             return count($items);
         }

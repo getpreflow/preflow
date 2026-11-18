@@ -138,10 +138,15 @@ class QueryCompiler
             $groups[$field] = $this->stored($field, $query, $numeric, $boolean);
             $select[] = $groups[$field] . ' AS ' . $this->dialect->quoteIdentifier($field);
         }
+        // A measure with a condition holds bound values: they follow it wherever it is written
+        // (select, having, order by), in the order the SQL reads them.
         $measures = [];
+        $measureBindings = [];
         foreach ($aggregate->measures() as $measure) {
-            $measures[$measure['as']] = $this->measure($measure, $query, $numeric, $boolean);
+            $measureBindings[$measure['as']] = [];
+            $measures[$measure['as']] = $this->measure($measure, $query, $numeric, $boolean, $measureBindings[$measure['as']]);
             $select[] = $measures[$measure['as']] . ' AS ' . $this->dialect->quoteIdentifier($measure['as']);
+            array_push($bindings, ...$measureBindings[$measure['as']]);
         }
 
         $sql = 'SELECT ' . implode(', ', $select) . ' FROM ' . $this->dialect->quoteIdentifier($aggregate->table());
@@ -157,6 +162,7 @@ class QueryCompiler
         $havings = [];
         foreach ($aggregate->havings() as $having) {
             $havings[] = $measures[$having['alias']] . " {$having['operator']} " . $this->dialect->numericValue('?');
+            array_push($bindings, ...$measureBindings[$having['alias']]);
             $bindings[] = $having['value'];
         }
         if ($havings !== []) {
@@ -166,6 +172,9 @@ class QueryCompiler
         $orders = [];
         foreach ($aggregate->orders() as $order) {
             $name = $order['name'];
+            if (!isset($groups[$name])) {
+                array_push($bindings, ...$measureBindings[$name]);
+            }
             $orders[] = (isset($groups[$name])
                 ? $this->ordered($name, $query, $groups[$name])
                 : $this->orderedMeasure($aggregate, $name, $measures[$name])) . ' ' . $order['direction']->value;
@@ -203,18 +212,34 @@ class QueryCompiler
      * One result's SQL. sum and avg take numbers (of number fields); countDistinct, min and max
      * do for number fields and compare stored values otherwise. A sum of no values is 0.
      *
-     * @param array{fn: string, field: ?string, as: string} $measure
+     * A measure with a condition reads the value (1 for a count) only where the condition holds
+     * (CASE WHEN … THEN … END, NULL otherwise, which every measure skips); the condition is the
+     * where() chain's SQL (compileWheres()), its values added to $bindings. One without is
+     * written as it always was.
+     *
+     * @param array{fn: string, field: ?string, as: string, condition?: Query} $measure
      * @param array<string, true> $numeric
      * @param array<string, true> $boolean
+     * @param array<int, mixed> $bindings the condition's values, in the order the SQL holds them
      */
-    private function measure(array $measure, Query $query, array $numeric, array $boolean): string
+    private function measure(array $measure, Query $query, array $numeric, array $boolean, array &$bindings): string
     {
+        $when = ($measure['condition'] ?? null) === null ? '' : $this->compileWheres($measure['condition'], $bindings);
         if ($measure['fn'] === 'count') {
-            return 'COUNT(*)';
+            return $when === '' ? 'COUNT(*)' : "COUNT(CASE WHEN {$when} THEN 1 END)";
         }
         $field = (string) $measure['field'];
         $number = $this->dialect->numericValue($this->column($field, $query));
         $value = isset($numeric[$field]) ? $number : $this->stored($field, $query, $numeric, $boolean);
+        if ($when !== '') {
+            $number = "CASE WHEN {$when} THEN {$number} END";
+            $value = "CASE WHEN {$when} THEN {$value} END";
+            // A CASE has no collation of its own: a text field's values compare by the rule only
+            // if it is said again (a column on its own carries it).
+            if (!isset($numeric[$field]) && !isset($boolean[$field]) && $this->dialect instanceof TextComparison && $query->comparesAsText($field)) {
+                $value = $this->dialect->textValue($value);
+            }
+        }
 
         return match ($measure['fn']) {
             'countDistinct' => "COUNT(DISTINCT {$value})",

@@ -310,6 +310,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `UniqueIndexes` (0.78, a marker) | Says `save()` refuses a duplicate in every unique index the table sync made (`UniqueViolation`, nothing written). DataManager then checks before the write only the unique fields no index can hold (translatable ones). | DataManager checks every unique field before the write, under the type's lock (`ExclusiveWrites`) where the driver has one, else without. | Yes with it or `ExclusiveWrites`; the plain check is not. |
 | `AtomicCounters::increment()` (0.78) | Counts on a row in one step: inserts it, adds to it, or restarts it when a `CounterReset` field is below a bound (`incrementIn()`: the throttle's fixed windows). The contract tests it, also with four processes at once. | reads, adds and writes under the type's lock (`ExclusiveWrites`) when the driver has one, else plainly. | Yes with it or `ExclusiveWrites`; the plain fallback is not. |
 | `AggregatingStorage::aggregate()` | Group, count, sum, avg, min, max (`AggregateQuery`): Folio's dashboard and not-found counts, publish states, the activity people filter. | `AggregateQuery::get()` throws (never wrong numbers); `Publisher::states()` and `StoredActivityLog::people()` read the records instead. | Read only. |
+| `ConditionalMeasures` (0.79, a marker) | Says `aggregate()` honours a measure's own `where:` condition (each `measures()` entry then has a `condition`, a `Query` of only that measure's conditions). | `AggregateQuery::get()` throws for a measure with a condition (never counts every record); measures without one still run. | Read only. |
 | `BulkDeletes::deleteMany()` (0.77) | Many deletes in a few statements (`deleteManyIn()`: activity prune and erasure). | deletes one by one. | No either way (a failure part-way leaves the deleted ones deleted); inside a SQL transaction it rolls back with it. |
 | `Savepoints::savepoint()` (0.77) | Writes inside a caller's open transaction that commit or roll back with it and whose failure leaves it usable. | DataManager does not use it; its consumer, `StoredActivityLog`, runs its writes and reads as they are (fine for storage without transactions). | Yes with it, within the caller's transaction. |
 | `DescribesColumns::hasColumn()` (0.77), `hasTable()` (0.78) | Says whether a table has a column (`hasColumn()`: publishing works on tables not migrated yet) and whether a type's table exists (`hasTable()`: the staff accounts, published copies). | takes any column and any table as present (right for schemaless storage; a SQL driver should implement it). | Read only. |
@@ -1029,6 +1030,26 @@ totals, also when no record matches. Translatable group fields use the builder's
 Rows are arrays keyed by the group fields and the result names. Fields are the ones of the type (or the model's
 `#[Field]` properties and its id); a field name is never SQL.
 
+**A condition on one measure (0.79).** Every measure (`count`, `countDistinct`, `sum`, `avg`, `min`, `max`) takes an
+optional `where:` list that only that measure applies, so one query can count different slices of each group. A
+condition is `[field, value]` (equals) or `[field, operator, value]`, with the operators and the null rule of `where()`;
+several are all required.
+
+```php
+$rows = $dm->queryIn($visitType)->aggregate()
+    ->groupBy('page')
+    ->count('visits')
+    ->countDistinct('visitor', 'today', where: [['day', '=', $today]])
+    ->sum('seconds', 'long_stay', where: [['seconds', '>=', 60], ['bot', '=', false]])
+    ->get();
+```
+
+The group and the query's filters are decided first; the condition then picks which of the group's records the measure
+looks at. A text field in a condition compares by the text rule, an exact field exactly, a translatable field in the
+builder's locale, the same as in `where()` and on every storage. A group where nothing meets the condition gives `0`
+for `count`, `countDistinct` and `sum`, and `null` for `avg`, `min` and `max`. A result with a condition can be used in
+`having()` and `orderBy()`. A measure without one runs exactly as in 0.78.
+
 **Null rules.**
 
 - `count()` counts rows, whatever their values.
@@ -1058,9 +1079,12 @@ using an index for the GROUP BY; aggregates scan the filtered rows anyway.
   `<`, `<=`, `>`, `>=`) or a non-finite value;
 - at `get()`: an `orderBy()` name that is neither a result name nor a group field, and a query with neither group
   nor measure;
+- a condition with a field that does not exist, an unknown operator, a shape other than the two above, or a subquery as its value;
 - negative limit or offset.
 
-A storage driver that does not implement `AggregatingStorage` gives a `\LogicException` naming the driver. A custom
+A storage driver that does not implement `AggregatingStorage` gives a `\LogicException` naming the driver; one that does
+not implement `ConditionalMeasures` (the three built-in drivers do) gives one at `get()` when a measure has a condition,
+never counting every record instead. A custom
 `Dialect` implementation must now provide `numericValue()` and `exactText()` (see the 0.44 notes).
 
 ## `whereAny` operators

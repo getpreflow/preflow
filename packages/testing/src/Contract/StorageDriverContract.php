@@ -1267,6 +1267,29 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame(['Ab', 'aB'], $codes);
     }
 
+    /**
+     * A measure's own condition follows each field's text rule, as where() does: a text field's
+     * ignores case and respects accents, an exact field's compares exactly (@since 0.79.0).
+     */
+    public function test_a_measure_condition_follows_the_text_rule(): void
+    {
+        $this->seedPeople();
+        $rows = $this->aggregatePeople(['p1', 'p2', 'p3'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->count('mueller', where: [['name', '=', 'müller']])
+            ->count('plain', where: [['name', '=', 'Muller']])
+            ->count('listed', where: [['name', 'IN', ['MÜLLER', 'Muller']]])
+            ->count('not_plain', where: [['name', '!=', 'muller']])
+            ->countDistinct('name', 'kinds', where: [['name', 'IN', ['MÜLLER', 'Muller']]])
+            ->count('exact_hit', where: [['code', '=', 'Ab']])
+            ->count('exact_miss', where: [['code', '=', 'ab']]));
+        $this->assertSame([2, 1, 3, 2, 2, 1, 0], array_map('intval', array_values($rows[0])));
+
+        $none = $this->aggregatePeople(['p1', 'p2', 'p3'], static fn (AggregateQuery $a): AggregateQuery => $a
+            ->count('hit', where: [['name', '=', 'Müller']])
+            ->count('miss', where: [['name', '=', 'Mueller']]));
+        $this->assertSame([2, 0], array_map('intval', array_values($none[0])));
+    }
+
     /** UniqueIndexes: a refused save inside an open transaction leaves it usable (a savepoint where the database would abort it). */
     public function test_a_refused_unique_save_leaves_the_open_transaction_usable(): void
     {

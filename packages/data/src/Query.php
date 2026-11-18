@@ -276,6 +276,40 @@ final class Query
         return isset($this->textFields[$field]);
     }
 
+    /**
+     * A query that holds only the given conditions (AND'd, as where() takes them) and reads
+     * fields as this one does: the same text fields (compareAsText()) and locale. No other
+     * filter, search, order, limit or offset. A conditional aggregate measure compares through it,
+     * so its values meet the rule a normal where() on this query would apply.
+     *
+     * @param list<array{0: string, 1: mixed}|array{0: string, 1: mixed, 2: mixed}> $conditions
+     *        [field, value] ("=") or [field, operator, value]
+     * @throws \InvalidArgumentException for a condition that is not one of those or whose field or operator is invalid
+     * @since 0.79.0
+     */
+    public function withConditionsOnly(array $conditions): self
+    {
+        $only = clone $this;
+        $only->wheres = [];
+        $only->anyGroups = [];
+        $only->orderBy = [];
+        $only->limit = null;
+        $only->offset = null;
+        $only->searchTerm = null;
+        $only->searchFields = [];
+        foreach ($conditions as $condition) {
+            if (!is_array($condition) || !array_is_list($condition) || count($condition) < 2 || count($condition) > 3 || !is_string($condition[0])) {
+                throw new \InvalidArgumentException('A condition is [field, value] or [field, operator, value].');
+            }
+            if ($condition[count($condition) - 1] instanceof Subselect) {
+                throw new \InvalidArgumentException('A condition takes values, not a subquery.');
+            }
+            $only->where(...$condition);
+        }
+
+        return $only;
+    }
+
     public function getWheres(): array { return $this->wheres; }
 
     /** @return array<int, array{field: string, direction: SortDirection}> */

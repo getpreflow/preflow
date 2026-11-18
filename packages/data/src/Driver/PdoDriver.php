@@ -12,7 +12,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\UniqueViolation;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns, \Preflow\Data\SelectsSubqueries
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\ConditionalMeasures, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns, \Preflow\Data\SelectsSubqueries
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
