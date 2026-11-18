@@ -252,7 +252,7 @@ final class SqliteGrammar implements SchemaGrammar, ConvertsCollations
             $def = $this->quote($col['name']) . ' ' . ($text ? $this->textType($col['kind'], $col['length']) : $this->columnType($col['kind'], $col['length']));
 
             if ($col['primary']) {
-                $def .= ' PRIMARY KEY';
+                $def .= ' PRIMARY KEY'; // an INTEGER one (increments()) numbers itself; AUTOINCREMENT is left out, rebuild() refuses it
             }
 
             if (!$col['nullable'] && !$col['primary']) {

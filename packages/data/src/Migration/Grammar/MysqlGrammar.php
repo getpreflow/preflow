@@ -174,7 +174,7 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
             $def = $this->quote($col['name']) . ' ' . $type;
 
             if ($col['primary']) {
-                $def .= ' PRIMARY KEY';
+                $def .= (($col['auto'] ?? false) ? ' AUTO_INCREMENT' : '') . ' PRIMARY KEY';
             } elseif (!$col['nullable']) {
                 $def .= ' NOT NULL';
             }
@@ -513,6 +513,9 @@ final class MysqlGrammar implements SchemaGrammar, FullTextIndexes, ConvertsColl
         $stmt->closeCursor();
         $nullable ??= $isNullable === 'YES';
         $sql = 'MODIFY ' . $this->quote($column) . ' ' . $type . ($nullable ? ' NULL' : ' NOT NULL');
+        if (str_contains(strtoupper((string) $extra), 'AUTO_INCREMENT')) {
+            $sql .= ' AUTO_INCREMENT'; // an increments() key stays numbered
+        }
         $default = self::defaultClause($pdo, $default, (string) $extra);
         if ($default !== null) {
             $sql .= ' DEFAULT ' . $default;

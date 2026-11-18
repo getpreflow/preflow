@@ -404,6 +404,22 @@ $dm->save($comment);
 echo $comment->id; // e.g. 42 — populated after insert
 ```
 
+The table needs a key the database numbers. In a migration declare it with `increments()`
+(since 0.79.0):
+
+```php
+$schema->create('comments', function (Table $t) {
+    $t->increments();            // `id`; pass another name to change it
+    $t->text('body');
+});
+```
+
+On MySQL/MariaDB that is `BIGINT AUTO_INCREMENT PRIMARY KEY`; on SQLite `INTEGER PRIMARY KEY`,
+which numbers itself (without the `AUTOINCREMENT` keyword, so the table can still be rebuilt by
+`convertColumn()`). `integer('id')->primary()` is **not** numbered on MySQL: it is a plain key
+and every insert must set the id itself. `convertColumn()` on an `increments()` column keeps its
+`AUTO_INCREMENT`.
+
 ### Raw SQL
 
 Use `raw()` to run a query that the fluent builder cannot express. Results are returned as plain arrays.
