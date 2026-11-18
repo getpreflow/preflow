@@ -102,6 +102,25 @@ $config->set('app.debug', true);
 $config->all();                    // full array
 ```
 
+### Your own config files
+
+`Config` holds the keys of `config/app.php` as `app.*`, plus `image` and `view` when those files exist. Every other `config/<name>.php` belongs to the package that reads it. Your own file is read with `Application::configFile('<name>')`: it returns the file's array, or `null` when there is no such file. The file is loaded once per application, and with a [boot manifest](#boot-manifest-preflow-optimize) it comes from the manifest.
+
+To use it as `#[Config('<name>.key')]` or `Config::get()`, put it into `Config` in a provider's `register()`:
+
+```php
+use Preflow\Core\Application;
+use Preflow\Core\Config\Config;
+
+public function register(Container $container): void
+{
+    $app = $container->get(Application::class);
+    $container->get(Config::class)->set('alerts', $app->configFile('alerts') ?? []);
+}
+```
+
+After that `#[Config('alerts.from')]` resolves, with or without a boot manifest.
+
 ### ServiceProvider
 
 ```php
