@@ -219,7 +219,7 @@ final class BootManifestAppTest extends TestCase
             'GET /blog/2026/hello' => ['blog/[...path].twig', ['path' => '2026/hello']],
             'GET /hooks/ping' => ['App\\Controllers\\HookController@show', ['name' => 'ping']],
             'POST /hooks' => ['App\\Controllers\\HookController@receive', []],
-            'GET /hooks' => [self::FRONTEND, ['path' => 'hooks']],
+            'GET /hooks' => 405, // POST /hooks exists: since 0.79 a wrong method beats the frontend catch-all
         ];
         // What a request gets: the locale prefix, a redirect (also behind the prefix), 404 and the admin.
         $requests = [
@@ -283,6 +283,8 @@ final class BootManifestAppTest extends TestCase
                 $out[$key] = [$route->handler, $route->parameters];
             } catch (\Preflow\Core\Exceptions\NotFoundHttpException) {
                 $out[$key] = 404;
+            } catch (\Preflow\Core\Exceptions\MethodNotAllowedHttpException) {
+                $out[$key] = 405;
             }
         }
 

@@ -218,9 +218,11 @@ The first match wins. Throws `NotFoundHttpException` if nothing matches.
 
 When no route matches the method but the path exists for other methods, the router throws
 `MethodNotAllowedHttpException` (a 405) and the response carries `Allow` with those methods
-(`GET` also lists `HEAD`; `OPTIONS` handling stays with CORS). A catch-all route does not count:
-a wrong method on a path that only a catch-all serves is still a 404. Before 0.62 every such
-request was a 404.
+(`GET` also lists `HEAD`; `OPTIONS` handling stays with CORS). A catch-all route never makes a
+path exist by itself: a wrong method on a path that only a catch-all serves is still a 404. But a
+catch-all does not hide a wrong method either: with a `GET` catch-all and `POST /x`, `GET /x`
+answers 405 with `Allow: POST` (since 0.79; before, the catch-all page answered). Before 0.62
+every such request was a 404.
 
 ## Clean paths (`canonical_paths`)
 

@@ -167,6 +167,15 @@ final class Router implements RouterInterface, PageExists
 
         $entry = $result['entry'];
 
+        // A catch-all answers every path, so it must not hide a wrong method: when the path has
+        // routes for other methods only, that is a 405 (a path with none still reaches the catch-all).
+        if ($entry->isCatchAll) {
+            $allowed = $matcher->allowedMethods($uri);
+            if ($allowed !== [] && !in_array($method, $allowed, true)) {
+                throw new MethodNotAllowedHttpException($allowed);
+            }
+        }
+
         return new Route(
             mode: $entry->mode,
             handler: $entry->handler,

@@ -99,7 +99,8 @@ final class FolioAuthTest extends TestCase
         $forgot = $app->handle($f->createServerRequest('GET', '/folio/forgot'));
         $this->assertSame(302, $forgot->getStatusCode());
         $this->assertSame('/folio/login', $forgot->getHeaderLine('Location'));
-        $this->assertSame(404, $app->handle($f->createServerRequest('GET', '/folio/password/some-token'))->getStatusCode());
+        // Since 0.79 a wrong method answers 405 even where the frontend catch-all matches: the unmatched GET is a 405 here (a POST-only admin route shares the path).
+        $this->assertSame(405, $app->handle($f->createServerRequest('GET', '/folio/password/some-token'))->getStatusCode());
     }
 
     #[RunInSeparateProcess]

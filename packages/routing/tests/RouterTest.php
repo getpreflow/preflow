@@ -287,4 +287,50 @@ final class RouterTest extends TestCase
         $this->assertStringContainsString('application/json', $bodies[1][0]);
         $this->assertSame('{"message":"Method Not Allowed"}', $bodies[1][1]);
     }
+
+    private function catchAllRouter(): Router
+    {
+        $router = new Router(pagesDir: $this->pagesDir, controllers: []);
+        $router->getCollection()->add(new \Preflow\Routing\RouteEntry('/{path}', 'page', 'GET', RouteMode::Component, [], ['path'], '#^/(?P<path>.+)$#', true));
+        $router->getCollection()->add(new \Preflow\Routing\RouteEntry('/x', 'handler', 'POST', RouteMode::Action, [], [], '#^/x$#', false));
+
+        return $router;
+    }
+
+    public function test_wrong_method_where_a_catch_all_matches_is_405_with_allow(): void
+    {
+        try {
+            $this->catchAllRouter()->match($this->createRequest('GET', '/x'));
+            $this->fail('Expected a 405');
+        } catch (MethodNotAllowedHttpException $e) {
+            $this->assertSame(405, $e->statusCode);
+            $this->assertSame('POST', $e->headers['Allow']);
+        }
+    }
+
+    public function test_a_path_without_other_method_routes_still_reaches_the_catch_all(): void
+    {
+        $route = $this->catchAllRouter()->match($this->createRequest('GET', '/other'));
+
+        $this->assertSame('page', $route->handler);
+    }
+
+    public function test_405_through_a_catch_all_is_a_json_error_for_api_paths(): void
+    {
+        $router = new Router(pagesDir: $this->pagesDir, controllers: []);
+        $router->getCollection()->add(new \Preflow\Routing\RouteEntry('/{path}', 'page', 'GET', RouteMode::Component, [], ['path'], '#^/(?P<path>.+)$#', true));
+        $router->getCollection()->add(new \Preflow\Routing\RouteEntry('/api/hook', 'handler', 'POST', RouteMode::Action, [], [], '#^/api/hook$#', false));
+        $handler = new ErrorHandler(new ProdErrorRenderer(), null, new ApiConfig(), new JsonErrorRenderer(false));
+        $request = (new Psr17())->createServerRequest('GET', '/api/hook');
+
+        try {
+            $router->match($request);
+            $this->fail('Expected a 405');
+        } catch (MethodNotAllowedHttpException $e) {
+            $response = $handler->handleException($e, $request);
+            $this->assertSame(405, $response->getStatusCode());
+            $this->assertSame('POST', $response->getHeaderLine('Allow'));
+            $this->assertStringContainsString('application/json', $response->getHeaderLine('Content-Type'));
+        }
+    }
 }

@@ -137,8 +137,9 @@ final class RedirectsTest extends TestCase
         $this->entries()->save(['path' => '/folio/nothing-here', 'locale' => '', 'target_url' => '/elsewhere']);
 
         $this->assertTrue($this->app()->container()->get(\Preflow\Core\Http\NonPublicPaths::class)->matches('/folio/nothing-here'));
+        // A POST-only admin route shares this path shape, so since 0.79 a GET answers 405 (not 404); neither is recorded.
         $res = $this->fetch('/folio/nothing-here/at-all');
-        $this->assertSame(404, $res->getStatusCode());
+        $this->assertSame(405, $res->getStatusCode());
         $this->assertSame(404, $this->fetch('/folio/nothing-here')->getStatusCode());
         $this->assertSame([], $this->notFoundRows());
     }
