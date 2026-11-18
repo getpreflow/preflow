@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-16 (v0.78.3)
+> Last updated: 2026-11-18 (v0.79.0)
 
 ## Current State
 
-**v0.78.3** — 9017 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.79.0** — 9199 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,6 +525,25 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **App feedback (v0.79.0, released 2026-11-18):** fixes and additions from a new API-plus-admin app built on 0.78.3.
+  - **Container:** a constructor parameter with a default takes it when the container cannot build its type (an unbound interface, an abstract class, `\Closure`); a bound type or a buildable class is still injected.
+  - **405 behind a catch-all (routing):** a wrong method on a path that has routes for other methods answers `405` with `Allow`, even where a catch-all page route (Folio's frontend) matches, unless a page answers that path (a form posting back to its own page still loads). core `Routing\AnswersPages`, `Router::answerPagesWith()`.
+  - **JSON body limit (core):** `config/api.php` `max_body` (API prefixes) and `max_json_body` (every other path), in bytes; a JSON body over the limit answers `413` before it is parsed. Default: no limit.
+  - **Insert only if new (data):** `insert()` no longer overwrites a record another writer stored between its check and its write: it throws the duplicate-id error. New `insertIgnoring()` (false for an existing id) and `insertMany(…, ignoreDuplicates:)`. Capability `InsertsNew` (SQLite, MySQL, JSON); drivers without it keep the check-then-write.
+  - **Auto-numbered keys (data):** `Table::increments()`: `BIGINT AUTO_INCREMENT PRIMARY KEY` on MySQL (kept by `convertColumn`), `INTEGER PRIMARY KEY` on SQLite. `integer()->primary()` stays an unnumbered key.
+  - **Queries (data):** `pluck(field)`, `whereIn(field, subquery)` / `whereNotIn()` (one-column `SELECT` and `IN (SELECT …)` on SQL drivers through the capabilities `SelectsColumns` and `SelectsSubqueries`; other drivers run the inner query first, same rows), and a condition per aggregate measure (`->countDistinct('install', as: 'active', where: [['day', '=', $d]])`, capability `ConditionalMeasures`). A median comes from an ordered `pluck()` (README recipe).
+  - **Folio overrides:** `OverridableAction::handle()` may return a `ScreenView`, rendered in the admin layout like a screen (prefix, csrf, page assets); one shared `AdminPage` renders both. The README shows a full override.
+  - **`staff:roles <email> [--role=a,b | --grant=… --revoke=…]` (rbac):** shows or changes an existing account's roles, with the rules of every save (unknown roles refused, the last manager keeps the right to manage staff).
+  - **`throttle:prune --every=<seconds>` (devtools):** prunes several times within one cron run, so a row lives at most its window plus that interval.
+  - **Starters:** `config.allow-plugins` decides `php-http/discovery` (off): an older Composer stopped non-interactive installs of a new app on the undecided plugin; preflow/ai brings its own HTTP client.
+  - **Docs:** an app's own `config/<name>.php` (`configFile()` and the provider recipe, core README), `db:seed --class` and the demo-seeder guard (devtools), why plain models state exactness twice (data), PHP 8.4+ everywhere.
+  - Upgrading:
+    - Raise every `preflow/*` constraint to `^0.79`; routing needs core 0.79, testing needs data 0.79.
+    - A GET on a path that only has POST (or other) routes, where no page answers, now gets `405` instead of the catch-all's `404` or page.
+    - A constructor parameter with a default and an unbound interface, abstract class or `\Closure` type now gets its default instead of a container error.
+    - Code that relied on `insert()` overwriting a record stored meanwhile must use `save()`.
+    - Apps made from an older starter may add `"config": {"allow-plugins": {"php-http/discovery": false}}` to `composer.json`.
+    - A custom aggregating driver must implement `ConditionalMeasures` to accept conditional measures (without it, `get()` refuses them); a custom storage driver may implement `InsertsNew`, `SelectsColumns`, `SelectsSubqueries`.
 - **Entries for every language skip the language redirect (v0.78.3, released 2026-11-16):** two cases where 0.78.2 sent an address through the language redirect although the answer does not depend on the language.
   - An entry for every language (no locale: old asset files, `/index.php`) no longer counts for the bare redirect (`RedirectEntryExists` answers for entries of one language only): `/favicon/old.ico` answers its `301` at once instead of `302 /de/favicon/old.ico` first.
   - With `prefix_default` and `redirect_bare`, an untidy bare address (`/old-help/`) no longer takes one language's entry in the clean-path one hop: it answers the clean `301 /old-help`, which then passes the language redirect. An entry for every language still answers in one hop.

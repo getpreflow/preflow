@@ -24,7 +24,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.60', 'preflow/data' => '<0.78', 'preflow/htmx' => '<0.65'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.60', 'preflow/data' => '<0.79.0', 'preflow/htmx' => '<0.65'], $composer['conflict'] ?? null);
         $this->assertSame('^0.60 || @dev', $composer['require']['preflow/core'] ?? null);
     }
 }

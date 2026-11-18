@@ -45,12 +45,12 @@ final class MysqlTestDatabaseTest extends TestCase
         MysqlTestDatabase::dropAllTables($pdo);
     }
 
-    /** "^0.78 || @dev" matches any version (@dev is anything): only "conflict" keeps out a data release without what the testing package relies on (MysqlTestDatabase's API since 0.25; since 0.77 the storage driver contract's conditional updates and Unicode matching; since 0.78 its capability interfaces). */
+    /** "^0.79.0 || @dev" matches any version (@dev is anything): only "conflict" keeps out a data release without what the testing package relies on (MysqlTestDatabase's API since 0.25; since 0.77 the storage driver contract's conditional updates and Unicode matching; since 0.78 its capability interfaces; since 0.79 InsertsNew, SelectsColumns and SelectsSubqueries). */
     public function test_composer_conflicts_with_data_before_its_api(): void
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         // The full conflict list is pinned in ComposerConstraintsTest.
-        $this->assertSame('<0.78', $composer['conflict']['preflow/data'] ?? null);
+        $this->assertSame('<0.79.0', $composer['conflict']['preflow/data'] ?? null);
     }
 }
