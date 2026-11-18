@@ -58,6 +58,7 @@ would. An id bound to a class (`bind(Contract::class, Impl::class)`) passes them
 a factory closure gets them as its second argument, and one that takes no second parameter
 throws a `ContainerException` rather than drop them (as does an instance registered under a
 name that is no class).
+A constructor parameter with a default value takes that default when the container cannot build its type (an unbound interface, an abstract class, `\Closure`); a bound type or a buildable class is still injected.
 Route middleware with arguments (`MiddlewareWith`, see `preflow/routing`) is built this way.
 
 ### Attribute injection
