@@ -345,6 +345,10 @@ admin layout the same way it renders a screen:
   Write `'@stats/stats.css'` for a file in the `assets/` folder of an enabled extension, or
   `'@folio/htmx.js'`, `'@folio/trix'` for Folio's own files.
 
+The example assumes an enabled extension named `stats` (see [Extensions](#extensions)): `@stats`
+is the template namespace of that extension's `templates/` folder, and `'@stats/stats.css'`
+is a file in its `assets/` folder (see [Screen assets](#screen-assets)).
+
 ```php
 namespace App\Folio\Overrides\Content;
 
@@ -372,10 +376,6 @@ final class Index implements OverridableAction
 {% block content %}
   <h1>Stats</h1>
   <p>{{ visits }} visits, {{ signups }} sign-ups.</p>
-  <form method="post" action="{{ prefix }}/stats/reset">
-    <input type="hidden" name="_csrf_token" value="{{ csrf }}">
-    <button type="submit">Reset</button>
-  </form>
 {% endblock %}
 ```
 

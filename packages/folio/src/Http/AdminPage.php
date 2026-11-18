@@ -41,17 +41,10 @@ final class AdminPage
     public function render(ScreenView $view, ServerRequestInterface $request, string $owner, ?string $extension = null, array $assets = [], ?array $screen = null): ResponseInterface
     {
         $entries = [...$assets, ...$view->assets];
-        if ($extension === null) {
-            foreach ($entries as $entry) {
-                if (is_string($entry) && $entry !== '' && !str_starts_with($entry, '@')) {
-                    throw new ExtensionException("{$owner} lists asset \"{$entry}\", but it has no extension of its own: use '@folio/<name>' or '@<extension>/<path>'.");
-                }
-            }
-        }
 
         $vars = [
             'prefix' => $this->prefix,
-            'page_assets' => $this->assets?->resolve($extension ?? '', $entries, $owner),
+            'page_assets' => $this->assets?->resolve($extension, $entries, $owner),
             'extension_assets_base' => $extension === null ? null : $this->assets?->base($extension),
             'csrf' => $request->getAttribute(CsrfToken::class)?->getValue() ?? '',
         ];

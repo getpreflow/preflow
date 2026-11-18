@@ -39,10 +39,13 @@ final class PageAssets
     }
 
     /**
+     * @param string|null $extension the owning extension, for bare entries ('file.css'); null when
+     *                               the caller has none (a Folio override): then only '@folio/...'
+     *                               and '@<extension>/...' entries are allowed
      * @param list<string> $entries
      * @return array{styles: list<string>, scripts: list<string>, modules: list<string>, htmx: bool}
      */
-    public function resolve(string $extension, array $entries, string $owner): array
+    public function resolve(?string $extension, array $entries, string $owner): array
     {
         $out = ['styles' => [], 'scripts' => [], 'modules' => [], 'htmx' => false];
         foreach ($entries as $entry) {
@@ -69,9 +72,13 @@ final class PageAssets
     }
 
     /** @return list<array{string, string}> [file name, URL] */
-    private function urls(string $extension, string $entry, string $owner): array
+    private function urls(?string $extension, string $entry, string $owner): array
     {
         if (!str_starts_with($entry, '@')) {
+            if ($extension === null) {
+                throw new ExtensionException("{$owner} lists asset \"{$entry}\", but it has no extension of its own: use '@folio/<name>' or '@<extension>/<path>'.");
+            }
+
             return [[$entry, $this->extensionUrl($extension, $entry, $owner, $entry)]];
         }
         $slash = strpos($entry, '/');

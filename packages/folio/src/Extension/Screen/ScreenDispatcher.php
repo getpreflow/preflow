@@ -6,7 +6,6 @@ namespace Preflow\Folio\Extension\Screen;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Container\Container;
-use Preflow\Core\Http\Csrf\CsrfToken;
 use Preflow\Core\Routing\Route;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\FolioText;
