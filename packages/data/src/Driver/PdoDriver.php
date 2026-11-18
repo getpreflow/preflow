@@ -9,6 +9,7 @@ use Preflow\Data\AggregatingStorage;
 use Preflow\Data\ExclusiveWrites;
 use Preflow\Data\Query;
 use Preflow\Data\ResultSet;
+use Preflow\Data\UniqueViolation;
 use Preflow\Data\VersionedStorage;
 
 abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew
@@ -437,8 +438,24 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
             if ($this->dialect->isPrimaryKeyViolation($e, $type, $idField)) {
                 return false;
             }
+            // A database reports the first index that fails, and SQLite checks a unique index made
+            // later before the primary key: the same record stored twice then fails on that index.
+            // A record with the id is a duplicate id whichever index said so (a locking read, as
+            // claim() does, so a MySQL snapshot does not hide a row committed since).
+            if ($e instanceof UniqueViolation && $this->idStored($type, $id, $idField)) {
+                return false;
+            }
             throw $e;
         }
+    }
+
+    private function idStored(string $type, string|int $id, string $idField): bool
+    {
+        $table = $this->dialect->quoteIdentifier($type);
+        $col = $this->dialect->quoteIdentifier($idField);
+        $sql = "SELECT 1 FROM {$table} WHERE {$col} = ? LIMIT 1" . $this->dialect->lockingRead();
+
+        return $this->read($type, $sql, [$id])->fetchColumn() !== false;
     }
 
     /**

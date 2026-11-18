@@ -98,8 +98,9 @@ $dm->insertIgnoring($event);
 
 Validation, the generated id, `#[Timestamps]` and events run as for `insert()`; a model skipped as a
 duplicate runs no write. `insertMany()` inserts the models in the order given; where the storage has
-no transactions (JSON files) the models written before a duplicate stay. A model whose id is an
-auto-increment `int` has no id to repeat: `insertIgnoring()` always writes it.
+no transactions (JSON files) the models written before a duplicate stay. A plain model whose `int` id is
+left at `0` gets a new id from the storage and is always written. A class-backed type with a given id
+returns `false` for a duplicate.
 
 ### `QueryBuilder`
 
@@ -247,7 +248,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 |---|---|---|---|
 | `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
-| `InsertsNew::insertNew()` (0.79) | Writes a record only while no record has its id, in one step: `insert()` never overwrites a record another writer stored in between, and `insertIgnoring()` and `insertMany()` skip duplicates without a race. The contract has four tests for it, skipped without it. | checks that the id is free, then saves; a second writer in between is overwritten (`insert()`) or both write (`insertIgnoring()`). | Yes with it; the fallback is not. |
+| `InsertsNew::insertNew()` (0.79) | Writes a record only while no record has its id, in one step: `insert()` never overwrites a record another writer stored in between, and `insertIgnoring()` and `insertMany()` skip duplicates without a race. The contract tests it (also a duplicate behind another unique index, and inside a transaction), skipped without it. | checks that the id is free, then saves; a second writer in between is overwritten (`insert()`) or both write (`insertIgnoring()`). | Yes with it; the fallback is not. |
 | `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
 | `Transactions::transaction()`, `inTransaction()` (0.78) | Writes that commit together or not at all; inside an open transaction (whoever opened it) `transaction()` joins it. `DataManager::transaction()` spans storages: it begins on each storage with it once (aliases of one driver count once), commits the innermost first, and throws `PartialCommit` (a `RuntimeException`, the failed commit as previous) when a commit fails after another storage committed (publishing, deletes, the permission sync). | `DataManager::transaction()` runs the writes as they come: a failure part-way leaves the earlier writes stored (JSON files). | Yes with it. |
 | `UniqueIndexes` (0.78, a marker) | Says `save()` refuses a duplicate in every unique index the table sync made (`UniqueViolation`, nothing written). DataManager then checks before the write only the unique fields no index can hold (translatable ones). | DataManager checks every unique field before the write, under the type's lock (`ExclusiveWrites`) where the driver has one, else without. | Yes with it or `ExclusiveWrites`; the plain check is not. |

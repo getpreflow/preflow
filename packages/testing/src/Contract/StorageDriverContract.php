@@ -1520,6 +1520,46 @@ abstract class StorageDriverContract extends TestCase
         $driver->insertNew('records', ['label' => 'No id']);
     }
 
+    public function test_insert_new_of_an_existing_id_is_false_even_when_a_unique_index_fails_too(): void
+    {
+        $driver = $this->inserting();
+        $this->declareUnique('records', 'label');
+        $driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Same', 'amount' => 1]);
+
+        $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Same', 'amount' => 1]), 'the same record again: the id exists');
+        $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Other', 'amount' => 2]));
+        $this->assertSame('Same', ($driver->findOne('records', 'n1') ?? [])['label']);
+
+        try {
+            $driver->insertNew('records', ['uuid' => 'n2', 'label' => 'Same', 'amount' => 3]);
+            if ($this->driver->exists('records', 'n2')) {
+                $this->markTestSkipped('The driver has no unique index to declare.');
+            }
+            $this->fail('a new id with a taken unique value is refused');
+        } catch (UniqueViolation) {
+            $this->assertFalse($driver->exists('records', 'n2'));
+        }
+    }
+
+    public function test_insert_new_of_an_existing_id_leaves_an_open_transaction_usable(): void
+    {
+        $driver = $this->inserting();
+        if (!$driver instanceof Transactions) {
+            $this->markTestSkipped('The driver does not implement Transactions.');
+        }
+
+        $driver->transaction(function () use ($driver): void {
+            $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'First']));
+            $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Second']), 'a duplicate');
+            $this->assertTrue($driver->insertNew('records', ['uuid' => 'n2', 'label' => 'After']), 'the transaction goes on');
+            $driver->save('records', 'n3', ['uuid' => 'n3', 'label' => 'Saved']);
+        });
+
+        $this->assertSame('First', ($driver->findOne('records', 'n1') ?? [])['label']);
+        $this->assertTrue($driver->exists('records', 'n2'));
+        $this->assertTrue($driver->exists('records', 'n3'), 'committed');
+    }
+
     private function createRecords(): void
     {
         $this->createType('records', ['uuid' => 'exact', 'label' => 'exact', 'amount' => 'number', 'active' => 'boolean', 'meta' => 'json']);

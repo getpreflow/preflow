@@ -17,8 +17,14 @@ interface InsertsNew extends StorageDriver
 {
     /**
      * Write $data as the record with the id in $data[$idField], unless a record with that id
-     * exists. Only the id counts as a duplicate here: a duplicate on another unique index is
-     * still the driver's UniqueViolation.
+     * exists. A record with the id always gives false, also when another unique index would fail
+     * too (a database reports the first failing index, which need not be the id's). A new id whose
+     * value is taken in another unique index is still the driver's UniqueViolation.
+     *
+     * A false leaves a transaction the caller opened usable: insertMany() goes on with the next
+     * record in it. A driver whose database aborts the transaction on a failed statement
+     * (PostgreSQL) must not let the duplicate fail the statement: `ON CONFLICT DO NOTHING`, or a
+     * savepoint around the write.
      *
      * @param array<string, mixed> $data holds the id under $idField
      * @return bool true when written, false when the id exists (the stored record is untouched)
