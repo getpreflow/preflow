@@ -1245,6 +1245,25 @@ fields (tags, which compare exactly), the id field and fields marked `"exact": t
 Everything else compares exactly: ids, relations, assets, numbers, dates, yes/no values, exact
 fields ("ab" is not "Ab"). A migration's `string()` and `text()` are text unless `->exact()`.
 
+**Why a plain model says it twice.** A plain `#[Entity]` model's table comes from your own
+migration, not from the model, so the same fact lives in two places that nothing else connects:
+
+- the model's `#[Field(exact: true)]` is the driver-neutral truth: JSON storage, loose search and
+  `Validation\Unique` follow it, whatever database is behind the model;
+- the migration's `->exact()` states the SQL column: the database's `=`, `IN`, `ORDER BY` and the
+  unique index follow the column's collation, not the model.
+
+Write both. `preflow migrate` checks them (the step `data.model-exactness`) and warns for every text
+field of a plain model where they disagree, for example `exact: true` on the model but no `->exact()`
+in the migration. It only warns, never changes a column; fix a column with `Schema::convertColumn()`.
+It checks the storage the migrations ran on, and only tables a migration made since 0.78 (their
+recorded intent); older tables are covered by the text-rule conversion below. Id fields and list
+fields (tags) are not checked.
+
+A class-backed type (`#[Entity(type: …)]`) states it once: its table is made by sync from the
+type's definition, so `#[Field(exact: true)]` decides the column as well as JSON, search and
+`Unique`, and there is nothing to disagree.
+
 Where the rule lives:
 
 - **SQLite:** the columns of text fields declare `COLLATE preflow_text`, a collation backed by
