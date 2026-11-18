@@ -13,6 +13,7 @@ use Preflow\Data\ConditionalUpdates;
 use Preflow\Data\CounterReset;
 use Preflow\Data\DescribesColumns;
 use Preflow\Data\Dumps;
+use Preflow\Data\InsertsNew;
 use Preflow\Data\Maintenance;
 use Preflow\Data\Query;
 use Preflow\Data\QueryBuilder;
@@ -94,6 +95,8 @@ use Preflow\Data\UniqueViolation;
  *   OR in SQL. `total()` counts every match, ignoring limit and offset.
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
+ * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
+ *   which: true when written, false when the id exists (the stored record stays as it is).
  * - A driver with ConditionalUpdates (@since 0.77) writes only the named fields, and only while the
  *   version field holds the expected whole number (as text or number; null: none, NULL or '', and
  *   never 0); a match that changes no value is still a match.
@@ -1461,6 +1464,60 @@ abstract class StorageDriverContract extends TestCase
         $this->assertTrue($driver->updateIfVersion('versioned', 'none', ['version' => '7'], 'version', -1));
         $this->assertFalse($driver->updateIfVersion('versioned', 'empty', ['label' => 'B'], 'version', 0), "'' is no version 0");
         $this->assertSame('7', (string) ($driver->findOne('versioned', 'none') ?? [])['version']);
+    }
+
+    // --- insert only if new (InsertsNew, @since 0.79.0) -------------------------------------------
+
+    private function inserting(): InsertsNew
+    {
+        if (!$this->driver instanceof InsertsNew) {
+            $this->markTestSkipped('The driver does not implement InsertsNew (DataManager checks, then writes instead).');
+        }
+        $this->createRecords();
+
+        return $this->driver;
+    }
+
+    public function test_insert_new_writes_a_new_id_and_leaves_an_existing_one_untouched(): void
+    {
+        $driver = $this->inserting();
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'First', 'amount' => 1]));
+        $this->assertSame('First', ($driver->findOne('records', 'n1') ?? [])['label']);
+
+        $this->assertFalse($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Second', 'amount' => 2]), 'the id exists: not written');
+        $row = $driver->findOne('records', 'n1') ?? [];
+        $this->assertSame('First', $row['label'], 'the stored record is untouched');
+        $this->assertNumber(1, $row['amount'] ?? null);
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n2', 'label' => 'Other', 'amount' => 3]), 'another id is new');
+    }
+
+    public function test_insert_new_after_a_delete_writes_again(): void
+    {
+        $driver = $this->inserting();
+        $driver->insertNew('records', ['uuid' => 'n1', 'label' => 'First', 'amount' => 1]);
+        $driver->delete('records', 'n1');
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'Again', 'amount' => 1]));
+        $this->assertSame('Again', ($driver->findOne('records', 'n1') ?? [])['label']);
+    }
+
+    public function test_insert_new_stores_structured_values_as_save_does(): void
+    {
+        $driver = $this->inserting();
+
+        $this->assertTrue($driver->insertNew('records', ['uuid' => 'n1', 'label' => 'A', 'meta' => ['a' => 1]]));
+        $stored = ($driver->findOne('records', 'n1') ?? [])['meta'] ?? null;
+        $this->assertSame(['a' => 1], is_string($stored) ? json_decode($stored, true) : $stored);
+    }
+
+    public function test_insert_new_needs_an_id(): void
+    {
+        $driver = $this->inserting();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $driver->insertNew('records', ['label' => 'No id']);
     }
 
     private function createRecords(): void

@@ -43,7 +43,9 @@ before, such a property threw a `TypeError` on a SQL storage).
 $dm->find(Post::class, $id): ?Post
 $dm->query(Post::class): QueryBuilder<Post>
 $dm->save(Model $model): void           // INSERT when ID is empty, UPDATE otherwise
-$dm->insert(Model $model): void         // explicit INSERT; an int id reads back lastInsertId()
+$dm->insert(Model $model): void         // explicit INSERT; an int id reads back lastInsertId(); throws for an id that exists
+$dm->insertIgnoring(Model $model): bool // INSERT unless the id exists (0.79); true = written
+$dm->insertMany(iterable $models, bool $ignoreDuplicates = false): int // many inserts in one transaction (0.79)
 $dm->update(Model $model): void         // explicit UPDATE
 $dm->delete(Post::class, $id): void     // delete by class + ID
 $dm->delete($model): void               // delete by model instance
@@ -51,7 +53,53 @@ $dm->raw(string $sql, array $bindings, string $storage): array  // raw SQL query
 $dm->saveTypeIfVersion(DynamicRecord $record, int $expected): bool // compare-and-set, see below
 ```
 
-`save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables. A `string` id that is empty (or unset) gets a UUID v4 before the write instead; `insert()` refuses an id that exists.
+`save()` detects an empty ID field and automatically issues an INSERT, then reads back `lastInsertId()` into the model — no need to pre-generate IDs for auto-increment tables. A `string` id that is empty (or unset) gets a UUID v4 before the write instead; `insert()` refuses an id that exists (see "Inserting" below).
+
+### Inserting (0.79)
+
+`insert()` writes a new record and never writes over a stored one. Giving an id that exists throws a
+`RuntimeException` ("a record with this id exists"), and so does losing a race: when another request
+stores the same id between `insert()`'s check and its write, your `insert()` throws and the first row
+stays as it was. (Before 0.79 the second writer silently overwrote the first.) On the built-in drivers
+the check and the write are one step (`InsertsNew`: SQL a plain `INSERT` that fails on the primary
+key, JSON files a create under the type's lock). A storage without `InsertsNew` is checked, then
+written, as before, and a second writer can still get in between there.
+
+For rows that may repeat, such as an event log or a visit that counts once, skip the duplicate
+instead of catching the error:
+
+```php
+// true: written. false: a record with this id exists; it is left as it is, and no event or
+// observer report is made for the skipped model.
+$written = $dm->insertIgnoring($visit);
+
+// Many at once, in one transaction on a storage that has transactions (the SQL drivers):
+$count = $dm->insertMany($events);          // a duplicate throws; nothing of the batch is kept
+$count = $dm->insertMany($events, true);    // duplicates are skipped; $count is the number written
+```
+
+```php
+#[Entity(table: 'events', storage: 'sqlite')]
+final class Event extends Model
+{
+    #[Id]
+    public string $uuid = '';   // empty: a UUID is given, as insert() does
+
+    #[Field]
+    public string $name = '';
+}
+
+// An event delivered twice (a retry, a double click) is stored once:
+$event = new Event();
+$event->uuid = $deliveryId;
+$event->name = 'signup';
+$dm->insertIgnoring($event);
+```
+
+Validation, the generated id, `#[Timestamps]` and events run as for `insert()`; a model skipped as a
+duplicate runs no write. `insertMany()` inserts the models in the order given; where the storage has
+no transactions (JSON files) the models written before a duplicate stay. A model whose id is an
+auto-increment `int` has no id to repeat: `insertIgnoring()` always writes it.
 
 ### `QueryBuilder`
 
@@ -199,6 +247,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 |---|---|---|---|
 | `VersionedStorage::saveIfVersion()` | A save only while the stored version is the expected one (`saveTypeIfVersion()`: editors' conflict checks, publishing). | reads, compares and saves; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
 | `ConditionalUpdates::updateIfVersion()` (0.77) | Writes only the named fields while a version field matches (`updateFieldsIfVersion()`: version bumps, a snapshot's published version, system keys). The contract has three tests for it, skipped without it. | reads, compares and saves the whole record; an `E_USER_NOTICE` says it is not atomic. | Yes with it; the fallback is not. |
+| `InsertsNew::insertNew()` (0.79) | Writes a record only while no record has its id, in one step: `insert()` never overwrites a record another writer stored in between, and `insertIgnoring()` and `insertMany()` skip duplicates without a race. The contract has four tests for it, skipped without it. | checks that the id is free, then saves; a second writer in between is overwritten (`insert()`) or both write (`insertIgnoring()`). | Yes with it; the fallback is not. |
 | `ExclusiveWrites::exclusive()` | Runs a check and a write of one type while no other writer of the type runs one: unique values no index guards (translatable fields, JSON storage), the activity log's coalescing. | runs the check and the write without a lock: two writers may both pass the check (a duplicate unique value, rarely two activity rows for one session). | Yes with it; the fallback is not. |
 | `Transactions::transaction()`, `inTransaction()` (0.78) | Writes that commit together or not at all; inside an open transaction (whoever opened it) `transaction()` joins it. `DataManager::transaction()` spans storages: it begins on each storage with it once (aliases of one driver count once), commits the innermost first, and throws `PartialCommit` (a `RuntimeException`, the failed commit as previous) when a commit fails after another storage committed (publishing, deletes, the permission sync). | `DataManager::transaction()` runs the writes as they come: a failure part-way leaves the earlier writes stored (JSON files). | Yes with it. |
 | `UniqueIndexes` (0.78, a marker) | Says `save()` refuses a duplicate in every unique index the table sync made (`UniqueViolation`, nothing written). DataManager then checks before the write only the unique fields no index can hold (translatable ones). | DataManager checks every unique field before the write, under the type's lock (`ExclusiveWrites`) where the driver has one, else without. | Yes with it or `ExclusiveWrites`; the plain check is not. |
@@ -214,11 +263,11 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 | `Dumps::dump()`, `restore()` (0.78) | The whole store as text the same driver restores into an empty store (`preflow db:dump`, `db:restore`). | the commands refuse the storage and point to the database's own tools (MySQL/MariaDB: `mysqldump`; JSON: copy the folder). | `restore()` is all or nothing. |
 | `ChangeTokens::changeToken()` (0.77) | A token that moves with every write of a type, so readers reuse what they computed. | `DataManager::changeToken()` only passes it on (null); its consumer, `StoredActivityLog::people()`, reuses nothing and computes every time. | Read only. |
 
-A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `BulkDeletes`,
+A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
 `RunsSql`), `Transactions` and `UniqueIndexes` from it and implements `exclusive()` itself (as
 `SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
-`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`,
+`RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
 `ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
 `AggregatingStorage`.
 

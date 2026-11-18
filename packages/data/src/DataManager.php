@@ -713,9 +713,75 @@ final class DataManager
      * Insert a new model. Sets the auto-generated ID on the model.
      * Use this when you explicitly want INSERT behavior (not upsert).
      *
+     * A model with an id that is stored already is never written over: insert() throws a
+     * \RuntimeException, also when another writer stores the id between the check and the write
+     * (on a storage with InsertsNew, as every built-in one has; any other storage is checked,
+     * then written, and a second writer can get in between). Use insertIgnoring() to skip such a
+     * model instead.
+     *
+     * @throws \RuntimeException when a record with the model's id exists
      * @throws \LogicException for an object loaded read-only (findAs(), queryAs())
      */
     public function insert(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): void
+    {
+        $this->insertModel($model, $validate, $rules, $scenario, false);
+    }
+
+    /**
+     * Insert a new model only when no record has its id: true when it was written, false when the
+     * id exists (the stored record is untouched, and no event or observer report is made for the
+     * skipped model). For rows that may repeat, such as an event log or a visit counted once:
+     * the check and the write are one step on a storage with InsertsNew, so two requests
+     * inserting one id never overwrite each other. Validation, the generated id and events are
+     * as for insert(). A model with an auto-increment id has no id to repeat and is always
+     * written.
+     *
+     * A duplicate on another unique field is still a ValidationException.
+     *
+     * @throws \LogicException for an object loaded read-only (findAs(), queryAs())
+     * @since 0.79.0
+     */
+    public function insertIgnoring(Model $model, bool $validate = true, array $rules = [], ?string $scenario = null): bool
+    {
+        return $this->insertModel($model, $validate, $rules, $scenario, true);
+    }
+
+    /**
+     * Insert many models in one go: every model is inserted as insert() does (or, with
+     * $ignoreDuplicates, as insertIgnoring() does), in one transaction on the storages that have
+     * transactions. Returns the number of models written.
+     *
+     * Without $ignoreDuplicates a model whose id exists throws, and nothing of the batch is kept
+     * on a storage with transactions (the SQL drivers); a storage without them (JSON files) keeps
+     * the models written before it. Two models of the batch with one id count as a duplicate.
+     *
+     * @param iterable<Model> $models
+     * @throws \RuntimeException when a record with a model's id exists and $ignoreDuplicates is false
+     * @since 0.79.0
+     */
+    public function insertMany(iterable $models, bool $ignoreDuplicates = false): int
+    {
+        $models = is_array($models) ? array_values($models) : iterator_to_array($models, false);
+        $storages = [];
+        foreach ($models as $model) {
+            $meta = ModelMetadata::for($model::class);
+            $storages[] = $this->classType($meta)?->storage ?? $meta->storage;
+        }
+
+        return $this->transaction(array_values(array_unique($storages)), function () use ($models, $ignoreDuplicates): int {
+            $written = 0;
+            foreach ($models as $model) {
+                if ($this->insertModel($model, true, [], null, $ignoreDuplicates)) {
+                    $written++;
+                }
+            }
+
+            return $written;
+        });
+    }
+
+    /** @return bool false only for a skipped duplicate ($ignore); a duplicate throws otherwise */
+    private function insertModel(Model $model, bool $validate, array $rules, ?string $scenario, bool $ignore): bool
     {
         $this->assertWritable($model);
         $meta = ModelMetadata::for($model::class);
@@ -724,9 +790,7 @@ final class DataManager
             $this->stamp($model, $meta); // a class-backed type stores what its type says
         }
         if ($def !== null) {
-            $this->writeClassType($model, $meta, $def, 'insert', $validate, $rules, $scenario);
-
-            return;
+            return $this->writeClassType($model, $meta, $def, $ignore ? 'ignore' : 'insert', $validate, $rules, $scenario);
         }
 
         $this->giveStringId($model, $meta);
@@ -740,12 +804,24 @@ final class DataManager
             $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
             $id = (string) $data[$meta->idField];
             if ($driver->exists($meta->table, $id, $meta->idField)) {
-                throw new \RuntimeException('Cannot insert ' . $model::class . " {$id}: a record with this id exists. Use save() or update().");
+                return $this->duplicateId($model, $id, $ignore);
             }
-            $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id, $data, $meta->idField));
+            $written = true;
+            $this->guardedModel($meta, $data, function () use ($driver, $meta, $id, $data, &$written): void {
+                if ($driver instanceof InsertsNew) {
+                    // The id is checked again in the write itself: a writer in between loses nothing.
+                    $written = $driver->insertNew($meta->table, $data, $meta->idField);
+
+                    return;
+                }
+                $driver->save($meta->table, $id, $data, $meta->idField);
+            });
+            if (!$written) {
+                return $this->duplicateId($model, $id, $ignore);
+            }
             $this->wroteModel($meta, $model);
 
-            return;
+            return true;
         }
 
         $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
@@ -755,6 +831,18 @@ final class DataManager
 
         $this->takeInsertId($driver, $meta, $model);
         $this->wroteModel($meta, $model);
+
+        return true;
+    }
+
+    /** The error insert() gives for an id that is stored: false for insertIgnoring(). */
+    private function duplicateId(Model $model, string|int $id, bool $ignore): false
+    {
+        if ($ignore) {
+            return false;
+        }
+
+        throw new \RuntimeException('Cannot insert ' . $model::class . " {$id}: a record with this id exists. Use save() or update().");
     }
 
     /**
@@ -900,9 +988,10 @@ final class DataManager
      * columns the class does not declare (Folio's _version, _publish_at, …) stay as stored.
      * An empty string id gets the id Folio gives a new record (32 hex characters).
      *
-     * @param 'save'|'insert'|'update' $mode
+     * @param 'save'|'insert'|'ignore'|'update' $mode 'ignore': insert() that skips an id that exists
+     * @return bool false only for a skipped duplicate (mode 'ignore')
      */
-    private function writeClassType(Model $model, ModelMetadata $meta, TypeDefinition $def, string $mode, bool $validate, array $rules, ?string $scenario): void
+    private function writeClassType(Model $model, ModelMetadata $meta, TypeDefinition $def, string $mode, bool $validate, array $rules, ?string $scenario): bool
     {
         $values = $this->classTypeValues($model, $def);
         $record = new DynamicRecord($def, $values);
@@ -924,13 +1013,21 @@ final class DataManager
                 $record->set($def->idField, $id);
             }
         }
-        if ($mode === 'insert' && $given && $driver->findOne($def->table, $id, $def->idField) !== null) {
-            throw new \RuntimeException('Cannot insert ' . $model::class . " {$id}: a record with this id exists. Use save() or update().");
+        $inserting = $mode === 'insert' || $mode === 'ignore';
+        if ($inserting && $given && $driver->findOne($def->table, $id, $def->idField) !== null) {
+            return $this->duplicateId($model, $id, $mode === 'ignore');
         }
 
         $data = $this->storageData($record);
         $versionField = $this->versionFieldOf($def);
-        $this->guarded($record, function () use ($driver, $def, $id, $data, $versionField): void {
+        $written = true;
+        $this->guarded($record, function () use ($driver, $def, $id, $data, $versionField, $inserting, $given, &$written): void {
+            if ($inserting && $given && $driver instanceof InsertsNew) {
+                // Checked again in the write itself: a writer in between is a duplicate, not an overwrite.
+                $written = $driver->insertNew($def->table, $this->storageValues($def, $versionField === null ? $data : [...$data, $versionField => 1]), $def->idField);
+
+                return;
+            }
             if (self::emptyId($id)) {
                 // An auto-increment id: the storage gives it (a first write, version 1).
                 $driver->save($def->table, 0, $this->storageValues($def, $versionField === null ? $data : [...$data, $versionField => 1]), $def->idField);
@@ -944,12 +1041,17 @@ final class DataManager
             }
             $driver->save($def->table, $id, $this->storageValues($def, $data), $def->idField);
         });
+        if (!$written) {
+            return $this->duplicateId($model, $id, $mode === 'ignore');
+        }
 
         if (self::emptyId($id)) {
             $this->takeInsertId($driver, $meta, $model);
         }
         $this->forgetSkipped($model, array_keys($values));
         $this->wroteModel($meta, $model);
+
+        return true;
     }
 
     /**
