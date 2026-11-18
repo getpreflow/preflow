@@ -1308,6 +1308,83 @@ abstract class StorageDriverContract extends TestCase
         $this->assertTrue($this->driver->exists('accounts', 'a3'), 'an accent variant is another value');
     }
 
+    /** @since 0.79.0 */
+    private function seedVisits(): void
+    {
+        $this->createType('installs', ['uuid' => 'exact', 'kind' => 'exact']);
+        foreach (['i1' => 'web', 'i2' => 'app', 'i3' => 'web', 'i4' => 'bot'] as $id => $kind) {
+            $this->driver->save('installs', $id, ['uuid' => $id, 'kind' => $kind]);
+        }
+        $this->createType('visits', ['uuid' => 'exact', 'install' => 'exact', 'ms' => 'number']);
+        foreach ([['v1', 'i1', 40], ['v2', 'i1', 10], ['v3', 'i2', 30], ['v4', 'i3', 20], ['v5', 'i4', 50], ['v6', 'i2', 60]] as [$id, $install, $ms]) {
+            $this->driver->save('visits', $id, ['uuid' => $id, 'install' => $install, 'ms' => $ms]);
+        }
+    }
+
+    private function visitsType(): TypeDefinition
+    {
+        return new TypeDefinition('visits', 'visits', 'default', [
+            'uuid' => new TypeFieldDefinition('uuid'), 'install' => new TypeFieldDefinition('install'), 'ms' => new TypeFieldDefinition('ms', 'number'),
+        ]);
+    }
+
+    private function installsType(): TypeDefinition
+    {
+        return new TypeDefinition('installs', 'installs', 'default', ['uuid' => new TypeFieldDefinition('uuid'), 'kind' => new TypeFieldDefinition('kind')]);
+    }
+
+    /** @since 0.79.0 */
+    public function test_pluck_reads_one_field_of_the_selected_records_in_order_with_limit(): void
+    {
+        $this->seedVisits();
+        $visits = fn (): QueryBuilder => QueryBuilder::forType($this->driver, $this->visitsType());
+
+        $ms = $visits()->where('install', 'i2')->orderBy('ms', SortDirection::Desc)->pluck('ms');
+        $this->assertCount(2, $ms);
+        $this->assertNumber(60, $ms[0]);
+        $this->assertNumber(30, $ms[1]);
+
+        $top = $visits()->orderBy('ms', SortDirection::Desc)->limit(2)->offset(1)->pluck('uuid');
+        $this->assertSame(['v5', 'v1'], $top, 'a list, in order, after the offset');
+        $this->assertSame(['v1', 'v2', 'v3', 'v4', 'v5', 'v6'], $this->sorted($visits()->pluck('uuid')), 'every record, one value each');
+        $this->assertSame([], $visits()->where('install', 'none')->pluck('ms'));
+    }
+
+    /** @since 0.79.0 */
+    public function test_where_in_takes_a_subquery_and_gives_the_same_rows_on_every_driver(): void
+    {
+        $this->seedVisits();
+        $installs = QueryBuilder::forType($this->driver, $this->installsType())->where('kind', 'web');
+        $in = QueryBuilder::forType($this->driver, $this->visitsType())->whereIn('install', $installs, 'uuid');
+        $this->assertSame(['v1', 'v2', 'v4'], $this->sorted(array_map(static fn ($r): string => (string) $r->get('uuid'), $in->get()->items())));
+
+        $notIn = QueryBuilder::forType($this->driver, $this->visitsType())
+            ->whereNotIn('install', QueryBuilder::forType($this->driver, $this->installsType())->where('kind', 'web'), 'uuid');
+        $this->assertSame(['v3', 'v5', 'v6'], $this->sorted(array_map(static fn ($r): string => (string) $r->get('uuid'), $notIn->get()->items())));
+
+        $list = QueryBuilder::forType($this->driver, $this->visitsType())->whereIn('install', ['i2', 'i4'])->where('ms', '>', 40);
+        $this->assertSame(['v5', 'v6'], $this->sorted($list->pluck('uuid')));
+    }
+
+    /** @since 0.79.0 */
+    public function test_where_in_with_an_empty_subquery(): void
+    {
+        $this->seedVisits();
+        $none = fn (): QueryBuilder => QueryBuilder::forType($this->driver, $this->installsType())->where('kind', 'nothing');
+
+        $this->assertSame([], QueryBuilder::forType($this->driver, $this->visitsType())->whereIn('install', $none(), 'uuid')->pluck('uuid'), 'IN of nothing matches nothing');
+        $this->assertCount(6, QueryBuilder::forType($this->driver, $this->visitsType())->whereNotIn('install', $none(), 'uuid')->pluck('uuid'), 'NOT IN of nothing matches everything');
+    }
+
+    /** @return list<string> */
+    private function sorted(array $values): array
+    {
+        $values = array_map('strval', $values);
+        sort($values);
+
+        return $values;
+    }
+
     /**
      * People whose names try the rule: p1 Müller / Ab, p2 MÜLLER / aB, p3 Muller, p4 Straße, p5 the
      * Kelvin sign, p6 İstanbul, p7 Zebra, p8 äpfel, p9 Apfel, p10 eagle, p11 Émile. name is a text

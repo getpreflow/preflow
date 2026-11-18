@@ -169,6 +169,75 @@ final class QueryBuilder
         return $this;
     }
 
+    /**
+     * Only the records whose $field is one of $values: a list, or the $column of the records
+     * another query selects (that query runs now, as it stands; its own filters, order and limit
+     * apply). $column defaults to $field. A null among the values is dropped: it matches nothing
+     * in SQL, and so nowhere. An empty list or subquery matches nothing.
+     *
+     * The subquery may sit on another driver: its values are fetched with pluck() and passed as
+     * a list, the same on every driver (on SQL they are bound values, so a very long list meets
+     * the database's limit on bindings).
+     *
+     * @param QueryBuilder<*>|list<mixed> $values
+     * @since 0.79.0
+     */
+    public function whereIn(string $field, QueryBuilder|array $values, ?string $column = null): self
+    {
+        return $this->whereList($field, 'IN', $values, $column);
+    }
+
+    /** As whereIn(), the records whose $field is none of $values (an empty list matches every record). @since 0.79.0 */
+    public function whereNotIn(string $field, QueryBuilder|array $values, ?string $column = null): self
+    {
+        return $this->whereList($field, 'NOT IN', $values, $column);
+    }
+
+    /** @param QueryBuilder<*>|list<mixed> $values */
+    private function whereList(string $field, string $operator, QueryBuilder|array $values, ?string $column): self
+    {
+        if ($values instanceof self) {
+            $values = $values->values($column ?? $field, true);
+        } elseif ($column !== null) {
+            throw new \InvalidArgumentException('A column names a field of a subquery; a list has none.');
+        }
+
+        return $this->where($field, $operator, array_values(array_filter($values, static fn (mixed $value): bool => $value !== null)));
+    }
+
+    /**
+     * One field of each record this query selects, in the query's order and within its limit
+     * and offset: a list of the values, as the records read them. Median, for instance: order by
+     * the field, then take the middle of the list.
+     *
+     * @return list<mixed>
+     * @throws \InvalidArgumentException when the type or model class has no such field
+     * @since 0.79.0
+     */
+    public function pluck(string $field): array
+    {
+        return $this->values($field, false);
+    }
+
+    /**
+     * @param bool $stored a model's value as storage holds it (its transformer applied): what an IN list is compared with
+     * @return list<mixed>
+     */
+    private function values(string $field, bool $stored): array
+    {
+        $this->assertField($field);
+        $values = [];
+        foreach ($this->get()->items() as $record) {
+            $values[] = match (true) {
+                $record instanceof DynamicRecord => $record->get($field),
+                $stored => $record->toArray()[$field] ?? null,
+                default => $record->{$field} ?? null,
+            };
+        }
+
+        return $values;
+    }
+
     /** @param bool $numeric compare as numbers even where the column stores text */
     public function orderBy(string $field, SortDirection $direction = SortDirection::Asc, bool $numeric = false): self
     {

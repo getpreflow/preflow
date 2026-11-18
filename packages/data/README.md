@@ -131,6 +131,40 @@ the same on every driver, where SQL would name the missing column and JSON would
 SQLite quotes identifiers with backticks, so a hand-built query on a missing column is an error
 there too (it read a double-quoted unknown name as a string).
 
+#### `pluck()` and `whereIn()` with a subquery (0.79)
+
+`pluck($field)` returns one field of each record the query selects, as a list, in the query's
+order and within its limit and offset:
+
+```php
+$slow = $dm->query(Visit::class)->where('ms', '>', 500)->orderBy('ms')->limit(10)->pluck('ms');
+```
+
+`whereIn($field, $values)` and `whereNotIn()` take a list, or another query: the records whose
+`$field` is (not) among the values the other query selects. The third argument names the field of
+the subquery (default: the same name as `$field`):
+
+```php
+// visits of installs that are on the web
+$visits = $dm->query(Visit::class)
+    ->whereIn('install', $dm->query(Install::class)->where('kind', 'web'), 'uuid')
+    ->get();
+```
+
+The subquery runs first and its values are passed as a list, so it gives the same rows on SQLite,
+MySQL, JSON and any third-party driver, and the two queries may even sit on different storages.
+An empty list or subquery matches nothing for `whereIn()` and everything for `whereNotIn()`; a
+null among the values is dropped. On SQL the values are bound, so a list of tens of thousands
+meets the database's limit on bindings (SQLite 32766, MySQL 65535).
+
+A median is the middle of an ordered `pluck()`:
+
+```php
+$values = $dm->query(Visit::class)->where('page', '/home')->orderBy('ms')->pluck('ms');
+$n = count($values);
+$median = $n === 0 ? null : ($n % 2 ? $values[intdiv($n, 2)] : ($values[$n / 2 - 1] + $values[$n / 2]) / 2);
+```
+
 ### Storage drivers
 
 | Class | Backend |
