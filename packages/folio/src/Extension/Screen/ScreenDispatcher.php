@@ -10,6 +10,7 @@ use Preflow\Core\Http\Csrf\CsrfToken;
 use Preflow\Core\Routing\Route;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\FolioText;
+use Preflow\Folio\Http\AdminPage;
 use Preflow\View\TemplateEngineInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -50,16 +51,14 @@ final class ScreenDispatcher implements MiddlewareInterface
             return $result;
         }
         if ($result instanceof ScreenView) {
-            $owner = "Screen {$class}::{$method}";
-            $page = $this->assets?->resolve($screen['extension'], [...$screen['assets'], ...$result->assets], $owner);
-
-            return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $result->render($this->engine, [
-                'prefix' => $this->prefix,
-                'page_assets' => $page,
-                'extension_assets_base' => $this->assets?->base($screen['extension']),
-                'csrf' => $request->getAttribute(CsrfToken::class)?->getValue() ?? '',
-                'screen' => ['label' => FolioText::label($screen['label']), 'path' => $screen['path']],
-            ], $owner));
+            return (new AdminPage($this->engine, $this->prefix, $this->assets))->render(
+                $result,
+                $request,
+                "Screen {$class}::{$method}",
+                $screen['extension'],
+                $screen['assets'],
+                ['label' => FolioText::label($screen['label']), 'path' => $screen['path']],
+            );
         }
         if (is_string($result) || $result instanceof \Stringable) {
             return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], (string) $result);
