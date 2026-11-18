@@ -151,11 +151,21 @@ $visits = $dm->query(Visit::class)
     ->get();
 ```
 
-The subquery runs first and its values are passed as a list, so it gives the same rows on SQLite,
-MySQL, JSON and any third-party driver, and the two queries may even sit on different storages.
-An empty list or subquery matches nothing for `whereIn()` and everything for `whereNotIn()`; a
-null among the values is dropped. On SQL the values are bound, so a list of tens of thousands
-meets the database's limit on bindings (SQLite 32766, MySQL 65535).
+On the SQL drivers (SQLite, MySQL) a subquery on the same driver runs in the database as
+`IN (SELECT ...)` / `NOT IN (SELECT ...)` and `pluck()` is a one-column `SELECT`: no values travel
+through PHP, so there is no limit on bindings and no large list to build. A subquery with a
+`limit()` or `offset()` (MySQL refuses them in `IN`), on another storage, or on a driver without
+the `SelectsColumns` capability (JSON storage, a third-party driver) is run first and its values
+are passed as a list; both ways give the same rows. An empty list or subquery matches nothing for
+`whereIn()` and everything for `whereNotIn()`; a null among the values is left out in both.
+`pluck()` reads the field as the records read it; for a model field with a transformer or a `bool`
+type it reads the records instead of one column, so the converted values come back.
+In the list form the values are bound, so a list of tens of thousands meets the database's limit
+on bindings (SQLite 32766, MySQL 65535).
+
+A driver author implements `Preflow\Data\SelectsColumns` (`pluck(type, field, Query)`) and
+compiles a `Subselect` as the value of an IN / NOT IN condition; the contract case "the column
+capability gives the same rows as the fallback" checks it.
 
 A median is the middle of an ordered `pluck()`:
 

@@ -6,6 +6,7 @@ namespace Preflow\Data\Driver;
 
 use Preflow\Data\AggregateQuery;
 use Preflow\Data\Query;
+use Preflow\Data\Subselect;
 
 class QueryCompiler
 {
@@ -35,9 +36,27 @@ class QueryCompiler
      */
     public function compile(string $table, Query $query): array
     {
+        return $this->select('*', $table, $query);
+    }
+
+    /**
+     * One column of the selected records, with the query's filters, order, limit and offset.
+     *
+     * @return array{0: string, 1: array<int, mixed>}
+     */
+    public function compilePluck(string $table, string $field, Query $query): array
+    {
+        return $this->select($this->dialect->quoteIdentifier($field), $table, $query);
+    }
+
+    /**
+     * @return array{0: string, 1: array<int, mixed>}
+     */
+    private function select(string $columns, string $table, Query $query): array
+    {
         $this->table = $table;
         $bindings = [];
-        $sql = 'SELECT * FROM ' . $this->dialect->quoteIdentifier($table);
+        $sql = 'SELECT ' . $columns . ' FROM ' . $this->dialect->quoteIdentifier($table);
 
         $whereSql = $this->compileConditions($query, $bindings);
         if ($whereSql !== '') {
@@ -58,6 +77,24 @@ class QueryCompiler
         }
 
         return [$sql, $bindings];
+    }
+
+    /**
+     * The inner SELECT of an IN / NOT IN subquery: its column, the records its query selects, a
+     * null value left out (NOT IN a list with a null matches nothing). Compiled for its own table.
+     *
+     * @param array<int, mixed> $bindings
+     */
+    private function subselect(Subselect $subselect, array &$bindings): string
+    {
+        $outer = $this->table;
+        $this->table = $subselect->table;
+        $column = $this->dialect->quoteIdentifier($subselect->field);
+        $conditions = $this->compileConditions($subselect->query, $bindings);
+        $this->table = $outer;
+
+        return "SELECT {$column} FROM " . $this->dialect->quoteIdentifier($subselect->table)
+            . ' WHERE ' . ($conditions === '' ? '' : "({$conditions}) AND ") . "{$column} IS NOT NULL";
     }
 
     /**
@@ -285,6 +322,9 @@ class QueryCompiler
         }
         $value = $where['value'];
 
+        if ($value instanceof Subselect) {
+            return "{$column} {$operator} (" . $this->subselect($value, $bindings) . ')';
+        }
         if ($operator === 'IN' || $operator === 'NOT IN') {
             $values = array_values((array) $value);
             if ($values === []) {

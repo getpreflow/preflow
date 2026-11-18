@@ -197,7 +197,19 @@ final class QueryBuilder
     private function whereList(string $field, string $operator, QueryBuilder|array $values, ?string $column): self
     {
         if ($values instanceof self) {
-            $values = $values->values($column ?? $field, true);
+            $column ??= $field;
+            if ($this->sharesSqlWith($values)) {
+                // The database runs the subquery: no values travel through PHP.
+                $values->assertField($column);
+                $inner = $values->prepared();
+                $this->assertField($field);
+                $this->filters++;
+                $this->query->whereInSubselect($field, $operator, new Subselect((string) $values->table(), $column, clone $inner));
+                $values->reportListing();
+
+                return $this;
+            }
+            $values = $values->values($column, true);
         } elseif ($column !== null) {
             throw new \InvalidArgumentException('A column names a field of a subquery; a list has none.');
         }
@@ -220,12 +232,52 @@ final class QueryBuilder
     }
 
     /**
+     * Whether $inner can run inside this query as SQL: one driver instance that implements
+     * SelectsColumns, and an inner query a database takes in IN (no limit, no offset).
+     */
+    private function sharesSqlWith(self $inner): bool
+    {
+        return $this->driver instanceof SelectsColumns
+            && $this->driver === $inner->driver
+            && $inner->table() !== null
+            && $this->table() !== null
+            && $inner->query->getLimit() === null
+            && $inner->query->getOffset() === null;
+    }
+
+    /**
+     * Whether the database may hand over $field's column as the records read it: a plain record
+     * (no hydrating through a class) or a class field with no transformer that is no bool
+     * (those read back converted).
+     */
+    private function readsAsStored(string $field): bool
+    {
+        if ($this->hydrate === null && $this->modelClass === null) {
+            return $this->typeDef !== null;
+        }
+        $class = $this->meta?->modelClass ?? $this->modelClass;
+        if ($class === null || isset($this->meta?->transformers[$field]) || !property_exists($class, $field)) {
+            return false;
+        }
+        $type = (new \ReflectionProperty($class, $field))->getType();
+
+        return !($type instanceof \ReflectionNamedType && $type->getName() === 'bool');
+    }
+
+    /**
      * @param bool $stored a model's value as storage holds it (its transformer applied): what an IN list is compared with
      * @return list<mixed>
      */
     private function values(string $field, bool $stored): array
     {
         $this->assertField($field);
+        $table = $this->table();
+        if ($this->driver instanceof SelectsColumns && $table !== null && ($this->typeDef === null || $this->typeDef->translatableFields() === []) && $this->readsAsStored($field)) {
+            $values = $this->driver->pluck($table, $field, $this->prepared());
+            $this->reportListing();
+
+            return $values;
+        }
         $values = [];
         foreach ($this->get()->items() as $record) {
             $values[] = match (true) {

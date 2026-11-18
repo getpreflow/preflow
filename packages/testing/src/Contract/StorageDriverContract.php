@@ -20,12 +20,14 @@ use Preflow\Data\QueryBuilder;
 use Preflow\Data\RankedSearch;
 use Preflow\Data\ResultSet;
 use Preflow\Data\RunsSql;
+use Preflow\Data\SelectsColumns;
 use Preflow\Data\SortDirection;
 use Preflow\Data\StorageDriver;
 use Preflow\Data\Transactions;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeFieldDefinition;
 use Preflow\Data\UniqueViolation;
+use Preflow\Testing\PlainDriver;
 
 /**
  * What every StorageDriver does, as tests. Extend it, implement the two hooks, and run it with
@@ -1374,6 +1376,38 @@ abstract class StorageDriverContract extends TestCase
 
         $this->assertSame([], QueryBuilder::forType($this->driver, $this->visitsType())->whereIn('install', $none(), 'uuid')->pluck('uuid'), 'IN of nothing matches nothing');
         $this->assertCount(6, QueryBuilder::forType($this->driver, $this->visitsType())->whereNotIn('install', $none(), 'uuid')->pluck('uuid'), 'NOT IN of nothing matches everything');
+    }
+
+    /**
+     * A driver with SelectsColumns gives the same rows as the fallback (the records read, the
+     * subquery run first and passed as a list), which PlainDriver proves on the same storage.
+     *
+     * @since 0.79.0
+     */
+    public function test_the_column_capability_gives_the_same_rows_as_the_fallback(): void
+    {
+        if (!$this->driver instanceof SelectsColumns) {
+            $this->markTestSkipped('The driver does not implement SelectsColumns: it has only the fallback, which the other cases cover.');
+        }
+        $this->seedVisits();
+        $this->driver->save('visits', 'v7', ['uuid' => 'v7', 'install' => null, 'ms' => 5]);
+        $this->driver->save('installs', 'i5', ['uuid' => 'i5', 'kind' => null]);
+        $plain = new PlainDriver($this->driver);
+
+        $cases = [
+            'pluck' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->where('ms', '>', 10)->orderBy('ms', SortDirection::Desc)->limit(3)->offset(1)->pluck('uuid'),
+            'pluck nulls' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->orderBy('uuid')->pluck('install'),
+            'in' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'web'), 'uuid')->orderBy('uuid')->pluck('uuid'),
+            'not in' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereNotIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'web'), 'uuid')->orderBy('uuid')->pluck('uuid'),
+            'in with nulls' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->installsType())->whereNotIn('kind', QueryBuilder::forType($d, $this->installsType()), 'kind')->orderBy('uuid')->pluck('uuid'),
+            'in nothing' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'nothing'), 'uuid')->pluck('uuid'),
+            'not in nothing' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereNotIn('install', QueryBuilder::forType($d, $this->installsType())->where('kind', 'nothing'), 'uuid')->orderBy('uuid')->pluck('uuid'),
+            'limited subquery' => fn (StorageDriver $d): array => QueryBuilder::forType($d, $this->visitsType())->whereIn('install', QueryBuilder::forType($d, $this->installsType())->orderBy('uuid')->limit(2), 'uuid')->orderBy('uuid')->pluck('uuid'),
+        ];
+        foreach ($cases as $name => $run) {
+            $this->assertEquals($run($plain), $run($this->driver), $name);
+        }
+        $this->assertSame(['v7'], array_slice(QueryBuilder::forType($this->driver, $this->visitsType())->orderBy('uuid')->pluck('uuid'), -1), 'sanity');
     }
 
     /** @return list<string> */

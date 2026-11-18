@@ -12,7 +12,7 @@ use Preflow\Data\ResultSet;
 use Preflow\Data\UniqueViolation;
 use Preflow\Data\VersionedStorage;
 
-abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew
+abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, AggregatingStorage, \Preflow\Data\BulkDeletes, \Preflow\Data\Savepoints, \Preflow\Data\ConditionalUpdates, \Preflow\Data\DescribesColumns, \Preflow\Data\PdoConnection, \Preflow\Data\Transactions, \Preflow\Data\AtomicCounters, \Preflow\Data\UniqueIndexes, \Preflow\Data\InsertsNew, \Preflow\Data\SelectsColumns
 {
     private ?\PDO $connection = null;
     private ?\Closure $connector = null;
@@ -121,6 +121,13 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
         }
 
         return new ResultSet($items, $total);
+    }
+
+    public function pluck(string $type, string $field, Query $query): array
+    {
+        [$sql, $bindings] = $this->compiler->compilePluck($type, $field, $query);
+
+        return $this->read($type, $sql, $bindings)->fetchAll(\PDO::FETCH_COLUMN);
     }
 
     public function aggregate(AggregateQuery $query): array

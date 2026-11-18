@@ -66,6 +66,21 @@ final class Query
         return $this;
     }
 
+    /**
+     * IN / NOT IN of the values another query selects, run by the database (see Subselect). Only
+     * for a driver that implements SelectsColumns; QueryBuilder::whereIn() decides.
+     *
+     * @param 'IN'|'NOT IN' $operator
+     * @since 0.79.0
+     */
+    public function whereInSubselect(string $field, string $operator, Subselect $subselect): self
+    {
+        self::assertField($field);
+        $this->wheres[] = ['field' => $field, 'operator' => $operator, 'value' => $subselect, 'boolean' => 'AND'];
+
+        return $this;
+    }
+
     /** The operator upper-case with single spaces, or an exception when it is not in OPERATORS. */
     private static function operator(mixed $operator): string
     {
