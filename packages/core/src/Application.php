@@ -369,8 +369,11 @@ final class Application
             $this->container->instance(DebugCollector::class, $collector);
         }
 
+        // API prefixes (config/api.php): errors there are JSON, and SEO and GEO leave them alone
+        $api = \Preflow\Core\Http\Api\ApiConfig::fromArray($this->configFile('api'));
+
         // JSON body parsing — must run before session, CSRF, and auth middleware
-        $this->pipeline->pipe(new \Preflow\Core\Http\JsonBodyMiddleware());
+        $this->pipeline->pipe(new \Preflow\Core\Http\JsonBodyMiddleware($api->maxJsonBody, $api));
 
         // Fields kept from a form sent back after an expired session; read from the session when asked
         $container = $this->container;
@@ -387,8 +390,6 @@ final class Application
         // Where page lookups are bound (core's PageExists first); packages add their own names for it
         $this->container->instance(\Preflow\Core\Routing\PageLookups::class, new \Preflow\Core\Routing\PageLookups());
 
-        // API prefixes (config/api.php): errors there are JSON, and SEO and GEO leave them alone
-        $api = \Preflow\Core\Http\Api\ApiConfig::fromArray($this->configFile('api'));
         $this->container->instance(\Preflow\Core\Http\Api\ApiConfig::class, $api);
         foreach ($api->prefixes as $prefix) {
             $nonPublic->add($prefix);

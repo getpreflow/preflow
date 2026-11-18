@@ -1318,6 +1318,8 @@ return [
         'max_age' => 600,          // seconds a preflight answer may be cached
         'credentials' => false,    // cannot be true together with origins ['*']
     ],
+    'max_body' => null,            // bytes: largest JSON body under an API prefix (null = no limit)
+    'max_json_body' => null,       // bytes: largest JSON body on every other path (null = no limit)
 ];
 ```
 
@@ -1331,7 +1333,13 @@ Get a token with `preflow auth:token <email-or-id>` (`preflow/devtools`, see
 `preflow/auth`'s README).
 
 **Request bodies.** A malformed JSON body answers 400 on every path,
-instead of arriving as an empty body.
+instead of arriving as an empty body. Set `max_body` (API paths) and `max_json_body` (every other
+path) in `config/api.php` to cap JSON bodies: a body over the limit answers 413 before it is
+parsed, and a request whose `Content-Length` is already over the limit is refused without reading
+its body. A body without `Content-Length` is read in chunks and stopped one byte past the limit.
+An API path without its own `max_body` uses `max_json_body`. Both default to no limit; `post_max_size`
+does not limit a raw JSON body, so set one if the API takes uploads from the open internet.
+Under an API prefix the 413 is the JSON error shape below. Since 0.79.0.
 
 **Errors.** For a path under an API prefix, or a request whose `Accept` asks for JSON without
 `text/html`, an error answers `{"message": "<text>"}` instead of the HTML error page. A 422 adds
