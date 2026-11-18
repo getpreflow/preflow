@@ -50,6 +50,7 @@
                 "Preflow\\Rbac\\Console\\StaffListCommand",
                 "Preflow\\Rbac\\Console\\StaffCreateCommand",
                 "Preflow\\Rbac\\Console\\StaffPasswordCommand",
+                "Preflow\\Rbac\\Console\\StaffRolesCommand",
                 "Preflow\\Rbac\\Console\\StaffInviteCommand",
                 "Preflow\\Rbac\\Console\\StaffResetCommand",
                 "Preflow\\Rbac\\Console\\StaffDisableCommand",

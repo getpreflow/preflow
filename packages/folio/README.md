@@ -326,22 +326,57 @@ for both.
 The dashboard is the one core admin action an app can replace without forking: a class
 `App\Folio\Overrides\Content\Index` implementing `OverridableAction` is shown instead of
 Folio's dashboard (the list, form and other screens look for no override; change those with
-type customizations and screens, see [Extensions](#extensions)):
+type customizations and screens, see [Extensions](#extensions)).
+
+`handle()` returns either a PSR-7 response, which is sent as it is (every override written
+before 0.79.0 keeps working), or, since 0.79.0, a `ScreenView`, which Folio renders inside the
+admin layout the same way it renders a screen:
+
+- **The layout.** The template extends `@folio/admin/_layout.twig` and fills its `content`
+  block, so the sidebar, header and theme come with it.
+- **The context.** The template gets your `data` plus `prefix` (the admin address prefix),
+  `csrf` (the token for your forms), `page_assets` and `extension_assets_base`. Folio's
+  variables win over a data key of the same name.
+- **Where templates live.** Put the template in your app's `resources/folio/` folder, which
+  is the `@folio` namespace (`'@folio/stats/dashboard.twig'`), or in an extension, which has
+  its own namespace (`'@stats/dashboard.twig'`).
+- **How CSS and JS come in.** List them in the view's third argument. An override has no
+  extension of its own, so a bare `'file.css'` is refused with an error naming the override.
+  Write `'@stats/stats.css'` for a file in the `assets/` folder of an enabled extension, or
+  `'@folio/htmx.js'`, `'@folio/trix'` for Folio's own files.
+
+The example assumes an enabled extension named `stats` (see [Extensions](#extensions)): `@stats`
+is the template namespace of that extension's `templates/` folder, and `'@stats/stats.css'`
+is a file in its `assets/` folder (see [Screen assets](#screen-assets)).
 
 ```php
 namespace App\Folio\Overrides\Content;
 
+use Preflow\Folio\Extension\Screen\ScreenView;
 use Preflow\Folio\Override\OverridableAction;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 final class Index implements OverridableAction
 {
-    public function handle(ServerRequestInterface $request): ResponseInterface
+    public function handle(ServerRequestInterface $request): ResponseInterface|ScreenView
     {
-        // your custom dashboard
+        return new ScreenView(
+            '@stats/dashboard.twig',
+            ['visits' => 1204, 'signups' => 37],
+            ['@stats/stats.css'],
+        );
     }
 }
+```
+
+```twig
+{# the stats extension's templates/dashboard.twig #}
+{% extends '@folio/admin/_layout.twig' %}
+{% block content %}
+  <h1>Stats</h1>
+  <p>{{ visits }} visits, {{ signups }} sign-ups.</p>
+{% endblock %}
 ```
 
 ## Admin styling

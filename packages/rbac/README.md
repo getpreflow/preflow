@@ -222,6 +222,9 @@ delegation limit, the other rules apply; a refusal prints why and exits 1):
 - `staff:list`: e-mail, name, roles and state (active, disabled, no password yet).
 - `staff:create <email> [--name=…] [--role=a,b]`: an active account without a password.
 - `staff:password <email>`: asks twice without echo, or reads one line from STDIN.
+- `staff:roles <email> [--role=a,b | --grant=a,b] [--revoke=a,b]`: shows an account's roles, or changes them.
+  `--role` replaces the list; `--grant` and `--revoke` add and remove. `--role` with either is a usage
+  error (exit 2). An unknown role or the last manager's manager role is refused (exit 1), nothing changes.
 - `staff:invite <email>`, `staff:reset <email>`: mail a set-password link (7 days, one hour).
   The link opens the page a `Preflow\Rbac\Staff\StaffLinks` binding names (Folio binds its
   set-password page); without one they refuse. The mails are `rbac-mail.*` in

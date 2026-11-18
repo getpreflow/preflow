@@ -17,4 +17,13 @@ final class PreflowPinsTest extends TestCase
         $this->assertNotSame([], $pins);
         $this->assertSame([$pins['preflow/core']], array_values(array_unique($pins)), 'all preflow/* pins: ' . json_encode($pins));
     }
+
+    /** An undecided plugin stops a non-interactive install on older Composer; the starter says it is off. */
+    public function test_the_http_discovery_plugin_is_decided_and_off(): void
+    {
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertArrayHasKey('php-http/discovery', $composer['config']['allow-plugins'] ?? []);
+        $this->assertFalse($composer['config']['allow-plugins']['php-http/discovery']);
+    }
 }

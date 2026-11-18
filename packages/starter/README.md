@@ -156,6 +156,10 @@ This runs PHPUnit with four parts:
 
 Run one part with `vendor/bin/phpunit --testsuite Api`. Every test boots the real app on a temporary copy with its own SQLite file, so `storage/data` is never touched. The copy links to the project's `vendor/`, so the packages you install (and the field types, blocks, translations and commands they bring) are there in tests too. Making that link needs the right to create symbolic links: on Windows, turn on Developer Mode (or run the tests in WSL).
 
+`composer.json` sets `php-http/discovery` to `false` under `config.allow-plugins`. `preflow/ai` passes its own HTTP client, so the plugin is not needed; left on, it would rewrite your `composer.json`, and an older Composer stops a non-interactive install on a plugin nobody has decided.
+
+App config files: `config/<name>.php` is read with `$app->configFile('<name>')` (see the Config section of the core README).
+
 ## Deploy on shared hosting
 
 1. Upload the project and run `composer install --no-dev`. Do not upload `storage/data/*.sqlite` from a dev install: it holds the public demo account. Production starts with a fresh database, made by the steps below (`migrate`, then `employer:create`).

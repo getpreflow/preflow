@@ -113,7 +113,11 @@ final class AdminController
     public function index(ServerRequestInterface $request): ResponseInterface
     {
         if (($override = $this->overrides->resolve('Content', 'Index')) !== null) {
-            return $override->handle($request);
+            $result = $override->handle($request);
+
+            return $result instanceof ScreenView
+                ? $this->adminPage()->render($result, $request, 'Override ' . $override::class)
+                : $result;
         }
 
         // The review section refreshing itself while a job is queued or running: the section alone,
@@ -2483,6 +2487,11 @@ final class AdminController
     private function singularFor(string $type): string
     {
         return $this->labels->singular($type) ?? $this->labels->type($type);
+    }
+
+    private function adminPage(): AdminPage
+    {
+        return new AdminPage($this->engine, $this->prefix, $this->pageAssets);
     }
 
     private function html(string $body): ResponseInterface
