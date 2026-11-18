@@ -292,6 +292,10 @@ curl -s -o /dev/null -D - http://localhost:8080/jobs | grep -i x-page-cache   # 
 
 Publishing in Folio, or an employer publishing a job, refreshes the pages that show it. Sessions start only under `/employer` and `/folio` (`auth.session.paths`), not for the search, so a visitor who searches keeps getting cached pages. To empty the cache: `php preflow cache:clear pages`.
 
+`composer.json` sets `php-http/discovery` to `false` under `config.allow-plugins`. `preflow/ai` passes its own HTTP client, so the plugin is not needed; left on, it would rewrite your `composer.json`, and an older Composer stops a non-interactive install on a plugin nobody has decided.
+
+App config files: `config/<name>.php` is read with `$app->configFile('<name>')` (see the Config section of the core README).
+
 ## Deploy on shared hosting
 
 1. Upload the project and run `composer install --no-dev`. Do not upload `storage/data/*.sqlite` from a dev install: it holds the public demo accounts. Production starts with a fresh database, made by the steps below (`migrate`, `rbac:install`, the `ContentSeeder`, then `staff:create` and `employer:create`).
