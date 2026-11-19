@@ -14,9 +14,12 @@ final class Console
      *                                command classes (default: the working directory)
      * @param resource|null $stderr   warnings stream (default STDERR)
      */
+    private string $basePath;
+
     public function __construct(?string $basePath = null, mixed $stderr = null)
     {
         $basePath ??= getcwd() ?: '.';
+        $this->basePath = $basePath;
         $this->register(new Command\ServeCommand());
         $this->register(new Command\MigrateCommand());
         foreach (Command\DbCommand::all() as $command) {
@@ -128,7 +131,39 @@ final class Console
             return 1;
         }
 
-        return $this->commands[$name]->execute($args);
+        $command = $this->commands[$name];
+
+        // A command runs in a console frame: no request, an anonymous visitor in the site's
+        // default locale, published reads. What it queued is sent when it ends; a command has no
+        // "after the response", so work scheduled for one is dropped (page rebuilds a command
+        // queued wait for `pages:work`, as before 0.81).
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::console($this->site(), new \Preflow\Core\Context\SystemClock()),
+            static function () use ($command, $args): int {
+                \Preflow\Core\Context\Contexts::frame()->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
+                $code = $command->execute($args);
+                try {
+                    \Preflow\Core\Context\Contexts::deliverQueued();
+                } catch (\Throwable $e) {
+                    error_log('Queued items could not be sent: ' . $e->getMessage());
+                }
+
+                return $code;
+            },
+        );
+    }
+
+    /**
+     * The app's site (config/app.php url and locale, config/i18n.php), read without booting the
+     * app; a folder that is no app (a new project, a broken config) gets http://localhost in English.
+     */
+    private function site(): \Preflow\Core\Context\Site
+    {
+        try {
+            return \Preflow\Core\Application::create($this->basePath)->site();
+        } catch (\Throwable) {
+            return new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en');
+        }
     }
 
     private function printHelp(): void

@@ -47,14 +47,10 @@ return [
         'private static array $freshnessOf = [];', // static-state
     ],
     'core/src/Application.php' => [
-        '$container->instance(RequestContext::class, new RequestContext($visitor->getUri()->getPath(), $visitor->getMethod(), $visitor));', // request-binding
-        '$container->instance(RequestContext::class, $context);', // request-binding
-        '$this->container->instance(RequestContext::class, new RequestContext(', // request-binding
         'now: static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
         '$this->container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
         'static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
         '$store()?->hit($entry, new \\DateTimeImmutable());', // clock
-        '$container->instance(RequestContext::class, new RequestContext($sub->getUri()->getPath(), \'GET\'));', // request-binding
         '$auth?->setUser(null);', // setter
         '$translator?->setLocale($siteLocale);', // setter
         '$translator?->useOverrides(false);', // setter
@@ -62,10 +58,8 @@ return [
         '$auth->addUser($user, $name);', // setter
         '$translator->setLocale($locale);', // setter
         '$translator->useOverrides($overrides);', // setter
-        '$container->instance(RequestContext::class, $context);', // request-binding
         '$render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);', // setter
         'return $container->get(\\Preflow\\Core\\Http\\CookieQueue::class)->isolated($render);', // setter
-        '$this->container->instance(\\Preflow\\Core\\Http\\CookieQueue::class, $cookieQueue);', // request-binding
     ],
     'core/src/Boot/ManifestBuilder.php' => [
         '\'built\' => date(DATE_ATOM),', // clock

@@ -19,6 +19,21 @@ return [
         'superglobal' => [
             '$request = $creator->fromGlobals();' => 'the HTTP edge: the one place that turns the superglobals into the request',
         ],
+        'request-binding' => [
+            '$this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);' => 'the one sanctioned RequestContext binding: a factory that reads the current frame\'s request, so no render finds another\'s',
+            '$this->container->instance(\\Preflow\\Core\\Http\\CookieQueue::class, \\Preflow\\Core\\Http\\CookieQueue::ofCurrentFrame());' => 'the one sanctioned CookieQueue binding: bound once at boot, it works on the current frame\'s own queue (a frame slot)',
+        ],
+        'peek' => [
+            '$this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);' => 'outside every render there is no request: RequestContext is null, as before the first request',
+        ],
+    ],
+    'core/src/Http/InternalRender.php' => [
+        'peek' => [
+            'if (Contexts::peek()?->purpose->leavesNoTrace() === true) {' => 'outside every render, the request\'s attribute decides (the documented default)',
+        ],
+        'setter' => [
+            "Deprecations::once('Preflow\\Core\\Http\\InternalRender::mark() is deprecated since 0.81 and is removed in 0.83; use Application::render() with RenderContext::internal().');" => 'the deprecation message names mark(); not a call',
+        ],
     ],
     'core/src/Http/Session/NativeSession.php' => [
         'superglobal' => 'PHP\'s native session lives in $_SESSION; this class is the one adapter over it',

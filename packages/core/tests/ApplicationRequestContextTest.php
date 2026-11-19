@@ -35,6 +35,13 @@ final class ApplicationRequestContextTest extends TestCase
         $factory = new \Nyholm\Psr7\Factory\Psr17Factory();
         $request = $factory->createServerRequest('GET', '/blog/my-post');
 
+        // Since 0.81 the container's RequestContext is the request of the render frame current
+        // when it is asked for: read it while the request runs.
+        $context = null;
+        $app->onRequest(static function () use ($app, &$context): void {
+            $context = $app->container()->get(RequestContext::class);
+        });
+
         try {
             $app->handle($request);
         } catch (\Throwable) {
@@ -42,10 +49,9 @@ final class ApplicationRequestContextTest extends TestCase
             // RequestContext should be registered before routing
         }
 
-        $context = $app->container()->get(RequestContext::class);
-
         $this->assertInstanceOf(RequestContext::class, $context);
         $this->assertSame('/blog/my-post', $context->path);
         $this->assertSame('GET', $context->method);
+        $this->assertNull($app->container()->get(RequestContext::class), 'no request outside it');
     }
 }

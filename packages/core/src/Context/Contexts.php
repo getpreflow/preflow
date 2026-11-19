@@ -125,6 +125,8 @@ final class Contexts
             if ($debug) {
                 throw $problem;
             }
+            // Repaired quietly for the visitor, but never unseen: the frame's mail was dropped.
+            error_log($problem->getMessage());
             \assert($balanced, $problem);
         }
         if ($failure !== null) {
@@ -215,7 +217,7 @@ final class Contexts
 
     /**
      * Debug mode: an unbalanced frame stack throws a LogicException (otherwise it is repaired,
-     * and reported by assert() where assertions are on). Off by default; the Application sets
+     * its message is logged with error_log(), and assert() reports it where assertions are on). Off by default; the Application sets
      * it at boot from its debug level.
      *
      * @internal Application
@@ -228,7 +230,9 @@ final class Contexts
     /**
      * Sends what the current frame queued and runs its after-response work now, round after
      * round while that work queues more (the owner of the outermost frame calls it after the
-     * response went out). What is left after 10 rounds is logged and dropped.
+     * response went out). What is left after 10 rounds is logged and dropped. A channel that
+     * fails does not stop the rounds: the after-response work still runs, and the first failure
+     * is thrown at the end (the owner of a request logs it).
      *
      * @throws NoRenderContext outside every render
      * @throws \LogicException unless the current frame is the outermost one and delivers
@@ -236,6 +240,28 @@ final class Contexts
     public static function deliverNow(): void
     {
         self::deliverOutermost((self::$top ?? throw self::missing('deliverNow'))->outbox());
+    }
+
+    /**
+     * Sends what the current frame queued now and drops its after-response work, which never
+     * runs: for the owner of a request that has no "after the response" (an in-process
+     * Application::handle()) or that failed (mail queued before the failure still goes out,
+     * as data written before it stays written).
+     *
+     * @since 0.81.0
+     *
+     * @throws NoRenderContext outside every render
+     * @throws \LogicException unless the current frame is the outermost one and delivers, or
+     *                         when a channel failed (the other channels were sent)
+     */
+    public static function deliverQueued(): void
+    {
+        $outbox = (self::$top ?? throw self::missing('deliverQueued'))->outbox();
+        try {
+            $outbox->deliver();
+        } finally {
+            $outbox->dropAfterResponse();
+        }
     }
 
     /**
@@ -267,8 +293,18 @@ final class Contexts
     private static function deliverOutermost(FrameOutbox $outbox): void
     {
         $rounds = 0;
+        $failure = null;
         do {
-            $outbox->deliver();
+            try {
+                $outbox->deliver();
+            } catch (\Throwable $e) {
+                // runAfterResponse() refuses at once where deliver() was refused (not the outermost frame).
+                if ($failure === null) {
+                    $failure = $e;
+                } else {
+                    error_log('An outbox channel failed: ' . $e->getMessage());
+                }
+            }
             $outbox->runAfterResponse();
             [$items, $work] = $outbox->pending();
         } while (($items > 0 || $work > 0) && ++$rounds < self::DELIVERY_ROUNDS);
@@ -283,6 +319,9 @@ final class Contexts
                 $work === 1 ? 'piece' : 'pieces',
             ));
             $outbox->discard();
+        }
+        if ($failure !== null) {
+            throw $failure;
         }
     }
 

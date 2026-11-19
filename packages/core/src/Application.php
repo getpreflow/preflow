@@ -11,6 +11,10 @@ use Preflow\Core\Cache\DirectoryCache;
 use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Context\Site;
 use Preflow\Core\Error\DevErrorRenderer;
 use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Error\JsonErrorRenderer;
@@ -355,6 +359,17 @@ final class Application
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
         $secretKey = $this->config->get('app.key', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
 
+        // The render context's edges: debug mode reports a torn frame stack loudly; the system
+        // clock (contexts take "now" from it; code reads Contexts::current()->clock); the request,
+        // the outbox and the Set-Cookie queue of the render frame current when they are asked for.
+        Contexts::debug($debug->isDebug());
+        if (!$this->container->bound(\Psr\Clock\ClockInterface::class)) {
+            $this->container->instance(\Psr\Clock\ClockInterface::class, new \Preflow\Core\Context\SystemClock());
+        }
+        $this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);
+        $this->container->bind(\Preflow\Core\Context\Outbox::class, static fn (): \Preflow\Core\Context\Outbox => Contexts::frame()->outbox());
+        $this->container->instance(\Preflow\Core\Http\CookieQueue::class, \Preflow\Core\Http\CookieQueue::ofCurrentFrame());
+
         // Wall-clock values (dates in content, scheduled publishing) use the app's
         // zone, in web requests and the CLI alike. Unknown names keep php.ini's zone.
         $timezone = $this->config->get('app.timezone');
@@ -412,6 +427,8 @@ final class Application
         $this->bootForm();
         $this->bootRouting();
         $this->bootI18n();
+        // The site, from config and the locale URL rule bootI18n() bound.
+        $this->container->instance(Site::class, $this->site());
         $this->bootNotify();
         $this->bootPageCacheServing($debug);
         $this->bootSession();
@@ -498,50 +515,144 @@ final class Application
             componentEndpoint: $this->container->has('preflow.component_endpoint')
                 ? fn (\Psr\Http\Message\ServerRequestInterface $r) => $this->container->get('preflow.component_endpoint')->handle($r)
                 : null,
-            cookies: $this->container->has(\Preflow\Core\Http\CookieQueue::class)
-                ? $this->container->get(\Preflow\Core\Http\CookieQueue::class)
-                : null,
+            cookies: $this->container->get(\Preflow\Core\Http\CookieQueue::class),
             cors: $cors,
         );
     }
 
+    /**
+     * Handles $request through the whole application. Without a frame around it (a test, a
+     * script), the request is the outermost render: handle() opens its frame
+     * (RenderContext::fromRequest()), sets the cookies the frame left on the response, sends what
+     * it queued (mail queued before a failure too) and drops its after-response work, unless
+     * runAfterResponseInHandle() is on. Inside a frame (run(), render(), work after the response)
+     * it renders in that frame and leaves all of that to the frame's owner.
+     */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         if ($this->kernel === null) {
             throw new \RuntimeException('Application not booted. Call boot() first.');
         }
+        if (Contexts::depth() > 0) {
+            return $this->handleInFrame($request);
+        }
 
+        $internal = \Preflow\Core\Http\InternalRender::is($request);
+        $ctx = $this->requestContext($request);
+        if ($internal) {
+            // A marked internal request at the top (a rebuild or an audit step from a script) sends nothing.
+            $ctx = $ctx->discarding();
+        } else {
+            $this->rebuildsScheduled = false;
+        }
+
+        return Contexts::run($ctx, function () use ($request, $internal): ResponseInterface {
+            $this->openRequestFrame();
+            try {
+                $response = $this->handleInFrame($request);
+            } catch (\Throwable $e) {
+                if (!$internal) {
+                    if (!$this->emitting) {
+                        $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
+                    }
+                    $this->logFailure(Contexts::deliverQueued(...), 'Queued items could not be sent');
+                }
+                throw $e;
+            }
+            $response = $this->applyFrameCookies($response);
+            if (!$internal) {
+                // In-process callers (CLI, tests) have no later emit step: what the request
+                // queued is sent now. run() sends after the response has gone out instead.
+                if (!$this->emitting) {
+                    $this->flushDeferredNotifications();
+                }
+                $this->logFailure(
+                    $this->afterResponseInHandle ? Contexts::deliverNow(...) : Contexts::deliverQueued(...),
+                    'Queued items could not be sent',
+                );
+            }
+
+            return $response;
+        });
+    }
+
+    /**
+     * Renders $request under $ctx in a frame of its own and returns what it produced: the
+     * response, what its frame captured instead of sending (OutboxPolicy::Capture; cookies it
+     * left queued are captured as 'cookies' items), and the data writes it skipped, its nested
+     * renders' included. The one entry for a render the app makes of itself (the SEO audit, GEO,
+     * a page cache rebuild, a preview). The frame around it is untouched: the render cannot see
+     * or take its cookies, and what the render queues under OutboxPolicy::Deliver reaches it when
+     * the render's frame closes.
+     *
+     * @since 0.81.0
+     */
+    public function render(RenderContext $ctx, ServerRequestInterface $request): RenderResult
+    {
+        $frame = null;
+        $response = Contexts::run($ctx, function () use (&$frame, $request): ResponseInterface {
+            $frame = Contexts::frame();
+            $frame->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
+            $response = $this->handle($request);
+            $cookies = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue());
+            if (Contexts::depth() === 1 && $frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Deliver) {
+                // The outermost render that delivers is its request's owner: its cookies go on its response.
+                return $this->applyFrameCookies($response);
+            }
+            foreach ($cookies->pull() as $cookie) {
+                $frame->outbox()->queue(new \Preflow\Core\Http\QueuedCookie($cookie), \Preflow\Core\Http\CookieChannel::NAME);
+            }
+
+            return $response;
+        });
+
+        return new RenderResult($response, $frame->outbox()->drain(), $frame->skippedWrites());
+    }
+
+    /**
+     * The site this app renders: its origin (app.url, else http://localhost), its locales and
+     * default locale and its locale URL rule (the LocaleUrls boot binds, from config/i18n.php).
+     * Known before boot() too (the console opens its frame with it).
+     *
+     * @since 0.81.0
+     */
+    public function site(): Site
+    {
+        if ($this->site !== null) {
+            return $this->site;
+        }
+        $urls = $this->container->bound(\Preflow\Core\Http\LocaleUrls::class)
+            ? $this->container->get(\Preflow\Core\Http\LocaleUrls::class)
+            : \Preflow\Core\Http\LocaleUrls::fromConfig($this->configFile('i18n') === null ? null : (array) $this->configFile('i18n'), (string) $this->config->get('app.locale', 'en'));
+        $url = $this->config->get('app.url');
+        $origin = is_string($url) && $url !== '' ? rtrim($url, '/') : 'http://localhost';
+
+        return $this->site = new Site($origin, $urls->locales, $urls->default, $urls);
+    }
+
+    private ?Site $site = null;
+
+    /**
+     * The request's part of the application: hooks, the kernel and its pipeline, the page cache's
+     * invalidations, the HEAD body. Runs in the current frame.
+     */
+    private function handleInFrame(ServerRequestInterface $request): ResponseInterface
+    {
         foreach ($this->requestHooks as $hook) {
             $hook($request);
         }
 
         $internal = \Preflow\Core\Http\InternalRender::is($request);
-        if (!$internal) {
-            // Work an earlier in-process request left for after its response (no run()) is dropped.
-            $this->afterResponse = [];
-            $this->rebuildsScheduled = false;
-        }
-
-        // Make request context available to components via DI. With URL locales it is bound
-        // once more after the locale middleware strips the prefix (bootI18n()).
-        $this->bindRequestContext($request);
 
         // A fragment request whose client sends its page's nonce back is answered with that nonce
         // (so what it puts into the page passes the page's CSP), for this request only.
         $adopted = !$internal && $this->adoptPageNonce($request);
         // The hypermedia clients ride along, for middleware an app builds itself (AuthMiddleware).
-        $request = $request->withAttribute(
-            \Preflow\Core\Http\Hypermedia\HypermediaProtocols::class,
-            $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
-        );
-
-        // An internal render sends no mail: it doesn't flush the queue here, and its render scope
-        // (anonymousRenderScope()) drops what it queues, so a later flush doesn't send it either.
-        $flush = !$this->emitting && !$internal;
+        $request = $this->withHypermedia($request);
 
         try {
             try {
-                $response = $this->kernel->handle($request);
+                $response = $this->kernel?->handle($request) ?? throw new \RuntimeException('Application not booted. Call boot() first.');
             } finally {
                 if ($adopted) {
                     // Before any after-response work: rebuilds and internal renders get the own nonce.
@@ -551,10 +662,6 @@ final class Application
         } catch (\Throwable $e) {
             // What the request wrote may be written (part of it, or by another connection).
             $this->pageChanges?->flush();
-            // Mails queued before the failure still go out (CLI, tests); run() flushes itself.
-            if ($flush) {
-                $this->flushDeferredNotifications();
-            }
             throw $e;
         }
         if ($request->getMethod() === 'HEAD') {
@@ -585,35 +692,73 @@ final class Application
             );
         }
 
-        // In-process callers (CLI, tests) have no later emit step: send deferred
-        // notifications now. run() flushes after the response has gone out instead.
-        if ($flush) {
-            $this->flushDeferredNotifications();
-            if ($this->afterResponseInHandle) {
-                $this->runAfterResponse();
+        return $response;
+    }
+
+    /** $request with the hypermedia clients as an attribute (RenderContext::fromRequest() asks them whether it is a fragment). */
+    private function withHypermedia(ServerRequestInterface $request): ServerRequestInterface
+    {
+        return $request->withAttribute(
+            \Preflow\Core\Http\Hypermedia\HypermediaProtocols::class,
+            $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+        );
+    }
+
+    /** A visitor's request as the outermost render: Fragment or Visit, as its hypermedia client asks. */
+    private function requestContext(ServerRequestInterface $request): RenderContext
+    {
+        return RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $this->container->get(\Psr\Clock\ClockInterface::class));
+    }
+
+    /** The outermost frame of a request knows the cookie channel (cookies nested renders hand to it). */
+    private function openRequestFrame(): void
+    {
+        Contexts::frame()->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
+    }
+
+    /**
+     * Sets the cookies the current frame left queued, and those its nested renders handed to it,
+     * on $response: the outermost frame's owner does it before the response is sent.
+     */
+    private function applyFrameCookies(ResponseInterface $response): ResponseInterface
+    {
+        $frame = Contexts::frame();
+        $queue = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue());
+        $response = $queue->apply($response);
+        foreach ($frame->outbox()->drain(\Preflow\Core\Http\CookieChannel::NAME) as $item) {
+            if ($item->item instanceof \Preflow\Core\Http\QueuedCookie) {
+                $response = $response->withAddedHeader('Set-Cookie', $item->item->header);
             }
         }
 
         return $response;
     }
 
-    /** @var list<\Closure(): void> work for after the response (afterResponse()) */
-    private array $afterResponse = [];
+    /**
+     * A request failed: what it queued before still goes out (data written before the failure
+     * stays written, so its mail must go), its after-response work never runs. Failures here are
+     * logged, so they never hide the request's own.
+     */
+    private function deliverAfterFailure(): void
+    {
+        $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
+        $this->logFailure(Contexts::deliverQueued(...), 'Queued items could not be sent');
+    }
+
+    /** Runs $send; a failure is logged (the response is rendered or sent already), not thrown. */
+    private function logFailure(\Closure $send, string $what): void
+    {
+        try {
+            $send();
+        } catch (\Throwable $e) {
+            error_log($what . ': ' . $e->getMessage());
+        }
+    }
 
     private bool $afterResponseInHandle = false;
 
     private bool $rebuildsScheduled = false;
 
-    /**
-     * Runs $work after the response of the current request has gone out: run() calls it once
-     * the client is released (fastcgi_finish_request / litespeed_finish_request) and the
-     * deferred mail is sent, in the order added. The page cache rebuilds there what the request
-     * queued. A closure that throws is logged; the others still run. In-process callers of
-     * handle() (commands, tests) have no "after the response": their work is dropped at the next
-     * request, unless runAfterResponseInHandle() is on.
-     *
-     * @param \Closure(): void $work
-     */
     /**
      * The page nonce a fragment request sent back, adopted (untrusted input: a fragment request
      * only, a base64 value of 22+ characters; the page cache refuses to store the response,
@@ -629,25 +774,38 @@ final class Application
         return $nonce !== null && $this->container->get(\Preflow\View\NonceGenerator::class)->adopt($nonce);
     }
 
+    /**
+     * Runs $work after the response of the current request has gone out, in the request's frame
+     * (it sees the request's context; a render it starts gets its own frame): run() runs it once
+     * the client is released (fastcgi_finish_request / litespeed_finish_request) and the
+     * deferred mail is sent, in the order added. The page cache rebuilds there what the request
+     * queued. A closure that throws is logged; the others still run. In-process callers of
+     * handle() (commands, tests) have no "after the response": their work is dropped when the
+     * request ends, unless runAfterResponseInHandle() is on. Outside every render there is no
+     * response to wait for, and $work is dropped. The work lives in the frame's outbox
+     * (Contexts::frame()->outbox()->afterResponse()), so a render that captures or discards
+     * drops it with the rest of what it queued.
+     *
+     * @param \Closure(): void $work
+     */
     public function afterResponse(\Closure $work): void
     {
-        $this->afterResponse[] = $work;
+        if (Contexts::depth() === 0) {
+            return;
+        }
+        Contexts::frame()->outbox()->afterResponse($work);
     }
 
     /**
-     * Runs the work added with afterResponse() now (what run() does after the response).
+     * Sends what the current request queued and runs the work added with afterResponse() now
+     * (what run() does after the response), when the current frame is the outermost one.
      *
      * @internal run(), and tests through runAfterResponseInHandle()
      */
     public function runAfterResponse(): void
     {
-        while ($this->afterResponse !== []) {
-            $work = array_shift($this->afterResponse);
-            try {
-                $work();
-            } catch (\Throwable $e) {
-                error_log('After-response work failed: ' . $e->getMessage());
-            }
+        if (Contexts::depth() === 1) {
+            $this->logFailure(Contexts::deliverNow(...), 'Queued items could not be sent');
         }
     }
 
@@ -662,6 +820,10 @@ final class Application
         $this->afterResponseInHandle = $on;
     }
 
+    /**
+     * Set (by reflection) in package tests that act as run() does: an outermost handle() then
+     * leaves notify's deferred mail for the test to flush, as run() sends it after the response.
+     */
     private bool $emitting = false;
 
     private bool $notifyBooted = false;
@@ -717,7 +879,11 @@ final class Application
     }
 
     /**
-     * Handle request from PHP globals and emit response.
+     * Handle request from PHP globals and emit response. The request is the outermost render:
+     * run() opens its frame (RenderContext::fromRequest()), sets the cookies it left on the
+     * response, emits it, releases the client, then sends what the request queued and runs its
+     * after-response work, in the request's frame. When the request fails, what it queued
+     * before still goes out; its after-response work does not run.
      */
     public function run(): void
     {
@@ -726,31 +892,27 @@ final class Application
             $factory = new \Nyholm\Psr7\Factory\Psr17Factory();
             $creator = new \Nyholm\Psr7Server\ServerRequestCreator($factory, $factory, $factory, $factory);
             $request = $creator->fromGlobals();
+            // Built once the request carries its hypermedia clients: a header-only fragment is no Visit.
+            $ctx = $this->requestContext($request);
+            $this->rebuildsScheduled = false;
 
-            $this->emitting = true;
-            $responseSent = false;
-            try {
-                $response = $this->handle($request);
-                ($this->emitter ?? fn (ResponseInterface $r) => (new Emitter())->emit($r, $request))($response);
-                $responseSent = true;
-            } finally {
-                $this->emitting = false;
-                // Release the client only when a response went out; after a failure
-                // the error output must still reach it. The queue is flushed either way,
-                // and a flush error never masks the original exception.
+            Contexts::run($ctx, function () use ($request): void {
+                $this->openRequestFrame();
                 try {
-                    if ($responseSent) {
-                        $this->finishResponse();
-                    }
+                    $response = $this->applyFrameCookies($this->handle($request));
+                    ($this->emitter ?? fn (ResponseInterface $r) => (new Emitter())->emit($r, $request))($response);
+                } catch (\Throwable $e) {
+                    // The error output must still reach the client: it is not released.
+                    $this->deliverAfterFailure();
+                    throw $e;
+                }
+                // The deferred mail, then the page cache's rebuilds and other work queued for after the response.
+                $this->logFailure(function (): void {
+                    $this->finishResponse();
                     $this->flushDeferredNotifications();
-                } catch (\Throwable) {
-                    error_log('Deferred notifications could not be flushed.');
-                }
-                // The page cache's rebuilds and other work queued for after the response.
-                if ($responseSent) {
-                    $this->runAfterResponse();
-                }
-            }
+                }, 'Deferred notifications could not be flushed');
+                $this->runAfterResponse();
+            });
         } else {
             throw new \RuntimeException('Install nyholm/psr7 and nyholm/psr7-server to use run().');
         }
@@ -1607,18 +1769,13 @@ final class Application
             live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
             verify: $config->verify,
             visitorScope: static function (ServerRequestInterface $visitor, \Closure $render) use ($container): ResponseInterface {
-                $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
-                $container->instance(RequestContext::class, new RequestContext($visitor->getUri()->getPath(), $visitor->getMethod(), $visitor));
-                try {
-                    // Both renders start from the assets boot registered, so the second prints the same.
-                    return $container->has(\Preflow\View\AssetCollector::class)
-                        ? $container->get(\Preflow\View\AssetCollector::class)->restoring($render)
-                        : $render();
-                } finally {
-                    if ($context !== null) {
-                        $container->instance(RequestContext::class, $context);
-                    }
-                }
+                // Both renders start from the assets boot registered, so the second prints the same.
+                $scoped = static fn (): ResponseInterface => $container->has(\Preflow\View\AssetCollector::class)
+                    ? $container->get(\Preflow\View\AssetCollector::class)->restoring($render)
+                    : $render();
+
+                // The request is the visitor's for the render, and the frame's own again afterwards.
+                return Contexts::depth() === 0 ? $scoped() : Contexts::within(Contexts::current()->for($visitor), $scoped);
             },
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
             rebuildOnly: $this->runningInConsole(),
@@ -2161,15 +2318,16 @@ final class Application
             );
             $this->container->instance(\Preflow\I18n\LocaleMiddleware::class, $localeMiddleware);
             $this->addMiddleware($localeMiddleware);
-            // Right inside it: RequestContext (and so `request.path` on controller pages, in
-            // page cache rebuilds and in audit renders) names the path without the locale prefix,
-            // as file pages, the router and everything after the locale middleware see it.
-            $this->addMiddleware(new class (\Closure::fromCallable([$this, 'bindRequestContext'])) implements \Psr\Http\Server\MiddlewareInterface {
-                public function __construct(private readonly \Closure $bind) {}
-
+            // Right inside it: the context's request (RequestContext, and so `request.path` on
+            // controller pages, in page cache rebuilds and in audit renders) names the path without
+            // the locale prefix, as file pages, the router and everything after the locale middleware
+            // see it. For the rest of the render's frame.
+            $this->addMiddleware(new class () implements \Psr\Http\Server\MiddlewareInterface {
                 public function process(ServerRequestInterface $request, \Psr\Http\Server\RequestHandlerInterface $handler): ResponseInterface
                 {
-                    ($this->bind)($request);
+                    if (Contexts::depth() > 0) {
+                        Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->for($request));
+                    }
 
                     return $handler->handle($request);
                 }
@@ -2289,16 +2447,6 @@ final class Application
             'config/i18n.php: redirect_bare needs to know which paths are pages: use preflow/routing\'s Router, '
             . 'or bind Preflow\\Core\\Routing\\PageExists (a router that implements it counts too).',
         );
-    }
-
-    /** Binds RequestContext for the request being handled (handle(), and again once the locale prefix is stripped). */
-    private function bindRequestContext(ServerRequestInterface $request): void
-    {
-        $this->container->instance(RequestContext::class, new RequestContext(
-            path: $request->getUri()->getPath(),
-            method: $request->getMethod(),
-            request: $request,
-        ));
     }
 
     /**
@@ -2820,9 +2968,6 @@ final class Application
         [, $siteLocale] = $this->siteLocales();
 
         return static function (ServerRequestInterface $sub, \Closure $next) use ($container, $sessionData, $siteLocale): ResponseInterface {
-            $context = $container->bound(RequestContext::class) ? $container->get(RequestContext::class) : null;
-            $container->instance(RequestContext::class, new RequestContext($sub->getUri()->getPath(), 'GET'));
-
             $translator = $container->bound(\Preflow\I18n\Translator::class)
                 ? $container->get(\Preflow\I18n\Translator::class)
                 : null;
@@ -2836,7 +2981,10 @@ final class Application
             $guard = $auth?->guardName();
 
             $render = $next;
-            $next = static fn (): ResponseInterface => self::outboxAside($container, $render);
+            // The request is the render's own for it (outside every frame, handle() opens one with it).
+            $next = static fn (): ResponseInterface => Contexts::depth() === 0
+                ? self::outboxAside($container, $render)
+                : Contexts::within(Contexts::current()->for($sub), static fn (): ResponseInterface => self::outboxAside($container, $render));
 
             $sessionData->hide();
             // Nobody is signed in for the render, even when it is called from inside the pipeline.
@@ -2862,9 +3010,6 @@ final class Application
                 if ($translator !== null && $locale !== null) {
                     $translator->setLocale($locale);
                     $translator->useOverrides($overrides);
-                }
-                if ($context !== null) {
-                    $container->instance(RequestContext::class, $context);
                 }
             }
         };
@@ -3155,9 +3300,8 @@ final class Application
                 $sessionKeys[(string) $name] = $name === $defaultGuard ? '_auth_user_id' : '_auth_user_id.' . $name;
             }
         }
-        // One queue for the session guards' cookies: ResolveUserMiddleware and the Kernel's error path apply it.
-        $cookieQueue = new \Preflow\Core\Http\CookieQueue();
-        $this->container->instance(\Preflow\Core\Http\CookieQueue::class, $cookieQueue);
+        // The session guards' cookies go to the current render frame's queue: ResolveUserMiddleware and the Kernel's error path apply it.
+        $cookieQueue = $this->container->get(\Preflow\Core\Http\CookieQueue::class);
         $guards = [];
         foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {
             $name = (string) $name;

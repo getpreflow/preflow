@@ -81,8 +81,9 @@ use Preflow\View\Seo\SeoContext;
  * request that asks for it. The tests:
  * - poison: the outer frame runs under a poisoned visitor context (another locale, a viewer whose
  *   id is the marker, working copies, the admin surface, another frozen time) whose request
- *   carries the cookie `m`, the header X-Marker and REMOTE_ADDR set to the marker; the same request
- *   is bound as the container's RequestContext. The superglobals get the same markers and
+ *   carries the cookie `m`, the header X-Marker and REMOTE_ADDR set to the marker; the container's
+ *   RequestContext gives the same request (bound as an instance where the app does not bind it to
+ *   the current frame). The superglobals get the same markers and
  *   $_SESSION['m']. Where the app has them, the translator's deprecated setLocale('xx') and
  *   overrides that answer every key with the marker, AuthManager::setUser() with the marker
  *   user and LiveContent::showWorkingCopies() are called; a CSS rule, a script and a page title
@@ -516,8 +517,12 @@ abstract class RenderIsolationContract extends TestCase
         $_SESSION['m'] = $marker;
 
         $container = $app->container();
-        // The visitor's request, bound as Application::handle() binds it for every request.
-        $container->instance(RequestContext::class, new RequestContext('/', 'GET', $this->poisonedRequest()));
+        // The visitor's request. A booted app (0.81) binds RequestContext to the current frame's
+        // request, which is the poisoned outer frame's; an app without that binding gets it bound
+        // as an instance, as Application::handle() bound it for every request before 0.81.
+        if (!$container->bound(RequestContext::class)) {
+            $container->instance(RequestContext::class, new RequestContext('/', 'GET', $this->poisonedRequest()));
+        }
         $has = static fn (string $id): bool => class_exists($id) && ($container->bound($id) || $container->resolved($id));
         if ($has(Translator::class)) {
             $translator = $container->get(Translator::class);

@@ -7,7 +7,9 @@ namespace Preflow\Core\Http;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * The request being handled, bound in the container for every request (Application::handle()).
+ * The request being handled: the render context's request part (Contexts::current()->request).
+ * Since 0.81 the container gives the current render frame's, and null outside every render or
+ * in a render without a request (a console command, a mail).
  *
  * $request is the visitor's request as it reached the application (cookies, server params), so
  * code that has no request handed to it can read it: a live part of a cached page, rendered when

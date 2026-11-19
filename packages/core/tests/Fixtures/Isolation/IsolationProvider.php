@@ -31,7 +31,7 @@ final class IsolationProvider extends ServiceProvider
         $engine->addFunction(new TemplateFunctionDefinition(
             name: 'request_cookie',
             callable: static function (string $name) use ($container): string {
-                $request = $container->bound(RequestContext::class) ? $container->get(RequestContext::class)->request : null;
+                $request = $container->get(RequestContext::class)?->request;
                 $value = $request?->getCookieParams()[$name] ?? '';
 
                 return is_string($value) ? $value : '';

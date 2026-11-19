@@ -36,7 +36,7 @@ final class SessionGuard implements GuardInterface
      * @param string       $name       this guard's name (the remember rows are per guard)
      * @param array{cookie?: string, days?: int, path?: string, secure?: bool} $remember
      *                                 remember-me cookie; empty (or no $rememberMe) means none
-     * @param CookieQueue  $cookies    where its Set-Cookie values wait for the response (shared with the Kernel)
+     * @param CookieQueue  $cookies    where its Set-Cookie values wait for the response (the app's follows the render frame; shared with the Kernel)
      * @param array{lifetime?: int, domain?: string, secure?: bool} $marker the session cookie's lifetime,
      *                                 domain and Secure flag, which the signed-in marker follows
      */

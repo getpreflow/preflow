@@ -57,15 +57,25 @@ final class FrameOutbox implements Outbox
     }
 
     /**
-     * Takes every queued item out, each with its channel's description (its class when no
-     * channel of that name is registered).
+     * Takes every queued item out (only those for $channel when given), each with its channel's
+     * description (its class when no channel of that name is registered).
      *
+     * @param string|null $channel only this channel's items (@since 0.81.0; the owner of a request
+     *                             takes the cookies out before the response is sent)
      * @return list<CapturedItem>
      */
-    public function drain(): array
+    public function drain(?string $channel = null): array
     {
-        $items = $this->items;
-        $this->items = [];
+        $items = [];
+        $kept = [];
+        foreach ($this->items as $entry) {
+            if ($channel === null || $entry[0] === $channel) {
+                $items[] = $entry;
+            } else {
+                $kept[] = $entry;
+            }
+        }
+        $this->items = $kept;
 
         return array_map(function (array $entry): CapturedItem {
             [$channel, $item] = $entry;
@@ -77,26 +87,42 @@ final class FrameOutbox implements Outbox
 
     /**
      * Sends every queued item now through its channel, one deliver() per channel in the order the
-     * channels were first used.
+     * channels were first used. The queue is empty afterwards: a channel that fails, or items
+     * whose channel is not registered, do not keep the other channels from sending; the first
+     * such failure is thrown once all were tried.
      *
      * @internal Contexts (the owner calls Contexts::deliverNow())
      *
-     * @throws \LogicException outside the outermost open frame under Deliver, or when an item's
-     *                         channel is not registered (nothing is sent then)
+     * @throws \LogicException outside the outermost open frame under Deliver (nothing is sent
+     *                         then), or when an item's channel is not registered
+     * @throws \Throwable what a failing channel threw
      */
     public function deliver(): void
     {
         $this->mustSend('deliver');
         $batches = [];
+        $failure = null;
         foreach ($this->items as [$channel, $item]) {
             if (!isset($this->channels[$channel])) {
-                throw new \LogicException("No outbox channel '{$channel}' is registered, so a queued " . $item::class . ' cannot be sent.');
+                $failure ??= new \LogicException("No outbox channel '{$channel}' is registered, so a queued " . $item::class . ' cannot be sent.');
+                continue;
             }
             $batches[$channel][] = $item;
         }
         $this->items = [];
         foreach ($batches as $channel => $items) {
-            $this->channels[$channel]->deliver($items);
+            try {
+                $this->channels[$channel]->deliver($items);
+            } catch (\Throwable $e) {
+                if ($failure === null) {
+                    $failure = $e;
+                } else {
+                    error_log("The outbox channel '{$channel}' failed: " . $e->getMessage());
+                }
+            }
+        }
+        if ($failure !== null) {
+            throw $failure;
         }
     }
 
@@ -120,6 +146,16 @@ final class FrameOutbox implements Outbox
                 error_log('After-response work failed: ' . $e->getMessage());
             }
         }
+    }
+
+    /**
+     * Drops the work scheduled for after the response; the queued items stay.
+     *
+     * @internal Contexts (Contexts::deliverQueued())
+     */
+    public function dropAfterResponse(): void
+    {
+        $this->work = [];
     }
 
     /** Drops every queued item and all scheduled work. */

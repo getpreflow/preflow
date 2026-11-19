@@ -261,12 +261,16 @@ final class ContextsTest extends TestCase
     {
         $assertions = ini_get('zend.assertions');
         ini_set('zend.assertions', '0'); // the debug flag alone must report it, as on a server
+        $errorLog = ini_get('error_log');
+        $log = tempnam(sys_get_temp_dir(), 'contexts_log_');
+        ini_set('error_log', $log);
         try {
             Contexts::debug(false);
             Contexts::run(self::ctx('/a'), static function (): void {
                 Contexts::reset();
             });
-            $this->assertSame(0, Contexts::depth(), 'without debug mode the stack is repaired quietly');
+            $this->assertSame(0, Contexts::depth(), 'without debug mode the stack is repaired for the visitor');
+            $this->assertStringContainsString('The render frame stack is out of balance', (string) file_get_contents($log), 'and the imbalance is logged');
 
             Contexts::debug(true);
             try {
@@ -279,6 +283,8 @@ final class ContextsTest extends TestCase
             }
         } finally {
             ini_set('zend.assertions', (string) $assertions);
+            ini_set('error_log', (string) $errorLog);
+            @unlink($log);
             Contexts::debug(false);
         }
     }

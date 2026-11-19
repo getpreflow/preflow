@@ -104,7 +104,13 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
     /** What does not render under its own context yet; each path leaves when it does. */
     protected function pending(): array
     {
-        $render = ['*' => 'Application::render() is not there yet'];
+        // render() runs each path in its own frame, but what the page reads still comes from shared services and PHP.
+        $render = [
+            'poison' => 'the translator, the signed-in user, the assets and the page meta still come from the services, not the context',
+            'frame' => 'the render leaves the translator\'s locale, the signed-in user, the superglobals and the session as it set them',
+            'interleave' => 'the translator and the signed-in user come from the services, and the asset registry is shared by every render',
+            'frozen' => 'the asset registry is shared by every render: head() prints the libraries only in the first one',
+        ];
         $services = 'the translator, the signed-in user, the request, the assets and the page meta still come from the services, not the context';
         // The asset registry is shared by every render of an app: head() prints the libraries only
         // in the first one.
