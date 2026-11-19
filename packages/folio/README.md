@@ -154,6 +154,34 @@ The admin ships its own htmx (`@folio/htmx.js`) whatever the app's hypermedia dr
 core's `HypermediaProtocols`, so its requests are treated as htmx requests (an expired session
 reloads the editor, a signed-out one is sent to the login) next to the app's own driver.
 
+## Why Folio adds these
+
+**Every type gets the same system columns.** On SQL storage, Folio adds a fixed set of
+underscore columns to the table of every type it lists, whether or not that type publishes or
+is translated today: `_locales` (the languages a record is visible in), `_translated_from`,
+`_translated_source` and `_machine_translated` (translation state), `_order` (manual order),
+`_seo`, and the publishing columns `_version`, `_publish_at`, `_share_token`, `_published_at`
+and `_published_by`. `preflow migrate` only creates and adds, so a type that gains publishing
+(`"publishing": true`) or a second language later finds those columns already there, and you do
+not need a migration to switch a feature on. What a type does add when it starts to publish is
+its `__published` and `__revisions` tables; `preflow migrate` creates them. The cost is a few
+empty (nullable) columns on types that never use them.
+
+**Media, blocks and publishing are required, not optional.** Folio's own screens and fields are
+built on these packages, so `preflow/folio` requires them and registers their service providers
+itself:
+
+- `preflow/media` is the asset library. The Assets screens, the `asset` field and "where is
+  this file used" run on it, and its routes (private files, `/media/…` images) are added to
+  every app that uses Folio.
+- `preflow/blocks` is behind the `blocks` field and its editor, and renders blocks on the
+  pages Folio shows.
+- `preflow/publishing` does drafts, publishing, scheduling, revisions and share previews.
+  Folio supplies the rules (which types publish, validation, languages) and keeps the screens.
+
+An app that wants none of this does not need Folio: the core packages work without it.
+`preflow/ai` is the exception that stays optional (see Installation).
+
 ## Access
 
 Every admin action asks one permission through `can()` (see `preflow/auth`).
