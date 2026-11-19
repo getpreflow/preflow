@@ -8,7 +8,11 @@ use Preflow\Core\Identity;
 
 /**
  * Who is looking: the identities signed in, by guard, and which guard is the primary one; or no
- * one (anonymous); or a role viewed as (synthetic).
+ * one (anonymous); or a role viewed as (synthetic, built only by Viewer::synthetic()).
+ *
+ * Safe to log and serialize: a dump (var_dump, print_r) shows each identity as its id only, and
+ * a serialized viewer keeps guard, id and the role view; it comes back holding IdentityId values
+ * (the id only) instead of the user records it held.
  *
  * @since 0.81.0
  */
@@ -16,8 +20,11 @@ final readonly class Viewer
 {
     /**
      * @param array<string, Identity> $identities by guard
-     * @param string|null $primaryGuard the guard of primary(); null: the first identity given
-     * @throws \InvalidArgumentException when an identity is not an Identity or $primaryGuard names none of them
+     * @param string|null $primaryGuard the guard of primary(); null: the first guard by name
+     * @param RoleView|null $roleView only through Viewer::synthetic()
+     * @throws \InvalidArgumentException when an identity is not an Identity, $primaryGuard names
+     *         none of them, a synthetic identity (or a reserved id) comes without its RoleView, or
+     *         a RoleView comes without exactly its own synthetic identity
      */
     public function __construct(
         public array $identities = [],
@@ -31,6 +38,19 @@ final readonly class Viewer
         }
         if ($primaryGuard !== null && !isset($identities[$primaryGuard])) {
             throw new \InvalidArgumentException("The primary guard '{$primaryGuard}' has no identity.");
+        }
+        if ($roleView !== null) {
+            $own = $identities[$roleView->population] ?? null;
+            if (count($identities) !== 1 || !$own instanceof SyntheticIdentity || $own->getAuthId() !== $roleView->identity()->getAuthId()) {
+                throw new \InvalidArgumentException('A role viewer holds exactly the synthetic identity of its role view; build it with Viewer::synthetic().');
+            }
+
+            return;
+        }
+        foreach ($identities as $identity) {
+            if ($identity instanceof SyntheticIdentity || str_starts_with($identity->getAuthId(), SyntheticIdentity::PREFIX)) {
+                throw new \InvalidArgumentException('A synthetic identity belongs to a role viewer; build it with Viewer::synthetic().');
+            }
         }
     }
 
@@ -46,14 +66,12 @@ final readonly class Viewer
         return new self([$view->population => $view->identity()], $view->population, $view);
     }
 
-    /** The primary guard's identity, or null for an anonymous viewer. */
+    /** The primary guard's identity; without a primary guard the first guard by name; null when anonymous. */
     public function primary(): ?Identity
     {
-        if ($this->primaryGuard !== null) {
-            return $this->identities[$this->primaryGuard];
-        }
+        $guard = $this->primaryGuardOrFirst();
 
-        return $this->identities === [] ? null : $this->identities[array_key_first($this->identities)];
+        return $guard === null ? null : $this->identities[$guard];
     }
 
     /** The identity signed in with $guard, or null. */
@@ -74,9 +92,9 @@ final readonly class Viewer
     }
 
     /**
-     * A stable string for memo keys: 'anon', 'role:{population}:{roles}' for a synthetic viewer,
-     * else 'id:{guard}:{id}' per identity, sorted by guard and joined by ';' (one identity: just
-     * 'id:{guard}:{id}').
+     * A stable string for memo keys: 'anon'; 'role:{population}:{roles}' for a synthetic viewer;
+     * 'id:{guard}:{id}' for one identity; with several, each 'id:{guard}:{id}' sorted by guard and
+     * joined by ';', then '@{the guard primary() reads}' ('id:members:7;id:web:42@web').
      */
     public function key(): string
     {
@@ -92,7 +110,48 @@ final readonly class Viewer
         foreach ($identities as $guard => $identity) {
             $parts[] = 'id:' . $guard . ':' . $identity->getAuthId();
         }
+        $key = implode(';', $parts);
 
-        return implode(';', $parts);
+        return count($parts) > 1 ? $key . '@' . $this->primaryGuardOrFirst() : $key;
+    }
+
+    /** @return array{identities: array<string, string>, primaryGuard: ?string, roleView: ?RoleView} guard => id only */
+    public function __serialize(): array
+    {
+        return [
+            'identities' => array_map(static fn (Identity $i): string => $i->getAuthId(), $this->identities),
+            'primaryGuard' => $this->primaryGuard,
+            'roleView' => $this->roleView,
+        ];
+    }
+
+    /** @param array{identities: array<string, string>, primaryGuard: ?string, roleView: ?RoleView} $data */
+    public function __unserialize(array $data): void
+    {
+        $roleView = $data['roleView'] ?? null;
+        $identities = [];
+        foreach ((array) ($data['identities'] ?? []) as $guard => $id) {
+            $identities[(string) $guard] = $roleView instanceof RoleView ? $roleView->identity() : new IdentityId((string) $id);
+        }
+        $this->identities = $identities;
+        $this->primaryGuard = $data['primaryGuard'] ?? null;
+        $this->roleView = $roleView instanceof RoleView ? $roleView : null;
+    }
+
+    /** @return array<string, mixed> what var_dump and print_r show: ids, never the user records */
+    public function __debugInfo(): array
+    {
+        return $this->__serialize();
+    }
+
+    private function primaryGuardOrFirst(): ?string
+    {
+        if ($this->primaryGuard !== null || $this->identities === []) {
+            return $this->primaryGuard;
+        }
+        $guards = array_map('strval', array_keys($this->identities));
+        sort($guards, SORT_STRING);
+
+        return $guards[0];
     }
 }

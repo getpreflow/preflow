@@ -92,6 +92,79 @@ final class RenderContextTest extends TestCase
         $this->assertSame(Purpose::Fragment, RenderContext::fromRequest(new ServerRequest('POST', '/--component/action'), $site, $clock)->purpose);
         $this->assertSame(Purpose::Fragment, RenderContext::fromRequest(new ServerRequest('GET', '/de/--component/action'), $site, $clock)->purpose, 'a component URL under a locale prefix');
         $this->assertSame(Purpose::Visit, RenderContext::fromRequest(new ServerRequest('GET', '/--components'), $site, $clock)->purpose, 'only the whole segment');
+        $this->assertSame(Purpose::Fragment, RenderContext::fromRequest(new ServerRequest('GET', '/en/--component/action'), $site, $clock)->purpose, 'the default locale written into the URL');
+        $this->assertSame(Purpose::Visit, RenderContext::fromRequest(new ServerRequest('GET', '/fr/--component/action'), $site, $clock)->purpose, 'fr is not a locale of the site');
+    }
+
+    public function test_internal_refuses_a_path_with_a_query(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('without a query');
+
+        RenderContext::internal(Purpose::Audit, self::site(), new SystemClock(), '/x?a=1');
+    }
+
+    public function test_internal_refuses_a_path_with_a_fragment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        RenderContext::internal(Purpose::Audit, self::site(), new SystemClock(), '/x#top');
+    }
+
+    public function test_a_request_context_serializes_and_dumps_without_secrets(): void
+    {
+        $request = (new ServerRequest('POST', 'https://example.test/a?token=query-secret', [
+            'Cookie' => 'sess=cookie-secret',
+            'Authorization' => 'Bearer header-secret',
+        ]))
+            ->withCookieParams(['sess' => 'cookie-secret'])
+            ->withAttribute('callback', static fn (): string => 'x')
+            ->withAttribute(HypermediaProtocols::class, new HypermediaProtocols());
+        $user = new SecretUser('42', 'hash-secret');
+        $ctx = RenderContext::fromRequest($request, self::site(), new SystemClock())
+            ->as(new Viewer(['web' => $user], 'web'))
+            ->with(new VariantFacet('b', true))
+            ->with(new UnsafeFacet(static fn (): string => 'y'));
+
+        $serialized = serialize($ctx);
+        ob_start();
+        var_dump($ctx);
+        $dumps = [$serialized, print_r($ctx, true), (string) ob_get_clean()];
+
+        foreach ($dumps as $i => $dump) {
+            foreach (['cookie-secret', 'header-secret', 'hash-secret', 'query-secret', SecretUser::class, 'Closure', 'ServerRequest'] as $secret) {
+                $this->assertStringNotContainsString($secret, $dump, "dump {$i} holds {$secret}");
+            }
+            $this->assertStringContainsString('42', $dump, "dump {$i} keeps the id");
+        }
+        $this->assertStringContainsString(UnsafeFacet::class, $serialized, 'an omitted facet is named');
+
+        $copy = unserialize($serialized);
+        $this->assertInstanceOf(RenderContext::class, $copy);
+        $this->assertNull($copy->request?->request, 'the PSR request is dropped');
+        $this->assertSame('/a', $copy->request?->path);
+        $this->assertSame('POST', $copy->request?->method);
+        $this->assertSame(Purpose::Visit, $copy->purpose);
+        $this->assertSame('42', $copy->viewer->primary()?->getAuthId());
+        $this->assertNotInstanceOf(SecretUser::class, $copy->viewer->primary());
+        $this->assertSame('web', $copy->viewer->primaryGuard);
+        $this->assertNull($copy->get(UnsafeFacet::class), 'a facet that cannot be serialized is left out');
+        $this->assertSame('b', $copy->get(VariantFacet::class)?->variant);
+        $this->assertSame(
+            str_replace('|' . UnsafeFacet::class . '=unsafe', '', $ctx->memoKey()),
+            $copy->memoKey(),
+            'the memo key round-trips but for the omitted facet',
+        );
+        $this->assertEquals($ctx->now, $copy->now);
+        $this->assertFalse($copy->isPublicDefault(), 'still signed in');
+
+        $role = unserialize(serialize(self::visit()->asRole(new RoleView('member', ['gold']))->at(new \DateTimeImmutable('2026-01-01'))));
+        $this->assertTrue($role->viewer->isSynthetic());
+        $this->assertSame('preflow:synthetic:member:gold', $role->viewer->primary()?->getAuthId());
+        $this->assertSame('role:member:gold', $role->viewer->key());
+        $this->assertSame(WritePolicy::Skip, $role->writes);
+        $this->assertSame(OutboxPolicy::Capture, $role->delivering()->outbox);
+        $this->assertFalse($role->isPublicDefault(), 'still frozen');
     }
 
     public function test_from_request_follows_the_hypermedia_client(): void
@@ -357,6 +430,33 @@ final readonly class OtherFacet implements Facet
     public function memoKey(): string
     {
         return 'other';
+    }
+}
+
+/** A user record with something that must never be logged. */
+final readonly class SecretUser implements Identity
+{
+    public function __construct(private string $id, public string $passwordHash) {}
+
+    public function getAuthId(): string
+    {
+        return $this->id;
+    }
+}
+
+/** A facet holding something that cannot be serialized. */
+final readonly class UnsafeFacet implements Facet
+{
+    public function __construct(public ?\Closure $fn) {}
+
+    public function isPublicDefault(): bool
+    {
+        return true;
+    }
+
+    public function memoKey(): string
+    {
+        return 'unsafe';
     }
 }
 

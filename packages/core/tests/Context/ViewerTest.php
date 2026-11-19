@@ -74,6 +74,52 @@ final class ViewerTest extends TestCase
         $this->assertSame($role->primary(), $role->for('member'));
     }
 
+    public function test_key_names_the_primary_guard_when_there_are_several(): void
+    {
+        $user = self::identity('42');
+        $member = self::identity('7');
+        $web = new Viewer(['web' => $user, 'members' => $member], 'web');
+        $members = new Viewer(['web' => $user, 'members' => $member], 'members');
+
+        $this->assertNotSame($web->key(), $members->key(), 'another primary guard, another key');
+        $this->assertSame('id:members:7;id:web:42@web', $web->key());
+
+        $given = new Viewer(['web' => $user, 'members' => $member]);
+        $reversed = new Viewer(['members' => $member, 'web' => $user]);
+        $this->assertSame($member, $given->primary(), 'no primary guard: the first guard by name');
+        $this->assertSame($member, $reversed->primary());
+        $this->assertSame($given->key(), $reversed->key(), 'the order given does not change primary(), nor the key');
+        $this->assertSame($members->key(), $given->key(), 'the same primary, the same key');
+    }
+
+    public function test_a_synthetic_identity_needs_its_role_view(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new Viewer(['member' => (new RoleView('member', ['gold']))->identity()], 'member');
+    }
+
+    public function test_a_reserved_id_needs_a_role_view(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new Viewer(['web' => self::identity(SyntheticIdentity::PREFIX . 'member:gold')], 'web');
+    }
+
+    public function test_a_role_view_needs_its_synthetic_identity(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new Viewer(['web' => self::identity('42')], 'web', new RoleView('member', ['gold']));
+    }
+
+    public function test_a_role_view_needs_the_identity_of_the_same_roles(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new Viewer(['member' => (new RoleView('member', ['silver']))->identity()], 'member', new RoleView('member', ['gold']));
+    }
+
     public function test_primary_guard_must_name_an_identity(): void
     {
         $this->expectException(\InvalidArgumentException::class);

@@ -16,8 +16,18 @@ use Psr\Http\Message\ServerRequestInterface;
  * mail and data writes it causes. Immutable: every wither returns a new context and leaves the
  * one it was called on as it was.
  *
- * It holds plain values only (no closure, no service, no secret), so it may be logged or
- * serialized. A render's output (assets, headers, queued mail) lives in its frame, not here.
+ * It may be logged or serialized. What it holds at run time is richer than what leaves it:
+ * serialize() and var_dump()/print_r() keep
+ * - the request as its method and path only: the PSR request (headers, cookies, query, body,
+ *   attributes) is dropped, so a serialized context comes back with `request->request` null;
+ * - each identity as its guard and id (Viewer::__serialize()), never the user record, and a
+ *   role viewer's RoleView;
+ * - SystemClock and FrozenClock as they are; any other clock is serialized as a SystemClock and
+ *   dumped as its class name (`now` and whether at() froze it are kept);
+ * - each facet that serializes on its own; a facet that cannot (a closure, a resource) is left
+ *   out, and its class is listed under `omittedFacets` in the serialized form. A dump shows each
+ *   facet as its memoKey().
+ * A render's output (assets, headers, queued mail) lives in its frame, not here.
  *
  * `now` is taken from the clock when the context is built and kept by every wither except at().
  * A synthetic viewer (view as role) never writes or sends: its context skips writes (unless they
@@ -74,9 +84,15 @@ final readonly class RenderContext
     /**
      * An internal render of $path (the SEO audit, GEO, a rebuild): an anonymous visitor's clean
      * GET in the site's default locale, published reads, nothing sent, writes skipped.
+     *
+     * @throws \InvalidArgumentException when $path carries a query or a fragment (a clean GET has neither)
      */
     public static function internal(Purpose $p, Site $site, ClockInterface $clock, string $path): self
     {
+        if (str_contains($path, '?') || str_contains($path, '#')) {
+            throw new \InvalidArgumentException("An internal render is a clean GET of a path without a query or fragment, got '{$path}'.");
+        }
+
         return self::fresh($p, $site, $clock)
             ->asVisitor()
             ->public()
@@ -272,6 +288,67 @@ final readonly class RenderContext
         }
 
         return implode('|', $parts);
+    }
+
+    /** @return array<string, mixed> the context without secrets (see the class docblock) */
+    public function __serialize(): array
+    {
+        $extensions = [];
+        $omitted = [];
+        foreach ($this->extensions as $class => $facet) {
+            try {
+                serialize($facet);
+                $extensions[$class] = $facet;
+            } catch (\Throwable) {
+                $omitted[] = $class;
+            }
+        }
+
+        return [
+            'request' => $this->request === null ? null : new RequestContext($this->request->path, $this->request->method),
+            'purpose' => $this->purpose,
+            'viewer' => $this->viewer,
+            'locale' => $this->locale,
+            'surface' => $this->surface,
+            'reads' => $this->reads,
+            'site' => $this->site,
+            'clock' => $this->clock instanceof SystemClock || $this->clock instanceof FrozenClock ? $this->clock : new SystemClock(),
+            'now' => $this->now,
+            'outbox' => $this->outbox,
+            'writes' => $this->writes,
+            'extensions' => $extensions,
+            'frozen' => $this->frozen,
+            'omittedFacets' => $omitted,
+        ];
+    }
+
+    /** @param array<string, mixed> $data what __serialize() gave */
+    public function __unserialize(array $data): void
+    {
+        $this->request = $data['request'];
+        $this->purpose = $data['purpose'];
+        $this->viewer = $data['viewer'];
+        $this->locale = $data['locale'];
+        $this->surface = $data['surface'];
+        $this->reads = $data['reads'];
+        $this->site = $data['site'];
+        $this->clock = $data['clock'];
+        $this->now = $data['now'];
+        $this->outbox = $data['outbox'];
+        $this->writes = $data['writes'];
+        $this->extensions = $data['extensions'];
+        $this->frozen = $data['frozen'];
+    }
+
+    /** @return array<string, mixed> what var_dump and print_r show (see the class docblock) */
+    public function __debugInfo(): array
+    {
+        $data = $this->__serialize();
+        unset($data['omittedFacets']);
+        $data['clock'] = $this->clock::class;
+        $data['extensions'] = array_map(static fn (Facet $facet): string => $facet->memoKey(), $this->extensions);
+
+        return $data;
     }
 
     /**
