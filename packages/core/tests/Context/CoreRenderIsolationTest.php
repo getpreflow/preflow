@@ -26,9 +26,10 @@ use Preflow\View\Pdf\PdfRenderer;
 
 /**
  * Core's internal render paths against RenderIsolationContract, over a fixture site
- * (Fixtures/Isolation/site): one Twig page printing "{locale}|{in or out}|{the request's cookie m}",
- * and a middleware that queues a cookie and a mail on every GET. Mail and PDF render the same
- * line from templates/isolation.twig.
+ * (Fixtures/Isolation/site): one Twig page printing the SEO title and the assets it rendered with,
+ * and "{locale}|{in or out}|{the request's cookie m}|{render time}|{an overridable text}", and a
+ * middleware that queues a cookie and a mail on every GET. Mail and PDF render the same from
+ * templates/isolation.twig.
  *
  * Each path runs the render the way its caller does in 0.81: audit, GEO and rebuild as
  * internal renders through Application::render(), verify as the visitor's context discarding and
@@ -100,17 +101,43 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
         ];
     }
 
-    /** Not migrated yet: each task that moves a path onto the context removes its name. */
+    /** What does not render under its own context yet; each path leaves when it does. */
     protected function pending(): array
     {
-        return ['audit', 'geo', 'rebuild', 'verify', 'preview', 'mail', 'pdf'];
+        $render = ['*' => 'Application::render() is not there yet'];
+        $services = 'the translator, the signed-in user, the request, the assets and the page meta still come from the services, not the context';
+        // The asset registry is shared by every render: head() prints the libraries only in the
+        // first render of the process (mail runs before pdf, so pdf never prints them).
+        $assets = 'the asset registry is shared by every render: head() prints the libraries only in the first one';
+
+        return [
+            'audit' => $render,
+            'geo' => $render,
+            'rebuild' => $render,
+            'verify' => $render,
+            'preview' => $render,
+            'mail' => ['poison' => $services, 'interleave' => $assets, 'frozen' => $assets],
+            'pdf' => ['poison' => $services, 'interleave' => 'the locale and the signed-in user come from the services: B renders like A'],
+        ];
     }
 
-    /** @return \Closure(Application, RenderContext): RenderResult an internal render of the home page in the context's locale */
+    protected function clockFormat(): ?string
+    {
+        return DATE_ATOM;
+    }
+
+    /**
+     * An internal render of the home page in the context's locale, frozen when the context is.
+     *
+     * @return \Closure(Application, RenderContext): RenderResult
+     */
     private static function internal(Purpose $purpose): \Closure
     {
-        return static fn (Application $app, RenderContext $ctx): RenderResult
-            => self::page($app, RenderContext::internal($purpose, $ctx->site, $ctx->clock, '/')->in($ctx->locale));
+        return static function (Application $app, RenderContext $ctx) use ($purpose): RenderResult {
+            $internal = RenderContext::internal($purpose, $ctx->site, $ctx->clock, '/')->in($ctx->locale);
+
+            return self::page($app, ($ctx->jsonSerialize()['frozen'] ?? false) === true ? $internal->at($ctx->now) : $internal);
+        };
     }
 
     private static function page(Application $app, RenderContext $ctx): RenderResult

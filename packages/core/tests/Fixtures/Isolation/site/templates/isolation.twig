@@ -1,1 +1,1 @@
-<p>{{ current_locale() }}|{{ auth_check() ? 'in' : 'out' }}|{{ request_cookie('m') }}</p>
+<p>{{ seo_title() }}|{{ head() }}{{ assets() }}|{{ current_locale() }}|{{ auth_check() ? 'in' : 'out' }}|{{ request_cookie('m') }}|{{ render_time() }}|{{ t('isolation.hello') }}</p>

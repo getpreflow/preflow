@@ -255,9 +255,24 @@ adapter that renders internally.
 |---|---|
 | `app()` | a booted `Application`; called once per test, so return a new one each time |
 | `paths()` | path name => `Closure(Application, RenderContext): RenderResult`, the render under the context it is given; names from `RenderIsolationContract::PATHS`: `audit`, `geo`, `rebuild`, `verify`, `preview`, `mail`, `pdf` (cover the ones your app has) |
-| `pending()` (optional) | paths that do not render under their context yet: they still run, and each test is marked incomplete (not skipped) with why each pending path fails, or that it passes |
+| `pending()` (optional) | path => [test => reason]: the tests a path does not pass yet; tests are `poison`, `frame`, `interleave`, `frozen`, or `'*'` for all four (see below) |
 | `marker()` (optional) | the text planted in the ambient state, `zz-ambient-marker` by default |
 | `context()` (optional) | the context every render starts from, `ContextFactory::forTest()` by default; give your site's origin and locales |
+| `clockFormat()` (optional) | the date format your page prints its render time in; when given, the frozen-clock test checks the page printed its own frozen time |
+| `poisonApp(Application $app)` (optional) | plants the marker in your app's own ambient sources (a package's static locale, say); runs at the end of the poison |
+| `ambientState(Application $app)` (optional) | reads those sources back as an array; the outer-frame test compares it before and after each render |
+
+A pending test still runs. When it fails, the test is marked incomplete (not skipped), with the
+reason and the whole failure, diff included. When it passes, the test fails with
+`<path>/<test> passes: remove it from pending()`, so the list only shrinks. A test that is not
+pending must pass.
+
+```php
+protected function pending(): array
+{
+    return ['mail' => ['poison' => 'the mail layout still reads the translator']];
+}
+```
 
 ```php
 use Nyholm\Psr7\ServerRequest;
@@ -299,19 +314,33 @@ final class SiteRenderIsolationTest extends RenderIsolationContract
 Every render runs inside an outer frame of the test's own, as an internal render runs inside the
 request that asks for it. The four tests:
 
-- **Poisoned ambient state never reaches the render.** In the outer frame the contract sets the
-  cookie `m`, the header `X-Marker` and `$_SESSION['m']` to the marker, calls the deprecated
-  `Translator::setLocale('xx')`, `AuthManager::setUser()` (a user whose id is the marker) and
-  `LiveContent::showWorkingCopies()` where the app has them, and queues one cookie and one mail.
-  The render's body, headers and captured items must not contain the marker, and its status and
-  body must equal the same render's without the poison.
-- **The outer frame is byte-equal after each render.** With the same poison, the current context
-  (serialized, without the PSR request), the frame's queued cookies and mail, the `CookieQueue`,
-  the asset registry and the SEO page meta are the same before and after the render.
-- **Interleaved renders are independent.** A, B, A in one process, B with another locale, a
-  signed-in viewer and working copies: both A renders give the same status and body.
-- **A frozen clock renders identically.** Two renders of a context frozen with `at()` give the
-  same status and body.
+- **Poisoned ambient state never reaches the render** (`poison`). The outer frame runs under a
+  poisoned visitor context: another locale, a signed-in viewer whose id is the marker, working
+  copies, the admin surface and another frozen time. Its request carries the cookie `m`, the
+  header `X-Marker` and `REMOTE_ADDR` set to the marker, and that request is bound as the
+  container's `RequestContext`, as every request binds it. The superglobals get the same markers
+  and `$_SESSION['m']`. Where the app has them, the contract calls the deprecated
+  `Translator::setLocale('xx')`, turns on translator overrides that answer every key with the
+  marker, signs in a user whose id is the marker with `AuthManager::setUser()`, and calls
+  `LiveContent::showWorkingCopies()`. It puts a CSS rule, a script and a page title holding the
+  marker into the asset registry and the SEO page meta, queues one cookie and one mail, and calls
+  `poisonApp()`. The render's status and body must equal the same render's under a clean outer
+  frame, and its body, headers and captured items must not contain the marker. A path that reads
+  the frame around it, the bound request or the outer collectors instead of its own context fails.
+- **The outer frame is byte-equal after each render** (`frame`). With the same poison, these are
+  the same before and after the render: the current context (serialized, without the PSR
+  request), the frame's queued cookies and mail, the `CookieQueue`, the bound `RequestContext`,
+  the asset registry, the SEO page meta, the translator's locale and overrides switch, the
+  signed-in user, `LiveContent`'s mode, the superglobals and `ambientState()`.
+- **Interleaved renders are independent** (`interleave`). A, B, A in one outer frame that runs
+  under B; B has another locale, a signed-in viewer and working copies. Both A renders give the
+  same status, headers (without `Date`), body and captured items, and B's differ from A's: the
+  page must show something of the locale or the viewer, so a path that ignores its context
+  cannot pass.
+- **A frozen clock renders identically** (`frozen`). Two renders of a context frozen with `at()`,
+  inside an outer frame at another time, give the same status and body; with `clockFormat()`,
+  the body holds the frozen time. A page that prints a nonce needs the nonce made deterministic
+  for this test.
 
 `Preflow\Testing\ContextFactory::forTest(?Site $site = null)` builds the context these tests start
 from: a visitor's GET of the home page (`http://localhost/` with the locale `en` without a site),

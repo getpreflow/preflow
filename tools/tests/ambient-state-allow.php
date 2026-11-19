@@ -35,6 +35,9 @@ return [
     'testing/src/Contract/RenderIsolationContract.php' => [
         'superglobal' => 'the isolation contract plants a marker in the superglobals on purpose (and restores them after each test), to prove no render reads them',
         'setter' => 'the isolation contract calls the deprecated ambient setters on purpose, to prove no render reads what they set; drop each call when its shim is removed',
+        'request-binding' => [
+            '$container->instance(RequestContext::class, new RequestContext(\'/\', \'GET\', $this->poisonedRequest()));' => 'the isolation contract binds a poisoned visitor request on purpose, as a request binds it, to prove no render reads it',
+        ],
     ],
 
     // clock: durations and deadlines, which measure elapsed time and never read "now" for behaviour.
