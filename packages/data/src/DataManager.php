@@ -1859,6 +1859,10 @@ final class DataManager
      * written (ruling R9), and the write is reported; under Refuse a change that applies throws
      * WritesRefused (core). So a preview takes the path a visit takes, whatever the storage.
      *
+     * On a storage that runs SQL, give $sql: without it the type's lock is released before a
+     * caller's transaction commits (MySQL), so the write is not atomic there. Neither form bumps
+     * a version field (_version): a type with one must include it in $change and in $sql.
+     *
      * @param \Closure(DynamicRecord): (array<string, mixed>|null) $change
      * @param (\Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>})|null $sql
      * @param (\Closure(\Closure(): ?DynamicRecord): ?DynamicRecord)|null $lock
@@ -1874,7 +1878,8 @@ final class DataManager
      * Deletes the record $id of $def only while $applies holds on it, as updateIf() writes: one
      * statement ($sql, a DELETE) on a storage that runs SQL, $applies under the type's lock on
      * another; under Skip $applies decides on the stored record and nothing is deleted (reported);
-     * under Refuse a delete that applies throws WritesRefused.
+     * under Refuse a delete that applies throws WritesRefused. On a storage that runs SQL, give
+     * $sql (see updateIf()).
      *
      * @param \Closure(DynamicRecord): bool $applies
      * @param (\Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>})|null $sql
