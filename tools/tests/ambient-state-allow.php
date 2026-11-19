@@ -32,6 +32,10 @@ return [
     'testing/src/WebApplication.php' => [
         'superglobal' => 'test process setup: clears a $_SESSION left over by earlier tests before an app boots',
     ],
+    'testing/src/Contract/RenderIsolationContract.php' => [
+        'superglobal' => 'the isolation contract plants a marker in the superglobals on purpose (and restores them after each test), to prove no render reads them',
+        'setter' => 'the isolation contract calls the deprecated ambient setters on purpose, to prove no render reads what they set; drop each call when its shim is removed',
+    ],
 
     // clock: durations and deadlines, which measure elapsed time and never read "now" for behaviour.
     'core/src/Debug/DebugCollector.php' => [

@@ -7,6 +7,8 @@ namespace Preflow\Testing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.81: core 0.81 (the render context: ContextFactory builds a RenderContext on a FrozenClock,
+ * RenderIsolationContract runs renders in Contexts frames and compares RenderResults).
  * Since 0.78: data 0.78 (the capability interfaces StorageDriverContract tests: AtomicCounters, CounterReset, RankedSearch, RunsSql,
  * Transactions; TextMatch, which the text-rule scenarios compare with).
  * Since 0.77: data 0.77 (ConditionalUpdates, which StorageDriverContract tests, and the Unicode LIKE behaviour it documents).
@@ -24,7 +26,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.60', 'preflow/data' => '<0.79.0', 'preflow/htmx' => '<0.65'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.60 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.81.0', 'preflow/data' => '<0.79.0', 'preflow/htmx' => '<0.65'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
     }
 }

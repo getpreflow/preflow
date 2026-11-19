@@ -14,7 +14,8 @@ composer require preflow/testing --dev
 - Fluent HTTP response assertions wrapping PSR-7 responses
 - In-memory SQLite and temporary JSON storage for isolated data tests
 - Minimal `TestApplication` bootstrap (container, renderer, token service)
-- Contract suites for your own template engine, hypermedia driver or storage driver
+- Contract suites for your own template engine, hypermedia driver or storage driver, and one
+  that proves internal renders leave no trace
 
 ## WebApplication
 
@@ -240,6 +241,82 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
 
 Each test starts from a fresh adapter (`createEngine()` / `createDriver()` run in `setUp()`), so
 a storage driver needs an empty store per test.
+
+## Render isolation (0.81)
+
+A site renders pages for itself: the SEO audit, GEO's Markdown views, page-cache rebuilds and
+verify renders, previews, mails and PDFs. Such a render must leave no trace: it must not see the
+visitor's cookies, session, signed-in user or language, and it must not change what the request
+that asked for it queued or collected. `Preflow\Testing\Contract\RenderIsolationContract` checks
+this for every render path you give it. It needs no Folio: extend it in a site, a package or an
+adapter that renders internally.
+
+| Hook | What it returns |
+|---|---|
+| `app()` | a booted `Application`; called once per test, so return a new one each time |
+| `paths()` | path name => `Closure(Application, RenderContext): RenderResult`, the render under the context it is given; names from `RenderIsolationContract::PATHS`: `audit`, `geo`, `rebuild`, `verify`, `preview`, `mail`, `pdf` (cover the ones your app has) |
+| `pending()` (optional) | paths that do not render under their context yet: they still run, and each test is marked incomplete (not skipped) with why each pending path fails, or that it passes |
+| `marker()` (optional) | the text planted in the ambient state, `zz-ambient-marker` by default |
+| `context()` (optional) | the context every render starts from, `ContextFactory::forTest()` by default; give your site's origin and locales |
+
+```php
+use Nyholm\Psr7\ServerRequest;
+use Preflow\Core\Application;
+use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Context\Site;
+use Preflow\Testing\ContextFactory;
+use Preflow\Testing\Contract\RenderIsolationContract;
+
+final class SiteRenderIsolationTest extends RenderIsolationContract
+{
+    protected function app(): Application
+    {
+        $app = Application::create(dirname(__DIR__));
+        $app->boot();
+
+        return $app;
+    }
+
+    protected function context(): RenderContext
+    {
+        return ContextFactory::forTest(new Site('https://example.com', ['en', 'de'], 'en'));
+    }
+
+    protected function paths(): array
+    {
+        return [
+            'audit' => static fn (Application $app, RenderContext $ctx): RenderResult => $app->render(
+                RenderContext::internal(Purpose::Audit, $ctx->site, $ctx->clock, '/')->in($ctx->locale),
+                new ServerRequest('GET', '/'),
+            ),
+        ];
+    }
+}
+```
+
+Every render runs inside an outer frame of the test's own, as an internal render runs inside the
+request that asks for it. The four tests:
+
+- **Poisoned ambient state never reaches the render.** In the outer frame the contract sets the
+  cookie `m`, the header `X-Marker` and `$_SESSION['m']` to the marker, calls the deprecated
+  `Translator::setLocale('xx')`, `AuthManager::setUser()` (a user whose id is the marker) and
+  `LiveContent::showWorkingCopies()` where the app has them, and queues one cookie and one mail.
+  The render's body, headers and captured items must not contain the marker, and its status and
+  body must equal the same render's without the poison.
+- **The outer frame is byte-equal after each render.** With the same poison, the current context
+  (serialized, without the PSR request), the frame's queued cookies and mail, the `CookieQueue`,
+  the asset registry and the SEO page meta are the same before and after the render.
+- **Interleaved renders are independent.** A, B, A in one process, B with another locale, a
+  signed-in viewer and working copies: both A renders give the same status and body.
+- **A frozen clock renders identically.** Two renders of a context frozen with `at()` give the
+  same status and body.
+
+`Preflow\Testing\ContextFactory::forTest(?Site $site = null)` builds the context these tests start
+from: a visitor's GET of the home page (`http://localhost/` with the locale `en` without a site),
+purpose `Test`, on a `FrozenClock` at `2026-01-01T00:00:00Z`. Derive what a test needs from it
+(`->in('de')->workingCopies()`) and run code under it with `Contexts::run()`.
 
 ## Fast suites
 
