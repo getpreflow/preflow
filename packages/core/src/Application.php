@@ -2924,8 +2924,13 @@ final class Application
                 );
             },
             $container->get(\Preflow\Core\Http\LocaleUrls::class),
+            // The hit is a 'log' write of the write policy, counted at the render's "now".
             static function (\Preflow\Routing\Redirect\Redirect $entry) use ($store): void {
-                $store()?->hit($entry, new \DateTimeImmutable());
+                $redirects = $store();
+                if ($redirects === null || !\Preflow\Core\Context\Writes::allowed('redirects', 'redirect-hits', $entry->id, 'log')) {
+                    return;
+                }
+                $redirects->hit($entry, Contexts::current()->clock->now());
             },
             // A page at the clean path wins over an entry there, as it does for a 404.
             static function (string $locale, string $path) use ($container): bool {

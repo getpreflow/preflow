@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.78 || @dev",
+        "preflow/core": "^0.81.0 || @dev",
         "anthropic-ai/sdk": "^1.2",
         "symfony/http-client": "^7.3 || ^8.0",
         "nyholm/psr7": "^1.8",
@@ -16,7 +16,7 @@
         "preflow/devtools": "^0.34 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.78"
+        "preflow/core": "<0.81.0"
     },
     "autoload": {
         "psr-4": {

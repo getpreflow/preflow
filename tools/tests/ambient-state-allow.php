@@ -35,6 +35,11 @@ return [
             "Deprecations::once('Preflow\\Core\\Http\\InternalRender::mark() is deprecated since 0.81 and is removed in 0.83; use Application::render() with RenderContext::internal().');" => 'the deprecation message names mark(); not a call',
         ],
     ],
+    'core/src/Context/Writes.php' => [
+        'peek' => [
+            'return Contexts::peek()?->writes ?? WritePolicy::Allow;' => 'outside every render writes run (ruling R1: DataManager writes allow without a frame)',
+        ],
+    ],
     'core/src/Http/Session/NativeSession.php' => [
         'superglobal' => 'PHP\'s native session lives in $_SESSION; this class is the one adapter over it',
     ],

@@ -7,6 +7,7 @@ namespace Preflow\Data\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.81: core 0.81.0 (Context\Writes and WritePolicy: every write entry point asks the render's write policy).
  * Since 0.80: devtools 0.80 (db:seed honours #[Seed(debugOnly: true)]; an older devtools would run demo seeders with app.debug off).
  * Since 0.78: core 0.78 (the 0.78 upgrade path runs through core: Application registers DeclaredTables and the migrate steps, Throttle
  * counts through incrementIn() with exact columns, and a JSON storage entry reads 'cache' => false).
@@ -25,8 +26,8 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.78', 'preflow/validation' => '<0.52', 'preflow/folio' => '<0.67', 'preflow/publishing' => '<0.72', 'preflow/devtools' => '<0.80'], $composer['conflict'] ?? null);
-        $this->assertSame('^0.78 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.81.0', 'preflow/validation' => '<0.52', 'preflow/folio' => '<0.67', 'preflow/publishing' => '<0.72', 'preflow/devtools' => '<0.80'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame('^0.52 || @dev', $composer['require']['preflow/validation'] ?? null);
     }
 }

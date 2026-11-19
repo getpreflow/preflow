@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Data;
 
+use Preflow\Core\Context\WritePolicy;
+use Preflow\Core\Context\Writes;
 use Preflow\Data\Attributes\Timestamps;
 use Preflow\Data\Observe\DataObserver;
 use Preflow\Data\Observe\SqlTables;
@@ -17,6 +19,17 @@ use Preflow\Validation\ValidationResult;
 use Preflow\Validation\ValidationRule;
 use Preflow\Validation\ValidatorFactory;
 
+/**
+ * Every write entry point asks the write policy of the current render (Writes::allowed()) before
+ * it reaches a storage driver, so every driver follows it: under Skip (a preview, a view as a
+ * role, the SEO audit) nothing is written, the write is reported in the frame, and the entry
+ * point returns as if it had written: save(), insert(), update() and saveType() return normally,
+ * insertIgnoring() true, insertMany() the number of models given, saveTypeIfVersion() and
+ * updateFieldsIfVersion() true, a delete as if nothing matched, execute() 0, raw() [] for a
+ * write, incrementIn() the value stored now (0 for a row not stored). Validation runs first, as
+ * on a visit. Under Refuse the write throws WritesRefused (core). transaction() runs its closure;
+ * each write inside follows the policy. Outside every render writes run (WritePolicy::Allow).
+ */
 final class DataManager
 {
     /**
@@ -170,6 +183,9 @@ final class DataManager
      */
     public function updateFieldsIfVersion(TypeDefinition $def, string|int $id, array $fields, string $versionField, ?int $expected): bool
     {
+        if (!Writes::allowed($def->storage, $def->table, (string) $id, 'save')) {
+            return true;
+        }
         $driver = $this->resolveDriver($def->storage);
         $fields = $this->storageValues($def, $fields);
         if ($driver instanceof ConditionalUpdates) {
@@ -568,6 +584,9 @@ final class DataManager
     public function raw(string $sql, array $bindings = [], string $storage = 'default'): array
     {
         $driver = $this->sql($storage, 'raw() needs a storage that runs SQL');
+        if (Writes::policy() !== WritePolicy::Allow && SqlTables::writes($sql) && !$this->rawWriteAllowed($storage, $sql)) {
+            return [];
+        }
         if ($this->observer === null && $this->captures === []) {
             return $driver->rawQuery($sql, $bindings);
         }
@@ -593,6 +612,9 @@ final class DataManager
     public function execute(string $sql, array $bindings = [], string $storage = 'default'): int
     {
         $driver = $this->sql($storage, 'execute() needs a storage that runs SQL');
+        if (!$this->rawWriteAllowed($storage, $sql)) {
+            return 0;
+        }
 
         try {
             return $driver->execute($sql, $bindings);
@@ -657,6 +679,16 @@ final class DataManager
         }
     }
 
+    /** The write policy for raw SQL that writes, reported under the first table it names. */
+    private function rawWriteAllowed(string $storage, string $sql): bool
+    {
+        if (Writes::policy() === WritePolicy::Allow) {
+            return true; // the statement is read only when the policy asks
+        }
+
+        return Writes::allowed($storage, (SqlTables::of($sql) ?? [])[0] ?? 'sql', null, 'raw');
+    }
+
     private function sql(string $storage, string $needs): RunsSql
     {
         $driver = $this->resolveDriver($storage);
@@ -700,6 +732,9 @@ final class DataManager
         $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
         $id = $data[$meta->idField] ?? null;
         $isEmpty = $id === null || $id === '' || $id === 0 || $id === '0';
+        if (!Writes::allowed($meta->storage, $meta->table, $isEmpty ? null : (string) $id, 'save')) {
+            return;
+        }
 
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id ?? '', $data, $meta->idField));
 
@@ -804,6 +839,10 @@ final class DataManager
         $driver = $this->resolveDriver($meta->storage);
         $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
         $stringId = self::hasStringId($meta);
+        $given = $data[$meta->idField] ?? null;
+        if (!Writes::allowed($meta->storage, $meta->table, self::emptyId($given) ? null : (string) $given, 'save')) {
+            return true; // as if written, also for an id that is stored (ruling R9)
+        }
         if ($stringId || !self::emptyId($data[$meta->idField] ?? null)) {
             // A string id is never the storage's to give: the given one, or the new UUID. A
             // non-zero int id the caller set is written as it is (since 0.80.0), only while no
@@ -936,6 +975,9 @@ final class DataManager
         if (self::emptyId($id)) {
             throw new \RuntimeException("Cannot update model without an ID. Use insert() for new records.");
         }
+        if (!Writes::allowed($meta->storage, $meta->table, (string) $id, 'save')) {
+            return;
+        }
 
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, $id, $data, $meta->idField));
         $this->reportWrite($meta->storage, $meta->table, (string) $id);
@@ -955,6 +997,9 @@ final class DataManager
             $driver = $this->resolveDriver($meta->storage);
             $data = $modelClassOrInstance->toArray();
             $modelId = $data[$meta->idField] ?? throw new \RuntimeException("Model missing ID field [{$meta->idField}].");
+            if (!Writes::allowed($meta->storage, $meta->table, (string) $modelId, 'delete')) {
+                return;
+            }
             $driver->delete($meta->table, $modelId, $meta->idField);
             $this->reportWrite($meta->storage, $meta->table, (string) $modelId);
             return;
@@ -965,6 +1010,9 @@ final class DataManager
             throw new \RuntimeException('ID is required when deleting by class name.');
         }
         $meta = ModelMetadata::for($modelClassOrInstance);
+        if (!Writes::allowed($meta->storage, $meta->table, (string) $id, 'delete')) {
+            return;
+        }
         $driver = $this->resolveDriver($meta->storage);
         $driver->delete($meta->table, $id, $meta->idField);
         $this->reportWrite($meta->storage, $meta->table, (string) $id);
@@ -1016,6 +1064,9 @@ final class DataManager
                 $model->{$def->idField} = $id;
                 $record->set($def->idField, $id);
             }
+        }
+        if (!Writes::allowed($def->storage, $def->table, self::emptyId($id) ? null : (string) $id, 'save')) {
+            return true; // as if written, also for an id that is stored (ruling R9)
         }
         $inserting = $mode === 'insert' || $mode === 'ignore';
         if ($inserting && $given && $driver->findOne($def->table, $id, $def->idField) !== null) {
@@ -1392,6 +1443,9 @@ final class DataManager
         if ($id === null) {
             throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
         }
+        if (!Writes::allowed($typeDef->storage, $typeDef->table, (string) $id, 'save')) {
+            return;
+        }
 
         $versionField = $this->versionFieldOf($typeDef);
         if ($versionField === null) {
@@ -1519,6 +1573,9 @@ final class DataManager
         $had = array_key_exists($versionField, $record->toArray());
         $before = $record->get($versionField);
         $record->set($versionField, $next ?? $expected + 1);
+        if (!Writes::allowed($typeDef->storage, $typeDef->table, (string) $id, 'save')) {
+            return true; // as if written: the record holds the version a write gives it (ruling R9)
+        }
 
         try {
             $written = $this->guarded($record, function () use ($driver, $typeDef, $id, $record, $versionField, $expected): bool {
@@ -1730,6 +1787,9 @@ final class DataManager
 
     public function deleteIn(TypeDefinition $typeDef, string|int $id): void
     {
+        if (!Writes::allowed($typeDef->storage, $typeDef->table, (string) $id, 'delete')) {
+            return;
+        }
         $this->resolveDriver($typeDef->storage)->delete($typeDef->table, $id, $typeDef->idField);
         $this->reportWrite($typeDef->storage, $typeDef->table, (string) $id);
     }
@@ -1751,6 +1811,11 @@ final class DataManager
     public function incrementIn(TypeDefinition $def, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset = null): int
     {
         $driver = $this->resolveDriver($def->storage);
+        if (!Writes::allowed($def->storage, $def->table, (string) $id, 'increment')) {
+            $stored = $driver->findOne($def->table, $id, $def->idField)[$field] ?? null;
+
+            return is_numeric($stored) ? (int) $stored : 0; // the counter as stored now: nothing counted
+        }
         if ($driver instanceof AtomicCounters) {
             $value = $driver->increment($def->table, $id, $field, $by, $insert, $reset, $def->idField);
         } else {
@@ -1773,6 +1838,13 @@ final class DataManager
     {
         $ids = array_values(array_unique(array_map(strval(...), $ids)));
         if ($ids === []) {
+            return;
+        }
+        $allowed = true;
+        foreach ($ids as $id) {
+            $allowed = Writes::allowed($typeDef->storage, $typeDef->table, $id, 'delete') && $allowed; // each one reported
+        }
+        if (!$allowed) {
             return;
         }
         $driver = $this->resolveDriver($typeDef->storage);

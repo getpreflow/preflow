@@ -50,7 +50,6 @@ return [
         'now: static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
         '$this->container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
         'static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
-        '$store()?->hit($entry, new \\DateTimeImmutable());', // clock
         '$auth?->setUser(null);', // setter
         '$translator?->setLocale($siteLocale);', // setter
         '$translator?->useOverrides(false);', // setter

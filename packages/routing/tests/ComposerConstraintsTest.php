@@ -7,6 +7,7 @@ namespace Preflow\Routing\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.81: core 0.81.0 (Context\Writes: the redirect hit counter and the not-found log ask the render's write policy).
  * Since 0.79.0: core 0.79.0 (Routing\AnswersPages, which Router implements). Core 0.78.2 (PageLookups::addAnswer(), LocaleUrls::$homeSlash and isHome()).
  * "^0.78 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
  * Composer from pairing routing with a core release that lacks what it calls: core 0.78
@@ -20,7 +21,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.79.0 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame(['preflow/core' => '<0.79.0'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.81.0'], $composer['conflict'] ?? null);
     }
 }
