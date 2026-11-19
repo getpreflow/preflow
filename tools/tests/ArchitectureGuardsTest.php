@@ -44,6 +44,34 @@ use PHPUnit\Framework\TestCase;
  * the package, the require's lowest version is X.Y or later. A constraint can't be tightened for a
  * version after it is published, so this runs before every release. Methods are not covered (their
  * @since sits on the method); the per-package ComposerConstraintsTest names those.
+ *
+ * architecture.no-ambient-state: package code reads who is looking, the locale, the read mode and
+ * the time from the render context (Contexts::current()), not from state that belongs to the
+ * process or the request. Every package's psr-4 source roots are scanned (every *.php file), line by
+ * line with comment lines skipped, for the rules in AMBIENT_RULES:
+ *  - superglobal: $_SERVER, $_COOKIE, $_SESSION, $_GET, $_POST, $_REQUEST, $_FILES, and
+ *    fromGlobals(), which turns them into a request;
+ *  - clock: time(), microtime(), hrtime(), date()/gmdate() with only a format, strtotime() of a
+ *    string, new DateTime(Immutable) with no argument, 'now' or a relative string; a line that
+ *    ends with `// clock: stamp` (a timing for the debug collector, a file name, a log line) is
+ *    no hit;
+ *  - setter: the ambient setters (setLocale, setUser, addUser, showWorkingCopies,
+ *    ContentLocale::set, ->set($locale) with the locale as its only argument);
+ *  - static-state: a static property or static variable (state shared by every render);
+ *  - context-property: a property or promoted parameter typed RenderContext (services read
+ *    Contexts::current(), they don't keep a copy);
+ *  - peek: Contexts::peek(), only for code with a documented default outside a render;
+ *  - context-dump: var_export(), get_object_vars() or an (array) cast of a context (they walk its
+ *    properties and reach the request; serialize, json_encode and var_dump give the safe form);
+ *  - frame-context-write: setting a frame's context from outside it (only Contexts narrows);
+ *  - request-binding: binding request state (RequestContext, CookieQueue) into the container,
+ *    where every later render would find it.
+ * Two files decide what may stay. tools/tests/ambient-state-allow.php is permanent: per file (a
+ * glob is allowed) and rule, a reason, or per line text a reason; each entry must still match a
+ * hit. tools/tests/ambient-state-baseline.php is the ratchet: today's hits that the render-context
+ * release moves onto the context, one entry per hit, as the trimmed line text (line numbers move).
+ * A hit in neither file fails; a baseline entry that no longer hits fails too and must be removed,
+ * so the baseline only shrinks.
  */
 final class ArchitectureGuardsTest extends TestCase
 {
@@ -58,6 +86,31 @@ final class ArchitectureGuardsTest extends TestCase
      * @var array<string, list<string>>
      */
     private const PENDING_DRIVER_CHECKS = [];
+
+    /** A context in an expression: Contexts::current()/peek(), or a variable or property named …context or …ctx. */
+    private const CONTEXT_EXPRESSION = '(?:\\\\?(?:\w+\\\\)*Contexts::(?:current|peek)\(\)|\$[\w>-]*?(?:[cC]ontext|ctx)\b(?!\s*\[))';
+
+    /**
+     * The rules of architecture.no-ambient-state: rule => pattern for one source line (see the class
+     * docblock). A clock line ending in `// clock: stamp` is exempt; comment lines are skipped.
+     */
+    private const AMBIENT_RULES = [
+        'superglobal' => '/\$_(?:SERVER|COOKIE|SESSION|GET|POST|REQUEST|FILES)\b|\bfromGlobals\(/',
+        'clock' => '/(?<![\w$>:])(?<!function )\\\\?(?:time\(\)|(?:microtime|hrtime)\('
+            . '|(?:gm)?date\(\s*(?:\'[^\']*\'|"[^"]*"|\\\\?DATE_\w+|\\\\?DateTime(?:Interface)?::\w+)\s*\)'
+            . '|strtotime\(\s*(?:\'[^\']*\'|"[^"]*")\s*\))'
+            . '|\bnew\s+\\\\?DateTime(?:Immutable)?\(\s*(?:\)|[\'"]now[\'"]|\'[-+]\d|\'-\'\s*\.'
+            . '|\'(?:today|tomorrow|yesterday|midnight|noon|first |last |next |this ))/i',
+        'setter' => '/->(?:setLocale|setUser|addUser|showWorkingCopies)\(|ContentLocale::set\b|->set\(\$?locale\s*\)/',
+        'static-state' => '/^(?!.*\breadonly\b).*(?<![\w$>:\\\\])static\s+(?!function\b|fn\b)(?:\??[A-Za-z_\\\\][\w\\\\|&]*\s+)?\$\w+/',
+        'context-property' => '/\b(?:public|protected|private|readonly|var)(?:\(set\))?\s+'
+            . '(?:(?:public|protected|private|readonly|static|final)(?:\(set\))?\s+)*'
+            . '(?:\??[\w\\\\]+\s*[|&]\s*)*\??\\\\?(?:\w+\\\\)*RenderContext\s*(?:[|&]\s*\??[\w\\\\]+\s*)*\$\w+/',
+        'peek' => '/\bContexts::peek\(/',
+        'context-dump' => '/\b(?:var_export|get_object_vars)\(\s*' . self::CONTEXT_EXPRESSION . '|\(array\)\s*' . self::CONTEXT_EXPRESSION . '/',
+        'frame-context-write' => '/(?<!\$this)->context\s*(?:\?\?)?=(?![=>])/',
+        'request-binding' => '/->instance\(\s*\\\\?(?:\w+\\\\)*(?:RequestContext|CookieQueue)::class/',
+    ];
 
     private static function packages(): string
     {
@@ -394,6 +447,286 @@ final class ArchitectureGuardsTest extends TestCase
         }
 
         return false;
+    }
+
+    public function test_architecture_no_ambient_state(): void
+    {
+        /** @var array<string, array<string, string|array<string, string>>> $allow */
+        $allow = require __DIR__ . '/ambient-state-allow.php';
+        /** @var array<string, list<string>> $baseline */
+        $baseline = require __DIR__ . '/ambient-state-baseline.php';
+
+        $hits = [];
+        $scanned = [];
+        foreach (glob(self::packages() . '/*/composer.json') ?: [] as $composerFile) {
+            $dir = dirname($composerFile);
+            $composer = json_decode((string) file_get_contents($composerFile), true, flags: JSON_THROW_ON_ERROR);
+            $roots = array_values((array) ($composer['autoload']['psr-4'] ?? []));
+            $roots = $roots === [] ? ['src/'] : $roots;
+            foreach ($roots as $root) {
+                foreach ((array) $root as $path) {
+                    $sourceDir = $dir . '/' . rtrim($path, '/');
+                    if (!is_dir($sourceDir)) {
+                        continue;
+                    }
+                    $scanned[basename($dir)] = true;
+                    foreach ($this->files($sourceDir) as $file) {
+                        if (!str_ends_with($file, '.php')) {
+                            continue;
+                        }
+                        foreach (self::ambientStateHits($file) as [$lineNo, $text, $rules]) {
+                            $hits[] = [$this->relative($file), $lineNo, $text, $rules];
+                        }
+                    }
+                }
+            }
+        }
+
+        $allowUsed = [];
+        $baselineUsed = [];
+        $unexpected = [];
+        foreach ($hits as [$file, $lineNo, $text, $rules]) {
+            $left = [];
+            foreach ($rules as $rule) {
+                $entry = self::allowedBy($allow, $file, $rule, $text);
+                if ($entry === null) {
+                    $left[] = $rule;
+                } else {
+                    $allowUsed[$entry] = true;
+                }
+            }
+            if ($left === []) {
+                continue;
+            }
+            $key = $file . ': ' . $text;
+            $listed = count(array_keys($baseline[$file] ?? [], $text, true));
+            if (($baselineUsed[$key] ?? 0) < $listed) {
+                $baselineUsed[$key] = ($baselineUsed[$key] ?? 0) + 1;
+                continue;
+            }
+            $unexpected[] = sprintf('%s:%d [%s] %s', $file, $lineNo, implode(', ', $left), $text);
+        }
+
+        $stale = [];
+        foreach ($baseline as $file => $lines) {
+            foreach (array_count_values($lines) as $text => $listed) {
+                $found = $baselineUsed[$file . ': ' . $text] ?? 0;
+                if ($found < $listed) {
+                    $stale[] = sprintf('%s: %s (listed %d, hits %d)', $file, $text, $listed, $found);
+                }
+            }
+        }
+
+        $unusedAllow = [];
+        foreach ($allow as $pattern => $rules) {
+            foreach ($rules as $rule => $reason) {
+                foreach (is_array($reason) ? array_keys($reason) : [null] as $text) {
+                    $entry = self::allowEntryKey($pattern, $rule, $text);
+                    if (!isset($allowUsed[$entry])) {
+                        $unusedAllow[] = $entry;
+                    }
+                }
+            }
+        }
+
+        foreach (['core', 'auth', 'folio', 'notify'] as $package) {
+            $this->assertArrayHasKey($package, $scanned, 'a scanned package');
+        }
+        $this->assertSame([], $unexpected, 'ambient state: read it from Contexts::current() (see the class docblock); a permanent exception goes to ambient-state-allow.php with its reason');
+        $this->assertSame([], $stale, 'these baseline entries no longer hit: remove them from the baseline (tools/tests/ambient-state-baseline.php)');
+        $this->assertSame([], $unusedAllow, 'these allowlist entries match nothing: remove them from tools/tests/ambient-state-allow.php');
+    }
+
+    /**
+     * One fixture file per rule, each with exactly one hit, and a clock stamp that is no hit; then
+     * spellings each rule must catch and harmless lines it must leave alone.
+     */
+    public function test_architecture_no_ambient_state_catches_each_rule(): void
+    {
+        $hits = [];
+        foreach ($this->files(__DIR__ . '/Fixtures/AmbientState') as $file) {
+            foreach (self::ambientStateHits($file) as [, , $rules]) {
+                foreach ($rules as $rule) {
+                    $hits[] = basename($file) . ': ' . $rule;
+                }
+            }
+        }
+        sort($hits);
+        $this->assertSame([
+            'Clock.php: clock',
+            'ContextDump.php: context-dump',
+            'ContextProperty.php: context-property',
+            'FrameContextWrite.php: frame-context-write',
+            'Peek.php: peek',
+            'RequestBinding.php: request-binding',
+            'Setter.php: setter',
+            'StaticState.php: static-state',
+            'Superglobal.php: superglobal',
+        ], $hits, 'each rule hits its fixture once; the stamp (ClockStamp.php) is no hit');
+        $this->assertSame(array_keys(self::AMBIENT_RULES), [
+            'superglobal', 'clock', 'setter', 'static-state', 'context-property', 'peek', 'context-dump', 'frame-context-write',
+            'request-binding',
+        ], 'every rule has a fixture');
+
+        $caught = [
+            'superglobal' => [
+                '$token = $_COOKIE[\'t\'] ?? null;',
+                '$request = $creator->fromGlobals();',
+                'unset($_SESSION);',
+            ],
+            'clock' => [
+                '$at = time() + 60;',
+                '$at = \time();',
+                '$start = microtime(true);',
+                '$start = hrtime(true);',
+                '$day = gmdate(\'Y-m-d\');',
+                '$stamp = date(DATE_ATOM);',
+                '$stamp = date(\DateTimeInterface::ATOM);',
+                '$now = new \DateTimeImmutable();',
+                '$now = new DateTime(\'now\');',
+                '$old = new \DateTimeImmutable(\'-60 seconds\');',
+                '$old = new \DateTimeImmutable(\'-\' . self::STALE_JOB_SECONDS . \' seconds\');',
+                '$month = new \DateTimeImmutable(\'first day of this month 00:00:00\');',
+                '$at = strtotime(\'+1 day\');',
+            ],
+            'setter' => [
+                '$this->translator->setLocale($locale);',
+                '$auth->setUser($user);',
+                '$auth->addUser($guard, $user);',
+                '$this->live->showWorkingCopies();',
+                'ContentLocale::set($locale);',
+                '$this->contentLocale->set($locale);',
+            ],
+            'static-state' => [
+                'private static array $cache = [];',
+                'public static ?Translator $translator = null;',
+                'protected static $loaded;',
+                'static $memo = null;',
+            ],
+            'context-property' => [
+                'private RenderContext $context;',
+                'public ?RenderContext $context = null;',
+                '        private readonly RenderContext $ctx,',
+                'public function __construct(private \Preflow\Core\Context\RenderContext $context) {}',
+                'protected RenderContext|null $context;',
+            ],
+            'peek' => ['$ctx = Contexts::peek();'],
+            'context-dump' => [
+                'error_log(var_export($ctx, true));',
+                '$fields = (array) $this->context;',
+                '$fields = get_object_vars(Contexts::current());',
+            ],
+            'frame-context-write' => [
+                '$frame->context = $narrowed;',
+                'Contexts::frame()->context = $ctx;',
+            ],
+            'request-binding' => [
+                '$container->instance(RequestContext::class, $context);',
+                '$this->container->instance(\\Preflow\\Core\\Http\\CookieQueue::class, $cookieQueue);',
+            ],
+        ];
+        foreach ($caught as $rule => $lines) {
+            foreach ($lines as $line) {
+                $this->assertContains($rule, self::ambientRulesOf($line), "caught by {$rule}: {$line}");
+            }
+        }
+
+        $harmless = [
+            '$at = $this->clock->time();',
+            '$at = Clock::time();',
+            '$changed = filemtime($file);',
+            '$day = date(\'Y-m-d\', $timestamp);',
+            '$at = new \DateTimeImmutable(\'@\' . $timestamp);',
+            '$at = new \DateTimeImmutable($value);',
+            '$at = new \DateTimeImmutable(\'2026-01-01\');',
+            '$name = \'export-\' . date(\'Ymd\') . \'.zip\'; // clock: stamp',
+            'public function time(): int',
+            'public static function create(): static',
+            'return new static($value);',
+            'static::$cache[$key] = $value;',
+            '$sort = static fn (array $a): int => 0;',
+            'usort($list, static function ($a, $b) {',
+            '     * @var static $instance',
+            '        // time() is read once, at the edge',
+            'public function render(RenderContext $ctx): string',
+            'function f(?RenderContext $ctx = null) {}',
+            '$this->context = $context;',
+            '$same = $frame->context === $ctx;',
+            '$code = var_export($value, true);',
+            '$options = (array) $options;',
+            '$path = $_ENV[\'DATA_PATH\'] ?? null;',
+            '$locale = $this->translator->getLocale();',
+            '$ctx = Contexts::current();',
+            '$preferences->setLocaleFor($user, $locale);',
+            '$this->overrides->set($locale, $key, $text, $by);',
+            '$context = $container->get(RequestContext::class);',
+        ];
+        foreach ($harmless as $line) {
+            $this->assertSame([], self::ambientRulesOf($line), "harmless: {$line}");
+        }
+    }
+
+    /** @return list<array{int, string, list<string>}> each hit in $file: line number, trimmed text, rules */
+    private static function ambientStateHits(string $file): array
+    {
+        $hits = [];
+        foreach (file($file) ?: [] as $n => $line) {
+            $rules = self::ambientRulesOf($line);
+            if ($rules !== []) {
+                $hits[] = [$n + 1, trim($line), $rules];
+            }
+        }
+
+        return $hits;
+    }
+
+    /** @return list<string> the AMBIENT_RULES that $line hits */
+    private static function ambientRulesOf(string $line): array
+    {
+        $code = ltrim($line);
+        if ($code === '' || str_starts_with($code, '*') || str_starts_with($code, '/*') || str_starts_with($code, '//')
+            || (str_starts_with($code, '#') && !str_starts_with($code, '#['))) {
+            return [];
+        }
+        $rules = [];
+        foreach (self::AMBIENT_RULES as $rule => $pattern) {
+            if (preg_match($pattern, $line) !== 1) {
+                continue;
+            }
+            if ($rule === 'clock' && preg_match('~//\s*clock:\s*stamp\s*$~', $line) === 1) {
+                continue;
+            }
+            $rules[] = $rule;
+        }
+
+        return $rules;
+    }
+
+    /**
+     * The allowlist entry that permits $rule on this line of $file, or null.
+     *
+     * @param array<string, array<string, string|array<string, string>>> $allow
+     */
+    private static function allowedBy(array $allow, string $file, string $rule, string $text): ?string
+    {
+        foreach ($allow as $pattern => $rules) {
+            if (!isset($rules[$rule]) || ($pattern !== $file && !fnmatch($pattern, $file, FNM_PATHNAME))) {
+                continue;
+            }
+            if (is_string($rules[$rule])) {
+                return self::allowEntryKey($pattern, $rule, null);
+            }
+            if (isset($rules[$rule][$text])) {
+                return self::allowEntryKey($pattern, $rule, $text);
+            }
+        }
+
+        return null;
+    }
+
+    private static function allowEntryKey(string $pattern, string $rule, ?string $text): string
+    {
+        return $pattern . ' [' . $rule . ']' . ($text === null ? '' : ': ' . $text);
     }
 
     /** @return list<string> every file below $dir */
