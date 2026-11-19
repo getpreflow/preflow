@@ -538,7 +538,8 @@ final class Application
             throw new \RuntimeException('Application not booted. Call boot() first.');
         }
         if (Contexts::depth() > 0) {
-            return \Preflow\Core\Http\InternalRender::is($request)
+            // Only the render scopes' own marked requests render in the frame they set up.
+            return $request->getAttribute(\Preflow\Core\Http\InternalRender::ATTRIBUTE) === true
                 ? $this->handleInFrame($request)
                 : $this->handleNested($request);
         }
@@ -588,7 +589,8 @@ final class Application
      * untouched: the render cannot see or take its cookies. Set-Cookie values the render left
      * queued (none of its middleware set them) are captured as 'cookies' items under Capture,
      * dropped under Discard, and under Deliver go into the queue of the frame around it (where
-     * that request's ResolveUserMiddleware sets them, or they are dropped as its own would be).
+     * that request's ResolveUserMiddleware sets them, or they are dropped as its own would be);
+     * with no frame around it (depth 0) they are dropped, as 0.80 dropped cookies left queued.
      * What it queues under Deliver reaches the frame around it when its frame closes.
      *
      * @since 0.81.0
@@ -624,14 +626,14 @@ final class Application
     }
 
     /**
-     * A request asked for inside a frame that is not its own: a nested frame from the request,
-     * with the clock of the frame around it. Notify's deferred mail is flushed (not under run(),
-     * which sends it after its response), as handle() did before 0.81; what else it queued and
-     * its after-response work go to the frame around it when it closes.
+     * A request asked for inside a frame that is not its own: a nested frame from the request
+     * (nestedContext()). Notify's deferred mail is flushed (not under run(), which sends it after
+     * its response), as handle() did before 0.81; what else it queued and its after-response work
+     * go to the frame around it when it closes.
      */
     private function handleNested(ServerRequestInterface $request): ResponseInterface
     {
-        $ctx = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), Contexts::current()->clock);
+        $ctx = $this->nestedContext($request, Contexts::current());
 
         return Contexts::run($ctx, function () use ($request): ResponseInterface {
             try {
@@ -743,6 +745,39 @@ final class Application
             \Preflow\Core\Http\Hypermedia\HypermediaProtocols::class,
             $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         );
+    }
+
+    /**
+     * The context of a request asked for inside $outer: its own request and purpose
+     * (RenderContext::fromRequest()), but never looser than $outer. It keeps a write policy
+     * stricter than Allow (Skip, Refuse), an outbox policy stricter than Deliver (Capture,
+     * Discard), a role viewer (with its Skip and Capture) and frozen time (at($outer->now)), so a
+     * page's sub-request inside a preview, a view as a role, an audit or a render as of a date
+     * writes, sends and is stored no more than the render around it. The clock is $outer's; a
+     * console frame has none of its own (Console starts it on the system clock), so a command's
+     * request takes the app's bound clock.
+     */
+    private function nestedContext(ServerRequestInterface $request, RenderContext $outer): RenderContext
+    {
+        $clock = $outer->purpose === \Preflow\Core\Context\Purpose::Console
+            ? $this->container->get(\Psr\Clock\ClockInterface::class)
+            : $outer->clock;
+        $ctx = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $clock);
+        if ($outer->viewer->isSynthetic()) {
+            $ctx = $ctx->as($outer->viewer);
+        }
+        $ctx = match ($outer->writes) {
+            \Preflow\Core\Context\WritePolicy::Refuse => $ctx->refusingWrites(),
+            \Preflow\Core\Context\WritePolicy::Skip => $ctx->writes === \Preflow\Core\Context\WritePolicy::Refuse ? $ctx : $ctx->skippingWrites(),
+            default => $ctx,
+        };
+        $ctx = match ($outer->outbox) {
+            \Preflow\Core\Context\OutboxPolicy::Discard => $ctx->discarding(),
+            \Preflow\Core\Context\OutboxPolicy::Capture => $ctx->capturing(),
+            default => $ctx,
+        };
+
+        return $outer->isFrozen() ? $ctx->at($outer->now) : $ctx;
     }
 
     /** A visitor's request as the outermost render: Fragment or Visit, as its hypermedia client asks. */

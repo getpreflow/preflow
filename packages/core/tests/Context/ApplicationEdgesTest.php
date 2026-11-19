@@ -16,7 +16,9 @@ use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\Outbox;
 use Preflow\Core\Context\OutboxChannel;
+use Preflow\Core\Context\FrozenClock;
 use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RoleView;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Context\SkippedWrite;
@@ -364,6 +366,107 @@ final class ApplicationEdgesTest extends TestCase
             'console en NULL',
         ], $seen);
         $this->assertCount(1, $app->container()->get(TransportFactory::class)->get('mail')->sent(), 'the deferred mail is sent, as 0.80\'s handle() sent it');
+    }
+
+    /**
+     * N1/N2: a sub-request (handle()) inside a render never loosens the frame it runs in: stricter
+     * write and outbox policies, a role viewer and frozen time are kept; it sees its own request.
+     *
+     * Expected: the sub-request's path, purpose, write and outbox policy, whether its viewer is a
+     * role viewer, whether it is time-shifted, whether it is storable (and its "now" when frozen).
+     *
+     * @return iterable<string, array{\Closure(Application): RenderContext, list<mixed>}>
+     */
+    public static function strictOuterFrames(): iterable
+    {
+        $req = static fn (): ServerRequest => new ServerRequest('GET', 'https://site.test/outer');
+        yield 'a capturing render that skips writes' => [
+            static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->capturing()->skippingWrites(),
+            ['/inner', 'visit', 'Skip', 'Capture', false, false, true],
+        ];
+        yield 'a verify render' => [
+            static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->discarding()->skippingWrites()->because(Purpose::Verify),
+            ['/inner', 'visit', 'Skip', 'Discard', false, false, true],
+        ];
+        yield 'a role viewer' => [
+            static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->asRole(new RoleView('members', ['member'])),
+            ['/inner', 'visit', 'Skip', 'Capture', true, false, false],
+        ];
+        yield 'an outer frame frozen with at()' => [
+            static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->at(new \DateTimeImmutable('2020-01-01T00:00:00Z')),
+            ['/inner', 'visit', 'Allow', 'Deliver', false, true, false, '2020-01-01T00:00:00+00:00'],
+        ];
+        // N2: the sub-request inside an internal render is its own request, under the render's restrictions.
+        yield 'an audit render' => [
+            static fn (Application $app): RenderContext => RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/outer'),
+            ['/inner', 'visit', 'Skip', 'Discard', false, false, true],
+        ];
+    }
+
+    /** @param \Closure(Application): RenderContext $outer @param list<mixed> $expected */
+    #[\PHPUnit\Framework\Attributes\DataProvider('strictOuterFrames')]
+    public function test_a_sub_request_never_loosens_the_frame_it_runs_in(\Closure $outer, array $expected): void
+    {
+        $app = $this->app();
+        $seen = null;
+        EdgeRoutes::$routes['/inner'] = static function (ServerRequestInterface $r, Container $c) use (&$seen): ResponseInterface {
+            $ctx = Contexts::current();
+            $seen = [$c->get(RequestContext::class)?->path, $ctx->purpose->value, $ctx->writes->name, $ctx->outbox->name, $ctx->viewer->isSynthetic(), $ctx->isFrozen(), $ctx->isStorable()];
+            if ($ctx->isFrozen()) {
+                $seen[] = $ctx->now->format(DATE_ATOM);
+            }
+
+            return new Response(200, [], 'inner');
+        };
+        EdgeRoutes::$routes['/outer'] = static function () use ($app): ResponseInterface {
+            return $app->handle(new ServerRequest('GET', 'https://site.test/inner'));
+        };
+
+        $result = $app->render($outer($app), new ServerRequest('GET', 'https://site.test/outer'));
+
+        $this->assertSame('inner', (string) $result->response->getBody());
+        $this->assertSame($expected, $seen, 'path, purpose, writes, outbox, role viewer, frozen, storable');
+        $this->assertSame(0, Contexts::depth());
+    }
+
+    /** The console frame has no clock of its own: a request a command handles keeps the app's bound clock. */
+    #[RunInSeparateProcess]
+    public function test_handle_inside_a_command_keeps_the_apps_clock(): void
+    {
+        $app = Application::create($this->dir);
+        $app->container()->instance(ClockInterface::class, new FrozenClock(new \DateTimeImmutable('2026-01-01T00:00:00Z')));
+        $app->boot();
+        $seen = [];
+        EdgeRoutes::$routes['/blog'] = static function () use (&$seen): ResponseInterface {
+            $seen[] = Contexts::current()->now->format(DATE_ATOM);
+            $seen[] = Contexts::current()->isFrozen() ? 'time-shifted' : 'live';
+
+            return new Response(200, [], 'blog');
+        };
+        $GLOBALS['edgeApp'] = $app;
+        $console = new Console($this->dir);
+        $console->register(new class () implements CommandInterface {
+            public function getName(): string
+            {
+                return 'warm';
+            }
+
+            public function getDescription(): string
+            {
+                return 'Renders a page in-process';
+            }
+
+            public function execute(array $args): int
+            {
+                $GLOBALS['edgeApp']->handle(new ServerRequest('GET', 'https://site.test/blog'));
+
+                return 0;
+            }
+        });
+
+        $console->run(['preflow', 'warm']);
+
+        $this->assertSame(['2026-01-01T00:00:00+00:00', 'live'], $seen);
     }
 
     #[RunInSeparateProcess]
