@@ -503,6 +503,52 @@ final class RememberMeTest extends DataTestCase
         }
     }
 
+    /** In a preview (writes skipped) a cookie is accepted and a new one made as on a visit, on every storage; nothing is stored. */
+    public function test_a_preview_rotates_as_a_visit_and_writes_nothing(): void
+    {
+        foreach ($this->storages() as $storage) {
+            $remember = $this->remember($storage);
+            $cookie = $remember->issue('member', 'user-1');
+            $before = $this->dataManager()->findIn($this->rememberType($storage), explode(':', $cookie)[0])?->toArray();
+
+            \Preflow\Core\Context\Contexts::reset();
+            $frame = null;
+            $seen = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->skippingWrites(), function () use ($remember, $cookie, &$frame): ?array {
+                $frame = \Preflow\Core\Context\Contexts::frame();
+
+                return $remember->resolve('member', $cookie);
+            });
+            $this->assertSame('user-1', $seen['userId'] ?? null, $storage);
+            $this->assertNotNull($seen['cookie'] ?? null, "{$storage}: a rotated cookie, as on a visit");
+            $this->assertSame(['save'], array_map(static fn ($w): string => $w->operation, $frame->skippedWrites()));
+            $this->assertSame($before, $this->dataManager()->findIn($this->rememberType($storage), explode(':', $cookie)[0])?->toArray(), "{$storage}: nothing stored");
+
+            try {
+                \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->refusingWrites(), fn () => $remember->resolve('member', $cookie));
+                $this->fail("{$storage}: refused");
+            } catch (\Preflow\Core\Context\WritesRefused) {
+            }
+            \Preflow\Core\Context\Contexts::reset();
+
+            // The original cookie still works on a visit, and rotates there.
+            $this->assertNotNull($remember->resolve('member', $cookie)['cookie'] ?? null, $storage);
+        }
+    }
+
+    #[Group('mysql')]
+    public function test_a_preview_rotates_as_a_visit_and_writes_nothing_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_a_preview_rotates_as_a_visit_and_writes_nothing();
+    }
+
+    private function rememberType(string $storage): \Preflow\Data\TypeDefinition
+    {
+        $type = (new \ReflectionProperty(RememberMe::class, 'type'))->getValue($this->remember($storage));
+
+        return $type;
+    }
+
     #[Group('mysql')]
     public function test_login_with_remember_sets_cookie_with_attributes_on_mysql(): void
     {

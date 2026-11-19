@@ -19,8 +19,10 @@ use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Driver\MysqlDriver;
 use Preflow\Data\Driver\SqliteDriver;
 use Preflow\Data\DynamicRecord;
+use Preflow\Data\Locales;
 use Preflow\Data\Model;
 use Preflow\Data\Query;
+use Preflow\Data\RunsSql;
 use Preflow\Data\TypeDefinition;
 use Preflow\Data\TypeRegistry;
 use Preflow\Testing\ContextFactory;
@@ -34,6 +36,17 @@ class PolicyNote extends Model
 
     #[Field]
     public string $body = '';
+}
+
+/** A class-backed type (its type comes from the class). */
+#[Entity(table: 'typed', storage: 'default', type: 'typed')]
+class PolicyTyped extends Model
+{
+    #[Id]
+    public int $id = 0;
+
+    #[Field]
+    public ?string $label = null;
 }
 
 /**
@@ -86,9 +99,10 @@ final class WritePolicyTest extends TestCase
             'sqlite' => new SqliteDriver($this->sqlitePdo()),
             'mysql' => new MysqlDriver($this->mysqlPdo()),
         };
-        $dm = new DataManager(['default' => $driver], 'default', new TypeRegistry($this->dir . '/models'));
+        $dm = new DataManager(['default' => $driver], 'default', new TypeRegistry($this->dir . '/models', new Locales(['en'], 'en'), ['typed' => PolicyTyped::class]));
         $dm->saveType(new DynamicRecord($this->item($dm), ['uuid' => 'i1', 'title' => 'One', 'hits' => 5, '_version' => 1]), validate: false);
         $dm->insert(self::note(1, 'one'));
+        $dm->insert(self::typed(1, 'one'));
 
         return $dm;
     }
@@ -99,6 +113,7 @@ final class WritePolicyTest extends TestCase
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->exec('CREATE TABLE items (uuid TEXT PRIMARY KEY, title TEXT, hits INTEGER, _version INTEGER)');
         $pdo->exec('CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT)');
+        $pdo->exec('CREATE TABLE typed (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT)');
 
         return $pdo;
     }
@@ -110,6 +125,7 @@ final class WritePolicyTest extends TestCase
         $this->mysql = $pdo;
         $pdo->exec('CREATE TABLE items (uuid VARCHAR(64) PRIMARY KEY, title VARCHAR(255), hits INT, _version INT)');
         $pdo->exec('CREATE TABLE notes (id INT AUTO_INCREMENT PRIMARY KEY, body VARCHAR(255))');
+        $pdo->exec('CREATE TABLE typed (id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(255))');
 
         return $pdo;
     }
@@ -123,7 +139,7 @@ final class WritePolicyTest extends TestCase
     private function stored(DataManager $dm): array
     {
         $rows = [];
-        foreach (['items' => 'uuid', 'notes' => 'id'] as $table => $id) {
+        foreach (['items' => 'uuid', 'notes' => 'id', 'typed' => 'id'] as $table => $id) {
             $list = array_map(
                 static fn (array $row): array => array_map(static fn (mixed $v): mixed => is_int($v) ? (string) $v : $v, $row),
                 $dm->driver('default')->findMany($table, new Query())->items(),
@@ -142,6 +158,15 @@ final class WritePolicyTest extends TestCase
         $note->body = $body;
 
         return $note;
+    }
+
+    private static function typed(int $id, string $label): PolicyTyped
+    {
+        $typed = new PolicyTyped();
+        $typed->id = $id;
+        $typed->label = $label;
+
+        return $typed;
     }
 
     /**
@@ -165,6 +190,15 @@ final class WritePolicyTest extends TestCase
             'update' => [static fn (DataManager $dm) => $dm->update(self::note(1, 'changed')), null, ['save notes 1']],
             'delete (model)' => [static fn (DataManager $dm) => $dm->delete(self::note(1, 'one')), null, ['delete notes 1']],
             'delete (class and id)' => [static fn (DataManager $dm) => $dm->delete(PolicyNote::class, 1), null, ['delete notes 1']],
+            'save (class-backed, new)' => [static fn (DataManager $dm) => $dm->save(self::typed(0, 'new')), null, ['save typed -']],
+            'save (class-backed, stored)' => [static fn (DataManager $dm) => $dm->save(self::typed(1, 'changed')), null, ['save typed 1']],
+            'insert (class-backed)' => [static fn (DataManager $dm) => $dm->insert(self::typed(0, 'new')), null, ['save typed -']],
+            'insert (class-backed, a given int id)' => [static fn (DataManager $dm) => $dm->insert(self::typed(7, 'new')), null, ['save typed 7']],
+            'insert (class-backed, a stored id: as if written)' => [static fn (DataManager $dm) => $dm->insert(self::typed(1, 'again')), null, ['save typed 1']],
+            'insertIgnoring (class-backed)' => [static fn (DataManager $dm) => $dm->insertIgnoring(self::typed(8, 'new')), true, ['save typed 8']],
+            'insertIgnoring (class-backed, a stored id: as if written)' => [static fn (DataManager $dm) => $dm->insertIgnoring(self::typed(1, 'again')), true, ['save typed 1']],
+            'insertMany (class-backed)' => [static fn (DataManager $dm) => $dm->insertMany([self::typed(8, 'a'), self::typed(9, 'b')]), 2, ['save typed 8', 'save typed 9']],
+            'update (class-backed)' => [static fn (DataManager $dm) => $dm->update(self::typed(1, 'changed')), null, ['save typed 1']],
             'saveType (new)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->saveType(new DynamicRecord($t, ['uuid' => 'i2', 'title' => 'Two'])), null, ['save items i2']],
             'saveType (stored)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->saveType(new DynamicRecord($t, ['uuid' => 'i1', 'title' => 'Changed'])), null, ['save items i1']],
             'saveTypeIfVersion' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->saveTypeIfVersion(new DynamicRecord($t, ['uuid' => 'i1', 'title' => 'Changed']), 1), true, ['save items i1']],
@@ -174,6 +208,11 @@ final class WritePolicyTest extends TestCase
             'deleteIn' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->deleteIn($t, 'i1'), null, ['delete items i1']],
             'deleteManyIn' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->deleteManyIn($t, ['i1', 'i9', 'i1']), null, ['delete items i1', 'delete items i9']],
             'executeDeletePlan' => [static fn (DataManager $dm) => $dm->executeDeletePlan($dm->deletePlan('item', ['i1'])), null, ['delete items i1']],
+            'updateIf' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->updateIf($t, 'i1', static fn (DynamicRecord $r): ?array => ['title' => 'Changed']), true, ['save items i1']],
+            'updateIf (no longer applies: the path a visit takes)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->updateIf($t, 'i1', static fn (DynamicRecord $r): ?array => $r->get('title') === 'Other' ? ['title' => 'Changed'] : null), false, []],
+            'updateIf (no such record)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->updateIf($t, 'i9', static fn (DynamicRecord $r): ?array => ['title' => 'Changed']), false, []],
+            'deleteIf' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->deleteIf($t, 'i1', static fn (DynamicRecord $r): bool => true)?->getId(), 'i1', ['delete items i1']],
+            'deleteIf (no longer applies: the path a visit takes)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->deleteIf($t, 'i1', static fn (DynamicRecord $r): bool => false), null, []],
             'incrementIn (stored value unchanged)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->incrementIn($t, 'i1', 'hits', 1, []), 5, ['increment items i1']],
             'incrementIn (a new row: nothing stored)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->incrementIn($t, 'i9', 'hits', 1, ['title' => 'Nine']), 0, ['increment items i9']],
             'transaction (its writes follow the policy)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->transaction(['default'], static function () use ($dm, $t): string {
@@ -191,6 +230,18 @@ final class WritePolicyTest extends TestCase
         return [
             'execute' => [static fn (DataManager $dm) => $dm->execute('UPDATE items SET title = ?', ['Changed']), 0, ['raw items -']],
             'raw (a write)' => [static fn (DataManager $dm) => $dm->raw('DELETE FROM notes WHERE id = ?', [1]), [], ['raw notes -']],
+            'updateIf (with its UPDATE)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->updateIf(
+                $t,
+                'i1',
+                static fn (DynamicRecord $r): ?array => ['title' => 'Changed'],
+                static fn (RunsSql $driver): array => ['UPDATE items SET title = ? WHERE uuid = ?', ['Changed', 'i1']],
+            ), true, ['save items i1']],
+            'deleteIf (with its DELETE)' => [static fn (DataManager $dm, TypeDefinition $t) => $dm->deleteIf(
+                $t,
+                'i1',
+                static fn (DynamicRecord $r): bool => true,
+                static fn (RunsSql $driver): array => ['DELETE FROM items WHERE uuid = ?', ['i1']],
+            )?->getId(), 'i1', ['delete items i1']],
         ];
     }
 
@@ -247,6 +298,14 @@ final class WritePolicyTest extends TestCase
         $this->assertSame($returns, $result, "{$name}: returns as if written");
         $this->assertSame($before, $this->stored($dm), "{$name}: nothing written under Skip");
         $this->assertSame($reported, self::described($frame->skippedWrites()), "{$name}: each write reported once");
+        if ($reported === []) {
+            // Nothing to write: the same answer under every policy, and nothing written anywhere.
+            $this->assertSame($returns, Contexts::run(ContextFactory::forTest()->refusingWrites(), fn (): mixed => $write($dm, $this->item($dm))), "{$name}: not refused");
+            $this->assertSame($returns, $write($dm, $this->item($dm)), "{$name}: outside a render too");
+            $this->assertSame($before, $this->stored($dm));
+
+            return;
+        }
         $this->assertSame(['default'], array_values(array_unique(array_map(static fn (SkippedWrite $w): string => $w->storage, $frame->skippedWrites()))));
 
         try {
@@ -292,6 +351,22 @@ final class WritePolicyTest extends TestCase
             $this->assertInstanceOf(\RuntimeException::class, $e);
         }
         $this->assertNull($dm->findType('item', 'i2'));
+    }
+
+    public function test_a_refused_save_if_version_leaves_the_record_as_it_was(): void
+    {
+        $dm = $this->manager('sqlite');
+        $record = new DynamicRecord($this->item($dm), ['uuid' => 'i1', 'title' => 'Changed', '_version' => 1]);
+
+        try {
+            Contexts::run(ContextFactory::forTest()->refusingWrites(), fn () => $dm->saveTypeIfVersion($record, 1));
+            $this->fail('refused');
+        } catch (WritesRefused) {
+        }
+        $this->assertSame(1, $record->get('_version'), 'the version is not moved on by a refused write');
+
+        Contexts::run(self::skipping(), fn () => $dm->saveTypeIfVersion($record, 1));
+        $this->assertSame(2, $record->get('_version'), 'as if written: the version a write gives it');
     }
 
     public function test_writes_outside_a_frame_run(): void

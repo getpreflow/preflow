@@ -26,9 +26,14 @@ use Preflow\Validation\ValidatorFactory;
  * point returns as if it had written: save(), insert(), update() and saveType() return normally,
  * insertIgnoring() true, insertMany() the number of models given, saveTypeIfVersion() and
  * updateFieldsIfVersion() true, a delete as if nothing matched, execute() 0, raw() [] for a
- * write, incrementIn() the value stored now (0 for a row not stored). Validation runs first, as
- * on a visit. Under Refuse the write throws WritesRefused (core). transaction() runs its closure;
- * each write inside follows the policy. Outside every render writes run (WritePolicy::Allow).
+ * write, incrementIn() the value stored now (0 for a row not stored; an accounting count runs
+ * under every policy). Validation runs first, as on a visit. A skipped insert of an
+ * auto-increment model leaves its id at 0 (no id is made up); a string id gets its UUID as
+ * usual. updateIf() and deleteIf() (conditional writes) check the stored record as a visit
+ * would and return what it would see. execute() always counts as a write and returns 0, so a
+ * conditional write belongs in updateIf()/deleteIf(), not in execute(). Under Refuse the write
+ * throws WritesRefused (core). transaction() runs its closure; each write inside follows the
+ * policy. Outside every render writes run (WritePolicy::Allow).
  */
 final class DataManager
 {
@@ -575,6 +580,10 @@ final class DataManager
      * Execute a raw SQL query and return results.
      * Use for JOINs, subqueries, aggregates, and complex WHERE clauses
      * that QueryBuilder can't express.
+     *
+     * Under a write policy that skips or refuses writes, a statement that may write (anything but
+     * a plain read: SqlTables::writes()) is a 'raw' write: skipped, it returns []. That errs on the
+     * safe side: a read-only PRAGMA, SET or EXPLAIN DELETE counts as a write there too.
      *
      * @param string $sql Raw SQL query
      * @param array<int|string, mixed> $bindings Parameter bindings
@@ -1570,12 +1579,16 @@ final class DataManager
         $id = $record->getId() ?? throw new \RuntimeException("DynamicRecord must have an ID ({$typeDef->idField}) before saving.");
         $driver = $this->resolveDriver($typeDef->storage);
 
+        if (!Writes::allowed($typeDef->storage, $typeDef->table, (string) $id, 'save')) {
+            // As if written: the record holds the version a write gives it (ruling R9). Under
+            // Refuse the check throws before the record is touched.
+            $record->set($versionField, $next ?? $expected + 1);
+
+            return true;
+        }
         $had = array_key_exists($versionField, $record->toArray());
         $before = $record->get($versionField);
         $record->set($versionField, $next ?? $expected + 1);
-        if (!Writes::allowed($typeDef->storage, $typeDef->table, (string) $id, 'save')) {
-            return true; // as if written: the record holds the version a write gives it (ruling R9)
-        }
 
         try {
             $written = $this->guarded($record, function () use ($driver, $typeDef, $id, $record, $versionField, $expected): bool {
@@ -1805,13 +1818,16 @@ final class DataManager
      * plainly, which is not atomic (two concurrent increments may count once).
      *
      * @param array<string, scalar|null> $insert the other columns of a new row
+     * @param bool $accounting count under every write policy (Writes 'accounting', since 0.81.0):
+     *                         for counts of work that really happens in a preview or an audit too
+     *                         (the per-person AI limits); otherwise an 'increment' write
      * @throws \InvalidArgumentException when $insert names $field or the id, or $reset->set names $field
      * @since 0.78
      */
-    public function incrementIn(TypeDefinition $def, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset = null): int
+    public function incrementIn(TypeDefinition $def, string|int $id, string $field, int $by, array $insert, ?CounterReset $reset = null, bool $accounting = false): int
     {
         $driver = $this->resolveDriver($def->storage);
-        if (!Writes::allowed($def->storage, $def->table, (string) $id, 'increment')) {
+        if (!Writes::allowed($def->storage, $def->table, (string) $id, $accounting ? 'accounting' : 'increment')) {
             $stored = $driver->findOne($def->table, $id, $def->idField)[$field] ?? null;
 
             return is_numeric($stored) ? (int) $stored : 0; // the counter as stored now: nothing counted
@@ -1825,6 +1841,103 @@ final class DataManager
         $this->reportWrite($def->storage, $def->table, (string) $id);
 
         return $value;
+    }
+
+    /**
+     * Writes some fields of the record $id of $def only while a check on it still holds: the
+     * conditional write behind a token, a sign-in rotation or a code's use count, the same on
+     * every storage and under every write policy.
+     *
+     * $change gets the stored record and returns the fields to write (only those; the other
+     * columns stay as stored, values as saveType() stores them), or null when the change no
+     * longer applies. Where writes run (WritePolicy::Allow) it is one step: on a storage that runs
+     * SQL, $sql (the same change as one UPDATE, given the driver and $def) decides by its
+     * affected rows; otherwise $change runs on the record read under $lock (a caller's own lock:
+     * it runs the step it is given and returns its result), else under the type's lock
+     * (ExclusiveWrites), else plainly, which is not atomic. Under Skip (a preview, an audit)
+     * $change runs on the record as stored and nothing is written: true when it applies, as if
+     * written (ruling R9), and the write is reported; under Refuse a change that applies throws
+     * WritesRefused (core). So a preview takes the path a visit takes, whatever the storage.
+     *
+     * @param \Closure(DynamicRecord): (array<string, mixed>|null) $change
+     * @param (\Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>})|null $sql
+     * @param (\Closure(\Closure(): ?DynamicRecord): ?DynamicRecord)|null $lock
+     * @return bool whether it was written (false: no such record, or $change did not apply)
+     * @since 0.81.0
+     */
+    public function updateIf(TypeDefinition $def, string|int $id, \Closure $change, ?\Closure $sql = null, ?\Closure $lock = null): bool
+    {
+        return $this->changeIf($def, $id, $change, $sql, $lock, 'save') !== null;
+    }
+
+    /**
+     * Deletes the record $id of $def only while $applies holds on it, as updateIf() writes: one
+     * statement ($sql, a DELETE) on a storage that runs SQL, $applies under the type's lock on
+     * another; under Skip $applies decides on the stored record and nothing is deleted (reported);
+     * under Refuse a delete that applies throws WritesRefused.
+     *
+     * @param \Closure(DynamicRecord): bool $applies
+     * @param (\Closure(RunsSql, TypeDefinition): array{0: string, 1: list<mixed>})|null $sql
+     * @param (\Closure(\Closure(): ?DynamicRecord): ?DynamicRecord)|null $lock
+     * @return DynamicRecord|null the record as read before the delete; null when nothing was deleted
+     * @since 0.81.0
+     */
+    public function deleteIf(TypeDefinition $def, string|int $id, \Closure $applies, ?\Closure $sql = null, ?\Closure $lock = null): ?DynamicRecord
+    {
+        return $this->changeIf($def, $id, static fn (DynamicRecord $r): ?array => $applies($r) ? [] : null, $sql, $lock, 'delete');
+    }
+
+    /**
+     * updateIf() and deleteIf(): the record read before, when the change was made (or would be).
+     *
+     * @param \Closure(DynamicRecord): (array<string, mixed>|null) $change
+     * @param 'save'|'delete' $operation
+     */
+    private function changeIf(TypeDefinition $def, string|int $id, \Closure $change, ?\Closure $sql, ?\Closure $lock, string $operation): ?DynamicRecord
+    {
+        // Read first: an unknown id (anything a client makes up) takes no lock and writes nothing.
+        $record = $this->findIn($def, $id);
+        if ($record === null) {
+            return null;
+        }
+        if (Writes::policy() !== WritePolicy::Allow) {
+            if ($change($record) === null) {
+                return null;
+            }
+            Writes::allowed($def->storage, $def->table, (string) $id, $operation); // throws under Refuse
+
+            return $record;
+        }
+
+        $driver = $this->resolveDriver($def->storage);
+        if ($sql !== null && $driver instanceof RunsSql) {
+            [$statement, $bindings] = $sql($driver, $def);
+
+            return $this->execute($statement, $bindings, $def->storage) === 1 ? $record : null;
+        }
+
+        $step = function () use ($driver, $def, $id, $change, $operation): ?DynamicRecord {
+            $fresh = $this->findIn($def, $id);
+            $fields = $fresh === null ? null : $change($fresh);
+            if ($fields === null) {
+                return null;
+            }
+            if ($operation === 'delete') {
+                $driver->delete($def->table, $id, $def->idField);
+            } else {
+                $stored = $driver->findOne($def->table, $id, $def->idField) ?? [];
+                $driver->save($def->table, $id, $this->storageValues($def, array_replace($stored, $this->storageValues($def, $fields))), $def->idField);
+            }
+            $this->reportWrite($def->storage, $def->table, (string) $id);
+
+            return $fresh;
+        };
+
+        return match (true) {
+            $lock !== null => $lock($step),
+            $driver instanceof ExclusiveWrites => $driver->exclusive($def->table, $step),
+            default => $step(),
+        };
     }
 
     /**

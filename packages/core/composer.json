@@ -19,7 +19,7 @@
     "conflict": {
         "preflow/auth": "<0.66",
         "preflow/components": "<0.60",
-        "preflow/data": "<0.78",
+        "preflow/data": "<0.81.0",
         "preflow/htmx": "<0.65",
         "preflow/i18n": "<0.78",
         "preflow/routing": "<0.78.2",

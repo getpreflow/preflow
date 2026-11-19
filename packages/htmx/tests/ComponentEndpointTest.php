@@ -66,7 +66,7 @@ class ThrowingActionComponent extends Component
 {
     public function actions(): array
     {
-        return ['explode', 'forbid'];
+        return ['explode', 'forbid', 'save'];
     }
 
     public function actionExplode(array $params = []): void
@@ -77,6 +77,12 @@ class ThrowingActionComponent extends Component
     public function actionForbid(array $params = []): void
     {
         throw new ForbiddenHttpException('nope');
+    }
+
+    /** A save, as a form action makes it: asks the write policy first. */
+    public function actionSave(array $params = []): void
+    {
+        \Preflow\Core\Context\Writes::allowed('default', 'items', '1', 'save');
     }
 
     public function fallback(\Throwable $e): ?string
@@ -458,6 +464,27 @@ final class ComponentEndpointTest extends TestCase
 
         $this->expectException(ForbiddenHttpException::class);
         $this->endpoint->handle($this->createRequest('POST', '/--component/action', ['token' => $token]));
+    }
+
+    public function test_a_refused_write_in_an_action_is_answered_403_not_the_fallback(): void
+    {
+        $token = $this->tokenService->encode(ThrowingActionComponent::class, [], 'save');
+        $request = $this->createRequest('POST', '/--component/action', ['token' => $token]);
+
+        \Preflow\Core\Context\Contexts::reset();
+        try {
+            \Preflow\Core\Context\Contexts::run(
+                \Preflow\Testing\ContextFactory::forTest()->refusingWrites(),
+                fn () => $this->endpoint->handle($request),
+            );
+            $this->fail('the refusal reaches the edge');
+        } catch (\Preflow\Core\Context\WritesRefused $e) {
+            $response = (new \Preflow\Core\Error\ErrorHandler(new \Preflow\Core\Error\ProdErrorRenderer()))->handleException($e, $request);
+            $this->assertSame(403, $response->getStatusCode());
+            $this->assertStringContainsString('This preview does not change data.', (string) $response->getBody());
+        } finally {
+            \Preflow\Core\Context\Contexts::reset();
+        }
     }
 
     public function test_forbidden_from_authorize_stays_403(): void

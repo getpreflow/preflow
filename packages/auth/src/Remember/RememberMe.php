@@ -22,9 +22,11 @@ use Preflow\Data\TypeFieldDefinition;
  * (parallel requests with one value), without rotating again. Any other wrong
  * validator for a known selector means an old value was replayed after the
  * owner used it: every row of that user for the guard is deleted.
- * On SQL a conditional UPDATE decides the rotation by its affected rows, so
- * two uses of one value never both rotate; on the JSON driver an exclusive
- * file lock in $lockDir guards the read and the write.
+ * The rotation is one conditional write (DataManager::updateIf()): on SQL an
+ * UPDATE decides by its affected rows, so two uses of one value never both
+ * rotate; on another storage an exclusive file lock in $lockDir guards the read
+ * and the write. In a preview (writes skipped) the value is accepted and a new
+ * cookie made as on a visit, on every storage, and nothing is stored.
  */
 final class RememberMe
 {
@@ -99,63 +101,38 @@ final class RememberMe
             return null;
         }
         [, $selector, $validator] = $m;
-        $driver = $this->dm->driver($this->storage);
-
-        if ($driver instanceof RunsSql) {
-            $record = $this->dm->findIn($this->type, $selector);
-            if ($record === null) {
-                return null;
-            }
-            $now = ($this->clock)();
-            $next = $this->check($record, $selector, $guard, $validator, $now);
-            $userId = (string) $record->get('user_id');
-            if ($next === null || $next === self::KEEP) {
-                return $next === null ? null : ['userId' => $userId, 'cookie' => null];
-            }
-            $dialect = $driver->dialect();
-            $q = $dialect->quoteIdentifier(...);
-            $rotated = $this->dm->execute(
-                'UPDATE ' . $q(self::TABLE) . ' SET ' . $q('validator_hash') . ' = ?, ' . $q('previous_hash') . ' = ?, ' . $q('rotated_at') . ' = ?'
-                    . ' WHERE ' . $q('id') . ' = ? AND ' . $q('validator_hash') . ' = ? AND ' . $q('expires_at') . ' > ?',
-                [hash('sha256', $next), hash('sha256', $validator), $now, $selector, hash('sha256', $validator), $now],
-                $this->storage,
-            );
-
-            // A lost UPDATE: a concurrent request with this value rotated first, and its response carries the new cookie.
-            return ['userId' => $userId, 'cookie' => $rotated === 1 ? $selector . ':' . $next : null];
-        }
-
-        // Unknown selectors (any cookie a client makes up) never get a lock file.
-        if ($this->dm->findIn($this->type, $selector) === null) {
+        $record = $this->dm->findIn($this->type, $selector);
+        if ($record === null) {
             return null;
         }
+        $now = ($this->clock)();
+        $next = $this->check($record, $selector, $guard, $validator, $now);
+        $userId = (string) $record->get('user_id');
+        if ($next === null || $next === self::KEEP) {
+            return $next === null ? null : ['userId' => $userId, 'cookie' => null];
+        }
+        $hash = hash('sha256', $validator);
+        $rotated = $this->dm->updateIf(
+            $this->type,
+            $selector,
+            // Still the value this request holds and not expired: rotate it.
+            static fn (DynamicRecord $fresh): ?array => hash_equals((string) $fresh->get('validator_hash'), $hash) && (int) $fresh->get('expires_at') > $now
+                ? ['validator_hash' => hash('sha256', $next), 'previous_hash' => $hash, 'rotated_at' => $now]
+                : null,
+            static function (RunsSql $driver) use ($next, $hash, $now, $selector): array {
+                $q = $driver->dialect()->quoteIdentifier(...);
 
-        return FileLock::run($this->lockDir, 'remember-' . $selector, function () use ($selector, $guard, $validator): array {
-            $record = $this->dm->findIn($this->type, $selector);
-            if ($record === null) {
-                return [null, true];
-            }
-            $now = ($this->clock)();
-            $next = $this->check($record, $selector, $guard, $validator, $now);
-            $userId = (string) $record->get('user_id');
-            if ($next === null) {
-                return [null, $this->dm->findIn($this->type, $selector) === null];
-            }
-            if ($next === self::KEEP) {
-                return [['userId' => $userId, 'cookie' => null], false];
-            }
-            $this->dm->saveType(new DynamicRecord($this->type, [
-                'id' => $selector,
-                'guard' => $guard,
-                'user_id' => $userId,
-                'validator_hash' => hash('sha256', $next),
-                'previous_hash' => hash('sha256', $validator),
-                'rotated_at' => $now,
-                'expires_at' => (int) $record->get('expires_at'),
-            ]), validate: false);
+                return [
+                    'UPDATE ' . $q(self::TABLE) . ' SET ' . $q('validator_hash') . ' = ?, ' . $q('previous_hash') . ' = ?, ' . $q('rotated_at') . ' = ?'
+                        . ' WHERE ' . $q('id') . ' = ? AND ' . $q('validator_hash') . ' = ? AND ' . $q('expires_at') . ' > ?',
+                    [hash('sha256', $next), $hash, $now, $selector, $hash, $now],
+                ];
+            },
+            fn (\Closure $step): ?DynamicRecord => FileLock::run($this->lockDir, 'remember-' . $selector, static fn (): array => [$step(), false]),
+        );
 
-            return [['userId' => $userId, 'cookie' => $selector . ':' . $next], false];
-        });
+        // A lost rotation: a concurrent request with this value rotated first, and its response carries the new cookie.
+        return ['userId' => $userId, 'cookie' => $rotated ? $selector . ':' . $next : null];
     }
 
     /** Delete the row of $cookie on $guard (signing out on this device). */

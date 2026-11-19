@@ -21,9 +21,10 @@ use Preflow\Validation\ValidationException;
  *
  * Codes are the data type "code" (storage alias "codes"); redemptions are the internal table
  * code_redemption on the same storage, never in the TypeCatalog, so neither is exported.
- * redeem() counts a use atomically, so max_uses holds under concurrent redeems: on a SQL
- * storage one conditional UPDATE, on the JSON driver a file lock in $lockDir around the
- * read-modify-write.
+ * redeem() counts a use atomically, so max_uses holds under concurrent redeems
+ * (DataManager::updateIf()): on a SQL storage one conditional UPDATE, on another a file lock in
+ * $lockDir around the read-modify-write. In a preview (writes skipped) a redeem, revoke or
+ * update takes the path a visit takes, on every storage, and writes nothing.
  */
 final class Codes
 {
@@ -345,64 +346,42 @@ final class Codes
      */
     private function countUse(string $codeId): bool
     {
-        $type = $this->dm->getTypeRegistry()?->get('code')
-            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
-        $driver = $this->dm->driver($type->storage);
+        $type = $this->codeType();
 
-        if ($driver instanceof RunsSql) {
-            [$table, $id, $uses, $count, $limit] = $this->sql($driver, $type);
+        return $this->dm->updateIf(
+            $type,
+            $codeId,
+            static function (DynamicRecord $record): ?array {
+                $max = $record->get('max_uses');
+                if ($max !== null && $max !== '' && (int) $record->get('uses') >= (int) $max) {
+                    return null;
+                }
 
-            return $this->dm->execute(
-                "UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$limit} IS NULL OR {$count} < {$limit})",
-                [$codeId],
-                $type->storage,
-            ) === 1;
-        }
+                return ['uses' => (int) $record->get('uses') + 1];
+            },
+            function (RunsSql $driver, TypeDefinition $type) use ($codeId): array {
+                [$table, $id, $uses, $count, $limit] = $this->sql($driver, $type);
 
-        return $this->locked($codeId, function () use ($codeId): bool {
-            $record = $this->dm->findType('code', $codeId);
-            if ($record === null) {
-                return false;
-            }
-            $max = $record->get('max_uses');
-            if ($max !== null && $max !== '' && (int) $record->get('uses') >= (int) $max) {
-                return false;
-            }
-            $record->set('uses', (int) $record->get('uses') + 1);
-            $this->dm->saveType($record, false);
-
-            return true;
-        });
+                return ["UPDATE {$table} SET {$uses} = {$count} + 1 WHERE {$id} = ? AND ({$limit} IS NULL OR {$count} < {$limit})", [$codeId]];
+            },
+            fn (\Closure $step): ?DynamicRecord => $this->locked($codeId, $step),
+        );
     }
 
     /** Gives one counted use back, atomically and never below zero (the undo of countUse()). */
     private function uncountUse(string $codeId): void
     {
-        $type = $this->dm->getTypeRegistry()?->get('code')
-            ?? throw new \RuntimeException('preflow/codes: the type "code" is not defined (no config/data.php?).');
-        $driver = $this->dm->driver($type->storage);
+        $this->dm->updateIf(
+            $this->codeType(),
+            $codeId,
+            static fn (DynamicRecord $record): ?array => (int) $record->get('uses') > 0 ? ['uses' => (int) $record->get('uses') - 1] : null,
+            function (RunsSql $driver, TypeDefinition $type) use ($codeId): array {
+                [$table, $id, $uses, $count] = $this->sql($driver, $type);
 
-        if ($driver instanceof RunsSql) {
-            [$table, $id, $uses, $count] = $this->sql($driver, $type);
-            $this->dm->execute(
-                "UPDATE {$table} SET {$uses} = {$count} - 1 WHERE {$id} = ? AND {$count} > 0",
-                [$codeId],
-                $type->storage,
-            );
-
-            return;
-        }
-
-        $this->locked($codeId, function () use ($codeId): bool {
-            $record = $this->dm->findType('code', $codeId);
-            if ($record === null || (int) $record->get('uses') <= 0) {
-                return false;
-            }
-            $record->set('uses', (int) $record->get('uses') - 1);
-            $this->dm->saveType($record, false);
-
-            return true;
-        });
+                return ["UPDATE {$table} SET {$uses} = {$count} - 1 WHERE {$id} = ? AND {$count} > 0", [$codeId]];
+            },
+            fn (\Closure $step): ?DynamicRecord => $this->locked($codeId, $step),
+        );
     }
 
     /**
@@ -427,8 +406,14 @@ final class Codes
         ];
     }
 
-    /** Runs $fn holding an exclusive lock on codes-{id}.lock in the lock directory. */
-    private function locked(string $codeId, \Closure $fn): bool
+    /**
+     * Runs $fn holding an exclusive lock on codes-{id}.lock in the lock directory.
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    private function locked(string $codeId, \Closure $fn): mixed
     {
         if (!is_dir($this->lockDir) && !@mkdir($this->lockDir, 0755, true) && !is_dir($this->lockDir)) {
             throw new \RuntimeException("Codes lock directory {$this->lockDir} cannot be created.");
@@ -475,45 +460,35 @@ final class Codes
      */
     private function writeColumns(string $codeId, array $values, \Closure $applies, ?\Closure $extra = null): bool
     {
-        $type = $this->codeType();
-        $driver = $this->dm->driver($type->storage);
+        return $this->dm->updateIf(
+            $this->codeType(),
+            $codeId,
+            static fn (DynamicRecord $record): ?array => $applies($record) ? $values : null,
+            static function (RunsSql $driver, TypeDefinition $type) use ($codeId, $values, $extra): array {
+                $dialect = $driver->dialect();
+                $table = $dialect->quoteIdentifier($type->table);
+                $id = $dialect->quoteIdentifier($type->idField);
+                $set = [];
+                foreach (array_keys($values) as $column) {
+                    $set[] = $dialect->quoteIdentifier($column) . ' = ?';
+                }
+                $guard = '';
+                if (array_key_exists('revoked_at', $values)) {
+                    $col = $dialect->quoteIdentifier('revoked_at');
+                    $guard = " AND ({$col} IS NULL OR {$col} = '')";
+                }
 
-        if ($driver instanceof RunsSql) {
-            $dialect = $driver->dialect();
-            $table = $dialect->quoteIdentifier($type->table);
-            $id = $dialect->quoteIdentifier($type->idField);
-            $set = [];
-            foreach (array_keys($values) as $column) {
-                $set[] = $dialect->quoteIdentifier($column) . ' = ?';
-            }
-            $guard = '';
-            if (array_key_exists('revoked_at', $values)) {
-                $col = $dialect->quoteIdentifier('revoked_at');
-                $guard = " AND ({$col} IS NULL OR {$col} = '')";
-            }
+                $params = [...array_values($values), $codeId];
+                if ($extra !== null) {
+                    [$sql, $more] = $extra($driver, $type);
+                    $guard .= $sql;
+                    array_push($params, ...$more);
+                }
 
-            $params = [...array_values($values), $codeId];
-            if ($extra !== null) {
-                [$sql, $more] = $extra($driver, $type);
-                $guard .= $sql;
-                array_push($params, ...$more);
-            }
-
-            return $this->dm->execute('UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$id} = ?{$guard}", $params, $type->storage) === 1;
-        }
-
-        return $this->locked($codeId, function () use ($codeId, $values, $applies): bool {
-            $record = $this->dm->findType('code', $codeId);
-            if ($record === null || !$applies($record)) {
-                return false;
-            }
-            foreach ($values as $column => $value) {
-                $record->set($column, $value);
-            }
-            $this->dm->saveType($record, false);
-
-            return true;
-        });
+                return ['UPDATE ' . $table . ' SET ' . implode(', ', $set) . " WHERE {$id} = ?{$guard}", $params];
+            },
+            fn (\Closure $step): ?DynamicRecord => $this->locked($codeId, $step),
+        );
     }
 
     /**

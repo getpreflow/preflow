@@ -7,14 +7,13 @@ namespace Preflow\Ai;
 use Preflow\Ai\Usage\Pricing;
 use Preflow\Ai\Usage\UsageEntry;
 use Preflow\Ai\Usage\UsageLog;
-use Preflow\Core\Context\Writes;
 
 /**
  * Writes a usage entry after every call, so no caller has to remember to. A request that failed
  * is logged too (with 0 tokens, as the provider gave no usage), because failed calls still count
  * when you look at how often a run needed retries. A broken log never breaks the call itself.
- * The entry is a 'log' write of the write policy (Writes, storage 'ai'): a render that skips or
- * refuses writes (a preview, the SEO audit) writes no entry and reports the skipped write.
+ * The entry is accounting, not data (Writes 'accounting'): it is written under every write
+ * policy, in a preview or an audit too, because the call and its cost really happened.
  */
 final class LoggedAiClient implements AiClient
 {
@@ -55,9 +54,6 @@ final class LoggedAiClient implements AiClient
 
     private function record(string $purpose, string $provider, string $model, TokenUsage $usage, bool $failed): void
     {
-        if (!Writes::allowed('ai', 'usage', null, 'log')) {
-            return;
-        }
         try {
             $this->log->record(new UsageEntry(new \DateTimeImmutable(), $purpose, $provider, $model, $usage, $this->cost($model, $usage), $failed));
         } catch (\RuntimeException) {

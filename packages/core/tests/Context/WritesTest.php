@@ -136,6 +136,12 @@ final class WritesTest extends TestCase
         $this->assertStringContainsString('This preview does not change data.', (string) $refused->getBody());
         $this->assertSame([], glob($this->dir . '/storage/data/notes/*') ?: [], 'nothing saved');
 
+        $json = $post->withHeader('Accept', 'application/json');
+        $asJson = $app->render(RenderContext::fromRequest($json, $app->site(), $clock)->refusingWrites(), $json)->response;
+        $this->assertSame(403, $asJson->getStatusCode());
+        $this->assertStringStartsWith('application/json', $asJson->getHeaderLine('Content-Type'));
+        $this->assertSame('This preview does not change data.', json_decode((string) $asJson->getBody(), true)['message'] ?? null);
+
         $saved = $app->render(RenderContext::fromRequest($post, $app->site(), $clock), $post)->response;
         $this->assertSame(201, $saved->getStatusCode(), 'the same POST saves outside a preview');
         $this->assertCount(1, glob($this->dir . '/storage/data/notes/*') ?: []);

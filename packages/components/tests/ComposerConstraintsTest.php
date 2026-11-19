@@ -8,7 +8,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * "^0.60 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing components with a core release that lacks what it calls: core 0.60 (the page cache: LiveParts, PageCache and Freshness behind #[Live] and #[Freshness]).
+ * Composer from pairing components with a core release that lacks what it calls: core 0.81.0 (Context\WritesRefused,
+ * which every render method rethrows so a refused write answers 403); core 0.60 (the page cache: LiveParts, PageCache and Freshness behind #[Live] and #[Freshness]).
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -16,7 +17,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame('^0.60 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame(['preflow/core' => '<0.60'], $composer['conflict'] ?? null);
+        $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
+        $this->assertSame(['preflow/core' => '<0.81.0'], $composer['conflict'] ?? null);
     }
 }

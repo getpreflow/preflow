@@ -17,10 +17,11 @@ use Preflow\Data\TypeFieldDefinition;
  *
  * A token is 32 random bytes, base64url; only its SHA-256 hash is stored, as
  * the row id, with a purpose, a subject (who it is for) and expires_at.
- * consume() spends a token at most once: on SQL one DELETE decides by its
- * affected rows, on the JSON driver an exclusive file lock in $lockDir guards
- * the read and the delete (only for a token that exists; the file is removed
- * once the row is gone).
+ * consume() spends a token at most once (DataManager::deleteIf()): on SQL one
+ * DELETE decides by its affected rows, on another storage an exclusive file lock
+ * in $lockDir guards the read and the delete (only for a token that exists; the
+ * file is removed once the row is gone). In a preview (writes skipped) a valid
+ * token gives its subject as on a visit, on every storage, and stays stored.
  */
 final class Tokens
 {
@@ -73,46 +74,38 @@ final class Tokens
     public function consume(string $token, string $purpose): ?string
     {
         $id = hash('sha256', $token);
-        $driver = $this->dm->driver($this->storage);
+        // "Now" is read when the check runs (under the lock on a storage without SQL).
+        $now = fn (): int => ($this->clock)();
+        $consumed = $this->dm->deleteIf(
+            $this->type,
+            $id,
+            // The lookup found the hash; hash_equals confirms the stored one exactly.
+            static function (DynamicRecord $record) use ($id, $purpose, $now): bool {
+                $at = $now();
 
-        if ($driver instanceof RunsSql) {
-            $record = $this->dm->findIn($this->type, $id);
-            if ($record === null) {
-                return null;
-            }
-            $dialect = $driver->dialect();
-            $deleted = $this->dm->execute(
-                'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE)
-                    . ' WHERE ' . $dialect->quoteIdentifier('id') . ' = ? AND ' . $dialect->quoteIdentifier('purpose') . ' = ?'
-                    . ' AND ' . $dialect->quoteIdentifier('expires_at') . ' > ?',
-                [$id, $purpose, ($this->clock)()],
-                $this->storage,
-            );
+                return hash_equals((string) $record->getId(), $id)
+                    && $record->get('purpose') === $purpose
+                    && (int) $record->get('expires_at') > $at;
+            },
+            static function (RunsSql $driver) use ($id, $purpose, $now): array {
+                $dialect = $driver->dialect();
 
-            return $deleted === 1 ? (string) $record->get('subject') : null;
-        }
+                return [
+                    'DELETE FROM ' . $dialect->quoteIdentifier(self::TABLE)
+                        . ' WHERE ' . $dialect->quoteIdentifier('id') . ' = ? AND ' . $dialect->quoteIdentifier('purpose') . ' = ?'
+                        . ' AND ' . $dialect->quoteIdentifier('expires_at') . ' > ?',
+                    [$id, $purpose, $now()],
+                ];
+            },
+            // The file lock is taken only for a token that exists; its file goes once the row has.
+            fn (\Closure $step): ?DynamicRecord => FileLock::run($this->lockDir, 'tokens-' . $id, function () use ($step, $id): array {
+                $record = $step();
 
-        // Unknown tokens (anything posted to a public link) never get a lock file.
-        if ($this->dm->findIn($this->type, $id) === null) {
-            return null;
-        }
+                return [$record, $this->dm->findIn($this->type, $id) === null];
+            }),
+        );
 
-        return FileLock::run($this->lockDir, 'tokens-' . $id, function () use ($id, $purpose): array {
-            $record = $this->dm->findIn($this->type, $id);
-            if ($record === null) {
-                return [null, true];
-            }
-            $now = ($this->clock)();
-            // The file lookup found the hash; hash_equals confirms the stored one exactly.
-            if (!hash_equals((string) $record->getId(), $id)
-                || $record->get('purpose') !== $purpose
-                || (int) $record->get('expires_at') <= $now) {
-                return [null, false];
-            }
-            $this->dm->deleteIn($this->type, $id);
-
-            return [(string) $record->get('subject'), true];
-        });
+        return $consumed === null ? null : (string) $consumed->get('subject');
     }
 
     /** Delete every token of $purpose for $subject. Returns how many were deleted. */

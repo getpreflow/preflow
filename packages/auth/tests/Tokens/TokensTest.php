@@ -221,6 +221,45 @@ final class TokensTest extends DataTestCase
 
     public static ?string $spent = null;
 
+    /** In a preview (writes skipped) a token is checked as on a visit, on every storage, and stays. */
+    public function test_a_preview_consumes_as_a_visit_and_writes_nothing(): void
+    {
+        foreach ($this->storages() as $storage) {
+            $t = $this->tokens($storage);
+            $token = $t->issue('confirm', 'user-1', 3600);
+            $old = $t->issue('confirm', 'user-2', 10);
+            $this->now += 20;
+
+            \Preflow\Core\Context\Contexts::reset();
+            $frame = null;
+            $seen = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->skippingWrites(), function () use ($t, $token, $old, &$frame): array {
+                $frame = \Preflow\Core\Context\Contexts::frame();
+
+                return [$t->consume($token, 'confirm'), $t->consume($token, 'reset'), $t->consume($old, 'confirm')];
+            });
+            $this->assertSame(['user-1', null, null], $seen, "{$storage}: the path a visit takes");
+            $this->assertCount(1, $frame->skippedWrites(), "{$storage}: the one delete is reported");
+            $this->assertSame('delete', $frame->skippedWrites()[0]->operation);
+
+            try {
+                \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->refusingWrites(), fn () => $t->consume($token, 'confirm'));
+                $this->fail("{$storage}: refused");
+            } catch (\Preflow\Core\Context\WritesRefused) {
+            }
+            \Preflow\Core\Context\Contexts::reset();
+
+            $this->assertSame('user-1', $t->consume($token, 'confirm'), "{$storage}: still stored, spent on a visit");
+            $this->assertNull($t->consume($token, 'confirm'));
+        }
+    }
+
+    #[Group('mysql')]
+    public function test_a_preview_consumes_as_a_visit_and_writes_nothing_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_a_preview_consumes_as_a_visit_and_writes_nothing();
+    }
+
     #[Group('mysql')]
     public function test_issue_and_consume_once_on_mysql(): void
     {

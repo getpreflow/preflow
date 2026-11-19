@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.81: data 0.81.0 (incrementIn()'s accounting flag, which Throttle::hit() passes for the per-person AI limits).
  * Since 0.78.2: routing 0.78.2 (Redirect\RedirectResolver, which the clean-path one hop asks).
  * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which Throttle gives its purpose field); i18n 0.78
  * (LocaleMiddleware takes urls:, cookieName:, pageExists: and nonPublic:, the bare-path redirect and the
@@ -52,7 +53,7 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/auth' => '<0.66',
             'preflow/components' => '<0.60',
-            'preflow/data' => '<0.78',
+            'preflow/data' => '<0.81.0',
             'preflow/htmx' => '<0.65',
             'preflow/i18n' => '<0.78',
             'preflow/routing' => '<0.78.2',

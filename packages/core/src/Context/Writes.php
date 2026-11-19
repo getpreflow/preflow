@@ -16,8 +16,9 @@ namespace Preflow\Core\Context;
  * as a role, the SEO audit): the write is recorded in the current frame as a SkippedWrite and
  * false comes back, so the caller returns as if it had written. Refuse (a fragment under a
  * preview token): WritesRefused is thrown, except for 'log' writes (a redirect hit, the
- * not-found log, a usage line), which are skipped and reported, so a preview that follows an
- * old address still redirects.
+ * not-found log), which are skipped and reported, so a preview that follows an
+ * old address still redirects. 'accounting' writes (the AI usage log, the per-person AI limits:
+ * work that really happens and costs money) run under every policy and are never reported.
  *
  * Ask before the write, never inside a storage driver: every driver then follows the policy.
  *
@@ -29,14 +30,15 @@ final class Writes
      * @param string $storage the storage (or store) written to
      * @param string $type the record type, table, file kind or log
      * @param string|null $id the record's id, when the write names one
-     * @param string $operation save, delete, raw, increment, file or log (SkippedWrite)
+     * @param string $operation save, delete, raw, increment, file or log (SkippedWrite), or
+     *                          accounting (always true, never reported)
      *
      * @throws WritesRefused under WritePolicy::Refuse for anything but a 'log' write
      */
     public static function allowed(string $storage, string $type, ?string $id, string $operation): bool
     {
         $policy = self::policy();
-        if ($policy === WritePolicy::Allow) {
+        if ($policy === WritePolicy::Allow || $operation === 'accounting') {
             return true;
         }
         $write = new SkippedWrite($storage, $type, $id, $operation);

@@ -12,10 +12,9 @@ use Preflow\Ai\Usage\Pricing;
 use Preflow\Ai\Usage\UsageEntry;
 use Preflow\Ai\Usage\UsageLog;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\SkippedWrite;
 use Preflow\Testing\ContextFactory;
 
-/** The usage entry is a 'log' write of the write policy. */
+/** The usage entry is accounting: written under every write policy, never reported as skipped. */
 final class LoggedAiClientWritePolicyTest extends TestCase
 {
     protected function setUp(): void
@@ -28,7 +27,7 @@ final class LoggedAiClientWritePolicyTest extends TestCase
         Contexts::reset();
     }
 
-    public function test_the_usage_entry_follows_the_write_policy(): void
+    public function test_the_usage_entry_is_written_under_every_policy(): void
     {
         $log = new class implements UsageLog {
             /** @var list<UsageEntry> */
@@ -54,11 +53,11 @@ final class LoggedAiClientWritePolicyTest extends TestCase
                 return $client->complete(new AiRequest('draft', 'a prompt'));
             });
             $this->assertSame('{"ok":true}', $response->text, "{$case}: the answer comes back");
-            $this->assertSame([], $log->entries, "{$case}: no usage entry written");
-            $this->assertEquals([new SkippedWrite('ai', 'usage', null, 'log')], $frame->skippedWrites());
+            $this->assertSame([], $frame->skippedWrites(), "{$case}: accounting is no skipped write");
         }
+        $this->assertCount(2, $log->entries, 'the spending is recorded in a preview too');
 
         $client->complete(new AiRequest('draft', 'a prompt'));
-        $this->assertCount(1, $log->entries, 'outside a render the entry is written');
+        $this->assertCount(3, $log->entries, 'and outside a render');
     }
 }

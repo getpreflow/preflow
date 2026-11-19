@@ -64,6 +64,35 @@ final class AiLimitsTest extends DataTestCase
         return count($this->dataManager()->queryIn($this->throttle()->definition())->get());
     }
 
+    /**
+     * The AI work a preview or an audit starts really happens, so it counts toward the person's
+     * limit under every write policy (accounting); a login throttle's count stays skipped there.
+     */
+    #[DataProvider('storages')]
+    public function test_a_preview_counts_toward_the_limit(string $storage = 'sqlite'): void
+    {
+        $this->storage = $storage;
+        $limits = $this->limits(['draft' => ['max' => 2]]);
+        \Preflow\Core\Context\Contexts::reset();
+
+        try {
+            $frame = null;
+            \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->skippingWrites(), function () use ($limits, &$frame): void {
+                $frame = \Preflow\Core\Context\Contexts::frame();
+                $limits->take(AiLimits::DRAFT, 'p1');
+                $this->throttle()->hit('auth.login', 'client', 900); // not accounting: skipped
+            });
+            \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->refusingWrites(), static fn () => $limits->take(AiLimits::DRAFT, 'p1'));
+            $this->assertSame(['increment'], array_map(static fn ($w): string => $w->operation, $frame->skippedWrites()), 'only the login count is skipped');
+            $this->assertSame(1, $this->rows(), 'the AI count is stored, the login count is not');
+
+            $this->expectException(AiLimitReached::class);
+            \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->skippingWrites(), static fn () => $limits->take(AiLimits::DRAFT, 'p1'));
+        } finally {
+            \Preflow\Core\Context\Contexts::reset();
+        }
+    }
+
     #[DataProvider('storages')]
     public function test_take_allows_max_then_refuses_with_retry_after(string $storage = 'sqlite'): void
     {
