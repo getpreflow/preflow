@@ -13,6 +13,19 @@ composer require preflow/folio
 Requires PHP 8.4+. Composes `preflow/data`, `preflow/view`, `preflow/routing`, and
 `preflow/form` (all already present in a standard Preflow app).
 
+**AI features need `preflow/ai`** (since 0.80): "Write a draft" and Settings → AI appear only
+when it is installed, and so does Translate, unless the site names a translator of its own
+(`config/ai.php` `translation.translator`, see `preflow/i18n`). Folio only suggests the package,
+so add it if you want them:
+
+```bash
+composer require preflow/ai
+```
+
+Without it Folio works as usual and simply leaves out what is not there: no "Write a draft", no
+Settings → AI and no matching permissions in the roles, and those addresses answer 404. Translate
+(and the `ai.translate` permission) stays only with a translator of the site's own.
+
 > **Ready-wired app:** `composer create-project preflow/starter-folio myapp` gives you a seeded
 > job board with Folio already configured. The steps below are for adding Folio to an existing
 > app. If Composer refuses a dev version, allow it in your `composer.json`
@@ -140,6 +153,34 @@ The admin ships its own htmx (`@folio/htmx.js`) whatever the app's hypermedia dr
 (`config/app.php` `hypermedia`) is: its screens never use the app's driver, and Folio adds htmx to
 core's `HypermediaProtocols`, so its requests are treated as htmx requests (an expired session
 reloads the editor, a signed-out one is sent to the login) next to the app's own driver.
+
+## Why Folio adds these
+
+**Every type gets the same system columns.** On SQL storage, Folio adds a fixed set of
+underscore columns to the table of every type it lists, whether or not that type publishes or
+is translated today: `_locales` (the languages a record is visible in), `_translated_from`,
+`_translated_source` and `_machine_translated` (translation state), `_order` (manual order),
+`_seo`, and the publishing columns `_version`, `_publish_at`, `_share_token`, `_published_at`
+and `_published_by`. `preflow migrate` only creates and adds, so a type that gains publishing
+(`"publishing": true`) or a second language later finds those columns already there, and you do
+not need a migration to switch a feature on. What a type does add when it starts to publish is
+its `__published` and `__revisions` tables; `preflow migrate` creates them. The cost is a few
+empty (nullable) columns on types that never use them.
+
+**Media, blocks and publishing are required, not optional.** Folio's own screens and fields are
+built on these packages, so `preflow/folio` requires them and registers their service providers
+itself:
+
+- `preflow/media` is the asset library. The Assets screens, the `asset` field and "where is
+  this file used" run on it, and its routes (private files, `/media/…` images) are added to
+  every app that uses Folio.
+- `preflow/blocks` is behind the `blocks` field and its editor, and renders blocks on the
+  pages Folio shows.
+- `preflow/publishing` does drafts, publishing, scheduling, revisions and share previews.
+  Folio supplies the rules (which types publish, validation, languages) and keeps the screens.
+
+An app that wants none of this does not need Folio: the core packages work without it.
+`preflow/ai` is the exception that stays optional (see Installation).
 
 ## Access
 
@@ -2673,7 +2714,7 @@ search engines require.
 
 ### Translate with AI
 
-With AI on (`config/ai.php` `enabled` and the provider's key, see `preflow/ai`), each language
+With AI on (`preflow/ai` installed, `config/ai.php` `enabled` and the provider's key, see `preflow/ai`) or a translator of the site's own, each language
 tab except the default gets a **Translate** button, for users with the `ai.translate`
 permission ("Use AI translation") and the type's edit permission. With AI off there is no
 button, the form's markup is unchanged and the endpoints below answer 404.

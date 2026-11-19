@@ -101,28 +101,21 @@ many went. Run it nightly; `members:prune` runs it too:
 23 3 * * * cd /path/to/site/current && php preflow activity:prune
 ```
 
-### `db:seed [--class=<Name>]` — run the seeders
+### `db:seed [--class=<Name>] [--force]` — run the seeders
 
 Boots the application (like `migrate`), then runs the classes in `app/Seeds/` in filename order. Each seeder is built by the container, so its constructor can take any service, and gets the container's `DataManager`:
 
 ```php
 namespace App\Seeds;
 
-use Preflow\Core\Config\Config;
 use Preflow\Data\DataManager;
+use Preflow\Data\Seed;
 
+#[Seed(debugOnly: true)]   // demo data: never on a server with app.debug off
 final class DemoSeeder
 {
-    public function __construct(private readonly Config $config) {}
-
     public function run(DataManager $data): void
     {
-        // A demo seed must never touch production data.
-        if (!$this->config->get('app.debug')) {
-            echo "Demo data skipped: app.debug is off.\n";
-            return;
-        }
-
         $job = new Job();
         $job->uuid = md5('demo-job-1');   // fixed id: rerunning updates, never duplicates
         $job->title = 'Barista';
@@ -132,7 +125,7 @@ final class DemoSeeder
 ```
 
 ```
-php preflow db:seed
+php preflow db:seed                          # here with app.debug on
 # Running seeders...
 #   Seeded: DemoSeeder
 # Done.
@@ -140,7 +133,18 @@ php preflow db:seed --class=DemoSeeder      # one seeder; a short name under App
 ```
 
 - `.env` is loaded, so a seeder can read `$_ENV` / `getenv()`.
-- `--class=<Name>` runs one seeder, which suits demo data you don't want in every run. `db:seed` doesn't know about environments, so a demo seeder guards itself: the `DemoSeeder` above takes `Config` in its constructor and starts `run()` with `if (!$this->config->get('app.debug')) { return; }`, so running it on a live server leaves the data alone.
+- `--class=<Name>` runs one seeder.
+- `#[Seed(debugOnly: true)]` (from `preflow/data`, since 0.80.0) marks a seeder for demo or test data. With `app.debug` off, a full `db:seed` skips it and prints one line for each seeder it skipped:
+
+  ```
+  php preflow db:seed
+  # Running seeders...
+  #   Seeded: CountrySeeder
+  #   Skipped: DemoSeeder (debug only; app.debug is off)
+  # Done.
+  ```
+
+  `--class=DemoSeeder` with `app.debug` off refuses it (`Seeder DemoSeeder is marked debug only and app.debug is off; pass --force to run it anyway.`, exit 1); `--class=DemoSeeder --force` runs it. `--force` only applies to `--class`: a full run with `--force` still skips such seeders. With `app.debug` on, they run like any other seeder. Seeders without the attribute (or with `#[Seed]` alone) run as before.
 - `save()` validates: the container's `DataManager` has the validator, so `#[Validate]` rules apply.
 - An unknown `--class` prints `Seeder <Name> not found.` and exits 1; a seeder that throws prints `Seeder <Name> failed: <message>` and exits 1.
 - A project without `app/Seeds/` prints `No seeders directory found (app/Seeds/).` and exits 0.

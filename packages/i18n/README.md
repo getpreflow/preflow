@@ -19,8 +19,9 @@ composer require preflow/i18n
 - PSR-15 middleware for locale detection (URL prefix → cookie → Accept-Language), and opt-in
   locale URLs: the default language prefixed, bare paths sent to the visitor's language (since 0.78)
 - Twig functions for global and component-scoped translations
-- Machine translation through the AI connection (`preflow/ai`): single texts, batches, whole
-  collections, with tuning, a glossary and a cost estimate (see "Machine translation" below)
+- Machine translation through the AI connection (`preflow/ai`, installed separately): single
+  texts, batches, whole collections, with tuning, a glossary and a cost estimate (see "Machine
+  translation" below)
 
 ## Configuration
 
@@ -329,9 +330,29 @@ $twig->addExtension(new TranslationExtension($translator));
 ## Machine translation
 
 Machine translation fills missing translations with AI, and keeps a human in the loop. It sits on
-the AI connection in `preflow/ai` (this package requires it), so read that README first for
-`config/ai.php`, keys and costs. Everything here works without Folio. With AI off, the classes
-still load and resolve; only calling the translator throws `AiUnavailable`.
+the AI connection in `preflow/ai`, so read that README first for `config/ai.php`, keys and costs.
+Everything here works without Folio. With AI off, the classes still load and resolve; only
+calling the translator throws `AiUnavailable`.
+
+**Machine translation needs `preflow/ai` or a translator of your own** (since 0.80 this package
+only suggests `preflow/ai`). The default translator, `AiTranslator`, needs the package:
+
+```bash
+composer require preflow/ai
+```
+
+A translator you name in `config/ai.php` (`translation.translator`, below) works without it:
+jobs, `translate:plan`, `translate:work` and Folio's Translate use it as usual. Only AI's own
+extras are missing then: `TranslationSettings` (the tuning and glossary) is not bound, and units
+carry no AI instructions.
+
+With neither, the services below still resolve (so code and screens that depend on them keep
+working), but nothing translates: the translator is `MissingAiTranslator`, which is never
+available. `translate:work` stays quiet (as with AI off), while `translate:plan` and a job that is
+stepped say "Machine translation needs preflow/ai (composer require preflow/ai) or a translator of
+your own (config/ai.php translation.translator)." To ask in your own code:
+`Preflow\I18n\Machine\AiPackage::installed()` (is the package there) and
+`MachineServiceProvider::hasTranslator($container)` (is there a translator that can work).
 
 ### Setup
 

@@ -7,6 +7,8 @@ namespace Preflow\I18n\Console;
 use Preflow\Core\Application;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\I18n\Machine\JobRunner;
+use Preflow\I18n\Machine\MachineTranslator;
+use Preflow\I18n\Machine\MissingAiTranslator;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
 
@@ -48,6 +50,11 @@ final class TranslatePlanCommand implements CommandInterface
         $container = $this->app()->container();
         if (!$container->bound(TextSources::class) || !$container->bound(JobRunner::class)) {
             fwrite(STDERR, "Machine translation is not set up: add Preflow\\I18n\\Machine\\MachineServiceProvider to config/providers.php.\n");
+
+            return 1;
+        }
+        if ($container->bound(MachineTranslator::class) && $container->get(MachineTranslator::class) instanceof MissingAiTranslator) {
+            fwrite(STDERR, MissingAiTranslator::MESSAGE . "\n");
 
             return 1;
         }

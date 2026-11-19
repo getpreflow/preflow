@@ -422,7 +422,8 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
     /**
      * A plain INSERT (never an upsert, never MySQL's INSERT IGNORE, which also swallows other
      * errors): a second writer of the same id fails on the primary key, which is a lost race and
-     * not an error. A duplicate on another unique index is still a UniqueViolation.
+     * not an error. A duplicate on another unique index is still a UniqueViolation. A dialect with
+     * InsertIfNew (since 0.80.0) gives its own statement instead, which skips an existing id.
      *
      * @param array<string, mixed> $data
      * @since 0.79.0
@@ -437,6 +438,12 @@ abstract class PdoDriver implements VersionedStorage, ExclusiveWrites, Aggregati
             static fn ($v) => is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) : $v,
             $data,
         );
+        // A dialect whose failed INSERT aborts the transaction writes a statement that skips an
+        // existing id instead of failing (InsertIfNew, since 0.80.0): no row written is false.
+        $skipping = $this->dialect instanceof InsertIfNew ? $this->dialect->insertNewSql($type, array_keys($data), $idField) : null;
+        if ($skipping !== null) {
+            return $this->write($type, $skipping, array_values($data), $idField)->rowCount() > 0;
+        }
         try {
             $this->write($type, $this->dialect->insertSql($type, array_keys($data)), array_values($data), $idField);
 

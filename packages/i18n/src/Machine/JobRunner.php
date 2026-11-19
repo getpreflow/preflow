@@ -106,7 +106,8 @@ final class JobRunner
      *
      * Every save merges into the stored job under its lock: a step writes only the items it
      * processed and the cost of its own requests, so a browser and the cron worker stepping the same
-     * job never undo each other's results.
+     * job never undo each other's results. Without preflow/ai (MissingAiTranslator) the job is stopped
+     * with MissingAiTranslator::MESSAGE (since 0.80.0).
      *
      * @throws AiUnavailable after the job has been stopped and saved; items done so far stay done
      * @throws AiLimitsMisconfigured after the job has been stopped and saved with its message: the limits
@@ -120,6 +121,15 @@ final class JobRunner
         $job = $this->load($jobId);
         if ($job->state === 'stopped' || $job->state === 'done') {
             return $job;
+        }
+        // Without preflow/ai nothing can translate: the job stops with the reason, its items untouched.
+        if ($this->translator instanceof MissingAiTranslator) {
+            return $this->update($jobId, static function (Job $job): void {
+                if ($job->state !== 'stopped' && $job->state !== 'done') {
+                    $job->state = 'stopped';
+                    $job->message = MissingAiTranslator::MESSAGE;
+                }
+            });
         }
 
         if (!$this->sources->has($job->collection)) {

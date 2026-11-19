@@ -24,6 +24,7 @@ Models are annotated with PHP attributes. `DataManager` is the single entry poin
 | `#[Id]` | Property | Marks the primary key field. Works on any property — use `string $uuid` for UUIDs or `int $id` for auto-increment. |
 | `#[Field(searchable: true)]` | Property | Marks a field; `searchable: true` includes it in full-text search. `unique: true` (or `unique: ['scope', ...]`), `index: true` and `length: n` are described in [Unique fields and indexes](#unique-fields-and-indexes). |
 | `#[Index('state', 'updated_at')]` | Class (repeatable) | A composite index over fields of a type (`#[Entity(type: …)]`), in that order; see [Unique fields and indexes](#unique-fields-and-indexes). |
+| `#[Seed(debugOnly: true)]` | Class | Marks a seeder in `app/Seeds/` as demo data: `preflow db:seed` skips it while `app.debug` is off (since 0.80.0); see `db:seed` in `preflow/devtools`. |
 | `#[Timestamps]` | Class or property | `save()`, `insert()` and `update()` of a plain model set `createdAt` or `created_at` (the first the model has) when it is empty and `updatedAt` or `updated_at` on every write, matching the migration's `$t->timestamps()`. A `?string` property gets `Y-m-d H:i:s` text, an `?int` one the Unix time; a `?\DateTimeImmutable` one is stored as that text. Other types (a mutable `\DateTime` too) are not stamped. A class-backed type (`#[Entity(type: …)]`) is not stamped: it stores what its type definition says, so it sets these values itself or declares them as type fields. |
 
 ### `Model`
@@ -99,8 +100,8 @@ $dm->insertIgnoring($event);
 Validation, the generated id, `#[Timestamps]` and events run as for `insert()`; a model skipped as a
 duplicate runs no write. `insertMany()` inserts the models in the order given; where the storage has
 no transactions (JSON files) the models written before a duplicate stay. A plain model whose `int` id is
-left at `0` gets a new id from the storage and is always written. A class-backed type with a given id
-returns `false` for a duplicate.
+left at `0` (or `null`) gets a new id from the storage and is always written. A plain model or a
+class-backed type with a given id (since 0.80.0 also a non-zero `int` id) returns `false` for a duplicate.
 
 ### `QueryBuilder`
 
@@ -257,6 +258,13 @@ For another SQL database, a `PdoDriver` subclass supplies a `Dialect` (every met
 the match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`, or,
 since 0.77, the optional `PatternMatching::likeSql()` writes it per pattern, which a dialect whose
 operator alone cannot give the text-matching rule (see "Text matching") implements;
+since 0.80.0, the optional `InsertIfNew::insertNewSql()` gives the statement `insertNew()` runs
+for a database whose failed statement aborts the transaction (PostgreSQL:
+`INSERT … ON CONFLICT ("id") DO NOTHING`; `PdoDriver` then counts the rows written, 0 meaning the
+id exists), where without it a plain `INSERT` fails and `isPrimaryKeyViolation()` reads the failure;
+a database whose generated ids do not move past an id written by hand (PostgreSQL serial or identity
+columns) must advance its sequence after such a write, or a later generated id collides (the
+storage-driver contract checks it);
 `numericOrder()` the numeric sort; `missingColumn(\PDOException)` reads the column a failed write
 names, so the "run `preflow migrate`" message works on that database) and registers its schema grammar for its PDO driver name, so
 `Schema`, `RecordTableSync` and `preflow migrate` work:
@@ -324,7 +332,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
 `RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
-`SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
+`SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching` and `InsertIfNew` (0.80). `MysqlDriver` adds
 `RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
 `ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
 `AggregatingStorage`.
@@ -459,6 +467,19 @@ $comment = new Comment();
 $comment->body = 'Great post!';
 $dm->save($comment);
 echo $comment->id; // e.g. 42 — populated after insert
+```
+
+An id you set yourself is kept (since 0.80.0): `insert()` of a model whose int id is not `0`
+writes it under that id, only while no record has it. A second `insert()` of the same id throws,
+as for a string id, and `insertIgnoring()` skips it. Ids the database numbers later go on past
+the ones you set (MySQL/MariaDB and SQLite do this themselves).
+
+```php
+$comment = new Comment();
+$comment->id = 1000;
+$comment->body = 'Imported';
+$dm->insert($comment);   // stored as 1000
+$dm->insert($comment);   // RuntimeException: a record with this id exists
 ```
 
 The table needs a key the database numbers. In a migration declare it with `increments()`

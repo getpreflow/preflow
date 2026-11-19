@@ -13,6 +13,7 @@ use Preflow\I18n\Machine\TranslationWorker;
  * preflow translate:work [--seconds=N]: works the queued machine-translation jobs for N seconds
  * (default 50). Meant for a cron job every minute, and cron mails whatever a job prints: it says
  * nothing when AI is off or there was nothing to do, only when records were worked or the run stopped.
+ * Without preflow/ai and a translator of the app's own it is just as quiet (the translator is never available).
  */
 final class TranslateWorkCommand implements CommandInterface
 {

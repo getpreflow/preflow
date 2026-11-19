@@ -40,7 +40,12 @@ interface Dialect
      */
     public function insertOrUpdateSql(string $table, array $columns, string $idField, array $set): ?string;
 
-    /** Whether the failure is a duplicate on the primary key (not on another unique index). */
+    /**
+     * Whether the failure is a duplicate on the primary key (not on another unique index).
+     * PdoDriver::insertNew() reads a failed plain INSERT with it; a dialect whose failed statement
+     * aborts the transaction (PostgreSQL) gives its own insert-if-new statement instead
+     * (InsertIfNew, an optional interface beside this one, since 0.80.0).
+     */
     public function isPrimaryKeyViolation(\PDOException $e, string $table, string $idField): bool;
 
     /** The failure as a duplicate on a unique index other than the primary key, or null when it is none. */

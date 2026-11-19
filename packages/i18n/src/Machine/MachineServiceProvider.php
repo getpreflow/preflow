@@ -16,6 +16,12 @@ use Preflow\Core\Container\ServiceProvider;
  * Binds machine translation from config/ai.php. Everything resolves with AI off; only using the
  * translator throws AiUnavailable, so admin screens can depend on it unconditionally. The
  * translator is AiTranslator unless `translation.translator` names a class of the app's own.
+ *
+ * preflow/ai is only suggested (since 0.80.0); only the default AiTranslator needs it. Without it
+ * (AiPackage::installed() is false) a translator named in `translation.translator` works as
+ * before; with none named the translator is MissingAiTranslator (never available; it says what is
+ * missing). The jobs, sources, review index and worker resolve either way; TranslationSettings,
+ * which holds preflow/ai's tuning and glossary, is bound only with the package.
  */
 final class MachineServiceProvider extends ServiceProvider
 {
@@ -23,24 +29,29 @@ final class MachineServiceProvider extends ServiceProvider
 
     public function register(Container $container): void
     {
-        // The AI core binds Ai and the settings store this builds on.
-        if (!$container->hasProvider(AiServiceProvider::class)) {
-            $container->registerProvider(new AiServiceProvider());
+        $ai = AiPackage::installed();
+        if ($ai) {
+            // The AI core binds Ai and the settings store this builds on.
+            if (!$container->hasProvider(AiServiceProvider::class)) {
+                $container->registerProvider(new AiServiceProvider());
+            }
+            $container->singleton(TranslationSettings::class, static fn (Container $c): TranslationSettings => new TranslationSettings(
+                self::config($c),
+                $c->get(AiSettingsStore::class),
+            ));
         }
-
-        $container->singleton(TranslationSettings::class, static fn (Container $c): TranslationSettings => new TranslationSettings(
-            self::config($c),
-            $c->get(AiSettingsStore::class),
-        ));
         // config/ai.php translation.translator: the class of a MachineTranslator of the app's own, built
-        // by the container (so it may take services); without it, AiTranslator through the AI provider.
-        $container->singleton(MachineTranslator::class, static function (Container $c): MachineTranslator {
+        // by the container (so it may take services), with or without preflow/ai; without one,
+        // AiTranslator through the AI provider, or MissingAiTranslator when preflow/ai is not installed.
+        $container->singleton(MachineTranslator::class, static function (Container $c) use ($ai): MachineTranslator {
             $class = self::translatorClass($c);
-            if ($class === null) {
-                return new AiTranslator($c->get(Ai::class), $c->get(TranslationSettings::class), self::batchChars($c));
+            if ($class !== null) {
+                return $c->make($class, ['batchChars' => self::batchChars($c)]);
             }
 
-            return $c->make($class, ['batchChars' => self::batchChars($c)]);
+            return $ai
+                ? new AiTranslator($c->get(Ai::class), $c->get(TranslationSettings::class), self::batchChars($c))
+                : new MissingAiTranslator();
         });
         $container->singleton(Estimator::class, static fn (Container $c): Estimator => new Estimator(
             $c->get(MachineTranslator::class),
@@ -66,6 +77,18 @@ final class MachineServiceProvider extends ServiceProvider
             $c->get(MachineTranslator::class),
             self::storage($c) . '/worker.json',
         ));
+    }
+
+    /**
+     * Whether there is a translator that can work: preflow/ai is installed (AiTranslator) or
+     * config/ai.php `translation.translator` names one. False means MissingAiTranslator is bound.
+     * Answers without building the translator, so it is cheap to ask on every boot.
+     *
+     * @since 0.80.0
+     */
+    public static function hasTranslator(Container $container): bool
+    {
+        return AiPackage::installed() || self::translatorClass($container) !== null;
     }
 
     /** A translator class config/ai.php can't mean stops the boot. */

@@ -7,6 +7,8 @@ namespace Preflow\Folio\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.80.0: i18n 0.80.0 (Machine\AiPackage, the one check whether preflow/ai is installed, and MissingAiTranslator); ai is only
+ * suggested (the AI features appear only when it is installed), and its conflict stays, so an installed ai is still 0.78 or newer.
  * Since 0.78.2: routing 0.78.2 (Redirect\LanguageRedirectedAddresses, which SiteTarget implements).
  * Since 0.78: core 0.78 (Http\LocaleUrls, which FrontendResolver builds every page URL with, "/en/…" with prefix_default; Routing\PageExists, under which Folio binds SiteTarget for the bare-path redirect); routing 0.78 (Redirect\PageExists extends core's PageExists, so SiteTarget answers under core's name); ai 0.78 (Limits\AiLimits and AiLimitReached, the per-person limits the draft and translate endpoints answer with); i18n 0.78 (JobRunner::step() throws AiLimitReached for a job over its person's limit); data 0.78 (TypeFieldDefinition's exact, which Folio's redirect, address, translation, extension and permission tables give their ids, keys and times).
  * Since 0.77.1: data 0.77.1 (MigrationRegistry::afterMigrate()'s sqlOnly, which folio.permissions and folio.addresses pass).
@@ -72,15 +74,15 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.78', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.78', 'preflow/media' => '<0.77', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.77', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.78', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.80.0', 'preflow/media' => '<0.77', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.77', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
-        // Each conflict matches its require's lower bound; members, codes and rbac are suggested, not required.
-        foreach (['preflow/members', 'preflow/codes', 'preflow/rbac'] as $suggested) {
+        // Each conflict matches its require's lower bound; ai, members, codes and rbac are suggested, not required.
+        foreach (['preflow/ai', 'preflow/members', 'preflow/codes', 'preflow/rbac'] as $suggested) {
             $this->assertArrayNotHasKey($suggested, $composer['require']);
             $this->assertArrayHasKey($suggested, $composer['suggest'] ?? []);
         }
-        foreach (array_diff_key($composer['conflict'], ['preflow/members' => true, 'preflow/codes' => true, 'preflow/rbac' => true]) as $package => $below) {
+        foreach (array_diff_key($composer['conflict'], ['preflow/ai' => true, 'preflow/members' => true, 'preflow/codes' => true, 'preflow/rbac' => true]) as $package => $below) {
             $this->assertSame('^' . substr($below, 1) . ' || @dev', $composer['require'][$package] ?? null, $package);
         }
     }
