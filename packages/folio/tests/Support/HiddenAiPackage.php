@@ -11,6 +11,9 @@ namespace Preflow\Folio\Tests\Support;
  * package. Only for a test that runs in its own process (#[RunInSeparateProcess] with
  * #[PreserveGlobalState(false)], so the parent's loaded files are not carried over); it refuses to
  * run once such a class has been loaded.
+ *
+ * A copy of packages/i18n/tests/Support/HiddenAiPackage.php (each split package runs its own
+ * tests): change both.
  */
 final class HiddenAiPackage
 {

@@ -334,19 +334,25 @@ the AI connection in `preflow/ai`, so read that README first for `config/ai.php`
 Everything here works without Folio. With AI off, the classes still load and resolve; only
 calling the translator throws `AiUnavailable`.
 
-**Machine translation needs `preflow/ai`** (since 0.80 this package only suggests it):
+**Machine translation needs `preflow/ai` or a translator of your own** (since 0.80 this package
+only suggests `preflow/ai`). The default translator, `AiTranslator`, needs the package:
 
 ```bash
 composer require preflow/ai
 ```
 
-Without it the services below still resolve (so code and screens that depend on them keep
+A translator you name in `config/ai.php` (`translation.translator`, below) works without it:
+jobs, `translate:plan`, `translate:work` and Folio's Translate use it as usual. Only AI's own
+extras are missing then: `TranslationSettings` (the tuning and glossary) is not bound, and units
+carry no AI instructions.
+
+With neither, the services below still resolve (so code and screens that depend on them keep
 working), but nothing translates: the translator is `MissingAiTranslator`, which is never
-available, `TranslationSettings` (preflow/ai's tuning and glossary) is not bound, a job that is
-stepped stops with "Machine translation needs preflow/ai: run composer require preflow/ai.", and
-`translate:plan` and `translate:work` print that line and exit 1. A translator class named in
-`config/ai.php` is not used then. To ask in your own code, use
-`Preflow\I18n\Machine\AiPackage::installed()`.
+available. `translate:work` stays quiet (as with AI off), while `translate:plan` and a job that is
+stepped say "Machine translation needs preflow/ai (composer require preflow/ai) or a translator of
+your own (config/ai.php translation.translator)." To ask in your own code:
+`Preflow\I18n\Machine\AiPackage::installed()` (is the package there) and
+`MachineServiceProvider::hasTranslator($container)` (is there a translator that can work).
 
 ### Setup
 

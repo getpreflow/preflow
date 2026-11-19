@@ -76,7 +76,8 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
         private readonly FieldTypeRegistry $fieldTypes,
         private readonly ?Publisher $publisher,
         private readonly RecordLabeler $labeler,
-        private readonly TranslationSettings $settings,
+        // Null without preflow/ai (a translator of the app's own): no per-field AI instructions (since 0.80.0).
+        private readonly ?TranslationSettings $settings,
         private readonly RecordWriter $writer,
         private readonly ?FrontendResolver $frontend = null,
     ) {}
@@ -168,7 +169,7 @@ final class FolioTextSource implements TextSource, \Preflow\I18n\Machine\WritesA
                 previousSource: $previous,
                 current: $text->in($to),
                 context: $context,
-                tuning: $this->settings->unitTuning($this->typeKey, $field, $text->kind, $this->fieldAi($def, $field)),
+                tuning: $this->settings?->unitTuning($this->typeKey, $field, $text->kind, $this->fieldAi($def, $field)),
                 type: $this->typeKey,
             );
         }

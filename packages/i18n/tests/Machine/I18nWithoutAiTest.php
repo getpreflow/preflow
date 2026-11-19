@@ -104,7 +104,50 @@ final class I18nWithoutAiTest extends TestCase
         $this->assertTrue($app->container()->bound(TranslationSettings::class));
     }
 
-    public function test_the_translate_commands_refuse_without_the_ai_package(): void
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_without_the_ai_package_a_configured_translator_does_the_work(): void
+    {
+        HiddenAiPackage::hide();
+        // A translator of the app's own (a translation API): only the default AiTranslator needs preflow/ai.
+        $this->file('config/ai.php', "<?php\nreturn ['translation' => ['translator' => \\" . PrefixTranslator::class . "::class]];\n");
+
+        $app = Application::create($this->tmp());
+        $app->boot();
+        $c = $app->container();
+
+        $this->assertFalse(AiPackage::installed());
+        $translator = $c->get(MachineTranslator::class);
+        $this->assertInstanceOf(PrefixTranslator::class, $translator);
+        $this->assertTrue($translator->available());
+
+        $source = new ArrayTextSource(['1' => ['title' => 'One'], '2' => ['title' => 'Two']]);
+        $c->get(TextSources::class)->add('games', static fn (): ArrayTextSource => $source);
+        $runner = $c->get(JobRunner::class);
+        $job = $runner->start($runner->plan('games', ['de'], Scope::Needed)->id);
+        $job = $runner->step($job->id, 5);
+        $this->assertSame('done', $job->state);
+        $this->assertSame(['1' => ['de' => ['title' => 'DE:One']], '2' => ['de' => ['title' => 'DE:Two']]], $source->translations);
+
+        // The cron worker runs a queued job through it too.
+        $runner->start($runner->plan('games', ['fr'], Scope::Needed)->id);
+        $this->assertSame(2, $c->get(TranslationWorker::class)->work(5)->records);
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function test_without_the_ai_package_a_misconfigured_translator_still_stops_the_boot(): void
+    {
+        HiddenAiPackage::hide();
+        $this->file('config/ai.php', "<?php\nreturn ['translation' => ['translator' => \\stdClass::class]];\n");
+        $app = Application::create($this->tmp());
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('translation.translator');
+        $app->boot();
+    }
+
+    public function test_translate_work_stays_quiet_and_translate_plan_refuses_without_the_ai_package(): void
     {
         $factory = function (): Application {
             $app = Application::create($this->tmp());
@@ -123,9 +166,38 @@ final class I18nWithoutAiTest extends TestCase
             $out = (string) ob_get_clean();
         }
 
-        $this->assertSame(1, $work);
+        // cron mails whatever translate:work prints: with nothing it can run it stays silent, as with AI off.
+        $this->assertSame(0, $work);
+        // translate:plan is run by a person: it says why (on STDERR) and plans nothing.
         $this->assertSame(1, $plan);
-        $this->assertSame('', $out, 'the reason goes to STDERR, no job is planned');
+        $this->assertSame('', $out);
         $this->assertSame([], $factory()->container()->get(JobRunner::class)->active());
+    }
+}
+
+/** A translator of an app's own that needs no AI: "DE:" + the text. */
+final class PrefixTranslator implements MachineTranslator
+{
+    public function available(): bool
+    {
+        return true;
+    }
+
+    public function estimateCost(Estimate $size): ?float
+    {
+        return null;
+    }
+
+    public function translate(string $text, string $to, ?\Preflow\Ai\Tuning $tuning = null, ?string $from = null, \Preflow\I18n\Machine\TextFormat $format = \Preflow\I18n\Machine\TextFormat::Plain): string
+    {
+        return strtoupper($to) . ':' . $text;
+    }
+
+    public function translateUnits(array $units, ?string $note = null): array
+    {
+        return array_map(
+            fn (TranslationUnit $u): \Preflow\I18n\Machine\TranslationResult => new \Preflow\I18n\Machine\TranslationResult($u->id, \Preflow\I18n\Machine\UnitStatus::Translated, $this->translate($u->source, $u->to)),
+            $units,
+        );
     }
 }

@@ -2011,12 +2011,12 @@ final class FolioServiceProvider extends ServiceProvider
      * locales), so the core job runner can translate Folio records. Lazy: no type definition is
      * read and no source is built until a run asks for it; a type with nothing translatable (roles,
      * staff accounts) or whose records editors may not change (read-only) is not offered
-     * (FolioTextSource::offers()). None without preflow/ai: nothing could translate them, and their
-     * per-field instructions are preflow/ai's TranslationSettings.
+     * (FolioTextSource::offers()). None when nothing could translate them (no preflow/ai and no
+     * translator of the app's own); without preflow/ai a source has no per-field AI instructions.
      */
     private function registerTextSources(Container $container): void
     {
-        if (!\Preflow\I18n\Machine\AiPackage::installed() || !($this->locales($container)?->isMultilingual() ?? false)) {
+        if (!\Preflow\I18n\Machine\MachineServiceProvider::hasTranslator($container) || !($this->locales($container)?->isMultilingual() ?? false)) {
             return;
         }
         $sources = $container->get(\Preflow\I18n\Machine\TextSources::class);
@@ -2030,7 +2030,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $container->get(FieldTypeRegistry::class),
                 $container->get(\Preflow\Publishing\Publisher::class),
                 new RecordLabeler(),
-                $container->get(\Preflow\I18n\Machine\TranslationSettings::class),
+                $container->bound(\Preflow\I18n\Machine\TranslationSettings::class) ? $container->get(\Preflow\I18n\Machine\TranslationSettings::class) : null,
                 $container->get(\Preflow\Publishing\RecordWriter::class),
                 $container->get(FrontendResolver::class),
             ), static fn (): bool => \Preflow\Folio\Content\FolioTextSource::offers(
@@ -2141,10 +2141,16 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('redirects.manage', 'Redirects', 'Folio');
         $registry->declare('seo.audit', 'SEO audit', 'Folio');
         $registry->declare('seo.audit.run', 'Run the SEO audit', 'Folio');
-        // Declared with AI off too, so roles may list them before AI is switched on. Without preflow/ai the
-        // roles do not offer them; a role that still grants one is denied quietly (disabled, not undeclared).
+        // Declared with AI off too, so roles may list them before AI is switched on. Drafts and Settings → AI
+        // need preflow/ai; translation needs a translator (preflow/ai's or the app's own). What is not there
+        // is not offered in the roles; a role that still grants it is denied quietly (disabled, not undeclared).
+        $offered = [
+            'ai.translate' => \Preflow\I18n\Machine\MachineServiceProvider::hasTranslator($container),
+            'ai.draft' => \Preflow\I18n\Machine\AiPackage::installed(),
+            'ai.settings' => \Preflow\I18n\Machine\AiPackage::installed(),
+        ];
         foreach (['ai.translate' => 'Use AI translation', 'ai.draft' => 'Write drafts with AI', 'ai.settings' => 'AI settings'] as $name => $label) {
-            \Preflow\I18n\Machine\AiPackage::installed() ? $registry->declare($name, $label, 'AI') : $registry->disable($name, 'package preflow/ai (not installed)');
+            $offered[$name] ? $registry->declare($name, $label, 'AI') : $registry->disable($name, 'package preflow/ai (not installed)');
         }
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
