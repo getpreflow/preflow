@@ -34,6 +34,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * The PSR request stays reachable on purpose as `$ctx->request->request` (RequestContext's
  * documented use: code without a request reads the visitor's cookie from it). A log line must
  * write the context through one of the three paths above, never by walking its properties.
+ * var_export() and an (array) cast are unsafe: both walk the properties and reach the request,
+ * cookies included.
  * A render's output (assets, headers, queued mail) lives in its frame, not here.
  *
  * `now` is taken from the clock when the context is built and kept by every wither except at().
@@ -358,10 +360,19 @@ final readonly class RenderContext implements \JsonSerializable
         return $data;
     }
 
-    /** @return array<string, mixed> the context as plain JSON values, without secrets (see the class docblock) */
+    /**
+     * The context as plain JSON values, without secrets (see the class docblock). A facet key
+     * that is not UTF-8 text is given as 'hex:' and its bytes in hex, so json_encode() never fails.
+     *
+     * @return array<string, mixed>
+     */
     public function jsonSerialize(): array
     {
-        $extensions = array_map(static fn (Facet $facet): string => $facet->memoKey(), $this->extensions);
+        $extensions = array_map(static function (Facet $facet): string {
+            $key = $facet->memoKey();
+
+            return preg_match('//u', $key) === 1 ? $key : 'hex:' . bin2hex($key);
+        }, $this->extensions);
         ksort($extensions, SORT_STRING);
 
         return [

@@ -180,6 +180,14 @@ final class RenderContextTest extends TestCase
         $this->assertFalse($role->isPublicDefault(), 'still frozen');
     }
 
+    public function test_a_facet_key_that_is_not_utf8_still_encodes_to_json(): void
+    {
+        $json = json_encode(self::visit()->with(new VariantFacet("\xff\xfe", true)));
+
+        $this->assertIsString($json, 'a log line is never lost to a bad facet key');
+        $this->assertSame('hex:' . bin2hex("variant=\xff\xfe"), json_decode($json, true)['extensions'][VariantFacet::class]);
+    }
+
     public function test_from_request_follows_the_hypermedia_client(): void
     {
         $site = self::site();

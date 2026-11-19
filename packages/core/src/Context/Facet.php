@@ -16,6 +16,9 @@ interface Facet
     /** This facet's value is what an anonymous visitor gets, so it does not stop the page cache. */
     public function isPublicDefault(): bool;
 
-    /** A stable string of what this facet changes in the data a render reads. */
+    /**
+     * A stable string of what this facet changes in the data a render reads. It must be UTF-8
+     * text (it goes into memo keys and log lines; RenderContext::jsonSerialize() hexes one that is not).
+     */
     public function memoKey(): string;
 }
