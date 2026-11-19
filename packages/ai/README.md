@@ -7,7 +7,8 @@ interface, `fake` answers without a key, and a provider of your own plugs in thr
 
 Nothing in this package knows about translation. It is the general AI connection; the machine
 translator in `preflow/i18n` and the AI screens in Folio are users of it. It does not depend on
-Folio.
+Folio. Since 0.80 neither `preflow/i18n` nor Folio installs it: they only suggest it, and their AI
+features (AI translation, "Write a draft", Settings → AI) appear once it is installed.
 
 ## Install
 

@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-18 (v0.79.0)
+> Last updated: 2026-11-19 (v0.80.0)
 
 ## Current State
 
-**v0.79.0** — 9199 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.80.0** — 9264 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,6 +525,18 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
+- **App-feedback follow-ups (v0.80.0, released 2026-11-19):** the follow-ups decided after 0.79.
+  - **A given int id is kept (data):** `insert()` and `insertIgnoring()` on a model with an int `#[Id]` write a non-zero id the caller set, instead of replacing it with a generated one; a second insert of that id throws the duplicate-id error (`insertIgnoring()`: false). An id of 0 (or null) is still generated, and the next generated id goes past the given ones.
+  - **`InsertIfNew` (data, for driver authors):** an optional interface beside `Dialect`: `insertNewSql(string $table, array $columns, string $idField): ?string` returns one statement that skips an existing id instead of failing (for example `INSERT … ON CONFLICT ("id") DO NOTHING`), for a database whose failed statement aborts the transaction. `PdoDriver::insertNew()` then reads the row count. `StorageDriverContract` gains `test_insert_new_keeps_a_given_int_id_and_generates_past_it`.
+  - **`#[Seed(debugOnly: true)]` (data attribute, devtools `db:seed`):** a full `db:seed` with `app.debug` off skips such seeders and prints `Skipped: <Name> (debug only; app.debug is off)`; `db:seed --class=<Name>` refuses one (exit 1) unless `--force` is given. Unmarked seeders run as before. `Preflow\Data\Seed`.
+  - **preflow/ai is optional (folio, i18n):** both packages only suggest it. Their AI features (AI translation, "Write a draft", Settings → AI, the `ai.*` permissions) appear only when it is installed; without it the screens look as they do with AI off. A translator of the app's own (`config/ai.php` `translation.translator`) works without the package. New in i18n: `Machine\AiPackage::installed()` (the one check, for any package), `Machine\MissingAiTranslator` and `MachineServiceProvider::hasTranslator()`.
+  - **Docs:** Folio's README says why every content type gets the system columns (publishing and translation can be switched on later without a migration) and why media, blocks and publishing are required (Folio's library, fields and publishing screens are built on them); the data README covers given int ids and `InsertIfNew`; the devtools README `#[Seed(debugOnly: true)]`.
+  - **Upgrading:**
+    - Raise every `preflow/*` constraint to `^0.80` and upgrade them together: Folio needs i18n 0.80, devtools needs data 0.80, and data 0.80 refuses devtools before 0.80.
+    - **AI features need `preflow/ai` now.** A site that uses AI translation (Translate, `translate:plan`, `translate:work`), "Write a draft" or Settings → AI runs `composer require preflow/ai:^0.80` in the same upgrade, otherwise those features disappear. A site that translates only through a translator class of its own (`translation.translator` in `config/ai.php`) needs nothing; that translator keeps working. Without either, the `translate:work` cron job stays quiet, and `translate:plan` says what is missing: "Machine translation needs preflow/ai (composer require preflow/ai) or a translator of your own (config/ai.php translation.translator)."
+    - **`insert()` keeps an int id you set.** Before 0.80, a non-zero id set on a model with an int `#[Id]` was replaced by a generated one; now that id is written, and inserting the same id twice throws the duplicate-id error. Code that relied on the old replacing must leave the id at 0.
+    - **Driver authors:** a dialect may implement `InsertIfNew`. A database whose generated ids do not move past an id written by hand (PostgreSQL serial or identity columns) must advance its sequence after such a write; the new contract case checks it.
+    - **Demo seeders:** mark them `#[Seed(debugOnly: true)]` instead of guarding on `app.debug` by hand. A full `db:seed` on production then skips them; `--class=<Name>` needs `--force` there.
 - **App feedback (v0.79.0, released 2026-11-18):** fixes and additions from a new API-plus-admin app built on 0.78.3.
   - **Container:** a constructor parameter with a default takes it when the container cannot build its type (an unbound interface, an abstract class, `\Closure`); a bound type or a buildable class is still injected.
   - **405 behind a catch-all (routing):** a wrong method on a path that has routes for other methods answers `405` with `Allow`, even where a catch-all page route (Folio's frontend) matches, unless a page answers that path (a form posting back to its own page still loads). core `Routing\AnswersPages`, `Router::answerPagesWith()`.
