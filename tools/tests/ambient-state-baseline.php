@@ -10,6 +10,10 @@ declare(strict_types=1);
  * longer hits fails the guard. Nothing is added here: a new exception goes to ambient-state-allow.php
  * with its reason. Empty when the release is done.
  *
+ * The skeleton and the starters (skeleton/app, starter/app, starter-folio/app) are scanned too: new
+ * sites copy them. Their clock lines are assigned to Task 16 of the render-context plan (each
+ * reads the context's clock or becomes a marked stamp).
+ *
  * @return array<string, list<string>>
  */
 return [
@@ -41,38 +45,30 @@ return [
     ],
     'components/src/ComponentRenderer.php' => [
         'private static array $freshnessOf = [];', // static-state
-        '$start = hrtime(true);', // clock
-        '$durationMs = (hrtime(true) - $start) / 1_000_000;', // clock
-        '$start = hrtime(true);', // clock
-        '$durationMs = (hrtime(true) - $start) / 1_000_000;', // clock
-        '$start = hrtime(true);', // clock
-        '$durationMs = (hrtime(true) - $start) / 1_000_000;', // clock
-        '$start = hrtime(true);', // clock
-        '$durationMs = (hrtime(true) - $start) / 1_000_000;', // clock
     ],
     'core/src/Application.php' => [
         '$container->instance(RequestContext::class, new RequestContext($visitor->getUri()->getPath(), $visitor->getMethod(), $visitor));', // request-binding
         '$container->instance(RequestContext::class, $context);', // request-binding
         '$this->container->instance(RequestContext::class, new RequestContext(', // request-binding
         'now: static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
+        '$this->container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
         'static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
         '$store()?->hit($entry, new \\DateTimeImmutable());', // clock
         '$container->instance(RequestContext::class, new RequestContext($sub->getUri()->getPath(), \'GET\'));', // request-binding
         '$auth?->setUser(null);', // setter
         '$translator?->setLocale($siteLocale);', // setter
+        '$translator?->useOverrides(false);', // setter
         '$auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);', // setter
         '$auth->addUser($user, $name);', // setter
         '$translator->setLocale($locale);', // setter
+        '$translator->useOverrides($overrides);', // setter
         '$container->instance(RequestContext::class, $context);', // request-binding
+        '$render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);', // setter
+        'return $container->get(\\Preflow\\Core\\Http\\CookieQueue::class)->isolated($render);', // setter
         '$this->container->instance(\\Preflow\\Core\\Http\\CookieQueue::class, $cookieQueue);', // request-binding
     ],
     'core/src/Boot/ManifestBuilder.php' => [
         '\'built\' => date(DATE_ATOM),', // clock
-    ],
-    'core/src/Debug/DebugCollector.php' => [
-        '$this->startTime = hrtime(true);', // clock
-        '$this->startTime = hrtime(true);', // clock
-        'return (hrtime(true) - $this->startTime) / 1_000_000;', // clock
     ],
     'core/src/Http/Csrf/StatelessCsrfToken.php' => [
         '$this->clock = $clock ?? static fn (): int => time();', // clock
@@ -95,6 +91,8 @@ return [
     ],
     'core/src/PageCache/PageCacheMiddleware.php' => [
         '$this->clock = $clock ?? static fn (): float => microtime(true);', // clock
+        '$response = $this->cache->isolated(fn (): ResponseInterface => $verify && $this->visitorScope !== null', // setter
+        '$response = AnonymousGlobals::run((string) ($other->getServerParams()[\'REMOTE_ADDR\'] ?? \'192.0.2.1\'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->cache->isolated(fn (): ResponseInterface => $this->visitorScope !== null', // setter
     ],
     'core/src/PageCache/PageCacheSource.php' => [
         '$index->recordInvalidation([TagIndex::EVERYTHING], ($this->clock ?? static fn (): float => microtime(true))());', // clock
@@ -104,6 +102,9 @@ return [
     ],
     'core/src/PageCache/PendingInvalidations.php' => [
         '$last = microtime(true);', // clock
+    ],
+    'core/src/PageCache/Rebuild.php' => [
+        'return InternalRender::mark($request);', // setter
     ],
     'core/src/PageCache/RefreshQueue.php' => [
         '$this->clock = $clock ?? static fn (): float => microtime(true);', // clock
@@ -128,12 +129,6 @@ return [
     'data/src/Driver/JsonFileDriver.php' => [
         'if (!$settled && time() > $quick[1] && ($cached[\'quick\'] ?? null) === $quick) {', // clock
     ],
-    'data/src/Driver/PdoDriver.php' => [
-        '$start = hrtime(true);', // clock
-        '$durationMs = (hrtime(true) - $start) / 1_000_000;', // clock
-        '$start = hrtime(true);', // clock
-        '$this->collector?->logQuery($sql, $bindings, (hrtime(true) - $start) / 1_000_000);', // clock
-    ],
     'data/src/Migration/Migrator.php' => [
         '$stmt->execute([$name, date(\'Y-m-d H:i:s\')]);', // clock
     ],
@@ -146,10 +141,6 @@ return [
     'devtools/src/Command/NotifyTestCommand.php' => [
         '\'This is a test message sent by "php preflow notify:test" at \' . date(DATE_ATOM) . \'.\',', // clock
     ],
-    'devtools/src/Command/PagesWorkCommand.php' => [
-        '$started = microtime(true);', // clock
-        'printf("Rebuilt %d page(s) in %.1f s; %d queued.\\n", $rebuilt, microtime(true) - $started, $refresher->queued());', // clock
-    ],
     'devtools/src/Command/ThrottlePruneCommand.php' => [
         '$clock = $this->clock ?? static fn (): float => microtime(true);', // clock
     ],
@@ -161,6 +152,13 @@ return [
     ],
     'folio/src/Field/Types/AssetFieldType.php' => [
         '$rel = date(\'Y/m\') . \'/\' . bin2hex(random_bytes(16)) . \'.\' . $ext;', // clock
+    ],
+    'folio/src/FolioServiceProvider.php' => [
+        '$container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
+        '$container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
+        '$pageCache->isolate($published);', // setter
+        '$restores = [$container->get(\\Preflow\\Publishing\\LiveContent::class)->isolate()];', // setter
+        '$engine->addGlobal(\'interface_locale\', $container->get(\\Preflow\\Folio\\Http\\InterfaceLocales::class)->default());', // setter
     ],
     'folio/src/FolioText.php' => [
         'private static ?Translator $translator = null;', // static-state
@@ -177,9 +175,18 @@ return [
         'return (new \\DateTimeImmutable())->setTimestamp($value);', // clock
     ],
     'folio/src/Http/AdminLocaleMiddleware.php' => [
+        '$previousText = \\Preflow\\Folio\\FolioText::use($this->translator); // Folio\'s words in PHP (field types, notices)', // setter
+        '$previousValidation = $this->validators?->useTranslator($this->translator);', // setter
+        '$this->validators?->useTranslator($previousValidation);', // setter
+        '\\Preflow\\Folio\\FolioText::use($previousText);', // setter
         '$translator->setLocale($frontend);', // setter
+        '$translator->useOverrides(false);', // setter
         '$translator->setLocale($locale);', // setter
+        '$translator->useOverrides($overrides);', // setter
         '$this->translator->setLocale($locale);', // setter
+        '$this->translator->useOverrides($overrides);', // setter
+        '$this->locales->setCurrent($current);', // setter
+        '$this->engine?->addGlobal(\'interface_locale\', $this->locales->current());', // setter
     ],
     'folio/src/Http/AiSettingsController.php' => [
         '$now = new \\DateTimeImmutable(\'first day of this month 00:00:00\');', // clock
@@ -255,15 +262,6 @@ return [
     'media/src/MediaLibrary.php' => [
         '$this->now = $now ?? static fn (): \\DateTimeImmutable => new \\DateTimeImmutable();', // clock
     ],
-    'media/src/Preview/PdfPreviewRenderer.php' => [
-        '$deadline = microtime(true) + $this->timeLimit;', // clock
-        '$out = self::run([$gs, \'--version\'], microtime(true) + self::VERSION_LIMIT, capture: true);', // clock
-        'if (microtime(true) >= $deadline) {', // clock
-    ],
-    'media/src/Preview/VideoPreviewRenderer.php' => [
-        '$deadline = microtime(true) + $this->timeLimit;', // clock
-        'if (microtime(true) >= $deadline) {', // clock
-    ],
     'members/src/Console/PruneMembersCommand.php' => [
         'return new \\DateTimeImmutable(\'now\', new \\DateTimeZone(\'UTC\'));', // clock
     ],
@@ -325,6 +323,12 @@ return [
     ],
     'view/src/Audit/Audits.php' => [
         '$this->now = $now ?? static fn (): \\DateTimeImmutable => new \\DateTimeImmutable();', // clock
+    ],
+    'view/src/Audit/PageRenderer.php' => [
+        'return InternalRender::mark($request);', // setter
+    ],
+    'view/src/Geo/GeoMiddleware.php' => [
+        'return $internal ? InternalRender::mark($sub) : $sub;', // setter
     ],
     'view/src/Pdf/Blocks.php' => [
         'private static array $renders = [];', // static-state

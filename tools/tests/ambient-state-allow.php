@@ -33,6 +33,26 @@ return [
         'superglobal' => 'test process setup: clears a $_SESSION left over by earlier tests before an app boots',
     ],
 
+    // clock: durations and deadlines, which measure elapsed time and never read "now" for behaviour.
+    'core/src/Debug/DebugCollector.php' => [
+        'clock' => [
+            '$this->startTime = hrtime(true);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            'return (hrtime(true) - $this->startTime) / 1_000_000;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
+    ],
+    'devtools/src/Command/PagesWorkCommand.php' => [
+        'clock' => [
+            '$started = microtime(true);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            'printf("Rebuilt %d page(s) in %.1f s; %d queued.\\n", $rebuilt, microtime(true) - $started, $refresher->queued());' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
+    ],
+    'media/src/Preview/VideoPreviewRenderer.php' => [
+        'clock' => [
+            '$deadline = microtime(true) + $this->timeLimit;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            'if (microtime(true) >= $deadline) {' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
+    ],
+
     // clock: the clock implementation.
     'core/src/Context/SystemClock.php' => [
         'clock' => 'the system clock itself; everything else reads the context\'s clock',
@@ -103,6 +123,10 @@ return [
         ],
     ],
     'components/src/ComponentRenderer.php' => [
+        'clock' => [
+            '$start = hrtime(true);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            '$durationMs = (hrtime(true) - $start) / 1_000_000;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
         'static-state' => [
             'private static array $liveClasses = [];' => 'whether a component class is live: a per-class fact',
         ],
@@ -123,6 +147,11 @@ return [
         ],
     ],
     'data/src/Driver/PdoDriver.php' => [
+        'clock' => [
+            '$start = hrtime(true);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            '$durationMs = (hrtime(true) - $start) / 1_000_000;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            '$this->collector?->logQuery($sql, $bindings, (hrtime(true) - $start) / 1_000_000);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
         'static-state' => [
             'private static int $savepoints = 0;' => 'a counter that names savepoints uniquely in the process',
         ],
@@ -200,6 +229,11 @@ return [
         ],
     ],
     'media/src/Preview/PdfPreviewRenderer.php' => [
+        'clock' => [
+            '$deadline = microtime(true) + $this->timeLimit;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            '$out = self::run([$gs, \'--version\'], microtime(true) + self::VERSION_LIMIT, capture: true);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+            'if (microtime(true) >= $deadline) {' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
         'static-state' => [
             'private static array $versions = [];' => 'the installed Ghostscript version per binary',
         ],

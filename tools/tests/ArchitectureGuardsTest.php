@@ -47,16 +47,22 @@ use PHPUnit\Framework\TestCase;
  *
  * architecture.no-ambient-state: package code reads who is looking, the locale, the read mode and
  * the time from the render context (Contexts::current()), not from state that belongs to the
- * process or the request. Every package's psr-4 source roots are scanned (every *.php file), line by
- * line with comment lines skipped, for the rules in AMBIENT_RULES:
- *  - superglobal: $_SERVER, $_COOKIE, $_SESSION, $_GET, $_POST, $_REQUEST, $_FILES, and
- *    fromGlobals(), which turns them into a request;
+ * process or the request. Every package's psr-4 source roots are scanned (every *.php file, the
+ * skeleton and the starters too, since new sites copy them) for the rules in AMBIENT_RULES:
+ *  - superglobal: $_SERVER, $_COOKIE, $_SESSION, $_GET, $_POST, $_REQUEST, $_FILES (also through
+ *    $GLOBALS), and fromGlobals(), which turns them into a request;
  *  - clock: time(), microtime(), hrtime(), date()/gmdate() with only a format, strtotime() of a
- *    string, new DateTime(Immutable) with no argument, 'now' or a relative string; a line that
- *    ends with `// clock: stamp` (a timing for the debug collector, a file name, a log line) is
- *    no hit;
- *  - setter: the ambient setters (setLocale, setUser, addUser, showWorkingCopies,
- *    ContentLocale::set, ->set($locale) with the locale as its only argument);
+ *    string, new DateTime(Immutable) with no argument (with or without parentheses), 'now' or a
+ *    relative string; a line that ends with `// clock: stamp` (a file name, a write stamp, a log
+ *    line) is no hit. Durations and deadlines (hrtime/microtime differences) are allowlisted: a
+ *    frozen context clock must not apply to them;
+ *  - setter: the ambient mutators the release deprecates: setLocale, setUser, addUser,
+ *    showWorkingCopies, useOverrides, useTranslator, setCurrent, discardingQueued,
+ *    ContentLocale::set and a content or page locale's ->set(), FolioText::use,
+ *    InternalRender::mark, the engine global 'interface_locale', RenderScopes::add, and isolate()
+ *    or isolated() on LiveContent, the PageCache and the CookieQueue. Those last are recognised by
+ *    their receiver (the class, or a variable or property named after it: $live, $pageCache,
+ *    ->cache, $cookieQueue), since AssetCollector::isolate() and the memos' isolate() stay;
  *  - static-state: a static property or static variable (state shared by every render);
  *  - context-property: a property or promoted parameter typed RenderContext (services read
  *    Contexts::current(), they don't keep a copy);
@@ -64,14 +70,21 @@ use PHPUnit\Framework\TestCase;
  *  - context-dump: var_export(), get_object_vars() or an (array) cast of a context (they walk its
  *    properties and reach the request; serialize, json_encode and var_dump give the safe form);
  *  - frame-context-write: setting a frame's context from outside it (only Contexts narrows);
- *  - request-binding: binding request state (RequestContext, CookieQueue) into the container,
- *    where every later render would find it.
+ *  - request-binding: binding request state (RequestContext, CookieQueue) into the container with
+ *    instance(), singleton() or bind(), where every later render would find it.
+ * The rules see one line at a time, after comment lines and trailing comments are removed (strings
+ * stay). Continuation lines are not joined: keep a call and its first argument on one line (a
+ * multi-line `new \DateTimeImmutable(` … `)` or `->instance(` … `RequestContext::class` is not
+ * seen). context-dump and frame-context-write recognise a context by its name: a variable or
+ * property holding a RenderContext is named …context or …ctx ($context, $ctx, $this->context),
+ * and only a frame's context is written as `->context =` from outside the object.
  * Two files decide what may stay. tools/tests/ambient-state-allow.php is permanent: per file (a
  * glob is allowed) and rule, a reason, or per line text a reason; each entry must still match a
  * hit. tools/tests/ambient-state-baseline.php is the ratchet: today's hits that the render-context
  * release moves onto the context, one entry per hit, as the trimmed line text (line numbers move).
  * A hit in neither file fails; a baseline entry that no longer hits fails too and must be removed,
- * so the baseline only shrinks.
+ * so the baseline only shrinks. A baselined line whose text changed fails both ways; update its
+ * text in the baseline, don't allowlist it. All failures come in one message.
  */
 final class ArchitectureGuardsTest extends TestCase
 {
@@ -92,16 +105,26 @@ final class ArchitectureGuardsTest extends TestCase
 
     /**
      * The rules of architecture.no-ambient-state: rule => pattern for one source line (see the class
-     * docblock). A clock line ending in `// clock: stamp` is exempt; comment lines are skipped.
+     * docblock). Patterns run on the line's code: comment lines and trailing comments are removed
+     * first (strings stay). A clock line ending in `// clock: stamp` is exempt.
      */
     private const AMBIENT_RULES = [
-        'superglobal' => '/\$_(?:SERVER|COOKIE|SESSION|GET|POST|REQUEST|FILES)\b|\bfromGlobals\(/',
+        'superglobal' => '/\$_(?:SERVER|COOKIE|SESSION|GET|POST|REQUEST|FILES)\b'
+            . '|\$GLOBALS\[\s*[\'"]_(?:SERVER|COOKIE|SESSION|GET|POST|REQUEST|FILES)[\'"]|\bfromGlobals\(/',
         'clock' => '/(?<![\w$>:])(?<!function )\\\\?(?:time\(\)|(?:microtime|hrtime)\('
             . '|(?:gm)?date\(\s*(?:\'[^\']*\'|"[^"]*"|\\\\?DATE_\w+|\\\\?DateTime(?:Interface)?::\w+)\s*\)'
             . '|strtotime\(\s*(?:\'[^\']*\'|"[^"]*")\s*\))'
-            . '|\bnew\s+\\\\?DateTime(?:Immutable)?\(\s*(?:\)|[\'"]now[\'"]|\'[-+]\d|\'-\'\s*\.'
+            . '|\bnew\s+\\\\?DateTime(?:Immutable)?\b(?!\s*\()'
+            . '|\bnew\s+\\\\?DateTime(?:Immutable)?\(\s*(?:\)|[\'"]now[\'"]|\'[-+]\d|\'-\'\s*\.|\'[^\']*\bago\''
             . '|\'(?:today|tomorrow|yesterday|midnight|noon|first |last |next |this ))/i',
-        'setter' => '/->(?:setLocale|setUser|addUser|showWorkingCopies)\(|ContentLocale::set\b|->set\(\$?locale\s*\)/',
+        'setter' => '/->(?:setLocale|setUser|addUser|showWorkingCopies|useOverrides|useTranslator|setCurrent|discardingQueued)\('
+            . '|\bContentLocale::set\b|\b(?:FolioText::use|InternalRender::mark)\('
+            . '|[cC]ontentLocale\??->set\(|->set\(\$?locale\s*\)'
+            . '|->addGlobal\(\s*[\'"]interface_locale[\'"]'
+            . '|(?:CookieQueue::class\)|\$\w*[cC]ookieQueue|->cookieQueue)\??->isolated\('
+            . '|(?:LiveContent::class\)|\$live(?:Content)?|->live(?:Content)?)\??->isolate\('
+            . '|(?:PageCache::class\)|\$\w*[pP]ageCache|->(?:pageCache|cache))\??->isolated?\('
+            . '|RenderScopes::class\)->add\(/',
         'static-state' => '/^(?!.*\breadonly\b).*(?<![\w$>:\\\\])static\s+(?!function\b|fn\b)(?:\??[A-Za-z_\\\\][\w\\\\|&]*\s+)?\$\w+/',
         'context-property' => '/\b(?:public|protected|private|readonly|var)(?:\(set\))?\s+'
             . '(?:(?:public|protected|private|readonly|static|final)(?:\(set\))?\s+)*'
@@ -109,7 +132,7 @@ final class ArchitectureGuardsTest extends TestCase
         'peek' => '/\bContexts::peek\(/',
         'context-dump' => '/\b(?:var_export|get_object_vars)\(\s*' . self::CONTEXT_EXPRESSION . '|\(array\)\s*' . self::CONTEXT_EXPRESSION . '/',
         'frame-context-write' => '/(?<!\$this)->context\s*(?:\?\?)?=(?![=>])/',
-        'request-binding' => '/->instance\(\s*\\\\?(?:\w+\\\\)*(?:RequestContext|CookieQueue)::class/',
+        'request-binding' => '/->(?:instance|singleton|bind)\(\s*\\\\?(?:\w+\\\\)*(?:RequestContext|CookieQueue)::class/',
     ];
 
     private static function packages(): string
@@ -482,9 +505,70 @@ final class ArchitectureGuardsTest extends TestCase
             }
         }
 
+        foreach (['core', 'auth', 'folio', 'notify'] as $package) {
+            $this->assertArrayHasKey($package, $scanned, 'a scanned package');
+        }
+        $verdict = self::ambientStateVerdict($hits, $allow, $baseline);
+        if ($verdict !== '') {
+            $this->fail($verdict);
+        }
+        $this->addToAssertionCount(1);
+    }
+
+    /**
+     * The guard's ratchet on synthetic hits: one message for every kind of failure, and the hint
+     * for a baselined line whose text changed (it must be updated in the baseline, not allowlisted).
+     */
+    public function test_architecture_no_ambient_state_ratchet_messages(): void
+    {
+        $allow = ['core/src/Clock.php' => ['clock' => 'the clock'], 'core/src/Gone.php' => ['clock' => 'gone']];
+        $baseline = [
+            'auth/src/A.php' => ['$auth->setUser($user, $name);', '$auth->setUser($user, $name);'],
+            'auth/src/B.php' => ['$at = time();'],
+        ];
+        $hits = [
+            ['core/src/Clock.php', 3, 'return time();', ['clock']],
+            ['auth/src/A.php', 10, '$auth->setUser($user, $name);', ['setter']],
+            ['auth/src/A.php', 20, '$auth->setUser($user, guard: $name);', ['setter']],
+            ['folio/src/C.php', 5, '$_SESSION = [];', ['superglobal']],
+        ];
+
+        $verdict = self::ambientStateVerdict($hits, $allow, $baseline);
+
+        $this->assertStringContainsString('folio/src/C.php:5 [superglobal] $_SESSION = [];', $verdict, 'an unexpected hit names file:line');
+        $this->assertStringContainsString('auth/src/A.php:20 [setter] $auth->setUser($user, guard: $name);', $verdict);
+        $this->assertStringContainsString('auth/src/A.php: $auth->setUser($user, $name); (listed 2, hits 1)', $verdict, 'a stale entry with its counts');
+        $this->assertStringContainsString('auth/src/B.php: $at = time(); (listed 1, hits 0)', $verdict);
+        $this->assertStringContainsString('core/src/Gone.php [clock]', $verdict, 'an allowlist entry that matches nothing');
+        $this->assertStringContainsString(
+            "auth/src/A.php: a baselined line changed? update its text in ambient-state-baseline.php (don't allowlist it)",
+            $verdict,
+            'the hint for a file with both an unexpected hit and a stale baseline entry',
+        );
+        $this->assertStringNotContainsString('folio/src/C.php: a baselined line changed?', $verdict, 'no hint without a stale entry in the same file');
+        $this->assertStringNotContainsString('auth/src/B.php: a baselined line changed?', $verdict, 'no hint without an unexpected hit in the same file');
+
+        $this->assertSame('', self::ambientStateVerdict(
+            [['core/src/Clock.php', 3, 'return time();', ['clock']], ['auth/src/B.php', 1, '$at = time();', ['clock']]],
+            ['core/src/Clock.php' => ['clock' => 'the clock']],
+            ['auth/src/B.php' => ['$at = time();']],
+        ), 'allowed and baselined hits pass');
+    }
+
+    /**
+     * Compares the hits with the allowlist and the baseline; '' when they agree, else one message
+     * that lists every unexpected hit, stale baseline entry and unused allowlist entry.
+     *
+     * @param list<array{string, int, string, list<string>}> $hits file, line number, trimmed text, rules
+     * @param array<string, array<string, string|array<string, string>>> $allow
+     * @param array<string, list<string>> $baseline
+     */
+    private static function ambientStateVerdict(array $hits, array $allow, array $baseline): string
+    {
         $allowUsed = [];
         $baselineUsed = [];
         $unexpected = [];
+        $unexpectedFiles = [];
         foreach ($hits as [$file, $lineNo, $text, $rules]) {
             $left = [];
             foreach ($rules as $rule) {
@@ -505,14 +589,17 @@ final class ArchitectureGuardsTest extends TestCase
                 continue;
             }
             $unexpected[] = sprintf('%s:%d [%s] %s', $file, $lineNo, implode(', ', $left), $text);
+            $unexpectedFiles[$file] = true;
         }
 
         $stale = [];
+        $staleFiles = [];
         foreach ($baseline as $file => $lines) {
             foreach (array_count_values($lines) as $text => $listed) {
                 $found = $baselineUsed[$file . ': ' . $text] ?? 0;
                 if ($found < $listed) {
                     $stale[] = sprintf('%s: %s (listed %d, hits %d)', $file, $text, $listed, $found);
+                    $staleFiles[$file] = true;
                 }
             }
         }
@@ -529,12 +616,29 @@ final class ArchitectureGuardsTest extends TestCase
             }
         }
 
-        foreach (['core', 'auth', 'folio', 'notify'] as $package) {
-            $this->assertArrayHasKey($package, $scanned, 'a scanned package');
+        $parts = [];
+        if ($unexpected !== []) {
+            $parts[] = "Ambient state: read it from Contexts::current() (see the class docblock). A permanent exception goes to\n"
+                . "ambient-state-allow.php with its reason; a baselined line that only changed its text is updated in\n"
+                . "ambient-state-baseline.php.\n  " . implode("\n  ", $unexpected);
         }
-        $this->assertSame([], $unexpected, 'ambient state: read it from Contexts::current() (see the class docblock); a permanent exception goes to ambient-state-allow.php with its reason');
-        $this->assertSame([], $stale, 'these baseline entries no longer hit: remove them from the baseline (tools/tests/ambient-state-baseline.php)');
-        $this->assertSame([], $unusedAllow, 'these allowlist entries match nothing: remove them from tools/tests/ambient-state-allow.php');
+        if ($stale !== []) {
+            $parts[] = "These baseline entries no longer hit: remove them from tools/tests/ambient-state-baseline.php.\n  "
+                . implode("\n  ", $stale);
+        }
+        $changed = array_keys(array_intersect_key($unexpectedFiles, $staleFiles));
+        if ($changed !== []) {
+            $parts[] = implode("\n", array_map(
+                static fn (string $file): string => $file . ": a baselined line changed? update its text in ambient-state-baseline.php (don't allowlist it)",
+                $changed,
+            ));
+        }
+        if ($unusedAllow !== []) {
+            $parts[] = "These allowlist entries match nothing: remove them from tools/tests/ambient-state-allow.php.\n  "
+                . implode("\n  ", $unusedAllow);
+        }
+
+        return implode("\n\n", $parts);
     }
 
     /**
@@ -573,6 +677,8 @@ final class ArchitectureGuardsTest extends TestCase
                 '$token = $_COOKIE[\'t\'] ?? null;',
                 '$request = $creator->fromGlobals();',
                 'unset($_SESSION);',
+                '$uri = $GLOBALS[\'_SERVER\'][\'REQUEST_URI\'];',
+                '$GLOBALS["_COOKIE"] = [];',
             ],
             'clock' => [
                 '$at = time() + 60;',
@@ -588,6 +694,9 @@ final class ArchitectureGuardsTest extends TestCase
                 '$old = new \DateTimeImmutable(\'-\' . self::STALE_JOB_SECONDS . \' seconds\');',
                 '$month = new \DateTimeImmutable(\'first day of this month 00:00:00\');',
                 '$at = strtotime(\'+1 day\');',
+                '$stamp = (new \\DateTimeImmutable)->format(\'c\');',
+                '$now = new DateTime;',
+                '$old = new \\DateTimeImmutable(\'1 hour ago\');',
             ],
             'setter' => [
                 '$this->translator->setLocale($locale);',
@@ -596,6 +705,22 @@ final class ArchitectureGuardsTest extends TestCase
                 '$this->live->showWorkingCopies();',
                 'ContentLocale::set($locale);',
                 '$this->contentLocale->set($locale);',
+                '$this->contentLocale?->set($code);',
+                '$this->pageLocale?->set($locale);',
+                '$translator->useOverrides(false);',
+                '$previous = \\Preflow\\Folio\\FolioText::use($this->translator);',
+                '$previous = $this->validators?->useTranslator($this->translator);',
+                '$this->locales->setCurrent($current);',
+                '$this->engine?->addGlobal(\'interface_locale\', $this->locales->current());',
+                '$render = static fn () => $notifier->discardingQueued($mail);',
+                'return $container->get(\\Preflow\\Core\\Http\\CookieQueue::class)->isolated($render);',
+                'return $this->cookieQueue->isolated($render);',
+                'return InternalRender::mark($request);',
+                '$restores = [$container->get(\\Preflow\\Publishing\\LiveContent::class)->isolate()];',
+                '$restore = $this->live->isolate();',
+                '$pageCache->isolate($published);',
+                '$response = $this->cache->isolated(fn () => $handler->handle($request));',
+                '$container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(',
             ],
             'static-state' => [
                 'private static array $cache = [];',
@@ -623,6 +748,8 @@ final class ArchitectureGuardsTest extends TestCase
             'request-binding' => [
                 '$container->instance(RequestContext::class, $context);',
                 '$this->container->instance(\\Preflow\\Core\\Http\\CookieQueue::class, $cookieQueue);',
+                '$container->singleton(RequestContext::class, fn () => $context);',
+                '$container->bind(\\Preflow\\Core\\Http\\RequestContext::class, $factory);',
             ],
         ];
         foreach ($caught as $rule => $lines) {
@@ -660,7 +787,22 @@ final class ArchitectureGuardsTest extends TestCase
             '$preferences->setLocaleFor($user, $locale);',
             '$this->overrides->set($locale, $key, $text, $by);',
             '$context = $container->get(RequestContext::class);',
+            '$response = $this->assets->isolate(fn () => $this->scoped($sub, $handler));',
+            '$restore = $this->collections->isolate();',
+            '$this->overrides->setCurrentLocale($locale);',
+            'self::useOverrides($translator, $c);',
+            '$engine->addGlobal(\'site_name\', $name);',
+            '$internal = InternalRender::is($request);',
+            // trailing comments are not code
+            '$x = 1; // $_SESSION is not read here',
+            '$x = 1; # time() is not read here',
+            '$x = 1; /* new \\DateTimeImmutable() */',
+            // strings stay: a comment marker inside a string does not hide what follows
+            '$url = \'https://example.com/\'; $y = 2;',
         ];
+        $this->assertContains('superglobal', self::ambientRulesOf('$url = \'http://x\' . $_SERVER[\'HTTP_HOST\'];'), 'a "//" inside a string is not a comment');
+        $this->assertContains('clock', self::ambientRulesOf('$s = "# not a comment" . time();'), 'a "#" inside a string is not a comment');
+        $this->assertContains('setter', self::ambientRulesOf('$t->setLocale(\'de\'); // switch to German'), 'the code before a trailing comment is still checked');
         foreach ($harmless as $line) {
             $this->assertSame([], self::ambientRulesOf($line), "harmless: {$line}");
         }
@@ -688,9 +830,10 @@ final class ArchitectureGuardsTest extends TestCase
             || (str_starts_with($code, '#') && !str_starts_with($code, '#['))) {
             return [];
         }
+        $code = self::withoutComments($line);
         $rules = [];
         foreach (self::AMBIENT_RULES as $rule => $pattern) {
-            if (preg_match($pattern, $line) !== 1) {
+            if (preg_match($pattern, $code) !== 1) {
                 continue;
             }
             if ($rule === 'clock' && preg_match('~//\s*clock:\s*stamp\s*$~', $line) === 1) {
@@ -700,6 +843,46 @@ final class ArchitectureGuardsTest extends TestCase
         }
 
         return $rules;
+    }
+
+    /**
+     * $line without its comments: a trailing `//` or `#` comment (not an attribute `#[`) and inline
+     * `/* … *\/` blocks are removed; quoted strings are kept as they are, so a comment marker inside
+     * a string hides nothing. One line at a time: a string or comment that spans lines is not seen.
+     */
+    private static function withoutComments(string $line): string
+    {
+        $code = '';
+        $quote = null;
+        $length = strlen($line);
+        for ($i = 0; $i < $length; $i++) {
+            $char = $line[$i];
+            if ($quote !== null) {
+                $code .= $char;
+                if ($char === '\\' && $i + 1 < $length) {
+                    $code .= $line[++$i];
+                } elseif ($char === $quote) {
+                    $quote = null;
+                }
+                continue;
+            }
+            if ($char === '\'' || $char === '"') {
+                $quote = $char;
+            } elseif (($char === '/' && ($line[$i + 1] ?? '') === '/') || ($char === '#' && ($line[$i + 1] ?? '') !== '[')) {
+                break;
+            } elseif ($char === '/' && ($line[$i + 1] ?? '') === '*') {
+                $end = strpos($line, '*/', $i + 2);
+                if ($end === false) {
+                    break;
+                }
+                $i = $end + 1;
+                $code .= ' ';
+                continue;
+            }
+            $code .= $char;
+        }
+
+        return $code;
     }
 
     /**
