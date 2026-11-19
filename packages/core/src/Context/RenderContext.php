@@ -27,6 +27,13 @@ use Psr\Http\Message\ServerRequestInterface;
  * - each facet that serializes on its own; a facet that cannot (a closure, a resource) is left
  *   out, and its class is listed under `omittedFacets` in the serialized form. A dump shows each
  *   facet as its memoKey().
+ * json_encode() gives the dump's shape as plain values (jsonSerialize()): request as path and
+ * method, viewer as guard => id, surface, read-mode key, policies by name, clock by class, `now`
+ * in ATOM form, facets as class => memoKey() in class order.
+ *
+ * The PSR request stays reachable on purpose as `$ctx->request->request` (RequestContext's
+ * documented use: code without a request reads the visitor's cookie from it). A log line must
+ * write the context through one of the three paths above, never by walking its properties.
  * A render's output (assets, headers, queued mail) lives in its frame, not here.
  *
  * `now` is taken from the clock when the context is built and kept by every wither except at().
@@ -35,7 +42,7 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * @since 0.81.0
  */
-final readonly class RenderContext
+final readonly class RenderContext implements \JsonSerializable
 {
     /**
      * @param array<class-string<Facet>, Facet> $extensions
@@ -349,6 +356,29 @@ final readonly class RenderContext
         $data['extensions'] = array_map(static fn (Facet $facet): string => $facet->memoKey(), $this->extensions);
 
         return $data;
+    }
+
+    /** @return array<string, mixed> the context as plain JSON values, without secrets (see the class docblock) */
+    public function jsonSerialize(): array
+    {
+        $extensions = array_map(static fn (Facet $facet): string => $facet->memoKey(), $this->extensions);
+        ksort($extensions, SORT_STRING);
+
+        return [
+            'request' => $this->request === null ? null : ['path' => $this->request->path, 'method' => $this->request->method],
+            'purpose' => $this->purpose->value,
+            'viewer' => $this->viewer->jsonSerialize(),
+            'locale' => $this->locale,
+            'surface' => ['admin' => $this->surface->admin, 'uiLocale' => $this->surface->uiLocale, 'overrides' => $this->surface->overrides],
+            'reads' => $this->reads->key(),
+            'site' => ['origin' => $this->site->origin, 'locales' => $this->site->locales, 'defaultLocale' => $this->site->defaultLocale],
+            'clock' => $this->clock::class,
+            'now' => $this->now->format(\DateTimeInterface::ATOM),
+            'frozen' => $this->frozen,
+            'outbox' => $this->outbox->name,
+            'writes' => $this->writes->name,
+            'extensions' => $extensions,
+        ];
     }
 
     /**

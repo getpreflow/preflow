@@ -12,11 +12,12 @@ use Preflow\Core\Identity;
  *
  * Safe to log and serialize: a dump (var_dump, print_r) shows each identity as its id only, and
  * a serialized viewer keeps guard, id and the role view; it comes back holding IdentityId values
- * (the id only) instead of the user records it held.
+ * (the id only) instead of the user records it held. json_encode() gives guard => id, the
+ * primary guard and the role view's population and roles.
  *
  * @since 0.81.0
  */
-final readonly class Viewer
+final readonly class Viewer implements \JsonSerializable
 {
     /**
      * @param array<string, Identity> $identities by guard
@@ -142,6 +143,15 @@ final readonly class Viewer
     public function __debugInfo(): array
     {
         return $this->__serialize();
+    }
+
+    /** @return array{identities: array<string, string>, primaryGuard: ?string, roleView: ?array{population: string, roles: list<string>}} */
+    public function jsonSerialize(): array
+    {
+        $data = $this->__serialize();
+        $data['roleView'] = $this->roleView === null ? null : ['population' => $this->roleView->population, 'roles' => $this->roleView->roles];
+
+        return $data;
     }
 
     private function primaryGuardOrFirst(): ?string

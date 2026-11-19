@@ -129,7 +129,7 @@ final class RenderContextTest extends TestCase
         $serialized = serialize($ctx);
         ob_start();
         var_dump($ctx);
-        $dumps = [$serialized, print_r($ctx, true), (string) ob_get_clean()];
+        $dumps = [$serialized, print_r($ctx, true), (string) ob_get_clean(), json_encode($ctx, JSON_THROW_ON_ERROR), json_encode($ctx->viewer, JSON_THROW_ON_ERROR)];
 
         foreach ($dumps as $i => $dump) {
             foreach (['cookie-secret', 'header-secret', 'hash-secret', 'query-secret', SecretUser::class, 'Closure', 'ServerRequest'] as $secret) {
@@ -138,6 +138,19 @@ final class RenderContextTest extends TestCase
             $this->assertStringContainsString('42', $dump, "dump {$i} keeps the id");
         }
         $this->assertStringContainsString(UnsafeFacet::class, $serialized, 'an omitted facet is named');
+
+        $json = json_decode((string) json_encode($ctx, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(['path' => '/a', 'method' => 'POST'], $json['request']);
+        $this->assertSame('visit', $json['purpose']);
+        $this->assertSame(['identities' => ['web' => '42'], 'primaryGuard' => 'web', 'roleView' => null], $json['viewer']);
+        $this->assertSame(['admin' => false, 'uiLocale' => null, 'overrides' => false], $json['surface']);
+        $this->assertSame('published', $json['reads']);
+        $this->assertSame('Deliver', $json['outbox']);
+        $this->assertSame('Allow', $json['writes']);
+        $this->assertSame(SystemClock::class, $json['clock']);
+        $this->assertSame([UnsafeFacet::class => 'unsafe', VariantFacet::class => 'variant=b'], $json['extensions'], 'facets by memoKey, in class order');
+        $this->assertSame(['member' => 'preflow:synthetic:member:gold'], json_decode((string) json_encode(Viewer::synthetic(new RoleView('member', ['gold']))), true)['identities']);
+        $this->assertSame(['population' => 'member', 'roles' => ['gold']], json_decode((string) json_encode(Viewer::synthetic(new RoleView('member', ['gold']))), true)['roleView']);
 
         $copy = unserialize($serialized);
         $this->assertInstanceOf(RenderContext::class, $copy);
