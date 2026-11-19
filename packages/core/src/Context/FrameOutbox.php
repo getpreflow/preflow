@@ -57,25 +57,15 @@ final class FrameOutbox implements Outbox
     }
 
     /**
-     * Takes every queued item out (only those for $channel when given), each with its channel's
-     * description (its class when no channel of that name is registered).
+     * Takes every queued item out, each with its channel's description (its class when no
+     * channel of that name is registered).
      *
-     * @param string|null $channel only this channel's items (@since 0.81.0; the owner of a request
-     *                             takes the cookies out before the response is sent)
      * @return list<CapturedItem>
      */
-    public function drain(?string $channel = null): array
+    public function drain(): array
     {
-        $items = [];
-        $kept = [];
-        foreach ($this->items as $entry) {
-            if ($channel === null || $entry[0] === $channel) {
-                $items[] = $entry;
-            } else {
-                $kept[] = $entry;
-            }
-        }
-        $this->items = $kept;
+        $items = $this->items;
+        $this->items = [];
 
         return array_map(function (array $entry): CapturedItem {
             [$channel, $item] = $entry;

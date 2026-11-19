@@ -266,7 +266,34 @@ final class ApplicationEdgesTest extends TestCase
         $this->assertSame(['outer=1; Path=/'], $left, 'the outer frame keeps its cookie');
     }
 
-    public function test_cookies_left_at_the_end_of_a_request_reach_its_response(): void
+    /** 0.80's rule: only ResolveUserMiddleware sets queued cookies, and only on a request with a session. */
+    public function test_a_sessionless_public_page_gets_no_set_cookie_even_with_a_queued_cookie(): void
+    {
+        $app = $this->app();
+        $seen = [];
+        EdgeRoutes::$routes['/nested'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('nested=1; Path=/');
+
+            return new Response(200, [], 'nested');
+        };
+        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c) use ($app, &$seen): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('outer=1; Path=/');
+            // A nested render that delivers hands its cookie to this request's queue.
+            $result = $app->render(Contexts::current()->for(new ServerRequest('GET', '/nested')), new ServerRequest('GET', '/nested'));
+            $seen = [self::cookieNames($result->response), $result->wouldSend('cookies'), $c->get(CookieQueue::class)->has('outer'), $c->get(CookieQueue::class)->has('nested')];
+
+            return new Response(200, [], 'about');
+        };
+
+        $response = $app->handle(new ServerRequest('GET', 'https://site.test/about'));
+
+        $this->assertSame([[], 0, true, true], $seen, 'the nested render\'s cookie waits in the request\'s queue');
+        $this->assertSame([], $response->getHeader('Set-Cookie'), 'no session: dropped with the request\'s frame, as 0.80 dropped them');
+        $this->assertSame([], $app->handle(new ServerRequest('GET', 'https://site.test/nested'))->getHeader('Set-Cookie'));
+    }
+
+    /** A test's or a site's own frame knows no cookie channel: a delivering render inside it must still close cleanly. */
+    public function test_a_delivering_render_inside_a_foreign_frame_closes_without_throwing(): void
     {
         $app = $this->app();
         EdgeRoutes::$routes['/nested'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
@@ -274,18 +301,69 @@ final class ApplicationEdgesTest extends TestCase
 
             return new Response(200, [], 'nested');
         };
-        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c) use ($app): ResponseInterface {
-            $c->get(CookieQueue::class)->queue('outer=1; Path=/');
-            // A nested render that delivers hands its cookie to this request.
-            $app->render(Contexts::current()->for(new ServerRequest('GET', '/nested')), new ServerRequest('GET', '/nested'));
+        $outer = RenderContext::console($app->site(), new SystemClock());
 
-            return new Response(200, [], 'about');
+        $left = Contexts::run($outer, static function () use ($app): array {
+            $app->render(RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/nested'), $app->site(), new SystemClock()), new ServerRequest('GET', 'https://site.test/nested'));
+
+            return $app->container()->get(CookieQueue::class)->pull();
+        });
+
+        $this->assertSame(['nested=1; Path=/'], $left);
+        $this->assertSame(0, Contexts::depth());
+    }
+
+    /** I1: a command's (or a site's own frame's) handle() is a request of its own, as in 0.80. */
+    #[RunInSeparateProcess]
+    public function test_handle_inside_a_console_command_is_a_request_of_its_own(): void
+    {
+        $this->notify();
+        file_put_contents($this->dir . '/config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'url_strategy' => 'prefix'];\n");
+        $app = $this->app();
+        $seen = [];
+        EdgeRoutes::$routes['/blog'] = static function (ServerRequestInterface $r, Container $c) use (&$seen): ResponseInterface {
+            $ctx = Contexts::current();
+            $seen[] = [$c->get(RequestContext::class)?->path, $ctx->purpose->value, Contexts::depth()];
+            $c->get(Notifier::class)->sendLater(new Email('member@site.test', 'Hello', 'From a command.'));
+
+            return new Response(200, [], $c->make(EdgeNavigation::class)->render());
         };
+        $GLOBALS['edgeApp'] = $app;
+        $GLOBALS['edgeSeen'] = &$seen;
 
-        $response = $app->handle(new ServerRequest('GET', 'https://site.test/about'));
+        $console = new Console($this->dir);
+        $console->register(new class () implements CommandInterface {
+            public function getName(): string
+            {
+                return 'warm';
+            }
 
-        $this->assertSame(['outer', 'nested'], self::cookieNames($response));
-        $this->assertSame(['nested'], self::cookieNames($app->handle(new ServerRequest('GET', 'https://site.test/nested'))), 'the next request sets only its own');
+            public function getDescription(): string
+            {
+                return 'Renders a page in-process';
+            }
+
+            public function execute(array $args): int
+            {
+                $before = serialize(Contexts::current());
+                $body = (string) $GLOBALS['edgeApp']->handle(new ServerRequest('GET', 'https://site.test/de/blog'))->getBody();
+                $GLOBALS['edgeSeen'][] = $body;
+                $GLOBALS['edgeSeen'][] = serialize(Contexts::current()) === $before ? 'console frame unchanged' : 'console frame changed';
+                $GLOBALS['edgeSeen'][] = Contexts::current()->purpose->value . ' ' . Contexts::current()->locale . ' ' . var_export(Contexts::current()->request, true);
+
+                return 0;
+            }
+        });
+
+        $this->assertSame(0, $console->run(['preflow', 'warm']));
+
+        $this->assertSame([
+            ['/blog', 'visit', 2],
+            'nav at /blog',
+            'console frame unchanged',
+            'console en NULL',
+        ], $seen);
+        $this->assertCount(1, $app->container()->get(TransportFactory::class)->get('mail')->sent(), 'the deferred mail is sent, as 0.80\'s handle() sent it');
     }
 
     #[RunInSeparateProcess]
@@ -571,6 +649,17 @@ final class EdgeRoutes implements MiddlewareInterface
         $route = self::$routes[$request->getUri()->getPath()] ?? null;
 
         return $route !== null ? $route($request, $this->container) : $handler->handle($request);
+    }
+}
+
+/** Like the skeleton's Navigation: a component that takes a non-null RequestContext. */
+final class EdgeNavigation
+{
+    public function __construct(private readonly RequestContext $request) {}
+
+    public function render(): string
+    {
+        return 'nav at ' . $this->request->path;
     }
 }
 

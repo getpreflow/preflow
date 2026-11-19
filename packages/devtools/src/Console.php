@@ -140,7 +140,6 @@ final class Console
         return \Preflow\Core\Context\Contexts::run(
             \Preflow\Core\Context\RenderContext::console($this->site(), new \Preflow\Core\Context\SystemClock()),
             static function () use ($command, $args): int {
-                \Preflow\Core\Context\Contexts::frame()->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
                 $code = $command->execute($args);
                 try {
                     \Preflow\Core\Context\Contexts::deliverQueued();

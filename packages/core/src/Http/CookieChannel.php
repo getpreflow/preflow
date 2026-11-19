@@ -7,11 +7,11 @@ namespace Preflow\Core\Http;
 use Preflow\Core\Context\OutboxChannel;
 
 /**
- * The outbox channel 'cookies': QueuedCookie items a render left queued. The owner of a request
- * (Application::run(), or handle() without a frame around it) takes them out of its frame and sets
- * them on the response before it is sent. What reaches this channel's deliver() was queued after
- * the response went out (work after the response): it can no longer be set and is dropped, with
- * a log line.
+ * The outbox channel 'cookies': the Set-Cookie values a capturing render (Application::render()
+ * under OutboxPolicy::Capture, a preview) left queued, as QueuedCookie items, so its RenderResult
+ * reports them by name. Application registers it on that frame only, and a capturing frame's
+ * items never move on, so nothing is sent through it; a delivering frame's items reaching
+ * deliver() could not be set on any response any more: they are dropped, with a log line.
  *
  * @since 0.81.0
  */

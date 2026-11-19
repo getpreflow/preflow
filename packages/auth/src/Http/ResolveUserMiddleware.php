@@ -25,7 +25,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  * winner, so a member stays remembered beside a signed-in staff user). Cookies
  * the guards queue (login, logout, rotation) go on the response, only where the
  * request has a session: public pages never get a Set-Cookie. When the handler
- * throws, the Kernel applies the render frame's CookieQueue to the error response.
+ * throws, the Kernel applies the render frame's CookieQueue to the error response. Cookies
+ * queued outside this middleware's window (before it or after the handler returned) are never
+ * set: the request's render frame drops them at its end, as the shared queue's next pull did
+ * before 0.81.
  */
 final class ResolveUserMiddleware implements MiddlewareInterface
 {

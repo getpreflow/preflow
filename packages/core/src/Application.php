@@ -521,12 +521,16 @@ final class Application
     }
 
     /**
-     * Handles $request through the whole application. Without a frame around it (a test, a
-     * script), the request is the outermost render: handle() opens its frame
-     * (RenderContext::fromRequest()), sets the cookies the frame left on the response, sends what
-     * it queued (mail queued before a failure too) and drops its after-response work, unless
-     * runAfterResponseInHandle() is on. Inside a frame (run(), render(), work after the response)
-     * it renders in that frame and leaves all of that to the frame's owner.
+     * Handles $request through the whole application, as a request of its own. Without a frame
+     * around it (a test, a script), the request is the outermost render: handle() opens its frame
+     * (RenderContext::fromRequest()), sends what it queued (mail queued before a failure too) and
+     * drops its after-response work, unless runAfterResponseInHandle() is on. Inside a frame that
+     * belongs to something else (a console command, a site's or a test's own frame, a request that
+     * asks for another), it opens a nested frame from the request (the clock of the frame around
+     * it), flushes notify's deferred mail as before 0.81, and hands the rest of what it queued to
+     * the frame around it. A request marked as an internal render (InternalRender::mark()) renders
+     * in the current frame, which its render scope set up. run() and render() render in the frame
+     * they opened themselves.
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -534,7 +538,9 @@ final class Application
             throw new \RuntimeException('Application not booted. Call boot() first.');
         }
         if (Contexts::depth() > 0) {
-            return $this->handleInFrame($request);
+            return \Preflow\Core\Http\InternalRender::is($request)
+                ? $this->handleInFrame($request)
+                : $this->handleNested($request);
         }
 
         $internal = \Preflow\Core\Http\InternalRender::is($request);
@@ -547,7 +553,6 @@ final class Application
         }
 
         return Contexts::run($ctx, function () use ($request, $internal): ResponseInterface {
-            $this->openRequestFrame();
             try {
                 $response = $this->handleInFrame($request);
             } catch (\Throwable $e) {
@@ -559,7 +564,6 @@ final class Application
                 }
                 throw $e;
             }
-            $response = $this->applyFrameCookies($response);
             if (!$internal) {
                 // In-process callers (CLI, tests) have no later emit step: what the request
                 // queued is sent now. run() sends after the response has gone out instead.
@@ -578,35 +582,72 @@ final class Application
 
     /**
      * Renders $request under $ctx in a frame of its own and returns what it produced: the
-     * response, what its frame captured instead of sending (OutboxPolicy::Capture; cookies it
-     * left queued are captured as 'cookies' items), and the data writes it skipped, its nested
-     * renders' included. The one entry for a render the app makes of itself (the SEO audit, GEO,
-     * a page cache rebuild, a preview). The frame around it is untouched: the render cannot see
-     * or take its cookies, and what the render queues under OutboxPolicy::Deliver reaches it when
-     * the render's frame closes.
+     * response, what its frame captured instead of sending (OutboxPolicy::Capture), and the data
+     * writes it skipped, its nested renders' included. The one entry for a render the app makes
+     * of itself (the SEO audit, GEO, a page cache rebuild, a preview). The frame around it is
+     * untouched: the render cannot see or take its cookies. Set-Cookie values the render left
+     * queued (none of its middleware set them) are captured as 'cookies' items under Capture,
+     * dropped under Discard, and under Deliver go into the queue of the frame around it (where
+     * that request's ResolveUserMiddleware sets them, or they are dropped as its own would be).
+     * What it queues under Deliver reaches the frame around it when its frame closes.
      *
      * @since 0.81.0
      */
     public function render(RenderContext $ctx, ServerRequestInterface $request): RenderResult
     {
         $frame = null;
-        $response = Contexts::run($ctx, function () use (&$frame, $request): ResponseInterface {
+        $handOver = [];
+        $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request): ResponseInterface {
             $frame = Contexts::frame();
-            $frame->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
-            $response = $this->handle($request);
-            $cookies = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue());
-            if (Contexts::depth() === 1 && $frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Deliver) {
-                // The outermost render that delivers is its request's owner: its cookies go on its response.
-                return $this->applyFrameCookies($response);
-            }
-            foreach ($cookies->pull() as $cookie) {
-                $frame->outbox()->queue(new \Preflow\Core\Http\QueuedCookie($cookie), \Preflow\Core\Http\CookieChannel::NAME);
+            $response = $this->handleInFrame($request);
+            $left = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue())->pull();
+            if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Capture) {
+                // Only a capturing frame holds cookie items, and it knows their channel; they never move on.
+                $frame->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
+                foreach ($left as $cookie) {
+                    $frame->outbox()->queue(new \Preflow\Core\Http\QueuedCookie($cookie), \Preflow\Core\Http\CookieChannel::NAME);
+                }
+            } elseif ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Deliver) {
+                $handOver = $left;
             }
 
             return $response;
         });
+        if ($handOver !== [] && Contexts::depth() > 0) {
+            $queue = $this->container->get(\Preflow\Core\Http\CookieQueue::class);
+            foreach ($handOver as $cookie) {
+                $queue->queue($cookie);
+            }
+        }
 
         return new RenderResult($response, $frame->outbox()->drain(), $frame->skippedWrites());
+    }
+
+    /**
+     * A request asked for inside a frame that is not its own: a nested frame from the request,
+     * with the clock of the frame around it. Notify's deferred mail is flushed (not under run(),
+     * which sends it after its response), as handle() did before 0.81; what else it queued and
+     * its after-response work go to the frame around it when it closes.
+     */
+    private function handleNested(ServerRequestInterface $request): ResponseInterface
+    {
+        $ctx = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), Contexts::current()->clock);
+
+        return Contexts::run($ctx, function () use ($request): ResponseInterface {
+            try {
+                $response = $this->handleInFrame($request);
+            } catch (\Throwable $e) {
+                if (!$this->emitting) {
+                    $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
+                }
+                throw $e;
+            }
+            if (!$this->emitting) {
+                $this->flushDeferredNotifications();
+            }
+
+            return $response;
+        });
     }
 
     /**
@@ -710,30 +751,6 @@ final class Application
         return RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $this->container->get(\Psr\Clock\ClockInterface::class));
     }
 
-    /** The outermost frame of a request knows the cookie channel (cookies nested renders hand to it). */
-    private function openRequestFrame(): void
-    {
-        Contexts::frame()->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
-    }
-
-    /**
-     * Sets the cookies the current frame left queued, and those its nested renders handed to it,
-     * on $response: the outermost frame's owner does it before the response is sent.
-     */
-    private function applyFrameCookies(ResponseInterface $response): ResponseInterface
-    {
-        $frame = Contexts::frame();
-        $queue = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue());
-        $response = $queue->apply($response);
-        foreach ($frame->outbox()->drain(\Preflow\Core\Http\CookieChannel::NAME) as $item) {
-            if ($item->item instanceof \Preflow\Core\Http\QueuedCookie) {
-                $response = $response->withAddedHeader('Set-Cookie', $item->item->header);
-            }
-        }
-
-        return $response;
-    }
-
     /**
      * A request failed: what it queued before still goes out (data written before the failure
      * stays written, so its mail must go), its after-response work never runs. Failures here are
@@ -821,8 +838,8 @@ final class Application
     }
 
     /**
-     * Set (by reflection) in package tests that act as run() does: an outermost handle() then
-     * leaves notify's deferred mail for the test to flush, as run() sends it after the response.
+     * True while run() handles its request: handle() then leaves notify's deferred mail to run(),
+     * which sends it after the response. Package tests that act as run() does set it by reflection.
      */
     private bool $emitting = false;
 
@@ -880,8 +897,8 @@ final class Application
 
     /**
      * Handle request from PHP globals and emit response. The request is the outermost render:
-     * run() opens its frame (RenderContext::fromRequest()), sets the cookies it left on the
-     * response, emits it, releases the client, then sends what the request queued and runs its
+     * run() opens its frame (RenderContext::fromRequest()), emits the response, releases the
+     * client, then sends what the request queued and runs its
      * after-response work, in the request's frame. When the request fails, what it queued
      * before still goes out; its after-response work does not run.
      */
@@ -897,15 +914,19 @@ final class Application
             $this->rebuildsScheduled = false;
 
             Contexts::run($ctx, function () use ($request): void {
-                $this->openRequestFrame();
+                // While run() handles the request, a request the site asks for in-process
+                // (handle()) leaves the deferred mail to run(), which sends it after the response.
+                $this->emitting = true;
                 try {
-                    $response = $this->applyFrameCookies($this->handle($request));
+                    $response = $this->handleInFrame($request);
                     ($this->emitter ?? fn (ResponseInterface $r) => (new Emitter())->emit($r, $request))($response);
                 } catch (\Throwable $e) {
+                    $this->emitting = false;
                     // The error output must still reach the client: it is not released.
                     $this->deliverAfterFailure();
                     throw $e;
                 }
+                $this->emitting = false;
                 // The deferred mail, then the page cache's rebuilds and other work queued for after the response.
                 $this->logFailure(function (): void {
                     $this->finishResponse();
