@@ -99,8 +99,8 @@ $dm->insertIgnoring($event);
 Validation, the generated id, `#[Timestamps]` and events run as for `insert()`; a model skipped as a
 duplicate runs no write. `insertMany()` inserts the models in the order given; where the storage has
 no transactions (JSON files) the models written before a duplicate stay. A plain model whose `int` id is
-left at `0` gets a new id from the storage and is always written. A class-backed type with a given id
-returns `false` for a duplicate.
+left at `0` (or `null`) gets a new id from the storage and is always written. A plain model or a
+class-backed type with a given id (since 0.80.0 also a non-zero `int` id) returns `false` for a duplicate.
 
 ### `QueryBuilder`
 
@@ -261,6 +261,9 @@ since 0.80.0, the optional `InsertIfNew::insertNewSql()` gives the statement `in
 for a database whose failed statement aborts the transaction (PostgreSQL:
 `INSERT … ON CONFLICT ("id") DO NOTHING`; `PdoDriver` then counts the rows written, 0 meaning the
 id exists), where without it a plain `INSERT` fails and `isPrimaryKeyViolation()` reads the failure;
+a database whose generated ids do not move past an id written by hand (PostgreSQL serial or identity
+columns) must advance its sequence after such a write, or a later generated id collides (the
+storage-driver contract checks it);
 `numericOrder()` the numeric sort; `missingColumn(\PDOException)` reads the column a failed write
 names, so the "run `preflow migrate`" message works on that database) and registers its schema grammar for its PDO driver name, so
 `Schema`, `RecordTableSync` and `preflow migrate` work:

@@ -21,6 +21,16 @@ class TallyRow extends Model
     public string $label = '';
 }
 
+#[Entity(table: 'tallies', storage: 'default')]
+class NullableTallyRow extends Model
+{
+    #[Id]
+    public ?int $id = null;
+
+    #[Field]
+    public string $label = '';
+}
+
 /** A class-backed type with an int id: its type comes from the class (TypeRegistry). */
 #[Entity(table: 'typed_tallies', storage: 'default', type: 'typed_tallies')]
 class TypedTallyRow extends Model
@@ -112,5 +122,27 @@ trait IntIdInsertScenarios
         $this->assertNotSame(7, $auto->id);
         $this->assertSame('generated', $dm->find($auto::class, $auto->id)?->label);
         $this->assertSame('given', $dm->find($auto::class, 7)?->label, 'the given record is untouched');
+    }
+
+    #[DataProvider('kindsAndModels')]
+    public function test_an_id_left_at_null_is_still_generated(string $kind, bool $typed): void
+    {
+        if ($typed || !$this->generatesIds($kind)) {
+            $this->markTestSkipped('Plain models on storage that generates ids only.');
+        }
+        $dm = $this->manager($kind);
+        $given = new NullableTallyRow();
+        $given->id = 7;
+        $given->label = 'given';
+        $dm->insert($given);
+
+        $auto = new NullableTallyRow();
+        $auto->label = 'generated';
+        $dm->insert($auto);
+
+        $this->assertNotNull($auto->id, 'the storage gave an id');
+        $this->assertNotSame(7, $auto->id);
+        $this->assertSame('generated', $dm->find(NullableTallyRow::class, $auto->id)?->label);
+        $this->assertSame('given', $dm->find(NullableTallyRow::class, 7)?->label, 'the given record is untouched');
     }
 }

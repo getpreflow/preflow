@@ -13,6 +13,10 @@ namespace Preflow\Data\Driver;
  * `INSERT … ON CONFLICT ("id") DO NOTHING`: PdoDriver then reads the number of rows written
  * (0: the id exists, nothing written) and never asks isPrimaryKeyViolation().
  *
+ * A database whose generated ids do not move past an id written by hand (PostgreSQL serial or
+ * identity columns) must also advance its sequence after such a write, or a later generated id
+ * collides; StorageDriverContract checks it.
+ *
  * An optional interface beside Dialect, so a dialect written before it keeps working unchanged.
  *
  * @since 0.80.0
