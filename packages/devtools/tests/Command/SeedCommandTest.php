@@ -83,6 +83,21 @@ final class SeedCommandTest extends TestCase
         return $class;
     }
 
+    /** A seeder marked #[Seed(debugOnly: true)] writing $valueExpr into the marks table. */
+    private function demoSeeder(string $name, string $valueExpr): string
+    {
+        $class = $this->seeder($name, $valueExpr);
+        $file = $this->dir . "/app/Seeds/{$class}.php";
+        file_put_contents($file, str_replace("final class {$class}", "#[\\Preflow\\Data\\Seed(debugOnly: true)]\nfinal class {$class}", (string) file_get_contents($file)));
+
+        return $class;
+    }
+
+    private function debug(int $level): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name'=>'Seed Test','debug'=>{$level},'engine'=>'twig','key'=>'seed-test-key-0123456789abcdefgh'];\n");
+    }
+
     /** @return list<string> */
     private function marks(): array
     {
@@ -202,5 +217,87 @@ final class SeedCommandTest extends TestCase
 
         $this->assertSame(1, $code);
         $this->assertStringContainsString("Seeder {$class} failed: kaput", $out);
+    }
+
+    public function test_full_run_with_debug_off_skips_debug_only_seeders_and_says_so(): void
+    {
+        $plain = $this->seeder('APlain', "'p'");
+        $demo = $this->demoSeeder('BDemo', "'d'");
+
+        [$code, $out] = $this->seed();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame([$plain . '=p'], $this->marks());
+        $this->assertStringContainsString("  Skipped: {$demo} (debug only; app.debug is off)", $out);
+        $this->assertStringContainsString("  Seeded: {$plain}", $out);
+        $this->assertStringNotContainsString("Seeded: {$demo}", $out);
+    }
+
+    public function test_full_run_with_debug_on_runs_debug_only_seeders(): void
+    {
+        $this->debug(1);
+        $plain = $this->seeder('APlain', "'p'");
+        $demo = $this->demoSeeder('BDemo', "'d'");
+
+        [$code, $out] = $this->seed();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame([$plain . '=p', $demo . '=d'], $this->marks());
+        $this->assertStringNotContainsString('Skipped', $out);
+    }
+
+    public function test_class_option_on_a_debug_only_seeder_with_debug_off_refuses_without_force(): void
+    {
+        $demo = $this->demoSeeder('Demo', "'d'");
+
+        [$code, $out] = $this->seed(['--class=' . $demo]);
+
+        $this->assertSame(1, $code, $out);
+        $this->assertStringContainsString("Seeder {$demo} is marked debug only and app.debug is off; pass --force to run it anyway.", $out);
+        $this->assertSame([], $this->marks());
+    }
+
+    public function test_class_option_with_force_runs_a_debug_only_seeder_with_debug_off(): void
+    {
+        $demo = $this->demoSeeder('Demo', "'d'");
+
+        [$code, $out] = $this->seed(['--class=' . $demo, '--force']);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame([$demo . '=d'], $this->marks());
+    }
+
+    public function test_class_option_on_a_debug_only_seeder_with_debug_on_runs_it(): void
+    {
+        $this->debug(2);
+        $demo = $this->demoSeeder('Demo', "'d'");
+
+        [$code, $out] = $this->seed(['--class=' . $demo]);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame([$demo . '=d'], $this->marks());
+    }
+
+    public function test_force_does_not_make_a_full_run_include_debug_only_seeders(): void
+    {
+        $demo = $this->demoSeeder('Demo', "'d'");
+
+        [$code, $out] = $this->seed(['--force']);
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame([], $this->marks());
+        $this->assertStringContainsString("  Skipped: {$demo}", $out);
+    }
+
+    public function test_seed_attribute_without_debug_only_changes_nothing(): void
+    {
+        $class = $this->seeder('Marked', "'m'");
+        $file = $this->dir . "/app/Seeds/{$class}.php";
+        file_put_contents($file, str_replace("final class {$class}", "#[\\Preflow\\Data\\Seed]\nfinal class {$class}", (string) file_get_contents($file)));
+
+        [$code, $out] = $this->seed();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertSame([$class . '=m'], $this->marks());
     }
 }

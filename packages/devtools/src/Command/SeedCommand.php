@@ -6,11 +6,14 @@ namespace Preflow\DevTools\Command;
 
 use Preflow\Core\Application;
 use Preflow\Data\DataManager;
+use Preflow\Data\Seed;
 
 /**
  * Runs the seeders in app/Seeds through the booted application: each is built by the
  * container (constructor injection), gets the container's DataManager (so #[Validate]
- * rules apply) and sees .env, which Application::create loads.
+ * rules apply) and sees .env, which Application::create loads. A seeder marked
+ * #[Seed(debugOnly: true)] is skipped by a full run while app.debug is off; `--class` runs it
+ * there only with `--force` (since 0.80.0).
  */
 final class SeedCommand implements CommandInterface
 {
@@ -20,14 +23,17 @@ final class SeedCommand implements CommandInterface
     ) {}
 
     public function getName(): string { return 'db:seed'; }
-    public function getDescription(): string { return 'Run database seeders (--class=<Name>)'; }
+    public function getDescription(): string { return 'Run database seeders (--class=<Name>, --force)'; }
 
     public function execute(array $args): int
     {
         $class = null;
+        $force = false;
         foreach ($args as $arg) {
             if (str_starts_with($arg, '--class=')) {
                 $class = substr($arg, strlen('--class='));
+            } elseif ($arg === '--force') {
+                $force = true;
             }
         }
 
@@ -50,11 +56,16 @@ final class SeedCommand implements CommandInterface
             }
             $container = $app->container();
             $data = $container->get(DataManager::class);
+            $debug = (int) $app->config()->get('app.debug', 0) !== 0;
 
             if ($class !== null) {
                 $name = str_contains($class, '\\') ? ltrim($class, '\\') : 'App\\Seeds\\' . $class;
                 if (!class_exists($name)) {
                     echo "Seeder {$class} not found.\n";
+                    return 1;
+                }
+                if (!$debug && !$force && self::debugOnly($name)) {
+                    echo "Seeder {$class} is marked debug only and app.debug is off; pass --force to run it anyway.\n";
                     return 1;
                 }
                 $classes = [$class => $name];
@@ -72,6 +83,10 @@ final class SeedCommand implements CommandInterface
 
             echo "Running seeders...\n";
             foreach ($classes as $label => $name) {
+                if ($class === null && !$debug && self::debugOnly($name)) {
+                    echo "  Skipped: {$label} (debug only; app.debug is off)\n";
+                    continue;
+                }
                 try {
                     $container->make($name)->run($data);
                 } catch (\Throwable $e) {
@@ -87,6 +102,18 @@ final class SeedCommand implements CommandInterface
             fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
             return 1;
         }
+    }
+
+    /** @param class-string $name */
+    private static function debugOnly(string $name): bool
+    {
+        foreach ((new \ReflectionClass($name))->getAttributes(Seed::class) as $attribute) {
+            if ($attribute->newInstance()->debugOnly) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function app(): Application
