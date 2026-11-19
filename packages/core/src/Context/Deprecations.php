@@ -33,4 +33,15 @@ final class Deprecations
         self::$reported[$key] = true;
         @trigger_error($message, E_USER_DEPRECATED);
     }
+
+    /**
+     * Forgets which call sites warned, so a test sees a shim's notice whatever ran before it. Kept
+     * apart from Contexts::reset(): which call sites warned is per process, not per render.
+     *
+     * @internal tests only
+     */
+    public static function reset(): void
+    {
+        self::$reported = [];
+    }
 }

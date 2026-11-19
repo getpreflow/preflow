@@ -181,6 +181,115 @@ final class FrameOutboxTest extends TestCase
         $this->assertSame('Mail to a@example.test', $frame?->outbox()->drain()[0]->summary);
     }
 
+    /** Capture is a preview's promise: nothing inside a capturing or discarding frame sends. */
+    public function test_only_the_outermost_delivering_frame_sends(): void
+    {
+        $mail = new RecordingChannel('mail');
+        $ran = false;
+        $refused = [];
+        $frame = null;
+
+        Contexts::run(self::ctx(), function () use ($mail, &$ran, &$refused, &$frame): void {
+            Contexts::frame()->outbox()->channel($mail);
+            foreach ([self::ctx()->capturing(), self::ctx()->discarding(), self::ctx()] as $ctx) {
+                Contexts::run($ctx, static function () use (&$ran, &$refused, &$frame): void {
+                    $frame = Contexts::frame();
+                    $outbox = Contexts::frame()->outbox();
+                    $outbox->queue(new OutboxMail('member@example.test'), 'mail');
+                    $outbox->afterResponse(static function () use (&$ran): void {
+                        $ran = true;
+                    });
+                    foreach ([$outbox->deliver(...), $outbox->runAfterResponse(...), Contexts::deliverNow(...)] as $send) {
+                        try {
+                            $send();
+                        } catch (\LogicException) {
+                            $refused[] = Contexts::current()->outbox->name;
+                        }
+                    }
+                    $outbox->discard(); // keep the outer frame clean for the next case
+                });
+            }
+            $this->assertSame([], $mail->delivered, 'nothing was sent from inside a nested frame');
+            $this->assertFalse($ran, 'no after-response work ran from inside a nested frame');
+        });
+
+        $this->assertSame(['Capture', 'Capture', 'Capture', 'Discard', 'Discard', 'Discard', 'Deliver', 'Deliver', 'Deliver'], $refused, 'every attempt is refused loudly');
+
+        // A held frame that has closed cannot send either.
+        $this->expectException(\LogicException::class);
+        $frame?->outbox()->deliver();
+    }
+
+    public function test_the_outermost_frame_can_deliver_early_with_deliver_now(): void
+    {
+        $mail = new RecordingChannel('mail');
+
+        Contexts::run(self::ctx(), function () use ($mail): void {
+            Contexts::frame()->outbox()->channel($mail);
+            Contexts::frame()->outbox()->queue(new OutboxMail('a@example.test'), 'mail');
+            Contexts::deliverNow();
+            $this->assertCount(1, $mail->delivered, 'sent at once (after the response went out)');
+        });
+        $this->assertCount(1, $mail->delivered, 'and not again when the frame closes');
+
+        $this->expectException(\LogicException::class);
+        Contexts::run(self::ctx()->discarding(), static fn () => Contexts::deliverNow());
+    }
+
+    public function test_after_response_work_that_queues_more_is_delivered_too(): void
+    {
+        $mail = new RecordingChannel('mail');
+        $ran = [];
+
+        Contexts::run(self::ctx(), static function () use ($mail, &$ran): void {
+            Contexts::frame()->outbox()->channel($mail);
+            Contexts::frame()->outbox()->afterResponse(static function () use (&$ran): void {
+                $ran[] = 'rebuild';
+                Contexts::frame()->outbox()->queue(new OutboxMail('late@example.test'), 'mail');
+                Contexts::frame()->outbox()->afterResponse(static function () use (&$ran): void {
+                    $ran[] = 'follow-up';
+                    Contexts::frame()->outbox()->queue(new OutboxMail('later@example.test'), 'mail');
+                });
+            });
+        });
+
+        $this->assertSame(['rebuild', 'follow-up'], $ran);
+        $this->assertSame(['late@example.test', 'later@example.test'], array_map(
+            static fn (OutboxMail $m): string => $m->to,
+            array_merge(...$mail->delivered),
+        ), 'mail queued by after-response work is sent, not dropped');
+    }
+
+    public function test_work_that_keeps_queueing_stops_after_ten_rounds_and_is_logged(): void
+    {
+        $mail = new RecordingChannel('mail');
+        $rounds = 0;
+        $log = tempnam(sys_get_temp_dir(), 'outbox-log');
+        $previous = ini_set('error_log', (string) $log);
+
+        try {
+            Contexts::run(self::ctx(), static function () use ($mail, &$rounds): void {
+                Contexts::frame()->outbox()->channel($mail);
+                $again = null;
+                $again = static function () use (&$again, &$rounds): void {
+                    $rounds++;
+                    Contexts::frame()->outbox()->queue(new OutboxMail('loop@example.test'), 'mail');
+                    Contexts::frame()->outbox()->afterResponse($again);
+                };
+                Contexts::frame()->outbox()->afterResponse($again);
+            });
+            $logged = (string) file_get_contents((string) $log);
+        } finally {
+            ini_set('error_log', $previous === false ? '' : $previous);
+            @unlink((string) $log);
+        }
+
+        $this->assertSame(10, $rounds, 'ten rounds, then it stops');
+        $this->assertCount(9, $mail->delivered, 'the first round had nothing to send yet');
+        $this->assertStringContainsString('1 queued item and 1 piece of after-response work', $logged, 'what is left is logged, never dropped silently');
+        $this->assertSame(0, Contexts::depth());
+    }
+
     private static function ctx(): RenderContext
     {
         $site = new Site('https://example.test', ['en'], 'en', new LocaleUrls(['en'], 'en'));

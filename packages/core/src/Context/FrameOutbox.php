@@ -8,11 +8,16 @@ namespace Preflow\Core\Context;
  * One frame's outbox: what the render queued and the work it scheduled for after the response.
  * When the frame closes, Contexts applies the context's OutboxPolicy:
  * - Deliver: queued items and after-response work move to the parent frame; the outermost frame
- *   delivers what is still queued through the channels and runs what is still scheduled;
+ *   sends what is still queued through the channels and runs what is still scheduled, round
+ *   after round while that work queues more (at most 10 rounds; what is left then is logged);
  * - Discard: both are dropped;
  * - Capture: the items stay here for the caller to drain() into a RenderResult; the
  *   after-response work is dropped.
  * A render that throws leaves nothing behind: its frame's outbox is dropped whatever the policy.
+ *
+ * Only the outermost open frame under Deliver sends: deliver() and runAfterResponse() throw a
+ * LogicException anywhere else (inside a preview, an audit, a nested render, or on a closed
+ * frame), so a captured mail is never sent. The frame's owner uses Contexts::deliverNow().
  *
  * Channels are registered on a frame (FrameOutbox::channel(), typically from a Contexts::onEnter()
  * hook) and are known to every frame opened inside it.
@@ -27,8 +32,13 @@ final class FrameOutbox implements Outbox
     /** @var list<\Closure(): void> */
     private array $work = [];
 
-    /** @param array<string, OutboxChannel> $channels the channels known to the parent frame */
-    public function __construct(private array $channels = []) {}
+    /**
+     * @param array<string, OutboxChannel> $channels the channels known to the parent frame
+     * @param (\Closure(): bool)|null $sends whether this outbox may send now (RenderFrame passes it; null never sends)
+     *
+     * @internal RenderFrame
+     */
+    public function __construct(private array $channels = [], private ?\Closure $sends = null) {}
 
     public function queue(object $item, string $channel): void
     {
@@ -67,12 +77,16 @@ final class FrameOutbox implements Outbox
 
     /**
      * Sends every queued item now through its channel, one deliver() per channel in the order the
-     * channels were first used (the outermost frame's owner calls it after emitting the response).
+     * channels were first used.
      *
-     * @throws \LogicException when an item's channel is not registered (nothing is sent then)
+     * @internal Contexts (the owner calls Contexts::deliverNow())
+     *
+     * @throws \LogicException outside the outermost open frame under Deliver, or when an item's
+     *                         channel is not registered (nothing is sent then)
      */
     public function deliver(): void
     {
+        $this->mustSend('deliver');
         $batches = [];
         foreach ($this->items as [$channel, $item]) {
             if (!isset($this->channels[$channel])) {
@@ -87,13 +101,19 @@ final class FrameOutbox implements Outbox
     }
 
     /**
-     * Runs the scheduled work now, also work added while it runs. A failure is logged (its
-     * message only) and the next piece of work still runs.
+     * Runs the work scheduled so far; work it schedules waits for the next round. A failure is
+     * logged (its message only) and the next piece of work still runs.
+     *
+     * @internal Contexts (the owner calls Contexts::deliverNow())
+     *
+     * @throws \LogicException outside the outermost open frame under Deliver
      */
     public function runAfterResponse(): void
     {
-        while ($this->work !== []) {
-            $work = array_shift($this->work);
+        $this->mustSend('runAfterResponse');
+        $round = $this->work;
+        $this->work = [];
+        foreach ($round as $work) {
             try {
                 $work();
             } catch (\Throwable $e) {
@@ -137,6 +157,18 @@ final class FrameOutbox implements Outbox
     }
 
     /**
+     * How many items are queued and how many pieces of work are scheduled.
+     *
+     * @internal Contexts
+     *
+     * @return array{int, int}
+     */
+    public function pending(): array
+    {
+        return [count($this->items), count($this->work)];
+    }
+
+    /**
      * The channels this outbox knows, for a frame opened inside its frame.
      *
      * @internal RenderFrame
@@ -146,5 +178,15 @@ final class FrameOutbox implements Outbox
     public function channels(): array
     {
         return $this->channels;
+    }
+
+    private function mustSend(string $method): void
+    {
+        if ($this->sends === null || !($this->sends)()) {
+            throw new \LogicException(
+                "FrameOutbox::{$method}() sends only from the outermost open frame under OutboxPolicy::Deliver; "
+                . 'a nested, capturing, discarding or closed frame never sends (its owner uses Contexts::deliverNow()).',
+            );
+        }
     }
 }

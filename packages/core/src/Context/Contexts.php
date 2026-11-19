@@ -33,6 +33,11 @@ final class Contexts
 
     private static ?RenderFrame $top = null;
 
+    private static bool $debug = false;
+
+    /** Rounds of delivery and after-response work the outermost frame runs at most. */
+    private const DELIVERY_ROUNDS = 10;
+
     /** @var list<\Closure(RenderContext, RenderFrame): (\Closure(): void)|null> */
     private static array $enterHooks = [];
 
@@ -43,8 +48,8 @@ final class Contexts
      * move to the parent frame, so the run that opened a frame reports its nested renders' too.
      *
      * The onEnter() hooks run after the frame opened, their leave closures (in reverse order)
-     * after the outbox policy and before the frame is gone. With APP_DEBUG on, a frame stack
-     * that is not as run() left it (a frame left open, a reset inside a render) throws a
+     * after the outbox policy and before the frame is gone. In debug mode (debug(), as it was
+     * when the frame opened), a frame stack that is not as run() left it (a frame left open, a reset inside a render) throws a
      * LogicException; with assertions on, assert() reports it too.
      *
      * @template R
@@ -54,6 +59,7 @@ final class Contexts
     public static function run(RenderContext $ctx, \Closure $render): mixed
     {
         $depth = count(self::$frames);
+        $debug = self::$debug;
         $parent = self::$top;
         $frame = new RenderFrame($ctx, $parent);
         self::$frames[] = $frame;
@@ -70,7 +76,12 @@ final class Contexts
                 }
             }
             $result = $render();
-            self::close($frame, $parent);
+            if (self::$top === $frame) {
+                self::close($frame, $parent);
+            } else {
+                // The stack was torn under the render (reported below): nothing it queued is sent.
+                $frame->outbox()->discard();
+            }
         } catch (\Throwable $e) {
             // A render that throws leaves nothing behind: no mail, cookie or after-response work.
             $failure = $e;
@@ -111,10 +122,10 @@ final class Contexts
                 0,
                 $failure,
             );
-            \assert($balanced, $problem);
-            if (self::debug()) {
+            if ($debug) {
                 throw $problem;
             }
+            \assert($balanced, $problem);
         }
         if ($failure !== null) {
             throw $failure;
@@ -189,7 +200,8 @@ final class Contexts
     }
 
     /**
-     * Closes every frame and forgets every onEnter() hook.
+     * Closes every frame, forgets every onEnter() hook and turns debug mode off. Deprecations
+     * keep their own reset(): which call sites warned is per process, not per render.
      *
      * @internal tests only
      */
@@ -198,6 +210,32 @@ final class Contexts
         self::$frames = [];
         self::$top = null;
         self::$enterHooks = [];
+        self::$debug = false;
+    }
+
+    /**
+     * Debug mode: an unbalanced frame stack throws a LogicException (otherwise it is repaired,
+     * and reported by assert() where assertions are on). Off by default; the Application sets
+     * it at boot from its debug level.
+     *
+     * @internal Application
+     */
+    public static function debug(bool $on): void
+    {
+        self::$debug = $on;
+    }
+
+    /**
+     * Sends what the current frame queued and runs its after-response work now, round after
+     * round while that work queues more (the owner of the outermost frame calls it after the
+     * response went out). What is left after 10 rounds is logged and dropped.
+     *
+     * @throws NoRenderContext outside every render
+     * @throws \LogicException unless the current frame is the outermost one and delivers
+     */
+    public static function deliverNow(): void
+    {
+        self::deliverOutermost((self::$top ?? throw self::missing('deliverNow'))->outbox());
     }
 
     /**
@@ -228,8 +266,24 @@ final class Contexts
 
     private static function deliverOutermost(FrameOutbox $outbox): void
     {
-        $outbox->deliver();
-        $outbox->runAfterResponse();
+        $rounds = 0;
+        do {
+            $outbox->deliver();
+            $outbox->runAfterResponse();
+            [$items, $work] = $outbox->pending();
+        } while (($items > 0 || $work > 0) && ++$rounds < self::DELIVERY_ROUNDS);
+
+        if ($items > 0 || $work > 0) {
+            error_log(sprintf(
+                'After %d rounds of after-response work, %d queued %s and %d %s of after-response work were left and dropped.',
+                self::DELIVERY_ROUNDS,
+                $items,
+                $items === 1 ? 'item' : 'items',
+                $work,
+                $work === 1 ? 'piece' : 'pieces',
+            ));
+            $outbox->discard();
+        }
     }
 
     private static function missing(string $method): NoRenderContext
@@ -237,12 +291,5 @@ final class Contexts
         $caller = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 2)[1] ?? [];
 
         return NoRenderContext::at($method, $caller['file'] ?? null, $caller['line'] ?? null);
-    }
-
-    private static function debug(): bool
-    {
-        $value = getenv('APP_DEBUG');
-
-        return $value !== false && !in_array(strtolower(trim($value)), ['', '0', 'false', 'off', 'no'], true);
     }
 }

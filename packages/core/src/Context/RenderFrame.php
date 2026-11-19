@@ -29,7 +29,14 @@ final class RenderFrame
     public function __construct(RenderContext $context, ?RenderFrame $parent = null)
     {
         $this->context = $context;
-        $this->outbox = new FrameOutbox($parent?->outbox->channels() ?? []);
+        $outermost = $parent === null;
+        $this->outbox = new FrameOutbox(
+            $parent?->outbox->channels() ?? [],
+            fn (): bool => $outermost
+                && Contexts::depth() === 1
+                && Contexts::frame() === $this
+                && $this->context->outbox === OutboxPolicy::Deliver,
+        );
     }
 
     public function outbox(): FrameOutbox

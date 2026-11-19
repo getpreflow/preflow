@@ -105,6 +105,19 @@ final class ContextsTest extends TestCase
             $this->assertCount(1, $items, "the inner frame's mail and cookies never reach the outer one");
             $this->assertSame('cookies', $items[0]->channel);
             Contexts::frame()->outbox()->runAfterResponse();
+
+            // A caller holding a capturing frame (the RenderResult pattern) gets nothing from a render that threw.
+            $held = null;
+            try {
+                Contexts::run($audit->capturing(), static function () use (&$held): void {
+                    $held = Contexts::frame();
+                    Contexts::frame()->outbox()->queue(new QueuedMail('to@example.test'), 'mail');
+                    throw new \RuntimeException('render failed');
+                });
+            } catch (\RuntimeException) {
+            }
+            $this->assertInstanceOf(RenderFrame::class, $held);
+            $this->assertSame([], $held->outbox()->drain(), "a failed render's mail is never reported as captured");
         });
 
         $this->assertSame(0, Contexts::depth());
@@ -246,17 +259,27 @@ final class ContextsTest extends TestCase
 
     public function test_run_detects_an_unbalanced_frame_stack_in_debug_mode(): void
     {
-        $before = getenv('APP_DEBUG');
-        putenv('APP_DEBUG=1');
+        $assertions = ini_get('zend.assertions');
+        ini_set('zend.assertions', '0'); // the debug flag alone must report it, as on a server
         try {
+            Contexts::debug(false);
             Contexts::run(self::ctx('/a'), static function (): void {
                 Contexts::reset();
             });
-            $this->fail('an unbalanced stack must be reported');
-        } catch (\LogicException $e) {
-            $this->assertStringContainsString('depth', $e->getMessage());
+            $this->assertSame(0, Contexts::depth(), 'without debug mode the stack is repaired quietly');
+
+            Contexts::debug(true);
+            try {
+                Contexts::run(self::ctx('/a'), static function (): void {
+                    Contexts::reset(); // also turns debug mode off; the frame keeps the flag it opened with
+                });
+                $this->fail('an unbalanced stack must be reported in debug mode');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('depth', $e->getMessage());
+            }
         } finally {
-            putenv($before === false ? 'APP_DEBUG' : 'APP_DEBUG=' . $before);
+            ini_set('zend.assertions', (string) $assertions);
+            Contexts::debug(false);
         }
     }
 

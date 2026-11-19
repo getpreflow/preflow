@@ -21,6 +21,7 @@ final class DeprecationsTest extends TestCase
     protected function setUp(): void
     {
         Contexts::reset();
+        Deprecations::reset();
         set_error_handler(function (int $level, string $message, string $file, int $line): bool {
             $this->notices[] = [$level, $message, $file, $line];
 
@@ -62,6 +63,16 @@ final class DeprecationsTest extends TestCase
             $this->assertCount(4, $this->notices, 'two more call sites, one notice each');
             $this->assertSame('fr', Contexts::current()->locale);
         });
+    }
+
+    public function test_reset_lets_a_call_site_warn_again(): void
+    {
+        for ($i = 0; $i < 2; $i++) {
+            Deprecations::once(LoopShim::MESSAGE, 1);
+            Deprecations::reset();
+        }
+
+        $this->assertCount(2, $this->notices, 'tests see the notice whatever ran before them');
     }
 }
 
