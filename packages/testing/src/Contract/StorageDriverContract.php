@@ -100,7 +100,9 @@ use Preflow\Testing\PlainDriver;
  * - save() of an existing id updates the fields it is given and keeps the others; a field given as
  *   null is stored as null (@since 0.78). delete() of a missing id does nothing.
  * - A driver with InsertsNew (@since 0.79.0) writes a record only while no record has its id, and says
- *   which: true when written, false when the id exists (the stored record stays as it is).
+ *   which: true when written, false when the id exists (the stored record stays as it is). A
+ *   given int id is written as it is, and a store that generates ids gives the next record
+ *   generated after it an id of its own, not the given one (@since 0.80.0).
  * - A driver with ConditionalUpdates (@since 0.77) writes only the named fields, and only while the
  *   version field holds the expected whole number (as text or number; null: none, NULL or '', and
  *   never 0); a match that changes no value is still a match.
@@ -1764,6 +1766,27 @@ abstract class StorageDriverContract extends TestCase
         } catch (UniqueViolation) {
             $this->assertFalse($driver->exists('records', 'n2'));
         }
+    }
+
+    /** @since 0.80.0 */
+    public function test_insert_new_keeps_a_given_int_id_and_generates_past_it(): void
+    {
+        $driver = $this->inserting();
+        $this->createType('tallies', ['id' => 'number', 'label' => 'exact']);
+
+        $this->assertTrue($driver->insertNew('tallies', ['id' => 1, 'label' => 'Given'], 'id'));
+        $this->assertSame('Given', ($driver->findOne('tallies', 1, 'id') ?? [])['label'] ?? null, 'stored under the given id');
+        $this->assertFalse($driver->insertNew('tallies', ['id' => 1, 'label' => 'Again'], 'id'), 'the id exists: not written');
+        $this->assertSame('Given', ($driver->findOne('tallies', 1, 'id') ?? [])['label'] ?? null, 'the stored record is untouched');
+
+        if (!$this->supportsAutoIds()) {
+            return;
+        }
+        $driver->save('tallies', 0, ['label' => 'Generated'], 'id');
+        $id = $driver->lastInsertId();
+        $this->assertNotEquals(1, $id, 'a generated id never repeats the given one');
+        $this->assertSame('Generated', ($driver->findOne('tallies', $id, 'id') ?? [])['label'] ?? null);
+        $this->assertSame('Given', ($driver->findOne('tallies', 1, 'id') ?? [])['label'] ?? null);
     }
 
     public function test_insert_new_of_an_existing_id_leaves_an_open_transaction_usable(): void

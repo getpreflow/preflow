@@ -257,6 +257,10 @@ For another SQL database, a `PdoDriver` subclass supplies a `Dialect` (every met
 the match `where(…, 'like', …)`, `search()` and `CONTAINS` use, e.g. `ILIKE`, or,
 since 0.77, the optional `PatternMatching::likeSql()` writes it per pattern, which a dialect whose
 operator alone cannot give the text-matching rule (see "Text matching") implements;
+since 0.80.0, the optional `InsertIfNew::insertNewSql()` gives the statement `insertNew()` runs
+for a database whose failed statement aborts the transaction (PostgreSQL:
+`INSERT … ON CONFLICT ("id") DO NOTHING`; `PdoDriver` then counts the rows written, 0 meaning the
+id exists), where without it a plain `INSERT` fails and `isPrimaryKeyViolation()` reads the failure;
 `numericOrder()` the numeric sort; `missingColumn(\PDOException)` reads the column a failed write
 names, so the "run `preflow migrate`" message works on that database) and registers its schema grammar for its PDO driver name, so
 `Schema`, `RecordTableSync` and `preflow migrate` work:
@@ -324,7 +328,7 @@ them the fallbacks work but are not atomic, so two concurrent writers can both p
 A SQL driver built on `PdoDriver` gets `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`, `BulkDeletes`,
 `Savepoints`, `DescribesColumns`, `AtomicCounters`, `AggregatingStorage`, `PdoConnection` (so
 `RunsSql`), `Transactions`, `UniqueIndexes`, `SelectsColumns` and `SelectsSubqueries` from it and implements `exclusive()` itself (as
-`SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching`. `MysqlDriver` adds
+`SqliteDriver` and `MysqlDriver` do); its `Dialect` may add `PatternMatching` and `InsertIfNew` (0.80). `MysqlDriver` adds
 `RankedSearch`, `SqliteDriver` adds `Maintenance` and `Dumps`. The JSON file driver implements `VersionedStorage`, `ConditionalUpdates`, `InsertsNew`,
 `ExclusiveWrites`, `BulkDeletes`, `ChangeTokens`, `DescribesColumns`, `AtomicCounters` and
 `AggregatingStorage`.
@@ -459,6 +463,19 @@ $comment = new Comment();
 $comment->body = 'Great post!';
 $dm->save($comment);
 echo $comment->id; // e.g. 42 — populated after insert
+```
+
+An id you set yourself is kept (since 0.80.0): `insert()` of a model whose int id is not `0`
+writes it under that id, only while no record has it. A second `insert()` of the same id throws,
+as for a string id, and `insertIgnoring()` skips it. Ids the database numbers later go on past
+the ones you set (MySQL/MariaDB and SQLite do this themselves).
+
+```php
+$comment = new Comment();
+$comment->id = 1000;
+$comment->body = 'Imported';
+$dm->insert($comment);   // stored as 1000
+$dm->insert($comment);   // RuntimeException: a record with this id exists
 ```
 
 The table needs a key the database numbers. In a migration declare it with `increments()`

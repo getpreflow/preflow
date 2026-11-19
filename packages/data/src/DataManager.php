@@ -713,6 +713,9 @@ final class DataManager
      * Insert a new model. Sets the auto-generated ID on the model.
      * Use this when you explicitly want INSERT behavior (not upsert).
      *
+     * A model with an int id left at 0 gets the id the storage generates; a non-zero int id the
+     * caller set is written as it is (since 0.80.0), as a string id is.
+     *
      * A model with an id that is stored already is never written over: insert() throws a
      * \RuntimeException, also when another writer stores the id between the check and the write
      * (on a storage with InsertsNew, as every built-in one has; any other storage is checked,
@@ -733,8 +736,8 @@ final class DataManager
      * skipped model). For rows that may repeat, such as an event log or a visit counted once:
      * the check and the write are one step on a storage with InsertsNew, so two requests
      * inserting one id never overwrite each other. Validation, the generated id and events are
-     * as for insert(). A model with an auto-increment id has no id to repeat and is always
-     * written.
+     * as for insert(). A model whose int id is left at 0 gets a new id from the storage and is
+     * always written; a non-zero int id the caller set is skipped when stored (since 0.80.0).
      *
      * A duplicate on another unique field is still a ValidationException.
      *
@@ -799,10 +802,13 @@ final class DataManager
         }
 
         $driver = $this->resolveDriver($meta->storage);
-        if (self::hasStringId($meta)) {
-            // A string id is never the storage's to give: the given one, or the new UUID.
-            $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
-            $id = (string) $data[$meta->idField];
+        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
+        $stringId = self::hasStringId($meta);
+        if ($stringId || !self::emptyId($data[$meta->idField] ?? null)) {
+            // A string id is never the storage's to give: the given one, or the new UUID. A
+            // non-zero int id the caller set is written as it is (since 0.80.0), only while no
+            // record has it.
+            $id = $stringId ? (string) $data[$meta->idField] : $data[$meta->idField];
             if ($driver->exists($meta->table, $id, $meta->idField)) {
                 return $this->duplicateId($model, $id, $ignore);
             }
@@ -823,8 +829,6 @@ final class DataManager
 
             return true;
         }
-
-        $data = $this->canonicalModel($meta, $this->modelData($meta, $model));
 
         // Force INSERT by passing empty ID (PdoDriver strips the ID field and does plain INSERT)
         $this->guardedModel($meta, $data, fn () => $driver->save($meta->table, 0, $data, $meta->idField));
