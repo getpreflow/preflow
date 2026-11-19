@@ -253,7 +253,7 @@ adapter that renders internally.
 
 | Hook | What it returns |
 |---|---|
-| `app()` | a booted `Application`; called once per test, so return a new one each time |
+| `app()` | a booted `Application`; called once per path in each test, so every path gets its own app and no outcome depends on the paths before it; return a new one each time |
 | `paths()` | path name => `Closure(Application, RenderContext): RenderResult`, the render under the context it is given; names from `RenderIsolationContract::PATHS`: `audit`, `geo`, `rebuild`, `verify`, `preview`, `mail`, `pdf` (cover the ones your app has) |
 | `pending()` (optional) | path => [test => reason]: the tests a path does not pass yet; tests are `poison`, `frame`, `interleave`, `frozen`, or `'*'` for all four (see below) |
 | `marker()` (optional) | the text planted in the ambient state, `zz-ambient-marker` by default |
@@ -261,6 +261,13 @@ adapter that renders internally.
 | `clockFormat()` (optional) | the date format your page prints its render time in; when given, the frozen-clock test checks the page printed its own frozen time |
 | `poisonApp(Application $app)` (optional) | plants the marker in your app's own ambient sources (a package's static locale, say); runs at the end of the poison |
 | `ambientState(Application $app)` (optional) | reads those sources back as an array; the outer-frame test compares it before and after each render |
+| `restoreApp(Application $app)` (optional) | puts back what `poisonApp()` set; runs after each path and in `tearDown()`, also when the test failed, and `ambientState()` must then be back to its value from before the poison |
+
+`app()` must build a new app on every call. Anything that outlives the app, such as a static a
+package keeps, is restored in `restoreApp()`; a runner that cannot restore it runs its tests in
+separate processes (`#[RunTestsInSeparateProcesses]`, as core's own runner does). Between paths
+the contract puts the superglobals back and drops a native session the previous app started, so
+the next app boots as the next request would.
 
 A pending test still runs. When it fails, the test is marked incomplete (not skipped), with the
 reason and the whole failure, diff included. When it passes, the test fails with

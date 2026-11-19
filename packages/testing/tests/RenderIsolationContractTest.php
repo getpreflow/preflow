@@ -115,6 +115,61 @@ final class RenderIsolationContractTest extends TestCase
         $this->assertStringContainsString('audit', $failure->getMessage());
     }
 
+    public function test_each_path_gets_a_fresh_app_so_no_outcome_depends_on_the_paths_before_it(): void
+    {
+        // Both paths print a library only in the first render of their app (as a shared asset
+        // registry does). On a shared app geo would pass after audit; on its own app it fails.
+        $runner = IsolationSelfTest::with(
+            ['audit' => IsolationSelfTest::printsOnce(), 'geo' => IsolationSelfTest::printsOnce()],
+            ['audit' => ['frozen' => 'prints the library once per app']],
+        );
+
+        $failure = $this->failureOf($runner, 'frozen');
+
+        $this->assertInstanceOf(AssertionFailedError::class, $failure);
+        $this->assertNotInstanceOf(IncompleteTest::class, $failure);
+        $this->assertStringContainsString('geo: two renders of the same context frozen with at() differ', $failure->getMessage());
+    }
+
+    public function test_restore_app_puts_the_app_s_own_state_back_also_after_a_failure(): void
+    {
+        $failure = $this->failureOf(IsolationSelfTest::with(['geo' => IsolationSelfTest::outer()]), 'poison');
+
+        $this->assertInstanceOf(AssertionFailedError::class, $failure, 'the test failed');
+        $this->assertSame('clean', IsolationSelfTest::$siteState, 'restoreApp() ran in tearDown()');
+    }
+
+    public function test_app_state_left_poisoned_fails_the_test(): void
+    {
+        $failure = $this->failureOf(IsolationSelfTest::with(['audit' => IsolationSelfTest::own()], restores: false), 'poison');
+
+        $this->assertInstanceOf(AssertionFailedError::class, $failure);
+        $this->assertStringContainsString('restoreApp()', $failure->getMessage());
+        IsolationSelfTest::$siteState = 'clean';
+    }
+
+    public function test_a_path_that_changes_the_outer_cookies_outbox_or_bound_request_fails_the_frame_test(): void
+    {
+        foreach (['pullsOuterCookies', 'drainsOuterOutbox', 'rebindsRequest'] as $broken) {
+            $failure = $this->failureOf(IsolationSelfTest::with(['verify' => IsolationSelfTest::$broken()]), 'frame');
+
+            $this->assertInstanceOf(AssertionFailedError::class, $failure, $broken);
+            $this->assertNotInstanceOf(IncompleteTest::class, $failure, $broken);
+            $this->assertStringContainsString('verify: the outer frame changed', $failure->getMessage(), $broken);
+        }
+    }
+
+    public function test_headers_or_captured_items_leaking_from_b_into_the_next_a_fail_the_interleave_test(): void
+    {
+        foreach (['header', 'captured'] as $leak) {
+            $failure = $this->failureOf(IsolationSelfTest::with(['preview' => IsolationSelfTest::leaksAfterB($leak)]), 'interleave');
+
+            $this->assertInstanceOf(AssertionFailedError::class, $failure, $leak);
+            $this->assertNotInstanceOf(IncompleteTest::class, $failure, $leak);
+            $this->assertStringContainsString('preview: a render in between', $failure->getMessage(), $leak);
+        }
+    }
+
     private function failureOf(IsolationSelfTest $runner, string $test): ?\Throwable
     {
         try {
@@ -143,15 +198,21 @@ final class IsolationSelfTest extends RenderIsolationContract
     /** @var array<string, array<string, string>> */
     private array $selfPending = [];
 
+    private bool $restores = true;
+
+    /** Whether a B render (locale de) ran: leaksAfterB() then leaks into the next render. */
+    private static bool $sawB = false;
+
     /**
      * @param array<string, \Closure> $paths
      * @param array<string, array<string, string>> $pending
      */
-    public static function with(array $paths, array $pending = []): self
+    public static function with(array $paths, array $pending = [], bool $restores = true): self
     {
         $runner = new self('test_poisoned_ambient_state_never_reaches_the_render');
         $runner->selfPaths = $paths;
         $runner->selfPending = $pending;
+        $runner->restores = $restores;
 
         return $runner;
     }
@@ -160,6 +221,7 @@ final class IsolationSelfTest extends RenderIsolationContract
     public function exercise(string $test): void
     {
         self::$siteState = 'clean';
+        self::$sawB = false;
         $this->setUp();
         try {
             $this->{$test}();
@@ -174,6 +236,9 @@ final class IsolationSelfTest extends RenderIsolationContract
         // The collectors a booted app binds: the contract plants its marker asset and title in them.
         $app->container()->instance(\Preflow\View\AssetCollector::class, new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()));
         $app->container()->instance(\Preflow\View\Seo\SeoContext::class, new \Preflow\View\Seo\SeoContext());
+        $app->container()->instance(\Preflow\Core\Http\CookieQueue::class, new \Preflow\Core\Http\CookieQueue());
+        // What printsOnce() printed already, per app (as an asset registry's printed marks).
+        $app->container()->instance('isolation.printed', new \ArrayObject());
 
         return $app;
     }
@@ -206,6 +271,77 @@ final class IsolationSelfTest extends RenderIsolationContract
     protected function ambientState(Application $app): array
     {
         return ['siteState' => self::$siteState];
+    }
+
+    protected function restoreApp(Application $app): void
+    {
+        if ($this->restores) {
+            self::$siteState = 'clean';
+        }
+    }
+
+    /** Renders under its context, and prints a library only in the first render of its app. */
+    public static function printsOnce(): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx): RenderResult {
+            $printed = $app->container()->get('isolation.printed');
+            $library = isset($printed['lib']) ? '' : '<script>lib</script>';
+            $printed['lib'] = true;
+
+            return self::inFrame($ctx->because(Purpose::Audit)->discarding()->skippingWrites(), static fn (): string => $library . self::describe(Contexts::current()));
+        };
+    }
+
+    /** Renders under its context, after taking the outer request's queued cookies. */
+    public static function pullsOuterCookies(): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx): RenderResult {
+            $app->container()->get(\Preflow\Core\Http\CookieQueue::class)->pull();
+
+            return self::own()($app, $ctx);
+        };
+    }
+
+    /** Renders under its context, after draining the outer frame's outbox. */
+    public static function drainsOuterOutbox(): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx): RenderResult {
+            Contexts::frame()->outbox()->drain();
+
+            return self::own()($app, $ctx);
+        };
+    }
+
+    /** Renders under its context, and binds its own request in the container without putting the visitor's back. */
+    public static function rebindsRequest(): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx): RenderResult {
+            $app->container()->instance(RequestContext::class, new RequestContext('/', 'GET', $ctx->request?->request));
+
+            return self::own()($app, $ctx);
+        };
+    }
+
+    /** Renders under its context; once a B render (locale de) ran, the next renders carry a header or a captured item. */
+    public static function leaksAfterB(string $leak): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx) use ($leak): RenderResult {
+            $leaking = self::$sawB;
+            if ($ctx->locale === 'de') {
+                self::$sawB = true;
+            }
+            $result = self::inFrame($ctx->because(Purpose::Preview)->capturing()->skippingWrites(), static function () use ($leak, $leaking): string {
+                if ($leaking && $leak === 'captured') {
+                    Contexts::frame()->outbox()->queue(new \ArrayObject(['leaked' => true]), 'mail');
+                }
+
+                return self::describe(Contexts::current());
+            });
+
+            return $leaking && $leak === 'header'
+                ? new RenderResult($result->response->withHeader('X-Leak', '1'), $result->captured, $result->skippedWrites)
+                : $result;
+        };
     }
 
     /** Renders in a frame of its own under the context it is given. */

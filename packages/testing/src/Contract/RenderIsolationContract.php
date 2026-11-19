@@ -53,8 +53,8 @@ use Preflow\View\Seo\SeoContext;
  *     }
  *
  * Hooks:
- * - app(): a booted application. Called once per test; return a new one each time (the tests
- *   change its services).
+ * - app(): a booted application. Called once per path in each test, so no outcome depends on
+ *   the paths before it; return a new one each time (the tests change its services).
  * - paths(): path name => a closure that renders under the context it is given and returns the
  *   RenderResult (the response, what its frame captured, the writes it skipped). Names are from
  *   PATHS: audit, geo, rebuild, verify, preview, mail, pdf; cover the ones the app has.
@@ -68,8 +68,12 @@ use Preflow\View\Seo\SeoContext;
  *   your site's origin and locales here.
  * - clockFormat() (optional): the date format the app's page prints its render time in; when
  *   given, the frozen-clock test checks that the render printed its own frozen time.
- * - poisonApp() and ambientState() (optional): plant the marker in the app's own ambient sources
- *   (a package's static locale, say), and read them for the outer-frame snapshot.
+ * - poisonApp(), ambientState() and restoreApp() (optional): plant the marker in the app's own
+ *   ambient sources (a package's static locale, say), read them for the outer-frame snapshot,
+ *   and put them back. restoreApp() runs in tearDown() for every app the test used, also after a
+ *   failure, and ambientState() must then be back to its value before the poison. State that
+ *   outlives the app (statics) must be restored there, or the runner must run its tests in
+ *   separate processes (#[RunTestsInSeparateProcesses]).
  *
  * Each render runs inside an outer frame of the test's own, as an internal render runs inside the
  * request that asks for it. The tests:
@@ -156,6 +160,19 @@ abstract class RenderIsolationContract extends TestCase
         return [];
     }
 
+    /**
+     * Undoes what poisonApp() set, statics included. Runs in tearDown() for every app the test
+     * used, also when the test failed; afterwards ambientState() must be back to its value from
+     * before the poison.
+     */
+    protected function restoreApp(Application $app): void {}
+
+    /** @var list<Application> the apps this test used, for restoreApp() */
+    private array $apps = [];
+
+    /** @var array<int, array<string, mixed>> ambientState() of each poisoned app before its poison, by object id */
+    private array $ambientBefore = [];
+
     /** @var array{cookie: array<mixed>, server: array<mixed>, session: array<mixed>|null} */
     private array $globals;
 
@@ -167,55 +184,101 @@ abstract class RenderIsolationContract extends TestCase
 
     protected function tearDown(): void
     {
-        if (isset($this->globals)) {
-            $_COOKIE = $this->globals['cookie'];
-            $_SERVER = $this->globals['server'];
-            if ($this->globals['session'] === null) {
-                unset($_SESSION);
-            } else {
-                $_SESSION = $this->globals['session'];
+        $failure = null;
+        try {
+            $this->restoreApps();
+        } catch (\Throwable $e) {
+            $failure = $e;
+        }
+        $this->restoreGlobals();
+        parent::tearDown();
+        if ($failure !== null) {
+            throw $failure;
+        }
+    }
+
+    /**
+     * restoreApp() for every app used since the last call, all of them also when one fails; then
+     * ambientState() must be back to its value from before the poison.
+     */
+    private function restoreApps(): void
+    {
+        $failure = null;
+        foreach ($this->apps as $app) {
+            try {
+                $this->restoreApp($app);
+                $before = $this->ambientBefore[spl_object_id($app)] ?? null;
+                if ($before !== null) {
+                    $this->assertSame($before, $this->ambientState($app), 'restoreApp() did not put the app\'s own ambient state back after the poison');
+                }
+            } catch (\Throwable $e) {
+                $failure ??= $e;
             }
         }
-        parent::tearDown();
+        $this->apps = [];
+        $this->ambientBefore = [];
+        $this->restoreGlobals();
+        if ($failure !== null) {
+            throw $failure;
+        }
+    }
+
+    /** The superglobals as setUp() found them. */
+    private function restoreGlobals(): void
+    {
+        if (!isset($this->globals)) {
+            return;
+        }
+        $_COOKIE = $this->globals['cookie'];
+        $_SERVER = $this->globals['server'];
+        if ($this->globals['session'] === null) {
+            unset($_SESSION);
+        } else {
+            $_SESSION = $this->globals['session'];
+        }
+    }
+
+    /**
+     * A new app for one path of one test (app()), remembered for restoreApp(). A native session
+     * the previous app's boot started is dropped unsaved first, so the next boot starts its own, as
+     * the next request would.
+     */
+    private function freshApp(): Application
+    {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_abort();
+        }
+        $app = $this->app();
+        $this->apps[] = $app;
+
+        return $app;
     }
 
     public function test_poisoned_ambient_state_never_reaches_the_render(): void
     {
-        $app = $this->app();
         $ctx = $this->context();
-        $paths = $this->checkedPaths();
-        // Every clean render first: the poison stays in the app's services.
-        $clean = [];
-        $failed = [];
-        foreach ($paths as $name => $render) {
-            try {
-                $clean[$name] = $this->rendered($this->inOuterFrame($name, $this->context(), fn (): RenderResult => $this->render($name, $render, $app, $ctx)));
-            } catch (\Throwable $e) {
-                $failed[$name] = $e;
-            }
-        }
 
-        $this->eachPath('poison', $paths, function (string $name, \Closure $render) use ($app, $ctx, $clean, $failed): void {
-            if (isset($failed[$name])) {
-                throw $failed[$name];
-            }
+        $this->eachPath('poison', $this->checkedPaths(), function (string $name, \Closure $render) use ($ctx): void {
+            // The clean render first, on the same app: the poison stays in its services.
+            $app = $this->freshApp();
+            $clean = $this->rendered($this->inOuterFrame($name, $this->context(), fn (): RenderResult => $this->render($name, $render, $app, $ctx)));
             $result = $this->inOuterFrame($name, $this->poisonedVisitor(), function () use ($name, $render, $app, $ctx): RenderResult {
                 $this->poison($app);
 
                 return $this->render($name, $render, $app, $ctx);
             });
 
-            $this->assertSame($clean[$name], $this->rendered($result), "{$name}: the poisoned outer frame changed the render (status and body)");
+            $this->assertSame($clean, $this->rendered($result), "{$name}: the poisoned outer frame changed the render (status and body)");
             $this->assertNoMarker($name, $result);
         });
     }
 
     public function test_outer_frame_is_byte_equal_after_each_render(): void
     {
-        $app = $this->app();
         $ctx = $this->context();
 
-        $this->eachPath('frame', $this->checkedPaths(), function (string $name, \Closure $render) use ($app, $ctx): void {
+        $this->eachPath('frame', $this->checkedPaths(), function (string $name, \Closure $render) use ($ctx): void {
+            $app = $this->freshApp();
             $this->inOuterFrame($name, $this->poisonedVisitor(), function () use ($name, $render, $app, $ctx): void {
                 $this->poison($app);
                 $frame = Contexts::frame();
@@ -233,11 +296,11 @@ abstract class RenderIsolationContract extends TestCase
 
     public function test_interleaved_renders_are_independent(): void
     {
-        $app = $this->app();
         $a = $this->context();
         $b = $this->other($a);
 
-        $this->eachPath('interleave', $this->checkedPaths(), function (string $name, \Closure $render) use ($app, $a, $b): void {
+        $this->eachPath('interleave', $this->checkedPaths(), function (string $name, \Closure $render) use ($a, $b): void {
+            $app = $this->freshApp();
             [$first, $second, $third] = $this->inOuterFrame($name, $b, fn (): array => [
                 $this->signature($this->render($name, $render, $app, $a)),
                 $this->signature($this->render($name, $render, $app, $b)),
@@ -251,12 +314,12 @@ abstract class RenderIsolationContract extends TestCase
 
     public function test_frozen_clock_renders_identically(): void
     {
-        $app = $this->app();
         $frozen = new \DateTimeImmutable('2026-06-15T12:00:00Z');
         $ctx = $this->context()->at($frozen);
         $format = $this->clockFormat();
 
-        $this->eachPath('frozen', $this->checkedPaths(), function (string $name, \Closure $render) use ($app, $ctx, $frozen, $format): void {
+        $this->eachPath('frozen', $this->checkedPaths(), function (string $name, \Closure $render) use ($ctx, $frozen, $format): void {
+            $app = $this->freshApp();
             // The outer frame is at another time than the render.
             $outer = $this->context();
             $first = $this->rendered($this->inOuterFrame($name, $outer, fn (): RenderResult => $this->render($name, $render, $app, $ctx)));
@@ -309,15 +372,24 @@ abstract class RenderIsolationContract extends TestCase
         $fails = [];
         foreach ($paths as $name => $render) {
             $reason = $pending[$name][$test] ?? $pending[$name]['*'] ?? null;
-            if ($reason === null) {
-                $check($name, $render);
-                continue;
-            }
+            $failure = null;
             try {
                 $check($name, $render);
-                $passes[] = "{$name}/{$test} passes: remove it from pending()";
             } catch (\Throwable $e) {
-                $fails[] = "{$name}/{$test} ({$reason}):\n" . self::failure($e);
+                $failure = $e;
+            }
+            // The path's app is put back before the next path runs (a failure here is never pending).
+            $this->restoreApps();
+            if ($reason === null) {
+                if ($failure !== null) {
+                    throw $failure;
+                }
+                continue;
+            }
+            if ($failure === null) {
+                $passes[] = "{$name}/{$test} passes: remove it from pending()";
+            } else {
+                $fails[] = "{$name}/{$test} ({$reason}):\n" . self::failure($failure);
             }
         }
         if ($passes !== []) {
@@ -473,6 +545,7 @@ abstract class RenderIsolationContract extends TestCase
             class_exists($email) ? new $email($marker . '@example.invalid', $marker, $marker) : (object) ['to' => $marker],
             'mail',
         );
+        $this->ambientBefore[spl_object_id($app)] ??= $this->ambientState($app);
         $this->poisonApp($app);
     }
 

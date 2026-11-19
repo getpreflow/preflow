@@ -295,6 +295,20 @@ final class RenderContextTest extends TestCase
         $this->assertEquals($at, $ctx->in('de')->now, 'kept by later withers');
     }
 
+    public function test_is_frozen_only_after_at(): void
+    {
+        $at = new \DateTimeImmutable('2026-01-01T00:00:00Z');
+
+        $this->assertFalse(self::visit()->isFrozen());
+        $this->assertFalse(
+            RenderContext::fromRequest(new ServerRequest('GET', '/a'), self::site(), new FrozenClock($at))->isFrozen(),
+            'a frozen clock the app was built with is not a render frozen with at()',
+        );
+        $this->assertTrue(self::visit()->at($at)->isFrozen());
+        $this->assertTrue(self::visit()->at($at)->in('de')->because(Purpose::Audit)->isFrozen(), 'kept by later withers');
+        $this->assertTrue(unserialize(serialize(self::visit()->at($at)))->isFrozen(), 'kept through serialize()');
+    }
+
     public function test_for_recipient_is_an_anonymous_mail_context_in_that_locale(): void
     {
         $admin = self::visit()

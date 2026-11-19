@@ -106,8 +106,8 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
     {
         $render = ['*' => 'Application::render() is not there yet'];
         $services = 'the translator, the signed-in user, the request, the assets and the page meta still come from the services, not the context';
-        // The asset registry is shared by every render: head() prints the libraries only in the
-        // first render of the process (mail runs before pdf, so pdf never prints them).
+        // The asset registry is shared by every render of an app: head() prints the libraries only
+        // in the first one.
         $assets = 'the asset registry is shared by every render: head() prints the libraries only in the first one';
 
         return [
@@ -117,7 +117,7 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
             'verify' => $render,
             'preview' => $render,
             'mail' => ['poison' => $services, 'interleave' => $assets, 'frozen' => $assets],
-            'pdf' => ['poison' => $services, 'interleave' => 'the locale and the signed-in user come from the services: B renders like A'],
+            'pdf' => ['poison' => $services, 'interleave' => 'the locale and the signed-in user come from the services: B renders like A', 'frozen' => $assets],
         ];
     }
 
@@ -136,7 +136,7 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
         return static function (Application $app, RenderContext $ctx) use ($purpose): RenderResult {
             $internal = RenderContext::internal($purpose, $ctx->site, $ctx->clock, '/')->in($ctx->locale);
 
-            return self::page($app, ($ctx->jsonSerialize()['frozen'] ?? false) === true ? $internal->at($ctx->now) : $internal);
+            return self::page($app, $ctx->isFrozen() ? $internal->at($ctx->now) : $internal);
         };
     }
 

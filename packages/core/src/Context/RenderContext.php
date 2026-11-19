@@ -259,6 +259,17 @@ final readonly class RenderContext implements \JsonSerializable
     }
 
     /**
+     * Whether at() froze this context (a render as of a fixed time). A context built on a
+     * FrozenClock without at() is not frozen.
+     *
+     * @since 0.81.0
+     */
+    public function isFrozen(): bool
+    {
+        return $this->frozen;
+    }
+
+    /**
      * What an anonymous visitor gets: anonymous viewer, public surface, published reads, a clock
      * not frozen with at(), and every facet's own isPublicDefault().
      */
