@@ -16,6 +16,11 @@ use Preflow\Core\Container\ServiceProvider;
  * Binds machine translation from config/ai.php. Everything resolves with AI off; only using the
  * translator throws AiUnavailable, so admin screens can depend on it unconditionally. The
  * translator is AiTranslator unless `translation.translator` names a class of the app's own.
+ *
+ * preflow/ai is only suggested (since 0.80.0). Without it (AiPackage::installed() is false) the
+ * jobs, sources, review index and worker still resolve, the translator is MissingAiTranslator
+ * (never available; it says the package is missing) and TranslationSettings, which holds
+ * preflow/ai's tuning and glossary, is not bound.
  */
 final class MachineServiceProvider extends ServiceProvider
 {
@@ -23,18 +28,24 @@ final class MachineServiceProvider extends ServiceProvider
 
     public function register(Container $container): void
     {
-        // The AI core binds Ai and the settings store this builds on.
-        if (!$container->hasProvider(AiServiceProvider::class)) {
-            $container->registerProvider(new AiServiceProvider());
+        $ai = AiPackage::installed();
+        if ($ai) {
+            // The AI core binds Ai and the settings store this builds on.
+            if (!$container->hasProvider(AiServiceProvider::class)) {
+                $container->registerProvider(new AiServiceProvider());
+            }
+            $container->singleton(TranslationSettings::class, static fn (Container $c): TranslationSettings => new TranslationSettings(
+                self::config($c),
+                $c->get(AiSettingsStore::class),
+            ));
         }
-
-        $container->singleton(TranslationSettings::class, static fn (Container $c): TranslationSettings => new TranslationSettings(
-            self::config($c),
-            $c->get(AiSettingsStore::class),
-        ));
         // config/ai.php translation.translator: the class of a MachineTranslator of the app's own, built
         // by the container (so it may take services); without it, AiTranslator through the AI provider.
-        $container->singleton(MachineTranslator::class, static function (Container $c): MachineTranslator {
+        // Without preflow/ai, MissingAiTranslator: every translation path says the package is missing.
+        $container->singleton(MachineTranslator::class, static function (Container $c) use ($ai): MachineTranslator {
+            if (!$ai) {
+                return new MissingAiTranslator();
+            }
             $class = self::translatorClass($c);
             if ($class === null) {
                 return new AiTranslator($c->get(Ai::class), $c->get(TranslationSettings::class), self::batchChars($c));
@@ -68,10 +79,12 @@ final class MachineServiceProvider extends ServiceProvider
         ));
     }
 
-    /** A translator class config/ai.php can't mean stops the boot. */
+    /** A translator class config/ai.php can't mean stops the boot (without preflow/ai it is not used). */
     public function boot(Container $container): void
     {
-        self::translatorClass($container);
+        if (AiPackage::installed()) {
+            self::translatorClass($container);
+        }
     }
 
     /**

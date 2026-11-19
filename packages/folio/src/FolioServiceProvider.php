@@ -71,8 +71,9 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Media\MediaServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Media\MediaServiceProvider());
         }
-        // The AI core likewise: Folio's AI features adapt its services, which stay off until config/ai.php enables them.
-        if (!$container->hasProvider(\Preflow\Ai\AiServiceProvider::class)) {
+        // The AI core likewise, when installed (preflow/ai is only suggested; AiPackage is the one check):
+        // Folio's AI features adapt its services, which stay off until config/ai.php enables them.
+        if (\Preflow\I18n\Machine\AiPackage::installed() && !$container->hasProvider(\Preflow\Ai\AiServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Ai\AiServiceProvider());
         }
         // The blocks core: Folio keeps the blocks field and its editor, and answers the
@@ -85,7 +86,7 @@ final class FolioServiceProvider extends ServiceProvider
         if (!$container->hasProvider(\Preflow\Publishing\PublishingServiceProvider::class)) {
             $container->registerProvider(new \Preflow\Publishing\PublishingServiceProvider());
         }
-        // Machine translation from the i18n core, built on the AI core above.
+        // Machine translation from the i18n core, built on the AI core above (without it, never available).
         if (!$container->hasProvider(\Preflow\I18n\Machine\MachineServiceProvider::class)) {
             $container->registerProvider(new \Preflow\I18n\Machine\MachineServiceProvider());
         }
@@ -690,7 +691,7 @@ final class FolioServiceProvider extends ServiceProvider
             labels: $c->get(\Preflow\Folio\Content\DisplayLabels::class),
             translations: $c->get(\Preflow\Folio\Content\TranslationStatus::class),
             translator: $c->get(\Preflow\I18n\Machine\MachineTranslator::class),
-            draftWriter: $c->get(\Preflow\Ai\Draft\DraftWriter::class),
+            draftWriter: \Preflow\I18n\Machine\AiPackage::installed() ? $c->get(\Preflow\Ai\Draft\DraftWriter::class) : null,
             jobs: $c->get(\Preflow\I18n\Machine\JobRunner::class),
             reviewIndex: $c->get(\Preflow\I18n\Machine\ReviewIndex::class),
             worker: $c->get(\Preflow\I18n\Machine\TranslationWorker::class),
@@ -742,27 +743,10 @@ final class FolioServiceProvider extends ServiceProvider
             // Per-person AI limits: bound with a data layer (the Throttle counts through it), else none.
             $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
         ));
-        $container->bind(\Preflow\Folio\Http\AiDraftController::class, fn (Container $c) => new \Preflow\Folio\Http\AiDraftController(
-            $c->get(\Preflow\Ai\Draft\DraftWriter::class),
-            $c->get(TypeCatalog::class),
-            $c->get(TypeRegistry::class),
-            \Preflow\Folio\Field\LazyHtmlSanitizer::standard(),
-            $c->get(DataManager::class),
-            $c->get(\Preflow\Auth\Access\Access::class),
-            $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
-            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
-        ));
-        $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
-            $c->get(\Preflow\Ai\Ai::class),
-            $c->get(\Preflow\Ai\Usage\UsageLog::class),
-            $c->get(\Preflow\I18n\Machine\TranslationSettings::class),
-            $c->get(TypeCatalog::class),
-            $c->get(TypeRegistry::class),
-            $c->get(ContentLocale::class),
-            $c->get(\Preflow\Folio\View\FolioEngine::class),
-            $prefix,
-            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
-        ));
+        // "Write a draft" and Settings → AI are preflow/ai's: without the package they are not bound (nor routed).
+        if (\Preflow\I18n\Machine\AiPackage::installed()) {
+            $this->registerAiControllers($container, $prefix);
+        }
         $container->bind(\Preflow\Folio\Http\PublishingController::class, fn (Container $c) => new \Preflow\Folio\Http\PublishingController(
             $c->get(TypeCatalog::class),
             $c->get(\Preflow\Publishing\Publisher::class),
@@ -1892,11 +1876,11 @@ final class FolioServiceProvider extends ServiceProvider
                         $this->prefix($app),
                         $authEnabled,
                         $authEnabled && self::recordProviders($container) !== [],
-                        // The translate endpoints exist only while the machine translator is available (AiTranslator: AI is on).
+                        // The translate endpoints exist only while the machine translator is available (AiTranslator: AI is on; never without preflow/ai).
                         $container->get(\Preflow\I18n\Machine\MachineTranslator::class)->available(),
                         self::aiSettingsVisible($container),
-                        // "Write a draft" exists only while the draft writer is available (AiDraftWriter: AI is on).
-                        $container->get(\Preflow\Ai\Draft\DraftWriter::class)->available(),
+                        // "Write a draft" exists only while the draft writer is available (AiDraftWriter: AI is on; never without preflow/ai).
+                        \Preflow\I18n\Machine\AiPackage::installed() && $container->get(\Preflow\Ai\Draft\DraftWriter::class)->available(),
                     ),
                 ]);
             }
@@ -1970,10 +1954,40 @@ final class FolioServiceProvider extends ServiceProvider
         }
     }
 
-    /** Whether the Settings → AI screens exist (AiSettingsController::visible()). */
+    /**
+     * "Write a draft" and Settings → AI: built on preflow/ai's services, so bound only when the package
+     * is installed (AiPackage::installed()); their routes and nav item ask the same.
+     */
+    private function registerAiControllers(Container $container, string $prefix): void
+    {
+        $container->bind(\Preflow\Folio\Http\AiDraftController::class, fn (Container $c) => new \Preflow\Folio\Http\AiDraftController(
+            $c->get(\Preflow\Ai\Draft\DraftWriter::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            \Preflow\Folio\Field\LazyHtmlSanitizer::standard(),
+            $c->get(DataManager::class),
+            $c->get(\Preflow\Auth\Access\Access::class),
+            $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
+        ));
+        $container->bind(\Preflow\Folio\Http\AiSettingsController::class, fn (Container $c) => new \Preflow\Folio\Http\AiSettingsController(
+            $c->get(\Preflow\Ai\Ai::class),
+            $c->get(\Preflow\Ai\Usage\UsageLog::class),
+            $c->get(\Preflow\I18n\Machine\TranslationSettings::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(ContentLocale::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $prefix,
+            $c->bound(\Preflow\Ai\Limits\AiLimits::class) ? $c->get(\Preflow\Ai\Limits\AiLimits::class) : null,
+        ));
+    }
+
+    /** Whether the Settings → AI screens exist (AiSettingsController::visible()); never without preflow/ai. */
     private static function aiSettingsVisible(Container $container): bool
     {
-        return \Preflow\Folio\Http\AiSettingsController::visible($container->get(\Preflow\Ai\Ai::class));
+        return \Preflow\I18n\Machine\AiPackage::installed()
+            && \Preflow\Folio\Http\AiSettingsController::visible($container->get(\Preflow\Ai\Ai::class));
     }
 
     /**
@@ -1997,11 +2011,12 @@ final class FolioServiceProvider extends ServiceProvider
      * locales), so the core job runner can translate Folio records. Lazy: no type definition is
      * read and no source is built until a run asks for it; a type with nothing translatable (roles,
      * staff accounts) or whose records editors may not change (read-only) is not offered
-     * (FolioTextSource::offers()).
+     * (FolioTextSource::offers()). None without preflow/ai: nothing could translate them, and their
+     * per-field instructions are preflow/ai's TranslationSettings.
      */
     private function registerTextSources(Container $container): void
     {
-        if (!($this->locales($container)?->isMultilingual() ?? false)) {
+        if (!\Preflow\I18n\Machine\AiPackage::installed() || !($this->locales($container)?->isMultilingual() ?? false)) {
             return;
         }
         $sources = $container->get(\Preflow\I18n\Machine\TextSources::class);
@@ -2126,10 +2141,11 @@ final class FolioServiceProvider extends ServiceProvider
         $registry->declare('redirects.manage', 'Redirects', 'Folio');
         $registry->declare('seo.audit', 'SEO audit', 'Folio');
         $registry->declare('seo.audit.run', 'Run the SEO audit', 'Folio');
-        // Declared with AI off too, so roles may list them before AI is switched on.
-        $registry->declare('ai.translate', 'Use AI translation', 'AI');
-        $registry->declare('ai.draft', 'Write drafts with AI', 'AI');
-        $registry->declare('ai.settings', 'AI settings', 'AI');
+        // Declared with AI off too, so roles may list them before AI is switched on. Without preflow/ai the
+        // roles do not offer them; a role that still grants one is denied quietly (disabled, not undeclared).
+        foreach (['ai.translate' => 'Use AI translation', 'ai.draft' => 'Write drafts with AI', 'ai.settings' => 'AI settings'] as $name => $label) {
+            \Preflow\I18n\Machine\AiPackage::installed() ? $registry->declare($name, $label, 'AI') : $registry->disable($name, 'package preflow/ai (not installed)');
+        }
         foreach ($container->get(TypeCatalog::class)->all() as $listing) {
             $registry->declarePattern($listing->key . '.*');
             foreach (['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'] as $action => $verb) {

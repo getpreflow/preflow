@@ -19,8 +19,9 @@ composer require preflow/i18n
 - PSR-15 middleware for locale detection (URL prefix → cookie → Accept-Language), and opt-in
   locale URLs: the default language prefixed, bare paths sent to the visitor's language (since 0.78)
 - Twig functions for global and component-scoped translations
-- Machine translation through the AI connection (`preflow/ai`): single texts, batches, whole
-  collections, with tuning, a glossary and a cost estimate (see "Machine translation" below)
+- Machine translation through the AI connection (`preflow/ai`, installed separately): single
+  texts, batches, whole collections, with tuning, a glossary and a cost estimate (see "Machine
+  translation" below)
 
 ## Configuration
 
@@ -329,9 +330,23 @@ $twig->addExtension(new TranslationExtension($translator));
 ## Machine translation
 
 Machine translation fills missing translations with AI, and keeps a human in the loop. It sits on
-the AI connection in `preflow/ai` (this package requires it), so read that README first for
-`config/ai.php`, keys and costs. Everything here works without Folio. With AI off, the classes
-still load and resolve; only calling the translator throws `AiUnavailable`.
+the AI connection in `preflow/ai`, so read that README first for `config/ai.php`, keys and costs.
+Everything here works without Folio. With AI off, the classes still load and resolve; only
+calling the translator throws `AiUnavailable`.
+
+**Machine translation needs `preflow/ai`** (since 0.80 this package only suggests it):
+
+```bash
+composer require preflow/ai
+```
+
+Without it the services below still resolve (so code and screens that depend on them keep
+working), but nothing translates: the translator is `MissingAiTranslator`, which is never
+available, `TranslationSettings` (preflow/ai's tuning and glossary) is not bound, a job that is
+stepped stops with "Machine translation needs preflow/ai: run composer require preflow/ai.", and
+`translate:plan` and `translate:work` print that line and exit 1. A translator class named in
+`config/ai.php` is not used then. To ask in your own code, use
+`Preflow\I18n\Machine\AiPackage::installed()`.
 
 ### Setup
 

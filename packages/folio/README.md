@@ -13,6 +13,16 @@ composer require preflow/folio
 Requires PHP 8.4+. Composes `preflow/data`, `preflow/view`, `preflow/routing`, and
 `preflow/form` (all already present in a standard Preflow app).
 
+**AI features need `preflow/ai`** (since 0.80): Translate, "Write a draft" and Settings → AI
+appear only when it is installed. Folio only suggests it, so add it if you want them:
+
+```bash
+composer require preflow/ai
+```
+
+Without it Folio works as usual and simply offers no AI: no Translate buttons, no "Write a
+draft", no Settings → AI, no AI permissions in the roles, and the AI addresses answer 404.
+
 > **Ready-wired app:** `composer create-project preflow/starter-folio myapp` gives you a seeded
 > job board with Folio already configured. The steps below are for adding Folio to an existing
 > app. If Composer refuses a dev version, allow it in your `composer.json`
@@ -2673,7 +2683,7 @@ search engines require.
 
 ### Translate with AI
 
-With AI on (`config/ai.php` `enabled` and the provider's key, see `preflow/ai`), each language
+With `preflow/ai` installed and AI on (`config/ai.php` `enabled` and the provider's key, see `preflow/ai`), each language
 tab except the default gets a **Translate** button, for users with the `ai.translate`
 permission ("Use AI translation") and the type's edit permission. With AI off there is no
 button, the form's markup is unchanged and the endpoints below answer 404.

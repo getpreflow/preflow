@@ -5,7 +5,6 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/ai": "^0.78 || @dev",
         "preflow/core": "^0.78 || @dev",
         "preflow/data": "^0.78 || @dev",
         "preflow/view": "^0.74 || @dev",
@@ -18,7 +17,7 @@
         "preflow/publishing": "^0.77 || @dev",
         "preflow/components": "^0.1 || @dev",
         "preflow/htmx": "^0.65 || @dev",
-        "preflow/i18n": "^0.78 || @dev",
+        "preflow/i18n": "^0.80.0 || @dev",
         "preflow/media": "^0.77 || @dev",
         "preflow/notify": "^0.69 || @dev",
         "preflow/devtools": "^0.77 || @dev",
@@ -26,10 +25,12 @@
         "symfony/html-sanitizer": "^7.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^11.0"
+        "phpunit/phpunit": "^11.0",
+        "preflow/ai": "^0.78 || @dev"
     },
     "suggest": {
         "openspout/openspout": "^4 — Excel export of admin lists (the Export button shows once it is installed)",
+        "preflow/ai": "AI features: Translate, \"Write a draft\" and Settings → AI (they appear only when it is installed)",
         "preflow/codes": "Codes; Folio adds their admin (the built-in extension \"codes\")",
         "preflow/members": "Member accounts; Folio adds their admin (the built-in extension \"members\", which needs preflow/rbac)",
         "preflow/rbac": "Stored roles and staff accounts; Folio adds their admin (the built-in extension \"rbac\")"
@@ -44,7 +45,7 @@
         "preflow/devtools": "<0.77",
         "preflow/form": "<0.75",
         "preflow/htmx": "<0.65",
-        "preflow/i18n": "<0.78",
+        "preflow/i18n": "<0.80.0",
         "preflow/media": "<0.77",
         "preflow/members": "<0.77",
         "preflow/notify": "<0.69",

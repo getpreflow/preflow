@@ -7,12 +7,14 @@ namespace Preflow\I18n\Console;
 use Preflow\Core\Application;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\I18n\Machine\MachineTranslator;
+use Preflow\I18n\Machine\MissingAiTranslator;
 use Preflow\I18n\Machine\TranslationWorker;
 
 /**
  * preflow translate:work [--seconds=N]: works the queued machine-translation jobs for N seconds
  * (default 50). Meant for a cron job every minute, and cron mails whatever a job prints: it says
  * nothing when AI is off or there was nothing to do, only when records were worked or the run stopped.
+ * Without preflow/ai it prints MissingAiTranslator::MESSAGE and exits 1 (the job is pointless then).
  */
 final class TranslateWorkCommand implements CommandInterface
 {
@@ -40,6 +42,12 @@ final class TranslateWorkCommand implements CommandInterface
         $container = $this->app()->container();
         if (!$container->bound(TranslationWorker::class) || !$container->bound(MachineTranslator::class)) {
             fwrite(STDERR, "Machine translation is not set up: add Preflow\\I18n\\Machine\\MachineServiceProvider to config/providers.php.\n");
+
+            return 1;
+        }
+        // Without preflow/ai this cron job can never do anything: say so (once per run) instead of staying silent.
+        if ($container->get(MachineTranslator::class) instanceof MissingAiTranslator) {
+            fwrite(STDERR, MissingAiTranslator::MESSAGE . "\n");
 
             return 1;
         }

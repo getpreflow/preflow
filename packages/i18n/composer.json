@@ -5,8 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.78 || @dev",
-        "preflow/ai": "^0.78 || @dev"
+        "preflow/core": "^0.78 || @dev"
     },
     "conflict": {
         "preflow/ai": "<0.78",
@@ -15,9 +14,11 @@
     "require-dev": {
         "phpunit/phpunit": "^11.0",
         "nyholm/psr7": "^1.8",
-        "preflow/devtools": "^0.34 || @dev"
+        "preflow/devtools": "^0.34 || @dev",
+        "preflow/ai": "^0.78 || @dev"
     },
     "suggest": {
+        "preflow/ai": "Machine translation (AiTranslator, translate:plan and translate:work, Folio's Translate); without it machine translation is never offered",
         "preflow/devtools": "The translations:check command"
     },
     "autoload": {

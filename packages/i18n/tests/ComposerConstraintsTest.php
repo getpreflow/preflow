@@ -7,6 +7,8 @@ namespace Preflow\I18n\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.80: ai is only suggested (machine translation appears only when it is installed, Machine\AiPackage); its conflict
+ * stays, so an installed ai is still 0.78 or newer.
  * Since 0.78: ai 0.78 (Limits\AiLimits and AiLimitReached, which JobRunner and TranslationWorker use); core 0.78 (Http\LocaleUrls).
  * Since 0.77: ai 0.77 (Settings\ProjectTuning, the project-level AI tuning that TranslationSettings reads).
  *
@@ -23,6 +25,8 @@ final class ComposerConstraintsTest extends TestCase
 
         $this->assertSame(['preflow/ai' => '<0.78', 'preflow/core' => '<0.78'], $composer['conflict'] ?? null);
         $this->assertSame('^0.78 || @dev', $composer['require']['preflow/core'] ?? null);
-        $this->assertSame('^0.78 || @dev', $composer['require']['preflow/ai'] ?? null);
+        $this->assertArrayNotHasKey('preflow/ai', $composer['require']);
+        $this->assertArrayHasKey('preflow/ai', $composer['suggest'] ?? []);
+        $this->assertSame('^0.78 || @dev', $composer['require-dev']['preflow/ai'] ?? null, 'its own tests use it');
     }
 }

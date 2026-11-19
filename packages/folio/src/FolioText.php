@@ -85,8 +85,10 @@ final class FolioText
             self::$english = new Translator(dirname(__DIR__) . '/lang/.none', 'en', 'en');
             self::$english->addDefaults('folio', dirname(__DIR__) . '/lang');
             self::$english->addDefaults('rbac-admin', dirname(__DIR__) . '/lang'); // the rbac admin's field types
-            // preflow/ai's texts (the AI limits' messages)
-            self::$english->addDefaults('ai', \Preflow\Ai\Ai::langPath());
+            // preflow/ai's texts (the AI limits' messages), when it is installed
+            if (\Preflow\I18n\Machine\AiPackage::installed()) {
+                self::$english->addDefaults('ai', \Preflow\Ai\Ai::langPath());
+            }
         }
 
         return self::$english;
