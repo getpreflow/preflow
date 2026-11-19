@@ -170,6 +170,39 @@ final class RenderIsolationContractTest extends TestCase
         }
     }
 
+    public function test_a_failing_path_whose_restore_fails_too_reports_both(): void
+    {
+        $failure = $this->failureOf(IsolationSelfTest::with(['geo' => IsolationSelfTest::outer()], restores: false), 'poison');
+
+        $this->assertInstanceOf(AssertionFailedError::class, $failure);
+        $this->assertStringContainsString('geo: the poisoned outer frame changed the render', $failure->getMessage(), 'the path\'s own failure is what is thrown');
+        $this->assertStringContainsString('restoreApp() did not put the app\'s own ambient state back', $failure->getMessage(), 'the restore failure is appended');
+        IsolationSelfTest::$siteState = 'clean';
+    }
+
+    public function test_an_ambient_state_that_poison_app_does_not_change_fails(): void
+    {
+        $failure = $this->failureOf(IsolationSelfTest::with(['audit' => IsolationSelfTest::own()], constantState: true), 'poison');
+
+        $this->assertInstanceOf(AssertionFailedError::class, $failure);
+        $this->assertNotInstanceOf(IncompleteTest::class, $failure);
+        $this->assertStringContainsString('ambientState() is the same after poisonApp()', $failure->getMessage());
+    }
+
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    public function test_a_path_that_closes_or_regenerates_the_outer_session_fails_the_frame_test(): void
+    {
+        foreach (['closesSession', 'regeneratesSession'] as $broken) {
+            $failure = $this->failureOf(IsolationSelfTest::with(['verify' => IsolationSelfTest::$broken()], startsSession: true), 'frame');
+
+            $this->assertInstanceOf(AssertionFailedError::class, $failure, $broken);
+            $this->assertNotInstanceOf(IncompleteTest::class, $failure, $broken);
+            $this->assertStringContainsString('verify: the outer frame changed', $failure->getMessage(), $broken);
+        }
+        // Proof that a session left alone passes.
+        IsolationSelfTest::with(['verify' => IsolationSelfTest::own()], startsSession: true)->exercise(self::TESTS['frame']);
+    }
+
     private function failureOf(IsolationSelfTest $runner, string $test): ?\Throwable
     {
         try {
@@ -200,6 +233,10 @@ final class IsolationSelfTest extends RenderIsolationContract
 
     private bool $restores = true;
 
+    private bool $constantState = false;
+
+    private bool $startsSession = false;
+
     /** Whether a B render (locale de) ran: leaksAfterB() then leaks into the next render. */
     private static bool $sawB = false;
 
@@ -207,12 +244,14 @@ final class IsolationSelfTest extends RenderIsolationContract
      * @param array<string, \Closure> $paths
      * @param array<string, array<string, string>> $pending
      */
-    public static function with(array $paths, array $pending = [], bool $restores = true): self
+    public static function with(array $paths, array $pending = [], bool $restores = true, bool $constantState = false, bool $startsSession = false): self
     {
         $runner = new self('test_poisoned_ambient_state_never_reaches_the_render');
         $runner->selfPaths = $paths;
         $runner->selfPending = $pending;
         $runner->restores = $restores;
+        $runner->constantState = $constantState;
+        $runner->startsSession = $startsSession;
 
         return $runner;
     }
@@ -239,6 +278,10 @@ final class IsolationSelfTest extends RenderIsolationContract
         $app->container()->instance(\Preflow\Core\Http\CookieQueue::class, new \Preflow\Core\Http\CookieQueue());
         // What printsOnce() printed already, per app (as an asset registry's printed marks).
         $app->container()->instance('isolation.printed', new \ArrayObject());
+        // As a booted app with native sessions starts one.
+        if ($this->startsSession && session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
 
         return $app;
     }
@@ -270,7 +313,7 @@ final class IsolationSelfTest extends RenderIsolationContract
 
     protected function ambientState(Application $app): array
     {
-        return ['siteState' => self::$siteState];
+        return ['siteState' => $this->constantState ? 'constant' : self::$siteState];
     }
 
     protected function restoreApp(Application $app): void
@@ -289,6 +332,26 @@ final class IsolationSelfTest extends RenderIsolationContract
             $printed['lib'] = true;
 
             return self::inFrame($ctx->because(Purpose::Audit)->discarding()->skippingWrites(), static fn (): string => $library . self::describe(Contexts::current()));
+        };
+    }
+
+    /** Renders under its context, after closing the outer request's session. */
+    public static function closesSession(): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx): RenderResult {
+            session_write_close();
+
+            return self::own()($app, $ctx);
+        };
+    }
+
+    /** Renders under its context, after giving the outer request's session a new id. */
+    public static function regeneratesSession(): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx): RenderResult {
+            session_regenerate_id();
+
+            return self::own()($app, $ctx);
         };
     }
 

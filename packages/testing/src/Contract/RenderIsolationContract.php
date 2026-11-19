@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Testing\Contract;
 
 use Nyholm\Psr7\ServerRequest;
+use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\ExpectationFailedException;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Authenticatable;
@@ -71,7 +72,8 @@ use Preflow\View\Seo\SeoContext;
  * - poisonApp(), ambientState() and restoreApp() (optional): plant the marker in the app's own
  *   ambient sources (a package's static locale, say), read them for the outer-frame snapshot,
  *   and put them back. restoreApp() runs in tearDown() for every app the test used, also after a
- *   failure, and ambientState() must then be back to its value before the poison. State that
+ *   failure, and ambientState() must then be back to its value before the poison. A non-empty
+ *   ambientState() must change when poisonApp() runs (a constant one checks nothing). State that
  *   outlives the app (statics) must be restored there, or the runner must run its tests in
  *   separate processes (#[RunTestsInSeparateProcesses]).
  *
@@ -92,8 +94,8 @@ use Preflow\View\Seo\SeoContext;
  *   current context (serialize(), which leaves the PSR request out), the frame's queued items,
  *   the CookieQueue, the bound RequestContext, the asset registry, the SEO page meta, the
  *   translator's locale and overrides switch, the signed-in user, LiveContent's mode, the
- *   superglobals and ambientState(). The render must also leave the same frame current at the
- *   same depth;
+ *   superglobals, the native session's status and id, and ambientState(). The render must also
+ *   leave the same frame current at the same depth;
  * - interleave: A, B, A in one outer frame that runs under B; B has another locale, a signed-in
  *   viewer and working copies. Both A renders give the same status, headers (without Date), body
  *   and captured items, and B's differ from A's (so the page must show something of the locale or
@@ -379,7 +381,15 @@ abstract class RenderIsolationContract extends TestCase
                 $failure = $e;
             }
             // The path's app is put back before the next path runs (a failure here is never pending).
-            $this->restoreApps();
+            try {
+                $this->restoreApps();
+            } catch (\Throwable $restore) {
+                if ($failure === null) {
+                    throw $restore;
+                }
+                // Both failed: the path's own failure first, the restore's after it.
+                throw new AssertionFailedError(self::failure($failure) . "\n\nPutting the app back failed too:\n" . self::failure($restore), 0, $failure);
+            }
             if ($reason === null) {
                 if ($failure !== null) {
                     throw $failure;
@@ -545,8 +555,11 @@ abstract class RenderIsolationContract extends TestCase
             class_exists($email) ? new $email($marker . '@example.invalid', $marker, $marker) : (object) ['to' => $marker],
             'mail',
         );
-        $this->ambientBefore[spl_object_id($app)] ??= $this->ambientState($app);
+        $before = $this->ambientBefore[spl_object_id($app)] ??= $this->ambientState($app);
         $this->poisonApp($app);
+        if ($before !== []) {
+            $this->assertNotSame($before, $this->ambientState($app), 'ambientState() is the same after poisonApp(); it must read what poisonApp() sets');
+        }
     }
 
     private function markerUser(): Authenticatable
@@ -638,6 +651,7 @@ abstract class RenderIsolationContract extends TestCase
             $snapshot['live'] = $container->get($live)->showsWorkingCopies();
         }
         $snapshot['superglobals'] = serialize([$_COOKIE, $_SERVER, $_SESSION ?? null]);
+        $snapshot['session'] = [session_status(), session_id()];
         $snapshot['app'] = $this->ambientState($app);
 
         return $snapshot;

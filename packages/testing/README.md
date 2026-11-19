@@ -260,14 +260,15 @@ adapter that renders internally.
 | `context()` (optional) | the context every render starts from, `ContextFactory::forTest()` by default; give your site's origin and locales |
 | `clockFormat()` (optional) | the date format your page prints its render time in; when given, the frozen-clock test checks the page printed its own frozen time |
 | `poisonApp(Application $app)` (optional) | plants the marker in your app's own ambient sources (a package's static locale, say); runs at the end of the poison |
-| `ambientState(Application $app)` (optional) | reads those sources back as an array; the outer-frame test compares it before and after each render |
+| `ambientState(Application $app)` (optional) | reads those sources back as an array; the outer-frame test compares it before and after each render. When it is not empty, it must change when `poisonApp()` runs, or the test fails (a constant state checks nothing) |
 | `restoreApp(Application $app)` (optional) | puts back what `poisonApp()` set; runs after each path and in `tearDown()`, also when the test failed, and `ambientState()` must then be back to its value from before the poison |
 
 `app()` must build a new app on every call. Anything that outlives the app, such as a static a
 package keeps, is restored in `restoreApp()`; a runner that cannot restore it runs its tests in
 separate processes (`#[RunTestsInSeparateProcesses]`, as core's own runner does). Between paths
-the contract puts the superglobals back and drops a native session the previous app started, so
-the next app boots as the next request would.
+the contract puts the superglobals back. Before each path's `app()`, it drops (unsaved, with
+`session_abort()`) any native session that is open: the one the previous app started, and also one
+that was already open when the test started. So each app boots as the next request would.
 
 A pending test still runs. When it fails, the test is marked incomplete (not skipped), with the
 reason and the whole failure, diff included. When it passes, the test fails with
@@ -338,7 +339,8 @@ request that asks for it. The four tests:
   the same before and after the render: the current context (serialized, without the PSR
   request), the frame's queued cookies and mail, the `CookieQueue`, the bound `RequestContext`,
   the asset registry, the SEO page meta, the translator's locale and overrides switch, the
-  signed-in user, `LiveContent`'s mode, the superglobals and `ambientState()`.
+  signed-in user, `LiveContent`'s mode, the superglobals, the native session's status and id, and
+  `ambientState()`.
 - **Interleaved renders are independent** (`interleave`). A, B, A in one outer frame that runs
   under B; B has another locale, a signed-in viewer and working copies. Both A renders give the
   same status, headers (without `Date`), body and captured items, and B's differ from A's: the
