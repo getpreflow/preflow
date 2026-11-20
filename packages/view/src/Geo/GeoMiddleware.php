@@ -42,9 +42,10 @@ final class GeoMiddleware implements MiddlewareInterface
 
     /**
      * @param ?string       $appUrl the configured app.url; its origin makes links absolute (else the request's)
-     * @param ?\Closure(ServerRequestInterface): ResponseInterface $render renders a page's clean request as
+     * @param \Closure(ServerRequestInterface): ResponseInterface $render renders a page's clean request as
      *                       an internal render of its own (the app: Application::render() in a Geo
-     *                       context, since 0.81); without it the request goes down the pipeline
+     *                       context, never stored; since 0.81). Required: rendered down the visitor's
+     *                       own pipeline instead, the page would see the visitor's frame
      * @param ?\Closure(\Throwable): void $report gets render failures that aren't HTTP answers (404, 403…)
      * @param bool           $debug  rethrow those failures, so the error page shows them
      * @param ?GeoEntries    $entries the pages llms.txt lists (none: no llms.txt)
@@ -59,8 +60,8 @@ final class GeoMiddleware implements MiddlewareInterface
         private readonly GeoConfig $config,
         private readonly GeoCollector $collector,
         private readonly MarkdownConverter $converter,
-        private readonly ?string $appUrl = null,
-        private readonly ?\Closure $render = null,
+        private readonly ?string $appUrl,
+        private readonly \Closure $render,
         private readonly ?\Closure $report = null,
         private readonly bool $debug = false,
         private readonly ?GeoEntries $entries = null,
@@ -109,7 +110,7 @@ final class GeoMiddleware implements MiddlewareInterface
      * The Markdown of one page path, or null when it has none (not 200 HTML,
      * noindex, an HTTP error). Rendered anonymously as an internal render of its own
      * (with its own assets; geo blocks captured per render), so several renders in one
-     * request stay independent; without an app's renderer, through $handler.
+     * request stay independent. $handler is not used (kept for callers; the app renders the page).
      * Other failures are reported and give null; in debug mode they are rethrown.
      *
      * @param bool $cached false (a page's own Markdown view): the page cache always renders it, so
@@ -125,7 +126,7 @@ final class GeoMiddleware implements MiddlewareInterface
         $this->collector->reset();
         $this->collector->capture(true);
         try {
-            $response = $this->render !== null ? ($this->render)($sub) : $handler->handle($sub);
+            $response = ($this->render)($sub);
 
             return $this->markdownOf($response, $path, $origin);
         } catch (\Throwable $e) {

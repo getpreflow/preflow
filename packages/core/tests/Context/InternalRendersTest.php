@@ -84,9 +84,9 @@ final class InternalRendersTest extends TestCase
         }
         file_put_contents(
             $this->dir . '/app/pages/index.twig',
-            '<html><head><title>Home</title>{{ head() }}</head><body><main><p>{{ current_locale() }}|{{ auth_check() ? \'in\' : \'out\' }}|{{ cookie_global(\'m\') }}|{{ flash(\'note\') }}</p></main>{{ assets() }}</body></html>',
+            '<html><head><title>Home</title>{{ head() }}</head><body><main><p>{{ current_locale() }}|{{ auth_check() ? \'in\' : \'out\' }}|{{ cookie_global(\'m\') }}|{{ flash(\'note\') }}|{{ old(\'name\') }}</p></main>{{ assets() }}</body></html>',
         );
-        file_put_contents($this->dir . '/templates/flash.twig', '{{ flash(\'note\') }}');
+        file_put_contents($this->dir . '/templates/flash.twig', '{{ flash(\'note\') }}/{{ old(\'name\') }}');
 
         $app = Application::create($this->dir);
         if ($pageCache) {
@@ -121,7 +121,7 @@ final class InternalRendersTest extends TestCase
 
         $body = (string) $app->handle(new ServerRequest('GET', 'https://site.test/admin/step'))->getBody();
 
-        $this->assertSame('en|out|| after: de, in', $body, 'the page as an anonymous visitor gets it; the admin request as it was afterwards');
+        $this->assertSame('en|out||| after: de, in', $body, 'the page as an anonymous visitor gets it; the admin request as it was afterwards');
         $seen = InternalRoutes::$seen['/'][0] ?? null;
         $this->assertNotNull($seen, 'the page was rendered');
         $this->assertSame([Purpose::Audit, ReadMode::published()->key(), true, 2], [$seen['purpose'], $seen['reads'], $seen['anonymous'], $seen['depth']]);
@@ -144,7 +144,7 @@ final class InternalRendersTest extends TestCase
 
         $stored = $this->stored($app, '/');
         $this->assertNotNull($stored, 'rebuilt behind the fragment\'s response');
-        $this->assertStringContainsString('en|out||', $stored->body);
+        $this->assertStringContainsString('en|out|||', $stored->body);
         $this->assertStringNotContainsString('x-fragment', $stored->body, 'the rebuild starts from its own assets, not the fragment\'s');
     }
 
@@ -185,20 +185,29 @@ final class InternalRendersTest extends TestCase
             new ServerRequest('GET', 'https://site.test/'),
         );
 
-        $this->assertSame('en|out||', self::main((string) $page->response->getBody()));
+        $this->assertSame('en|out|||', self::main((string) $page->response->getBody()));
         $this->assertSame('127.0.0.1', InternalRoutes::$seen['/'][0]['remote'] ?? null, 'the address PHP gives is not the visitor\'s');
         $this->assertSame('visitor', $_COOKIE['m'] ?? null, 'the superglobals are back afterwards');
         $this->assertSame('203.0.113.9', $_SERVER['REMOTE_ADDR']);
     }
 
+    /**
+     * flash() and old() read the session of the render's own request. The admin request's session
+     * here does not live in $_SESSION (an array session, as a site's or a test's may be), so hiding
+     * the superglobal proves nothing: before 0.81 old() read the container's session and showed the
+     * admin's kept fields in the audited page.
+     */
     #[RunInSeparateProcess]
     public function test_session_helpers_read_the_renders_own_session(): void
     {
         $app = $this->site();
         InternalRoutes::$routes['/admin/flash'] = function (ServerRequestInterface $r, Container $c): ResponseInterface {
-            $session = $r->getAttribute(SessionInterface::class);
-            $this->assertInstanceOf(SessionInterface::class, $session, 'the admin request has its session');
+            $session = new \Preflow\Testing\ArraySession();
+            $session->start();
             $session->flash('note', 'kept');
+            \Preflow\Core\Http\OldInput::keep($session, ['name' => 'Ada']);
+            $c->instance(SessionInterface::class, $session);
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->for($r->withAttribute(SessionInterface::class, $session)));
             $engine = $c->get(TemplateEngineInterface::class);
             $before = $engine->render($this->dir . '/templates/flash.twig');
 
@@ -209,7 +218,7 @@ final class InternalRendersTest extends TestCase
 
         $body = (string) $app->handle(new ServerRequest('GET', 'https://site.test/admin/flash'))->getBody();
 
-        $this->assertSame('kept / en|out|| / kept', $body, 'the audit\'s page has no session; the admin\'s flash is there before and after');
+        $this->assertSame('kept/Ada / en|out||| / kept/Ada', $body, 'the audit\'s page has no session; the admin\'s flash and kept fields are there before and after');
     }
 
     #[RunInSeparateProcess]
@@ -228,6 +237,61 @@ final class InternalRendersTest extends TestCase
         $body = (string) $app->handle(new ServerRequest('GET', 'https://site.test/admin/debug'))->getBody();
 
         $this->assertSame('SELECT outer', $body, 'the admin request\'s own data survives; the audited pages\' do not pile up in it');
+    }
+
+    /** pages:work: a freshly booted app (the cron's) rebuilds a page as visitors got it, htmx included. */
+    #[RunInSeparateProcess]
+    public function test_a_rebuild_from_a_fresh_app_stores_the_page_a_visit_stored(): void
+    {
+        $app = $this->site(pageCache: true);
+        $app->handle(new ServerRequest('GET', 'https://site.test/'));
+        $visit = $this->stored($app, '/')?->body;
+        $this->assertNotNull($visit);
+        $this->assertStringContainsString('htmx-config', $visit, 'htmx (include: always) is on the visitor\'s page');
+
+        $cron = Application::create($this->dir);
+        $cron->boot();
+        $refresher = $cron->container()->get(\Preflow\Core\PageCache\Refresher::class);
+        $this->assertSame(1, $refresher->refreshAll());
+        $this->assertSame(1, $refresher->work(50.0));
+
+        $this->assertSame($visit, $this->stored($cron, '/')?->body, 'the rebuilt page is the visitor\'s page');
+    }
+
+    /**
+     * A request printed the page (its htmx is marked printed in the process's asset registry), and
+     * the next one queues a rebuild: the rebuild still prints htmx (0.80 lost it here).
+     */
+    #[RunInSeparateProcess]
+    public function test_a_rebuild_after_a_request_that_printed_the_page_still_has_htmx(): void
+    {
+        $app = $this->site(pageCache: true);
+        $app->handle(new ServerRequest('GET', 'https://site.test/'));
+        $visit = $this->stored($app, '/')?->body;
+        $this->assertStringContainsString('htmx-config', (string) $visit);
+        InternalRoutes::$routes['/change'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(PageCache::class)->changed('*');
+
+            return new Response(200, [], 'changed');
+        };
+
+        $app->handle(new ServerRequest('GET', 'https://site.test/change'));
+
+        $rebuilt = $this->stored($app, '/')?->body;
+        $this->assertNotNull($rebuilt);
+        $this->assertSame($visit, $rebuilt, 'nothing the earlier request printed is marked printed in the rebuild');
+    }
+
+    /** The CLI audit (no request around it) checks the page visitors get. */
+    #[RunInSeparateProcess]
+    public function test_the_audit_checks_the_page_visitors_get(): void
+    {
+        $visitor = (string) $this->site()->handle(new ServerRequest('GET', 'https://site.test/'))->getBody();
+        $page = $this->site()->container()->get(PageRenderer::class)->render('/');
+
+        $strip = static fn (string $html): string => (string) preg_replace('/nonce="[^"]*"|"inline(Script|Style)Nonce":"[^"]*"/', '', $html);
+        $this->assertStringContainsString('htmx-config', $page->body);
+        $this->assertSame($strip($visitor), $strip($page->body));
     }
 
     private function stored(Application $app, string $path): ?\Preflow\Core\PageCache\StoredPage

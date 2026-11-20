@@ -54,6 +54,34 @@ final class AssetCollectorTest extends TestCase
         $this->assertSame('', $collector->renderHead(), 'what was printed before stays printed');
     }
 
+    public function test_from_boot_starts_from_what_boot_registered_with_nothing_printed(): void
+    {
+        $collector = $this->collector();
+        $collector->addJs('window.booted = 1;', JsPosition::Head, 'booted');
+        $collector->markBooted();
+        // The request around it: its own CSS, and the head printed already.
+        $collector->addCss('.fragment { color: red; }', 'fragment');
+        $collector->renderHead();
+
+        $inner = $collector->fromBoot(function () use ($collector): string {
+            $collector->addCss('.page { color: green; }');
+
+            return $collector->renderHead();
+        });
+
+        $this->assertStringContainsString('window.booted', $inner, 'what boot registered is printed again');
+        $this->assertStringContainsString('.page', $inner);
+        $this->assertStringNotContainsString('.fragment', $inner, 'nothing of the request around it');
+        $this->assertStringContainsString('.fragment', $collector->renderCss(), 'the request\'s own assets are back');
+        $this->assertStringNotContainsString('.page', $collector->renderCss());
+        $this->assertSame('', $collector->renderHead(), 'what the request printed stays printed');
+
+        // Without markBooted() (no app booted it), a render starts empty.
+        $unbooted = $this->collector();
+        $unbooted->addCss('.later { color: red; }');
+        $this->assertSame('', $unbooted->fromBoot(static fn (): string => $unbooted->renderCss()));
+    }
+
     public function test_isolate_restores_after_an_exception(): void
     {
         $collector = $this->collector();

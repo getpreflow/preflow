@@ -443,6 +443,47 @@ final class AssetCollector
         }
     }
 
+    /** @var list<mixed>|null what boot registered (markBooted()); null: nothing was marked, an empty registry */
+    private ?array $booted = null;
+
+    /**
+     * Keeps what is registered now as what boot registered (the application calls it once its
+     * boot is done: htmx with include 'always', what providers and apps add at boot). Internal
+     * renders start from it (fromBoot()).
+     *
+     * @since 0.81.0
+     */
+    public function markBooted(): void
+    {
+        $this->booted = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags];
+    }
+
+    /**
+     * Run $render on what boot registered (markBooted()), with nothing marked printed and no CSS
+     * scope, then put the previous state back: a render the application makes of itself (the SEO
+     * audit, GEO, a page cache rebuild, verify) gets the assets a visitor's page starts from, and
+     * none of what the request around it registered or printed (a fragment's CSS, a page it
+     * printed already).
+     *
+     * @since 0.81.0
+     * @template T
+     * @param callable(): T $render
+     * @return T
+     */
+    public function fromBoot(callable $render): mixed
+    {
+        $saved = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed];
+        [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags] = $this->booted ?? [[], [], [], [], []];
+        $this->cssScope = null;
+        $this->printed = self::NOTHING_PRINTED;
+
+        try {
+            return $render();
+        } finally {
+            [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed] = $saved;
+        }
+    }
+
     /**
      * Run $render on the registries as they are, then put them back: pages rendered
      * one after another in one process (the SEO audit) each start from what boot

@@ -506,6 +506,12 @@ final class Application
             $this->addMiddleware(new \Preflow\DevTools\Http\DebugToolbarMiddleware($collector, $this->nonceProvider()));
         }
 
+        // What boot registered (htmx with include 'always', what providers added): every internal
+        // render starts from it, nothing more and nothing less.
+        if ($this->container->bound(\Preflow\View\AssetCollector::class)) {
+            $this->container->get(\Preflow\View\AssetCollector::class)->markBooted();
+        }
+
         $this->kernel = new Kernel(
             container: $this->container,
             router: $this->router ?? throw new \RuntimeException('No router configured. Install preflow/routing or set a router manually.'),
@@ -1837,8 +1843,8 @@ final class Application
             verify: $config->verify,
             visitorScope: static function (ServerRequestInterface $visitor, \Closure $render) use ($container): ResponseInterface {
                 // Both renders start from the assets boot registered, so the second prints the same.
-                $scoped = static fn (): ResponseInterface => $container->has(\Preflow\View\AssetCollector::class)
-                    ? $container->get(\Preflow\View\AssetCollector::class)->restoring($render)
+                $scoped = static fn (): ResponseInterface => $container->bound(\Preflow\View\AssetCollector::class)
+                    ? $container->get(\Preflow\View\AssetCollector::class)->fromBoot($render)
                     : $render();
 
                 // The request is the visitor's for the render, and the frame's own again afterwards.
@@ -3023,8 +3029,8 @@ final class Application
      * do not read the context yet still need set aside and put back by hand, so nothing passes
      * between the request and its renders: the signed-in users (nobody is signed in during it),
      * the translator (the render's locale, no admin overrides), mail queued with
-     * Notifier::sendLater() (dropped, since 0.74) and the asset registries (empty for the render,
-     * the request's own back afterwards). The context itself (frame, cookies, outbox, superglobals,
+     * Notifier::sendLater() (dropped, since 0.74) and the asset registries (what boot registered,
+     * nothing printed, for the render; the request's own back afterwards). The context itself (frame, cookies, outbox, superglobals,
      * session) needs none of this; each service leaves this list when it reads the context.
      *
      * @param \Closure(): ResponseInterface $handle
@@ -3040,7 +3046,7 @@ final class Application
         if ($container->bound(\Preflow\View\AssetCollector::class)) {
             $assets = $container->get(\Preflow\View\AssetCollector::class);
             $scoped = $render;
-            $render = static fn (): ResponseInterface => $assets->isolate($scoped);
+            $render = static fn (): ResponseInterface => $assets->fromBoot($scoped);
         }
 
         $translator = class_exists(\Preflow\I18n\Translator::class) && $container->bound(\Preflow\I18n\Translator::class)
