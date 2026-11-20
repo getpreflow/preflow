@@ -26,7 +26,8 @@ namespace Preflow\Core\Context;
  * NoRenderContext. Only code with a documented default for "no render" (DataManager writes,
  * the translator, LiveContent, the notify bridge, shutdown hooks, auth's AuthManager: nobody
  * is signed in, SessionGuard's role-view check: no role view, and the session helpers: no
- * session) may use peek().
+ * session) may use peek(). A clock seam reads clock(): the current render's clock, the system
+ * clock outside every render.
  *
  * An internal render returns its RenderResult from the frame it opened:
  *
@@ -225,6 +226,18 @@ final class Contexts
     public static function peek(): ?RenderContext
     {
         return self::$top?->context;
+    }
+
+    /**
+     * The current render's clock; the system clock outside every render (a script, a unit test).
+     * The one clock seam for services that stamp or compare times and also run without a render
+     * (Publisher, RecordWriter, PreviewLinks): they read the time when they need it, never keep it.
+     *
+     * @since 0.81.0
+     */
+    public static function clock(): \Psr\Clock\ClockInterface
+    {
+        return self::peek()?->clock ?? new SystemClock();
     }
 
     /** @throws NoRenderContext outside every render */

@@ -11,7 +11,7 @@
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
-        "preflow/devtools": "^0.26 || @dev",
+        "preflow/devtools": "^0.81.0 || @dev",
         "preflow/testing": "^0.64 || @dev",
         "psr/log": "^3.0"
     },
@@ -22,7 +22,7 @@
     "conflict": {
         "preflow/core": "<0.81.0",
         "preflow/data": "<0.78",
-        "preflow/devtools": "<0.26",
+        "preflow/devtools": "<0.81.0",
         "preflow/folio": "<0.72",
         "preflow/validation": "<0.70"
     },

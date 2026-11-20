@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Publishing;
 
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\SystemClock;
 
 /**
  * Signed share-preview tokens: base64url(json [type, id, nonce, expires]) "."
@@ -19,7 +18,7 @@ final class PreviewLinks
 
     /**
      * The time links expire against. By default (since 0.81) the current render's clock
-     * (Contexts::peek()?->clock), and the system clock outside every render.
+     * (Contexts::clock()), and the system clock outside every render.
      *
      * @var \Closure(): int
      */
@@ -30,7 +29,7 @@ final class PreviewLinks
         private readonly int $ttl = 604800,
         ?\Closure $now = null,
     ) {
-        $this->now = $now ?? static fn (): int => (Contexts::peek()?->clock ?? new SystemClock())->now()->getTimestamp();
+        $this->now = $now ?? static fn (): int => Contexts::clock()->now()->getTimestamp();
     }
 
     public function enabled(): bool

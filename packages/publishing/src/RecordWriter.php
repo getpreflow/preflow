@@ -7,7 +7,8 @@ namespace Preflow\Publishing;
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\SystemClock;
+use Preflow\Core\Context\WritePolicy;
+use Preflow\Core\Context\Writes;
 use Preflow\Data\Attributes\Timestamps;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -56,7 +57,7 @@ final class RecordWriter
 
     /**
      * The time a "Publish at" must lie after when it is saved. By default (since 0.81) the current
-     * render's clock (Contexts::peek()?->clock), and the system clock outside every render.
+     * render's clock (Contexts::clock()), and the system clock outside every render.
      *
      * @var \Closure(): \DateTimeImmutable
      */
@@ -76,7 +77,7 @@ final class RecordWriter
         private readonly ?LoggerInterface $logger = null,
         ?ActivityLog $activity = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => (Contexts::peek()?->clock ?? new SystemClock())->now();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
         $this->store = new RecordStore($dm, $publisher, $hooks, $index, $addresses);
         $this->activity = new ActivityNotes($activity, $logger);
     }
@@ -392,6 +393,9 @@ final class RecordWriter
     /** save() telling the activity log $kind (Created, or Saved: see the class). */
     private function write(DynamicRecord $record, SaveOptions $options, ActivityKind $kind): SaveOutcome
     {
+        // Under Skip (a preview, a view as a role) the store skips and reports the write; what
+        // follows a write (the index, the addresses, the activity log, SaveHooks::after()) does not run.
+        $after = Writes::policy() === WritePolicy::Allow;
         $this->hooks->before($record, $options->kind);
         // What is stored before the write, for the changed fields (read only when a log listens).
         $before = $this->activity->on() ? $this->dm->findIn($record->getType(), (string) $record->getId())?->toArray() : null;
@@ -406,10 +410,10 @@ final class RecordWriter
             }
             $this->publisher->saveDraft($record, $options->loadedVersion);
             $scheduled = $schedule !== null && $schedule !== '' && $schedule !== (string) ($before['_publish_at'] ?? '');
-            if ($kind === ActivityKind::Created) {
+            if ($after && $kind === ActivityKind::Created) {
                 $this->tell($record, ActivityKind::Created, $before, $options->by);
             }
-            if (!$options->publish && ($scheduled || $kind === ActivityKind::Saved)) {
+            if ($after && !$options->publish && ($scheduled || $kind === ActivityKind::Saved)) {
                 // A save that set a new time is its scheduling.
                 $this->tell($record, $scheduled ? ActivityKind::Scheduled : ActivityKind::Saved, $before, $options->by);
             }
@@ -418,11 +422,13 @@ final class RecordWriter
                     // Checked against the version the draft save just wrote: a save landing in between conflicts.
                     $this->publisher->publish($record, $options->by, (int) $record->get('_version'));
                 } catch (\Throwable $e) {
-                    if ($kind === ActivityKind::Saved) {
+                    if ($after && $kind === ActivityKind::Saved) {
                         $this->tell($record, ActivityKind::Saved, $before, $options->by); // the draft is stored
                     }
                     try {
-                        $this->hooks->after($record, $options->kind); // the working copy was saved
+                        if ($after) {
+                            $this->hooks->after($record, $options->kind); // the working copy was saved
+                        }
                     } catch (\Throwable $hookFailure) {
                         // The publish failure wins (see above).
                         $this->logger?->warning("RecordWriter: SaveHooks::after() failed after a failed publish of {$record->getType()->key} {$record->getId()}", ['exception' => $hookFailure]);
@@ -432,13 +438,18 @@ final class RecordWriter
                         : $e;
                 }
             }
-            $this->hooks->after($record, $options->kind);
+            if ($after) {
+                $this->hooks->after($record, $options->kind);
+            }
 
             return new SaveOutcome($record, false);
         }
 
         $this->checks->validate($record);
         $this->store->write($record);
+        if (!$after) {
+            return new SaveOutcome($record, false);
+        }
         $left = $this->store->follow($record);
         $this->tell($record, $kind, $before, $options->by);
         $this->hooks->after($record, $options->kind);
@@ -537,8 +548,10 @@ final class RecordWriter
         }
         $this->storePosition($a);
         $this->storePosition($b);
-        $this->hooks->after($a, WriteKind::Reorder);
-        $this->hooks->after($b, WriteKind::Reorder);
+        if (Writes::policy() === WritePolicy::Allow) {
+            $this->hooks->after($a, WriteKind::Reorder);
+            $this->hooks->after($b, WriteKind::Reorder);
+        }
 
         return true;
     }

@@ -101,6 +101,40 @@ final class ReviewIndexUpdaterTest extends TestCase
         $this->assertSame('folio:review-index', (new ReviewIndexCommand())->getName());
     }
 
+    /**
+     * A render that skips writes (a preview, a view as a role) deletes and publishes nothing, so
+     * the review index file stays byte for byte as it was; under Allow it follows as before.
+     */
+    public function test_a_render_that_skips_writes_leaves_the_review_index_file_as_it_was(): void
+    {
+        $app = $this->app();
+        $c = $app->container();
+        $marked = static fn (string $de): array => ['de' => ['title' => MachineMarks::fingerprint($de)]];
+        $this->working('memo', 'm1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], '_machine_translated' => $marked('Hallo')]);
+        $post = $this->working('post', 'p1', ['title' => ['en' => 'Post', 'de' => 'Beitrag'], 'slug' => ['en' => 'post', 'de' => 'beitrag'], '_machine_translated' => $marked('Beitrag')]);
+        $updater = $c->get(ReviewIndexUpdater::class);
+        $updater->refresh($c->get(\Preflow\Data\DataManager::class)->findType('memo', 'm1'));
+        $updater->refresh($post);
+        $file = $this->dir . '/storage/ai/review.json';
+        $before = (string) file_get_contents($file);
+        $this->assertCount(2, $this->index()->entries());
+
+        $visit = \Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', '/'), $app->site(), new \Preflow\Core\Context\SystemClock());
+        $skipped = \Preflow\Core\Context\Contexts::run($visit->workingCopies()->skippingWrites(), function () use ($c, $post, $updater): array {
+            $c->get(\Preflow\Publishing\RecordDeleter::class)->delete('memo', ['m1']);
+            $c->get(\Preflow\Publishing\Publisher::class)->publish($post, null); // a publish checks the machine translations
+            $updater->forget('post', 'p1'); // and no other writer gets past the policy either
+
+            return \Preflow\Core\Context\Contexts::frame()->skippedWrites();
+        });
+
+        $this->assertSame($before, (string) file_get_contents($file), 'the index file is byte for byte as it was');
+        $this->assertContains('review-index', array_map(static fn ($w): string => $w->storage, $skipped), 'the skipped index write is reported');
+
+        \Preflow\Core\Context\Contexts::run($visit, static fn () => $c->get(\Preflow\Publishing\RecordDeleter::class)->delete('memo', ['m1']));
+        $this->assertSame(['post'], array_map(static fn (ReviewEntry $e): string => $e->collection, $this->index()->entries()), 'under Allow the delete reaches the index');
+    }
+
     private function index(): ReviewIndex
     {
         return $this->app()->container()->get(ReviewIndex::class);

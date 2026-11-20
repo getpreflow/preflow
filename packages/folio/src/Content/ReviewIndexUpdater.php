@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Core\Context\Writes;
 use Preflow\Data\DynamicRecord;
 use Preflow\I18n\Machine\ReviewEntry;
 use Preflow\I18n\Machine\ReviewIndex;
@@ -17,6 +18,9 @@ use Preflow\I18n\Machine\ReviewIndex;
  * The index is a cache: writes that bypass Folio (imports, project code) leave it stale until the
  * record's next Folio save or a rebuild (folio:review-index). For the same reason refresh() and
  * forget() never fail the save they follow: an index that cannot be written is logged, not thrown.
+ *
+ * Both ask the render's write policy first (Writes::allowed(), since 0.81): a preview or a view as
+ * a role skips the index write and reports it, as DataManager does with the record write.
  */
 final class ReviewIndexUpdater implements \Preflow\Publishing\RecordIndex
 {
@@ -36,6 +40,9 @@ final class ReviewIndexUpdater implements \Preflow\Publishing\RecordIndex
         }
         $type = $record->getType()->key;
         $id = (string) $record->getId();
+        if (!Writes::allowed('review-index', $type, $id, 'file')) {
+            return;
+        }
         $this->safely($type, $id, function () use ($record, $type, $id): void {
             $counts = $this->counts($record);
             if ($counts === []) {
@@ -50,6 +57,9 @@ final class ReviewIndexUpdater implements \Preflow\Publishing\RecordIndex
     /** Drops a record (deleted, or left without unchecked texts). */
     public function forget(string $type, string $id): void
     {
+        if (!Writes::allowed('review-index', $type, $id, 'file')) {
+            return;
+        }
         $this->safely($type, $id, fn () => $this->drop($type, $id));
     }
 

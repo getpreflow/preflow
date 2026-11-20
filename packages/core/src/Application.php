@@ -792,7 +792,9 @@ final class Application
      * page's sub-request inside a preview, a view as a role, an audit or a render as of a date
      * writes, sends and is stored no more than the render around it. The clock is $outer's; a
      * console frame has none of its own (Console starts it on the system clock), so a command's
-     * request takes the app's bound clock.
+     * request takes the app's bound clock. It reads what $outer reads (since 0.81): working
+     * copies inside an admin request or a preview, the site as of a date inside such a render;
+     * a request that should read published inside them renders with Application::render().
      */
     private function nestedContext(ServerRequestInterface $request, RenderContext $outer): RenderContext
     {
@@ -820,6 +822,11 @@ final class Application
         $ctx = match ($outer->outbox) {
             \Preflow\Core\Context\OutboxPolicy::Discard => $ctx->discarding(),
             \Preflow\Core\Context\OutboxPolicy::Capture => $ctx->capturing(),
+            default => $ctx,
+        };
+        $ctx = match (true) {
+            $outer->reads->at !== null => $ctx->asOf($outer->reads->at),
+            $outer->reads->readsWorkingCopies() => $ctx->workingCopies(),
             default => $ctx,
         };
 

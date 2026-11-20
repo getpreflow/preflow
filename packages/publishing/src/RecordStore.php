@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing;
 
+use Preflow\Core\Context\Writes;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 
@@ -30,7 +31,10 @@ final class RecordStore
     {
         $type = $record->getType()->key;
         if (!$this->publishes($type) && $this->hooks->replacesSave($type)) {
-            $this->hooks->save($record, $this->dm->findType($type, (string) $record->getId()));
+            // The type's own save writes past DataManager: it asks the write policy itself.
+            if (Writes::allowed($record->getType()->storage, $type, (string) $record->getId(), 'save')) {
+                $this->hooks->save($record, $this->dm->findType($type, (string) $record->getId()));
+            }
         } else {
             $this->dm->saveType($record, false);
         }

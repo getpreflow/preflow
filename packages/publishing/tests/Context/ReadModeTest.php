@@ -11,6 +11,12 @@ use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Core\Context\WritesRefused;
 use Preflow\Publishing\Console\PublishScheduledCommand;
+use Preflow\Publishing\Publisher;
+use Preflow\Publishing\RecordWriter;
+use Preflow\Publishing\SaveOptions;
+use Preflow\Publishing\SchemaPublishingTypes;
+use Preflow\Publishing\Tests\Fixtures\ReadRoute;
+use Preflow\Publishing\Tests\Fixtures\Recorder;
 use Preflow\Publishing\LiveContent;
 use Preflow\Publishing\PreviewLinks;
 use Preflow\Publishing\RecordDeleter;
@@ -300,5 +306,67 @@ final class ReadModeTest extends PublishingAppTestCase
         }
         $this->assertNull($this->publisher()->snapshot('post', 'p1'));
         $this->assertNotNull($this->dm()->findType('post', 'p2'));
+    }
+
+    /**
+     * Under Skip nothing that follows a write runs: no index, addresses or page-cache news, no
+     * activity, no after-hooks, no type's own save (it is reported as skipped instead). Under
+     * Allow every step runs as before.
+     */
+    public function test_nothing_after_a_skipped_write_runs(): void
+    {
+        $this->publisher()->publish($this->working('post', 'gone', ['title' => ['en' => 'Gone']]), null);
+        $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'One']]), null);
+        $recorder = new Recorder($this->dm());
+        $recorder->replaces = ['note'];
+        $publisher = new Publisher($this->dm(), new SchemaPublishingTypes($this->dm()), $recorder, index: $recorder, addresses: $recorder);
+        $deleter = new RecordDeleter($this->dm(), $publisher, $recorder, $recorder, $recorder);
+        $writer = new RecordWriter($this->dm(), $publisher, $recorder, $recorder, $recorder, $recorder, $recorder);
+        $steps = function () use ($publisher, $deleter, $writer): void {
+            $publisher->publish($this->stored('post', 'p1'), null);
+            $writer->save($this->stored('post', 'p1'));
+            $writer->save(\Preflow\Data\DynamicRecord::fromArray($this->dm()->getTypeRegistry()->get('note'), ['uuid' => 'n1', 'title' => ['en' => 'Note']]));
+            $publisher->unpublish('post', 'p1');
+            $deleter->delete('post', ['gone']);
+        };
+        $after = static fn (array $log): array => array_values(array_filter($log, static fn (string $line): bool => preg_match('/^(after|afterDelete|refresh|forget|sync|removed|changed|save):/', $line) === 1));
+
+        $skipped = Contexts::run($this->visit()->workingCopies()->skippingWrites(), static function () use ($steps): array {
+            $steps();
+
+            return Contexts::frame()->skippedWrites();
+        });
+
+        $this->assertSame([], $after($recorder->log), 'nothing after a skipped write');
+        $this->assertContains('note', array_map(static fn ($w): string => $w->type, $skipped), 'the type\'s own save is reported as skipped');
+        $this->assertNotNull($this->publisher()->snapshot('post', 'p1'));
+        $this->assertNotNull($this->dm()->findType('post', 'gone'));
+
+        Contexts::run($this->visit(), $steps);
+        $ran = $after($recorder->log);
+        foreach (['refresh:post:p1', 'after:post:p1', 'save:note:n1', 'after:note:n1', 'removed:post:p1', 'forget:post:gone', 'removed:post:gone', 'afterDelete:post:gone'] as $step) {
+            $this->assertContains($step, $ran, "under Allow: {$step}");
+        }
+    }
+
+    /** @return iterable<string, array{\Closure(RenderContext): RenderContext, string}> */
+    public static function outerReadModes(): iterable
+    {
+        yield 'working copies' => [static fn (RenderContext $c): RenderContext => $c->workingCopies(), 'Draft'];
+        yield 'published' => [static fn (RenderContext $c): RenderContext => $c->published(), 'Published'];
+        yield 'as of a date' => [static fn (RenderContext $c): RenderContext => $c->asOf(new \DateTimeImmutable('2020-01-01T00:00:00Z')), UnsupportedReadMode::class];
+    }
+
+    /** A request the app handles inside a render reads what that render reads. */
+    #[\PHPUnit\Framework\Attributes\DataProvider('outerReadModes')]
+    public function test_a_nested_request_reads_what_its_frame_reads(\Closure $reads, string $expected): void
+    {
+        $this->write('config/middleware.php', "<?php\nreturn [" . var_export(ReadRoute::class, true) . "];\n");
+        $this->seedPost();
+        ReadRoute::$seen = [];
+
+        $this->app()->render($reads($this->visit()), new ServerRequest('GET', '/outer'));
+
+        $this->assertSame([$expected], ReadRoute::$seen);
     }
 }

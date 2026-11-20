@@ -431,6 +431,38 @@ final class ApplicationEdgesTest extends TestCase
         $this->assertSame(0, Contexts::depth());
     }
 
+    /**
+     * A sub-request reads what the frame around it reads: working copies inside an admin request
+     * or a preview (and is then never stored), the site as of a date inside such a render, and
+     * published inside a published frame, as before.
+     *
+     * @return iterable<string, array{\Closure(RenderContext): RenderContext, list<mixed>}>
+     */
+    public static function outerReadModes(): iterable
+    {
+        yield 'working copies' => [static fn (RenderContext $c): RenderContext => $c->workingCopies(), ['working', false]];
+        yield 'published' => [static fn (RenderContext $c): RenderContext => $c->published(), ['published', true]];
+        yield 'as of a date' => [static fn (RenderContext $c): RenderContext => $c->asOf(new \DateTimeImmutable('2020-01-01T00:00:00Z')), ['asof:2020-01-01T00:00:00.000000Z', false]];
+    }
+
+    /** @param \Closure(RenderContext): RenderContext $reads @param list<mixed> $expected */
+    #[\PHPUnit\Framework\Attributes\DataProvider('outerReadModes')]
+    public function test_a_sub_request_reads_what_its_frame_reads(\Closure $reads, array $expected): void
+    {
+        $app = $this->app();
+        $seen = null;
+        EdgeRoutes::$routes['/inner'] = static function () use (&$seen): ResponseInterface {
+            $seen = [Contexts::current()->reads->key(), Contexts::current()->isStorable()];
+
+            return new Response(200, [], 'inner');
+        };
+        EdgeRoutes::$routes['/outer'] = static fn (): ResponseInterface => $app->handle(new ServerRequest('GET', 'https://site.test/inner'));
+
+        $app->render($reads(RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/outer'), $app->site(), new SystemClock())), new ServerRequest('GET', 'https://site.test/outer'));
+
+        $this->assertSame($expected, $seen, 'the read mode, whether it may be stored');
+    }
+
     /** The console frame has no clock of its own: a request a command handles keeps the app's bound clock. */
     #[RunInSeparateProcess]
     public function test_handle_inside_a_command_keeps_the_apps_clock(): void

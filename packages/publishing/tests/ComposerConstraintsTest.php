@@ -9,7 +9,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Since 0.81: core 0.81 (Contexts, RenderContext's read mode and clock, Deprecations: LiveContent
  * reads the current render's read mode, the publish:scheduled command its console context's now,
- * the clock seams the render's clock).
+ * the clock seams the render's clock); devtools 0.81 (its console runs every command in a console frame:
+ * publish:scheduled reads Contexts::current(), which throws without one, so no scheduled record would publish).
  * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which ShadowTypes carries to the published copy and Publisher gives the version column).
  * Since 0.77: core 0.77 (Activity\ActivityLog and ActivityActors, which ActivityNotes, Publisher and PublishActors use); data 0.77 (RecordTitle, which ActivityNotes uses; VersionFields, which PublishingVersionFields implements; updateFieldsIfVersion(), which Publisher calls). Since 0.77.1: data 0.77.1 (MigrationRegistry::afterMigrate()'s sqlOnly, which publishing.published_versions passes).
  *
@@ -31,7 +32,7 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame([
             'preflow/core' => '<0.81.0',
             'preflow/data' => '<0.78',
-            'preflow/devtools' => '<0.26',
+            'preflow/devtools' => '<0.81.0',
             'preflow/folio' => '<0.72',
             'preflow/validation' => '<0.70',
         ], $composer['conflict'] ?? null);

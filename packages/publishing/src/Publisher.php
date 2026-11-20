@@ -7,7 +7,8 @@ namespace Preflow\Publishing;
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\SystemClock;
+use Preflow\Core\Context\WritePolicy;
+use Preflow\Core\Context\Writes;
 use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -61,7 +62,7 @@ final class Publisher
 
     /**
      * The time of publish stamps and revisions. By default (since 0.81) the current render's clock
-     * (Contexts::peek()?->clock), and the system clock outside every render.
+     * (Contexts::clock()), and the system clock outside every render.
      *
      * @var \Closure(): \DateTimeImmutable
      */
@@ -84,7 +85,7 @@ final class Publisher
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
         }
-        $this->now = $now ?? static fn (): \DateTimeImmutable => (Contexts::peek()?->clock ?? new SystemClock())->now();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
         $this->activity = new ActivityNotes($activity, $logger);
         $this->logger = $logger;
     }
@@ -406,7 +407,9 @@ final class Publisher
                 if (!$same || !$this->carryForward($working, $current)) {
                     $this->relinkSaved($working);
                 }
-                $this->index?->refresh($working);
+                if (self::writesRun()) {
+                    $this->index?->refresh($working);
+                }
 
                 return;
             }
@@ -560,6 +563,9 @@ final class Publisher
             }
         }
 
+        if (!self::writesRun()) {
+            return $snapshot; // nothing was written (a preview, a view as a role): nothing follows it
+        }
         $this->addresses?->changed(static fn (): ?DynamicRecord => $previous, $snapshot);
         // After the commit: the address book writes on its own (it never fails a publish).
         $this->addresses?->sync($def->key, $id, $previous);
@@ -644,10 +650,15 @@ final class Publisher
      */
     public function unpublish(string $type, string $id, ?RemovalTarget $target = null, ?string $by = null): void
     {
-        $live = $this->activity->on() ? $this->snapshot($type, $id) : null;
-        $this->addresses?->changed(fn (): ?DynamicRecord => $this->snapshot($type, $id), null);
+        $run = self::writesRun();
+        $live = $run && $this->activity->on() ? $this->snapshot($type, $id) : null;
+        if ($run) {
+            $this->addresses?->changed(fn (): ?DynamicRecord => $this->snapshot($type, $id), null);
+        }
         $this->dm->deleteIn(ShadowTypes::published($this->definition($type)), $id);
-        $this->addresses?->removed($type, $id, $target);
+        if ($run) {
+            $this->addresses?->removed($type, $id, $target);
+        }
         if ($live !== null) {
             $this->activity->note($this->dm->findIn($this->definition($type), $id) ?? $live, ActivityKind::Unpublished, [], $by);
         }
@@ -714,7 +725,9 @@ final class Publisher
     public function forget(string $type, string $id): void
     {
         $def = $this->definition($type);
-        $this->addresses?->changed(fn (): ?DynamicRecord => $this->snapshot($type, $id), null);
+        if (self::writesRun()) {
+            $this->addresses?->changed(fn (): ?DynamicRecord => $this->snapshot($type, $id), null);
+        }
         $this->dm->deleteIn(ShadowTypes::published($def), $id);
         foreach ($this->revisionsOf($def, $id) as $revision) {
             $this->dm->deleteIn(ShadowTypes::revisions($def), $revision->id);
@@ -738,7 +751,9 @@ final class Publisher
         }
         $working = $this->replaceContent($type, $id, $snapshot->toArray(), $loadedVersion, $publishAt);
         $this->relink($working, $snapshot);
-        $this->activity->note($working, ActivityKind::Discarded, [], $by);
+        if (self::writesRun()) {
+            $this->activity->note($working, ActivityKind::Discarded, [], $by);
+        }
 
         return $working;
     }
@@ -770,7 +785,9 @@ final class Publisher
             if ($revision->id === $revisionId) {
                 $restored = $this->replaceContent($type, $id, $revision->data, $loadedVersion, $publishAt);
                 $this->relink($restored, $this->snapshot($type, $id));
-                $this->activity->note($restored, ActivityKind::Restored, [], $by);
+                if (self::writesRun()) {
+                    $this->activity->note($restored, ActivityKind::Restored, [], $by);
+                }
 
                 return $restored;
             }
@@ -924,9 +941,22 @@ final class Publisher
         if (!$this->dm->saveTypeIfVersion($record, $loadedVersion ?? (int) ($working?->get('_version') ?? 0), validate: false)) {
             throw new VersionConflict($this->storedVersion($record));
         }
-        $this->index?->refresh($record);
+        if (self::writesRun()) {
+            $this->index?->refresh($record);
+        }
 
         return $record;
+    }
+
+    /**
+     * Whether writes run for real in the current render (Allow, or no render at all). Under Skip
+     * (a preview, a view as a role, the audit) DataManager skips and reports the data writes, and
+     * nothing that follows them runs: the index, the addresses and the page cache, the activity
+     * log. Under Refuse the data write has thrown already.
+     */
+    private static function writesRun(): bool
+    {
+        return Writes::policy() === WritePolicy::Allow;
     }
 
     private function definition(string $type): TypeDefinition
