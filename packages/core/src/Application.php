@@ -645,9 +645,11 @@ final class Application
     /**
      * A request asked for inside a frame that is not its own: a nested frame from the request
      * (nestedContext()). Unless it is internal, it is part of the page the frame around it renders
-     * for the page cache (DependencyRecorder::nestIn(), PageCache::nestIn()). Notify's deferred mail is flushed (not under run(), which sends it after
-     * its response), as handle() did before 0.81; what else it queued and its after-response work
-     * go to the frame around it when it closes.
+     * for the page cache (DependencyRecorder::nestIn(), PageCache::nestIn()), and a stretch it
+     * renders as another context than the public default refuses that page. Notify's deferred
+     * mail is flushed (not under run(), which sends it after its response), as handle() did
+     * before 0.81; what else it queued and its after-response work go to the frame around it
+     * when it closes.
      */
     private function handleNested(ServerRequestInterface $request): ResponseInterface
     {
