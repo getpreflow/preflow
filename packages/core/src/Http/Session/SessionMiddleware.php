@@ -43,8 +43,14 @@ final class SessionMiddleware implements MiddlewareInterface
     {
         // An internal render (audit, GEO, rebuild, verify, preview) is an anonymous visitor's: no session.
         // Nor has a role view (view as role, since 0.81.0), whatever its purpose: the session the
-        // request carries is the editor's, never started, aged, read, written or closed by it.
+        // request carries is the editor's, never started, aged, read, written or closed by it. A
+        // session already on the request (the admin's own request handed to the role view) is
+        // taken off it, so nothing downstream (CSRF, a flash) reaches it either.
         if ($request->getAttribute(self::WITHOUT_SESSION) === true || Contexts::depth() > 0 && (Contexts::current()->purpose->isInternal() || Contexts::current()->viewer->isSynthetic())) {
+            if (Contexts::depth() > 0 && Contexts::current()->viewer->isSynthetic()) {
+                $request = $request->withoutAttribute(SessionInterface::class);
+            }
+
             return $handler->handle($request);
         }
         $onPath = $this->applies($request->getUri()->getPath());

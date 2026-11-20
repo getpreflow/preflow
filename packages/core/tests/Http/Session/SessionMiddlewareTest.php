@@ -96,6 +96,56 @@ final class SessionMiddlewareTest extends TestCase
         $this->assertSame([$session, null], $seen);
     }
 
+    /**
+     * The request handed to a role view may already carry the editor's session (the admin's own
+     * request object): the role view's handler gets it without, and nothing touches it.
+     */
+    public function test_a_role_view_gets_no_session_a_request_already_carries(): void
+    {
+        $site = new Site('https://example.test', ['en'], 'en', new LocaleUrls(['en'], 'en'));
+        foreach ([Purpose::Visit, Purpose::Fragment, Purpose::Preview] as $purpose) {
+            $session = new SpySession();
+            $request = (new Psr17Factory())->createServerRequest('GET', 'https://example.test/')
+                ->withCookieParams(['sess' => 'editor-cookie'])
+                ->withAttribute(SessionInterface::class, $session);
+            $ctx = RenderContext::fromRequest((new Psr17Factory())->createServerRequest('GET', 'https://example.test/'), $site, new SystemClock())->asVisitor()->asRole(new RoleView('member', ['gold']))->because($purpose);
+
+            [$attached, $current] = Contexts::run($ctx, function () use ($session, $request): array {
+                $captured = null;
+                $current = 'unset';
+                (new SessionMiddleware($session, null, 'sess'))->process($request, new class($captured, $current) implements RequestHandlerInterface {
+                    public function __construct(private ?ServerRequestInterface &$captured, private mixed &$current) {}
+
+                    public function handle(ServerRequestInterface $request): ResponseInterface
+                    {
+                        $this->captured = $request;
+                        $this->current = SessionMiddleware::ofCurrentRender();
+
+                        return new Response(200);
+                    }
+                });
+
+                return [$captured?->getAttribute(SessionInterface::class), $current];
+            });
+
+            $this->assertNull($attached, $purpose->value . ': the handler gets no session');
+            $this->assertNull($current, $purpose->value);
+            $this->assertSame([], $session->calls, $purpose->value . ': the editor\'s session is never touched');
+        }
+
+        // An internal render that is no role view keeps what its request carries, as before.
+        $session = new SpySession();
+        $request = (new Psr17Factory())->createServerRequest('GET', 'https://example.test/')->withAttribute(SessionInterface::class, $session);
+        $ctx = RenderContext::internal(Purpose::Audit, $site, new SystemClock(), '/');
+        $attached = Contexts::run($ctx, function () use ($session, $request): mixed {
+            $captured = null;
+            (new SessionMiddleware($session))->process($request, $this->createHandler($captured));
+
+            return $captured?->getAttribute(SessionInterface::class);
+        });
+        $this->assertSame($session, $attached);
+    }
+
     public function test_attaches_session_to_request_attribute(): void
     {
         $session = new ArraySession();

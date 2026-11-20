@@ -325,6 +325,44 @@ final class ViewAsRoleTest extends TestCase
         $this->assertSame('kept', $session->get('admin_key'));
     }
 
+    /**
+     * The admin's own request object, carrying the admin's started session, handed to a role view:
+     * CSRF and the route see no session, so no token is written into it and its flash stays.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_role_render_of_the_admins_own_request_leaves_its_session_alone(): void
+    {
+        $app = $this->site();
+        $session = $app->container()->get(\Preflow\Core\Http\Session\SessionInterface::class);
+        $session->start();
+        $session->remove('_csrf_token');
+        $session->flash('note', 'Saved.');
+        $session->ageFlash();
+        ViewAsRoutes::$routes['/peek'] = static fn (ServerRequestInterface $r): ResponseInterface => new Response(200, ['Content-Type' => 'text/plain'], var_export([
+            $r->getAttribute(\Preflow\Core\Http\Session\SessionInterface::class) !== null,
+            \Preflow\Core\Http\Session\SessionMiddleware::ofCurrentRender() !== null,
+        ], true));
+        $request = (new ServerRequest('GET', 'https://site.test/peek'))
+            ->withCookieParams(['viewas' => $session->getId()])
+            ->withAttribute(\Preflow\Core\Http\Session\SessionInterface::class, $session);
+
+        $seen = Contexts::run(self::admin($app, $request), static function () use ($app, $request): array {
+            $seen = [];
+            foreach ([Purpose::Visit, Purpose::Fragment, Purpose::Preview] as $purpose) {
+                $ctx = RenderContext::fromRequest($request, $app->site(), new SystemClock())->asVisitor()->asRole(new RoleView('member', ['gold']))->because($purpose);
+                $seen[] = (string) $app->render($ctx, $request)->response->getBody();
+            }
+
+            return $seen;
+        });
+
+        $none = var_export([false, false], true);
+        $this->assertSame([$none, $none, $none], $seen, 'the route sees no session, on the request or the render');
+        $this->assertFalse($session->has('_csrf_token'), 'no CSRF token was written into the admin\'s session');
+        $this->assertSame('Saved.', $session->getFlash('note'), 'the admin\'s flash stays');
+        $this->assertSame(PHP_SESSION_ACTIVE, session_status());
+    }
+
     #[RunInSeparateProcess]
     public function test_a_role_render_never_leaks_into_the_next_request(): void
     {
