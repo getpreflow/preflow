@@ -131,6 +131,13 @@ change it and name it in `layout`. A single mail can use another template with
 `$mailer->send($content, $to, template: '…')`. To replace the layout altogether, bind your own
 `Preflow\Notify\Mail\MailLayout` in a service provider.
 
+The `Mailer` calls the layout's `html()` inside its compose scope (below). With preflow/core that is a
+render of its own in the recipient's context, so a layout of your own, or your layout template, reads
+the reader's language from `$content->lang` (the template's `lang`) or from the current render
+(`current_locale()`, `t()`), and nobody is signed in there. It never reads the language from the
+request that sends the mail. CSS or scripts the template collects stay in the mail, and a cookie or
+mail it queues is dropped.
+
 The `Mailer` takes the `Notifier` itself or a `Closure` that returns it. Core passes a
 `Closure` that reads the container at each send, so a `Notifier` a provider or a test binds
 later is the one that sends, and its `flushDeferred()` sends what `sendLater()` queued.

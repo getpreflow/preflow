@@ -19,10 +19,10 @@ use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Tests\Fixtures\Isolation\IsolationDocument;
 use Preflow\Notify\Mail\MailContent;
+use Preflow\Notify\Mail\Mailer;
 use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Preflow\Notify\Mail\MailLayout;
 use Preflow\Testing\ContextFactory;
 use Preflow\Testing\Contract\RenderIsolationContract;
 use Preflow\View\Pdf\PdfRenderer;
@@ -36,8 +36,9 @@ use Preflow\View\Pdf\PdfRenderer;
  *
  * Each path runs the render the way its caller does in 0.81: audit, GEO and rebuild as
  * internal renders through Application::render(), verify as the visitor's context discarding and
- * skipping writes, preview as a whole-page preview of working copies, mail in the recipient's
- * context, PDF in the caller's.
+ * skipping writes, preview as a whole-page preview of working copies; mail through the Mailer
+ * (whose compose scope renders in the recipient's context) and PDF through PdfRenderer, each
+ * called in the caller's frame, so the entry point itself must open the frame it renders in.
  */
 #[RunTestsInSeparateProcesses]
 final class CoreRenderIsolationTest extends RenderIsolationContract
@@ -93,12 +94,12 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
                 => self::page($app, $ctx->discarding()->skippingWrites()->because(Purpose::Verify)),
             'preview' => static fn (Application $app, RenderContext $ctx): RenderResult
                 => self::page($app, $ctx->asVisitor()->public()->workingCopies()->capturing()->skippingWrites()->because(Purpose::Preview)),
-            'mail' => static fn (Application $app, RenderContext $ctx): RenderResult => self::own(
-                $ctx->forRecipient($ctx->locale)->capturing()->skippingWrites(),
-                static fn (): string => $app->container()->get(MailLayout::class)->html(new MailContent('Isolation', 'Text', $ctx->locale), '#000000', $template()),
+            'mail' => static fn (Application $app, RenderContext $ctx): RenderResult => self::caller(
+                $ctx,
+                static fn (): string => (string) $app->container()->get(Mailer::class)->compose(new MailContent('Isolation', 'Text', $ctx->locale), 'reader@site.test', template: $template())->html,
             ),
-            'pdf' => static fn (Application $app, RenderContext $ctx): RenderResult => self::own(
-                $ctx->because(Purpose::Pdf)->discarding()->skippingWrites(),
+            'pdf' => static fn (Application $app, RenderContext $ctx): RenderResult => self::caller(
+                $ctx,
                 static fn (): string => $app->container()->get(PdfRenderer::class)->html(new IsolationDocument($template())),
             ),
         ];
@@ -157,19 +158,43 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
     }
 
     /**
-     * $render in its own frame under $ctx, as the mail and PDF renderers run it.
+     * $render called by code that runs under $ctx in the caller's frame (the contract's outer
+     * frame), as a request handler or a command calls the Mailer or the PdfRenderer: the runner
+     * opens no frame, the entry point opens its own. $ctx captures, since the outer frame was
+     * opened capturing and within() never loosens a frame. The result lists what reached the
+     * caller's frame during the call (left there, so the frame test sees it too) and the writes
+     * it skipped.
      *
      * @param \Closure(): string $render
      */
-    private static function own(RenderContext $ctx, \Closure $render): RenderResult
+    private static function caller(RenderContext $ctx, \Closure $render): RenderResult
     {
-        $frame = null;
-        $html = Contexts::run($ctx, static function () use (&$frame, $render): string {
-            $frame = Contexts::frame();
+        $frame = Contexts::frame();
+        $queued = self::queued($frame);
+        $skipped = count($frame->skippedWrites());
 
-            return $render();
-        });
+        $html = Contexts::within($ctx->capturing(), $render);
 
-        return new RenderResult(new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html), $frame->outbox()->drain(), $frame->skippedWrites());
+        return new RenderResult(
+            new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $html),
+            array_slice(self::queued($frame), count($queued)),
+            array_slice($frame->skippedWrites(), $skipped),
+        );
+    }
+
+    /**
+     * What $frame has queued, left queued.
+     *
+     * @return list<\Preflow\Core\Context\CapturedItem>
+     */
+    private static function queued(\Preflow\Core\Context\RenderFrame $frame): array
+    {
+        $outbox = $frame->outbox();
+        $items = $outbox->drain();
+        foreach ($items as $item) {
+            $outbox->queue($item->item, $item->channel);
+        }
+
+        return $items;
     }
 }

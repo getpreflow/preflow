@@ -100,9 +100,15 @@ final class TemplateFunctionsTest extends TestCase
                 return $this->file;
             }
         };
-        $renderer = $this->mediaApp()->container()->get(\Preflow\View\Pdf\PdfRenderer::class);
+        $app = $this->mediaApp();
+        $renderer = $app->container()->get(\Preflow\View\Pdf\PdfRenderer::class);
+        // PdfRenderer renders from the current render (since 0.81.0), as from a request or a command.
+        [$html, $pdf] = \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock()),
+            static fn (): array => [$renderer->html($doc), $renderer->render($doc)],
+        );
 
-        $this->assertStringContainsString('<img src="/media/' . $asset->path . '" alt="" style="width: 40mm;" />', $renderer->html($doc));
-        $this->assertStringStartsWith('%PDF', $renderer->render($doc));
+        $this->assertStringContainsString('<img src="/media/' . $asset->path . '" alt="" style="width: 40mm;" />', $html);
+        $this->assertStringStartsWith('%PDF', $pdf);
     }
 }

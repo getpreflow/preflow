@@ -10,6 +10,9 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\PdfEngineProvider;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\SystemClock;
 use Preflow\View\Pdf\MpdfEngine;
 use Preflow\View\Pdf\PdfConfig;
 use Preflow\View\Pdf\PdfDocument;
@@ -33,7 +36,7 @@ final class PdfBootTest extends TestCase
         $this->assertSame('dejavusanscondensed', $config->defaultFont);
         $this->assertInstanceOf(MpdfEngine::class, $container->get(PdfEngine::class));
 
-        $bytes = $container->get(PdfRenderer::class)->render($this->document($dir));
+        $bytes = Contexts::run(RenderContext::console($app->site(), new SystemClock()), fn (): string => $container->get(PdfRenderer::class)->render($this->document($dir)));
         $this->assertStringStartsWith('%PDF', $bytes);
         // The building blocks are registered: pdf_page_break() made a second page.
         $this->assertCount(2, (new \Smalot\PdfParser\Parser())->parseContent($bytes)->getPages());
@@ -60,7 +63,7 @@ final class PdfBootTest extends TestCase
         $app = Application::create($dir);
         $app->boot();
 
-        $bytes = $app->container()->get(PdfRenderer::class)->render($this->document($dir));
+        $bytes = Contexts::run(RenderContext::console($app->site(), new SystemClock()), fn (): string => $app->container()->get(PdfRenderer::class)->render($this->document($dir)));
 
         $this->assertStringStartsWith('custom:', $bytes);
         $this->assertStringContainsString('Hello Ada', $bytes);

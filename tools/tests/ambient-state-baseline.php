@@ -269,7 +269,4 @@ return [
     'view/src/Audit/Audits.php' => [
         '$this->now = $now ?? static fn (): \\DateTimeImmutable => new \\DateTimeImmutable();', // clock
     ],
-    'view/src/Pdf/Blocks.php' => [
-        'private static array $renders = [];', // static-state
-    ],
 ];

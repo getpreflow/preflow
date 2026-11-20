@@ -924,6 +924,12 @@ margins in mm, `headerTemplate`/`footerTemplate` (templates rendered with the sa
 page, also when your CSS has `@page` rules) and a custom `width`/`height` in mm (together, they win over format and
 orientation). A template is tied to one engine's syntax, so use the extension of the engine you run.
 
+Each `render()` and `html()` (since 0.81) runs in a render of its own, made from the caller's: the same viewer,
+locale and read mode, as a PDF. CSS, page meta, cookies or mail its templates collect or queue stay out of your
+response, and two PDFs, nested or one after the other, share nothing. Call it where a render runs (a request, a
+command, `Contexts::run()`); outside every render it throws `NoRenderContext`. For a PDF in another language than the
+request's, wrap the call in `Contexts::within(Contexts::current()->in('fr'), …)`.
+
 `html()` is only a preview: a browser lays the page out, mPDF does not, so page numbers are empty, page breaks are a
 dashed line and the layout is approximate. Check the real thing with `render()`. `PdfResponse` sends
 `application/pdf` with `Cache-Control: private, no-store`.

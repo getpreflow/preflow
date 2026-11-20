@@ -4,12 +4,21 @@ declare(strict_types=1);
 
 namespace Preflow\View\Pdf;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Purpose;
 use Preflow\View\TemplateEngineInterface;
 
 /**
  * Renders a PdfDocument's template with the site's template engine, as PDF
  * bytes or as an HTML page for a browser preview. There are no component
  * wrappers: the template's output, <style> blocks included, is the page.
+ *
+ * Each render (since 0.81.0) runs in a render frame of its own under the
+ * caller's context (its viewer, locale and read mode) with purpose Pdf and
+ * discarding: what the templates collect (assets, page meta) or queue (mail,
+ * cookies, after-response work) stays out of the caller's response, and two
+ * renders, nested or one after the other, share nothing. It needs a current
+ * render (a request, a command, Contexts::run()).
  */
 final class PdfRenderer
 {
@@ -25,13 +34,15 @@ final class PdfRenderer
 
     /**
      * The PDF's bytes. Needs a PDF engine (mPDF by default).
+     *
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render
      */
     public function render(PdfDocument $doc): string
     {
         $engine = $this->engine();
 
         // The engine runs inside the scope too: scaled image copies must outlive the templates until mPDF has read them.
-        return Blocks::forPdf($this->config, function () use ($doc, $engine): string {
+        return self::own(fn (): string => Blocks::forPdf($this->config, function () use ($doc, $engine): string {
             $doc->resolveState();
             $context = self::context($doc);
             $page = $doc->page();
@@ -42,7 +53,7 @@ final class PdfRenderer
                 $this->renderOptional($page->headerTemplate, $context),
                 $this->renderOptional($page->footerTemplate, $context),
             );
-        });
+        }));
     }
 
     /**
@@ -50,10 +61,22 @@ final class PdfRenderer
      * needs no PDF library. Header and footer are shown above and below the
      * content; the building blocks render approximately (page numbers as
      * nothing, a page break as a dashed line).
+     *
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render
      */
     public function html(PdfDocument $doc): string
     {
-        return Blocks::forPreview(fn (): string => $this->previewHtml($doc));
+        return self::own(fn (): string => Blocks::forPreview(fn (): string => $this->previewHtml($doc)));
+    }
+
+    /**
+     * $render in a frame of its own: the caller's context, as a PDF, discarding what it queues.
+     *
+     * @param \Closure(): string $render
+     */
+    private static function own(\Closure $render): string
+    {
+        return Contexts::run(Contexts::current()->because(Purpose::Pdf)->discarding(), $render);
     }
 
     private function previewHtml(PdfDocument $doc): string

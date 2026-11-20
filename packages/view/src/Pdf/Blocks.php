@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\View\Pdf;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\View\Qr\QrCode;
 use Psr\Container\ContainerInterface;
 
@@ -14,8 +15,10 @@ use Psr\Container\ContainerInterface;
  * approximately: page numbers as nothing, a page break as a dashed line.
  *
  * The template functions are registered once per engine, so which of the
- * two applies is kept per render in a static stack that PdfRenderer opens
- * and closes around each render.
+ * two applies is kept in the render frame (since 0.81.0; a frame slot, no
+ * static state): PdfRenderer opens a frame of its own for each render, and
+ * forPdf()/forPreview() mark it. A render in another frame (a page rendered
+ * inside a PDF, a PDF inside a page) never sees another frame's mark.
  */
 final class Blocks
 {
@@ -23,9 +26,6 @@ final class Blocks
 
     // About 160 MB of GD memory; a bigger image is refused rather than risking the request.
     private const int DECODE_MAX_PIXELS = 40_000_000;
-
-    /** @var list<array{config: ?PdfConfig, temp: list<string>}> the open renders, innermost last */
-    private static array $renders = [];
 
     /**
      * @param ?ContainerInterface $container where a PdfImageSource (preflow/media binds one) is looked up for an image id
@@ -35,9 +35,11 @@ final class Blocks
     }
 
     /**
-     * Runs a PDF render: the blocks write mPDF markup, and scaled image
-     * copies go into the config's temp dir and are deleted afterwards, also
-     * when the render throws.
+     * Runs a PDF render in the current render frame: the blocks write mPDF
+     * markup, and scaled image copies go into the config's temp dir and are
+     * deleted afterwards, also when the render throws.
+     *
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render (PdfRenderer opens a frame)
      *
      * @template T
      * @param \Closure(): T $render
@@ -49,8 +51,10 @@ final class Blocks
     }
 
     /**
-     * Runs a browser preview render. Blocks write browser HTML and nothing
-     * touches the disk.
+     * Runs a browser preview render in the current render frame. Blocks write
+     * browser HTML and nothing touches the disk.
+     *
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render (PdfRenderer opens a frame)
      *
      * @template T
      * @param \Closure(): T $render
@@ -171,22 +175,34 @@ final class Blocks
      */
     private static function scoped(?PdfConfig $config, \Closure $render): mixed
     {
-        self::$renders[] = ['config' => $config, 'temp' => []];
-        $at = array_key_last(self::$renders);
+        $renders = self::renders();
+        $renders->open[] = ['config' => $config, 'temp' => []];
+        $at = array_key_last($renders->open);
         try {
             return $render();
         } finally {
-            foreach (self::$renders[$at]['temp'] as $file) {
+            foreach ($renders->open[$at]['temp'] as $file) {
                 @unlink($file);
             }
-            array_splice(self::$renders, $at);
+            array_splice($renders->open, $at);
         }
     }
 
-    /** The config of the PDF being rendered; null in a preview or outside any render. */
+    /** The current frame's open PDF renders. */
+    private static function renders(): BlockRenders
+    {
+        return Contexts::frame()->slot(BlockRenders::class, static fn (): BlockRenders => new BlockRenders());
+    }
+
+    /** The config of the PDF this frame renders; null in a preview, in any other frame, or outside every render. */
     private static function pdf(): ?PdfConfig
     {
-        return self::$renders === [] ? null : self::$renders[array_key_last(self::$renders)]['config'];
+        if (Contexts::depth() === 0) {
+            return null;
+        }
+        $open = self::renders()->open;
+
+        return $open === [] ? null : $open[array_key_last($open)]['config'];
     }
 
     /**
@@ -248,7 +264,8 @@ final class Blocks
         $path = $dir . '/pdf-image-' . bin2hex(random_bytes(8)) . '.jpg';
         $jpeg = self::scaledJpeg($file, $maxPx);
         // Registered before writing, so even a half-written copy is cleaned up.
-        self::$renders[array_key_last(self::$renders)]['temp'][] = $path;
+        $renders = self::renders();
+        $renders->open[array_key_last($renders->open)]['temp'][] = $path;
         if (file_put_contents($path, $jpeg) === false) {
             throw new \RuntimeException("The scaled image copy '{$path}' cannot be written.");
         }

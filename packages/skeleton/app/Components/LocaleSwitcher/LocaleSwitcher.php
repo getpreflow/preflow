@@ -13,9 +13,10 @@ final class LocaleSwitcher extends Component
     /** @var array<int, array{code: string, label: string, url: string, active: bool}> */
     public array $locales = [];
 
+    /** @param ?RequestContext $requestContext null where nothing was requested (a mail): each language's home page */
     public function __construct(
         private readonly Translator $translator,
-        private readonly RequestContext $requestContext,
+        private readonly ?RequestContext $requestContext,
     ) {}
 
     public function resolveState(): void
@@ -23,7 +24,7 @@ final class LocaleSwitcher extends Component
         $currentLocale = $this->translator->getLocale();
         $availableLocales = $this->props['locales'] ?? [];
         // RequestContext's path has no locale prefix (since 0.63.2): /de/blog arrives as /blog.
-        $currentPath = $this->requestContext->path;
+        $currentPath = $this->requestContext?->path ?? '/';
 
         foreach ($availableLocales as $code) {
             $url = '/' . $code . ($currentPath === '/' ? '' : $currentPath);

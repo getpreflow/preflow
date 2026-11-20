@@ -17,12 +17,14 @@ use Preflow\View\Pdf\PdfConfig;
 use Preflow\View\Pdf\PdfDocument;
 use Preflow\View\Pdf\PdfEngine;
 use Preflow\View\Pdf\PdfRenderer;
+use Preflow\View\Tests\Pdf\Fixtures\InFrame;
 use Preflow\View\Pdf\PdfResponse;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\Tests\Pdf\Fixtures\CertificateDocument;
 use Smalot\PdfParser\Parser;
 
 require_once __DIR__ . '/Fixtures/CertificateDocument.php';
+require_once __DIR__ . '/Fixtures/InFrame.php';
 
 final class PdfRendererTest extends TestCase
 {
@@ -135,7 +137,7 @@ final class PdfRendererTest extends TestCase
         $doc = new CertificateDocument('Ada', $extension, new PageSettings(
             headerTemplate: $probe->fixture('header'),
         ));
-        $renderer = new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf'));
+        $renderer = new InFrame(new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf')));
 
         $html = $renderer->html($doc);
 
@@ -164,7 +166,7 @@ final class PdfRendererTest extends TestCase
                 return '%PDF';
             }
         };
-        $renderer = new PdfRenderer($this->templates($extension), $engine, new PdfConfig($this->dir . '/pdf'));
+        $renderer = new InFrame(new PdfRenderer($this->templates($extension), $engine, new PdfConfig($this->dir . '/pdf')));
 
         $renderer->render(new CertificateDocument('Ada', $extension));
 
@@ -181,7 +183,7 @@ final class PdfRendererTest extends TestCase
         file_put_contents($footer, 'Footer $0 stays');
         $doc = new CertificateDocument('Ada', $extension, new PageSettings(headerTemplate: $header, footerTemplate: $footer));
 
-        $html = (new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf')))->html($doc);
+        $html = (new InFrame(new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf'))))->html($doc);
 
         $this->assertStringContainsString('<header>Price $10 off, ${1} and \\1 stay</header>', $html);
         $this->assertStringContainsString('<footer>Footer $0 stays</footer>', $html);
@@ -191,7 +193,7 @@ final class PdfRendererTest extends TestCase
     public function test_header_templates_with_the_same_file_name_stay_apart(string $extension): void
     {
         $probe = new CertificateDocument('Ada', $extension);
-        $renderer = new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf'));
+        $renderer = new InFrame(new PdfRenderer($this->templates($extension), null, new PdfConfig($this->dir . '/pdf')));
         $first = new CertificateDocument('Ada', $extension, new PageSettings(headerTemplate: $probe->fixture('header')));
         $second = new CertificateDocument('Ada', $extension, new PageSettings(headerTemplate: $probe->fixture('other/header')));
 
@@ -221,7 +223,7 @@ final class PdfRendererTest extends TestCase
         });
 
         $this->assertFalse(MpdfEngine::available());
-        $renderer = new PdfRenderer($this->templates('twig'), null, new PdfConfig($this->dir . '/pdf'));
+        $renderer = new InFrame(new PdfRenderer($this->templates('twig'), null, new PdfConfig($this->dir . '/pdf')));
         $doc = new CertificateDocument('Ada');
 
         // The preview needs no PDF library.
@@ -270,7 +272,7 @@ final class PdfRendererTest extends TestCase
         };
         $config = new PdfConfig($this->dir . '/pdf', ['Party Font' => $font]);
 
-        $pdf = (new Parser())->parseContent((new PdfRenderer($this->templates('twig'), null, $config))->render($doc));
+        $pdf = (new Parser())->parseContent((new InFrame(new PdfRenderer($this->templates('twig'), null, $config)))->render($doc));
 
         $this->assertStringContainsString('Hello Ada', $pdf->getText());
         $fonts = array_map(static fn ($f): string => (string) $f->getDetails()['BaseFont'], $pdf->getFonts());
@@ -304,11 +306,11 @@ final class PdfRendererTest extends TestCase
         $this->assertStringContainsString("filename*=UTF-8''Zertifikat%20%22%C3%84%22.pdf", $disposition);
     }
 
-    private function renderer(string $extension, ?string $tempDir = null): PdfRenderer
+    private function renderer(string $extension, ?string $tempDir = null): InFrame
     {
         $config = new PdfConfig($tempDir ?? $this->dir . '/pdf');
 
-        return new PdfRenderer($this->templates($extension), new MpdfEngine($config), $config);
+        return new InFrame(new PdfRenderer($this->templates($extension), new MpdfEngine($config), $config));
     }
 
     private function templates(string $extension): TemplateEngineInterface

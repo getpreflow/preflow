@@ -18,6 +18,7 @@ use Preflow\View\Pdf\PdfEngine;
 use Preflow\View\Pdf\PdfImage;
 use Preflow\View\Pdf\PdfImageSource;
 use Preflow\View\Pdf\PdfRenderer;
+use Preflow\View\Tests\Pdf\Fixtures\InFrame;
 use Preflow\View\Qr\QrCode;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\Tests\Pdf\Fixtures\BlocksDocument;
@@ -26,6 +27,7 @@ use Psr\Container\ContainerInterface;
 use Smalot\PdfParser\Parser;
 
 require_once __DIR__ . '/Fixtures/BlocksDocument.php';
+require_once __DIR__ . '/Fixtures/InFrame.php';
 
 /**
  * The PDF building blocks (pdf_* template functions) in both template
@@ -286,7 +288,7 @@ final class BlocksTest extends TestCase
         $body = $this->template('twig', 'fonts', '<p>Plain text</p><p style="font-family: serif">Serif text</p>', '');
         $config = new PdfConfig($this->dir . '/pdf', ['Certificate Script' => $font], defaultFont: 'Certificate Script');
 
-        $pdf = (new Parser())->parseContent((new PdfRenderer($this->templates('twig'), null, $config))->render(new BlocksDocument($body)));
+        $pdf = (new Parser())->parseContent((new InFrame(new PdfRenderer($this->templates('twig'), null, $config)))->render(new BlocksDocument($body)));
 
         // The default font, given by the name the config registered, is the configured file.
         $this->assertStringContainsString('Plain text', $pdf->getText());
@@ -340,14 +342,14 @@ final class BlocksTest extends TestCase
         return new PdfConfig($this->dir . '/pdf');
     }
 
-    private function renderer(string $ext, ?PdfEngine $engine = null): PdfRenderer
+    private function renderer(string $ext, ?PdfEngine $engine = null): InFrame
     {
-        return new PdfRenderer($this->templates($ext), $engine ?? new MpdfEngine($this->config()), $this->config());
+        return new InFrame(new PdfRenderer($this->templates($ext), $engine ?? new MpdfEngine($this->config()), $this->config()));
     }
 
-    private function previewRenderer(string $ext): PdfRenderer
+    private function previewRenderer(string $ext): InFrame
     {
-        return new PdfRenderer($this->templates($ext), null, $this->config());
+        return new InFrame(new PdfRenderer($this->templates($ext), null, $this->config()));
     }
 
     private function templates(string $ext): TemplateEngineInterface
