@@ -344,6 +344,8 @@ final class FrameCollectorsTest extends TestCase
             }
             PHP, '<p>Mine.</p>', live: true);
         $this->write('app/pages/live-public.twig', "<html><body><main><p>Shared.</p>{{ component('LivePublic') }}</main></body></html>");
+        $this->component('LiveInert', '', '<p>Just yours.</p>', live: true);
+        $this->write('app/pages/live-revalidate.twig', "<html><body><main>{{ response_header('Cache-Control', 'must-revalidate, max-age=600') }}<p>Shared.</p>{{ component('LiveInert') }}</main></body></html>");
         $this->write('app/pages/sent.twig', "<html><body><main>{{ component('NoStore') }}</main></body></html>");
         $this->write('app/pages/thanks.twig', "<html><body><main>{{ response_header('Cache-Control', 'no-store') }}<p>Thanks.</p></main></body></html>");
         $this->write('app/pages/plain.twig', '<html><body><main><p>Plain.</p></main></body></html>');
@@ -463,6 +465,14 @@ final class FrameCollectorsTest extends TestCase
         $this->assertSame('hit', $hit->getHeaderLine('X-Page-Cache'));
         $this->assertSame('no-store', $hit->getHeaderLine('Cache-Control'), 'a hit carries the restrictive part');
 
+        // A page's own hint is sent the same on a miss and a hit when its live parts add nothing.
+        $miss = $this->get('/live-revalidate');
+        $hit = $this->get('/live-revalidate');
+        $this->assertSame(['miss', 'hit'], [$miss->getHeaderLine('X-Page-Cache'), $hit->getHeaderLine('X-Page-Cache')]);
+        $this->assertStringContainsString('Just yours.', (string) $hit->getBody());
+        $this->assertSame('must-revalidate, max-age=600', $miss->getHeaderLine('Cache-Control'));
+        $this->assertSame($miss->getHeaderLine('Cache-Control'), $hit->getHeaderLine('Cache-Control'));
+
         // A live part never widens caching, on a miss as on a hit.
         foreach (['miss', 'hit'] as $expected) {
             $response = $this->get('/live-public');
@@ -499,7 +509,7 @@ final class FrameCollectorsTest extends TestCase
                 $this->assertStringContainsString('set by the framework', $e->getMessage(), $name);
             }
         }
-        foreach ([['Bad Name', 'x'], ['X-Ok', "a\r\nSet-Cookie: x=1"], ['X-Ok', "a\nb"], ["X\nY", 'x']] as [$name, $value]) {
+        foreach ([["Set-Cookie\n", 'x'], ["X-Ok\n", 'x'], ['Bad Name', 'x'], ['X-Ok', "a\r\nSet-Cookie: x=1"], ['X-Ok', "a\nb"], ["X\nY", 'x']] as [$name, $value]) {
             try {
                 $hints->set($name, $value);
                 $this->fail('a split header was accepted');

@@ -74,7 +74,7 @@ final class ResponseHeaderHints
      */
     public function set(string $name, string $value): void
     {
-        if (preg_match('/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+$/', $name) !== 1 || preg_match('/[\r\n\0]/', $value) === 1) {
+        if (preg_match('/^[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/', $name) !== 1 || preg_match('/[\r\n\0]/', $value) === 1) {
             throw new \InvalidArgumentException("Not a response header: {$name}.");
         }
         $lower = strtolower($name);

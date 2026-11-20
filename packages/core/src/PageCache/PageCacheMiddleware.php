@@ -528,10 +528,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
         // The visitor's own live parts, whether the page was stored or not.
         if ($content !== null && $html && $this->live !== null && $this->live->in($content)) {
+            $before = $this->hints?->get('Cache-Control');
             $response = $response->withBody(\Nyholm\Psr7\Stream::create($this->live->fill($content)));
             // What they added that makes this visitor's response less cacheable (a live part never
-            // widens caching); the stored page was stored before.
-            $response = $this->hints?->applyRestrictiveTo($response) ?? $response;
+            // widens caching); the page's own hint is on it already, as on every hit. The stored
+            // page was stored before.
+            if ($this->hints !== null && $this->hints->get('Cache-Control') !== $before) {
+                $response = $this->hints->applyRestrictiveTo($response);
+            }
         }
 
         // A rebuild's response goes to Refresher::work() only, which retries one a write refused.
