@@ -87,6 +87,10 @@ final class Kernel
                 return $dispatch($req);
             });
         } catch (\Throwable $e) {
+            // The render answers with the error page; who asked for it (Application::render()) still learns why.
+            if (\Preflow\Core\Context\Contexts::depth() > 0) {
+                \Preflow\Core\Context\Contexts::frame()->recordFailure($e);
+            }
             // Error responses bypass the pipeline, so add the queued cookies (this frame's), CORS and the security headers here.
             $response = $this->errorHandler->handleException($e, $request);
             $response = $this->cookies?->apply($response) ?? $response;

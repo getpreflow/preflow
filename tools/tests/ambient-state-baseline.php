@@ -58,20 +58,12 @@ return [
         '$translator->setLocale($locale);', // setter
         '$translator->useOverrides($overrides);', // setter
         '$render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);', // setter
-        'return $container->get(\\Preflow\\Core\\Http\\CookieQueue::class)->isolated($render);', // setter
     ],
     'core/src/Boot/ManifestBuilder.php' => [
         '\'built\' => date(DATE_ATOM),', // clock
     ],
     'core/src/Http/Csrf/StatelessCsrfToken.php' => [
         '$this->clock = $clock ?? static fn (): int => time();', // clock
-    ],
-    'core/src/Http/Session/SessionDataGuard.php' => [
-        '$this->had = isset($_SESSION);', // superglobal
-        '$this->saved = $_SESSION ?? null;', // superglobal
-        '$_SESSION = [\'_flash\' => [\'current\' => [], \'previous\' => []]];', // superglobal
-        '$_SESSION = $this->saved;', // superglobal
-        'unset($_SESSION);', // superglobal
     ],
     'core/src/PageCache/ChangeLog.php' => [
         '$this->clock = $clock ?? static fn (): float => microtime(true);', // clock
@@ -95,9 +87,6 @@ return [
     ],
     'core/src/PageCache/PendingInvalidations.php' => [
         '$last = microtime(true);', // clock
-    ],
-    'core/src/PageCache/Rebuild.php' => [
-        'return InternalRender::mark($request);', // setter
     ],
     'core/src/PageCache/RefreshQueue.php' => [
         '$this->clock = $clock ?? static fn (): float => microtime(true);', // clock
@@ -316,12 +305,6 @@ return [
     ],
     'view/src/Audit/Audits.php' => [
         '$this->now = $now ?? static fn (): \\DateTimeImmutable => new \\DateTimeImmutable();', // clock
-    ],
-    'view/src/Audit/PageRenderer.php' => [
-        'return InternalRender::mark($request);', // setter
-    ],
-    'view/src/Geo/GeoMiddleware.php' => [
-        'return $internal ? InternalRender::mark($sub) : $sub;', // setter
     ],
     'view/src/Pdf/Blocks.php' => [
         'private static array $renders = [];', // static-state

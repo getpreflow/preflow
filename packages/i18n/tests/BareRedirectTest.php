@@ -7,7 +7,6 @@ namespace Preflow\I18n\Tests;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\I18n\LocaleMiddleware;
@@ -224,9 +223,9 @@ final class BareRedirectTest extends TestCase
 
     public function test_internal_render_is_not_redirected(): void
     {
-        $request = InternalRender::mark($this->request('/faq', ['Accept-Language' => 'de']));
+        $request = $this->request('/faq', ['Accept-Language' => 'de']);
 
-        $this->assertServed($this->dispatch($this->middleware(), $request));
+        $this->assertServed(self::internally(fn () => $this->dispatch($this->middleware(), $request)));
     }
 
     public function test_without_prefix_default_default_preference_is_served_with_vary(): void
@@ -414,5 +413,14 @@ final class BareRedirectTest extends TestCase
             'Cache-Control' => ['private, no-store'],
             'X-Robots-Tag' => ['noindex'],
         ], ''], self::full($switch));
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

@@ -399,16 +399,23 @@ TWIG);
         OldInput::keep($session, ['name' => 'Ada', 'email' => 'ada@b.test', 'password' => 'secret', 'consent' => '1']);
         $session->ageFlash();
         $this->container()->instance(SessionInterface::class, $session);
+        // Old input is read from the session of the current render's request (the session middleware sets it).
+        $ctx = \Preflow\Testing\ContextFactory::forTest()->for(
+            (new Psr17Factory())->createServerRequest('GET', '/members/register')->withAttribute(SessionInterface::class, $session),
+        );
+        $render = fn (string $template, array $vars = []): string => \Preflow\Core\Context\Contexts::run($ctx, fn (): string => $this->html($template, $vars));
 
-        $html = $this->html('register', ['open' => true]);
+        $html = $render('register', ['open' => true]);
         $this->assertSame('Ada', Dom::first($html, '//input[@name="name"]')?->getAttribute('value'));
         $this->assertSame('ada@b.test', Dom::first($html, '//input[@name="email"]')?->getAttribute('value'));
         $this->assertSame('', (string) Dom::first($html, '//input[@name="password"]')?->getAttribute('value'));
         $this->assertTrue((bool) Dom::first($html, '//input[@name="consent"]')?->hasAttribute('checked'));
-        $this->assertSame('ada@b.test', Dom::first($this->html('login'), '//input[@name="email"]')?->getAttribute('value'));
+        $this->assertSame('ada@b.test', Dom::first($render('login'), '//input[@name="email"]')?->getAttribute('value'));
+        // Another render's session (none here) never shows it.
+        $this->assertSame('', (string) Dom::first($this->html('register', ['open' => true]), '//input[@name="name"]')?->getAttribute('value'));
 
         // The controller's own input wins.
-        $own = $this->html('register', ['open' => true, 'old' => ['name' => 'Grace']]);
+        $own = $render('register', ['open' => true, 'old' => ['name' => 'Grace']]);
         $this->assertSame('Grace', Dom::first($own, '//input[@name="name"]')?->getAttribute('value'));
         $this->assertSame('', (string) Dom::first($own, '//input[@name="email"]')?->getAttribute('value'));
     }

@@ -520,10 +520,12 @@ final class ApplicationEdgesTest extends TestCase
 
         $app->render(RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/about'), new ServerRequest('GET', '/about'));
         $app->handle(new ServerRequest('GET', 'https://site.test/about'));
+        // The deprecated mark() still works through the context: handle() renders the request as an internal render.
+        $app->handle(@InternalRender::mark(new ServerRequest('GET', 'https://site.test/about')));
 
-        $this->assertSame([true, false], $seen);
-        $this->assertFalse(InternalRender::is(new ServerRequest('GET', '/')), 'outside every render: the attribute decides');
-        $this->assertTrue(InternalRender::is((new ServerRequest('GET', '/'))->withAttribute(InternalRender::ATTRIBUTE, true)));
+        $this->assertSame([true, false, true], $seen);
+        $this->assertFalse(InternalRender::is(new ServerRequest('GET', '/')), 'outside every render nothing is internal');
+        $this->assertFalse(InternalRender::is((new ServerRequest('GET', '/'))->withAttribute(InternalRender::ATTRIBUTE, true)), 'the attribute alone decides nothing');
     }
 
     public function test_internal_render_mark_is_deprecated(): void

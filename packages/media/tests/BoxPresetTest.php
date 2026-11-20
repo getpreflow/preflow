@@ -9,7 +9,6 @@ use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
@@ -89,11 +88,9 @@ final class BoxPresetTest extends TestCase
     private function serve(MediaLibrary $lib, string $path, bool $internal = false): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest('GET', '/media/' . $path)->withAttribute('path', $path);
-        if ($internal) {
-            $request = InternalRender::mark($request);
-        }
+        $serve = fn () => (new VariantController($lib, ImageWidths::fromConfig(self::PRESETS, [480]), Formats::fromConfig(self::PRESETS)))->serve($request);
 
-        return (new VariantController($lib, ImageWidths::fromConfig(self::PRESETS, [480]), Formats::fromConfig(self::PRESETS)))->serve($request);
+        return $internal ? self::internally($serve) : $serve();
     }
 
     /** 800x600 PNG: red top-left, green top-right, blue bottom-left, yellow bottom-right. */
@@ -627,5 +624,14 @@ final class BoxPresetTest extends TestCase
         }
         $this->assertGreaterThanOrEqual(6, $made);
         $this->assertSame(0, $lib->warm($asset, [480]));
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

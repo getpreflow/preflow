@@ -25,6 +25,8 @@ final class RenderFrame
     /** @var list<SkippedWrite> */
     private array $skippedWrites = [];
 
+    private ?\Throwable $failure = null;
+
     /** @internal Contexts::run() opens frames; $parent's channels are known to this one */
     public function __construct(RenderContext $context, ?RenderFrame $parent = null)
     {
@@ -72,6 +74,23 @@ final class RenderFrame
     public function recordSkippedWrite(SkippedWrite $w): void
     {
         $this->skippedWrites[] = $w;
+    }
+
+    /**
+     * The error the render failed with although it answered (the kernel turned it into its error
+     * page): kept for the one who asked for the render (GEO reports it), the first one wins.
+     *
+     * @since 0.81.0
+     */
+    public function recordFailure(\Throwable $e): void
+    {
+        $this->failure ??= $e;
+    }
+
+    /** @since 0.81.0 */
+    public function failure(): ?\Throwable
+    {
+        return $this->failure;
     }
 
     /** @return list<SkippedWrite> the writes this render skipped, its nested renders' included once they closed */

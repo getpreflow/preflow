@@ -5,21 +5,20 @@ declare(strict_types=1);
 namespace Preflow\View\Audit;
 
 use Nyholm\Psr7\ServerRequest;
-use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Http\Session\SessionMiddleware;
-use Preflow\View\AssetCollector;
-use Preflow\View\Geo\RenderScopes;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
  * Renders one of the site's own pages for the SEO audit, inside the app (no
  * network), as an anonymous visitor in production sees it: a clean GET with no
- * cookies, credentials, query or session, marked as an internal render (so it
- * leaves no trace and gets no debug toolbar or debug error page), through the
- * app's full pipeline inside the render scopes. Works without an outer request
- * (the console command). Never throws: an error that escapes the app becomes a
- * plain-text 500 page whose body is the error's class and message.
+ * cookies, credentials, query or session, which the app renders as an internal
+ * Audit render (Application::render(): it leaves no trace, gets no debug toolbar
+ * or debug error page, and its data writes are skipped and reported on the page).
+ * Works without an outer request (the console command). Never throws: an error
+ * that escapes the app becomes a plain-text 500 page whose body is the error's
+ * class and message.
  *
  * @since 0.54
  */
@@ -28,18 +27,16 @@ final class PageRenderer
     private readonly string $origin;
 
     /**
-     * @param \Closure(ServerRequestInterface): ResponseInterface $handle the app (Application::handle)
+     * @param \Closure(ServerRequestInterface $request, string $locale): (RenderResult|ResponseInterface) $render
+     *        renders the clean request of a page in its locale (the app: Application::render() in an
+     *        internal Audit context, since 0.81); a plain response reports no skipped writes
      * @param string         $origin        scheme and host of the site (app.url); pages' URLs start with it
-     * @param ?RenderScopes  $scopes        wrap each render (request-scoped state set and put back)
-     * @param ?AssetCollector $assets       put back after each render, so renders don't share CSS/JS
      * @param list<string>   $locales       locales with a URL prefix ('/de/…')
      * @param string         $defaultLocale the locale of paths without a prefix
      */
     public function __construct(
-        private readonly \Closure $handle,
+        private readonly \Closure $render,
         string $origin,
-        private readonly ?RenderScopes $scopes = null,
-        private readonly ?AssetCollector $assets = null,
         private readonly array $locales = [],
         private readonly string $defaultLocale = '',
     ) {
@@ -86,19 +83,18 @@ final class PageRenderer
         $locale = $this->localeOf($path);
 
         try {
-            $request = $this->request($url, $path, $headers);
-            $render = fn (): ResponseInterface => ($this->handle)($request);
-            $scoped = fn (): ResponseInterface => $this->scopes?->run($request, $render) ?? $render();
-            $response = $this->assets !== null ? $this->assets->restoring($scoped) : $scoped();
+            $result = ($this->render)($this->request($url, $path, $headers), $locale);
+            $response = $result instanceof RenderResult ? $result->response : $result;
+            $writes = $result instanceof RenderResult ? $result->skippedWrites : [];
 
-            return new RenderedPage($url, $locale, $response->getStatusCode(), $response->getHeaders(), (string) $response->getBody());
+            return new RenderedPage($url, $locale, $response->getStatusCode(), $response->getHeaders(), (string) $response->getBody(), $writes);
         } catch (\Throwable $e) {
             return new RenderedPage($url, $locale, 500, ['Content-Type' => ['text/plain; charset=UTF-8']], $e::class . ': ' . $e->getMessage());
         }
     }
 
     /**
-     * A clean, marked GET for $url: no cookies, credentials, query or attributes, and no session.
+     * A clean GET for $url: no cookies, credentials, query or attributes, and no session.
      *
      * @param array<string, string> $headers
      */
@@ -125,10 +121,8 @@ final class PageRenderer
             static fn (string $name): bool => !in_array(strtolower($name), ['cookie', 'authorization', 'accept'], true),
             ARRAY_FILTER_USE_KEY,
         );
-        $request = (new ServerRequest('GET', $url, ['Accept' => 'text/html'] + $headers, null, '1.1', $server))
+        return (new ServerRequest('GET', $url, ['Accept' => 'text/html'] + $headers, null, '1.1', $server))
             ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
-
-        return InternalRender::mark($request);
     }
 
     /** The locale whose URL prefix $path starts with, else the default. */

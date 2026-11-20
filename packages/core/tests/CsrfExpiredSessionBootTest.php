@@ -68,7 +68,8 @@ final class CsrfExpiredSessionBootTest extends TestCase
         $this->assertSame('/', $response->getHeaderLine('Location'));
         $session = $app->container()->get(SessionInterface::class);
         $this->assertSame('Your session had expired. Please send the form again.', $session->getFlash('warning'));
-        $this->assertSame(['title' => 'typed'], $app->container()->get(OldInput::class)->all());
+        // Kept as the flash old() reads in the next request (OldInput reads the render's own session, so it is read from the session here).
+        $this->assertSame(['title' => 'typed'], $session->getFlash(OldInput::FLASH_KEY));
         $this->assertFalse($this->routeRan, 'never applied');
     }
 
@@ -89,7 +90,7 @@ final class CsrfExpiredSessionBootTest extends TestCase
         $response = $app->handle($this->postWithoutSessionCookie());
 
         $this->assertSame(303, $response->getStatusCode());
-        $this->assertSame(['title' => 'typed'], $app->container()->get(OldInput::class)->all());
+        $this->assertSame(['title' => 'typed'], $app->container()->get(SessionInterface::class)->getFlash(OldInput::FLASH_KEY));
         $this->assertFalse($this->routeRan, 'never applied');
     }
 

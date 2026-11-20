@@ -215,7 +215,7 @@ final class BrokenLinksTest extends TestCase
                 '/media/x-480.webp' => new Response(404, ['X-Preflow-Variant' => 'pending']),
                 default => new Response(404, $html, 'Not found'),
             };
-        }, 'https://site.test', null, null, ['en', 'de'], 'en');
+        }, 'https://site.test', ['en', 'de'], 'en');
     }
 
     /**

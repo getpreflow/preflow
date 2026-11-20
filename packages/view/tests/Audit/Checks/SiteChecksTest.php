@@ -438,6 +438,6 @@ final class SiteChecksTest extends TestCase
             $answer = $this->routes[$path] ?? $this->routes['*'] ?? new Response(404, ['Content-Type' => 'text/html'], '<html><body>Not found</body></html>');
 
             return $answer instanceof \Closure ? $answer($request) : $answer;
-        }, 'https://site.test', null, null, ['en', 'de'], 'en');
+        }, 'https://site.test', ['en', 'de'], 'en');
     }
 }

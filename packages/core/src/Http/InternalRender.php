@@ -16,23 +16,21 @@ use Psr\Http\Message\ServerRequestInterface;
  * check it too.
  *
  * Since 0.81 the render context says it: a render whose purpose leaves no trace (audit, GEO,
- * rebuild, preview; Purpose::leavesNoTrace()). A request marked with the attribute (mark(),
- * deprecated) still counts, also outside every render.
+ * rebuild, preview; Purpose::leavesNoTrace()), not the request. Outside every render nothing is
+ * internal. A request marked with the deprecated mark() and handed to Application::handle()
+ * renders as an internal render (purpose Audit).
  *
  * @since 0.54
  */
 final class InternalRender
 {
-    /** The request attribute; true marks an internal render. */
+    /** The request attribute mark() sets; Application::handle() turns it into an internal render's context. */
     public const string ATTRIBUTE = 'preflow.internal_render';
 
+    /** @param ServerRequestInterface $request kept for callers; the current render's purpose decides */
     public static function is(ServerRequestInterface $request): bool
     {
-        if (Contexts::peek()?->purpose->leavesNoTrace() === true) {
-            return true;
-        }
-
-        return $request->getAttribute(self::ATTRIBUTE) === true;
+        return Contexts::peek()?->purpose->leavesNoTrace() === true;
     }
 
     /**

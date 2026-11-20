@@ -19,6 +19,9 @@ use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Tests\Fixtures\Isolation\IsolationDocument;
 use Preflow\Notify\Mail\MailContent;
+use Preflow\Notify\Notifier;
+use Preflow\Notify\TransportFactory;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Preflow\Notify\Mail\MailLayout;
 use Preflow\Testing\ContextFactory;
 use Preflow\Testing\Contract\RenderIsolationContract;
@@ -104,12 +107,12 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
     /** What does not render under its own context yet; each path leaves when it does. */
     protected function pending(): array
     {
-        // render() runs each path in its own frame, but what the page reads still comes from shared services and PHP.
+        // render() runs each path in its own frame, with the superglobals and the session of an
+        // anonymous visitor and its own assets; the translator and the signed-in user are still
+        // services, set aside by hand around an internal render (Tasks 9 and 10 read the context).
         $render = [
-            'poison' => 'the translator, the signed-in user, the assets and the page meta still come from the services, not the context',
-            'frame' => 'the render leaves the translator\'s locale, the signed-in user, the superglobals and the session as it set them',
-            'interleave' => 'the translator and the signed-in user come from the services, and the asset registry is shared by every render',
-            'frozen' => 'the asset registry is shared by every render: head() prints the libraries only in the first one',
+            'poison' => 'the translator and the signed-in user still come from the services: a locale or user set inside the outer frame by a deprecated setter is not what the context says',
+            'interleave' => 'the translator and the signed-in user come from the services, not the context: B renders like A',
         ];
         $services = 'the translator, the signed-in user, the request, the assets and the page meta still come from the services, not the context';
         // The asset registry is shared by every render of an app: head() prints the libraries only
@@ -125,6 +128,33 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
             'mail' => ['poison' => $services, 'interleave' => $assets, 'frozen' => $assets],
             'pdf' => ['poison' => $services, 'interleave' => 'the locale and the signed-in user come from the services: B renders like A', 'frozen' => $assets],
         ];
+    }
+
+    /** @return iterable<string, array{string}> the paths Application::render() takes */
+    public static function renderPaths(): iterable
+    {
+        foreach (['audit', 'geo', 'rebuild', 'verify', 'preview'] as $path) {
+            yield $path => [$path];
+        }
+    }
+
+    /**
+     * The fixture page queues a mail with Notifier::sendLater() on every GET, which the contract's
+     * byte-equal check of the outer frame cannot see (notify keeps its own queue until it joins the
+     * frame's outbox): a render through Application::render() queues none and sends none.
+     */
+    #[DataProvider('renderPaths')]
+    public function test_a_render_path_queues_no_mail_through_notify(string $path): void
+    {
+        $app = $this->app();
+        $this->paths()[$path]($app, $this->context());
+
+        $this->assertSame(0, $app->container()->get(Notifier::class)->flushDeferred(), $path . ': nothing was queued');
+        $this->assertSame([], $app->container()->get(TransportFactory::class)->get('mail')->sent(), $path . ': nothing was sent');
+
+        // Proof: a visitor's request of the same page sends its mail.
+        $app->handle(new ServerRequest('GET', 'https://site.test/'));
+        $this->assertCount(1, $app->container()->get(TransportFactory::class)->get('mail')->sent());
     }
 
     protected function clockFormat(): ?string

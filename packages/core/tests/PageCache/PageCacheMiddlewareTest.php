@@ -13,7 +13,6 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Http\Csrf\StatelessCsrfToken;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\PageCache\DataTags;
 use Preflow\Core\PageCache\DependencyRecorder;
@@ -466,7 +465,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('', $mw->process($this->get('/page')->withMethod('POST'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process($this->get('/folio/login'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process(new ServerRequest('GET', 'https://evil.test/page'), $handler)->getHeaderLine('X-Page-Cache'));
-        $this->assertSame('', $mw->process(InternalRender::mark($this->get('/page')), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('', self::internally(fn () => $mw->process($this->get('/page'), $handler))->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process($this->get('/page')->withHeader('X-Forwarded-Proto', 'gopher'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process($this->get('/page')->withHeader('X-Forwarded-Host', 'evil.test'), $handler)->getHeaderLine('X-Page-Cache'));
 
@@ -476,7 +475,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('hit', $mw->process($this->get('/page')->withHeader('X-Forwarded-Proto', 'https'), $handler)->getHeaderLine('X-Page-Cache'));
 
         // A rebuild renders and stores, never serves.
-        $rebuild = $mw->process(InternalRender::mark($this->get('/page'))->withAttribute(PageCacheMiddleware::REBUILD, true), $handler);
+        $rebuild = self::internally(fn () => $mw->process($this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true), $handler));
         $this->assertSame('miss', $rebuild->getHeaderLine('X-Page-Cache'));
     }
 
@@ -907,7 +906,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame(2, $page->calls, 'the first store of the key renders twice');
 
         // A rebuild of the known key is not verified.
-        $rebuild = $this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true)->withAttribute(InternalRender::ATTRIBUTE, true);
+        $rebuild = $this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true);
         $mw->process($rebuild, $page);
         $this->assertSame(3, $page->calls);
 
@@ -1592,5 +1591,14 @@ final class PageCacheMiddlewareTest extends TestCase
         $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
 
         return $protocols;
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

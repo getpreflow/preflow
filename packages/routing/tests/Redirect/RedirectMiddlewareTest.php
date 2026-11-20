@@ -11,7 +11,6 @@ require_once __DIR__ . '/Fixtures/InMemoryNotFoundLog.php';
 use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Routing\Redirect\AreaMode;
 use Preflow\Routing\Redirect\NotFoundFilter;
@@ -303,11 +302,11 @@ final class RedirectMiddlewareTest extends TestCase
         ]);
 
         // The redirect is still issued, the 404s still thrown...
-        $response = $this->answer($store, InternalRender::mark($this->get('/old')));
+        $response = self::internally(fn () => $this->answer($store, $this->get('/old')));
         $this->assertSame(301, $response->getStatusCode());
         $this->assertSame('/new', $response->getHeaderLine('Location'));
-        $this->assertNotFound($store, InternalRender::mark($this->get('/gone')));
-        $this->assertNotFound($store, InternalRender::mark($this->get('/missing')));
+        self::internally(fn () => $this->assertNotFound($store, $this->get('/gone')));
+        self::internally(fn () => $this->assertNotFound($store, $this->get('/missing')));
 
         // ...but no hit is counted and no not-found address recorded.
         $this->assertSame([], $store->hits);
@@ -417,5 +416,14 @@ final class RedirectMiddlewareTest extends TestCase
     private function area(string $path, string $locale, ?string $url = null, AreaMode $mode = AreaMode::One): Redirect
     {
         return new Redirect(Redirect::id('area', $locale, $path), $path, $locale, true, $mode, null, null, $url, 301);
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

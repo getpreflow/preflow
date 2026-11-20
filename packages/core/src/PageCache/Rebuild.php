@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Preflow\Core\PageCache;
 
 use Nyholm\Psr7\ServerRequest;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Psr\Http\Message\ServerRequestInterface;
 
 /**
- * The request that rebuilds a queued page: an anonymous GET of its URL, marked as an internal
- * render (it leaves no trace) and as a rebuild (PageCacheMiddleware::REBUILD: never served from
- * the cache, stored), with no cookies, credentials or session.
+ * The request that rebuilds a queued page: an anonymous GET of its URL, marked as a rebuild
+ * (PageCacheMiddleware::REBUILD: never served from the cache, stored), with no cookies,
+ * credentials or session. The application renders it as an internal Rebuild render (its purpose
+ * says it leaves no trace).
  *
  * It carries the key parts the page was stored under (PageKey::parts()), so it renders under
  * the key visitors read:
@@ -81,6 +81,6 @@ final class Rebuild
             $request = $request->withAttribute(self::EXPECTED_ID, $expectedId);
         }
 
-        return InternalRender::mark($request);
+        return $request;
     }
 }

@@ -102,6 +102,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
     /** Request attribute: true on an internal render that rebuilds a page (it is stored, never served). */
     public const string REBUILD = 'preflow.page_cache.rebuild';
 
+    /**
+     * Request attribute: true on an internal render that may take its page from the cache (GEO's
+     * llms-full.txt): a stored page is served, a miss renders without storing anything.
+     *
+     * @since 0.81.0
+     */
+    public const string SERVE_STORED = 'preflow.page_cache.serve_stored';
+
     /** Bodies larger than this (bytes) are not stored. */
     public const int MAX_BODY = 8 * 1024 * 1024;
 
@@ -202,7 +210,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $rebuild = $request->getAttribute(self::REBUILD) === true;
-        if (!$rebuild && ($this->rebuildOnly || InternalRender::is($request))) {
+        // An internal render that may read a stored page (GEO's llms-full.txt) is served, never stored.
+        $readOnly = !$rebuild && !$this->rebuildOnly && $request->getAttribute(self::SERVE_STORED) === true && InternalRender::is($request);
+        if (!$rebuild && !$readOnly && ($this->rebuildOnly || InternalRender::is($request))) {
             return $handler->handle($request);
         }
         $key = $this->key($request);
@@ -244,6 +254,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 // A per-request value or carried state that fails: render the page as on a miss.
                 $this->log('page cache: ' . $key->url() . ' could not be served: ' . $e->getMessage());
             }
+        }
+        if ($readOnly) {
+            return $handler->handle($request);
         }
 
         return $this->render($request, $handler, $key, $store);

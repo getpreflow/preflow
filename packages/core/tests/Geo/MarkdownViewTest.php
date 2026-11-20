@@ -370,26 +370,24 @@ final class MarkdownViewTest extends TestCase
         $this->assertNotNull($member);
         $auth->setUser($member, 'session');
 
-        // A render called from inside the pipeline, with a handler that skips the auth middleware.
-        $seen = new \ArrayObject();
-        $handler = new class ($auth, $seen) implements \Psr\Http\Server\RequestHandlerInterface {
-            public function __construct(private readonly \Preflow\Auth\AuthManager $auth, private readonly \ArrayObject $seen) {}
-
-            public function handle(\Psr\Http\Message\ServerRequestInterface $request): ResponseInterface
-            {
-                $this->seen['user'] = $this->auth->user();
-                $this->seen['users'] = $this->auth->users();
-
-                return new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html'], '<html><head><title>X</title></head><body><main><p>X</p></main></body></html>');
-            }
-        };
+        // A render called from inside a signed-in request: the app renders the page as GEO's own render.
         $geo = $app->container()->get(\Preflow\View\Geo\GeoMiddleware::class);
         $outer = (new Psr17Factory())->createServerRequest('GET', 'http://localhost/member');
+        $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
+            public function handle(\Psr\Http\Message\ServerRequestInterface $request): ResponseInterface
+            {
+                throw new \LogicException('the app renders the page itself');
+            }
+        };
+        $markdown = \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::fromRequest($outer, $app->site(), new \Preflow\Core\Context\SystemClock()),
+            static fn (): ?string => $geo->render($outer, $handler, '/member'),
+        );
 
-        $this->assertStringStartsWith('# X', (string) $geo->render($outer, $handler, '/member'));
-        $this->assertNull($seen['user']);
-        $this->assertSame([], $seen['users']);
-        $this->assertSame($member, $auth->user());
+        $this->assertStringStartsWith('# Member', (string) $markdown);
+        $this->assertStringContainsString('Public text', (string) $markdown);
+        $this->assertStringNotContainsString('Signed in as member', (string) $markdown);
+        $this->assertSame($member, $auth->user(), 'the request\'s user is back afterwards');
         $this->assertSame('session', $auth->guardName());
     }
 
@@ -575,7 +573,6 @@ final class MarkdownViewTest extends TestCase
         $outer = (new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/about');
         $app->handle($outer);
         $translator = $app->container()->get(\Preflow\I18n\Translator::class);
-        $context = $app->container()->get(\Preflow\Core\Http\RequestContext::class);
         $this->assertSame('de', $translator->getLocale());
 
         // Renders as GeoMiddleware (outermost) makes them: through the whole application.
@@ -588,13 +585,24 @@ final class MarkdownViewTest extends TestCase
             }
         };
         $geo = $app->container()->get(\Preflow\View\Geo\GeoMiddleware::class);
-        $de = (string) $geo->render($outer, $handler, '/de/');
-        $en = (string) $geo->render($outer, $handler, '/');
+        // Inside the outer request's frame, as GeoMiddleware runs: the request is the frame's own again afterwards.
+        [$de, $en, $during, $after] = \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::fromRequest($outer, $app->site(), new \Preflow\Core\Context\SystemClock()),
+            static function () use ($geo, $outer, $handler, $app): array {
+                $during = $app->container()->get(\Preflow\Core\Http\RequestContext::class);
+                $de = (string) $geo->render($outer, $handler, '/de/');
+                $en = (string) $geo->render($outer, $handler, '/');
+
+                return [$de, $en, $during, $app->container()->get(\Preflow\Core\Http\RequestContext::class)];
+            },
+        );
 
         $this->assertStringStartsWith('# Home de', $de);
         $this->assertStringStartsWith('# Home en', $en);
         $this->assertSame('de', $translator->getLocale());
-        $this->assertSame($context, $app->container()->get(\Preflow\Core\Http\RequestContext::class));
+        $this->assertNotNull($during);
+        $this->assertSame('/de/about', $during->path);
+        $this->assertSame($during, $after, 'the outer request\'s context is back after the renders');
         // Scopes packages add (Folio's content locale) wrap every render.
         $this->assertSame(['/de/', '/'], $seen);
     }

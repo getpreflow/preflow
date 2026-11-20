@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Http\Session;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -39,7 +41,8 @@ final class SessionMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if ($request->getAttribute(self::WITHOUT_SESSION) === true) {
+        // An internal render (audit, GEO, rebuild, verify, preview) is an anonymous visitor's: no session.
+        if ($request->getAttribute(self::WITHOUT_SESSION) === true || Contexts::depth() > 0 && Contexts::current()->purpose->isInternal()) {
             return $handler->handle($request);
         }
         $onPath = $this->applies($request->getUri()->getPath());
@@ -54,12 +57,31 @@ final class SessionMiddleware implements MiddlewareInterface
         if (!$onPath) {
             $request = $request->withAttribute(self::RESUMED_BY_COOKIE, true);
         }
+        if (Contexts::depth() > 0) {
+            // The render's request carries its session from here on (ofCurrentRender()).
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->for($request));
+        }
 
         $response = $handler->handle($request);
 
         $this->session->close();
 
         return $response;
+    }
+
+    /**
+     * The session of the current render: the SessionInterface attribute its request carries once
+     * this middleware started the session. Null outside every render, and in a render without a
+     * session (an internal render, a public path without the session cookie). flash(),
+     * csrf_token() and old() read it, so a render never reads another render's session.
+     *
+     * @since 0.81.0
+     */
+    public static function ofCurrentRender(): ?SessionInterface
+    {
+        $session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);
+
+        return $session instanceof SessionInterface ? $session : null;
     }
 
     private function carriesCookie(ServerRequestInterface $request): bool

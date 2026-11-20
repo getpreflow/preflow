@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Debug;
 
+use Preflow\Core\Context\Contexts;
+
+/**
+ * What the debug toolbar shows of one request: its queries, components, route, assets and time.
+ * Since 0.81 it records only the request's own renders: what an internal render (the SEO audit's
+ * pages, GEO, a rebuild; Purpose::isInternal()) does is not recorded, so a step of hundreds of
+ * pages neither piles up in it nor wipes the request's data.
+ */
 final class DebugCollector
 {
     private float $startTime;
@@ -21,21 +29,33 @@ final class DebugCollector
 
     public function logQuery(string $sql, array $bindings, float $durationMs, string $driver = 'default'): void
     {
+        if (!self::records()) {
+            return;
+        }
         $this->queries[] = ['sql' => $sql, 'bindings' => $bindings, 'duration_ms' => $durationMs, 'driver' => $driver];
     }
 
     public function logComponent(string $class, string $id, float $durationMs, array $props = []): void
     {
+        if (!self::records()) {
+            return;
+        }
         $this->components[] = ['class' => $class, 'id' => $id, 'duration_ms' => $durationMs, 'props' => $props];
     }
 
     public function setRoute(string $mode, string $handler, array $parameters = []): void
     {
+        if (!self::records()) {
+            return;
+        }
         $this->route = ['mode' => $mode, 'handler' => $handler, 'parameters' => $parameters];
     }
 
     public function setAssets(int $cssCount, int $jsCount, int $cssBytes, int $jsBytes): void
     {
+        if (!self::records()) {
+            return;
+        }
         $this->assets = ['css_count' => $cssCount, 'js_count' => $jsCount, 'css_bytes' => $cssBytes, 'js_bytes' => $jsBytes];
     }
 
@@ -53,6 +73,12 @@ final class DebugCollector
         $this->components = [];
         $this->route = null;
         $this->assets = ['css_count' => 0, 'js_count' => 0, 'css_bytes' => 0, 'js_bytes' => 0];
+    }
+
+    /** Whether what happens now is recorded: not inside an internal render (outside every render it is). */
+    private static function records(): bool
+    {
+        return Contexts::peek()?->purpose->isInternal() !== true;
     }
 
     /** A deprecated setting or name in use; each message is kept once. */

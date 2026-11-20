@@ -12,6 +12,7 @@ use Preflow\Core\Config\Config;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Context\Site;
@@ -363,6 +364,9 @@ final class Application
         // clock (contexts take "now" from it; code reads Contexts::current()->clock); the request,
         // the outbox and the Set-Cookie queue of the render frame current when they are asked for.
         Contexts::debug($debug->isDebug());
+        // Internal renders (audit, GEO, rebuilds, verify, previews) see an anonymous visitor's
+        // superglobals, for site code that still reads them; once per process, by name.
+        Contexts::onEnter(\Preflow\Core\PageCache\AnonymousGlobals::adapter(), \Preflow\Core\PageCache\AnonymousGlobals::HOOK);
         if (!$this->container->bound(\Psr\Clock\ClockInterface::class)) {
             $this->container->instance(\Psr\Clock\ClockInterface::class, new \Preflow\Core\Context\SystemClock());
         }
@@ -390,13 +394,12 @@ final class Application
         // JSON body parsing — must run before session, CSRF, and auth middleware
         $this->pipeline->pipe(new \Preflow\Core\Http\JsonBodyMiddleware($api->maxJsonBody, $api));
 
-        // Fields kept from a form sent back after an expired session; read from the session when asked
-        $container = $this->container;
+        // Fields kept from a form sent back after an expired session; read from the current render's
+        // session when asked (an internal render has none, so it never shows a visitor's)
         $this->container->instance(\Preflow\Core\Http\OldInput::class, new \Preflow\Core\Http\OldInput(
-            static fn (): ?\Preflow\Core\Http\Session\SessionInterface => $container->bound(\Preflow\Core\Http\Session\SessionInterface::class)
-                ? $container->get(\Preflow\Core\Http\Session\SessionInterface::class)
-                : null,
+            static fn (): ?\Preflow\Core\Http\Session\SessionInterface => \Preflow\Core\Http\Session\SessionMiddleware::ofCurrentRender(),
         ));
+        $container = $this->container;
 
         // Admin, API and endpoint prefixes that are not public pages; packages add theirs in their providers
         $nonPublic = new \Preflow\Core\Http\NonPublicPaths();
@@ -528,9 +531,9 @@ final class Application
      * belongs to something else (a console command, a site's or a test's own frame, a request that
      * asks for another), it opens a nested frame from the request (the clock of the frame around
      * it), flushes notify's deferred mail as before 0.81, and hands the rest of what it queued to
-     * the frame around it. A request marked as an internal render (InternalRender::mark()) renders
-     * in the current frame, which its render scope set up. run() and render() render in the frame
-     * they opened themselves.
+     * the frame around it. A request marked with the deprecated InternalRender::mark() renders as
+     * an internal render: purpose Audit, nothing sent. run() and render() render in the frame they
+     * opened themselves.
      */
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
@@ -538,17 +541,13 @@ final class Application
             throw new \RuntimeException('Application not booted. Call boot() first.');
         }
         if (Contexts::depth() > 0) {
-            // Only the render scopes' own marked requests render in the frame they set up.
-            return $request->getAttribute(\Preflow\Core\Http\InternalRender::ATTRIBUTE) === true
-                ? $this->handleInFrame($request)
-                : $this->handleNested($request);
+            return $this->handleNested($request);
         }
 
-        $internal = \Preflow\Core\Http\InternalRender::is($request);
+        $internal = self::marked($request);
         $ctx = $this->requestContext($request);
         if ($internal) {
-            // A marked internal request at the top (a rebuild or an audit step from a script) sends nothing.
-            $ctx = $ctx->discarding();
+            $ctx = self::asMarked($ctx);
         } else {
             $this->rebuildsScheduled = false;
         }
@@ -599,9 +598,10 @@ final class Application
     {
         $frame = null;
         $handOver = [];
-        $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request): ResponseInterface {
+        $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request, $ctx): ResponseInterface {
             $frame = Contexts::frame();
-            $response = $this->handleInFrame($request);
+            $handle = fn (): ResponseInterface => $this->handleInFrame($request);
+            $response = $ctx->purpose->isInternal() ? $this->internalScope($ctx, $request, $handle) : $handle();
             $left = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue())->pull();
             if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Capture) {
                 // Only a capturing frame holds cookie items, and it knows their channel; they never move on.
@@ -622,7 +622,7 @@ final class Application
             }
         }
 
-        return new RenderResult($response, $frame->outbox()->drain(), $frame->skippedWrites());
+        return new RenderResult($response, $frame->outbox()->drain(), $frame->skippedWrites(), $frame->failure());
     }
 
     /**
@@ -763,6 +763,9 @@ final class Application
             ? $this->container->get(\Psr\Clock\ClockInterface::class)
             : $outer->clock;
         $ctx = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $clock);
+        if (self::marked($request)) {
+            $ctx = self::asMarked($ctx);
+        }
         if ($outer->viewer->isSynthetic()) {
             $ctx = $ctx->as($outer->viewer);
         }
@@ -778,6 +781,28 @@ final class Application
         };
 
         return $outer->isFrozen() ? $ctx->at($outer->now) : $ctx;
+    }
+
+    /** Whether $request carries the deprecated InternalRender::mark(). */
+    private static function marked(ServerRequestInterface $request): bool
+    {
+        return $request->getAttribute(\Preflow\Core\Http\InternalRender::ATTRIBUTE) === true;
+    }
+
+    /**
+     * The context of a request marked with the deprecated InternalRender::mark(): an internal
+     * render (purpose Audit: it leaves no trace) that sends nothing, as a marked request did
+     * before 0.81. The shim works through the context; nothing reads the attribute itself.
+     */
+    private static function asMarked(RenderContext $ctx): RenderContext
+    {
+        return $ctx->because(Purpose::Audit)->discarding();
+    }
+
+    /** "Now" of the current render, else the app's clock (a script, the console before its frame). */
+    private function clock(): \Psr\Clock\ClockInterface
+    {
+        return Contexts::depth() > 0 ? Contexts::current()->clock : $this->container->get(\Psr\Clock\ClockInterface::class);
     }
 
     /** A visitor's request as the outermost render: Fragment or Visit, as its hypermedia client asks. */
@@ -1696,20 +1721,14 @@ final class Application
         });
     }
 
-    /** @var \Preflow\View\Geo\RenderScopes|null the scopes around a rebuild, made on the first one */
-    private ?object $rebuildScopes = null;
-
     /**
-     * Renders a rebuild request (Rebuild::request()) through the whole app, as an anonymous
-     * visitor and starting from clean request-scoped state each time, as the SEO audit's renders
-     * do: the request context, the hidden session data, nobody signed in, the translator locale,
-     * the SEO context and the content locale (the render scopes), the assets boot registered,
+     * Renders a rebuild request (Rebuild::request()) through the whole app with render(), as an
+     * internal Rebuild render of its path in its locale (the URL's prefix, else the locale the
+     * page was stored under): an anonymous visitor's clean GET in a frame of its own, so nothing
+     * of the request that queued it (its assets, users, cookies, superglobals) reaches the page,
      * and no recording of the page around it (DependencyRecorder::outside(): the page cache
-     * middleware opens the rebuild's own). So one page's state never reaches the next.
-     *
-     * PHP's superglobals are an anonymous visitor's too (AnonymousGlobals, as verify's): after a
-     * response, they are still those of the request that wrote (its cookies, address, session).
-     * With a PHP session open the rebuild is refused without rendering.
+     * middleware opens the rebuild's own). With a PHP session open the rebuild is refused
+     * without rendering.
      */
     private function renderRebuild(ServerRequestInterface $request): ResponseInterface
     {
@@ -1719,24 +1738,16 @@ final class Application
         if (session_status() === PHP_SESSION_ACTIVE) {
             return new \Nyholm\Psr7\Response(200, [\Preflow\Core\PageCache\PageCacheMiddleware::SKIP_HEADER => 'session']);
         }
-        $render = fn (): ResponseInterface => $this->handle($request);
-        if ($this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
-            $scopes = $this->rebuildScopes ??= $this->internalRenderScopes();
-            $scoped = static fn (): ResponseInterface => $scopes->run($request, $render);
-        } else {
-            $anonymous = $this->anonymousRenderScope();
-            $scoped = static fn (): ResponseInterface => $anonymous($request, $render);
-        }
-        $assets = $this->container->has(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null;
-        $clean = static fn (): ResponseInterface => $assets !== null ? $assets->restoring($scoped) : $scoped();
+        $site = $this->site();
+        $path = $request->getUri()->getPath();
+        $path = $path === '' ? '/' : $path;
+        $locale = $site->urls?->localeOf($path) ?? $request->getHeaderLine('Accept-Language');
+        $ctx = RenderContext::internal(Purpose::Rebuild, $site, $this->clock(), $path)
+            ->in(in_array($locale, $site->locales, true) ? $locale : $site->defaultLocale)
+            ->for($request);
 
-        $recorder = $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class);
-
-        return \Preflow\Core\PageCache\AnonymousGlobals::run(
-            '127.0.0.1',
-            static fn (): ResponseInterface => $recorder->outside($clean),
-            $request->getQueryParams(),
-        );
+        return $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)
+            ->outside(fn (): ResponseInterface => $this->render($ctx, $request)->response);
     }
 
     /** @return \Closure(string): void the site's logger (a warning), error_log() without one */
@@ -1836,8 +1847,14 @@ final class Application
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
             rebuildOnly: $this->runningInConsole(),
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
-            // The second render's queued mail and cookies are dropped: the visitor's render had them.
-            verifyScope: static fn (\Closure $render): ResponseInterface => self::outboxAside($container, $render),
+            // The second render runs in a frame of its own that sends nothing: its queued mail and
+            // cookies are dropped (the visitor's render had them), and it cannot take the visitor's.
+            verifyScope: static fn (\Closure $render): ResponseInterface => Contexts::depth() === 0
+                ? self::withoutQueuedMail($container, $render)
+                : Contexts::run(
+                    Contexts::current()->discarding()->because(Purpose::Verify),
+                    static fn (): ResponseInterface => self::withoutQueuedMail($container, $render),
+                ),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);
@@ -2825,8 +2842,6 @@ final class Application
     private function bootGeo(DebugLevel $debug): void
     {
         if (!$this->container->bound(\Preflow\View\Geo\GeoCollector::class)
-            || !$this->container->bound(\Preflow\View\AssetCollector::class)
-            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)
             || !$this->container->bound(\Preflow\View\Geo\GeoConfig::class)) {
             return;
         }
@@ -2839,8 +2854,6 @@ final class Application
         if (!$config->enabled()) {
             return;
         }
-
-        $scopes = $this->internalRenderScopes();
 
         // Render failures that aren't HTTP answers: rethrown in debug (the error page shows them), logged otherwise.
         $container = $this->container;
@@ -2862,9 +2875,14 @@ final class Application
             $config,
             $geo,
             $converter,
-            $this->container->get(\Preflow\View\AssetCollector::class),
             is_string($appUrl) ? $appUrl : null,
-            $scopes,
+            // Each page GEO describes is an internal Geo render of its own (never stored); a page
+            // that fails is GEO's to report (logged, or the error page in debug mode), as before.
+            function (ServerRequestInterface $sub): ResponseInterface {
+                $result = $this->render($this->internalContext(Purpose::Geo, $sub), $sub);
+
+                return $result->failure !== null ? throw $result->failure : $result->response;
+            },
             $report,
             $debug->isDebug(),
             $this->container->get(\Preflow\View\Geo\GeoEntries::class),
@@ -2946,16 +2964,15 @@ final class Application
     }
 
     /**
-     * The SEO audit's PageRenderer: renders a page through the app (handle(), so the
-     * whole pipeline) inside the internal render scopes, from the console too, and
-     * the Audits service around it (since 0.74). Both built on first use only, so web
-     * requests don't pay for them. The debug collector (debug mode) starts empty for
-     * each render.
+     * The SEO audit's PageRenderer: renders each page through the app with render(), as an
+     * internal Audit render in the page's locale (so the whole pipeline, from the console too),
+     * and the Audits service around it (since 0.74). Both built on first use only, so web
+     * requests don't pay for them. A render from inside a request (a step run from the admin)
+     * leaves that request as it was, its debug data included: internal renders record none.
      */
     private function bootAudit(): void
     {
-        if (!$this->container->bound(\Preflow\View\Audit\AuditRegistry::class)
-            || !$this->container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+        if (!$this->container->bound(\Preflow\View\Audit\AuditRegistry::class)) {
             return;
         }
 
@@ -2963,25 +2980,12 @@ final class Application
             [$locales, $defaultLocale] = $this->siteLocales();
             $appUrl = $this->config->get('app.url');
 
-            $collector = $this->container->bound(DebugCollector::class) ? $this->container->get(DebugCollector::class) : null;
-
             return new \Preflow\View\Audit\PageRenderer(
-                function (ServerRequestInterface $request) use ($collector): ResponseInterface {
-                    // In debug mode each request logs into the one collector; renders don't pile up.
-                    $collector?->reset();
-
-                    // PHP's superglobals as a visitor's, as for a page cache rebuild: a step run inside
-                    // an admin's web request (Folio) must not hand its cookies, form or address to the
-                    // page. The audit's request has no query, so $_GET, $_POST and $_FILES are empty.
-                    return \Preflow\Core\PageCache\AnonymousGlobals::run(
-                        '127.0.0.1',
-                        fn (): ResponseInterface => $this->handle($request),
-                        $request->getQueryParams(),
-                    );
-                },
+                fn (ServerRequestInterface $request, string $locale): RenderResult => $this->render(
+                    $this->internalContext(Purpose::Audit, $request, $locale),
+                    $request,
+                ),
                 is_string($appUrl) ? $appUrl : '',
-                $this->internalRenderScopes(),
-                $this->container->bound(\Preflow\View\AssetCollector::class) ? $this->container->get(\Preflow\View\AssetCollector::class) : null,
                 $locales,
                 $defaultLocale,
             );
@@ -2997,105 +3001,95 @@ final class Application
     }
 
     /**
-     * The scopes around an internal render (GEO's, the SEO audit's): the core scope
-     * outermost, around the ones packages added during their registration.
+     * The context of an internal render of $request (the audit's, GEO's): RenderContext::internal()
+     * of its path, in $locale (else the locale of the path's URL prefix, else the site's default),
+     * carrying $request (its clean headers, its session-less attribute).
      */
-    private function internalRenderScopes(): \Preflow\View\Geo\RenderScopes
+    private function internalContext(Purpose $purpose, ServerRequestInterface $request, ?string $locale = null): RenderContext
     {
-        $scopes = new \Preflow\View\Geo\RenderScopes();
-        $scopes->add($this->anonymousRenderScope());
-        $packageScopes = $this->container->get(\Preflow\View\Geo\RenderScopes::class);
-        $scopes->add(static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $packageScopes->run($sub, $next));
+        $site = $this->site();
+        $path = $request->getUri()->getPath();
+        $path = $path === '' ? '/' : $path;
+        $locale ??= $site->urls?->localeOf($path) ?? $site->defaultLocale;
 
-        return $scopes;
+        return RenderContext::internal($purpose, $site, $this->clock(), $path)
+            ->in(in_array($locale, $site->locales, true) ? $locale : $site->defaultLocale)
+            ->for($request);
     }
 
     /**
-     * Wraps an internal render (GEO, the SEO audit): the request context names the rendered page,
-     * the visitor's session data is hidden (templates read the session directly,
-     * e.g. flash(); a shutdown hook restores it even after a fatal error), nobody
-     * is signed in during it, mail it queues is dropped (Notifier::discardingQueued(),
-     * since 0.74), the request's queued cookies are set aside for it (CookieQueue::isolated(),
-     * since 0.75), the translator starts in the site's default locale with overrides off (since
-     * 0.75), and the translator state and signed-in users are put back afterwards, so nothing
-     * passes between the request and its renders.
+     * Around an internal render (audit, GEO, rebuild, verify, preview), inside its frame: the
+     * render scopes packages added (RenderScopes, e.g. a content locale), and what services that
+     * do not read the context yet still need set aside and put back by hand, so nothing passes
+     * between the request and its renders: the signed-in users (nobody is signed in during it),
+     * the translator (the render's locale, no admin overrides), mail queued with
+     * Notifier::sendLater() (dropped, since 0.74) and the asset registries (empty for the render,
+     * the request's own back afterwards). The context itself (frame, cookies, outbox, superglobals,
+     * session) needs none of this; each service leaves this list when it reads the context.
      *
-     * @return \Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface
+     * @param \Closure(): ResponseInterface $handle
      */
-    private function anonymousRenderScope(): \Closure
+    private function internalScope(RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): ResponseInterface
     {
         $container = $this->container;
-        $sessionData = new \Preflow\Core\Http\Session\SessionDataGuard();
-        [, $siteLocale] = $this->siteLocales();
+        $render = $handle;
+        if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
+            $packageScopes = $container->get(\Preflow\View\Geo\RenderScopes::class);
+            $render = static fn (): ResponseInterface => $packageScopes->run($request, $handle);
+        }
+        if ($container->bound(\Preflow\View\AssetCollector::class)) {
+            $assets = $container->get(\Preflow\View\AssetCollector::class);
+            $scoped = $render;
+            $render = static fn (): ResponseInterface => $assets->isolate($scoped);
+        }
 
-        return static function (ServerRequestInterface $sub, \Closure $next) use ($container, $sessionData, $siteLocale): ResponseInterface {
-            $translator = $container->bound(\Preflow\I18n\Translator::class)
-                ? $container->get(\Preflow\I18n\Translator::class)
-                : null;
-            $locale = $translator?->getLocale();
-            $overrides = $translator?->usesOverrides() ?? false;
+        $translator = class_exists(\Preflow\I18n\Translator::class) && $container->bound(\Preflow\I18n\Translator::class)
+            ? $container->get(\Preflow\I18n\Translator::class)
+            : null;
+        $locale = $translator?->getLocale();
+        $overrides = $translator?->usesOverrides() ?? false;
+        $auth = class_exists(\Preflow\Auth\AuthManager::class) && $container->bound(\Preflow\Auth\AuthManager::class)
+            ? $container->get(\Preflow\Auth\AuthManager::class)
+            : null;
+        $users = $auth?->users() ?? [];
+        $guard = $auth?->guardName();
+        // The render's locale: the site's default unless its caller chose one.
+        $siteLocale = $ctx->locale;
 
-            $auth = $container->bound(\Preflow\Auth\AuthManager::class)
-                ? $container->get(\Preflow\Auth\AuthManager::class)
-                : null;
-            $users = $auth?->users() ?? [];
-            $guard = $auth?->guardName();
-
-            $render = $next;
-            // The request is the render's own for it (outside every frame, handle() opens one with it).
-            $next = static fn (): ResponseInterface => Contexts::depth() === 0
-                ? self::outboxAside($container, $render)
-                : Contexts::within(Contexts::current()->for($sub), static fn (): ResponseInterface => self::outboxAside($container, $render));
-
-            $sessionData->hide();
-            // Nobody is signed in for the render, even when it is called from inside the pipeline.
-            $auth?->setUser(null);
-            // The texts visitors get: the site's default locale (a locale middleware sets the page's
-            // own on a multilingual site; without one nothing else would, and an admin request's
-            // interface locale stayed) and no admin overrides (since 0.75).
-            $translator?->setLocale($siteLocale);
-            $translator?->useOverrides(false);
-
-            try {
-                return $next();
-            } finally {
-                $sessionData->restore();
-                if ($auth !== null) {
-                    $auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);
-                    foreach ($users as $name => $user) {
-                        if ($name !== $guard) {
-                            $auth->addUser($user, $name);
-                        }
+        $auth?->setUser(null);
+        $translator?->setLocale($siteLocale);
+        $translator?->useOverrides(false);
+        try {
+            return self::withoutQueuedMail($container, $render);
+        } finally {
+            if ($auth !== null) {
+                $auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);
+                foreach ($users as $name => $user) {
+                    if ($name !== $guard) {
+                        $auth->addUser($user, $name);
                     }
                 }
-                if ($translator !== null && $locale !== null) {
-                    $translator->setLocale($locale);
-                    $translator->useOverrides($overrides);
-                }
             }
-        };
+            if ($translator !== null && $locale !== null) {
+                $translator->setLocale($locale);
+                $translator->useOverrides($overrides);
+            }
+        }
     }
 
     /**
-     * Runs a render whose effects on the request's outbox must not count (an internal render, the
-     * page cache's verify render): mail it queues is dropped, not sent, so the request that flushes
-     * the queue afterwards (an admin request running an audit step, a visitor's request whose GEO
-     * view or verify rendered the page) sends only its own (since 0.74; core conflicts with notify
-     * before 0.74); and the request's queued Set-Cookie values (a rotated remember-me token, the
-     * signed-in marker) are set aside, so the render's ResolveUserMiddleware cannot pull them and
-     * what the render queues is dropped (since 0.75).
+     * Runs $render with the mail it queues through Notifier::sendLater() dropped, not sent
+     * (an internal render, verify's second render; since 0.74): the request that flushes the
+     * queue afterwards sends only its own.
      *
      * @param \Closure(): ResponseInterface $render
      */
-    private static function outboxAside(Container $container, \Closure $render): ResponseInterface
+    private static function withoutQueuedMail(Container $container, \Closure $render): ResponseInterface
     {
         if (class_exists(\Preflow\Notify\Notifier::class) && $container->bound(\Preflow\Notify\Notifier::class)) {
             $notifier = $container->get(\Preflow\Notify\Notifier::class);
             $mail = $render;
             $render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);
-        }
-        if ($container->has(\Preflow\Core\Http\CookieQueue::class)) {
-            return $container->get(\Preflow\Core\Http\CookieQueue::class)->isolated($render);
         }
 
         return $render();
@@ -3474,9 +3468,10 @@ final class Application
             new \Preflow\Auth\Http\GuestMiddleware($authManager),
         );
 
-        // Template functions
+        // Template functions: flash() and csrf_token() read the current render's session (the request's
+        // own; an internal render has none), not the session boot made.
         $session = $this->container->has(\Preflow\Core\Http\Session\SessionInterface::class)
-            ? $this->container->get(\Preflow\Core\Http\Session\SessionInterface::class)
+            ? static fn (): ?\Preflow\Core\Http\Session\SessionInterface => \Preflow\Core\Http\Session\SessionMiddleware::ofCurrentRender()
             : null;
 
         if ($this->container->has(\Preflow\View\TemplateEngineInterface::class)) {

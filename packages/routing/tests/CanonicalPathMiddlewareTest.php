@@ -10,7 +10,6 @@ use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Routing\CanonicalPathMiddleware;
@@ -136,14 +135,14 @@ final class CanonicalPathMiddlewareTest extends TestCase
 
     public function test_internal_render_is_left_alone(): void
     {
-        $request = InternalRender::mark($this->request('GET', '/faq/'));
+        $request = $this->request('GET', '/faq/');
         $handler = new class implements RequestHandlerInterface {
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
                 return new Response(200);
             }
         };
-        $r = (new CanonicalPathMiddleware())->process($request, $handler);
+        $r = self::internally(static fn () => (new CanonicalPathMiddleware())->process($request, $handler));
         $this->assertSame(200, $r->getStatusCode());
         $this->assertSame('', $r->getHeaderLine('Location'));
     }
@@ -424,9 +423,9 @@ final class CanonicalPathMiddlewareTest extends TestCase
     public function test_an_internal_render_counts_no_hit(): void
     {
         $store = new InMemoryRedirectStore([$this->entry('/old-help', 'de', '/de/help')]);
-        $base = InternalRender::mark($this->request('GET', '/de/old-help/'));
+        $base = $this->request('GET', '/de/old-help/');
 
-        $r = $this->sendWith('/de/old-help/', $store, $this->urls(), $base);
+        $r = self::internally(fn () => $this->sendWith('/de/old-help/', $store, $this->urls(), $base));
 
         $this->assertSame(200, $r->getStatusCode());
         $this->assertSame([], $store->hits);
@@ -514,5 +513,14 @@ final class CanonicalPathMiddlewareTest extends TestCase
             $this->assertSame($a->getHeaders(), $b->getHeaders(), $uri);
             $this->assertSame((string) $a->getBody(), (string) $b->getBody(), $uri);
         }
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

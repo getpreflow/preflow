@@ -29,10 +29,15 @@ return [
     ],
     'core/src/Http/InternalRender.php' => [
         'peek' => [
-            'if (Contexts::peek()?->purpose->leavesNoTrace() === true) {' => 'outside every render, the request\'s attribute decides (the documented default)',
+            'return Contexts::peek()?->purpose->leavesNoTrace() === true;' => 'outside every render nothing is internal (the documented default)',
         ],
         'setter' => [
             "Deprecations::once('Preflow\\Core\\Http\\InternalRender::mark() is deprecated since 0.81 and is removed in 0.83; use Application::render() with RenderContext::internal().');" => 'the deprecation message names mark(); not a call',
+        ],
+    ],
+    'core/src/Http/Session/SessionMiddleware.php' => [
+        'peek' => [
+            '$session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);' => 'outside every render there is no request and so no session: flash(), csrf_token() and old() read none (the documented default)',
         ],
     ],
     'core/src/Context/Writes.php' => [
@@ -62,6 +67,9 @@ return [
 
     // clock: durations and deadlines, which measure elapsed time and never read "now" for behaviour.
     'core/src/Debug/DebugCollector.php' => [
+        'peek' => [
+            'return Contexts::peek()?->purpose->isInternal() !== true;' => 'outside every render the collector records (a script, a test), as before 0.81',
+        ],
         'clock' => [
             '$this->startTime = hrtime(true);' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
             'return (hrtime(true) - $this->startTime) / 1_000_000;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',

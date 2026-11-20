@@ -38,7 +38,7 @@ final class Contexts
     /** Rounds of delivery and after-response work the outermost frame runs at most. */
     private const DELIVERY_ROUNDS = 10;
 
-    /** @var list<\Closure(RenderContext, RenderFrame): (\Closure(): void)|null> */
+    /** @var array<int|string, \Closure(RenderContext, RenderFrame): (\Closure(): void)|null> in the order added; named ones by their name */
     private static array $enterHooks = [];
 
     /**
@@ -267,14 +267,21 @@ final class Contexts
     /**
      * Adds $hook, called each time run() opens a frame, with the new context and frame (inside
      * the frame). The closure it returns, if any, runs when that frame closes, also after a
-     * failure. Hooks are kept for the whole process: register one once (core uses it for the
-     * superglobal adapter of internal renders).
+     * failure. Hooks are kept for the whole process (until reset()). A hook given a $name is
+     * kept once: registering that name again replaces it in its place, so code that runs once
+     * per app boot (core's superglobal adapter of internal renders) never adds it twice.
      *
      * @param \Closure(RenderContext, RenderFrame): ?\Closure $hook
+     * @param string|null $name since 0.81.0: one hook per name
      */
-    public static function onEnter(\Closure $hook): void
+    public static function onEnter(\Closure $hook, ?string $name = null): void
     {
-        self::$enterHooks[] = $hook;
+        if ($name === null) {
+            self::$enterHooks[] = $hook;
+
+            return;
+        }
+        self::$enterHooks[$name] = $hook;
     }
 
     /** Applies the context's outbox policy to a frame whose render returned. */
