@@ -18,8 +18,8 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * It may be logged or serialized. What it holds at run time is richer than what leaves it:
  * serialize() and var_dump()/print_r() keep
- * - the request as its method and path only: the PSR request (headers, cookies, query, body,
- *   attributes) is dropped, so a serialized context comes back with `request->request` null;
+ * - the request as its method, path and locale prefix only: the PSR request (headers, cookies,
+ *   query, body, attributes) is dropped, so a serialized context comes back with `request->request` null;
  * - each identity as its guard and id (Viewer::__serialize()), never the user record, and a
  *   role viewer's RoleView;
  * - SystemClock and FrozenClock as they are; any other clock is serialized as a SystemClock and
@@ -27,8 +27,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * - each facet that serializes on its own; a facet that cannot (a closure, a resource) is left
  *   out, and its class is listed under `omittedFacets` in the serialized form. A dump shows each
  *   facet as its memoKey().
- * json_encode() gives the dump's shape as plain values (jsonSerialize()): request as path and
- * method, viewer as guard => id, surface, read-mode key, policies by name, clock by class, `now`
+ * json_encode() gives the dump's shape as plain values (jsonSerialize()): request as path,
+ * method and locale prefix, viewer as guard => id, surface, read-mode key, policies by name, clock by class, `now`
  * in ATOM form, facets as class => memoKey() in class order.
  *
  * The PSR request stays reachable on purpose as `$ctx->request->request` (RequestContext's
@@ -219,12 +219,31 @@ final readonly class RenderContext implements \JsonSerializable
         return $this->copy(writes: WritePolicy::Refuse);
     }
 
-    /** The request part: path and method from $request, which it carries. */
+    /**
+     * The request part: path and method from $request, which it carries. The locale prefix the
+     * URL carried stays as it was (since 0.81.0: '' for a context without a request part), so a
+     * request of the same visit handed on after the locale middleware keeps it; prefixed() sets it.
+     */
     public function for(ServerRequestInterface $request): self
     {
         $path = $request->getUri()->getPath();
 
-        return $this->copy(request: new RequestContext($path === '' ? '/' : $path, $request->getMethod(), $request));
+        return $this->copy(request: new RequestContext($path === '' ? '/' : $path, $request->getMethod(), $request, $this->request->localePrefix ?? ''));
+    }
+
+    /**
+     * The request part with the locale prefix its URL carried ('/de'; '/en' when the default
+     * locale was written into the URL), '' for none. The locale middleware sets it.
+     *
+     * @since 0.81.0
+     *
+     * @throws \LogicException without a request part (for() first)
+     */
+    public function prefixed(string $localePrefix): self
+    {
+        $request = $this->request ?? throw new \LogicException('RenderContext::prefixed() needs a request part: call for() first.');
+
+        return $this->copy(request: new RequestContext($request->path, $request->method, $request->request, $localePrefix));
     }
 
     public function because(Purpose $p): self
@@ -337,7 +356,7 @@ final readonly class RenderContext implements \JsonSerializable
         }
 
         return [
-            'request' => $this->request === null ? null : new RequestContext($this->request->path, $this->request->method),
+            'request' => $this->request === null ? null : new RequestContext($this->request->path, $this->request->method, null, $this->request->localePrefix),
             'purpose' => $this->purpose,
             'viewer' => $this->viewer,
             'locale' => $this->locale,
@@ -399,7 +418,7 @@ final readonly class RenderContext implements \JsonSerializable
         ksort($extensions, SORT_STRING);
 
         return [
-            'request' => $this->request === null ? null : ['path' => $this->request->path, 'method' => $this->request->method],
+            'request' => $this->request === null ? null : ['path' => $this->request->path, 'method' => $this->request->method, 'localePrefix' => $this->request->localePrefix],
             'purpose' => $this->purpose->value,
             'viewer' => $this->viewer->jsonSerialize(),
             'locale' => $this->locale,

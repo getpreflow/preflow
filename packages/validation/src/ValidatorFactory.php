@@ -4,25 +4,41 @@ declare(strict_types=1);
 
 namespace Preflow\Validation;
 
+use Preflow\Core\Context\Deprecations;
 use Preflow\I18n\Translator;
 
 /**
  * Makes validators with the app's rules. Given a translator, its validators answer in the
- * translator's language; without one (the default) in English.
+ * translator's language, which follows the render context (since 0.81: the context's locale,
+ * or the interface locale on the admin surface); without one (the default) in English.
+ *
+ * $contextTranslator (since 0.81.0) is asked at each make() when no translator was given: the
+ * translator for the current render, or null for English. The application passes one that gives
+ * its translator on the admin surface, so the admin's forms answer in its interface language
+ * and a site's own forms keep English messages, as before 0.81.
  */
 final class ValidatorFactory
 {
+    /**
+     * @param (\Closure(): ?Translator)|null $contextTranslator
+     */
     public function __construct(
         private readonly RuleFactory $ruleFactory,
         private ?Translator $translator = null,
+        private readonly ?\Closure $contextTranslator = null,
     ) {}
 
     /**
-     * Sets the translator of the validators made from now on (null: English); returns the one
-     * before, so a caller (Folio, for an admin request) puts it back when done.
+     * Sets the translator of the validators made from now on (null: none); returns the one
+     * before. Its messages are in the language the render context gives the translator.
+     *
+     * @deprecated 0.81, removed in 0.83: the admin surface translates the app's validators
+     *             (Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale))); for every form, pass the
+     *             translator to the constructor
      */
     public function useTranslator(?Translator $translator): ?Translator
     {
+        Deprecations::once('Preflow\Validation\ValidatorFactory::useTranslator() is deprecated since 0.81 and is removed in 0.83; use the render context\'s surface (Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale))), or pass the translator to the constructor.');
         $previous = $this->translator;
         $this->translator = $translator;
 
@@ -35,6 +51,8 @@ final class ValidatorFactory
      */
     public function make(array $rules, array $data, mixed $subject = null): Validator
     {
-        return new Validator($this->ruleFactory, $rules, $data, $subject, $this->translator);
+        $translator = $this->translator ?? ($this->contextTranslator !== null ? ($this->contextTranslator)() : null);
+
+        return new Validator($this->ruleFactory, $rules, $data, $subject, $translator);
     }
 }

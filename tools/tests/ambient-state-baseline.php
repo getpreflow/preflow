@@ -39,10 +39,6 @@ return [
         'now: static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
         '$this->container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
         'static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
-        '$translator?->setLocale($siteLocale);', // setter
-        '$translator?->useOverrides(false);', // setter
-        '$translator->setLocale($locale);', // setter
-        '$translator->useOverrides($overrides);', // setter
         '$render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);', // setter
     ],
     'core/src/Boot/ManifestBuilder.php' => [
@@ -203,9 +199,6 @@ return [
     'htmx/src/ComponentToken.php' => [
         'if ($maxAge !== null && (time() - ($data[\'t\'] ?? 0)) > $maxAge) {', // clock
         'return time();', // clock
-    ],
-    'i18n/src/LocaleMiddleware.php' => [
-        '$this->translator->setLocale($locale);', // setter
     ],
     'i18n/src/Machine/FileJobStore.php' => [
         '$job->updatedAt = (new \\DateTimeImmutable())->format(\\DATE_ATOM);', // clock

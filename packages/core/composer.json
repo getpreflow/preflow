@@ -21,12 +21,13 @@
         "preflow/components": "<0.60",
         "preflow/data": "<0.81.0",
         "preflow/htmx": "<0.65",
-        "preflow/i18n": "<0.78",
+        "preflow/i18n": "<0.81.0",
         "preflow/routing": "<0.78.2",
         "preflow/view": "<0.81.0",
         "preflow/twig": "<0.60",
         "preflow/blade": "<0.60",
         "preflow/folio": "<0.67",
+        "preflow/validation": "<0.81.0",
         "preflow/notify": "<0.74"
     },
     "autoload": {

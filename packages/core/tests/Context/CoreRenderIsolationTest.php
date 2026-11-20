@@ -108,14 +108,13 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
     protected function pending(): array
     {
         // render() runs each path in its own frame, with the superglobals and the session of an
-        // anonymous visitor, its own assets and its own viewer (auth reads the context since Task 9);
-        // the translator is still a service, set aside by hand around an internal render (Task 10
-        // reads the context), and so is the SEO page meta (Task 13).
+        // anonymous visitor, its own assets, its own viewer (auth reads the context since Task 9)
+        // and its own locale and texts (the translator reads the context since Task 10); the SEO
+        // page meta is still a service (Task 13).
         $render = [
-            'poison' => 'the translator and the page meta still come from their services (Tasks 10 and 13): a locale set inside the outer frame by the deprecated setLocale(), or a title set there, reaches the render',
-            'interleave' => 'the translator comes from its service, not the context: B renders like A',
+            'poison' => 'the page meta still comes from its service (Task 13): a title set inside the outer frame reaches the render',
         ];
-        $services = 'the translator, the request, the assets and the page meta still come from the services, not the context';
+        $services = 'the assets and the page meta still come from the services, not the context';
         // The asset registry is shared by every render of an app: head() prints the libraries only
         // in the first one.
         $assets = 'the asset registry is shared by every render: head() prints the libraries only in the first one';
@@ -127,7 +126,7 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
             'verify' => $render,
             'preview' => $render,
             'mail' => ['poison' => $services, 'interleave' => $assets, 'frozen' => $assets],
-            'pdf' => ['poison' => $services, 'interleave' => 'the locale comes from the translator service: B renders like A', 'frozen' => $assets],
+            'pdf' => ['poison' => $services, 'interleave' => $assets, 'frozen' => $assets],
         ];
     }
 

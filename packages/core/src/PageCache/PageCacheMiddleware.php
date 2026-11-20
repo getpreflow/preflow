@@ -605,10 +605,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
             return true;
         }
         $other = self::otherVisitor($request);
-        $locale = $request->getAttribute('locale');
-        $visitor = Contexts::current();
-        // The visitor's locale as the locale middleware resolved it, until the context carries it.
-        $ctx = (is_string($locale) && $locale !== '' ? $visitor->in($locale) : $visitor)
+        // The visitor's context: the locale and the URL's locale prefix as the locale middleware
+        // narrowed them (for() keeps the prefix), for the other visitor's request.
+        $ctx = Contexts::current()
             ->for($other)
             ->discarding()
             ->skippingWrites()

@@ -11,7 +11,11 @@ use PHPUnit\Framework\TestCase;
  * view 0.81.0 (PageRenderer and GeoMiddleware take the app's render closure first, without AssetCollector or
  * RenderScopes; AssetCollector::markBooted() and fromBoot(), which every internal render starts from); auth 0.81.0
  * (AuthExtensionProvider takes a session closure, so flash() and csrf_token() read the current render's session;
- * an older auth would fail with a TypeError at every boot).
+ * an older auth would fail with a TypeError at every boot); i18n 0.81.0 (the translator reads the locale and its
+ * overrides from the context, LocaleMiddleware narrows the frame to the locale and the URL's prefix: internal renders
+ * no longer set the translator aside, and the page cache key, component URLs and the redirect check read the prefix
+ * from the context; with an older i18n, an internal render from an admin request would use the admin's texts);
+ * validation 0.81.0 (ValidatorFactory takes contextTranslator:, which Application passes for the admin's forms).
  * Since 0.78.2: routing 0.78.2 (Redirect\RedirectResolver, which the clean-path one hop asks).
  * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which Throttle gives its purpose field); i18n 0.78
  * (LocaleMiddleware takes urls:, cookieName:, pageExists: and nonPublic:, the bare-path redirect and the
@@ -59,12 +63,13 @@ final class ComposerConstraintsTest extends TestCase
             'preflow/components' => '<0.60',
             'preflow/data' => '<0.81.0',
             'preflow/htmx' => '<0.65',
-            'preflow/i18n' => '<0.78',
+            'preflow/i18n' => '<0.81.0',
             'preflow/routing' => '<0.78.2',
             'preflow/view' => '<0.81.0',
             'preflow/twig' => '<0.60',
             'preflow/blade' => '<0.60',
             'preflow/folio' => '<0.67',
+            'preflow/validation' => '<0.81.0',
             'preflow/notify' => '<0.74',
         ], $composer['conflict'] ?? null);
     }

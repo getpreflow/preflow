@@ -25,6 +25,8 @@ return [
         ],
         'peek' => [
             '$this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);' => 'outside every render there is no request: RequestContext is null, as before the first request',
+            'return Contexts::peek()?->request?->localePrefix ?? \'\';' => 'outside every render there is no URL and so no locale prefix: the page cache key, component URLs and the redirect check get \'\'',
+            'contextTranslator: static fn (): ?\\Preflow\\I18n\\Translator => Contexts::peek()?->surface->admin === true && $container->bound(\\Preflow\\I18n\\Translator::class)' => 'outside every render there is no admin surface: validators answer in English (the documented default)',
         ],
     ],
     'core/src/Http/InternalRender.php' => [
@@ -43,6 +45,16 @@ return [
     'auth/src/AuthManager.php' => [
         'peek' => [
             'return Contexts::peek()?->viewer;' => 'outside every render nobody is signed in: user() is null, users() empty (the documented default; Access::can() then denies)',
+        ],
+    ],
+    'i18n/src/Translator.php' => [
+        'peek' => [
+            '$ctx = Contexts::peek();' => 'outside every render (a script, a unit test) the translator uses its own default locale and overrides switch (ruling R1)',
+        ],
+    ],
+    'i18n/src/LocaleMiddleware.php' => [
+        'peek' => [
+            'return Contexts::peek()?->request?->localePrefix ?? \'\';' => 'the deprecated urlPrefix(): outside every render no URL, so no prefix (\'\', as 0.80 gave outside process())',
         ],
     ],
     'core/src/Context/Writes.php' => [

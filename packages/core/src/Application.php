@@ -1862,9 +1862,7 @@ final class Application
             clearAll: static function () use ($source): void {
                 $source?->clear();
             },
-            localePrefix: static fn (): string => class_exists(\Preflow\I18n\LocaleMiddleware::class) && $container->bound(\Preflow\I18n\LocaleMiddleware::class)
-                ? $container->get(\Preflow\I18n\LocaleMiddleware::class)->urlPrefix()
-                : '',
+            localePrefix: self::carriedLocalePrefix(...),
             signedIn: static fn (): bool => class_exists(\Preflow\Auth\AuthManager::class) && $container->bound(\Preflow\Auth\AuthManager::class)
                 && $container->get(\Preflow\Auth\AuthManager::class)->users() !== [],
             sessionStarted: static fn (): bool => $container->bound(\Preflow\Core\Http\Session\SessionInterface::class)
@@ -2025,7 +2023,15 @@ final class Application
         }
 
         $this->container->instance(\Preflow\Validation\RuleFactory::class, $ruleFactory);
-        $this->container->instance(\Preflow\Validation\ValidatorFactory::class, new \Preflow\Validation\ValidatorFactory($ruleFactory));
+        // The admin's forms answer in its interface language (the admin surface), a site's own in
+        // English unless the site passes a translator (as before 0.81).
+        $container = $this->container;
+        $this->container->instance(\Preflow\Validation\ValidatorFactory::class, new \Preflow\Validation\ValidatorFactory(
+            $ruleFactory,
+            contextTranslator: static fn (): ?\Preflow\I18n\Translator => Contexts::peek()?->surface->admin === true && $container->bound(\Preflow\I18n\Translator::class)
+                ? $container->get(\Preflow\I18n\Translator::class)
+                : null,
+        ));
     }
 
     private function bootValidation(): void
@@ -2235,15 +2241,13 @@ final class Application
 
             // Register hd template functions
             // On a /de/… page component URLs are /de/--component/…, so actions run in that
-            // locale. Lazy: the locale middleware is registered later (bootI18n).
+            // locale: the prefix the current render's URL carried.
             $container = $this->container;
             $htmxProvider = new \Preflow\Htmx\HtmxExtensionProvider(
                 $driver,
                 $componentToken,
                 assets: $htmxAssets,
-                pathPrefix: fn (): string => $container->bound(\Preflow\I18n\LocaleMiddleware::class)
-                    ? $container->get(\Preflow\I18n\LocaleMiddleware::class)->urlPrefix()
-                    : '',
+                pathPrefix: self::carriedLocalePrefix(...),
             );
             $this->registerExtensionProvider($engine, $htmxProvider);
 
@@ -2744,10 +2748,7 @@ final class Application
             now: static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
             warn: $debug->isDebug() ? $this->csrfWarning(...) : null,
             // The visitor's address includes the locale prefix LocaleMiddleware stripped.
-            urlPrefix: static fn (): string => class_exists(\Preflow\I18n\LocaleMiddleware::class)
-                && $container->bound(\Preflow\I18n\LocaleMiddleware::class)
-                    ? $container->get(\Preflow\I18n\LocaleMiddleware::class)->urlPrefix()
-                    : '',
+            urlPrefix: self::carriedLocalePrefix(...),
         ));
     }
 
@@ -3054,10 +3055,12 @@ final class Application
      * Around an internal render (audit, GEO, rebuild, verify, preview), inside its frame: the
      * render scopes packages added (RenderScopes, e.g. a content locale), and what services that
      * do not read the context yet still need set aside and put back by hand, so nothing passes
-     * between the request and its renders: the translator (the render's locale, no admin overrides), mail queued with
-     * Notifier::sendLater() (dropped, since 0.74) and the asset registries (what boot registered,
-     * nothing printed, for the render; the request's own back afterwards). The context itself (frame, cookies, outbox, superglobals,
-     * session, the signed-in users: auth reads the frame's viewer) needs none of this; each service leaves this list when it reads the context.
+     * between the request and its renders: mail queued with Notifier::sendLater() (dropped,
+     * since 0.74) and the asset registries (what boot registered, nothing printed, for the render;
+     * the request's own back afterwards). The context itself (frame, cookies, outbox,
+     * superglobals, session, the signed-in users: auth reads the frame's viewer; the locale and
+     * the texts: the translator reads the frame's context) needs none of this; each service leaves
+     * this list when it reads the context.
      *
      * @param \Closure(): ResponseInterface $handle
      */
@@ -3075,24 +3078,18 @@ final class Application
             $render = static fn (): ResponseInterface => $assets->fromBoot($scoped);
         }
 
-        $translator = class_exists(\Preflow\I18n\Translator::class) && $container->bound(\Preflow\I18n\Translator::class)
-            ? $container->get(\Preflow\I18n\Translator::class)
-            : null;
-        $locale = $translator?->getLocale();
-        $overrides = $translator?->usesOverrides() ?? false;
-        // The render's locale: the site's default unless its caller chose one.
-        $siteLocale = $ctx->locale;
+        return self::withoutQueuedMail($container, $render);
+    }
 
-        $translator?->setLocale($siteLocale);
-        $translator?->useOverrides(false);
-        try {
-            return self::withoutQueuedMail($container, $render);
-        } finally {
-            if ($translator !== null && $locale !== null) {
-                $translator->setLocale($locale);
-                $translator->useOverrides($overrides);
-            }
-        }
+    /**
+     * The locale prefix the current render's URL carried ('/de'; '/en' for the default locale
+     * written into the URL), '' for none: what LocaleMiddleware set in the request part. The page
+     * cache's key, component URLs and the redirect check use it, so they see the address as the
+     * visitor wrote it.
+     */
+    private static function carriedLocalePrefix(): string
+    {
+        return Contexts::peek()?->request?->localePrefix ?? '';
     }
 
     /**

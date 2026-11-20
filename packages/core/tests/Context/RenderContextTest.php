@@ -140,7 +140,7 @@ final class RenderContextTest extends TestCase
         $this->assertStringContainsString(UnsafeFacet::class, $serialized, 'an omitted facet is named');
 
         $json = json_decode((string) json_encode($ctx, JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(['path' => '/a', 'method' => 'POST'], $json['request']);
+        $this->assertSame(['path' => '/a', 'method' => 'POST', 'localePrefix' => ''], $json['request']);
         $this->assertSame('visit', $json['purpose']);
         $this->assertSame(['identities' => ['web' => '42'], 'primaryGuard' => 'web', 'roleView' => null], $json['viewer']);
         $this->assertSame(['admin' => false, 'uiLocale' => null, 'overrides' => false], $json['surface']);

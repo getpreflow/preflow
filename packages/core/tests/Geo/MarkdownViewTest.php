@@ -569,11 +569,9 @@ final class MarkdownViewTest extends TestCase
             },
         );
 
-        // The outer request: a German page, so the translator is in German.
+        // The outer request: a German page, so its frame (since 0.81 the translator reads it) is in German.
         $outer = (new Psr17Factory())->createServerRequest('GET', 'http://localhost/de/about');
-        $app->handle($outer);
         $translator = $app->container()->get(\Preflow\I18n\Translator::class);
-        $this->assertSame('de', $translator->getLocale());
 
         // Renders as GeoMiddleware (outermost) makes them: through the whole application.
         $handler = new class ($app) implements \Psr\Http\Server\RequestHandlerInterface {
@@ -586,20 +584,20 @@ final class MarkdownViewTest extends TestCase
         };
         $geo = $app->container()->get(\Preflow\View\Geo\GeoMiddleware::class);
         // Inside the outer request's frame, as GeoMiddleware runs: the request is the frame's own again afterwards.
-        [$de, $en, $during, $after] = \Preflow\Core\Context\Contexts::run(
-            \Preflow\Core\Context\RenderContext::fromRequest($outer, $app->site(), new \Preflow\Core\Context\SystemClock()),
-            static function () use ($geo, $outer, $handler, $app): array {
+        [$de, $en, $during, $after, $locale] = \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::fromRequest($outer, $app->site(), new \Preflow\Core\Context\SystemClock())->in('de'),
+            static function () use ($geo, $outer, $handler, $app, $translator): array {
                 $during = $app->container()->get(\Preflow\Core\Http\RequestContext::class);
                 $de = (string) $geo->render($outer, $handler, '/de/');
                 $en = (string) $geo->render($outer, $handler, '/');
 
-                return [$de, $en, $during, $app->container()->get(\Preflow\Core\Http\RequestContext::class)];
+                return [$de, $en, $during, $app->container()->get(\Preflow\Core\Http\RequestContext::class), $translator->getLocale()];
             },
         );
 
         $this->assertStringStartsWith('# Home de', $de);
         $this->assertStringStartsWith('# Home en', $en);
-        $this->assertSame('de', $translator->getLocale());
+        $this->assertSame('de', $locale, 'the outer request\'s locale is untouched by the renders');
         $this->assertNotNull($during);
         $this->assertSame('/de/about', $during->path);
         $this->assertSame($during, $after, 'the outer request\'s context is back after the renders');

@@ -19,6 +19,10 @@ use Psr\Http\Message\ServerRequestInterface;
  *
  * With URL locales ('/de/jobs'), $path and $request's URI are the path without the prefix
  * ('/jobs') once the locale middleware has run (since 0.63.2), as routes and pages see it.
+ * $localePrefix (since 0.81.0) is the prefix that URL carried ('/de'; '/en' when the default
+ * locale was written into it, also with prefix_default off), '' when it carried none. The locale
+ * middleware sets it (RenderContext::prefixed()); it is not derived from the locale, so the page
+ * cache key, component URLs and the redirect check see the address as the visitor wrote it.
  */
 final readonly class RequestContext
 {
@@ -26,5 +30,6 @@ final readonly class RequestContext
         public string $path,
         public string $method,
         public ?ServerRequestInterface $request = null,
+        public string $localePrefix = '',
     ) {}
 }
