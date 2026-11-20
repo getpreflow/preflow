@@ -13,14 +13,20 @@ namespace Preflow\Core\Context;
  * Both note on the frame when they enter a context that is not the public default
  * (RenderFrame::departures()), so the page cache never stores a render that read as one.
  * Neither loosens the frame: what run()'s caller allowed it to send and write stays the most it
- * may (a frame opened capturing or discarding never delivers, one opened skipping or refusing
- * writes never allows them), and a role viewer (view as role) is never swapped for a real or an
- * anonymous one inside its frame (another role view is fine). Both are refused with a
- * LogicException; a render as someone else opens its own frame with run().
+ * may (a frame opened capturing or discarding never delivers, one opened skipping writes never
+ * allows them, one opened refusing writes never skips or allows them), and a role viewer (view
+ * as role) is never swapped for a real or an anonymous one inside its frame (another role view
+ * is fine). within() never starts a role view in a frame that is not one: what a stretch queues
+ * stays in the frame, whose own policy sends it at its end, so a role view starts with run()
+ * (Application::render()), or with narrow(), which holds to the end of the frame. Each is
+ * refused with a LogicException; a render as someone else opens its own frame with run().
+ * A frame inside a frame never writes more than the frame around it does now (run()).
  *
  * Code without a context parameter reads current(); outside every render it throws
  * NoRenderContext. Only code with a documented default for "no render" (DataManager writes,
- * the translator, LiveContent, the notify bridge, shutdown hooks) may use peek().
+ * the translator, LiveContent, the notify bridge, shutdown hooks, auth's AuthManager: nobody
+ * is signed in, SessionGuard's role-view check: no role view, and the session helpers: no
+ * session) may use peek().
  *
  * An internal render returns its RenderResult from the frame it opened:
  *
@@ -54,6 +60,12 @@ final class Contexts
      * (see FrameOutbox); when $render throws, its outbox is dropped. Its skipped writes always
      * move to the parent frame, so the run that opened a frame reports its nested renders' too.
      *
+     * Inside another frame, $ctx never writes more than that frame does now (since 0.81.0): under
+     * a parent that refuses writes it refuses them, under one that skips them it skips what it
+     * would have allowed. So a fresh context run inside a preview or a role view (a site's own
+     * render(), a mail render) writes nothing for real. Its outbox is not clamped: what it
+     * delivers goes to the parent, whose policy decides.
+     *
      * The onEnter() hooks run after the frame opened, their leave closures (in reverse order)
      * after the outbox policy and before the frame is gone. In debug mode (debug(), as it was
      * when the frame opened), a frame stack that is not as run() left it (a frame left open, a reset inside a render) throws a
@@ -68,6 +80,13 @@ final class Contexts
         $depth = count(self::$frames);
         $debug = self::$debug;
         $parent = self::$top;
+        if ($parent !== null) {
+            $ctx = match ($parent->context->writes) {
+                WritePolicy::Refuse => $ctx->writes === WritePolicy::Refuse ? $ctx : $ctx->refusingWrites(),
+                WritePolicy::Skip => $ctx->writes === WritePolicy::Allow ? $ctx->skippingWrites() : $ctx,
+                WritePolicy::Allow => $ctx,
+            };
+        }
         $frame = new RenderFrame($ctx, $parent);
         self::$frames[] = $frame;
         self::$top = $frame;
@@ -362,11 +381,15 @@ final class Contexts
         if ($frame->context->viewer->isSynthetic() && !$next->viewer->isSynthetic()) {
             throw new \LogicException("Contexts::{$method}() cannot leave the role view this frame renders as (view as role): a render as someone else opens its own frame with Contexts::run().");
         }
+        if ($method === 'within' && $next->viewer->isSynthetic() && !$frame->context->viewer->isSynthetic()) {
+            throw new \LogicException('Contexts::within() cannot start a role view (view as role): what the stretch queued would be sent with the frame. Render as a role with Contexts::run() (Application::render()).');
+        }
         if ($next->outbox === OutboxPolicy::Deliver && $frame->openedOutbox !== OutboxPolicy::Deliver) {
             throw new \LogicException("Contexts::{$method}() cannot make a frame deliver that was opened with outbox policy {$frame->openedOutbox->name}: its caller decides what the render may send.");
         }
-        if ($next->writes === WritePolicy::Allow && $frame->openedWrites !== WritePolicy::Allow) {
-            throw new \LogicException("Contexts::{$method}() cannot make a frame write that was opened with write policy {$frame->openedWrites->name}: its caller decides what the render may write.");
+        if (($next->writes === WritePolicy::Allow && $frame->openedWrites !== WritePolicy::Allow)
+            || ($frame->openedWrites === WritePolicy::Refuse && $next->writes !== WritePolicy::Refuse)) {
+            throw new \LogicException("Contexts::{$method}() cannot make a frame {$next->writes->name} writes that was opened with write policy {$frame->openedWrites->name}: its caller decides what the render may write.");
         }
     }
 

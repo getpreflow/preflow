@@ -63,35 +63,41 @@ final class GuestMiddlewareTest extends TestCase
 
     public function test_passes_unauthenticated_users(): void
     {
-        $manager = $this->createManager(null);
-        $middleware = new GuestMiddleware($manager);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $manager = $this->createManager(null);
+            $middleware = new GuestMiddleware($manager);
 
-        $response = $middleware->process($this->createRequest(), $this->createHandler(200));
+            $response = $middleware->process($this->createRequest(), $this->createHandler(200));
 
-        $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame(200, $response->getStatusCode());
+        });
     }
 
     public function test_redirects_authenticated_users(): void
     {
-        $user = new TestUser();
-        $manager = $this->createManager($user);
-        $middleware = new GuestMiddleware($manager);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new TestUser();
+            $manager = $this->createManager($user);
+            $middleware = new GuestMiddleware($manager);
 
-        $response = $middleware->process($this->createRequest(), $this->createHandler());
+            $response = $middleware->process($this->createRequest(), $this->createHandler());
 
-        $this->assertSame(302, $response->getStatusCode());
-        $this->assertSame('/', $response->getHeaderLine('Location'));
+            $this->assertSame(302, $response->getStatusCode());
+            $this->assertSame('/', $response->getHeaderLine('Location'));
+        });
     }
 
     public function test_redirects_to_custom_path(): void
     {
-        $user = new TestUser();
-        $manager = $this->createManager($user);
-        $middleware = new GuestMiddleware($manager, '/dashboard');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new TestUser();
+            $manager = $this->createManager($user);
+            $middleware = new GuestMiddleware($manager, '/dashboard');
 
-        $response = $middleware->process($this->createRequest(), $this->createHandler());
+            $response = $middleware->process($this->createRequest(), $this->createHandler());
 
-        $this->assertSame(302, $response->getStatusCode());
-        $this->assertSame('/dashboard', $response->getHeaderLine('Location'));
+            $this->assertSame(302, $response->getStatusCode());
+            $this->assertSame('/dashboard', $response->getHeaderLine('Location'));
+        });
     }
 }

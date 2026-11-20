@@ -153,6 +153,9 @@ return [
         ],
     ],
     'auth/src/SessionGuard.php' => [
+        'peek' => [
+            'if (Contexts::peek()?->viewer->isSynthetic() === true) {' => 'outside every render there is no role view, so login() and logout() run (a script, a test), as before 0.81',
+        ],
         'static-state' => [
             'private static array $dummies = [];' => 'dummy password hashes per hasher option set, for timing-safe failed sign-ins',
         ],

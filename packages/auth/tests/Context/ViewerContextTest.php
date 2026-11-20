@@ -370,6 +370,103 @@ final class ViewerContextTest extends DataTestCase
     }
 
     /**
+     * A guest-only route (a members' login page) under a role view is decided by the role view's
+     * user, never by the session the request carries: no guard is asked. The role view counts as
+     * signed in, so it is sent away like any signed-in user.
+     */
+    public function test_guest_middleware_asks_no_guard_under_a_role_view(): void
+    {
+        $asked = new CountingGuard(new TestUser('editor', roles: ['admin']));
+        $auth = new AuthManager(['web' => $asked], 'web');
+        $guest = new \Preflow\Auth\Http\GuestMiddleware($auth, '/home');
+
+        $status = Contexts::run(ContextFactory::forTest()->asRole(new RoleView('member', ['gold'])), static fn (): int => $guest->process(self::request('/login'), new Capture(static fn () => null))->getStatusCode());
+        $this->assertSame(302, $status, 'the role view is signed in');
+        $this->assertSame(0, $asked->asked, 'the editor\'s session was never read');
+
+        // Without a role view, the guard still decides.
+        $status = Contexts::run(ContextFactory::forTest(), static fn (): int => $guest->process(self::request('/login'), new Capture(static fn () => null))->getStatusCode());
+        $this->assertSame([302, 1], [$status, $asked->asked]);
+    }
+
+    /**
+     * Inside a role view the session the request carries is the editor's: SessionGuard neither
+     * signs in nor out there (a "Sign out" button in a previewed page), and the session is untouched.
+     */
+    public function test_session_guard_login_and_logout_are_refused_in_a_role_view(): void
+    {
+        $guard = new SessionGuard(new class implements UserProviderInterface {
+            public function findById(string $id): ?Authenticatable
+            {
+                return new TestUser($id);
+            }
+
+            public function findByCredentials(array $credentials): ?Authenticatable
+            {
+                return null;
+            }
+        }, new NativePasswordHasher());
+        $session = new ArraySession();
+        $session->start();
+        $session->set('_auth_user_id', 'editor');
+        $id = $session->getId();
+        $request = self::request()->withAttribute(SessionInterface::class, $session);
+
+        Contexts::run(ContextFactory::forTest()->asRole(new RoleView('member', ['gold'])), function () use ($guard, $request): void {
+            foreach (['login' => static fn () => $guard->login(new TestUser('other'), $request), 'logout' => static fn () => $guard->logout($request)] as $name => $call) {
+                try {
+                    $call();
+                    $this->fail("{$name} must be refused in a role view");
+                } catch (\LogicException $e) {
+                    $this->assertStringContainsString('role view', $e->getMessage(), $name);
+                }
+            }
+        });
+
+        $this->assertSame('editor', $session->get('_auth_user_id'), 'still signed in');
+        $this->assertSame($id, $session->getId(), 'never regenerated or invalidated');
+        $this->assertTrue($session->isStarted());
+    }
+
+    /** A template reading the user's fields renders in a role view, also with strict variables. */
+    public function test_a_synthetic_user_reads_in_a_strict_template(): void
+    {
+        $twig = new \Twig\Environment(new \Twig\Loader\ArrayLoader([
+            'greet' => 'Hello {{ user.name }}|{{ user.email }}|{{ user.id }}|{{ user.roles|join(",") }}|{{ user.getAuthId }}|{{ user.hasRole("gold") ? "gold" : "-" }}',
+        ]), ['strict_variables' => true]);
+        $user = new SyntheticUser(new RoleView('member', ['gold']));
+
+        $this->assertSame('Hello ||preflow:synthetic:member:gold|gold|preflow:synthetic:member:gold|gold', $twig->render('greet', ['user' => $user]));
+        $this->assertNull($user->name);
+        $this->assertTrue(isset($user->name));
+        $this->assertFalse(isset($user->getRoles), 'method names are left to the methods');
+    }
+
+    /**
+     * An internal render (its caller chose the viewer) asks no guard, even when its request
+     * carries a session: the admin is never signed in by a copied request.
+     */
+    public function test_an_internal_render_asks_no_guard(): void
+    {
+        $asked = new CountingGuard(new TestUser('admin'));
+        $auth = new AuthManager(['web' => $asked], 'web');
+        $resolve = new ResolveUserMiddleware($auth, ['web' => $asked]);
+        $session = new ArraySession();
+        $session->start();
+
+        $internal = RenderContext::internal(Purpose::Audit, ContextFactory::forTest()->site, ContextFactory::forTest()->clock, '/about');
+        Contexts::run($internal, function () use ($resolve, $auth, $session): void {
+            $handler = new Capture(function () use ($auth): void {
+                $this->assertNull($auth->user());
+            });
+            $resolve->process(self::request('/about')->withAttribute(SessionInterface::class, $session), $handler);
+            $this->assertNull($handler->request?->getAttribute(Authenticatable::class));
+            $this->assertSame(Contexts::current(), $handler->request?->getAttribute(RenderContext::class));
+        });
+        $this->assertSame(0, $asked->asked);
+    }
+
+    /**
      * Regression (0.75, kept by the frames): a request signed back in from its remember-me cookie
      * queues the rotated cookie, then renders a page internally (the SEO audit's step), whose own
      * ResolveUserMiddleware runs in the render's frame; the rotated cookie still reaches the
@@ -480,4 +577,28 @@ final class Capture implements RequestHandlerInterface
 
         return new Response(200);
     }
+}
+
+/** A guard that counts how often it was asked. */
+final class CountingGuard implements GuardInterface
+{
+    public int $asked = 0;
+
+    public function __construct(private readonly ?Authenticatable $user) {}
+
+    public function user(ServerRequestInterface $request): ?Authenticatable
+    {
+        ++$this->asked;
+
+        return $this->user;
+    }
+
+    public function validate(array $credentials): bool
+    {
+        return false;
+    }
+
+    public function login(Authenticatable $user, ServerRequestInterface $request): void {}
+
+    public function logout(ServerRequestInterface $request): void {}
 }

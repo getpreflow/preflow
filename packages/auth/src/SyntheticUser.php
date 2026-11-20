@@ -52,6 +52,27 @@ final class SyntheticUser implements Authenticatable
         return $this->view->population;
     }
 
+    /**
+     * What a template reads off a user: 'id' (getAuthId()), 'roles' and 'population' from the role
+     * view, null for every other field (a role view has no name, email or profile), so a page that
+     * greets its user renders in a preview, also with strict variables.
+     */
+    public function __get(string $name): mixed
+    {
+        return match ($name) {
+            'id' => $this->getAuthId(),
+            'roles' => $this->view->roles,
+            'population' => $this->view->population,
+            default => null,
+        };
+    }
+
+    /** Every field reads (as null when the role view has none), except this class's method names, which templates call. */
+    public function __isset(string $name): bool
+    {
+        return !method_exists($this, $name);
+    }
+
     /** @throws \LogicException always: a role view's user is read-only */
     public function __set(string $name, mixed $value): void
     {

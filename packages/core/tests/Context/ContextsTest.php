@@ -13,6 +13,9 @@ use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderFrame;
 use Preflow\Core\Context\RoleView;
 use Preflow\Core\Context\Viewer;
+use Preflow\Core\Context\OutboxChannel;
+use Preflow\Core\Context\WritePolicy;
+use Preflow\Core\Context\Writes;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Core\Http\LocaleUrls;
@@ -361,6 +364,98 @@ final class ContextsTest extends TestCase
             Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->delivering());
         });
         $this->assertSame(0, Contexts::depth());
+    }
+
+    /**
+     * A role view never starts with within() (what the stretch queued would be sent with the
+     * delivering frame); a role render in its own frame (run()) captures its mail, and nothing of
+     * it reaches the delivering frame around it.
+     */
+    public function test_within_cannot_start_a_role_view_and_a_role_run_sends_nothing(): void
+    {
+        $outer = self::ctx('/a')->delivering();
+        $channel = self::mailChannel();
+
+        Contexts::run($outer, function () use ($outer, $channel): void {
+            Contexts::frame()->outbox()->channel($channel);
+            try {
+                Contexts::within($outer->asRole(new RoleView('member', ['gold'])), static function (): void {
+                    Contexts::frame()->outbox()->queue(new QueuedMail('gold@example.test'), 'mail');
+                });
+                $this->fail('within() must not start a role view');
+            } catch (\LogicException $e) {
+                $this->assertStringContainsString('role view', $e->getMessage());
+            }
+
+            $held = Contexts::run($outer->asRole(new RoleView('member', ['gold'])), static function (): RenderFrame {
+                Contexts::frame()->outbox()->queue(new QueuedMail('gold@example.test'), 'mail');
+
+                return Contexts::frame();
+            });
+            $this->assertCount(1, $held->outbox()->drain(), 'the role render captured its mail');
+
+            // Inside a role frame, a stretch of another role view is fine.
+            Contexts::run($outer->asRole(new RoleView('member', ['gold'])), static function (): void {
+                Contexts::within(Contexts::current()->asRole(new RoleView('member', ['silver'])), static fn (): null => null);
+            });
+        });
+
+        $this->assertSame([], $channel->sent, 'nothing queued as a role was sent');
+    }
+
+    /**
+     * A frame inside a frame never writes more than the frame around it does now: a fresh
+     * context run inside a role view or a skipping frame skips, inside a refusing frame refuses.
+     * The outbox is not clamped (the parent's policy decides what it gets).
+     */
+    public function test_a_nested_run_never_writes_more_than_its_parent(): void
+    {
+        $seen = static fn (): array => [Writes::policy(), Contexts::current()->outbox];
+
+        $this->assertSame([WritePolicy::Skip, OutboxPolicy::Deliver], Contexts::run(self::ctx('/a')->asRole(new RoleView('member', ['gold'])), static fn (): array => Contexts::run(self::ctx('/b'), $seen)), 'inside a role view');
+        $this->assertSame([WritePolicy::Skip, OutboxPolicy::Deliver], Contexts::run(self::ctx('/a')->skippingWrites(), static fn (): array => Contexts::run(self::ctx('/b'), $seen)), 'inside a skipping frame');
+        $this->assertSame([WritePolicy::Refuse, OutboxPolicy::Deliver], Contexts::run(self::ctx('/a')->refusingWrites(), static fn (): array => Contexts::run(self::ctx('/b')->skippingWrites(), $seen)), 'inside a refusing frame');
+        $this->assertSame([WritePolicy::Refuse, OutboxPolicy::Deliver], Contexts::run(self::ctx('/a')->skippingWrites(), static fn (): array => Contexts::run(self::ctx('/b')->refusingWrites(), $seen)), 'a stricter child keeps its own');
+        $this->assertSame([WritePolicy::Allow, OutboxPolicy::Deliver], Contexts::run(self::ctx('/a'), static fn (): array => Contexts::run(self::ctx('/b'), $seen)), 'inside an allowing frame nothing changes');
+
+        // The parent's current context counts: a frame narrowed to skipping clamps what it runs.
+        $this->assertSame([WritePolicy::Skip, OutboxPolicy::Deliver], Contexts::run(self::ctx('/a'), static function () use ($seen): array {
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->skippingWrites());
+
+            return Contexts::run(self::ctx('/b'), $seen);
+        }));
+    }
+
+    /** Refuse is stricter than Skip: a frame opened refusing writes never narrows to skipping them. */
+    public function test_a_refusing_frame_cannot_narrow_to_skipping(): void
+    {
+        Contexts::run(self::ctx('/a')->refusingWrites(), function (): void {
+            $this->expectException(\LogicException::class);
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->skippingWrites());
+        });
+    }
+
+    private static function mailChannel(): OutboxChannel
+    {
+        return new class implements OutboxChannel {
+            /** @var list<object> */
+            public array $sent = [];
+
+            public function name(): string
+            {
+                return 'mail';
+            }
+
+            public function deliver(array $items): void
+            {
+                array_push($this->sent, ...$items);
+            }
+
+            public function describe(object $item): string
+            {
+                return 'mail';
+            }
+        };
     }
 
     private static function ctx(string $path): RenderContext

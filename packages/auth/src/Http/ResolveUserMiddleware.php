@@ -31,7 +31,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * returned it.
  *
  * A frame that renders as a role view (view as role, and a request asked for
- * inside one) keeps it: no guard is asked, so the session or remember-me cookie
+ * inside one) keeps it, and so does an internal render (the SEO audit, GEO, a
+ * rebuild, verify, a preview: its caller chose the viewer): no guard is asked, so the session or remember-me cookie
  * the request carries never signs the real user in, and nothing is written or
  * queued; the request carries the role view's SyntheticUser.
  *
@@ -57,14 +58,16 @@ final class ResolveUserMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $viewer = Contexts::current()->viewer;
-        if ($viewer->isSynthetic()) {
+        $ctx = Contexts::current();
+        if ($ctx->viewer->isSynthetic() || $ctx->purpose->isInternal()) {
+            // The caller of the render chose the viewer (a role view, or an internal render's
+            // anonymous visitor): no guard is asked, whatever session the request carries.
             $user = $this->authManager->user();
+            $request = $request->withAttribute(RenderContext::class, $ctx);
 
-            return $handler->handle($request
+            return $handler->handle($user === null ? $request : $request
                 ->withAttribute(Authenticatable::class, $user)
-                ->withAttribute(AuthManager::GUARD_ATTRIBUTE, $this->authManager->guardName())
-                ->withAttribute(RenderContext::class, Contexts::current()));
+                ->withAttribute(AuthManager::GUARD_ATTRIBUTE, $this->authManager->guardName()));
         }
 
         // What this frame queued before the guards ran is not this middleware's to set.
