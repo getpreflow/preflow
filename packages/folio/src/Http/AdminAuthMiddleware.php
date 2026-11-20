@@ -7,6 +7,10 @@ namespace Preflow\Folio\Http;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
+use Preflow\Auth\SyntheticUser;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Viewer;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -15,6 +19,10 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Gates the Folio admin: unauthenticated requests are redirected (302) to the
  * login page instead of throwing 401 (the framework AuthMiddleware behavior).
+ * The signed-in staff user becomes the frame's viewer (Contexts::narrow(), since 0.81.0).
+ * A synthetic viewer (view as role: a role view's frame, or its SyntheticUser on the request)
+ * is refused with 403: the admin never runs as a role view, so nothing it writes (an import,
+ * the extensions file) can be reached from a preview.
  */
 final class AdminAuthMiddleware implements MiddlewareInterface
 {
@@ -26,8 +34,12 @@ final class AdminAuthMiddleware implements MiddlewareInterface
         private readonly ?string $guard = null,
     ) {}
 
+    /** @throws \Preflow\Core\Context\NoRenderContext outside every render */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        if (Contexts::current()->viewer->isSynthetic() || $request->getAttribute(Authenticatable::class) instanceof SyntheticUser) {
+            return new Response(403, ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'private, no-store'], 'Forbidden');
+        }
         // Only Folio's staff guard signs into the admin; a user resolved for it already (or set in
         // tests) counts. A user of another guard on the request (an employer, a member) does not.
         $guard = $this->guard ?? $this->auth->defaultGuardName();
@@ -45,7 +57,10 @@ final class AdminAuthMiddleware implements MiddlewareInterface
             }
             return new Response(302, ['Location' => $this->prefix . '/login']);
         }
-        $this->auth->setUser($user, $guard);
+        if ($user instanceof SyntheticUser) {
+            return new Response(403, ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'private, no-store'], 'Forbidden');
+        }
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(new Viewer([$guard => $user], $guard)));
         $this->nav->setCurrentPath($request->getUri()->getPath());
         $request = $request->withAttribute(Authenticatable::class, $user);
         return $handler->handle($request);

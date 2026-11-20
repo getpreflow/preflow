@@ -113,19 +113,6 @@ return [
     'folio/src/Field/Types/AssetFieldType.php' => [
         '$rel = date(\'Y/m\') . \'/\' . bin2hex(random_bytes(16)) . \'.\' . $ext;', // clock
     ],
-    'folio/src/FolioServiceProvider.php' => [
-        '$container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
-        '$container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
-        '$pageCache->isolate($published);', // setter
-        '$restores = [$container->get(\\Preflow\\Publishing\\LiveContent::class)->isolate()];', // setter
-        '$engine->addGlobal(\'interface_locale\', $container->get(\\Preflow\\Folio\\Http\\InterfaceLocales::class)->default());', // setter
-    ],
-    'folio/src/FolioText.php' => [
-        'private static ?Translator $translator = null;', // static-state
-    ],
-    'folio/src/Http/AdminAuthMiddleware.php' => [
-        '$this->auth->setUser($user, $guard);', // setter
-    ],
     'folio/src/Http/AdminController.php' => [
         'return new \\DateTimeImmutable($job->updatedAt) < new \\DateTimeImmutable(\'-\' . self::STALE_JOB_SECONDS . \' seconds\');', // clock
         '\'Content-Disposition\' => \'attachment; filename="\' . (preg_replace(\'/[^A-Za-z0-9_-]+/\', \'-\', $type) ?: \'export\') . \'-\' . date(\'Y-m-d\') . \'.xlsx"\',', // clock
@@ -134,29 +121,8 @@ return [
         '$now = ($now ?? new \\DateTimeImmutable())->setTimezone($zone);', // clock
         'return (new \\DateTimeImmutable())->setTimestamp($value);', // clock
     ],
-    'folio/src/Http/AdminLocaleMiddleware.php' => [
-        '$previousText = \\Preflow\\Folio\\FolioText::use($this->translator); // Folio\'s words in PHP (field types, notices)', // setter
-        '$previousValidation = $this->validators?->useTranslator($this->translator);', // setter
-        '$this->validators?->useTranslator($previousValidation);', // setter
-        '\\Preflow\\Folio\\FolioText::use($previousText);', // setter
-        '$translator->setLocale($frontend);', // setter
-        '$translator->useOverrides(false);', // setter
-        '$translator->setLocale($locale);', // setter
-        '$translator->useOverrides($overrides);', // setter
-        '$this->translator->setLocale($locale);', // setter
-        '$this->translator->useOverrides($overrides);', // setter
-        '$this->locales->setCurrent($current);', // setter
-        '$this->engine?->addGlobal(\'interface_locale\', $this->locales->current());', // setter
-    ],
     'folio/src/Http/AiSettingsController.php' => [
         '$now = new \\DateTimeImmutable(\'first day of this month 00:00:00\');', // clock
-    ],
-    'folio/src/Http/FrontendController.php' => [
-        '$this->contentLocale?->set($locale);', // setter
-        '$this->live?->showWorkingCopies(); // the shared draft shows draft references too', // setter
-    ],
-    'folio/src/Http/PreviewController.php' => [
-        '$this->contentLocale?->set($locale);', // setter
     ],
     'folio/src/Http/PublishingController.php' => [
         'return $this->status(self::stateText($this->publisher->state($record), new \\DateTimeImmutable()), (int) $record->get(\'_version\'));', // clock
@@ -166,12 +132,6 @@ return [
     ],
     'folio/src/Http/WorkerWatch.php' => [
         'return $last !== null && $last->getTimestamp() >= time() - self::SILENCE;', // clock
-    ],
-    'folio/src/Http/WorkingCopyMiddleware.php' => [
-        '$this->live->showWorkingCopies();', // setter
-    ],
-    'folio/src/Members/FolioPageLocale.php' => [
-        '$this->contentLocale->set($locale);', // setter
     ],
     'folio/src/Permissions/KnownPermissions.php' => [
         'return (new \\DateTimeImmutable(\'now\', new \\DateTimeZone(\'UTC\')))->format(\'Y-m-d\\TH:i:s\\Z\');', // clock

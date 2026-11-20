@@ -146,10 +146,21 @@ final class MembersCoreInFolioTest extends TestCase
     public function test_a_member_page_sets_folios_content_locale(): void
     {
         $this->flowSite();
+        $locale = $this->flow->container()->get(ContentLocale::class);
+        $seen = null;
+        // Since 0.81 the content locale is the request's (its frame's): read it at the end of the request.
+        $this->flow->runAfterResponseInHandle();
+        \Preflow\Core\Context\Contexts::onEnter(static function (\Preflow\Core\Context\RenderContext $ctx, \Preflow\Core\Context\RenderFrame $frame) use (&$seen, $locale): null {
+            $frame->outbox()->afterResponse(static function () use (&$seen, $locale): void {
+                $seen = $locale->get();
+            });
+
+            return null;
+        }, 'members-core-in-folio-test');
 
         $this->send('GET', '/de/members/login');
 
-        $this->assertSame('de', $this->flow->container()->get(ContentLocale::class)->get());
+        $this->assertSame('de', $seen);
     }
 
     #[RunInSeparateProcess]

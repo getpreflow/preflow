@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Data\DataManager;
@@ -27,9 +30,11 @@ final class FrontendController
         private readonly FrontendResolver $resolver,
         private readonly TemplateEngineInterface $engine,
         private readonly RecordRenderer $records,
+        /** not used since 0.81.0 (the page's locale narrows the context); kept for the constructor's shape */
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?DataManager $dm = null,
         private readonly ?PreviewLinks $previews = null,
+        /** not used since 0.81.0 (the share preview narrows the context's read mode); kept for the constructor's shape */
         private readonly ?\Preflow\Publishing\LiveContent $live = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?FrontendGate $gate = null,
@@ -126,7 +131,8 @@ final class FrontendController
     {
         $locales = $record->getType()->locales;
         $locale = $this->locale($request, $record);
-        $this->contentLocale?->set($locale);
+        // The rest of the request renders in the page's locale (ContentLocale, blocks, texts).
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->in($locale));
 
         // hreflang and canonical need absolute URLs; 'url' stays relative for language switchers.
         $origin = $this->origin($request);
@@ -197,7 +203,10 @@ final class FrontendController
             return $refused;
         }
 
-        $this->live?->showWorkingCopies(); // the shared draft shows draft references too
+        // The rest of this request is a preview of the working copy: draft references show too,
+        // nothing it renders leaves a trace (Purpose::Preview), and the page cache never stores it.
+        // The next request reads published again: the narrow ends with this request's frame.
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->because(Purpose::Preview));
 
         return new Response(200, [
             'Content-Type' => 'text/html; charset=UTF-8',

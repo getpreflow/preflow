@@ -36,8 +36,7 @@ final class ContentLocaleProviderTest extends TestCase
         $provider = new ContentLocaleProvider($content);
 
         $this->assertSame('en', $provider->current());
-        $content->set('de');
-        $this->assertSame('de', $provider->current());
+        $this->assertSame('de', \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('de'), $provider->current(...)), 'the render\'s locale');
         $this->assertSame('en', $provider->default());
     }
 
@@ -51,9 +50,9 @@ final class ContentLocaleProviderTest extends TestCase
         $content = new ContentLocale(new Locales(['en', 'de'], 'en'));
         $tag = new ImageTag($lib, new ContentLocaleProvider($content), [], new AssetCollector(new NonceGenerator()), '/folio/_uploads');
 
-        $content->set('de');
-
-        $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id));
-        $this->assertStringContainsString('alt="Sky"', $tag->render($other->id));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('de'), function () use ($tag, $asset, $other): void {
+            $this->assertStringContainsString('alt="Meer"', $tag->render($asset->id));
+            $this->assertStringContainsString('alt="Sky"', $tag->render($other->id));
+        });
     }
 }

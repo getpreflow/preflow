@@ -4,23 +4,19 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Publishing\LiveContent;
 
 /**
  * Records of a collection for public templates and app code (folio_list,
  * folio_find): live content only (published snapshots of publishing types;
- * working copies in the admin preview), localized to the content locale, in
- * the type's list order. Memoized per request. A type gated by
+ * working copies where the render reads them), localized to the content locale, in
+ * the type's list order. Memoized per render frame and context (ContentMemo: by type and
+ * RenderContext::memoKey()); not memoized outside every render. A type gated by
  * frontend.permission lists nothing for visitors without it (FrontendGate).
  */
 final class Collections
 {
-    /** @var array<string, list<array<string, mixed>>> */
-    private array $lists = [];
-
-    /** @var array<string, list<array<int, mixed>>> the reads behind each memoised list (DataManager::captureReads()) */
-    private array $reads = [];
-
     public function __construct(
         private readonly LiveContent $live,
         private readonly TypeCatalog $catalog,
@@ -28,22 +24,6 @@ final class Collections
         private readonly ?SafeRichText $richText = null,
         private readonly ?FrontendGate $gate = null,
     ) {}
-
-    /**
-     * Empties the memo for a render the page cache may store (PageCache::isolate()), so it reads
-     * anew in the content mode it renders in. Returns what puts the earlier memo back.
-     *
-     * @return \Closure(): void
-     */
-    public function isolate(): \Closure
-    {
-        $before = [$this->lists, $this->reads];
-        $this->lists = $this->reads = [];
-
-        return function () use ($before): void {
-            [$this->lists, $this->reads] = $before;
-        };
-    }
 
     /** @return list<array<string, mixed>> */
     public function list(string $type): array
@@ -53,23 +33,32 @@ final class Collections
             return [];
         }
 
-        $locale = $this->locale->get();
-        $key = $type . '@' . $locale . ($this->live->showsWorkingCopies() ? '#working' : '');
-        if (!isset($this->lists[$key])) {
-            [$this->lists[$key], $this->reads[$key]] = $this->live->data()->captureReads(function () use ($type, $listing, $locale): array {
-                $records = [];
-                foreach (ListOrder::apply($this->live->query($type), $this->live->definition($type), $listing->list)->get()->items() as $record) {
-                    $records[] = $this->safe($record->localized($locale)->toArray(), $type);
-                }
-
-                return $records;
-            });
+        $read = fn (): array => $this->read($type, $listing);
+        if (Contexts::depth() === 0) {
+            return $read();
+        }
+        $memo = Contexts::frame()->slot(ContentMemo::class, static fn (): ContentMemo => new ContentMemo());
+        $key = 'collections:' . $type . '|' . Contexts::current()->memoKey();
+        if (!isset($memo->entries[$key])) {
+            $memo->entries[$key] = $this->live->data()->captureReads($read);
         } else {
             // A memo hit is still a read: every page showing the list depends on it (page cache).
-            $this->live->data()->replayReads($this->reads[$key]);
+            $this->live->data()->replayReads($memo->entries[$key][1]);
         }
 
-        return $this->lists[$key];
+        return $memo->entries[$key][0];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function read(string $type, TypeListing $listing): array
+    {
+        $locale = $this->locale->get();
+        $records = [];
+        foreach (ListOrder::apply($this->live->query($type), $this->live->definition($type), $listing->list)->get()->items() as $record) {
+            $records[] = $this->safe($record->localized($locale)->toArray(), $type);
+        }
+
+        return $records;
     }
 
     /** @return array<string, mixed>|null */

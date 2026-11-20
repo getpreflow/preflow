@@ -33,6 +33,8 @@ use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
 
 final class ReadonlyFieldDisplayTest extends TestCase
 {
+    use \Preflow\Folio\Tests\Support\AdminTexts;
+
     private string $base;
     private DataManager $dm;
     private TypeRegistry $registry;
@@ -217,15 +219,12 @@ final class ReadonlyFieldDisplayTest extends TestCase
         foreach (['de' => '26.10.2026 09:30', 'fr' => '26/10/2026 09:30'] as $locale => $expected) {
             $translator = new \Preflow\I18n\Translator($this->base . '/lang', $locale, 'en');
             $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
-            $previous = \Preflow\Folio\FolioText::use($translator);
-            try {
+            self::inAdmin($translator, function () use ($expected, $locale): void {
                 $engine = $this->engine();
                 $this->controller($engine)->list((new Psr17Factory())->createServerRequest('GET', '/folio/member')->withAttribute('type', 'member'));
                 $rows = json_decode($engine->context, true)['rows'];
                 $this->assertSame($expected, $rows[0]['cells']['joined'], $locale);
-            } finally {
-                \Preflow\Folio\FolioText::use($previous);
-            }
+            });
         }
     }
 }

@@ -42,7 +42,7 @@ final class AdminAuthMiddlewareTest extends TestCase
     {
         $am = new AuthManager(['session' => $this->guard(null)], 'session');
         $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
-        $res = $mw->process((new Psr17Factory())->createServerRequest('GET', '/folio'), $this->handler());
+        $res = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), fn () => $mw->process((new Psr17Factory())->createServerRequest('GET', '/folio'), $this->handler()));
 
         $this->assertSame(302, $res->getStatusCode());
         $this->assertSame('/folio/login', $res->getHeaderLine('Location'));
@@ -52,7 +52,7 @@ final class AdminAuthMiddlewareTest extends TestCase
     {
         $am = new AuthManager(['session' => $this->guard(null)], 'session');
         $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
-        $res = $mw->process((new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/autosave')->withHeader('HX-Request', 'true'), $this->handler());
+        $res = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), fn () => $mw->process((new Psr17Factory())->createServerRequest('POST', '/folio/post/p1/autosave')->withHeader('HX-Request', 'true'), $this->handler()));
 
         $this->assertSame(401, $res->getStatusCode());
         $this->assertSame('/folio/login', $res->getHeaderLine('HX-Redirect'));

@@ -1,0 +1,71 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Folio\Tests\Fixtures\Context;
+
+use Preflow\Core\Container\Container;
+use Preflow\Core\Container\ServiceProvider;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Http\CookieQueue;
+use Preflow\View\TemplateEngineInterface;
+use Preflow\View\TemplateFunctionDefinition;
+
+/**
+ * Template functions for FolioContextTest:
+ * - context_probe(): the current render's context as "locale|surface|reads|viewer|purpose";
+ * - context_after(): queues after-response work that records the probe as it is then;
+ * - probe_cookie(): queues the cookie "probe=1" on the current frame.
+ */
+final class ContextProbeProvider extends ServiceProvider
+{
+    /** @var list<string> every context_probe() printed */
+    public static array $seen = [];
+
+    /** @var list<string> what each context_after() work saw */
+    public static array $after = [];
+
+    public function register(Container $container): void {}
+
+    public function boot(Container $container): void
+    {
+        $engine = $container->get(TemplateEngineInterface::class);
+        $engine->addFunction(new TemplateFunctionDefinition(
+            name: 'context_probe',
+            callable: static function (): string {
+                return self::$seen[] = self::probe();
+            },
+        ));
+        $engine->addFunction(new TemplateFunctionDefinition(
+            name: 'context_after',
+            callable: static function (): string {
+                Contexts::frame()->outbox()->afterResponse(static function (): void {
+                    self::$after[] = self::probe();
+                });
+
+                return '';
+            },
+        ));
+        $engine->addFunction(new TemplateFunctionDefinition(
+            name: 'probe_cookie',
+            callable: static function (): string {
+                CookieQueue::ofCurrentFrame()->queue('probe=1; Path=/');
+
+                return '';
+            },
+        ));
+    }
+
+    public static function probe(): string
+    {
+        $ctx = Contexts::current();
+
+        return implode('|', [
+            $ctx->locale,
+            $ctx->surface->key(),
+            $ctx->reads->key(),
+            $ctx->viewer->primary()?->getAuthId() ?? 'nobody',
+            $ctx->purpose->value,
+        ]);
+    }
+}

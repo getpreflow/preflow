@@ -25,6 +25,7 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AdminTranslationTest extends TestCase
 {
+    use \Preflow\Folio\Tests\Support\AdminTexts;
     use StaffScaffold;
 
     /** English source texts of these screens that must not show in another language. */
@@ -294,17 +295,14 @@ final class AdminTranslationTest extends TestCase
 
     public function test_media_messages_are_mapped_to_folio_texts(): void
     {
-        $previous = FolioText::use(self::translator('de'));
-        try {
+        self::inAdmin(self::translator('de'), function (): void {
             $this->assertSame('braucht Imagick für farbgetreue Varianten', \Preflow\Folio\Media\MediaMessages::note(\Preflow\Media\MediaLibrary::NOTE_NEEDS_IMAGICK));
             $this->assertSame('a.svg: Dateien vom Typ image/svg+xml sind nicht erlaubt.', \Preflow\Folio\Media\MediaMessages::text('a.svg: files of type image/svg+xml are not allowed.'));
             $this->assertSame('big.png ist größer als die Grenze von 2 MB.', \Preflow\Folio\Media\MediaMessages::text('big.png is larger than the 2 MB limit.'));
             $this->assertSame('x.pdf: Ein Bild kann nur durch ein anderes Bild ersetzt werden.', \Preflow\Folio\Media\MediaMessages::text('x.pdf: a image can only be replaced by another image.'));
             $this->assertSame('Something else entirely.', \Preflow\Folio\Media\MediaMessages::text('Something else entirely.'));
             $this->assertSame('custom note', \Preflow\Folio\Media\MediaMessages::note('custom note'));
-        } finally {
-            FolioText::use($previous);
-        }
+        });
         $this->assertSame('a.svg: files of type image/svg+xml are not allowed.', \Preflow\Folio\Media\MediaMessages::text('a.svg: files of type image/svg+xml are not allowed.'));
     }
 
@@ -398,13 +396,10 @@ final class AdminTranslationTest extends TestCase
     public function test_folio_text_is_english_outside_an_admin_request_and_the_users_language_inside(): void
     {
         $this->assertSame('Save', FolioText::get('folio.common.save'));
-        $previous = FolioText::use(self::translator('de'));
-        try {
+        self::inAdmin(self::translator('de'), function (): void {
             $this->assertSame('Speichern', FolioText::get('folio.common.save'));
             $this->assertSame('de', FolioText::locale());
-        } finally {
-            FolioText::use($previous);
-        }
+        });
         $this->assertSame('Save', FolioText::get('folio.common.save'));
     }
 

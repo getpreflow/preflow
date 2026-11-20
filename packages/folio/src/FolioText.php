@@ -4,26 +4,59 @@ declare(strict_types=1);
 
 namespace Preflow\Folio;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
+use Preflow\Core\Context\RenderContext;
 use Preflow\I18n\Translator;
 
 /**
  * Folio's words (the "folio" group) for code that renders admin text without a translator of
- * its own: field types, list helpers, the publish state, the delete plan. During an admin
- * request AdminLocaleMiddleware hands it the app's translator (in the user's interface
- * language, with the site's lang files and overrides); outside one (the console, unit tests)
- * the texts are Folio's English ones.
+ * its own: field types, list helpers, the publish state, the delete plan. On the admin surface
+ * (Contexts::current()->surface, which AdminLocaleMiddleware enters for an admin request) the
+ * texts come from the app's translator in the container, in the user's interface language with
+ * the site's lang files and overrides. Elsewhere they are Folio's own texts (its lang files, no
+ * site overrides): on the public surface in the render's locale (the translator follows the
+ * context since 0.81), outside every render (the console, unit tests) in English.
  */
 final class FolioText
 {
-    private static ?Translator $translator = null;
+    /** @var (\Closure(): ?Translator)|null the app's translator, from its container (FolioServiceProvider) */
+    private static ?\Closure $source = null;
 
     private static ?Translator $english = null;
 
-    /** Sets the translator for the admin request being handled (null: none); returns the one before. */
+    /**
+     * Where the app's translator comes from (null: nowhere, the English texts only). Set once at
+     * boot by FolioServiceProvider; it holds no request state: the translator follows the render context.
+     *
+     * @param (\Closure(): ?Translator)|null $source
+     * @internal FolioServiceProvider, and tests that render admin texts without an app
+     * @since 0.81.0
+     */
+    public static function translatorFrom(?\Closure $source): void
+    {
+        self::$source = $source;
+    }
+
+    /**
+     * Enters the admin surface in $translator's locale for the rest of the current render (null:
+     * the public surface), and returns the translator FolioText gave before. The texts then come
+     * from the app's translator (translatorFrom()), not from $translator. Outside every render it
+     * changes nothing (the texts there are the English ones).
+     *
+     * @deprecated 0.81, removed in 0.83: Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale)), or
+     *             Contexts::within($ctx->admin($uiLocale), $fn) for a stretch of the render
+     */
     public static function use(?Translator $translator): ?Translator
     {
-        $previous = self::$translator;
-        self::$translator = $translator;
+        Deprecations::once('Preflow\Folio\FolioText::use() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale)).');
+        $previous = self::translator();
+        if (Contexts::depth() > 0) {
+            $locale = $translator?->getLocale();
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $locale === null
+                ? $ctx->public()
+                : $ctx->admin($locale, $ctx->surface->admin ? $ctx->surface->overrides : true));
+        }
 
         return $previous;
     }
@@ -75,11 +108,14 @@ final class FolioText
         return self::translator()->getLocale();
     }
 
-    /** The admin request's translator, else Folio's own English texts. */
+    /** The app's translator on the admin surface, else Folio's own texts (English outside every render). */
     public static function translator(): Translator
     {
-        if (self::$translator !== null) {
-            return self::$translator;
+        if (Contexts::peek()?->surface->admin === true && self::$source !== null) {
+            $translator = (self::$source)();
+            if ($translator !== null) {
+                return $translator;
+            }
         }
         if (self::$english === null) {
             self::$english = new Translator(dirname(__DIR__) . '/lang/.none', 'en', 'en');

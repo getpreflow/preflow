@@ -46,6 +46,8 @@ use Preflow\Validation\ValidatorFactory;
  */
 final class RecordDeleterTest extends TestCase
 {
+    use \Preflow\Folio\Tests\Support\AdminTexts;
+
     private string $dir;
     private DataManager $dm;
     private TypeRegistry $registry;
@@ -462,8 +464,7 @@ final class RecordDeleterTest extends TestCase
         file_put_contents($this->dir . '/lang/de/site.php', "<?php return ['types' => ['game' => ['label' => 'Spiele', 'singular' => 'Spiel']]];");
         $translator = new \Preflow\I18n\Translator($this->dir . '/lang', 'de', 'en');
         $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
-        $previous = \Preflow\Folio\FolioText::use($translator);
-        try {
+        self::inAdmin($translator, function () use ($translator): void {
             $this->assertSame(['Löscht auch 2 Spiele.', '2 Seiten verlieren eine Verknüpfung.'], $this->summary()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
             $this->assertSame(['1 Seite verliert eine Verknüpfung.'], $this->summary()->summary($this->deleter()->plan('game', ['g1']))['lines']);
             $this->seed('game', 'g4', ['title' => 'Keltis', 'designer' => 'd1']);
@@ -471,9 +472,7 @@ final class RecordDeleterTest extends TestCase
             // No French file: the map's default entry and the plain label, for which French has no singular guess.
             $this->assertSame(['Supprime aussi 3 games.', '2 pages perdent un lien.'], $this->summary()->summary($this->deleter()->plan('designer', ['d1']))['lines']);
             $this->assertSame(['1 page perd un lien.'], $this->summary()->summary($this->deleter()->plan('game', ['g1']))['lines']);
-        } finally {
-            \Preflow\Folio\FolioText::use($previous);
-        }
+        });
     }
 
     public function test_summary_of_a_restricted_plan(): void

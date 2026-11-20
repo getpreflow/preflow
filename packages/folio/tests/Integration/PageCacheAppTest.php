@@ -217,7 +217,9 @@ final class PageCacheAppTest extends TestCase
         $preview = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/one?folio_preview=' . $m[1])
             ->withQueryParams(['folio_preview' => $m[1]]));
         $this->assertStringContainsString('<h1>Draft of one</h1>', (string) $preview->getBody());
-        $this->assertSame('refused:working-copy', $preview->getHeaderLine('X-Page-Cache-Skip'));
+        // A share preview is private (Cache-Control) and reads as a preview context (since 0.81 Folio's
+        // own `working-copy` check is gone: the context rule refuses it too).
+        $this->assertSame('cache-control', $preview->getHeaderLine('X-Page-Cache-Skip'));
         $this->assertNull($this->stored('/one?folio_preview=' . $m[1]));
 
         $public = $this->get('/one');

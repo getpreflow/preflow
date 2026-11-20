@@ -183,20 +183,21 @@ final class FolioRoutes
         foreach ($defs as $def) {
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
-            // Signed-in staff, then the user's interface language, then the route's permission
-            // (FolioPermissionMiddleware::rule), then what its type allows (TypeActionsMiddleware).
-            // Signed-out pages: the browser's language.
+            // Working copies first (the admin shows drafts of referenced records): it narrows the
+            // request's frame, so work after the response reads them too. Then signed-in staff,
+            // then the user's interface language (a stretch on the admin surface), then the
+            // route's permission (FolioPermissionMiddleware::rule), then what its type allows
+            // (TypeActionsMiddleware). Signed-out pages: the browser's language.
             if ($handlerClass === self::EXTENSION_ASSETS) {
                 $middleware = []; // public static files: no login, no drafts
             } else {
                 $middleware = ($authEnabled && $handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS)
-                    ? [self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW]
-                    : [self::LOCALE_MW];
+                    ? [self::WORKING_MW, self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW]
+                    : [self::WORKING_MW, self::LOCALE_MW];
                 if ($handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS) {
                     // What the route's type allows (data's "readonly" / "creatable"), with or without sign-in.
                     $middleware[] = self::TYPE_ACTIONS_MW;
                 }
-                $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
             }
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(

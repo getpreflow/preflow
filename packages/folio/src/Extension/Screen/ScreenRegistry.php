@@ -127,8 +127,11 @@ final class ScreenRegistry
     public function routes(string $prefix, bool $authEnabled): array
     {
         $base = rtrim('/' . trim($prefix, '/'), '/');
-        $middleware = $authEnabled ? [self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW] : [self::LOCALE_MW];
-        $middleware[] = self::WORKING_MW; // the active sidebar item, working copies as on every admin route
+        // Working copies (and the active sidebar item) first, as on every admin route: it narrows
+        // the request's frame, outside the admin surface's stretch (AdminLocaleMiddleware).
+        $middleware = $authEnabled
+            ? [self::WORKING_MW, self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW]
+            : [self::WORKING_MW, self::LOCALE_MW];
         $middleware[] = ScreenDispatcher::class;
 
         $entries = [];

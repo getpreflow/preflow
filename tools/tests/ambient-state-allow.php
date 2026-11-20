@@ -51,6 +51,20 @@ return [
             '$ctx = Contexts::peek();' => 'outside every render (a script, a unit test) the translator uses its own default locale and overrides switch (ruling R1)',
         ],
     ],
+    'folio/src/Content/ContentLocale.php' => [
+        'peek' => [
+            '$locale = Contexts::peek()?->locale;' => 'outside every render content renders in the default content locale (the documented default)',
+            '$ctx = Contexts::peek();' => 'scoped() outside every render just runs the render: there is no context to put back',
+        ],
+        'setter' => [
+            'Deprecations::once(\'Preflow\\Folio\\Content\\ContentLocale::set() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).\');' => 'the deprecation message names set(); not a call',
+        ],
+    ],
+    'folio/src/Http/InterfaceLocales.php' => [
+        'peek' => [
+            '$surface = Contexts::peek()?->surface;' => 'outside every render there is no admin surface: the default interface locale (the documented default)',
+        ],
+    ],
     'publishing/src/LiveContent.php' => [
         'peek' => [
             'return Contexts::peek()?->reads;' => 'outside every render (a script, a unit test) reads see published snapshots (ruling R1), unless the deprecated setters changed that default',
@@ -256,10 +270,20 @@ return [
         'static-state' => [
             'private static ?\WeakMap $editableApplied = null;' => 'translators already given the editable groups (a WeakMap keyed by the translator)',
         ],
+        'setter' => [
+            '$engine->addGlobal(\'interface_locale\', new \\Preflow\\Folio\\Http\\InterfaceLocale(' => 'set once at boot to a lazy getter (InterfaceLocale) that reads the interface locale of the render printing it; never set per request',
+        ],
     ],
     'folio/src/FolioText.php' => [
         'static-state' => [
             'private static ?Translator $english = null;' => 'the English fallback catalogue, loaded once',
+            'private static ?\Closure $source = null;' => 'where the app\'s translator comes from, set once at boot (FolioServiceProvider); the translator follows the render context, so it holds no request state',
+        ],
+        'setter' => [
+            'Deprecations::once(\'Preflow\\Folio\\FolioText::use() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale)).\');' => 'the deprecation message names use(); not a call',
+        ],
+        'peek' => [
+            'if (Contexts::peek()?->surface->admin === true && self::$source !== null) {' => 'outside every render there is no admin surface: Folio\'s own English texts (the documented default)',
         ],
     ],
     'folio/src/Field/LazyHtmlSanitizer.php' => [

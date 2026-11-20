@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
@@ -23,7 +24,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * Renders a draft (in-progress, unsaved) record through the real frontend
  * template for live preview. Side-effect-free: never writes storage, never
  * persists uploads, never calls saveType (so no validation), and ignores the
- * published-status gate. Enabled only for the frontend type.
+ * published-status gate. Enabled only for the frontend type. It renders within a context
+ * of its own (since 0.81.0): an anonymous visitor on the public surface in the editing
+ * locale, reading working copies.
  */
 final class PreviewController
 {
@@ -38,9 +41,11 @@ final class PreviewController
         private readonly TemplateEngineInterface $engine,
         private readonly FrontendResolver $frontend,
         ?DraftRecordFactory $drafts = null,
+        /** not used since 0.81.0 (the preview renders in a context of its own); kept for the constructor's shape */
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?AdminAssetUrls $assetUrls = null,
+        /** not used since 0.81.0 (the translator follows the render context); kept for the constructor's shape */
         private readonly ?\Preflow\I18n\Translator $translator = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
@@ -60,19 +65,20 @@ final class PreviewController
         $requested = ((array) $request->getParsedBody())['_locale'] ?? null;
         $locale = is_string($requested) && $typeDef->locales->has($requested) ? $requested : $typeDef->locales->default;
         $draft = $this->drafts->build($typeDef, $request, $existing + [$typeDef->idField => $id], $locale, writeUploads: false);
-        $this->contentLocale?->set($locale);
 
-        // The frontend's template in the frontend's translator state (its locale, no admin
-        // overrides), not the editor's interface language.
-        $render = fn (): string => $this->engine->render(FrontendController::template($this->engine, $route), [
+        // The frontend's template as a visitor sees the page: nobody signed in (a member-only
+        // block stays out although the editor is signed in), the visitor's texts in the editing
+        // locale, working copies of referenced records. Only for this stretch: the admin's own
+        // locale, identity and texts are back afterwards.
+        $preview = Contexts::current()->asVisitor()->public()->in($locale)->workingCopies();
+        $html = Contexts::within($preview, fn (): string => $this->engine->render(FrontendController::template($this->engine, $route), [
             'record' => $draft->localized($locale)->toArray(),
             'rendered' => $this->records->renderedMap($draft, $locale),
             'type' => $type,
             'preview' => true,
             'locale' => $locale,
             'alternates' => [],
-        ]);
-        $html = $this->translator === null ? $render() : AdminLocaleMiddleware::asFrontend($this->translator, $request, $render);
+        ]));
 
         $html = $this->assets?->injectInto($html) ?? $html;
 

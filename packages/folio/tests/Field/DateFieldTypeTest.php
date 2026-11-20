@@ -11,6 +11,8 @@ use Preflow\I18n\Translator;
 
 final class DateFieldTypeTest extends TestCase
 {
+    use \Preflow\Folio\Tests\Support\AdminTexts;
+
     private string $tz;
 
     protected function setUp(): void
@@ -88,13 +90,10 @@ final class DateFieldTypeTest extends TestCase
         foreach (['de' => ['22.10.2026', '23.10.2026 01:15'], 'fr' => ['22/10/2026', '23/10/2026 01:15']] as $locale => [$date, $datetime]) {
             $translator = new Translator(dirname(__DIR__, 2) . '/lang/.none', $locale, 'en');
             $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
-            $previous = FolioText::use($translator);
-            try {
+            self::inAdmin($translator, function () use ($type, $date, $datetime, $locale): void {
                 $this->assertSame($date, $type->renderAdmin('2026-10-22', []), $locale);
                 $this->assertSame($datetime, $type->renderAdmin('2026-10-22T23:15:12+00:00', ['time' => true]), $locale);
-            } finally {
-                FolioText::use($previous);
-            }
+            });
         }
     }
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Http;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Http\RequestLimits;
 use Preflow\Core\Http\Session\SessionInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -16,6 +18,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * The session is closed first: a file session stays locked while it is open, and every other
  * request of the same browser (pages, assets, autosave) would wait until the work ends. Nothing
  * after this point may write to the session.
+ *
+ * The limits are process-wide (they cannot be scoped to a render); since 0.81 what was asked is
+ * recorded on the current render's frame (RequestLimits) for the debug toolbar.
  *
  * @internal
  * @since 0.74
@@ -30,8 +35,14 @@ final class LongRequest
         }
         ignore_user_abort(true);
         $limit = (int) ini_get('max_execution_time');
+        $raised = false;
         if ($limit !== 0 && $limit < $seconds) {
-            @set_time_limit($seconds);
+            $raised = @set_time_limit($seconds);
+        }
+        if (Contexts::depth() > 0) {
+            $limits = Contexts::frame()->slot(RequestLimits::class, static fn (): RequestLimits => new RequestLimits());
+            $limits->ignoresUserAbort = true;
+            $limits->timeLimit($seconds, $limit, $raised);
         }
     }
 }

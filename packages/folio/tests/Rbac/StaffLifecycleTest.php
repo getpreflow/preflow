@@ -26,6 +26,7 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class StaffLifecycleTest extends TestCase
 {
+    use \Preflow\Folio\Tests\Support\AdminTexts;
     use RbacAppScaffold;
 
     private const string ACCOUNT = "You can't change an account with roles you can't grant.";
@@ -347,16 +348,13 @@ final class StaffLifecycleTest extends TestCase
         $this->container()->get(DataManager::class)->deleteType('staff', 's-help');
         $german = new \Preflow\I18n\Translator('/no/such/lang', 'de', 'en');
         $german->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
-        $previous = \Preflow\Folio\FolioText::use($german);
-        try {
+        self::inAdmin($german, function () use ($admin, $stale, $request): void {
             foreach (['disable', 'enable'] as $action) {
                 $res = $admin->{$action}($stale, $request);
                 $this->assertSame(404, $res->getStatusCode(), $action);
                 $this->assertStringContainsString('Nicht gefunden', (string) $res->getBody(), $action);
             }
-        } finally {
-            \Preflow\Folio\FolioText::use($previous);
-        }
+        });
     }
 
     #[RunInSeparateProcess]

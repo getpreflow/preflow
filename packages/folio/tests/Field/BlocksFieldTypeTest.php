@@ -23,6 +23,8 @@ use Preflow\Validation\ValidatorFactory;
 
 final class BlocksFieldTypeTest extends TestCase
 {
+    use \Preflow\Folio\Tests\Support\AdminTexts;
+
     private const A = 'aaaaaaaaaaaaaaaa';
     private const B = 'bbbbbbbbbbbbbbbb';
     private const C = 'cccccccccccccccc';
@@ -334,17 +336,12 @@ final class BlocksFieldTypeTest extends TestCase
         $blocks = new BlocksFieldType(new BlockRegistry([PromoBlock::class, LinkBlock::class]), $fields, 4, null, $engine);
         $fields->register($blocks);
 
-        $previous = \Preflow\Folio\FolioText::use($translator);
-        try {
-            $blocks->renderEditor(new \Preflow\Folio\Field\FieldContext(
-                name: 'body',
-                value: [['_block' => 'promo', '_uid' => self::A, 'headline' => 'Hi'], ['_block' => 'link', '_uid' => self::B, 'url' => '/x']],
-                locale: 'en',
-                locales: Locales::single('en'),
-            ));
-        } finally {
-            \Preflow\Folio\FolioText::use($previous);
-        }
+        self::inAdmin($translator, static fn () => $blocks->renderEditor(new \Preflow\Folio\Field\FieldContext(
+            name: 'body',
+            value: [['_block' => 'promo', '_uid' => self::A, 'headline' => 'Hi'], ['_block' => 'link', '_uid' => self::B, 'url' => '/x']],
+            locale: 'en',
+            locales: Locales::single('en'),
+        )));
 
         $cards = [];
         $field = null;

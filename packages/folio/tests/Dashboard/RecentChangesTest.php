@@ -223,14 +223,14 @@ final class RecentChangesTest extends TestCase
         $log->record(new Activity('work_order', 'w1', 'Order 5', ActivityKind::Created, by: 'u1'));
         $recent = $this->recentChanges($c, $log, ['invoice.view', 'work_order.view']);
         $can = static fn (string $p): bool => true;
-        $previous = \Preflow\Folio\FolioText::use($c->get(\Preflow\I18n\Translator::class)); // as an admin request does
-
-        $labels = array_column(array_filter($recent->subjects($can), static fn (array $s): bool => in_array($s['key'], ['invoice', 'work_order'], true)), 'label', 'key');
-        $this->assertSame(['invoice' => 'Billing', 'work_order' => 'Work order'], $labels, 'the filter options');
-        $what = array_column($recent->page($can, 10)['rows'], 'what', 'title');
-        $this->assertSame('Billing · created', $what['Invoice 2026-17'], 'the row');
-        $this->assertSame('Work order · created', $what['Order 5'], 'no phrase: the readable name');
-        \Preflow\Folio\FolioText::use($previous);
+        // On the admin surface, as an admin request renders it.
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($app->site())->admin('en'), function () use ($recent, $can): void {
+            $labels = array_column(array_filter($recent->subjects($can), static fn (array $s): bool => in_array($s['key'], ['invoice', 'work_order'], true)), 'label', 'key');
+            $this->assertSame(['invoice' => 'Billing', 'work_order' => 'Work order'], $labels, 'the filter options');
+            $what = array_column($recent->page($can, 10)['rows'], 'what', 'title');
+            $this->assertSame('Billing · created', $what['Invoice 2026-17'], 'the row');
+            $this->assertSame('Work order · created', $what['Order 5'], 'no phrase: the readable name');
+        });
     }
 
     #[RunInSeparateProcess]

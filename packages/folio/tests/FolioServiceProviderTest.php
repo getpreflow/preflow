@@ -326,16 +326,19 @@ final class FolioServiceProviderTest extends TestCase
     {
         [$app, $dir] = $this->appWith([]);
         $locale = $app->container()->get(\Preflow\Folio\Content\ContentLocale::class);
-        $request = (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/');
+        $site = new \Preflow\Core\Context\Site('http://localhost', ['en', 'de'], 'en');
 
-        $app->container()->get(\Preflow\View\Geo\RenderScopes::class)->run($request, function () use ($locale): \Psr\Http\Message\ResponseInterface {
-            $locale->set('en');
+        // Since 0.81 an internal render (GEO, the audit) is a frame of its own: what it sets ends with it.
+        $outer = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($site)->in('de'), static function () use ($locale, $site): string {
+            \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($site), static function () use ($locale): void {
+                $locale->set('en');
+            });
 
-            return new \Nyholm\Psr7\Response(200);
+            return \Preflow\Core\Context\Contexts::current()->locale;
         });
 
-        // The request never chose a content locale, and the render's choice didn't stay.
-        $this->assertNull((new \ReflectionProperty($locale, 'locale'))->getValue($locale));
+        $this->assertSame('de', $outer, 'the request\'s locale, not the render\'s choice');
+        \Preflow\Core\Context\Contexts::reset();
         $this->rrmdir($dir);
     }
 

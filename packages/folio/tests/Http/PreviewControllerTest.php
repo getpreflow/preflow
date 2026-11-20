@@ -106,7 +106,7 @@ final class PreviewControllerTest extends TestCase
             ->withAttribute('type', 'page')
             ->withParsedBody(['title' => 'Draft Title', 'body' => 'Draft body', 'status' => 'draft']);
 
-        $res = $this->controller()->preview($req);
+        $res = self::inFrame(fn () => $this->controller()->preview($req));
 
         $this->assertSame(200, $res->getStatusCode());
         $body = (string) $res->getBody();
@@ -126,7 +126,7 @@ final class PreviewControllerTest extends TestCase
             ->withAttribute('type', 'page')->withAttribute('id', 'p1')
             ->withParsedBody(['title' => 'Edited', 'body' => 'b', 'status' => 'published']);
 
-        $res = $this->controller()->preview($req);
+        $res = self::inFrame(fn () => $this->controller()->preview($req));
 
         $this->assertStringContainsString('Edited', (string) $res->getBody());      // draft shown
         $this->assertSame('Original', $this->dm->findType('page', 'p1')->get('title')); // storage unchanged
@@ -136,13 +136,19 @@ final class PreviewControllerTest extends TestCase
     {
         $req = (new Psr17Factory())->createServerRequest('POST', '/folio/ghost/preview')
             ->withAttribute('type', 'ghost')->withParsedBody(['title' => 'x']);
-        $this->assertSame(404, $this->controller()->preview($req)->getStatusCode());
+        $this->assertSame(404, self::inFrame(fn () => $this->controller()->preview($req))->getStatusCode());
     }
 
     public function test_non_frontend_type_404(): void
     {
         $req = (new Psr17Factory())->createServerRequest('POST', '/folio/note/preview')
             ->withAttribute('type', 'note')->withParsedBody(['name' => 'x']);
-        $this->assertSame(404, $this->controller()->preview($req)->getStatusCode());
+        $this->assertSame(404, self::inFrame(fn () => $this->controller()->preview($req))->getStatusCode());
+    }
+
+    /** Runs $fn in a visitor's render, as the controller runs in a request. */
+    private static function inFrame(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), $fn);
     }
 }

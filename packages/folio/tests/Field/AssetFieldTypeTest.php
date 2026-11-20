@@ -18,6 +18,8 @@ use Preflow\Media\MediaLibrary;
 
 final class AssetFieldTypeTest extends TestCase
 {
+    use \Preflow\Folio\Tests\Support\AdminTexts;
+
     private string $dir;
 
     protected function setUp(): void
@@ -70,13 +72,10 @@ final class AssetFieldTypeTest extends TestCase
         $translator = new Translator(sys_get_temp_dir() . '/folio-no-site-lang', 'de', 'en');
         $translator->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
 
-        $previous = FolioText::use($translator);
-        try {
-            $value = $type->resolve(null, null, [$this->upload('IMG_0001.HEIC', 'image/heic', $heic)], ['asset' => ['multiple' => false, 'accept' => 'image/*']], true, null);
-            $errors = $type->drainErrors();
-        } finally {
-            FolioText::use($previous);
-        }
+        [$value, $errors] = self::inAdmin($translator, fn (): array => [
+            $type->resolve(null, null, [$this->upload('IMG_0001.HEIC', 'image/heic', $heic)], ['asset' => ['multiple' => false, 'accept' => 'image/*']], true, null),
+            $type->drainErrors(),
+        ]);
 
         $this->assertSame('', $value);
         $this->assertSame(['IMG_0001.HEIC: HEIC/HEIF-Fotos können hier nicht gespeichert werden, weil Imagick auf dem Server kein HEIC unterstützt. Bitte das Foto zuerst in JPEG umwandeln.'], $errors);
