@@ -180,9 +180,6 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param (\Closure(): list<string>)|null $sentHeaders the headers PHP queued natively; headers_list() by default
      * @param LiveParts|null $live fills the live parts of what is served
      * @param bool|string|null $verify 'first', 'always' or 'off' (true: always, false: off; config verify when null)
-     * @param (\Closure(\Closure(): ResponseInterface): ResponseInterface)|null $fromBoot runs the
-     *        first of a verified page's two renders from the state the second starts from (the assets
-     *        boot registered), since 0.81; null: as it is
      * @param (\Closure(): bool)|null $applyPending applies pending invalidations, true when none is
      *        left (Refresher::applyPending()); null: a pending invalidation means no hit and no store
      * @param bool $rebuildOnly only rebuilds use the cache (the console)
@@ -212,7 +209,6 @@ final class PageCacheMiddleware implements MiddlewareInterface
         ?\Closure $sentHeaders = null,
         private readonly ?LiveParts $live = null,
         bool|string|null $verify = null,
-        private readonly ?\Closure $fromBoot = null,
         private readonly ?\Closure $applyPending = null,
         private readonly bool $rebuildOnly = false,
         private readonly ?\Closure $sessionActive = null,
@@ -459,9 +455,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
             Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->published());
             $departures = Contexts::frame()->departures();
             $handle = static fn (): ResponseInterface => $handler->handle($request);
-            $response = $this->cache->aroundRender($verify && $this->fromBoot !== null
-                ? fn (): ResponseInterface => ($this->fromBoot)($handle)
-                : $handle);
+            $response = $this->cache->aroundRender($handle);
             if (!$key->isHead()) {
                 $refusal = $this->cache->refusal();
                 $reason = $refusal !== null ? 'refused:' . $refusal : $this->refusal($request, $key, $response);

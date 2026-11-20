@@ -143,7 +143,11 @@ final class PageResponderTest extends TestCase
 
         $this->assertSame('miss', $first->getHeaderLine('X-Page-Cache'));
         $this->assertSame('hit', $second->getHeaderLine('X-Page-Cache'));
-        $this->assertSame((string) $first->getBody(), (string) $second->getBody());
+        // Each request has a nonce of its own (0.81); the stored page gets the hit's.
+        $nonce = static fn ($r): string => preg_match("/'nonce-([^']+)'/", $r->getHeaderLine('Content-Security-Policy'), $m) === 1 ? $m[1] : '';
+        $this->assertNotSame($nonce($first), $nonce($second));
+        $this->assertStringContainsString('nonce="' . $nonce($second) . '"', (string) $second->getBody());
+        $this->assertSame(str_replace($nonce($first), '{nonce}', (string) $first->getBody()), str_replace($nonce($second), '{nonce}', (string) $second->getBody()));
     }
 
     #[RunInSeparateProcess]

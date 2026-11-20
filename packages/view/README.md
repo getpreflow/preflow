@@ -98,17 +98,22 @@ later still reaches the app's engine but that sharer misses it (logged with `err
 templates so on any app engine (see the Folio README, "Template engines"). A Twig app's engine is the
 `TwigEngine` itself, as before.
 
-### A fragment answered with its page's nonce: `NonceGenerator::adopt()` (0.65)
+### A fragment answered with its page's nonce: `NonceGenerator::adoptInFrame()` (0.65, 0.81)
 
-`NonceGenerator::adopt(string $nonce): bool` makes the request use another nonce (a base64 value
-of at least 22 characters; anything else is ignored); `release()` goes back to the request's own,
-`adopted()` tells. Core calls `adopt()` with `HypermediaProtocols::pageNonce()` when a fragment
-request's client sends its page's nonce back, so the fragment's scripts and styles (component
-assets, a driver's effect scripts) carry the page's nonce and pass its Content-Security-Policy.
-The value is untrusted client input: never from a plain request or a history restore, released
-when the kernel has answered (after-response rebuilds and internal renders use the own nonce), and
-the page cache never stores such a response (`refused:page-nonce`). A driver must not print the
-nonce into the page; its client reads `script.nonce` when it sends the request.
+Each render frame has its own CSP nonce (0.81): a request's outermost frame and every render the
+app makes of itself (the SEO audit, GEO, a page cache rebuild, verify, a preview) get one of their
+own; a request a page asks for in-process shares the page's (`share()`), unless it is a fragment
+request. `NonceGenerator::adoptInFrame(string $nonce): bool` makes the rest of the current frame use
+another nonce (a base64 value of at least 22 characters; anything else is ignored), `adopted()`
+tells. Core calls it with `HypermediaProtocols::pageNonce()` when a fragment request's client sends
+its page's nonce back, so the fragment's scripts and styles (component assets, a driver's effect
+scripts) carry the page's nonce and pass its Content-Security-Policy. The value is untrusted client
+input: never from a plain request or a history restore, gone when the request's frame ends
+(after-response rebuilds and internal renders have nonces of their own), and the page cache never
+stores such a response (`refused:page-nonce`). A driver must not print the nonce into the page; its
+client reads `script.nonce` when it sends the request. Before 0.81 the nonce was one per process,
+with `adopt()` and `release()` around the request. A test that compares renders byte for byte
+fixes the nonce with `NonceGenerator::fixedForTests($nonce)` (null: random again).
 
 ## TemplateExtensionProvider
 

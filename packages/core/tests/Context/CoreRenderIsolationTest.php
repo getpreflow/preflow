@@ -104,32 +104,6 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
         ];
     }
 
-    /** What does not render under its own context yet; each path leaves when it does. */
-    protected function pending(): array
-    {
-        // render() runs each path in its own frame, with the superglobals and the session of an
-        // anonymous visitor, its own assets, its own viewer (auth reads the context since Task 9)
-        // and its own locale and texts (the translator reads the context since Task 10); the SEO
-        // page meta is still a service (Task 13).
-        $render = [
-            'poison' => 'the page meta still comes from its service (Task 13): a title set inside the outer frame reaches the render',
-        ];
-        $services = 'the assets and the page meta still come from the services, not the context';
-        // The asset registry is shared by every render of an app: head() prints the libraries only
-        // in the first one.
-        $assets = 'the asset registry is shared by every render: head() prints the libraries only in the first one';
-
-        return [
-            'audit' => $render,
-            'geo' => $render,
-            'rebuild' => $render,
-            'verify' => $render,
-            'preview' => $render,
-            'mail' => ['poison' => $services, 'interleave' => $assets, 'frozen' => $assets],
-            'pdf' => ['poison' => $services, 'interleave' => $assets, 'frozen' => $assets],
-        ];
-    }
-
     /** @return iterable<string, array{string}> the paths Application::render() takes */
     public static function renderPaths(): iterable
     {

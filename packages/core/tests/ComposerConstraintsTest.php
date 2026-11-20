@@ -9,7 +9,9 @@ use PHPUnit\Framework\TestCase;
 /**
  * Since 0.81: data 0.81.0 (incrementIn()'s accounting flag, which Throttle::hit() passes for the per-person AI limits);
  * view 0.81.0 (PageRenderer and GeoMiddleware take the app's render closure first, without AssetCollector or
- * RenderScopes; AssetCollector::markBooted() and fromBoot(), which every internal render starts from); auth 0.81.0
+ * RenderScopes; the frame-bound collectors: AssetCollector::markBooted(), which a render inside another starts from,
+ * NonceGenerator::adoptInFrame() and share(), SeoContext::siteDefaults() and startWith(), which verify's second render
+ * starts from, GeoCapture and GeoCollector::captureInto(), which GEO hands each page it renders); auth 0.81.0
  * (AuthExtensionProvider takes a session closure, so flash() and csrf_token() read the current render's session;
  * an older auth would fail with a TypeError at every boot); i18n 0.81.0 (the translator reads the locale and its
  * overrides from the context, LocaleMiddleware narrows the frame to the locale and the URL's prefix: internal renders

@@ -4,32 +4,39 @@ declare(strict_types=1);
 
 namespace Preflow\View\Seo;
 
+use Preflow\Core\Context\Contexts;
+
 /**
- * The current request's page meta. Controllers, components and Folio set or
- * merge into it while rendering; the SEO middleware reads it at the end.
+ * The current render's page meta. Controllers, components and Folio set or merge into it while
+ * rendering; the SEO middleware reads it at the end.
+ *
+ * Since 0.81 each render frame has its own (a frame slot, SeoMeta): a render starts with no page
+ * meta and no site defaults, and what it sets stays in its frame, so a render the app makes of
+ * itself (the SEO audit, GEO, a page cache rebuild) never sees the request's and leaves nothing
+ * behind. Contexts::within() keeps the frame, so it keeps the meta. Outside every render the
+ * context keeps its own.
  */
 final class SeoContext
 {
-    private ?PageMeta $meta = null;
-
-    /** @var array<string, ?PageMeta> the site's defaults per locale, when known before the middleware asks (a cached page carries them) */
-    private array $defaults = [];
-
-    /** @var ?\Closure(): ?PageMeta the site's defaults for the request being served, set by the SEO middleware */
-    private ?\Closure $siteDefaults = null;
+    /** The state outside every render. */
+    private SeoMeta $own;
 
     /** @param ?\Closure(list<string>): void $reportUnknown gets the keys a template's `seo({…})` gave that page meta doesn't have */
-    public function __construct(private readonly ?\Closure $reportUnknown = null) {}
+    public function __construct(private readonly ?\Closure $reportUnknown = null)
+    {
+        $this->own = new SeoMeta();
+    }
 
     public function set(PageMeta $meta): void
     {
-        $this->meta = $meta;
+        $this->state()->meta = $meta;
     }
 
     /** Change some properties of what's set, starting from an empty meta when nothing is. */
     public function merge(array $changes): void
     {
-        $this->meta = ($this->meta ?? new PageMeta())->with($changes);
+        $state = $this->state();
+        $state->meta = ($state->meta ?? new PageMeta())->with($changes);
     }
 
     /**
@@ -60,7 +67,7 @@ final class SeoContext
             if ($key === 'schema' || $key === 'schemas') {
                 $nodes = is_array($value) && array_is_list($value) ? $value : [$value];
                 $key = 'schemas';
-                $value = [...($changes['schemas'] ?? $this->meta?->schemas ?? []), ...array_filter($nodes, 'is_array')];
+                $value = [...($changes['schemas'] ?? $this->state()->meta?->schemas ?? []), ...array_filter($nodes, 'is_array')];
             }
             $changes[$key] = $value;
         }
@@ -73,25 +80,18 @@ final class SeoContext
 
     public function get(): ?PageMeta
     {
-        return $this->meta;
-    }
-
-    public function reset(): void
-    {
-        $this->meta = null;
-        $this->defaults = [];
-        $this->siteDefaults = null;
+        return $this->state()->meta;
     }
 
     /** Where a template's `seo_description()` finds the site's default description while the page renders. */
     public function resolveDefaultsWith(\Closure $siteDefaults): void
     {
-        $this->siteDefaults = $siteDefaults;
+        $this->state()->siteDefaults = $siteDefaults;
     }
 
     public function clearDefaultsResolver(): void
     {
-        $this->siteDefaults = null;
+        $this->state()->siteDefaults = null;
     }
 
     /**
@@ -100,12 +100,13 @@ final class SeoContext
      */
     public function mergedDescription(?PageMeta $defaults = null): string
     {
-        $own = $this->meta?->description ?? '';
+        $state = $this->state();
+        $own = $state->meta?->description ?? '';
         if ($own !== '') {
             return $own;
         }
 
-        return ($defaults ?? ($this->siteDefaults?->__invoke()))?->description ?? '';
+        return ($defaults ?? ($state->siteDefaults?->__invoke()))?->description ?? '';
     }
 
     /**
@@ -124,34 +125,53 @@ final class SeoContext
      */
     public function useDefaults(string $locale, ?PageMeta $defaults): void
     {
-        $this->defaults[$locale] = $defaults;
+        $this->state()->defaults[$locale] = $defaults;
     }
 
     public function hasDefaults(string $locale): bool
     {
-        return array_key_exists($locale, $this->defaults);
+        return array_key_exists($locale, $this->state()->defaults);
     }
 
     public function defaults(string $locale): ?PageMeta
     {
-        return $this->defaults[$locale] ?? null;
+        return $this->state()->defaults[$locale] ?? null;
     }
 
     /**
-     * Run $next with no page meta and put the current meta, defaults and defaults resolver back
-     * afterwards, so an internal render (GEO) doesn't leak into the request. The site's defaults
-     * and their resolver stay visible inside (since 0.81): a render of the rest of the pipeline
-     * only (the page cache's verify) is not given them again, and a render through the whole app
-     * gets its own from the SEO middleware anyway.
+     * The site's defaults the current render reads (those useDefaults() gave and the resolver
+     * resolveDefaultsWith() set), without its page meta: for a render of the rest of the
+     * pipeline only (the page cache's verify), which the SEO middleware does not see again.
+     * startWith() gives them to that render's frame.
+     *
+     * @since 0.81.0
      */
-    public function scoped(\Closure $next): mixed
+    public function siteDefaults(): SeoMeta
     {
-        [$saved, $savedDefaults, $savedSite] = [$this->meta, $this->defaults, $this->siteDefaults];
-        $this->meta = null;
-        try {
-            return $next();
-        } finally {
-            [$this->meta, $this->defaults, $this->siteDefaults] = [$saved, $savedDefaults, $savedSite];
+        return $this->state()->siteDefaultsOnly();
+    }
+
+    /**
+     * The current render's page meta and site defaults become those of $state (a copy), in place
+     * of what it had: the start of a render that continues another one (siteDefaults()).
+     *
+     * @since 0.81.0
+     */
+    public function startWith(SeoMeta $state): void
+    {
+        $current = $this->state();
+        $current->meta = $state->meta;
+        $current->defaults = $state->defaults;
+        $current->siteDefaults = $state->siteDefaults;
+    }
+
+    /** The current render frame's state; the own one outside every render. */
+    private function state(): SeoMeta
+    {
+        if (Contexts::depth() === 0) {
+            return $this->own;
         }
+
+        return Contexts::frame()->slot(SeoMeta::class, static fn (): SeoMeta => new SeoMeta());
     }
 }

@@ -28,35 +28,66 @@ final class SeoContextTest extends TestCase
         (new PageMeta())->with(['titel' => 'A']);
     }
 
-    public function test_scoped_restores_the_outer_meta(): void
+    /** $render in a render frame of its own (an internal render: the SEO audit, GEO). */
+    private static function frame(\Closure $render): mixed
+    {
+        $site = new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en');
+
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, $site, new \Preflow\Core\Context\SystemClock(), '/'), $render);
+    }
+
+    public function test_a_render_in_its_own_frame_starts_empty_and_leaves_the_outer_meta(): void
     {
         $context = new SeoContext();
         $context->set(new PageMeta(title: 'Outer'));
+        $context->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'Site'));
+        $context->useDefaults('en', new PageMeta(description: 'Carried'));
 
-        $inner = $context->scoped(static function () use ($context): ?string {
-            $before = $context->get();
+        $inner = self::frame(static function () use ($context): string {
+            $before = [$context->get(), $context->description(), $context->hasDefaults('en')];
             $context->merge(['title' => 'Inner']);
+            $context->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'Inner site'));
 
-            return ($before === null ? 'empty' : 'leaked') . ':' . $context->get()?->title;
+            return ($before === [null, '', false] ? 'empty' : 'leaked') . ':' . $context->get()?->title;
         });
 
         $this->assertSame('empty:Inner', $inner);
         $this->assertSame('Outer', $context->get()?->title);
+        $this->assertSame('Site', $context->description(), 'the outer resolver is untouched');
+        $this->assertTrue($context->hasDefaults('en'));
     }
 
-    public function test_scoped_restores_after_an_exception(): void
+    public function test_a_render_that_throws_leaves_the_outer_meta(): void
     {
         $context = new SeoContext();
         $context->set(new PageMeta(title: 'Outer'));
 
         try {
-            $context->scoped(static function () use ($context): never {
+            self::frame(static function () use ($context): never {
                 $context->merge(['title' => 'Inner']);
                 throw new \RuntimeException('boom');
             });
         } catch (\RuntimeException) {
         }
 
+        $this->assertSame('Outer', $context->get()?->title);
+    }
+
+    public function test_site_defaults_go_to_a_render_that_continues_the_page(): void
+    {
+        $context = new SeoContext();
+        $context->set(new PageMeta(title: 'Outer'));
+        $context->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'Site'));
+        $defaults = $context->siteDefaults();
+
+        // Verify's second render: the rest of the pipeline, which the SEO middleware does not see again.
+        $seen = self::frame(static function () use ($context, $defaults): array {
+            $context->startWith($defaults);
+
+            return [$context->get(), $context->description()];
+        });
+
+        $this->assertSame([null, 'Site'], $seen, 'the site defaults, not the page meta');
         $this->assertSame('Outer', $context->get()?->title);
     }
 
@@ -131,28 +162,13 @@ final class SeoContextTest extends TestCase
         $this->assertSame('', $context->description());
     }
 
-    public function test_reset_and_clear_drop_the_site_defaults_resolver_and_scoped_keeps_and_restores_it(): void
+    public function test_clear_drops_the_site_defaults_resolver(): void
     {
-        $site = static fn (): PageMeta => new PageMeta(description: 'Site');
         $context = new SeoContext();
-
-        $context->resolveDefaultsWith($site);
-        // Inside scoped() only the page meta starts empty; the site's defaults stay, and whatever
-        // resolver the inner render sets is replaced by the outer one afterwards.
-        $inner = $context->scoped(static function () use ($context): string {
-            $seen = $context->description();
-            $context->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'Inner'));
-
-            return $seen;
-        });
-        $this->assertSame('Site', $inner);
+        $context->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'Site'));
         $this->assertSame('Site', $context->description());
 
         $context->clearDefaultsResolver();
-        $this->assertSame('', $context->description());
-
-        $context->resolveDefaultsWith($site);
-        $context->reset();
         $this->assertSame('', $context->description());
     }
 }

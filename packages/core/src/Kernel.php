@@ -48,6 +48,12 @@ final class Kernel
         private readonly ?\Preflow\Core\Http\CookieQueue $cookies = null,
         /** a cross-origin API call must be able to read its error (a 401, a 422) */
         private readonly ?\Preflow\Core\Http\Api\CorsMiddleware $cors = null,
+        /**
+         * since 0.81.0: the headers the current render frame's page or components added
+         * (ResponseHeaderHints::ofCurrentFrame()), put on the route's response inside the pipeline,
+         * so the page cache and every other middleware see them, and on the error page
+         */
+        private readonly ?\Preflow\Core\Http\ResponseHeaderHints $hints = null,
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
@@ -56,47 +62,58 @@ final class Kernel
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         try {
-            return $this->pipeline->process($request, function (ServerRequestInterface $req): ResponseInterface {
-                // Component requests get the same middleware (headers, session, auth) as pages.
-                if ($this->componentEndpoint !== null && str_starts_with($req->getUri()->getPath(), '/--component')) {
-                    return ($this->componentEndpoint)($req);
-                }
-                // Middleware that already matched (CSRF) leaves the route on the request.
-                $route = $req->getAttribute(Route::class);
-                if (!$route instanceof Route) {
-                    $route = $this->router->match($req);
-                }
-                // Route middleware (e.g. permission checks) can read the matched handler and parameters.
-                $req = $req->withAttribute(Route::class, $route);
-                $this->collector?->setRoute($route->mode->value, $route->handler, $route->parameters);
-
-                $dispatch = fn(ServerRequestInterface $r): ResponseInterface => match ($route->mode) {
-                    RouteMode::Component => ($this->componentRenderer)($route, $r),
-                    RouteMode::Action => ($this->actionDispatcher)($route, $r),
-                };
-
-                // Execute route-level middleware if any
-                if ($route->middleware !== []) {
-                    $routePipeline = new MiddlewarePipeline();
-                    foreach ($route->middleware as $mw) {
-                        $routePipeline->pipe($this->routeMiddleware($mw));
-                    }
-                    return $routePipeline->process($req, $dispatch);
-                }
-
-                return $dispatch($req);
-            });
+            return $this->pipeline->process($request, fn (ServerRequestInterface $req): ResponseInterface => $this->withHints($this->dispatch($req)));
         } catch (\Throwable $e) {
             // The render answers with the error page; who asked for it (Application::render()) still learns why.
             if (\Preflow\Core\Context\Contexts::depth() > 0) {
                 \Preflow\Core\Context\Contexts::frame()->recordFailure($e);
             }
-            // Error responses bypass the pipeline, so add the queued cookies (this frame's), CORS and the security headers here.
+            // Error responses bypass the pipeline, so add the queued cookies (this frame's), the headers it added, CORS and the security headers here.
             $response = $this->errorHandler->handleException($e, $request);
             $response = $this->cookies?->apply($response) ?? $response;
+            $response = $this->withHints($response);
             $response = $this->cors?->decorate($request, $response) ?? $response;
             return $this->securityHeaders?->decorate($request, $response) ?? $response;
         }
+    }
+
+    /** The route's response for $req, after the pipeline. */
+    private function dispatch(ServerRequestInterface $req): ResponseInterface
+    {
+        // Component requests get the same middleware (headers, session, auth) as pages.
+        if ($this->componentEndpoint !== null && str_starts_with($req->getUri()->getPath(), '/--component')) {
+            return ($this->componentEndpoint)($req);
+        }
+        // Middleware that already matched (CSRF) leaves the route on the request.
+        $route = $req->getAttribute(Route::class);
+        if (!$route instanceof Route) {
+            $route = $this->router->match($req);
+        }
+        // Route middleware (e.g. permission checks) can read the matched handler and parameters.
+        $req = $req->withAttribute(Route::class, $route);
+        $this->collector?->setRoute($route->mode->value, $route->handler, $route->parameters);
+
+        $dispatch = fn(ServerRequestInterface $r): ResponseInterface => match ($route->mode) {
+            RouteMode::Component => ($this->componentRenderer)($route, $r),
+            RouteMode::Action => ($this->actionDispatcher)($route, $r),
+        };
+
+        // Execute route-level middleware if any
+        if ($route->middleware !== []) {
+            $routePipeline = new MiddlewarePipeline();
+            foreach ($route->middleware as $mw) {
+                $routePipeline->pipe($this->routeMiddleware($mw));
+            }
+            return $routePipeline->process($req, $dispatch);
+        }
+
+        return $dispatch($req);
+    }
+
+    /** $response with the headers the current frame's page or components added (ResponseHeaderHints). */
+    private function withHints(ResponseInterface $response): ResponseInterface
+    {
+        return $this->hints?->applyTo($response) ?? $response;
     }
 
     /** A class name: the container's instance, else autowired. With arguments: a new instance, the arguments winning over autowiring. */

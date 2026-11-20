@@ -37,7 +37,6 @@ return [
     ],
     'core/src/Application.php' => [
         'now: static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
-        '$this->container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
         'static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
     ],
     'core/src/Boot/ManifestBuilder.php' => [

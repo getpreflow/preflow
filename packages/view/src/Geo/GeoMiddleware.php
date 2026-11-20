@@ -42,10 +42,11 @@ final class GeoMiddleware implements MiddlewareInterface
 
     /**
      * @param ?string       $appUrl the configured app.url; its origin makes links absolute (else the request's)
-     * @param \Closure(ServerRequestInterface): ResponseInterface $render renders a page's clean request as
-     *                       an internal render of its own (the app: Application::render() in a Geo
-     *                       context, never stored; since 0.81). Required: rendered down the visitor's
-     *                       own pipeline instead, the page would see the visitor's frame
+     * @param \Closure(ServerRequestInterface, GeoCapture): ResponseInterface $render renders a page's clean
+     *                       request as an internal render of its own (the app: Application::render() in a Geo
+     *                       context, never stored; since 0.81) whose geo blocks go into the capture
+     *                       (GeoCollector::captureInto() in that render's frame). Required: rendered down
+     *                       the visitor's own pipeline instead, the page would see the visitor's frame
      * @param ?\Closure(\Throwable): void $report gets render failures that aren't HTTP answers (404, 403…)
      * @param bool           $debug  rethrow those failures, so the error page shows them
      * @param ?GeoEntries    $entries the pages llms.txt lists (none: no llms.txt)
@@ -109,8 +110,8 @@ final class GeoMiddleware implements MiddlewareInterface
     /**
      * The Markdown of one page path, or null when it has none (not 200 HTML,
      * noindex, an HTTP error). Rendered anonymously as an internal render of its own
-     * (with its own assets; geo blocks captured per render), so several renders in one
-     * request stay independent. $handler is not used (kept for callers; the app renders the page).
+     * (with its own assets; its geo blocks captured into a GeoCapture of its own), so several
+     * renders in one request stay independent. $handler is not used (kept for callers; the app renders the page).
      * Other failures are reported and give null; in debug mode they are rethrown.
      *
      * @param bool $cached false (a page's own Markdown view): the page cache always renders it, so
@@ -122,13 +123,12 @@ final class GeoMiddleware implements MiddlewareInterface
     {
         $origin = PageSignals::origin($this->appUrl, $request);
         $sub = $this->subRequest($request, $path, $cached);
+        $capture = new GeoCapture();
 
-        $this->collector->reset();
-        $this->collector->capture(true);
         try {
-            $response = ($this->render)($sub);
+            $response = ($this->render)($sub, $capture);
 
-            return $this->markdownOf($response, $path, $origin);
+            return $this->markdownOf($response, $path, $origin, $capture);
         } catch (\Throwable $e) {
             if ($e instanceof HttpException && $e->statusCode < 500) {
                 return null; // not found, forbidden…: the page has no public view
@@ -139,9 +139,6 @@ final class GeoMiddleware implements MiddlewareInterface
             $this->report?->__invoke($e);
 
             return null;
-        } finally {
-            $this->collector->capture(false);
-            $this->collector->reset();
         }
     }
 
@@ -353,7 +350,7 @@ final class GeoMiddleware implements MiddlewareInterface
         return $cached ? $sub->withAttribute(PageCacheMiddleware::SERVE_STORED, true) : $sub;
     }
 
-    private function markdownOf(ResponseInterface $response, string $path, string $origin): ?string
+    private function markdownOf(ResponseInterface $response, string $path, string $origin, GeoCapture $capture): ?string
     {
         if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || PageSignals::noindexHeader($response)) {
             return null;
@@ -373,7 +370,7 @@ final class GeoMiddleware implements MiddlewareInterface
         // Blocks a page or layout template declares outside components lead the converted page
         // (a page that wants only its block marks its own HTML data-geo="skip").
         $parts = array_filter(
-            [...$this->collector->pageBlocks(), $this->converter->convert($html, $origin . $path)],
+            [...$capture->pageBlocks(), $this->converter->convert($html, $origin . $path, $capture)],
             static fn (string $part): bool => $part !== '',
         );
         $body = implode("\n\n", $parts);

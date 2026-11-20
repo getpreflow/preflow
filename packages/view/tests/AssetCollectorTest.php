@@ -33,70 +33,88 @@ final class AssetCollectorTest extends TestCase
         $this->assertSame(2, substr_count($head, '<meta name="x">'));
     }
 
-    public function test_isolate_renders_with_empty_registries_and_restores_the_request_state(): void
+    /** A render inside the request (the SEO audit, a rebuild): a frame of its own. */
+    private static function inner(\Closure $render): mixed
     {
-        $collector = $this->collector();
-        $collector->addCss('.outer { color: blue; }');
-        $collector->addHeadTag('<meta name="outer">', 'outer');
-        $collector->renderHead();
+        $site = new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en');
 
-        $inner = $collector->isolate(function () use ($collector): string {
-            $collector->addCss('.inner { color: red; }');
-
-            return $collector->renderHead();
-        });
-
-        $this->assertStringContainsString('.inner', $inner);
-        $this->assertStringNotContainsString('.outer', $inner);
-        $this->assertStringNotContainsString('name="outer"', $inner);
-        $this->assertStringContainsString('.outer', $collector->renderCss());
-        $this->assertStringNotContainsString('.inner', $collector->renderCss());
-        $this->assertSame('', $collector->renderHead(), 'what was printed before stays printed');
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, $site, new \Preflow\Core\Context\SystemClock(), '/'), $render);
     }
 
-    public function test_from_boot_starts_from_what_boot_registered_with_nothing_printed(): void
+    /** The request: the outermost frame. */
+    private static function request(\Closure $render): mixed
+    {
+        $site = new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en');
+
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', 'https://example.com/'), $site, new \Preflow\Core\Context\SystemClock()), $render);
+    }
+
+    public function test_a_render_in_its_own_frame_starts_from_boot_and_leaves_the_request_state(): void
     {
         $collector = $this->collector();
         $collector->addJs('window.booted = 1;', JsPosition::Head, 'booted');
         $collector->markBooted();
-        // The request around it: its own CSS, and the head printed already.
-        $collector->addCss('.fragment { color: red; }', 'fragment');
-        $collector->renderHead();
 
-        $inner = $collector->fromBoot(function () use ($collector): string {
-            $collector->addCss('.page { color: green; }');
+        self::request(function () use ($collector): void {
+            // The request: its own CSS, and the head printed already.
+            $collector->addCss('.fragment { color: red; }', 'fragment');
+            $collector->addHeadTag('<meta name="outer">', 'outer');
+            $collector->renderHead();
 
-            return $collector->renderHead();
+            $inner = self::inner(function () use ($collector): string {
+                $collector->addCss('.page { color: green; }');
+
+                return $collector->renderHead();
+            });
+
+            $this->assertStringContainsString('window.booted', $inner, 'what boot registered is printed again');
+            $this->assertStringContainsString('.page', $inner);
+            $this->assertStringNotContainsString('.fragment', $inner, 'nothing of the request around it');
+            $this->assertStringNotContainsString('name="outer"', $inner);
+            $this->assertStringContainsString('.fragment', $collector->renderCss(), 'the request\'s own assets are as they were');
+            $this->assertStringNotContainsString('.page', $collector->renderCss());
+            $this->assertSame('', $collector->renderHead(), 'what the request printed stays printed');
         });
 
-        $this->assertStringContainsString('window.booted', $inner, 'what boot registered is printed again');
-        $this->assertStringContainsString('.page', $inner);
-        $this->assertStringNotContainsString('.fragment', $inner, 'nothing of the request around it');
-        $this->assertStringContainsString('.fragment', $collector->renderCss(), 'the request\'s own assets are back');
-        $this->assertStringNotContainsString('.page', $collector->renderCss());
-        $this->assertSame('', $collector->renderHead(), 'what the request printed stays printed');
-
-        // Without markBooted() (no app booted it), a render starts empty.
+        // Without markBooted() (no app booted it), a render starts from what is registered outside every render.
         $unbooted = $this->collector();
         $unbooted->addCss('.later { color: red; }');
-        $this->assertSame('', $unbooted->fromBoot(static fn (): string => $unbooted->renderCss()));
+        $this->assertStringContainsString('.later', self::inner(static fn (): string => $unbooted->renderCss()));
     }
 
-    public function test_isolate_restores_after_an_exception(): void
+    public function test_a_render_that_throws_leaves_the_request_state_as_it_was(): void
     {
         $collector = $this->collector();
-        $collector->addCss('.outer { color: blue; }');
 
-        try {
-            $collector->isolate(function () use ($collector): void {
-                $collector->addCss('.inner { color: red; }');
-                throw new \RuntimeException('render failed');
-            });
-        } catch (\RuntimeException) {
-        }
+        self::request(function () use ($collector): void {
+            $collector->addCss('.outer { color: blue; }');
+            try {
+                self::inner(function () use ($collector): void {
+                    $collector->addCss('.inner { color: red; }');
+                    throw new \RuntimeException('render failed');
+                });
+            } catch (\RuntimeException) {
+            }
 
-        $this->assertStringContainsString('.outer', $collector->renderCss());
-        $this->assertStringNotContainsString('.inner', $collector->renderCss());
+            $this->assertStringContainsString('.outer', $collector->renderCss());
+            $this->assertStringNotContainsString('.inner', $collector->renderCss());
+        });
+    }
+
+    public function test_a_forked_collector_keeps_its_own_registries_in_every_frame(): void
+    {
+        $collector = $this->collector();
+        $fork = $collector->fork();
+
+        self::request(function () use ($collector, $fork): void {
+            $collector->addCss('.page { color: blue; }');
+            $fork->addCss('.preview { color: red; }');
+
+            $this->assertStringNotContainsString('.preview', $collector->renderCss());
+            $this->assertStringNotContainsString('.page', $fork->renderCss());
+        });
+        $this->assertStringContainsString('.preview', $fork->renderCss(), 'a fork is not a view of the frame');
+        $this->assertSame($collector->getNonce(), $fork->getNonce(), 'the same nonce generator');
     }
 
     public function test_add_css_and_render(): void

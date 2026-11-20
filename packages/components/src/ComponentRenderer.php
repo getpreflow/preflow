@@ -308,24 +308,14 @@ final class ComponentRenderer
     }
 
     /**
-     * The component's inner HTML. While GEO captures, the render runs in its own
-     * frame; a component that declared a geo block is replaced by its placeholder.
+     * The component's inner HTML. While GEO captures, the render runs in a block of its
+     * own; a component that declared a geo block is replaced by its placeholder.
      */
     private function renderInner(Component $component): string
     {
-        $geo = $this->geoCollector;
-        if ($geo === null || !$geo->capturing()) {
-            return $this->renderTemplate($component);
-        }
-
-        $geo->enter();
-        try {
-            $html = $this->renderTemplate($component);
-        } finally {
-            $block = $geo->leave();
-        }
-
-        return $block === null ? $html : $geo->placeholder($block);
+        return $this->geoCollector === null
+            ? $this->renderTemplate($component)
+            : $this->geoCollector->component(fn (): string => $this->renderTemplate($component));
     }
 
     private function renderTemplate(Component $component): string

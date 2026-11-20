@@ -24,6 +24,7 @@ use Preflow\I18n\Translator;
 use Preflow\Testing\ContextFactory;
 use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
+use Preflow\View\NonceGenerator;
 use Preflow\View\Seo\PageMeta;
 use Preflow\View\Seo\SeoContext;
 
@@ -102,8 +103,10 @@ use Preflow\View\Seo\SeoContext;
  *   and captured items, and B's differ from A's (so the page must show something of the locale or
  *   the viewer);
  * - frozen: two renders of the same context frozen with at(), inside an outer frame at another
- *   time, give the same output; with clockFormat(), the body holds the frozen time. A page that
- *   prints a nonce needs the nonce made deterministic for this test.
+ *   time, give the same output; with clockFormat(), the body holds the frozen time.
+ *
+ * Every render has a CSP nonce of its own; during these tests each one is NONCE
+ * (NonceGenerator::fixedForTests()), so pages that print one compare byte for byte.
  *
  * Superglobals are restored after each test.
  *
@@ -179,10 +182,18 @@ abstract class RenderIsolationContract extends TestCase
     /** @var array{cookie: array<mixed>, server: array<mixed>, session: array<mixed>|null} */
     private array $globals;
 
+    /** The CSP nonce every render gets during these tests (NonceGenerator::fixedForTests()). */
+    public const string NONCE = 'aXNvbGF0aW9uLWNvbnRyYWN0LW5vbmNl';
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->globals = ['cookie' => $_COOKIE, 'server' => $_SERVER, 'session' => isset($_SESSION) && is_array($_SESSION) ? $_SESSION : null];
+        // Each render has a nonce of its own (0.81): fixed here, so two renders of the same
+        // context compare byte for byte.
+        if (class_exists(NonceGenerator::class)) {
+            NonceGenerator::fixedForTests(self::NONCE);
+        }
     }
 
     protected function tearDown(): void
@@ -194,6 +205,9 @@ abstract class RenderIsolationContract extends TestCase
             $failure = $e;
         }
         $this->restoreGlobals();
+        if (class_exists(NonceGenerator::class)) {
+            NonceGenerator::fixedForTests(null);
+        }
         parent::tearDown();
         if ($failure !== null) {
             throw $failure;

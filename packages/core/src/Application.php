@@ -374,6 +374,8 @@ final class Application
         $this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);
         $this->container->bind(\Preflow\Core\Context\Outbox::class, static fn (): \Preflow\Core\Context\Outbox => Contexts::frame()->outbox());
         $this->container->instance(\Preflow\Core\Http\CookieQueue::class, \Preflow\Core\Http\CookieQueue::ofCurrentFrame());
+        // Headers a page or component adds (Cache-Control: no-store…), per render frame.
+        $this->container->instance(\Preflow\Core\Http\ResponseHeaderHints::class, \Preflow\Core\Http\ResponseHeaderHints::ofCurrentFrame());
 
         // Wall-clock values (dates in content, scheduled publishing) use the app's
         // zone, in web requests and the CLI alike. Unknown names keep php.ini's zone.
@@ -528,6 +530,7 @@ final class Application
                 : null,
             cookies: $this->container->get(\Preflow\Core\Http\CookieQueue::class),
             cors: $cors,
+            hints: $this->container->get(\Preflow\Core\Http\ResponseHeaderHints::class),
         );
     }
 
@@ -661,7 +664,11 @@ final class Application
         $handOver = [];
         $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request, $ctx, $handle): ResponseInterface {
             $frame = Contexts::frame();
-            $response = $ctx->purpose->isInternal() ? $this->internalScope($ctx, $request, $handle) : $handle();
+            // Scopes a package added with the deprecated RenderScopes::add() run around an internal
+            // render, inside its frame.
+            $response = $ctx->purpose->isInternal() && $this->container->bound(\Preflow\View\Geo\RenderScopes::class)
+                ? $this->container->get(\Preflow\View\Geo\RenderScopes::class)->run($request, $handle)
+                : $handle();
             $left = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue())->pull();
             if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Capture) {
                 // Only a capturing frame holds cookie items, and it knows their channel; they never move on.
@@ -702,8 +709,15 @@ final class Application
     {
         $ctx = $this->nestedContext($request, Contexts::current());
         $outer = Contexts::frame();
+        // What it renders goes into the page around it, so it uses that page's CSP nonce; a
+        // fragment request answers a page of its own (its own nonce, or the one it sent back).
+        $sharesNonce = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $ctx->clock)->purpose !== Purpose::Fragment
+            && class_exists(\Preflow\View\NonceGenerator::class) && $this->container->bound(\Preflow\View\NonceGenerator::class);
 
-        return Contexts::run($ctx, function () use ($request, $ctx, $outer): ResponseInterface {
+        return Contexts::run($ctx, function () use ($request, $ctx, $outer, $sharesNonce): ResponseInterface {
+            if ($sharesNonce) {
+                $this->container->get(\Preflow\View\NonceGenerator::class)->share($outer);
+            }
             if ($this->container->has(\Preflow\Core\PageCache\PageCache::class)) {
                 // Part of the page around it, as before 0.81: what it reads, the expiries it asks for
                 // and what it refuses count for that page (the page cache middleware, if it stores
@@ -783,20 +797,15 @@ final class Application
         $internal = \Preflow\Core\Http\InternalRender::is($request);
 
         // A fragment request whose client sends its page's nonce back is answered with that nonce
-        // (so what it puts into the page passes the page's CSP), for this request only.
-        $adopted = !$internal && $this->adoptPageNonce($request);
+        // (so what it puts into the page passes the page's CSP), in this request's frame only.
+        if (!$internal) {
+            $this->adoptPageNonce($request);
+        }
         // The hypermedia clients ride along, for middleware an app builds itself (AuthMiddleware).
         $request = $this->withHypermedia($request);
 
         try {
-            try {
-                $response = $this->kernel?->handle($request) ?? throw new \RuntimeException('Application not booted. Call boot() first.');
-            } finally {
-                if ($adopted) {
-                    // Before any after-response work: rebuilds and internal renders get the own nonce.
-                    $this->container->get(\Preflow\View\NonceGenerator::class)->release();
-                }
-            }
+            $response = $this->kernel?->handle($request) ?? throw new \RuntimeException('Application not booted. Call boot() first.');
         } catch (\Throwable $e) {
             // What the request wrote may be written (part of it, or by another connection).
             $this->pageChanges?->flush();
@@ -946,18 +955,20 @@ final class Application
     private bool $rebuildsScheduled = false;
 
     /**
-     * The page nonce a fragment request sent back, adopted (untrusted input: a fragment request
-     * only, a base64 value of 22+ characters; the page cache refuses to store the response,
-     * see bootViewLayer()). True when adopted: handle() releases it after the kernel ran.
+     * The page nonce a fragment request sent back, adopted for the rest of the request's frame
+     * (untrusted input: a fragment request only, a base64 value of 22+ characters; the page cache
+     * refuses to store the response, see bootViewLayer()). The frame's end is where it ends:
+     * after-response work and internal renders have frames and nonces of their own.
      */
-    private function adoptPageNonce(ServerRequestInterface $request): bool
+    private function adoptPageNonce(ServerRequestInterface $request): void
     {
         if (!class_exists(\Preflow\View\NonceGenerator::class) || !$this->container->bound(\Preflow\View\NonceGenerator::class)) {
-            return false;
+            return;
         }
         $nonce = $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)->pageNonce($request);
-
-        return $nonce !== null && $this->container->get(\Preflow\View\NonceGenerator::class)->adopt($nonce);
+        if ($nonce !== null) {
+            $this->container->get(\Preflow\View\NonceGenerator::class)->adoptInFrame($nonce);
+        }
     }
 
     /**
@@ -1562,6 +1573,18 @@ final class Application
             callable: fn () => $assets->getNonce(),
             isSafe: true,
         ));
+        // A header the page's response carries: {{ response_header('Cache-Control', 'no-store') }}
+        // (the page cache never stores a no-store page). Prints nothing.
+        $hints = $this->container->get(\Preflow\Core\Http\ResponseHeaderHints::class);
+        $engine->addFunction(new \Preflow\View\TemplateFunctionDefinition(
+            name: 'response_header',
+            callable: static function (string $name, string $value) use ($hints): string {
+                $hints->set($name, $value);
+
+                return '';
+            },
+            isSafe: true,
+        ));
     }
 
     /**
@@ -1943,18 +1966,13 @@ final class Application
             log: $logger,
             live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
             verify: $config->verify,
-            // A verified page's first render starts from the assets boot registered, as its second
-            // (an internal render) does, so both print the same (until assets live in the frame).
-            fromBoot: static fn (\Closure $render): ResponseInterface => $container->bound(\Preflow\View\AssetCollector::class)
-                ? $container->get(\Preflow\View\AssetCollector::class)->fromBoot($render)
-                : $render(),
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
             rebuildOnly: $this->runningInConsole(),
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
-            // Verify's second render: in a frame of its own as render() opens one (an internal
-            // render's scope: its own page meta, the assets boot registered, nobody signed in, its
-            // queued mail dropped), under the Verify context the middleware gives.
-            render: fn (RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult => $this->renderWith($ctx, $request, $handle),
+            // Verify's second render: in a frame of its own as render() opens one (its own page
+            // meta and nonce, the assets boot registered, nobody signed in, its queued mail
+            // dropped), under the Verify context the middleware gives.
+            render: fn (RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult => $this->renderWith($ctx, $request, $this->withSiteDefaults($handle)),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);
@@ -2878,7 +2896,7 @@ final class Application
      * tags and JSON-LD on HTML pages, ETag and 304 for pages that are the
      * same for everyone. Prepended to the pipeline just before GEO, so GEO
      * stays outermost and its internal renders pass through SEO too; each
-     * render gets its own SeoContext.
+     * render keeps its page meta in its own frame.
      */
     private function bootSeo(): void
     {
@@ -2891,10 +2909,8 @@ final class Application
             return;
         }
 
+        // Each render keeps its page meta in its own frame (SeoContext), internal renders too.
         $context = $this->container->get(\Preflow\View\Seo\SeoContext::class);
-        $this->container->get(\Preflow\View\Geo\RenderScopes::class)->add(
-            static fn (ServerRequestInterface $sub, \Closure $next): ResponseInterface => $context->scoped($next),
-        );
 
         [$locales, $defaultLocale] = $this->siteLocales();
         $appUrl = $this->config->get('app.url');
@@ -3018,10 +3034,15 @@ final class Application
             $geo,
             $converter,
             is_string($appUrl) ? $appUrl : null,
-            // Each page GEO describes is an internal Geo render of its own (never stored); a page
-            // that fails is GEO's to report (logged, or the error page in debug mode), as before.
-            function (ServerRequestInterface $sub): ResponseInterface {
-                $result = $this->render($this->internalContext(Purpose::Geo, $sub), $sub);
+            // Each page GEO describes is an internal Geo render of its own (never stored) that
+            // records its geo blocks into the capture GEO hands it; a page that fails is GEO's to
+            // report (logged, or the error page in debug mode), as before.
+            function (ServerRequestInterface $sub, \Preflow\View\Geo\GeoCapture $capture) use ($geo): ResponseInterface {
+                $result = $this->renderWith($this->internalContext(Purpose::Geo, $sub), $sub, function () use ($geo, $capture, $sub): ResponseInterface {
+                    $geo->captureInto($capture);
+
+                    return $this->handleInFrame($sub);
+                });
 
                 return $result->failure !== null ? throw $result->failure : $result->response;
             },
@@ -3160,33 +3181,27 @@ final class Application
     }
 
     /**
-     * Around an internal render (audit, GEO, rebuild, verify, preview), inside its frame: the
-     * render scopes packages added (RenderScopes, e.g. a content locale), and what services that
-     * do not read the context yet still need set aside and put back by hand, so nothing passes
-     * between the request and its renders: the asset registries (what boot registered, nothing
-     * printed, for the render; the request's own back afterwards). The context itself (frame,
-     * cookies, outbox, superglobals, session, the signed-in users: auth reads the frame's viewer;
-     * the locale and the texts: the translator reads the frame's context; notify's mail: it
-     * queues in the frame's outbox) needs none of this; each service leaves this list when it
-     * reads the context.
+     * $handle with the site's SEO defaults of the current render (SeoContext::siteDefaults())
+     * given to the frame it runs in: verify's second render runs the rest of the pipeline only,
+     * which the SEO middleware (outside the page cache) does not see again, so a page that
+     * prints the site's default description renders the same twice. Its page meta starts empty.
      *
      * @param \Closure(): ResponseInterface $handle
+     * @return \Closure(): ResponseInterface
      */
-    private function internalScope(RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): ResponseInterface
+    private function withSiteDefaults(\Closure $handle): \Closure
     {
-        $container = $this->container;
-        $render = $handle;
-        if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
-            $packageScopes = $container->get(\Preflow\View\Geo\RenderScopes::class);
-            $render = static fn (): ResponseInterface => $packageScopes->run($request, $handle);
+        if (!class_exists(\Preflow\View\Seo\SeoContext::class) || !$this->container->bound(\Preflow\View\Seo\SeoContext::class)) {
+            return $handle;
         }
-        if ($container->bound(\Preflow\View\AssetCollector::class)) {
-            $assets = $container->get(\Preflow\View\AssetCollector::class);
-            $scoped = $render;
-            $render = static fn (): ResponseInterface => $assets->fromBoot($scoped);
-        }
+        $seo = $this->container->get(\Preflow\View\Seo\SeoContext::class);
+        $defaults = $seo->siteDefaults();
 
-        return $render();
+        return static function () use ($seo, $defaults, $handle): ResponseInterface {
+            $seo->startWith($defaults);
+
+            return $handle();
+        };
     }
 
     /**

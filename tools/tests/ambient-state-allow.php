@@ -318,6 +318,11 @@ return [
             'private static ?string $minifierVersion = null;' => 'the installed minifier\'s version, read once',
         ],
     ],
+    'view/src/NonceGenerator.php' => [
+        'static-state' => [
+            'private static ?string $fixed = null;' => 'the tests\' nonce seam (fixedForTests()); null in production, where every render frame makes its own nonce',
+        ],
+    ],
     'view/src/Qr/QrCode.php' => [
         'static-state' => [
             'private static ?string $libraryClass = null;' => 'which QR library is installed, checked once',

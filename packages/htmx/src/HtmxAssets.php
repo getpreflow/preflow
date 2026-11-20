@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
 
@@ -14,12 +15,17 @@ use Preflow\View\JsPosition;
  * are accepted by the page's CSP.
  *
  * Modes (config/htmx.php 'include'): always | on-demand | never.
+ *
+ * Since 0.81 whether a page needs htmx is kept per render frame (a frame slot), like the assets
+ * themselves: a render asks for htmx in its own frame. With 'always', every frame starts out
+ * needing it (boot registered it).
  */
 final class HtmxAssets
 {
     private const MODES = ['always', 'on-demand', 'never'];
 
-    private bool $required = false;
+    /** Whether htmx is needed outside every render. */
+    private HtmxRequirement $own;
 
     /** @var array<string, string> the htmx build by path, read once per process */
     private static array $scripts = [];
@@ -36,6 +42,7 @@ final class HtmxAssets
                 implode(', ', self::MODES),
             ));
         }
+        $this->own = new HtmxRequirement();
     }
 
     public function mode(): string
@@ -54,12 +61,12 @@ final class HtmxAssets
         if ($this->mode === 'never') {
             return;
         }
-        // Added every time, keyed: the collector keeps one of each per page, and a page rendered
-        // from what boot registered (AssetCollector::restoring(): verify's second render, a
-        // page cache rebuild) gets htmx again.
-        $this->required = true;
+        // Added every time, keyed: the collector keeps one of each per render frame, so every
+        // render that needs htmx (verify's second render, a page cache rebuild) gets it.
+        $this->requirement()->required = true;
 
-        $nonce = $this->assets->getNonce();
+        // The nonce of the render that prints the tag (boot registers it once for 'always').
+        $nonce = AssetCollector::NONCE;
         $config = json_encode(
             ['inlineScriptNonce' => $nonce, 'inlineStyleNonce' => $nonce],
             JSON_HEX_APOS | JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
@@ -101,6 +108,16 @@ JS;
 
     public function isRequired(): bool
     {
-        return $this->required;
+        return $this->requirement()->required;
+    }
+
+    /** The current render frame's requirement; the own one outside every render. */
+    private function requirement(): HtmxRequirement
+    {
+        if (Contexts::depth() === 0) {
+            return $this->own;
+        }
+
+        return Contexts::frame()->slot(HtmxRequirement::class, fn (): HtmxRequirement => new HtmxRequirement($this->mode === 'always'));
     }
 }

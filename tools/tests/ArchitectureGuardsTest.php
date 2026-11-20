@@ -62,7 +62,7 @@ use PHPUnit\Framework\TestCase;
  *    InternalRender::mark, the engine global 'interface_locale', RenderScopes::add, and isolate()
  *    or isolated() on LiveContent, the PageCache and the CookieQueue. Those last are recognised by
  *    their receiver (the class, or a variable or property named after it: $live, $pageCache,
- *    ->cache, $cookieQueue), since AssetCollector::isolate() and the memos' isolate() stay;
+ *    ->cache, $cookieQueue), since the memos' isolate() stays;
  *  - static-state: a static property or static variable (state shared by every render);
  *  - context-property: a property or promoted parameter typed RenderContext (services read
  *    Contexts::current(), they don't keep a copy);

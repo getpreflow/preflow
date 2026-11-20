@@ -4,36 +4,39 @@ declare(strict_types=1);
 
 namespace Preflow\View;
 
+use Preflow\Core\Context\Contexts;
+
+/**
+ * The CSS, JS and head tags a render collects, printed into its page with the CSP nonce.
+ *
+ * Since 0.81 each render frame has its own registries (a frame slot, AssetRegistry): inside a
+ * render every call works on the current frame's, outside every render on the collector's own.
+ * A frame starts from what is registered outside every render (the outermost frame of a
+ * request) or from what boot registered (markBooted(); a render inside another one: the SEO
+ * audit, GEO, a page cache rebuild, verify, a request a page asks for), with nothing printed
+ * and no CSS scope; what it collects stays in it. Contexts::within() keeps the frame, so it
+ * keeps its assets too. A forked collector (fork()) keeps registries of its own everywhere.
+ */
 final class AssetCollector
 {
-    /** @var array<string, string> hash => css */
-    private array $cssRegistry = [];
+    /** Stands for the render's nonce in a head tag (addHeadTag()); printed as the nonce in use. @since 0.81.0 */
+    public const string NONCE = '{preflow:csp-nonce}';
 
-    /** @var array<string, string> hash => js */
-    private array $jsHead = [];
+    /** The registries outside every render, and everywhere for a forked collector. */
+    private AssetRegistry $own;
 
-    /** @var array<string, string> hash => js */
-    private array $jsBody = [];
+    /** What boot registered (markBooted()); null: nothing was marked. */
+    private ?AssetRegistry $booted = null;
 
-    /** @var array<string, string> hash => js */
-    private array $jsInline = [];
-
-    /** @var string[] Extra tags to include in <head> (e.g., HTMX script tag) */
-    private array $headTags = [];
-
-    /** @var string|null Active CSS scope class — when set, addCss() wraps content in this selector */
-    private ?string $cssScope = null;
-
-    /** @var array<string, array<string|int, true>> keys already printed by renderHead()/renderAssets(), per registry */
-    private array $printed = self::NOTHING_PRINTED;
-
-    private const NOTHING_PRINTED = ['css' => [], 'jsHead' => [], 'jsBody' => [], 'jsInline' => [], 'headTags' => []];
+    private bool $frameBound = true;
 
     public function __construct(
         private readonly NonceGenerator $nonceGenerator,
         private readonly bool $isProd = false,
         private readonly ?string $cachePath = null,
-    ) {}
+    ) {
+        $this->own = new AssetRegistry();
+    }
 
     /**
      * Set the CSS scope for subsequent addCss() calls.
@@ -41,7 +44,7 @@ final class AssetCollector
      */
     public function setCssScope(?string $scope): void
     {
-        $this->cssScope = $scope;
+        $this->registry()->cssScope = $scope;
     }
 
     /**
@@ -49,7 +52,7 @@ final class AssetCollector
      */
     public function getCssScope(): ?string
     {
-        return $this->cssScope;
+        return $this->registry()->cssScope;
     }
 
     /**
@@ -58,11 +61,12 @@ final class AssetCollector
      */
     public function addHeadTag(string $tag, ?string $key = null): void
     {
+        $registry = $this->registry();
         if ($key === null) {
-            $this->headTags[] = $tag;
+            $registry->headTags[] = $tag;
             return;
         }
-        $this->headTags[$key] ??= $tag;
+        $registry->headTags[$key] ??= $tag;
     }
 
     /**
@@ -74,13 +78,14 @@ final class AssetCollector
      */
     public function addCss(string $css, ?string $key = null): void
     {
+        $registry = $this->registry();
         // Wrap in scope selector if CSS scoping is active (native CSS nesting)
-        if ($this->cssScope !== null) {
-            $css = self::scoped($css, $this->cssScope);
+        if ($registry->cssScope !== null) {
+            $css = self::scoped($css, $registry->cssScope);
         }
 
         $key ??= hash('xxh3', $css);
-        $this->cssRegistry[$key] ??= $css;
+        $registry->css[$key] ??= $css;
     }
 
     /** @var array<string, string> scoped CSS by scope and text, for the process (a component renders many times) */
@@ -197,10 +202,11 @@ final class AssetCollector
         ?string $key = null,
     ): void {
         $key ??= hash('xxh3', $js);
+        $registry = $this->registry();
         match ($position) {
-            JsPosition::Head => $this->jsHead[$key] ??= $js,
-            JsPosition::Body => $this->jsBody[$key] ??= $js,
-            JsPosition::Inline => $this->jsInline[$key] ??= $js,
+            JsPosition::Head => $registry->jsHead[$key] ??= $js,
+            JsPosition::Body => $registry->jsBody[$key] ??= $js,
+            JsPosition::Inline => $registry->jsInline[$key] ??= $js,
         };
     }
 
@@ -211,13 +217,15 @@ final class AssetCollector
     {
         // Only what wasn't printed yet: a layout's {{ head() }} may run before the
         // page's CSS is collected; injectInto() adds the rest before </head>.
+        $registry = $this->registry();
         $out = '';
-        if (($css = $this->pending('css', $this->cssRegistry)) !== []) {
+        if (($css = $this->pending($registry, 'css', $registry->css)) !== []) {
             $out .= $this->renderCssBlock($css);
         }
-        $out .= $this->renderJsBlock($this->pending('jsHead', $this->jsHead));
-        $out .= implode("\n", $this->pending('headTags', $this->headTags));
-        return $out;
+        $out .= $this->renderJsBlock($this->pending($registry, 'jsHead', $registry->jsHead));
+        $tags = implode("\n", $this->pending($registry, 'headTags', $registry->headTags));
+        // A tag that holds the nonce (the htmx config) gets the one of the render printing it.
+        return $out . (str_contains($tags, self::NONCE) ? str_replace(self::NONCE, $this->nonceGenerator->get(), $tags) : $tags);
     }
 
     /**
@@ -250,27 +258,29 @@ final class AssetCollector
      */
     public function renderAssets(): string
     {
-        return $this->renderJsBlock($this->pending('jsBody', $this->jsBody))
-            . $this->renderJsBlock($this->pending('jsInline', $this->jsInline));
+        $registry = $this->registry();
+
+        return $this->renderJsBlock($this->pending($registry, 'jsBody', $registry->jsBody))
+            . $this->renderJsBlock($this->pending($registry, 'jsInline', $registry->jsInline));
     }
 
     /**
      * Entries of a registry not printed yet, now marked as printed.
      *
-     * @param array<string|int, string> $registry
+     * @param array<string|int, string> $entries
      * @return array<string|int, string>
      */
-    private function pending(string $name, array $registry): array
+    private function pending(AssetRegistry $registry, string $name, array $entries): array
     {
-        $new = array_diff_key($registry, $this->printed[$name]);
-        $this->printed[$name] += array_fill_keys(array_keys($new), true);
+        $new = array_diff_key($entries, $registry->printed[$name]);
+        $registry->printed[$name] += array_fill_keys(array_keys($new), true);
 
         return $new;
     }
 
     public function renderCss(): string
     {
-        return $this->renderCssBlock($this->cssRegistry);
+        return $this->renderCssBlock($this->registry()->css);
     }
 
     /** @param array<string|int, string> $registry */
@@ -291,17 +301,17 @@ final class AssetCollector
 
     public function renderJsHead(): string
     {
-        return $this->renderJsBlock($this->jsHead);
+        return $this->renderJsBlock($this->registry()->jsHead);
     }
 
     public function renderJsBody(): string
     {
-        return $this->renderJsBlock($this->jsBody);
+        return $this->renderJsBlock($this->registry()->jsBody);
     }
 
     public function renderJsInline(): string
     {
-        return $this->renderJsBlock($this->jsInline);
+        return $this->renderJsBlock($this->registry()->jsInline);
     }
 
     private function renderJsBlock(array $registry): string
@@ -413,96 +423,27 @@ final class AssetCollector
 
     /**
      * Create an isolated copy with empty registries but the same nonce generator.
-     * Use for sub-renders (e.g., iframe preview pages) that need their own asset scope.
+     * Use for sub-renders (e.g., iframe preview pages) that need their own asset scope. The copy
+     * keeps its registries itself, inside renders too (since 0.81.0).
      */
     public function fork(): self
     {
-        return new self($this->nonceGenerator, $this->isProd, $this->cachePath);
+        $fork = new self($this->nonceGenerator, $this->isProd, $this->cachePath);
+        $fork->frameBound = false;
+
+        return $fork;
     }
-
-    /**
-     * Run $render with empty registries on this same instance (the engines hold
-     * it), then put the previous state back: a sub-render (a page rendered for
-     * its Markdown) neither sees the request's assets nor leaves its own behind.
-     *
-     * @template T
-     * @param callable(): T $render
-     * @return T
-     */
-    public function isolate(callable $render): mixed
-    {
-        $saved = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed];
-        $this->cssRegistry = $this->jsHead = $this->jsBody = $this->jsInline = $this->headTags = [];
-        $this->cssScope = null;
-        $this->printed = self::NOTHING_PRINTED;
-
-        try {
-            return $render();
-        } finally {
-            [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed] = $saved;
-        }
-    }
-
-    /** @var list<mixed>|null what boot registered (markBooted()); null: nothing was marked, an empty registry */
-    private ?array $booted = null;
 
     /**
      * Keeps what is registered now as what boot registered (the application calls it once its
-     * boot is done: htmx with include 'always', what providers and apps add at boot). Internal
-     * renders start from it (fromBoot()).
+     * boot is done: htmx with include 'always', what providers and apps add at boot). A render
+     * inside another one starts from it.
      *
      * @since 0.81.0
      */
     public function markBooted(): void
     {
-        $this->booted = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags];
-    }
-
-    /**
-     * Run $render on what boot registered (markBooted()), with nothing marked printed and no CSS
-     * scope, then put the previous state back: a render the application makes of itself (the SEO
-     * audit, GEO, a page cache rebuild, verify) gets the assets a visitor's page starts from, and
-     * none of what the request around it registered or printed (a fragment's CSS, a page it
-     * printed already).
-     *
-     * @since 0.81.0
-     * @template T
-     * @param callable(): T $render
-     * @return T
-     */
-    public function fromBoot(callable $render): mixed
-    {
-        $saved = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed];
-        [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags] = $this->booted ?? [[], [], [], [], []];
-        $this->cssScope = null;
-        $this->printed = self::NOTHING_PRINTED;
-
-        try {
-            return $render();
-        } finally {
-            [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed] = $saved;
-        }
-    }
-
-    /**
-     * Run $render on the registries as they are, then put them back: pages rendered
-     * one after another in one process (the SEO audit) each start from what boot
-     * registered, and none sees what an earlier one added or printed.
-     *
-     * @since 0.54
-     * @template T
-     * @param callable(): T $render
-     * @return T
-     */
-    public function restoring(callable $render): mixed
-    {
-        $saved = [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed];
-
-        try {
-            return $render();
-        } finally {
-            [$this->cssRegistry, $this->jsHead, $this->jsBody, $this->jsInline, $this->headTags, $this->cssScope, $this->printed] = $saved;
-        }
+        $this->booted = $this->registry()->registered();
     }
 
     /**
@@ -517,25 +458,42 @@ final class AssetCollector
      */
     public function reprinting(callable $render): mixed
     {
-        $saved = [$this->printed, $this->cssScope];
-        $this->printed = self::NOTHING_PRINTED;
-        $this->cssScope = null;
+        $registry = $this->registry();
+        $saved = [$registry->printed, $registry->cssScope];
+        $registry->printed = AssetRegistry::NOTHING_PRINTED;
+        $registry->cssScope = null;
 
         try {
             return $render();
         } finally {
-            [$this->printed, $this->cssScope] = $saved;
+            [$registry->printed, $registry->cssScope] = $saved;
         }
+    }
+
+    /**
+     * The registries the calls work on: the current render frame's (made on first use from what
+     * is registered outside every render for the outermost frame, else from what boot
+     * registered), the own ones outside every render and for a forked collector.
+     */
+    private function registry(): AssetRegistry
+    {
+        if (!$this->frameBound || Contexts::depth() === 0) {
+            return $this->own;
+        }
+
+        return Contexts::frame()->slot(AssetRegistry::class, fn (): AssetRegistry => (Contexts::depth() === 1 ? $this->own : ($this->booted ?? $this->own))->registered());
     }
 
     public function hasCss(): bool
     {
-        return $this->cssRegistry !== [];
+        return $this->registry()->css !== [];
     }
 
     public function hasJs(): bool
     {
-        return $this->jsHead !== [] || $this->jsBody !== [] || $this->jsInline !== [];
+        $registry = $this->registry();
+
+        return $registry->jsHead !== [] || $registry->jsBody !== [] || $registry->jsInline !== [];
     }
 
     // -----------------------------------------------------------------------
@@ -544,23 +502,27 @@ final class AssetCollector
 
     public function getCssCount(): int
     {
-        return count($this->cssRegistry);
+        return count($this->registry()->css);
     }
 
     public function getJsCount(): int
     {
-        return count($this->jsHead) + count($this->jsBody) + count($this->jsInline);
+        $registry = $this->registry();
+
+        return count($registry->jsHead) + count($registry->jsBody) + count($registry->jsInline);
     }
 
     public function getCssBytes(): int
     {
-        return array_sum(array_map('strlen', $this->cssRegistry));
+        return array_sum(array_map('strlen', $this->registry()->css));
     }
 
     public function getJsBytes(): int
     {
-        return array_sum(array_map('strlen', $this->jsHead))
-            + array_sum(array_map('strlen', $this->jsBody))
-            + array_sum(array_map('strlen', $this->jsInline));
+        $registry = $this->registry();
+
+        return array_sum(array_map('strlen', $registry->jsHead))
+            + array_sum(array_map('strlen', $registry->jsBody))
+            + array_sum(array_map('strlen', $registry->jsInline));
     }
 }

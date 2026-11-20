@@ -79,8 +79,12 @@ final class PageRendererAppTest extends TestCase
         $this->assertSame('de', $de->locale);
         $this->assertStringContainsString('<title>About de</title>', $de->body);
 
-        // One render after another: the second sees the same page, not what the first left behind.
-        $this->assertSame($page->body, $renderer->render('/about')->body);
+        // One render after another: the second sees the same page, not what the first left behind
+        // (each render has a nonce of its own: the same text, with the other nonce).
+        $nonce = static fn (string $body): string => preg_match('/nonce="([^"]+)"/', $body, $m) === 1 ? $m[1] : '';
+        $again = $renderer->render('/about')->body;
+        $this->assertNotSame($nonce($page->body), $nonce($again));
+        $this->assertSame($page->body, str_replace($nonce($again), $nonce($page->body), $again));
     }
 
     #[RunInSeparateProcess]

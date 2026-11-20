@@ -467,16 +467,18 @@ final class IsolationSelfTest extends RenderIsolationContract
     /** Renders under its context but prints the page title and CSS collected around it. */
     public static function inheritsCollectors(): \Closure
     {
-        return static fn (Application $app, RenderContext $ctx): RenderResult => self::inFrame(
-            $ctx->because(Purpose::Preview)->capturing()->skippingWrites(),
-            static function () use ($app): string {
-                $container = $app->container();
-                $title = $container->bound(\Preflow\View\Seo\SeoContext::class) ? ($container->get(\Preflow\View\Seo\SeoContext::class)->get()?->title ?? '') : '';
-                $css = $container->bound(\Preflow\View\AssetCollector::class) ? $container->get(\Preflow\View\AssetCollector::class)->renderCss() : '';
+        // Since 0.81 the collectors keep their state per frame, so a path inherits the outer
+        // frame's only by reading them before its own frame opens.
+        return static function (Application $app, RenderContext $ctx): RenderResult {
+            $container = $app->container();
+            $title = $container->bound(\Preflow\View\Seo\SeoContext::class) ? ($container->get(\Preflow\View\Seo\SeoContext::class)->get()?->title ?? '') : '';
+            $css = $container->bound(\Preflow\View\AssetCollector::class) ? $container->get(\Preflow\View\AssetCollector::class)->renderCss() : '';
 
-                return self::describe(Contexts::current()) . "|{$title}|{$css}";
-            },
-        );
+            return self::inFrame(
+                $ctx->because(Purpose::Preview)->capturing()->skippingWrites(),
+                static fn (): string => self::describe(Contexts::current()) . "|{$title}|{$css}",
+            );
+        };
     }
 
     /** Renders under its context but resets the app's own ambient state. */

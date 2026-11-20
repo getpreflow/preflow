@@ -89,7 +89,7 @@ final class HypermediaProtocols
     /**
      * The page nonce a fragment request sent back (HypermediaProtocol::pageNonce()), or null:
      * never from a plain request or a history restore (those are whole pages). Untrusted input;
-     * core adopts it for that response only (NonceGenerator::adopt()) and never stores it.
+     * core adopts it for that response only (NonceGenerator::adoptInFrame()) and never stores it.
      */
     public function pageNonce(ServerRequestInterface $request): ?string
     {
