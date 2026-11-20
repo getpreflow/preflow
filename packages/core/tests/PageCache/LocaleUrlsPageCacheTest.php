@@ -112,6 +112,29 @@ final class LocaleUrlsPageCacheTest extends TestCase
         $this->assertSame(2, $this->pages());
     }
 
+    /**
+     * Without prefix_default the default locale may still be written into the URL ('/en/about'):
+     * the key keeps the prefix the URL carried, so '/en/about' and '/about' are two entries with
+     * the ids 0.80 gave them (the URL as asked for, plus the resolved locale).
+     */
+    #[RunInSeparateProcess]
+    public function test_the_default_locale_written_into_the_url_keeps_its_own_entry(): void
+    {
+        $this->site([]);
+
+        $this->assertSame('miss', $this->web('/en/about')->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('miss', $this->web('/about')->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('hit', $this->web('/en/about')->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('hit', $this->web('/about')->getHeaderLine('X-Page-Cache'));
+
+        $prefixed = $this->key('/en/about', ['locale' => 'en']);
+        $bare = $this->key('/about', ['locale' => 'en']);
+        $this->assertNotSame($prefixed->id(), $bare->id());
+        $this->assertStringContainsString('Hello', (string) $this->stored('/en/about', ['locale' => 'en'])?->body);
+        $this->assertStringContainsString('Hello', (string) $this->stored('/about', ['locale' => 'en'])?->body);
+        $this->assertSame(2, $this->pages());
+    }
+
     #[RunInSeparateProcess]
     public function test_bare_redirect_is_never_cached(): void
     {

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
+
 /**
  * The page cache's public calls. Bound in the container whether the cache is on or not: off,
  * every call does nothing.
@@ -35,6 +38,11 @@ namespace Preflow\Core\PageCache;
  * A write forgets (and rebuilds) a page that read what it changed fresh, marks it stale when the
  * page read it next-visit, and ignores it for a timed read: that page expires after its time
  * instead. Both are no-ops outside a render for the cache and in a live part.
+ *
+ * Since 0.81 the page being rendered, its refusal and the freshness scopes belong to the render
+ * frame (frame slots): a render in a frame of its own (a rebuild, verify's second render, an
+ * audit page) neither stores into nor refuses the page of the frame around it. Outside every
+ * frame (a script, a unit test) the cache keeps its own.
  */
 final class PageCache
 {
@@ -58,19 +66,27 @@ final class PageCache
         ?\Closure $clock = null,
     ) {
         $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->own = new CacheRenderState();
+    }
+
+    /** The current frame's page and refusal, or the cache's own outside every frame. */
+    private function rendering(): CacheRenderState
+    {
+        return Contexts::depth() === 0
+            ? $this->own
+            : Contexts::frame()->slot(CacheRenderState::class, static fn (): CacheRenderState => new CacheRenderState());
     }
 
     /** @var \Closure(): float */
     private readonly \Closure $clock;
 
-    private ?PageKey $key = null;
-
     private bool $markerRemoved = false;
+
+    /** The page rendered for the cache outside every frame. */
+    private readonly CacheRenderState $own;
 
     /** @var array<string, array{0: \Closure(): mixed, 1: \Closure(mixed): void}> */
     private array $carried = [];
-
-    private ?string $refusal = null;
 
     public function enabled(): bool
     {
@@ -245,41 +261,43 @@ final class PageCache
      */
     public function storing(): bool
     {
-        return $this->key !== null;
+        return $this->rendering()->key !== null;
     }
 
-    /** The key of the page being rendered for the cache, null when none is. */
+    /** The key of the page being rendered for the cache in the current frame, null when none is. */
     public function key(): ?PageKey
     {
-        return $this->key;
+        return $this->rendering()->key;
     }
 
     /** Keeps the page being rendered from being stored ($reason is what the middleware reports). */
     public function refuse(string $reason): void
     {
-        if ($this->key !== null) {
-            $this->refusal ??= $reason;
+        $state = $this->rendering();
+        if ($state->key !== null) {
+            $state->refusal ??= $reason;
         }
     }
 
     /** Why the page being rendered must not be stored, null when nothing refused it. */
     public function refusal(): ?string
     {
-        return $this->refusal;
+        return $this->rendering()->refusal;
     }
 
     /**
-     * Starts rendering $key for the cache ($key null: a render that is not stored, such as an
-     * internal render inside one). Returns the state before, for end().
+     * Starts rendering $key for the cache in the current frame ($key null: a stretch of the frame
+     * that is not stored, such as filling live parts). Returns the state before, for end().
      *
      * @internal the page cache middleware
      * @return array{0: ?PageKey, 1: ?string}
      */
     public function begin(?PageKey $key): array
     {
-        $before = [$this->key, $this->refusal];
-        $this->key = $key;
-        $this->refusal = null;
+        $state = $this->rendering();
+        $before = [$state->key, $state->refusal];
+        $state->key = $key;
+        $state->refusal = null;
 
         return $before;
     }
@@ -292,7 +310,8 @@ final class PageCache
      */
     public function end(array $before): void
     {
-        [$this->key, $this->refusal] = $before;
+        $state = $this->rendering();
+        [$state->key, $state->refusal] = $before;
     }
 
     /**
@@ -317,28 +336,25 @@ final class PageCache
 
     /**
      * Render isolation for request-scoped state a package keeps between renders (a content mode,
-     * memos): $enter runs before every render the cache may store (a visitor's miss, verify's
-     * second render, every rebuild) and puts in place the state a public render starts from (a
-     * published-content mode, empty memos); it returns what puts the earlier state back (or
-     * null), which runs after the render, the last entered first. So a rebuild behind an admin
-     * request never sees what the admin request switched on.
+     * memos): $enter runs, in the current frame, around every render the cache may store (a
+     * visitor's miss, verify's second render, every rebuild) and puts in place the state a public
+     * render starts from; it returns what puts the earlier state back (or null), which runs after
+     * the render, the last entered first.
      *
-     *     $pageCache->isolate(static function () use ($content): \Closure {
-     *         $before = $content->mode();
-     *         $content->setMode('published');
-     *         return static fn () => $content->setMode($before);
-     *     });
+     * @deprecated 0.81, removed in 0.83: key memos on RenderContext::memoKey(), or add a context
+     *             facet; only a public-default render of a visitor or a rebuild is stored anyway
      *
      * @param \Closure(): ((\Closure(): void)|null) $enter
      */
     public function isolate(\Closure $enter): void
     {
+        Deprecations::once('Preflow\Core\PageCache\PageCache::isolate() is deprecated since 0.81 and is removed in 0.83; use RenderContext::memoKey() or a context facet.');
         $this->isolations[] = $enter;
     }
 
     /**
      * A check after every render the cache may store: when $when is true the page is not stored
-     * (`refused:{$reason}`). Defence in depth for state isolate() should have reset.
+     * (`refused:{$reason}`). Defence in depth for state a render should not have changed.
      *
      * @param \Closure(): bool $when
      */
@@ -348,15 +364,33 @@ final class PageCache
     }
 
     /**
-     * Runs $render isolated (isolate()), and asks the store checks (refuseWhen()) after it,
-     * before the state is put back.
+     * Runs $render with the isolate() callbacks around it, and asks the store checks
+     * (refuseWhen()) after it, before the state is put back.
      *
-     * @internal the page cache middleware
+     * @deprecated 0.81, removed in 0.83: key memos on RenderContext::memoKey(), or add a context facet
+     *
      * @template T
      * @param \Closure(): T $render
      * @return T
      */
     public function isolated(\Closure $render): mixed
+    {
+        Deprecations::once('Preflow\Core\PageCache\PageCache::isolated() is deprecated since 0.81 and is removed in 0.83; use RenderContext::memoKey() or a context facet.');
+
+        return $this->aroundRender($render);
+    }
+
+    /**
+     * Runs $render, a render the cache may store, in the current frame: the deprecated isolate()
+     * callbacks around it, the store checks (refuseWhen()) after it, before those are put back.
+     *
+     * @internal the page cache middleware
+     * @since 0.81.0
+     * @template T
+     * @param \Closure(): T $render
+     * @return T
+     */
+    public function aroundRender(\Closure $render): mixed
     {
         $restores = [];
         try {

@@ -602,11 +602,22 @@ final class Application
      */
     public function render(RenderContext $ctx, ServerRequestInterface $request): RenderResult
     {
+        return $this->renderWith($ctx, $request, fn (): ResponseInterface => $this->handleInFrame($request));
+    }
+
+    /**
+     * render() with $handle in place of the whole application: the page cache's verify renders
+     * the rest of its pipeline for another visitor this way, in a frame of its own exactly as
+     * render() opens one.
+     *
+     * @param \Closure(): ResponseInterface $handle
+     */
+    private function renderWith(RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult
+    {
         $frame = null;
         $handOver = [];
-        $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request, $ctx): ResponseInterface {
+        $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request, $ctx, $handle): ResponseInterface {
             $frame = Contexts::frame();
-            $handle = fn (): ResponseInterface => $this->handleInFrame($request);
             $response = $ctx->purpose->isInternal() ? $this->internalScope($ctx, $request, $handle) : $handle();
             $left = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue())->pull();
             if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Capture) {
@@ -755,7 +766,8 @@ final class Application
 
     /**
      * The context of a request asked for inside $outer: its own request and purpose
-     * (RenderContext::fromRequest()), but never looser than $outer. It keeps a write policy
+     * (RenderContext::fromRequest()), but never looser than $outer. Inside an internal render
+     * (Purpose::isInternal()) it takes that render's purpose. It keeps a write policy
      * stricter than Allow (Skip, Refuse), an outbox policy stricter than Deliver (Capture,
      * Discard), a role viewer (with its Skip and Capture) and frozen time (at($outer->now)), so a
      * page's sub-request inside a preview, a view as a role, an audit or a render as of a date
@@ -771,6 +783,12 @@ final class Application
         $ctx = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $clock);
         if (self::marked($request)) {
             $ctx = self::asMarked($ctx);
+        }
+        if ($outer->purpose->isInternal()) {
+            // A request inside the SEO audit, GEO, a rebuild, verify or a preview is part of that
+            // render: it leaves no trace where the render leaves none, and the page cache never
+            // stores it (a rebuild's purpose without the rebuild's own request is not stored).
+            $ctx = $ctx->because($outer->purpose);
         }
         if ($outer->viewer->isSynthetic()) {
             $ctx = $ctx->as($outer->viewer);
@@ -1732,9 +1750,8 @@ final class Application
      * internal Rebuild render of its path in its locale (the URL's prefix, else the locale the
      * page was stored under): an anonymous visitor's clean GET in a frame of its own, so nothing
      * of the request that queued it (its assets, users, cookies, superglobals) reaches the page,
-     * and no recording of the page around it (DependencyRecorder::outside(): the page cache
-     * middleware opens the rebuild's own). With a PHP session open the rebuild is refused
-     * without rendering.
+     * and nothing it reads is recorded for the page around it (recordings belong to the frame).
+     * With a PHP session open the rebuild is refused without rendering.
      */
     private function renderRebuild(ServerRequestInterface $request): ResponseInterface
     {
@@ -1752,8 +1769,7 @@ final class Application
             ->in(in_array($locale, $site->locales, true) ? $locale : $site->defaultLocale)
             ->for($request);
 
-        return $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)
-            ->outside(fn (): ResponseInterface => $this->render($ctx, $request)->response);
+        return $this->render($ctx, $request)->response;
     }
 
     /** @return \Closure(string): void the site's logger (a warning), error_log() without one */
@@ -1841,26 +1857,18 @@ final class Application
             log: $logger,
             live: $container->get(\Preflow\Core\PageCache\LiveParts::class),
             verify: $config->verify,
-            visitorScope: static function (ServerRequestInterface $visitor, \Closure $render) use ($container): ResponseInterface {
-                // Both renders start from the assets boot registered, so the second prints the same.
-                $scoped = static fn (): ResponseInterface => $container->bound(\Preflow\View\AssetCollector::class)
-                    ? $container->get(\Preflow\View\AssetCollector::class)->fromBoot($render)
-                    : $render();
-
-                // The request is the visitor's for the render, and the frame's own again afterwards.
-                return Contexts::depth() === 0 ? $scoped() : Contexts::within(Contexts::current()->for($visitor), $scoped);
-            },
+            // A verified page's first render starts from the assets boot registered, as its second
+            // (an internal render) does, so both print the same (until assets live in the frame).
+            fromBoot: static fn (\Closure $render): ResponseInterface => $container->bound(\Preflow\View\AssetCollector::class)
+                ? $container->get(\Preflow\View\AssetCollector::class)->fromBoot($render)
+                : $render(),
             applyPending: static fn (): bool => $container->get(\Preflow\Core\PageCache\Refresher::class)->applyPending(),
             rebuildOnly: $this->runningInConsole(),
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
-            // The second render runs in a frame of its own that sends nothing: its queued mail and
-            // cookies are dropped (the visitor's render had them), and it cannot take the visitor's.
-            verifyScope: static fn (\Closure $render): ResponseInterface => Contexts::depth() === 0
-                ? self::withoutQueuedMail($container, $render)
-                : Contexts::run(
-                    Contexts::current()->discarding()->because(Purpose::Verify),
-                    static fn (): ResponseInterface => self::withoutQueuedMail($container, $render),
-                ),
+            // Verify's second render: in a frame of its own as render() opens one (an internal
+            // render's scope: its own page meta, the assets boot registered, nobody signed in, its
+            // queued mail dropped), under the Verify context the middleware gives.
+            render: fn (RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult => $this->renderWith($ctx, $request, $handle),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);

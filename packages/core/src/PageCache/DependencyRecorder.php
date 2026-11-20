@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * What a page read while it rendered: the tags of its reads (DataTags), each with the freshness
  * it needs. It records only between start() and stop(); outside, record() returns at once.
@@ -20,27 +22,30 @@ namespace Preflow\Core\PageCache;
  *
  * Recordings nest: a start() inside another one records into both, so what an inner render read
  * (and an expiry it asked for) also counts for the page around it.
+ *
+ * Since 0.81 the recordings and freshness scopes belong to the render frame (a frame slot,
+ * RecordingState): a render in a frame of its own (a rebuild, verify's second render, an audit
+ * page, a request asked for inside another) starts with none open, so what it reads is never a
+ * dependency of the page of the frame around it, and that page's scopes are not its. Outside
+ * every frame (a script, a unit test) the recorder keeps its own.
  */
 final class DependencyRecorder
 {
-    /** @var list<array<string, array{0: Freshness, 1: ?int}>> the open recordings, innermost last */
-    private array $frames = [];
+    /** What is recorded outside every frame. */
+    private readonly RecordingState $own;
 
-    private Freshness $freshness = Freshness::Fresh;
+    public function __construct()
+    {
+        $this->own = new RecordingState();
+    }
 
-    private ?int $seconds = null;
-
-    /** @var list<?float> the earliest expiry of each open recording (unix time), parallel to $frames */
-    private array $expiries = [];
-
-    /** @var list<?float> when each open recording's render started (start()), parallel to $frames */
-    private array $starts = [];
-
-    /** @var list<?float> the earliest expiry each open recording ignored (before its start) */
-    private array $ignored = [];
-
-    /** @var list<array{0: Freshness, 1: ?int}> the freshness scopes around the current one (enter()) */
-    private array $scopes = [];
+    /** The current frame's recordings, or the recorder's own outside every frame. */
+    private function state(): RecordingState
+    {
+        return Contexts::depth() === 0
+            ? $this->own
+            : Contexts::frame()->slot(RecordingState::class, static fn (): RecordingState => new RecordingState());
+    }
 
     /**
      * Opens a recording. Keep what it returns and hand it to stop(): a recording opened inside
@@ -53,12 +58,13 @@ final class DependencyRecorder
      */
     public function start(?float $at = null): int
     {
-        $this->frames[] = [];
-        $this->expiries[] = null;
-        $this->starts[] = $at;
-        $this->ignored[] = null;
+        $state = $this->state();
+        $state->frames[] = [];
+        $state->expiries[] = null;
+        $state->starts[] = $at;
+        $state->ignored[] = null;
 
-        return count($this->frames) - 1;
+        return count($state->frames) - 1;
     }
 
     /**
@@ -68,15 +74,16 @@ final class DependencyRecorder
      */
     public function stop(?int $frame = null): array
     {
-        $frame ??= count($this->frames) - 1;
-        if ($frame < 0 || !isset($this->frames[$frame])) {
+        $state = $this->state();
+        $frame ??= count($state->frames) - 1;
+        if ($frame < 0 || !isset($state->frames[$frame])) {
             return [];
         }
-        $tags = $this->frames[$frame];
-        array_splice($this->frames, $frame);
-        array_splice($this->expiries, $frame);
-        array_splice($this->starts, $frame);
-        array_splice($this->ignored, $frame);
+        $tags = $state->frames[$frame];
+        array_splice($state->frames, $frame);
+        array_splice($state->expiries, $frame);
+        array_splice($state->starts, $frame);
+        array_splice($state->ignored, $frame);
 
         return $tags;
     }
@@ -101,9 +108,10 @@ final class DependencyRecorder
         return [$result, $this->stop($frame)];
     }
 
+    /** Whether a recording is open in the current frame. */
     public function recording(): bool
     {
-        return $this->frames !== [];
+        return $this->state()->frames !== [];
     }
 
     /**
@@ -112,9 +120,10 @@ final class DependencyRecorder
      */
     public function expiry(?int $frame = null): ?float
     {
-        $frame ??= count($this->frames) - 1;
+        $state = $this->state();
+        $frame ??= count($state->frames) - 1;
 
-        return $this->expiries[$frame] ?? null;
+        return $state->expiries[$frame] ?? null;
     }
 
     /**
@@ -123,55 +132,30 @@ final class DependencyRecorder
      */
     public function ignoredExpiry(?int $frame = null): ?float
     {
-        $frame ??= count($this->frames) - 1;
+        $state = $this->state();
+        $frame ??= count($state->frames) - 1;
 
-        return $this->ignored[$frame] ?? null;
+        return $state->ignored[$frame] ?? null;
     }
 
     /**
      * The page being recorded must be refreshed by $at at the latest (an event date): every
-     * open recording keeps the earliest. Outside a recording (and in a live part) it does nothing.
+     * open recording of the current frame keeps the earliest. Outside a recording it does nothing.
      */
     public function expiresAt(\DateTimeInterface|float|int $at): void
     {
-        if ($this->frames === []) {
+        $state = $this->state();
+        if ($state->frames === []) {
             return;
         }
         $at = $at instanceof \DateTimeInterface ? (float) $at->format('U.u') : (float) $at;
-        foreach ($this->expiries as $i => $known) {
-            if ($this->starts[$i] !== null && $at <= $this->starts[$i]) {
-                $this->ignored[$i] = min($this->ignored[$i] ?? $at, $at); // already past when this render started
+        foreach ($state->expiries as $i => $known) {
+            if ($state->starts[$i] !== null && $at <= $state->starts[$i]) {
+                $state->ignored[$i] = min($state->ignored[$i] ?? $at, $at); // already past when this render started
 
                 continue;
             }
-            $this->expiries[$i] = $known === null ? $at : min($known, $at);
-        }
-    }
-
-    /**
-     * Runs $fn with nothing recorded, not even into the recordings open around it: what a live
-     * part reads while a page is served is the visitor's, never a dependency of the page.
-     * Recordings $fn opens and leaves open are closed when it returns.
-     *
-     * @template T
-     * @param \Closure(): T $fn
-     * @return T
-     */
-    public function outside(\Closure $fn): mixed
-    {
-        $saved = [$this->frames, $this->expiries, $this->starts, $this->ignored, $this->freshness, $this->seconds, $this->scopes];
-        $this->frames = [];
-        $this->expiries = [];
-        $this->starts = [];
-        $this->ignored = [];
-        // A freshness scope around a live part is not its: what it reads is no dependency at all.
-        $this->freshness = Freshness::Fresh;
-        $this->seconds = null;
-        $this->scopes = [];
-        try {
-            return $fn();
-        } finally {
-            [$this->frames, $this->expiries, $this->starts, $this->ignored, $this->freshness, $this->seconds, $this->scopes] = $saved;
+            $state->expiries[$i] = $known === null ? $at : min($known, $at);
         }
     }
 
@@ -205,32 +189,35 @@ final class DependencyRecorder
         if ($freshness === Freshness::Timed && ($seconds === null || $seconds < 1)) {
             throw new \InvalidArgumentException('A timed freshness needs its time: 1 second or more.');
         }
-        $this->scopes[] = [$this->freshness, $this->seconds];
-        $this->freshness = $freshness;
-        $this->seconds = $freshness === Freshness::Timed ? $seconds : null;
+        $state = $this->state();
+        $state->scopes[] = [$state->freshness, $state->seconds];
+        $state->freshness = $freshness;
+        $state->seconds = $freshness === Freshness::Timed ? $seconds : null;
     }
 
     /** Closes the scope enter() opened last. */
     public function leave(): void
     {
-        $before = array_pop($this->scopes);
+        $state = $this->state();
+        $before = array_pop($state->scopes);
         if ($before !== null) {
-            [$this->freshness, $this->seconds] = $before;
+            [$state->freshness, $state->seconds] = $before;
         }
     }
 
     /** Notes reads of $tags (with "any record of its table" for a record, DataTags::dependencies()). */
     public function record(string ...$tags): void
     {
-        if ($this->frames === []) {
+        $state = $this->state();
+        if ($state->frames === []) {
             return;
         }
         foreach ($tags as $tag) {
             foreach (DataTags::dependencies($tag) as $dependency) {
-                foreach ($this->frames as $i => $frame) {
-                    $this->frames[$i][$dependency] = isset($frame[$dependency])
-                        ? self::merged($frame[$dependency], $this->freshness, $this->seconds)
-                        : [$this->freshness, $this->seconds];
+                foreach ($state->frames as $i => $frame) {
+                    $state->frames[$i][$dependency] = isset($frame[$dependency])
+                        ? self::merged($frame[$dependency], $state->freshness, $state->seconds)
+                        : [$state->freshness, $state->seconds];
                 }
             }
         }

@@ -175,10 +175,12 @@ final class LiveTagTest extends TestCase
         }));
         $stored = $this->storing(fn (): string => $this->engine->render('page.twig'));
 
+        // Served in the visitor's frame: the page being recorded around it (here outside every frame)
+        // is not its, since recordings and refusals belong to the frame.
         $frame = $this->recorder->start();
         $key = $this->key();
         $before = $this->cache->begin($key);
-        $this->assertSame('<p>mine</p>', $this->live->fill($stored));
+        $this->assertSame('<p>mine</p>', \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', 'https://example.com/page'), new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en'), new \Preflow\Core\Context\SystemClock()), fn (): string => $this->live->fill($stored)));
         $this->assertNull($this->cache->refusal(), 'the page around it is not refused');
         $this->assertSame($key, $this->cache->key());
         $this->cache->end($before);

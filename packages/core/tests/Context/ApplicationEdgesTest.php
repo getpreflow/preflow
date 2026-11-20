@@ -370,7 +370,8 @@ final class ApplicationEdgesTest extends TestCase
 
     /**
      * N1/N2: a sub-request (handle()) inside a render never loosens the frame it runs in: stricter
-     * write and outbox policies, a role viewer and frozen time are kept; it sees its own request.
+     * write and outbox policies, a role viewer, frozen time and an internal purpose are kept; it
+     * sees its own request.
      *
      * Expected: the sub-request's path, purpose, write and outbox policy, whether its viewer is a
      * role viewer, whether it is time-shifted, whether it is storable (and its "now" when frozen).
@@ -386,7 +387,7 @@ final class ApplicationEdgesTest extends TestCase
         ];
         yield 'a verify render' => [
             static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->discarding()->skippingWrites()->because(Purpose::Verify),
-            ['/inner', 'visit', 'Skip', 'Discard', false, false, true],
+            ['/inner', 'verify', 'Skip', 'Discard', false, false, false],
         ];
         yield 'a role viewer' => [
             static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->asRole(new RoleView('members', ['member'])),
@@ -396,10 +397,11 @@ final class ApplicationEdgesTest extends TestCase
             static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->at(new \DateTimeImmutable('2020-01-01T00:00:00Z')),
             ['/inner', 'visit', 'Allow', 'Deliver', false, true, false, '2020-01-01T00:00:00+00:00'],
         ];
-        // N2: the sub-request inside an internal render is its own request, under the render's restrictions.
+        // N2: the sub-request inside an internal render is its own request, under the render's
+        // restrictions and with its purpose (never stored; it leaves no trace where the render leaves none).
         yield 'an audit render' => [
             static fn (Application $app): RenderContext => RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/outer'),
-            ['/inner', 'visit', 'Skip', 'Discard', false, false, true],
+            ['/inner', 'audit', 'Skip', 'Discard', false, false, false],
         ];
     }
 

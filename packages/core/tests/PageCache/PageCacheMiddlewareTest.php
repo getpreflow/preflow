@@ -474,9 +474,12 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('miss', $mw->process(new ServerRequest('GET', 'http://example.com/page'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('hit', $mw->process($this->get('/page')->withHeader('X-Forwarded-Proto', 'https'), $handler)->getHeaderLine('X-Page-Cache'));
 
-        // A rebuild renders and stores, never serves.
-        $rebuild = self::internally(fn () => $mw->process($this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true), $handler));
+        // A rebuild renders and stores, never serves; the REBUILD attribute under another internal
+        // purpose stores nothing (the purpose decides).
+        $rebuild = self::internally(fn () => $mw->process($this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true), $handler), \Preflow\Core\Context\Purpose::Rebuild);
         $this->assertSame('miss', $rebuild->getHeaderLine('X-Page-Cache'));
+        $audit = self::internally(fn () => $mw->process($this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true), $handler));
+        $this->assertSame('', $audit->getHeaderLine('X-Page-Cache'));
     }
 
     public function test_stale_pages_are_served_and_reported(): void
@@ -1238,12 +1241,17 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertFalse($this->store->get($this->key('/timed'))?->stale, 'a timed read ignores the write');
     }
 
-    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null, bool $reportsStale = true, ?\Closure $applyPending = null, bool $rebuildOnly = false): PageCacheMiddleware
+    /**
+     * The middleware on its own. Each request is handled as the application handles it: in a
+     * frame of its own under the visitor's context (RenderContext::fromRequest()), or in the
+     * current frame when one is open (a test's internal render).
+     */
+    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null, bool $reportsStale = true, ?\Closure $applyPending = null, bool $rebuildOnly = false): \Psr\Http\Server\MiddlewareInterface
     {
         $config ??= $this->config;
         $source = new PageCacheSource($this->root, static fn (): string => 'aaaaaaaaaaaaaaaa');
 
-        return new PageCacheMiddleware(
+        return self::inFrame(new PageCacheMiddleware(
             config: $config,
             store: fn (): PageStore => $this->store,
             cache: $this->cache,
@@ -1269,7 +1277,34 @@ final class PageCacheMiddlewareTest extends TestCase
             applyPending: $applyPending,
             rebuildOnly: $rebuildOnly,
             hypermedia: self::htmx(),
-        );
+        ));
+    }
+
+    private static function inFrame(PageCacheMiddleware $middleware): \Psr\Http\Server\MiddlewareInterface
+    {
+        return new class($middleware) implements \Psr\Http\Server\MiddlewareInterface {
+            public function __construct(private readonly PageCacheMiddleware $inner) {}
+
+            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+            {
+                if (\Preflow\Core\Context\Contexts::depth() > 0) {
+                    return $this->inner->process($request, $handler);
+                }
+                $ctx = \Preflow\Core\Context\RenderContext::fromRequest(
+                    $request->withAttribute(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class, PageCacheMiddlewareTest::protocols()),
+                    new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en'),
+                    new \Preflow\Core\Context\SystemClock(),
+                );
+
+                return \Preflow\Core\Context\Contexts::run($ctx, fn (): ResponseInterface => $this->inner->process($request, $handler));
+            }
+        };
+    }
+
+    /** @internal the frame wrapper above */
+    public static function protocols(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
+    {
+        return self::htmx();
     }
 
     // -----------------------------------------------------------------------
@@ -1593,11 +1628,11 @@ final class PageCacheMiddlewareTest extends TestCase
         return $protocols;
     }
 
-    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
-    private static function internally(\Closure $fn): mixed
+    /** $fn run as an internal render runs (by default the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn, \Preflow\Core\Context\Purpose $purpose = \Preflow\Core\Context\Purpose::Audit): mixed
     {
         return \Preflow\Core\Context\Contexts::run(
-            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            \Preflow\Core\Context\RenderContext::internal($purpose, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
             $fn,
         );
     }

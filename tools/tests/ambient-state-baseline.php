@@ -76,8 +76,6 @@ return [
     ],
     'core/src/PageCache/PageCacheMiddleware.php' => [
         '$this->clock = $clock ?? static fn (): float => microtime(true);', // clock
-        '$response = $this->cache->isolated(fn (): ResponseInterface => $verify && $this->visitorScope !== null', // setter
-        '$response = AnonymousGlobals::run((string) ($other->getServerParams()[\'REMOTE_ADDR\'] ?? \'192.0.2.1\'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->cache->isolated(fn (): ResponseInterface => $this->visitorScope !== null', // setter
     ],
     'core/src/PageCache/PageCacheSource.php' => [
         '$index->recordInvalidation([TagIndex::EVERYTHING], ($this->clock ?? static fn (): float => microtime(true))());', // clock
