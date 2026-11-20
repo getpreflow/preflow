@@ -14,6 +14,7 @@ use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RenderFrame;
 use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Error\DevErrorRenderer;
@@ -558,32 +559,81 @@ final class Application
             $this->rebuildsScheduled = false;
         }
 
-        return Contexts::run($ctx, function () use ($request, $internal): ResponseInterface {
-            try {
-                $response = $this->handleInFrame($request);
-            } catch (\Throwable $e) {
-                if (!$internal) {
-                    if (!$this->emitting) {
-                        $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
+        $held = [];
+        try {
+            return Contexts::run($ctx, function () use ($request, $internal, &$held): ResponseInterface {
+                try {
+                    $response = $this->handleInFrame($request);
+                } catch (\Throwable $e) {
+                    if (!$internal) {
+                        if (!$this->emitting) {
+                            $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
+                        } else {
+                            $held = self::takeQueuedMail(Contexts::frame());
+                        }
+                        $this->logFailure(Contexts::deliverQueued(...), 'Queued items could not be sent');
                     }
-                    $this->logFailure(Contexts::deliverQueued(...), 'Queued items could not be sent');
+                    throw $e;
                 }
-                throw $e;
-            }
-            if (!$internal) {
-                // In-process callers (CLI, tests) have no later emit step: what the request
-                // queued is sent now. run() sends after the response has gone out instead.
-                if (!$this->emitting) {
-                    $this->flushDeferredNotifications();
+                if (!$internal) {
+                    // In-process callers (CLI, tests) have no later emit step: what the request
+                    // queued is sent now. run() sends after the response has gone out instead.
+                    if (!$this->emitting) {
+                        $this->flushDeferredNotifications();
+                    } else {
+                        $held = self::takeQueuedMail(Contexts::frame());
+                    }
+                    $this->logFailure(
+                        $this->afterResponseInHandle ? Contexts::deliverNow(...) : Contexts::deliverQueued(...),
+                        'Queued items could not be sent',
+                    );
                 }
-                $this->logFailure(
-                    $this->afterResponseInHandle ? Contexts::deliverNow(...) : Contexts::deliverQueued(...),
-                    'Queued items could not be sent',
-                );
-            }
 
-            return $response;
-        });
+                return $response;
+            });
+        } finally {
+            $this->holdForFlush($held);
+        }
+    }
+
+    /**
+     * While $emitting is set around a request handle() opens itself (package tests acting as run()
+     * set it by reflection), its mail waits for the next Notifier::flushDeferred(), as run() sends
+     * it after the response: it goes to notify's own queue, outside every frame.
+     *
+     * @param list<\Preflow\Core\Context\Bridge\QueuedMail> $mail
+     */
+    private function holdForFlush(array $mail): void
+    {
+        if ($mail === [] || !$this->container->bound(\Preflow\Notify\Deferred\DeferredQueue::class)) {
+            return;
+        }
+        $queue = $this->container->get(\Preflow\Notify\Deferred\DeferredQueue::class);
+        foreach ($mail as $item) {
+            if ($item->sends) {
+                $queue->push($item->send, $item->summary);
+            }
+        }
+    }
+
+    /**
+     * Takes the mail $frame queued (channel 'mail') out of its outbox; the other items stay.
+     *
+     * @return list<\Preflow\Core\Context\Bridge\QueuedMail>
+     */
+    private static function takeQueuedMail(RenderFrame $frame): array
+    {
+        $mail = [];
+        $outbox = $frame->outbox();
+        foreach ($outbox->drain() as $item) {
+            if ($item->channel === \Preflow\Core\Context\Bridge\MailChannel::NAME && $item->item instanceof \Preflow\Core\Context\Bridge\QueuedMail) {
+                $mail[] = $item->item;
+            } else {
+                $outbox->queue($item->item, $item->channel);
+            }
+        }
+
+        return $mail;
     }
 
     /**
@@ -646,10 +696,12 @@ final class Application
      * A request asked for inside a frame that is not its own: a nested frame from the request
      * (nestedContext()). It is part of the page the frame around it renders for the page cache
      * (DependencyRecorder::nestIn(), PageCache::nestIn()), whatever its purpose, and a stretch it
-     * renders as another context than the public default refuses that page. Notify's deferred
-     * mail is flushed (not under run(), which sends it after its response), as handle() did
-     * before 0.81; what else it queued and its after-response work go to the frame around it
-     * when it closes.
+     * renders as another context than the public default refuses that page. What it queued and
+     * its after-response work go to the frame around it when it closes. When it fails, the mail
+     * it queued before the failure still goes to the frame around it (since 0.81.0; as a failed
+     * visitor request still sends its mail): a request of its own is no render that leaves nothing
+     * behind. A Notifier with notify's own queue (bound by a site or a test) is flushed here, not
+     * under run(), which sends after its response, as handle() did before 0.81.
      */
     private function handleNested(ServerRequestInterface $request): ResponseInterface
     {
@@ -670,6 +722,7 @@ final class Application
             try {
                 $response = $this->handleInFrame($request);
             } catch (\Throwable $e) {
+                self::handOnQueuedMail(Contexts::frame(), $outer);
                 if (!$this->emitting) {
                     $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
                 }
@@ -686,6 +739,21 @@ final class Application
 
             return $response;
         });
+    }
+
+    /**
+     * Hands the mail $frame queued (channel 'mail') to $outer, where $frame delivers: a nested
+     * request failed, and its frame drops everything else it queued.
+     */
+    private static function handOnQueuedMail(RenderFrame $frame, RenderFrame $outer): void
+    {
+        if ($frame->context->outbox !== \Preflow\Core\Context\OutboxPolicy::Deliver) {
+            return;
+        }
+        foreach (self::takeQueuedMail($frame) as $mail) {
+            $outer->outbox()->channel(new \Preflow\Core\Context\Bridge\MailChannel());
+            $outer->outbox()->queue($mail, \Preflow\Core\Context\Bridge\MailChannel::NAME);
+        }
     }
 
     /**
@@ -949,7 +1017,8 @@ final class Application
 
     /**
      * True while run() handles its request: handle() then leaves notify's deferred mail to run(),
-     * which sends it after the response. Package tests that act as run() does set it by reflection.
+     * which sends it after the response. Package tests that act as run() does set it by reflection;
+     * a request handle() then opens itself leaves its mail to the next flushDeferred() (holdForFlush()).
      */
     private bool $emitting = false;
 
@@ -976,7 +1045,9 @@ final class Application
     private function flushDeferredNotifications(): void
     {
         // Only bound when config/notify.php exists, so this is a no-op without it.
-        // The container's current Notifier is used, not a boot-time snapshot.
+        // The container's current Notifier is used, not a boot-time snapshot: core's queue
+        // (NotifyOutbox) sends the outermost frame's mail now, what nested frames queued goes
+        // with their frame; a Notifier bound with notify's own queue is flushed as before 0.81.
         if (!$this->notifyBooted) {
             return;
         }
@@ -2616,6 +2687,12 @@ final class Application
         );
 
         $this->container->instance(\Preflow\Notify\TransportFactory::class, $factory);
+        // notify's seams on the render context: what sendLater() queues (and what send() would
+        // send) follows the current frame's outbox, and a composed mail renders in its
+        // recipient's context. notify itself knows nothing of core.
+        $queue = new \Preflow\Core\Context\Bridge\NotifyOutbox();
+        $this->container->instance(\Preflow\Notify\Deferred\DeferredQueue::class, $queue);
+        $this->container->instance(\Preflow\Notify\Mail\ComposeScope::class, new \Preflow\Core\Context\Bridge\NotifyComposeScope());
         $this->container->instance(
             \Preflow\Notify\Notifier::class,
             new \Preflow\Notify\Notifier(
@@ -2626,6 +2703,7 @@ final class Application
                     ? $this->container->get(\Psr\Log\LoggerInterface::class)
                     : null,
                 filter_var($notifyConfig['defer'] ?? true, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true,
+                $queue,
             ),
         );
         $this->notifyBooted = true;
@@ -2638,7 +2716,8 @@ final class Application
      * template engine can render it (a provider may bind one after this) — a Twig engine, which renders
      * @notify/mail/layout.twig, or any engine when mail.layout names the site's own template —, else
      * the plain PHP one (no engine, or a Blade app without mail.layout). The Mailer asks the container
-     * for the Notifier at each send, so a Notifier bound later is the one that sends and flushes.
+     * for the Notifier at each send, so a Notifier bound later is the one that sends and flushes. It
+     * composes in the recipient's context (NotifyComposeScope).
      *
      * @param array<string, mixed> $mailConfig
      */
@@ -2685,6 +2764,7 @@ final class Application
             static fn (): \Preflow\Notify\Notifier => $c->get(\Preflow\Notify\Notifier::class),
             $c->get(\Preflow\Notify\Mail\MailLayout::class),
             $c->get(\Preflow\Notify\Mail\MailConfig::class),
+            $c->get(\Preflow\Notify\Mail\ComposeScope::class),
         ));
     }
 
@@ -3062,12 +3142,12 @@ final class Application
      * Around an internal render (audit, GEO, rebuild, verify, preview), inside its frame: the
      * render scopes packages added (RenderScopes, e.g. a content locale), and what services that
      * do not read the context yet still need set aside and put back by hand, so nothing passes
-     * between the request and its renders: mail queued with Notifier::sendLater() (dropped,
-     * since 0.74) and the asset registries (what boot registered, nothing printed, for the render;
-     * the request's own back afterwards). The context itself (frame, cookies, outbox,
-     * superglobals, session, the signed-in users: auth reads the frame's viewer; the locale and
-     * the texts: the translator reads the frame's context) needs none of this; each service leaves
-     * this list when it reads the context.
+     * between the request and its renders: the asset registries (what boot registered, nothing
+     * printed, for the render; the request's own back afterwards). The context itself (frame,
+     * cookies, outbox, superglobals, session, the signed-in users: auth reads the frame's viewer;
+     * the locale and the texts: the translator reads the frame's context; notify's mail: it
+     * queues in the frame's outbox) needs none of this; each service leaves this list when it
+     * reads the context.
      *
      * @param \Closure(): ResponseInterface $handle
      */
@@ -3085,7 +3165,7 @@ final class Application
             $render = static fn (): ResponseInterface => $assets->fromBoot($scoped);
         }
 
-        return self::withoutQueuedMail($container, $render);
+        return $render();
     }
 
     /**
@@ -3097,24 +3177,6 @@ final class Application
     private static function carriedLocalePrefix(): string
     {
         return Contexts::depth() > 0 ? Contexts::current()->request?->localePrefix ?? '' : '';
-    }
-
-    /**
-     * Runs $render with the mail it queues through Notifier::sendLater() dropped, not sent
-     * (an internal render, verify's second render; since 0.74): the request that flushes the
-     * queue afterwards sends only its own.
-     *
-     * @param \Closure(): ResponseInterface $render
-     */
-    private static function withoutQueuedMail(Container $container, \Closure $render): ResponseInterface
-    {
-        if (class_exists(\Preflow\Notify\Notifier::class) && $container->bound(\Preflow\Notify\Notifier::class)) {
-            $notifier = $container->get(\Preflow\Notify\Notifier::class);
-            $mail = $render;
-            $render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);
-        }
-
-        return $render();
     }
 
     private function bootSession(): void

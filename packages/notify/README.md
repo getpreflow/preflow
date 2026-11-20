@@ -216,15 +216,33 @@ and cannot be flushed deterministically in the CLI and in tests.
 
 `Notifier::discardingQueued(\Closure $work): mixed` (since 0.74) runs `$work` and returns its result. While
 it runs, `sendLater()` drops its message: it is not queued, not sent even with `'defer' => false`, and its
-`onFailure` is not called.
+`onFailure` is not called. Since 0.81 `send()` sends nothing inside it either.
 
-- Calls nest (a counter); the state is put back when `$work` throws.
+- Calls nest; the state is put back when `$work` throws.
 - What was queued before stays queued and is sent as usual: only the messages queued inside are dropped.
-- `send()` (and `Mailer::send()`) send at once and are not affected.
 
-Core uses it for every internal render (GEO's Markdown views and `llms-full.txt`, page cache rebuilds, the
-SEO audit's pages, also a step run from Folio inside an admin request): a page that queues mail on a visit
-sends none when the framework renders it for itself, and the request around it sends only its own.
+With preflow/core it is deprecated since 0.81 (removed in 0.83): render under a discarding render context
+instead (`Application::render()` or `Contexts::run()` with `RenderContext::discarding()`).
+
+### The queue and the compose scope (since 0.81)
+
+notify depends on no other package. The `Notifier` keeps what `sendLater()` queues in a
+`Preflow\Notify\Deferred\DeferredQueue` (the fifth constructor argument; notify's own `InMemoryQueue`
+when none is given), and the queue's `policy()` (`deliver`, `discard` or `capture`) also decides whether
+`send()` delivers. The `Mailer` renders a mail's HTML part inside a `Preflow\Notify\Mail\ComposeScope`
+(its fourth argument; `DirectCompose` renders where it is called) for the content's `lang`.
+
+With preflow/core, core binds its own implementations of both:
+
+- What `sendLater()` queues joins the current render's outbox. A visitor's request sends it after the
+  response (also when the request failed), a console command when it ends. A render that must send
+  nothing (the SEO audit, GEO, page cache rebuilds, verify) drops it; a preview or a view as a role lists
+  it in its result and sends nothing. `send()` follows the same rule: it records instead of sending and
+  answers as if sent, so the code around it takes the path it takes on a real visit.
+- A composed mail renders in its recipient's context: the texts and the locale of `MailContent::$lang`,
+  an anonymous visitor, published content, whatever the request it was composed in.
+- `flushDeferred()` in a command or a request sends that command's or request's mail now and returns
+  how many went out.
 
 ## Errors
 

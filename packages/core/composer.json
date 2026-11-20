@@ -28,7 +28,7 @@
         "preflow/blade": "<0.60",
         "preflow/folio": "<0.67",
         "preflow/validation": "<0.81.0",
-        "preflow/notify": "<0.74"
+        "preflow/notify": "<0.81.0"
     },
     "autoload": {
         "psr-4": {

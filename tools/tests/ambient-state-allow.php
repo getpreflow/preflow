@@ -66,6 +66,16 @@ return [
             'return Contexts::peek()?->writes ?? WritePolicy::Allow;' => 'outside every render writes run (ruling R1: DataManager writes allow without a frame)',
         ],
     ],
+    'core/src/Context/Bridge/NotifyOutbox.php' => [
+        'peek' => [
+            'return Contexts::peek();' => 'outside every render (a script) notify\'s own in-memory queue holds the mail until flushDeferred(), and send() delivers (ruling R1: the notify bridge delivers without a frame)',
+        ],
+    ],
+    'core/src/Context/Bridge/NotifyComposeScope.php' => [
+        'peek' => [
+            '$ctx = Contexts::peek();' => 'outside every render a mail is composed where it is called, its language given to the layout (notify\'s own default)',
+        ],
+    ],
     'core/src/Http/Session/NativeSession.php' => [
         'superglobal' => 'PHP\'s native session lives in $_SESSION; this class is the one adapter over it',
     ],

@@ -4,64 +4,77 @@ declare(strict_types=1);
 
 namespace Preflow\Notify;
 
+use Preflow\Notify\Deferred\DeferredQueue;
+use Preflow\Notify\Deferred\InMemoryQueue;
+
 /**
  * Sends a message through the transport configured for its channel
  * ('channels' section of config/notify.php).
+ *
+ * What sendLater() queues waits in a DeferredQueue (since 0.81.0): notify's own InMemoryQueue
+ * unless one is given. The queue's policy() also decides whether send() delivers: an app whose
+ * queue joins its render's outbox (core binds one) sends nothing from a render that must not send
+ * (a preview, an audit), and lists what it would have sent where the render captures.
  */
 final class Notifier
 {
     /** Most messages one flushDeferred() call sends, so an onFailure that re-queues cannot loop forever. */
     public const FLUSH_LIMIT = 100;
 
-    /** @var list<array{Message, ?\Closure}> */
-    private array $deferred = [];
+    private readonly DeferredQueue $queue;
 
-    /** How many discardingQueued() calls are running; sendLater() drops its message while above 0. */
-    private int $discarding = 0;
+    /** How many messages deliver() sent, so flushDeferred() can say how many it sent. */
+    private int $delivered = 0;
 
     /**
      * @param array<string, array{transport?: string, from?: string|null}> $channels
      * @param \Psr\Log\LoggerInterface|\Closure():(\Psr\Log\LoggerInterface|null)|null $logger
      *        receives deferred failures that have no callback; a closure is resolved at failure
      *        time, so a logger bound late (by a provider) is still used
-     * @param bool $defer false makes sendLater() send at once (tests, debugging)
+     * @param bool $defer false makes sendLater() send at once (tests, debugging) where the queue's
+     *        policy delivers
+     * @param DeferredQueue|null $queue since 0.81.0: where sendLater() queues; null is notify's
+     *        own InMemoryQueue (at most FLUSH_LIMIT sends per flush)
      */
     public function __construct(
         private readonly TransportFactory $transports,
         private readonly array $channels,
         private readonly \Psr\Log\LoggerInterface|\Closure|null $logger = null,
         private readonly bool $defer = true,
-    ) {}
+        ?DeferredQueue $queue = null,
+    ) {
+        $this->queue = $queue ?? new InMemoryQueue(self::FLUSH_LIMIT, $this->log(...));
+    }
 
     /**
-     * Queue a message; it goes out when flushDeferred() runs (core does that after the
-     * response is sent). A failure never throws: it goes to $onFailure, else to the
-     * logger, else to error_log (without addresses).
+     * Queue a message; it goes out when the queue sends it: notify's own queue at flushDeferred()
+     * (core does that after the response is sent), core's with the render's outbox. A failure
+     * never throws: it goes to $onFailure, else to the logger, else to error_log (without
+     * addresses). Where the queue's policy discards, the message is dropped and $onFailure is
+     * never called; where it captures, it is listed, never sent.
      *
      * @param \Closure(\Throwable): void|null $onFailure
      */
     public function sendLater(Message $message, ?\Closure $onFailure = null): void
     {
-        if ($this->discarding > 0) {
-            return;
-        }
-        if (!$this->defer) {
+        if (!$this->defer && $this->queue->policy() === DeferredQueue::DELIVER) {
             $this->deliver($message, $onFailure);
 
             return;
         }
 
-        $this->deferred[] = [$message, $onFailure];
+        $this->queue->push(function () use ($message, $onFailure): void {
+            $this->deliver($message, $onFailure);
+        }, self::summary($message));
     }
 
     /**
      * Runs $work and returns what it returns; a message it queues with sendLater() is dropped,
-     * never sent (also when sendLater() would send at once), and its onFailure is not called.
-     * The queue from before stays as it was and goes out at the next flush. Core runs every
-     * internal render (the SEO audit's, GEO's, the page cache's rebuilds) inside it, so a page
-     * that queues a mail when a visitor opens it sends none when the site renders it for itself,
-     * whichever request flushes the queue afterwards. send() still sends at once: it is not
-     * queued. Calls nest.
+     * never sent (also when sendLater() would send at once), and its onFailure is not called;
+     * since 0.81.0 send() sends nothing either. The queue from before stays as it was and goes
+     * out at the next flush. Calls nest. Delegates to the queue's discarding() (since 0.81.0):
+     * with core, a render that must send nothing runs in a discarding render context instead,
+     * and this is a deprecated shim over it.
      *
      * @since 0.74
      *
@@ -71,37 +84,27 @@ final class Notifier
      */
     public function discardingQueued(\Closure $work): mixed
     {
-        $this->discarding++;
-        try {
-            return $work();
-        } finally {
-            $this->discarding--;
-        }
+        return $this->queue->discarding($work);
     }
 
-    /** Sends the queue in FIFO order, each message isolated. Returns how many were sent. */
+    /**
+     * Sends what the queue holds and may send now, in FIFO order, each message isolated. Returns
+     * how many were sent. With core's queue, that is the mail the current request or command
+     * queued, when it is the outermost one and delivers; a nested render's goes with it.
+     */
     public function flushDeferred(): int
     {
-        $sent = 0;
-        $handled = 0;
-        while ($this->deferred !== []) {
-            if ($handled++ >= self::FLUSH_LIMIT) {
-                $this->log('Deferred notifications: flush limit reached, ' . count($this->deferred) . ' left unsent.');
-                break;
-            }
-            [$message, $onFailure] = array_shift($this->deferred);
-            if ($this->deliver($message, $onFailure)) {
-                $sent++;
-            }
-        }
+        $before = $this->delivered;
+        $this->queue->flush();
 
-        return $sent;
+        return $this->delivered - $before;
     }
 
     private function deliver(Message $message, ?\Closure $onFailure): bool
     {
         try {
-            $this->send($message);
+            $this->transmit($message);
+            $this->delivered++;
 
             return true;
         } catch (\Throwable $e) {
@@ -109,6 +112,16 @@ final class Notifier
 
             return false;
         }
+    }
+
+    /** One line for a list of what a render would have sent: the channel, the recipients and the subject. */
+    private static function summary(Message $message): string
+    {
+        return match (true) {
+            $message instanceof Email => 'Email to ' . implode(', ', $message->to) . ': ' . $message->subject,
+            $message instanceof Sms => 'SMS to ' . $message->to,
+            default => 'A message on channel ' . $message->channel(),
+        };
     }
 
     private function reportFailure(\Throwable $e, ?\Closure $onFailure): void
@@ -144,8 +157,42 @@ final class Notifier
         error_log($text);
     }
 
-    /** @throws TransportException */
+    /**
+     * Sends at once, so the caller knows whether it went out. Since 0.81.0, where the queue's
+     * policy is not DELIVER (a preview, an audit), the message is checked as for sending but not
+     * sent: the queue records it (a capture lists it) and the answer is as if it was sent, so the
+     * caller takes the path it takes on a real visit.
+     *
+     * @throws TransportException
+     */
     public function send(Message $message): SentMessage
+    {
+        if ($this->queue->policy() === DeferredQueue::DELIVER) {
+            return $this->transmit($message);
+        }
+        [$message, $name] = $this->prepare($message);
+        $this->queue->record(self::summary($message));
+
+        return new SentMessage($message, $name);
+    }
+
+    /** @throws TransportException */
+    private function transmit(Message $message): SentMessage
+    {
+        [$message, , $transport] = $this->prepare($message);
+
+        return $transport->send($message);
+    }
+
+    /**
+     * The message with its channel's defaults, and the name of the transport that sends it and
+     * the transport.
+     *
+     * @return array{Message, string, Transport}
+     *
+     * @throws TransportException
+     */
+    private function prepare(Message $message): array
     {
         $channel = $message->channel();
         $config = $this->channels[$channel] ?? [];
@@ -167,7 +214,7 @@ final class Notifier
             throw new TransportException(sprintf('Transport "%s" cannot send %s messages.', $name, $short));
         }
 
-        return $transport->send($message);
+        return [$message, $name, $transport];
     }
 
     /** @param array<string, mixed> $config */

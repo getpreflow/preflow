@@ -139,9 +139,10 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
     }
 
     /**
-     * The fixture page queues a mail with Notifier::sendLater() on every GET, which the contract's
-     * byte-equal check of the outer frame cannot see (notify keeps its own queue until it joins the
-     * frame's outbox): a render through Application::render() queues none and sends none.
+     * The fixture page queues a mail with Notifier::sendLater() on every GET. Since notify's queue
+     * joins the frame's outbox, the contract's byte-equal check of the outer frame sees it too; this
+     * also checks notify's own side: a render through Application::render() leaves nothing in
+     * notify's queue and the transport sent nothing.
      */
     #[DataProvider('renderPaths')]
     public function test_a_render_path_queues_no_mail_through_notify(string $path): void

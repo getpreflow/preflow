@@ -39,7 +39,6 @@ return [
         'now: static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
         '$this->container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
         'static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
-        '$render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);', // setter
     ],
     'core/src/Boot/ManifestBuilder.php' => [
         '\'built\' => date(DATE_ATOM),', // clock

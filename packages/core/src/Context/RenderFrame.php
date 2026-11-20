@@ -35,6 +35,8 @@ final class RenderFrame
 
     private FrameOutbox $outbox;
 
+    private readonly ?RenderFrame $parent;
+
     /** @var array<string, object> */
     private array $slots = [];
 
@@ -51,6 +53,7 @@ final class RenderFrame
         $this->context = $context;
         $this->openedOutbox = $context->outbox;
         $this->openedWrites = $context->writes;
+        $this->parent = $parent;
         $outermost = $parent === null;
         $this->outbox = new FrameOutbox(
             $parent?->outbox->channels() ?? [],
@@ -64,6 +67,22 @@ final class RenderFrame
     public function outbox(): FrameOutbox
     {
         return $this->outbox;
+    }
+
+    /**
+     * What happens now to an item queued in this frame, wherever it ends up: this frame's own
+     * policy when it discards or captures; while it delivers, it hands its items to the frame
+     * around it, so that frame's policy (now) decides, and so on outward; the outermost frame
+     * sends. So a render that delivers inside a discarding or capturing stretch of the frame
+     * around it (Contexts::within()) queues nothing that would be sent once the stretch is over.
+     *
+     * @since 0.81.0
+     */
+    public function outboxPolicy(): OutboxPolicy
+    {
+        $policy = $this->context->outbox;
+
+        return $policy === OutboxPolicy::Deliver && $this->parent !== null ? $this->parent->outboxPolicy() : $policy;
     }
 
     /**

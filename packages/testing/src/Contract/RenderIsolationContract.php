@@ -612,7 +612,7 @@ abstract class RenderIsolationContract extends TestCase
         foreach ($items as $item) {
             $outbox->queue($item->item, $item->channel);
         }
-        $snapshot['queued'] = array_map(static fn (CapturedItem $item): string => $item->channel . ': ' . self::describe($item->item), $items);
+        $snapshot['queued'] = array_map(static fn (CapturedItem $item): string => $item->channel . ': ' . self::describeItem($item), $items);
 
         $container = $app->container();
         $has = static fn (string $id): bool => class_exists($id) && ($container->bound($id) || $container->resolved($id));
@@ -672,7 +672,7 @@ abstract class RenderIsolationContract extends TestCase
             }
         }
         foreach ($result->captured as $item) {
-            $this->assertStringNotContainsString($marker, self::describe($item->item), "{$name}: a captured {$item->channel} item carries the ambient marker");
+            $this->assertStringNotContainsString($marker, self::describeItem($item), "{$name}: a captured {$item->channel} item carries the ambient marker");
         }
     }
 
@@ -692,7 +692,7 @@ abstract class RenderIsolationContract extends TestCase
         foreach ($headers as $header => $values) {
             $lines[] = $header . ': ' . implode(', ', $values);
         }
-        $captured = array_map(static fn (CapturedItem $item): string => $item->channel . ': ' . self::describe($item->item), $result->captured);
+        $captured = array_map(static fn (CapturedItem $item): string => $item->channel . ': ' . self::describeItem($item), $result->captured);
 
         return $this->rendered($result) . "\n--- headers\n" . implode("\n", $lines) . "\n--- captured\n" . implode("\n", $captured);
     }
@@ -703,6 +703,16 @@ abstract class RenderIsolationContract extends TestCase
             return serialize($value);
         } catch (\Throwable) {
             return get_debug_type($value) . '#' . spl_object_id($value);
+        }
+    }
+
+    /** A queued item serialized; one that cannot be (it holds a closure, as notify's queued mail does) by its type and its channel's summary. */
+    private static function describeItem(CapturedItem $item): string
+    {
+        try {
+            return serialize($item->item);
+        } catch (\Throwable) {
+            return get_debug_type($item->item) . ' (' . $item->summary . ')';
         }
     }
 }

@@ -155,7 +155,7 @@ final class ApplicationEdgesTest extends TestCase
     {
         $app = $this->app();
         EdgeRoutes::$routes['/write'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
-            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'mail');
+            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'edge');
             $c->get(CookieQueue::class)->queue('seen=1; Path=/');
             Contexts::frame()->recordSkippedWrite(new SkippedWrite('default', 'post', '1', 'save'));
 
@@ -166,7 +166,7 @@ final class ApplicationEdgesTest extends TestCase
         $result = $app->render($ctx, new ServerRequest('GET', '/write'));
 
         $this->assertSame('written', (string) $result->response->getBody());
-        $this->assertSame(1, $result->wouldSend('mail'));
+        $this->assertSame(1, $result->wouldSend('edge'));
         $this->assertSame(1, $result->wouldSend('cookies'), 'a cookie the render queued is captured, not set');
         $this->assertSame([], $result->response->getHeader('Set-Cookie'));
         $this->assertSame(1, $result->wouldWrite());
@@ -522,7 +522,7 @@ final class ApplicationEdgesTest extends TestCase
             {
                 echo Contexts::current()->purpose->value . ' ' . Contexts::depth() . ' ' . Contexts::current()->site->origin;
                 Contexts::frame()->outbox()->channel($GLOBALS['edgeChannel']);
-                Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'mail');
+                Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'edge');
                 Contexts::frame()->outbox()->afterResponse(static function (): void {
                     echo ' (a command has no after the response)';
                 });
@@ -632,7 +632,7 @@ final class ApplicationEdgesTest extends TestCase
                 return;
             }
             Contexts::frame()->outbox()->channel($channel);
-            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'mail');
+            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'edge');
             $app->container()->get(Notifier::class)->sendLater(new Email('member@site.test', 'Welcome', 'Your account is ready.'));
             throw new \RuntimeException('setup failed');
         });
@@ -651,7 +651,7 @@ final class ApplicationEdgesTest extends TestCase
         // An internal render that throws keeps dropping what it queued.
         $render = static fn () => $app->render(RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/x'), new ServerRequest('GET', '/x'));
         EdgeRoutes::$routes['/x'] = static function (): never {
-            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'mail');
+            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'edge');
             throw new \RuntimeException('audit failed');
         };
         $render();
@@ -669,7 +669,7 @@ final class ApplicationEdgesTest extends TestCase
         $ran = false;
         EdgeRoutes::$routes['/about'] = static function () use ($app, &$ran): ResponseInterface {
             Contexts::frame()->outbox()->channel(new EdgeChannel(fail: true));
-            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'mail');
+            Contexts::frame()->outbox()->queue(new EdgeMail('member@site.test'), 'edge');
             $app->afterResponse(static function () use (&$ran): void {
                 $ran = true;
             });
@@ -816,7 +816,7 @@ final class EdgeChannel implements OutboxChannel
 
     public function name(): string
     {
-        return 'mail';
+        return 'edge';
     }
 
     public function deliver(array $items): void

@@ -19,23 +19,35 @@ use Preflow\Notify\TransportException;
  * Notifier bound after the Mailer was built (a provider's, a test's) is the one the mail goes to
  * and the one whose flushDeferred() sends what sendLater() queued. Core passes a Closure that
  * reads the container.
+ *
+ * The HTML part is rendered inside the ComposeScope (since 0.81.0) for the content's language:
+ * notify's own DirectCompose renders where the Mailer is called; core's renders in the
+ * recipient's context, so the layout's texts and locale are the reader's, not the sender's.
+ * Whether send() delivers is the Notifier's to decide (a preview or an audit sends nothing).
  */
 final class Mailer
 {
-    /** @param Notifier|\Closure(): Notifier $notifier */
+    /**
+     * @param Notifier|\Closure(): Notifier $notifier
+     * @param ComposeScope $scope since 0.81.0: where the HTML part is rendered (DirectCompose: here)
+     */
     public function __construct(
         private readonly Notifier|\Closure $notifier,
         private readonly MailLayout $layout,
         private readonly MailConfig $config,
+        private readonly ComposeScope $scope = new DirectCompose(),
     ) {}
 
     public function compose(MailContent $content, string $to, ?string $from = null, ?string $template = null, ?string $accent = null): Email
     {
+        $accent = $this->accent($accent);
+        $template ??= $this->config->layout;
+
         return new Email(
             to: $to,
             subject: MailText::oneLine($content->subject),
             text: $content->text,
-            html: $this->layout->html($content, $this->accent($accent), $template ?? $this->config->layout),
+            html: $this->scope->run($content->lang, fn (): string => $this->layout->html($content, $accent, $template)),
             from: $from ?? $this->config->from,
         );
     }
@@ -51,7 +63,12 @@ final class Mailer
         return $accent !== null && preg_match(MailConfig::ACCENT, $accent) === 1 ? $accent : $this->config->accent;
     }
 
-    /** At once, so the caller knows whether it went out. @throws TransportException */
+    /**
+     * At once, so the caller knows whether it went out (where the Notifier's queue does not
+     * deliver, a preview or an audit, it is recorded instead and answers as if sent).
+     *
+     * @throws TransportException
+     */
     public function send(MailContent $content, string $to, ?string $from = null, ?string $template = null, ?string $accent = null): SentMessage
     {
         return $this->notifier()->send($this->compose($content, $to, $from, $template, $accent));

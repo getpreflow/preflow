@@ -157,12 +157,14 @@ final class FrameOutbox implements Outbox
 
     /**
      * Moves the queued items and the scheduled work to $parent (OutboxPolicy::Deliver when a
-     * frame closes inside another).
+     * frame closes inside another), with the channels registered here that $parent does not
+     * know (since 0.81.0), so a channel registered inside a nested render sends its items there.
      *
      * @internal Contexts
      */
     public function moveTo(FrameOutbox $parent): void
     {
+        $parent->channels += $this->channels;
         foreach ($this->items as [$channel, $item]) {
             $parent->queue($item, $channel);
         }
