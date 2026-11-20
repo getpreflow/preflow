@@ -240,4 +240,62 @@ final class AccessTest extends TestCase
         $this->assertFalse($access->can('members.approve'));
         $this->assertSame(1, substr_count((string) file_get_contents($this->log), 'permission members.approve belongs to a disabled extension members'));
     }
+
+    /**
+     * A role view (view as role) is answered from its roles' grants in its own population
+     * (GrantsForRoles), never by allows() and never by a guard: the population 'staff' of a role
+     * view does not make it a staff guard's user, and a staff guard of that name changes nothing.
+     */
+    public function test_a_role_view_is_answered_from_its_roles_grants(): void
+    {
+        $resolver = new class implements PermissionResolver, \Preflow\Auth\Access\GrantsForRoles {
+            /** @var list<array{list<string>, string}> */
+            public array $asked = [];
+
+            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                throw new \LogicException('allows() is never asked for a role view');
+            }
+
+            public function grantsFor(array $roles, string $population): array
+            {
+                $this->asked[] = [$roles, $population];
+
+                return match ($population) {
+                    'staff' => in_array('editor', $roles, true) ? ['page.edit', 'page.view'] : [],
+                    'members' => in_array('gold', $roles, true) ? ['page.*'] : [],
+                };
+            }
+        };
+        $access = $this->access(populations: ['staff' => 'staff', 'member' => 'staff']);
+        $access->setResolver($resolver);
+        $ask = static fn (): array => [$access->can('page.edit'), $access->can('page.publish'), $access->canAny('page.edit'), $access->population()];
+
+        $staff = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->asRole(new \Preflow\Core\Context\RoleView('staff', ['editor'])), $ask);
+        $member = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->asRole(new \Preflow\Core\Context\RoleView('member', ['gold'])), $ask);
+        $nothing = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->asRole(new \Preflow\Core\Context\RoleView('member', ['editor'])), $ask);
+
+        $this->assertSame([true, false, true, 'staff'], $staff);
+        $this->assertSame([true, true, true, 'members'], $member, "the 'member' population counts as members, though a guard named 'member' is staff");
+        $this->assertSame([false, false, false, 'members'], $nothing, 'a role is read in its own population');
+        $this->assertContains([['editor'], 'staff'], $resolver->asked);
+        $this->assertContains([['gold'], 'members'], $resolver->asked);
+        $this->assertSame('staff', Access::populationOfRoleView(new \Preflow\Core\Context\RoleView('staff', [])));
+        $this->assertSame('members', Access::populationOfRoleView(new \Preflow\Core\Context\RoleView('members', [])));
+    }
+
+    /** A resolver that cannot say what roles grant (auth's default: staff may do everything) grants a role view nothing. */
+    public function test_a_role_view_gets_nothing_from_a_resolver_without_grants(): void
+    {
+        $access = $this->access(populations: ['staff' => 'staff']);
+
+        $answers = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->asRole(new \Preflow\Core\Context\RoleView('staff', ['admin'])), static fn (): array => [$access->can('page.edit'), $access->canAny('page.edit')]);
+
+        $this->assertSame([false, false], $answers);
+        // The same staff guard's real user may do everything.
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($access): void {
+            @$this->auth->setUser(new TestUser(roles: ['admin']), 'staff');
+            $this->assertTrue($access->can('page.edit'));
+        });
+    }
 }

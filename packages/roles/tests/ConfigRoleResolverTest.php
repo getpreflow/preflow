@@ -110,4 +110,18 @@ final class ConfigRoleResolverTest extends TestCase
         $this->assertSame(['admin', 'editor'], $this->resolver()->roles('staff'));
         $this->assertSame([], $this->resolver()->roles('nobody'));
     }
+
+    /** A role view's grants: what config/roles.php lists for its roles, read from nobody's account. */
+    public function test_grants_for_roles_lists_their_patterns(): void
+    {
+        $r = $this->resolver();
+
+        $this->assertInstanceOf(\Preflow\Auth\Access\GrantsForRoles::class, $r);
+        $this->assertSame(['page.*', 'news.*', 'assets.*'], $r->grantsFor(['editor'], 'staff'));
+        $this->assertSame(['*', 'page.*', 'news.*', 'assets.*'], $r->grantsFor(['admin', 'editor', 'admin'], 'staff'));
+        $this->assertSame(['downloads.premium'], $r->grantsFor(['premium'], 'members'));
+        $this->assertSame([], $r->grantsFor(['premium'], 'staff'), 'a role is read in its own population');
+        $this->assertSame([], $r->grantsFor(['nobody'], 'staff'));
+        $this->assertSame([], $r->grantsFor([], 'members'));
+    }
 }

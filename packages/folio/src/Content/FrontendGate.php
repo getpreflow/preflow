@@ -12,6 +12,9 @@ use Preflow\Auth\Access\UndeclaredPermission;
  * has the permission. Fails closed: nobody without auth configured (where
  * Access allows everything) and nobody for an undeclared permission (which
  * throws in debug). The frontend pages and folio_list/folio_find both ask here.
+ * It follows Access: while the site is viewed as a role (view as role, since 0.81.0) the role
+ * view's user is the signed-in one and passes by its roles' grants only, never by the session
+ * of the editor viewing it.
  */
 final class FrontendGate
 {

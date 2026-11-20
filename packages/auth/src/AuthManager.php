@@ -8,6 +8,7 @@ use Preflow\Auth\Support\ResolvedUsers;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RoleView;
 use Preflow\Core\Context\SyntheticIdentity;
 use Preflow\Core\Context\Viewer;
 use Preflow\Core\Identity;
@@ -24,6 +25,13 @@ use Preflow\Core\Identity;
  * or another Identity) is looked up again with the guard's provider, once per frame, and counts
  * as nobody when that finds no one or the guard has no provider. Ids reserved for role views
  * are never looked up.
+ *
+ * A role view is signed in with no guard (since 0.81.0): its guard name is a reserved one,
+ * roleViewGuard() ('preflow:synthetic:{population}'), never its population, which may be a
+ * configured guard's name ('staff'). guardName(), the keys of users() and the request's
+ * GUARD_ATTRIBUTE give it, and guard() under a role view hands out a RoleViewGuard for every
+ * name: the reserved one gives the role view's user, a configured one nobody, and none signs
+ * in or out, so no code reaches the session the request carries (the editor's) through a guard.
  */
 final class AuthManager
 {
@@ -40,7 +48,24 @@ final class AuthManager
         private readonly string $defaultGuard,
         private readonly array $loginPaths = [],
         private readonly array $providers = [],
-    ) {}
+    ) {
+        foreach (array_keys($guards) as $name) {
+            if (str_starts_with((string) $name, SyntheticIdentity::PREFIX)) {
+                throw new \InvalidArgumentException("A guard name must not start with '" . SyntheticIdentity::PREFIX . "', which names role views (view as role); got '{$name}'.");
+            }
+        }
+    }
+
+    /**
+     * The guard name a role view (view as role) of $view's population counts as signed in with:
+     * 'preflow:synthetic:{population}', which no configured guard may have.
+     *
+     * @since 0.81.0
+     */
+    public static function roleViewGuard(RoleView $view): string
+    {
+        return SyntheticIdentity::PREFIX . $view->population;
+    }
 
     /** The user provider of a guard (guards.<name>.provider); null names the default guard. Null when unknown. */
     public function provider(?string $guard = null): ?UserProviderInterface
@@ -56,9 +81,25 @@ final class AuthManager
         return is_string($path) && $path !== '' ? $path : null;
     }
 
+    /**
+     * The guard $name (null: the default guard). Under a role view (view as role) a RoleViewGuard
+     * stands in for every name (since 0.81.0): roleViewGuard()'s gives the role view's user, any
+     * other nobody, and none signs in or out, so the session the request carries is never read.
+     *
+     * @throws \RuntimeException for a guard that is not configured
+     */
     public function guard(?string $name = null): GuardInterface
     {
         $name ??= $this->defaultGuard;
+        $viewer = self::viewer();
+        if ($viewer?->roleView !== null) {
+            if (!isset($this->guards[$name]) && $name !== self::roleViewGuard($viewer->roleView)) {
+                throw new \RuntimeException("Auth guard [{$name}] is not configured.");
+            }
+            $user = $this->user();
+
+            return new RoleViewGuard($name === self::roleViewGuard($viewer->roleView) && $user instanceof SyntheticUser ? $user : null);
+        }
         if (!isset($this->guards[$name])) {
             throw new \RuntimeException("Auth guard [{$name}] is not configured.");
         }
@@ -134,20 +175,26 @@ final class AuthManager
         foreach ([$primary => $viewer->identities[$primary]] + $viewer->identities as $guard => $identity) {
             $user = $this->userOf((string) $guard, $identity);
             if ($user !== null) {
-                $users[(string) $guard] = $user;
+                $users[self::nameOf($viewer, (string) $guard)] = $user;
             }
         }
 
         return $users;
     }
 
-    /** The guard of user(); null when user() is null. A role view's is its population. */
+    /** The guard of user(); null when user() is null. A role view's is roleViewGuard(), never its population. */
     public function guardName(): ?string
     {
         $viewer = self::viewer();
         $guard = $viewer === null ? null : self::primaryGuard($viewer);
 
-        return $guard !== null && $this->userOf($guard, $viewer->identities[$guard]) !== null ? $guard : null;
+        return $guard !== null && $this->userOf($guard, $viewer->identities[$guard]) !== null ? self::nameOf($viewer, $guard) : null;
+    }
+
+    /** The guard name $guard of $viewer is given as: a role view's reserved one (roleViewGuard()), else $guard. */
+    private static function nameOf(Viewer $viewer, string $guard): string
+    {
+        return $viewer->roleView !== null ? self::roleViewGuard($viewer->roleView) : $guard;
     }
 
     /**

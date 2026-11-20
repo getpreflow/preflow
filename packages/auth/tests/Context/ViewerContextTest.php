@@ -194,8 +194,9 @@ final class ViewerContextTest extends DataTestCase
             $this->assertTrue($user->hasRole('editor'));
             $this->assertFalse($user->hasRole('owner'));
             $this->assertSame('', $user->getPasswordHash());
-            $this->assertSame('staff', $auth->guardName());
-            $this->assertSame(['staff' => $user->getAuthId()], array_map(static fn (Authenticatable $u): string => $u->getAuthId(), $auth->users()));
+            // The population is no guard name: the role view counts as signed in with a reserved one.
+            $this->assertSame('preflow:synthetic:staff', $auth->guardName());
+            $this->assertSame(['preflow:synthetic:staff' => $user->getAuthId()], array_map(static fn (Authenticatable $u): string => $u->getAuthId(), $auth->users()));
 
             try {
                 $user->email = 'x@site.test';
@@ -354,7 +355,7 @@ final class ViewerContextTest extends DataTestCase
             $this->assertSame(0, $asked->asked, 'no guard is asked under a role view');
             $this->assertTrue(Contexts::current()->viewer->isSynthetic());
             $this->assertInstanceOf(SyntheticUser::class, $handler->request?->getAttribute(Authenticatable::class));
-            $this->assertSame('member', $handler->request?->getAttribute(AuthManager::GUARD_ATTRIBUTE));
+            $this->assertSame('preflow:synthetic:member', $handler->request?->getAttribute(AuthManager::GUARD_ATTRIBUTE));
             $this->assertSame(Contexts::current(), $handler->request?->getAttribute(RenderContext::class));
 
             foreach (['auth' => new AuthMiddleware($auth, 'web'), 'token' => new TokenAuthMiddleware($auth, 'web')] as $name => $middleware) {
@@ -428,6 +429,87 @@ final class ViewerContextTest extends DataTestCase
         $this->assertTrue($session->isStarted());
     }
 
+    /**
+     * A role view's population never reads as a guard name: guardName(), the keys of users() and
+     * the request's GUARD_ATTRIBUTE give a reserved name, and guard() under a role view never
+     * reaches the session the request carries, also for a guard named like the population.
+     */
+    public function test_guard_of_guard_name_under_a_role_view_never_reaches_a_real_session(): void
+    {
+        $staff = new CountingGuard(new TestUser('editor', roles: ['admin']));
+        $members = new CountingGuard(new TestUser('m-1', roles: ['member']));
+        $auth = new AuthManager(['staff' => $staff, 'members' => $members], 'staff');
+        $request = self::request();
+
+        Contexts::run(ContextFactory::forTest()->asRole(new RoleView('staff', ['editor'])), function () use ($auth, $request): void {
+            $user = $auth->user();
+            $this->assertInstanceOf(SyntheticUser::class, $user);
+            $this->assertSame('preflow:synthetic:staff', $auth->guardName());
+            $this->assertSame(AuthManager::roleViewGuard(new RoleView('staff', ['editor'])), $auth->guardName());
+            $this->assertSame(['preflow:synthetic:staff'], array_keys($auth->users()));
+
+            $this->assertSame($user, $auth->guard($auth->guardName())->user($request), 'the role view\'s own guard gives its user');
+            foreach (['staff', 'members', null] as $name) {
+                $guard = $auth->guard($name);
+                $this->assertInstanceOf(\Preflow\Auth\RoleViewGuard::class, $guard, (string) $name);
+                $this->assertNull($guard->user($request), ($name ?? 'default') . ': a configured guard gives nobody inside a role view');
+                $this->assertFalse($guard->validate(['email' => 'editor', 'password' => 'x']));
+            }
+            foreach (['login' => static fn () => $auth->guard('members')->login(new TestUser('m-1'), $request), 'logout' => static fn () => $auth->guard($auth->guardName())->logout($request)] as $what => $call) {
+                try {
+                    $call();
+                    $this->fail("{$what} must be refused inside a role view");
+                } catch (\LogicException $e) {
+                    $this->assertStringContainsString('role view', $e->getMessage(), $what);
+                }
+            }
+            try {
+                $auth->guard('nope');
+                $this->fail('an unknown guard stays unknown');
+            } catch (\RuntimeException) {
+            }
+            try {
+                $auth->guard('preflow:synthetic:member');
+                $this->fail('another role view\'s reserved name is no guard here');
+            } catch (\RuntimeException) {
+            }
+        });
+        $this->assertSame([0, 0], [$staff->asked, $members->asked], 'no guard read the request\'s session');
+
+        // Outside a role view the guards are the real ones again.
+        Contexts::run(ContextFactory::forTest(), function () use ($auth, $request, $staff): void {
+            $this->assertSame($staff, $auth->guard('staff'));
+            $this->assertSame('editor', $auth->guard()->user($request)?->getAuthId());
+        });
+
+        // No configured guard may take a name reserved for role views.
+        $this->expectException(\InvalidArgumentException::class);
+        new AuthManager(['preflow:synthetic:staff' => $staff], 'preflow:synthetic:staff');
+    }
+
+    /**
+     * A guest-only page of one guard (the members' login) sends a role view away only when the
+     * role view counts as signed in with that guard: its population is the guard's.
+     */
+    public function test_guest_middleware_compares_the_role_views_population_with_its_guard(): void
+    {
+        $auth = new AuthManager(['staff' => new CountingGuard(null), 'members' => new CountingGuard(null)], 'staff');
+        $access = new \Preflow\Auth\Access\Access($auth, new \Preflow\Auth\Access\PermissionRegistry(), false, ['staff' => 'staff', 'members' => 'members']);
+        $status = static fn (\Preflow\Auth\Http\GuestMiddleware $guest, RoleView $view): int => Contexts::run(
+            ContextFactory::forTest()->asRole($view),
+            static fn (): int => $guest->process(self::request('/members/login'), new Capture(static fn () => null))->getStatusCode(),
+        );
+        $membersLogin = new \Preflow\Auth\Http\GuestMiddleware($auth, '/members', 'members', $access);
+        $staffLogin = new \Preflow\Auth\Http\GuestMiddleware($auth, '/admin', 'staff', $access);
+
+        $this->assertSame(200, $status($membersLogin, new RoleView('staff', ['admin'])), 'a staff role view still sees the members\' login');
+        $this->assertSame(302, $status($membersLogin, new RoleView('member', ['gold'])), 'a member role view is signed in there');
+        $this->assertSame(302, $status($staffLogin, new RoleView('staff', ['admin'])));
+        $this->assertSame(200, $status($staffLogin, new RoleView('member', ['gold'])));
+        // Without Access the role view counts as signed in with every guard, as before.
+        $this->assertSame(302, $status(new \Preflow\Auth\Http\GuestMiddleware($auth, '/members', 'members'), new RoleView('staff', ['admin'])));
+    }
+
     /** A template reading the user's fields renders in a role view, also with strict variables. */
     public function test_a_synthetic_user_reads_in_a_strict_template(): void
     {
@@ -440,6 +522,15 @@ final class ViewerContextTest extends DataTestCase
         $this->assertNull($user->name);
         $this->assertTrue(isset($user->name));
         $this->assertFalse(isset($user->getRoles), 'method names are left to the methods');
+
+        // A name a get/is/has method answers is left to that method too: strict {{ user.authId }} prints the id.
+        $twig = new \Twig\Environment(new \Twig\Loader\ArrayLoader([
+            'ids' => '{{ user.authId }}|{{ user.passwordHash }}|{{ user.population }}|{{ user.roles|join(",") }}|{{ user.role ?? "-" }}',
+        ]), ['strict_variables' => true]);
+        $this->assertSame('preflow:synthetic:member:gold||member|gold|-', $twig->render('ids', ['user' => $user]));
+        $this->assertFalse(isset($user->authId));
+        $this->assertFalse(isset($user->passwordHash));
+        $this->assertTrue(isset($user->role), 'hasRole() needs an argument: role reads as a field');
     }
 
     /**

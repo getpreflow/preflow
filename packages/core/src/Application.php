@@ -3736,7 +3736,7 @@ final class Application
         );
         $this->container->instance(
             \Preflow\Auth\Http\GuestMiddleware::class,
-            new \Preflow\Auth\Http\GuestMiddleware($authManager),
+            new \Preflow\Auth\Http\GuestMiddleware($authManager, access: $access),
         );
 
         // Template functions: flash() and csrf_token() read the current render's session (the request's

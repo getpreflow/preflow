@@ -322,12 +322,19 @@ final class Contexts
      * fails does not stop the rounds: the after-response work still runs, and the first failure
      * is thrown at the end (the owner of a request logs it).
      *
+     * A frame that renders as a role view (view as role; one narrowed to it too) sends nothing:
+     * its outbox only captures, so this returns quietly (since 0.81.0).
+     *
      * @throws NoRenderContext outside every render
      * @throws \LogicException unless the current frame is the outermost one and delivers
      */
     public static function deliverNow(): void
     {
-        self::deliverOutermost((self::$top ?? throw self::missing('deliverNow'))->outbox());
+        $frame = self::$top ?? throw self::missing('deliverNow');
+        if ($frame->context->viewer->isSynthetic()) {
+            return;
+        }
+        self::deliverOutermost($frame->outbox());
     }
 
     /**
@@ -335,6 +342,9 @@ final class Contexts
      * runs: for the owner of a request that has no "after the response" (an in-process
      * Application::handle()) or that failed (mail queued before the failure still goes out,
      * as data written before it stays written).
+     *
+     * A frame that renders as a role view (view as role; one narrowed to it too) sends nothing:
+     * its after-response work is dropped and this returns quietly, its captured items stay.
      *
      * @since 0.81.0
      *
@@ -344,7 +354,13 @@ final class Contexts
      */
     public static function deliverQueued(): void
     {
-        $outbox = (self::$top ?? throw self::missing('deliverQueued'))->outbox();
+        $frame = self::$top ?? throw self::missing('deliverQueued');
+        $outbox = $frame->outbox();
+        if ($frame->context->viewer->isSynthetic()) {
+            $outbox->dropAfterResponse();
+
+            return;
+        }
         try {
             $outbox->deliver();
         } finally {

@@ -456,6 +456,41 @@ final class ContextsTest extends TestCase
         Contexts::part(self::ctx('/'), static fn (): null => null);
     }
 
+    /**
+     * An outermost frame narrowed to a role view (view as role) only captures: its owner's
+     * deliverQueued() and deliverNow() send nothing and return quietly, logging nothing, and its
+     * after-response work never runs.
+     */
+    public function test_delivery_on_an_outermost_frame_narrowed_to_a_role_view_is_skipped_quietly(): void
+    {
+        $channel = self::mailChannel();
+        $ran = false;
+        $log = (string) tempnam(sys_get_temp_dir(), 'ctx_log');
+        $previous = ini_set('error_log', $log);
+        try {
+            $captured = Contexts::run(self::ctx('/'), static function () use ($channel, &$ran): array {
+                Contexts::frame()->outbox()->channel($channel);
+                Contexts::frame()->outbox()->afterResponse(static function () use (&$ran): void {
+                    $ran = true;
+                });
+                Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->asRole(new RoleView('member', ['gold'])));
+                Contexts::frame()->outbox()->queue(new QueuedMail('ada@example.test'), 'mail');
+                Contexts::deliverQueued();
+                Contexts::deliverNow();
+
+                return Contexts::frame()->outbox()->drain();
+            });
+        } finally {
+            ini_set('error_log', (string) $previous);
+        }
+
+        $this->assertSame([], $channel->sent, 'nothing was sent');
+        $this->assertCount(1, $captured, 'the mail stays captured');
+        $this->assertFalse($ran, 'the after-response work never ran');
+        $this->assertSame('', (string) file_get_contents($log), 'nothing was logged');
+        @unlink($log);
+    }
+
     private static function mailChannel(): OutboxChannel
     {
         return new class implements OutboxChannel {

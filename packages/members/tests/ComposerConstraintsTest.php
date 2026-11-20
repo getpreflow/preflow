@@ -8,7 +8,9 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Since 0.81.0: core 0.81.0 (Context\Contexts: a member page renders within its locale, Members reads the
- * render's request and clock; Deprecations for the deprecated PageLocale).
+ * render's request and clock; Deprecations for the deprecated PageLocale; Context\RoleView, which SyntheticMember holds),
+ * auth 0.81.0 (SyntheticUser and Access::populationOfRoleView(), which Viewer reads a role view with; Access\GrantsForRoles,
+ * which MemberAccess implements).
  * Since 0.78: core 0.78 (Http\LocaleUrls, which Links takes for the locale prefix, bound with the translator before any provider registers, so members keeps no fallback for either). Since 0.77: core 0.77 (Activity\ActivityLog, which Members and members:prune call, and ActivityActors, where MembersServiceProvider registers the account-deletion actor).
  *
  * "^0.38 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
@@ -28,7 +30,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/auth' => '<0.65', 'preflow/core' => '<0.81.0', 'preflow/data' => '<0.42', 'preflow/folio' => '<0.68', 'preflow/i18n' => '<0.38', 'preflow/notify' => '<0.68', 'preflow/routing' => '<0.59'],
+            ['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.81.0', 'preflow/data' => '<0.42', 'preflow/folio' => '<0.68', 'preflow/i18n' => '<0.38', 'preflow/notify' => '<0.68', 'preflow/routing' => '<0.59'],
             $composer['conflict'] ?? null,
         );
         foreach (['preflow/auth', 'preflow/core', 'preflow/data', 'preflow/i18n', 'preflow/notify', 'preflow/routing'] as $package) {

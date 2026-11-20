@@ -9,6 +9,10 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\UndeclaredPermission;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RoleView;
+use Preflow\Core\Context\SystemClock;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Publishing\PreviewLinks;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
@@ -171,6 +175,35 @@ final class FrontendGateTest extends TestCase
         // A member without the permission is sent to the login too.
         $this->signIn('_auth_user_id.members', 'guest@site.test');
         $this->assertSame(302, $this->fetch('/tools/r/guide')->getStatusCode());
+    }
+
+    /**
+     * Viewed as a role (view as role), a gated page follows the role's grants: the member role sees
+     * it, a role without members.access is sent to the login, and the session of whoever views it
+     * (here a signed-in member) never counts.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_role_view_passes_the_gate_by_its_roles_grants_only(): void
+    {
+        $this->published('resource', 'r1', 'Members guide', 'guide');
+        $this->signIn('_auth_user_id.members', 'member@site.test');
+        $app = $this->app();
+        $request = (new Psr17Factory())->createServerRequest('GET', '/tools/r/guide');
+        $render = static fn (RoleView $view): ResponseInterface => $app->render(
+            RenderContext::fromRequest($request, $app->site(), new SystemClock())->asVisitor()->asRole($view)->because(Purpose::Preview),
+            $request,
+        )->response;
+
+        $member = $render(new RoleView('member', ['member']));
+        $this->assertSame(200, $member->getStatusCode());
+        $this->assertStringContainsString('Members guide', (string) $member->getBody());
+
+        foreach ([new RoleView('member', ['gold']), new RoleView('staff', ['editor'])] as $view) {
+            $denied = $render($view);
+            $this->assertSame(302, $denied->getStatusCode(), implode(',', $view->roles));
+            $this->assertStringNotContainsString('Members guide', (string) $denied->getBody());
+        }
+        $this->assertSame(200, $render(new RoleView('staff', ['admin']))->getStatusCode(), 'the admin role grants everything');
     }
 
     #[RunInSeparateProcess]

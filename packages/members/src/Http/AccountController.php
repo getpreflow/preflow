@@ -17,6 +17,7 @@ use Preflow\Members\Links;
 use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
 use Preflow\Members\MembersView;
+use Preflow\Members\SyntheticMember;
 use Preflow\Members\Viewer;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -122,8 +123,11 @@ final class AccountController
         return $this->view->redirect($this->links->localize($this->locale($request), $this->config->register()));
     }
 
-    /** The signed-in member, or null with $gate set to where everybody else goes. */
-    private function member(ServerRequestInterface $request, ?ResponseInterface &$gate): ?DynamicRecord
+    /**
+     * The signed-in member (a SyntheticMember while the site is viewed as a member role), or null
+     * with $gate set to where everybody else goes.
+     */
+    private function member(ServerRequestInterface $request, ?ResponseInterface &$gate): DynamicRecord|SyntheticMember|null
     {
         $member = $this->viewer->canAccess() ? $this->viewer->member() : null;
         if ($member !== null) {
@@ -138,8 +142,12 @@ final class AccountController
         return null;
     }
 
-    private function currentIsRight(DynamicRecord $member, string $current): bool
+    /** A synthetic member (view as role) has no password: never right, and nothing is counted. */
+    private function currentIsRight(DynamicRecord|SyntheticMember $member, string $current): bool
     {
+        if ($member instanceof SyntheticMember) {
+            return false;
+        }
         [, $window] = $this->config->throttle('login');
         if ($this->hasher->verify($current, (string) $member->get('password_hash'))) {
             $this->throttle->clear(MembersConfig::THROTTLE_LOGIN, $this->key((string) $member->getId()));
@@ -164,7 +172,7 @@ final class AccountController
         return 'member:' . $id;
     }
 
-    private function page(ServerRequestInterface $request, DynamicRecord $member, string $notice = '', string $error = '', int $status = 200): ResponseInterface
+    private function page(ServerRequestInterface $request, DynamicRecord|SyntheticMember $member, string $notice = '', string $error = '', int $status = 200): ResponseInterface
     {
         return $this->view->render('account', [
             'email' => (string) $member->get('email'),

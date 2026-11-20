@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/auth": "^0.69 || @dev",
+        "preflow/auth": "^0.81.0 || @dev",
         "preflow/core": "^0.62 || @dev",
         "preflow/data": "^0.78 || @dev",
         "preflow/i18n": "^0.37 || @dev",
@@ -22,7 +22,7 @@
         "preflow/folio": "The admin of roles and staff accounts (Folio's built-in extension \"rbac\")"
     },
     "conflict": {
-        "preflow/auth": "<0.69",
+        "preflow/auth": "<0.81.0",
         "preflow/core": "<0.62",
         "preflow/data": "<0.78",
         "preflow/devtools": "<0.26",

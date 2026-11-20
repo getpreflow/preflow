@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Rbac;
 
+use Preflow\Auth\Access\GrantsForRoles;
 use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
@@ -15,8 +16,10 @@ use Preflow\Auth\Authenticatable;
  * rbac is installed here (RoleStore::installed(): `php preflow rbac:install`, or Folio's rbac
  * extension, made the table and the staff role "admin"), staff may do everything, so turning
  * rbac on never locks out the admin. Once installed, staff without a granting role get nothing.
+ * A role view (view as role) is answered by grantsFor(): its roles' stored grants only, never
+ * that bootstrap.
  */
-final class RbacResolver implements PermissionResolver, ListsRoles
+final class RbacResolver implements PermissionResolver, ListsRoles, GrantsForRoles
 {
     /** @var array<string, true> messages already logged this request */
     private array $logged = [];
@@ -73,6 +76,28 @@ final class RbacResolver implements PermissionResolver, ListsRoles
         $defined = $this->store->rolesFor($population);
         $patterns = [];
         foreach (RoleList::normalize($user->getRoles()) as $role) {
+            array_push($patterns, ...($defined[$role] ?? []));
+        }
+
+        return array_values(array_unique($patterns));
+    }
+
+    /**
+     * Every pattern $roles grant in $population, in role order, each once: a pure function of the
+     * roles and the stored role definitions, which reads no account (a role view's grants, view
+     * as role). Unlike patterns(), staff get no "*" before rbac is installed: there are no stored
+     * roles then, so a role view is granted nothing, never more than its roles' own grants.
+     *
+     * @since 0.81.0
+     *
+     * @param list<string> $roles
+     * @return list<string>
+     */
+    public function grantsFor(array $roles, string $population): array
+    {
+        $defined = $this->store->rolesFor($population);
+        $patterns = [];
+        foreach (RoleList::normalize($roles) as $role) {
             array_push($patterns, ...($defined[$role] ?? []));
         }
 

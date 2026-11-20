@@ -67,10 +67,22 @@ final class SyntheticUser implements Authenticatable
         };
     }
 
-    /** Every field reads (as null when the role view has none), except this class's method names, which templates call. */
+    /**
+     * Every field reads (as null when the role view has none), except the names a method answers,
+     * which templates call: a method of that name, or its get/is/has form ('authId' is
+     * getAuthId(), 'roles' is roles()), that needs no argument, so Twig's strict
+     * `{{ user.authId }}` reaches the method.
+     */
     public function __isset(string $name): bool
     {
-        return !method_exists($this, $name);
+        foreach (['', 'get', 'is', 'has'] as $prefix) {
+            $method = $prefix === '' ? $name : $prefix . ucfirst($name);
+            if (method_exists($this, $method) && (new \ReflectionMethod($this, $method))->getNumberOfRequiredParameters() === 0) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** @throws \LogicException always: a role view's user is read-only */

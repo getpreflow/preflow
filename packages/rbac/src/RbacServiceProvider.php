@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Rbac;
 
 use Preflow\Auth\Access\Access;
+use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\ChainUserProvider;
 use Preflow\Auth\LazyUserProvider;
@@ -40,8 +41,14 @@ use Preflow\Rbac\Staff\StaffType;
  */
 final class RbacServiceProvider extends ServiceProvider
 {
+    /** @since 0.81.0 the permission to view the site as a role (view as role) */
+    public const string VIEW_AS = 'site.view_as';
+
     public function register(Container $container): void
     {
+        if ($container->bound(PermissionRegistry::class)) {
+            self::declarePermissions($container->get(PermissionRegistry::class));
+        }
         $container->singleton(RoleStore::class, static fn (Container $c): RoleStore => new RoleStore(
             $c->get(DataManager::class),
             $c->bound(\Psr\Log\LoggerInterface::class) ? $c->get(\Psr\Log\LoggerInterface::class) : null,
@@ -52,6 +59,20 @@ final class RbacServiceProvider extends ServiceProvider
         ));
         $container->singleton(PermissionCoverage::class, static fn (Container $c): PermissionCoverage => new PermissionCoverage($c->get(Access::class), $c->get(RbacResolver::class)));
         $container->singleton(Messages::class, static fn (Container $c): Messages => Messages::boot($c));
+    }
+
+    /**
+     * rbac's own permissions: site.view_as, viewing the site as a role (view as role; an admin
+     * offers it, e.g. Folio's preview). The staff role "admin" holds it from the start (it is
+     * seeded with "*"); other roles get it when an editor grants it.
+     *
+     * @since 0.81.0
+     */
+    public static function declarePermissions(PermissionRegistry $registry): void
+    {
+        if (!$registry->isDeclared(self::VIEW_AS)) {
+            $registry->declare(self::VIEW_AS, 'View the site as a role', 'Site');
+        }
     }
 
     public function boot(Container $container): void

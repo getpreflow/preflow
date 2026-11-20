@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Roles;
 
+use Preflow\Auth\Access\GrantsForRoles;
 use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
@@ -12,9 +13,10 @@ use Preflow\Auth\Authenticatable;
 /**
  * Simple roles: config/roles.php lists, per population, each role's permission
  * patterns. A user may do X when any of their roles (getRoles()) in their
- * population has a pattern matching X. Unknown roles grant nothing.
+ * population has a pattern matching X. Unknown roles grant nothing. A role view (view as
+ * role) gets what its roles list (grantsFor()).
  */
-final class ConfigRoleResolver implements PermissionResolver, ListsRoles
+final class ConfigRoleResolver implements PermissionResolver, ListsRoles, GrantsForRoles
 {
     /** @var array<string, true> unknown roles already logged this request */
     private array $logged = [];
@@ -51,6 +53,30 @@ final class ConfigRoleResolver implements PermissionResolver, ListsRoles
         }
 
         return false;
+    }
+
+    /**
+     * Every pattern config/roles.php lists for $roles in $population, in role order, each once; a
+     * pure function of the roles (a role view's grants).
+     *
+     * @since 0.81.0
+     */
+    public function grantsFor(array $roles, string $population): array
+    {
+        $defined = is_array($this->roles[$population] ?? null) ? $this->roles[$population] : [];
+        $patterns = [];
+        foreach ($roles as $role) {
+            if ((!is_string($role) && !is_int($role)) || !is_array($defined[(string) $role] ?? null)) {
+                continue;
+            }
+            foreach ($defined[(string) $role] as $pattern) {
+                if (is_string($pattern)) {
+                    $patterns[] = $pattern;
+                }
+            }
+        }
+
+        return array_values(array_unique($patterns));
     }
 
     public function roles(string $population): array

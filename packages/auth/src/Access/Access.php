@@ -6,6 +6,8 @@ namespace Preflow\Auth\Access;
 
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
+use Preflow\Auth\SyntheticUser;
+use Preflow\Core\Context\RoleView;
 
 /**
  * The one permission question: can('page.publish'). It asks about the user
@@ -13,6 +15,12 @@ use Preflow\Auth\AuthManager;
  * and lets the installed resolver answer. Undeclared permissions throw in
  * debug and are denied (logged once) in production; so are
  * those of a disabled extension.
+ *
+ * A role view (view as role: the user is a SyntheticUser) has no account and no guard: it is
+ * answered from what its roles grant in its own population (populationOfRoleView()), through
+ * the resolver's GrantsForRoles (since 0.81.0). No account is read and the resolver's allows()
+ * is never asked for it, so a role view never gets more than its roles' own grants; a resolver
+ * without GrantsForRoles grants it nothing.
  */
 final class Access
 {
@@ -89,12 +97,32 @@ final class Access
         return is_string($configured) && $configured !== '' ? $configured : null;
     }
 
-    /** The population ('staff'|'members') of the user signed in for this request; null when nobody is, or no auth is configured. */
+    /**
+     * The population a role view (view as role) counts in: 'staff' for a RoleView of the staff
+     * population, 'members' for any other ('member', 'members'), as populationOf() counts a guard.
+     *
+     * @since 0.81.0
+     *
+     * @return 'staff'|'members'
+     */
+    public static function populationOfRoleView(RoleView $view): string
+    {
+        return $view->population === 'staff' ? 'staff' : 'members';
+    }
+
+    /**
+     * The population ('staff'|'members') of the user signed in for this request; null when nobody is, or no auth is configured.
+     * A role view's is its RoleView's (populationOfRoleView()), never a guard's.
+     */
     public function population(): ?string
     {
+        $user = $this->auth?->user();
+        if ($user instanceof SyntheticUser) {
+            return self::populationOfRoleView($user->view);
+        }
         $guard = $this->auth?->guardName();
 
-        return $this->auth?->user() === null || $guard === null ? null : $this->populationOf($guard);
+        return $user === null || $guard === null ? null : $this->populationOf($guard);
     }
 
     public function can(string $permission, ?object $subject = null): bool
@@ -106,6 +134,9 @@ final class Access
         $user = $this->auth?->user();
         if ($user === null) {
             return false;
+        }
+        if ($user instanceof SyntheticUser) {
+            return $this->grants($user->view, $permission);
         }
 
         return $this->resolver->allows($user, $this->populationOf($this->auth->guardName() ?? ''), $permission, $subject);
@@ -122,7 +153,22 @@ final class Access
             return $early;
         }
         foreach ($this->auth?->users() ?? [] as $guard => $user) {
-            if ($this->resolver->allows($user, $this->populationOf((string) $guard), $permission, $subject)) {
+            if ($user instanceof SyntheticUser ? $this->grants($user->view, $permission) : $this->resolver->allows($user, $this->populationOf((string) $guard), $permission, $subject)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Whether $view's roles grant $permission (GrantsForRoles); false when the resolver cannot say. */
+    private function grants(RoleView $view, string $permission): bool
+    {
+        if (!$this->resolver instanceof GrantsForRoles) {
+            return false;
+        }
+        foreach ($this->resolver->grantsFor($view->roles, self::populationOfRoleView($view)) as $pattern) {
+            if (Pattern::matches($pattern, $permission)) {
                 return true;
             }
         }
