@@ -375,7 +375,13 @@ final class Application
         $this->container->bind(\Preflow\Core\Context\Outbox::class, static fn (): \Preflow\Core\Context\Outbox => Contexts::frame()->outbox());
         $this->container->instance(\Preflow\Core\Http\CookieQueue::class, \Preflow\Core\Http\CookieQueue::ofCurrentFrame());
         // Headers a page or component adds (Cache-Control: no-store…), per render frame.
-        $this->container->instance(\Preflow\Core\Http\ResponseHeaderHints::class, \Preflow\Core\Http\ResponseHeaderHints::ofCurrentFrame());
+        $hintsContainer = $this->container;
+        $this->container->instance(\Preflow\Core\Http\ResponseHeaderHints::class, \Preflow\Core\Http\ResponseHeaderHints::ofCurrentFrame(
+            // The nonce headers of the app's hypermedia clients (htmx: HX-Nonce) are theirs to send.
+            static fn (): array => $hintsContainer->bound(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)
+                ? $hintsContainer->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)->nonceHeaders()
+                : [],
+        ));
 
         // Wall-clock values (dates in content, scheduled publishing) use the app's
         // zone, in web requests and the CLI alike. Unknown names keep php.ini's zone.
@@ -1973,6 +1979,8 @@ final class Application
             // meta and nonce, the assets boot registered, nobody signed in, its queued mail
             // dropped), under the Verify context the middleware gives.
             render: fn (RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult => $this->renderWith($ctx, $request, $this->withSiteDefaults($handle)),
+            // Headers live parts add while the served page is filled (never on the stored page).
+            hints: $container->get(\Preflow\Core\Http\ResponseHeaderHints::class),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);
@@ -3038,11 +3046,11 @@ final class Application
             // records its geo blocks into the capture GEO hands it; a page that fails is GEO's to
             // report (logged, or the error page in debug mode), as before.
             function (ServerRequestInterface $sub, \Preflow\View\Geo\GeoCapture $capture) use ($geo): ResponseInterface {
-                $result = $this->renderWith($this->internalContext(Purpose::Geo, $sub), $sub, function () use ($geo, $capture, $sub): ResponseInterface {
-                    $geo->captureInto($capture);
-
-                    return $this->handleInFrame($sub);
-                });
+                $result = $this->renderWith(
+                    $this->internalContext(Purpose::Geo, $sub),
+                    $sub,
+                    fn (): ResponseInterface => $geo->captureInto($capture, fn (): ResponseInterface => $this->handleInFrame($sub)),
+                );
 
                 return $result->failure !== null ? throw $result->failure : $result->response;
             },

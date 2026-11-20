@@ -25,6 +25,28 @@ final class GeoCapture
     /** @param bool $capturing whether blocks are recorded (a capture made by GEO records) */
     public function __construct(public bool $capturing = true) {}
 
+    /** Whether nothing was recorded yet (no block, no placeholder, no open component). */
+    public function isEmpty(): bool
+    {
+        return $this->components === [] && $this->pageBlocks === [] && $this->blocks === [];
+    }
+
+    /**
+     * Takes over what $earlier recorded (its open components, page blocks and placeholders, in
+     * their order and numbers), so a capture handed to a render that already recorded keeps it.
+     *
+     * @throws \LogicException when this capture recorded something itself
+     */
+    public function takeOver(self $earlier): void
+    {
+        if (!$this->isEmpty()) {
+            throw new \LogicException('A GEO capture that recorded blocks cannot take over another one.');
+        }
+        $this->components = $earlier->components;
+        $this->pageBlocks = $earlier->pageBlocks;
+        $this->blocks = $earlier->blocks;
+    }
+
     /** Opens a block around one component render. */
     public function enterComponent(): void
     {

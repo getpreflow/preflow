@@ -26,7 +26,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * The page is rendered internally as an anonymous visitor would see it (no
  * cookies, no session, no query, nothing of the visitor's address; in an app, an
  * internal Geo render through Application::render(), never stored) and converted; for pages that aren't a plain
- * 200 HTML page, are noindex or are excluded, the `.md` URL answers 404 and an
+ * 200 HTML page, are noindex, say they are per visitor (Cache-Control no-store or private) or are excluded, the `.md` URL answers 404 and an
  * `Accept: text/markdown` request gets the normal response. HTML pages get a
  * `rel="alternate"` link to their Markdown, in the head and as a `Link` header.
  * Runs outermost, so the internal render passes through session, auth and
@@ -352,7 +352,8 @@ final class GeoMiddleware implements MiddlewareInterface
 
     private function markdownOf(ResponseInterface $response, string $path, string $origin, GeoCapture $capture): ?string
     {
-        if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || PageSignals::noindexHeader($response)) {
+        if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || PageSignals::noindexHeader($response)
+            || self::perVisitor($response)) {
             return null;
         }
 
@@ -380,6 +381,15 @@ final class GeoMiddleware implements MiddlewareInterface
             . ($updated !== null ? 'Updated: ' . $updated . "\n" : '');
 
         return $body === '' ? $markdown : $markdown . "\n" . $body . "\n";
+    }
+
+    /**
+     * Whether the page said it is for one visitor only (Cache-Control no-store or private, e.g. a
+     * form's outcome page): like a noindex page it has no public Markdown view (since 0.81.0).
+     */
+    private static function perVisitor(ResponseInterface $response): bool
+    {
+        return preg_match('/(^|[\s,])(no-store|private)([\s,=]|$)/i', $response->getHeaderLine('Cache-Control')) === 1;
     }
 
     /** The day of an ISO 8601 time as written (its own offset), or null when it isn't one. */

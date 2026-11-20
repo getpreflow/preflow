@@ -51,7 +51,7 @@ final class Kernel
         /**
          * since 0.81.0: the headers the current render frame's page or components added
          * (ResponseHeaderHints::ofCurrentFrame()), put on the route's response inside the pipeline,
-         * so the page cache and every other middleware see them, and on the error page
+         * so the page cache and every other middleware see them, and the restrictive ones on the error page
          */
         private readonly ?\Preflow\Core\Http\ResponseHeaderHints $hints = null,
     ) {
@@ -68,10 +68,11 @@ final class Kernel
             if (\Preflow\Core\Context\Contexts::depth() > 0) {
                 \Preflow\Core\Context\Contexts::frame()->recordFailure($e);
             }
-            // Error responses bypass the pipeline, so add the queued cookies (this frame's), the headers it added, CORS and the security headers here.
+            // Error responses bypass the pipeline, so add the queued cookies (this frame's), its restrictive header hints, CORS and the security headers here.
             $response = $this->errorHandler->handleException($e, $request);
             $response = $this->cookies?->apply($response) ?? $response;
-            $response = $this->withHints($response);
+            // Only hints that make the error less cacheable: a failure is never made cacheable.
+            $response = $this->hints?->applyRestrictiveTo($response) ?? $response;
             $response = $this->cors?->decorate($request, $response) ?? $response;
             return $this->securityHeaders?->decorate($request, $response) ?? $response;
         }

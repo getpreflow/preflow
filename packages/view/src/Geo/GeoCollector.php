@@ -13,9 +13,9 @@ use Preflow\Core\Context\Contexts;
  * opens a block (component()); a block lands in the innermost open component, or in the
  * page-level list when no component is rendering.
  *
- * Since 0.81 each render frame has its own capture (a frame slot, GeoCapture), not capturing
- * unless GEO handed the render one (captureInto()) or the render turned it on (capture()); what
- * a render records stays in its frame. Outside every render the collector keeps its own.
+ * Since 0.81 each render frame has its own capture (a frame slot, GeoFrame holding a
+ * GeoCapture), not capturing unless GEO handed the render one (captureInto()) or the render
+ * turned it on (capture()); what a render records stays in its frame. Outside every render the collector keeps its own.
  */
 final class GeoCollector
 {
@@ -39,22 +39,37 @@ final class GeoCollector
     }
 
     /**
-     * The current render records into $capture (GEO hands each page it describes one, and reads
-     * the blocks from it afterwards). Call it before the render recorded anything.
+     * Runs $render recording into $capture (GEO hands each page it describes one, and reads the
+     * blocks from it afterwards), then puts the render's previous capture back, also when $render
+     * throws: outside every render the collector's own, inside one the frame's. What the render
+     * recorded before (a scope or hook that used the collector) is taken over by $capture.
+     *
+     * @template T
+     * @param \Closure(): T $render
+     * @return T
      *
      * @since 0.81.0
      *
-     * @throws \LogicException when the current render frame has a capture already
+     * @throws \LogicException when $capture recorded something already
      */
-    public function captureInto(GeoCapture $capture): void
+    public function captureInto(GeoCapture $capture, \Closure $render): mixed
     {
-        if (Contexts::depth() === 0) {
+        $holder = Contexts::depth() === 0 ? null : $this->frameHolder();
+        $previous = $holder?->capture ?? $this->own;
+        $capture->takeOver($previous);
+        if ($holder === null) {
             $this->own = $capture;
-
-            return;
+        } else {
+            $holder->capture = $capture;
         }
-        if (Contexts::frame()->slot(GeoCapture::class, static fn (): GeoCapture => $capture) !== $capture) {
-            throw new \LogicException('GeoCollector::captureInto() comes too late: the render frame has a GEO capture already.');
+        try {
+            return $render();
+        } finally {
+            if ($holder === null) {
+                $this->own = $previous;
+            } else {
+                $holder->capture = $previous;
+            }
         }
     }
 
@@ -118,6 +133,11 @@ final class GeoCollector
             return $this->own;
         }
 
-        return Contexts::frame()->slot(GeoCapture::class, static fn (): GeoCapture => new GeoCapture(capturing: false));
+        return $this->frameHolder()->capture;
+    }
+
+    private function frameHolder(): GeoFrame
+    {
+        return Contexts::frame()->slot(GeoFrame::class, static fn (): GeoFrame => new GeoFrame(new GeoCapture(capturing: false)));
     }
 }

@@ -122,15 +122,46 @@ final class GeoCollectorTest extends TestCase
         $this->assertSame('', $geo->block(7));
     }
 
-    public function test_capture_into_hands_the_blocks_to_whoever_asked(): void
+    public function test_capture_into_hands_the_blocks_to_whoever_asked_and_restores_the_own_capture(): void
     {
         $geo = new GeoCollector();
         $capture = new GeoCapture();
 
-        $geo->captureInto($capture);
-        $geo->add('Page');
+        $geo->captureInto($capture, static function () use ($geo): void {
+            $geo->add('Page');
+        });
 
-        $this->assertTrue($geo->capturing());
         $this->assertSame(['Page'], $capture->pageBlocks());
+        $this->assertFalse($geo->capturing(), 'outside every render the own capture is back');
+        $geo->add('Later');
+        $this->assertSame(['Page'], $capture->pageBlocks(), 'nothing later reaches the capture');
+
+        // Also when the render throws.
+        $failed = new GeoCapture();
+        try {
+            $geo->captureInto($failed, static fn () => throw new \RuntimeException('render failed'));
+        } catch (\RuntimeException) {
+        }
+        $this->assertFalse($geo->capturing());
+    }
+
+    public function test_capture_into_takes_over_what_was_recorded_before(): void
+    {
+        $geo = new GeoCollector();
+        $geo->capture(true);
+        $geo->add('Earlier');
+        $html = self::component($geo, 'Card');
+        $capture = new GeoCapture();
+
+        $geo->captureInto($capture, static fn () => $geo->add('During'));
+
+        $this->assertSame(['Earlier', 'During'], $capture->pageBlocks());
+        $this->assertSame('Card', $capture->block(0), 'the placeholder already printed still resolves');
+        $this->assertSame('<preflow-geo data-geo="0"></preflow-geo>', $html);
+
+        $used = new GeoCapture();
+        $used->add('Own');
+        $this->expectException(\LogicException::class);
+        $geo->captureInto($used, static fn () => null);
     }
 }
