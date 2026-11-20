@@ -134,17 +134,21 @@ final class Console
         $command = $this->commands[$name];
 
         // A command runs in a console frame: no request, an anonymous visitor in the site's
-        // default locale, published reads. What it queued is sent when it ends; a command has no
-        // "after the response", so work scheduled for one is dropped (page rebuilds a command
-        // queued wait for `pages:work`, as before 0.81).
+        // default locale, published reads. What it queued is sent when it ends, also when it
+        // fails (data written before the failure stays written, so its mail must go, as for a
+        // failed visitor request); a command has no "after the response", so work scheduled for
+        // one is dropped (page rebuilds a command queued wait for `pages:work`, as before 0.81).
         return \Preflow\Core\Context\Contexts::run(
             \Preflow\Core\Context\RenderContext::console($this->site(), new \Preflow\Core\Context\SystemClock()),
             static function () use ($command, $args): int {
-                $code = $command->execute($args);
                 try {
-                    \Preflow\Core\Context\Contexts::deliverQueued();
-                } catch (\Throwable $e) {
-                    error_log('Queued items could not be sent: ' . $e->getMessage());
+                    $code = $command->execute($args);
+                } finally {
+                    try {
+                        \Preflow\Core\Context\Contexts::deliverQueued();
+                    } catch (\Throwable $e) {
+                        error_log('Queued items could not be sent: ' . $e->getMessage());
+                    }
                 }
 
                 return $code;

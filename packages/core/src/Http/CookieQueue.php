@@ -6,6 +6,7 @@ namespace Preflow\Core\Http;
 
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Deprecations;
+use Preflow\Core\Context\OutboxPolicy;
 use Psr\Http\Message\ResponseInterface;
 
 /**
@@ -42,8 +43,26 @@ final class CookieQueue
         return $queue;
     }
 
+    /**
+     * Queues $setCookie for the current frame's response. Since 0.81.0, inside a stretch of a
+     * frame that would send it but now does not (a discarding or capturing Contexts::within(), or
+     * a render delivering into one: RenderFrame::outboxPolicy()), it never reaches a response:
+     * dropped under Discard, kept in the frame's outbox as a captured 'cookies' item under Capture.
+     */
     public function queue(string $setCookie): void
     {
+        if ($this->frameBound && Contexts::depth() > 0) {
+            $frame = Contexts::frame();
+            $policy = $frame->outboxPolicy();
+            if ($frame->openedOutbox === OutboxPolicy::Deliver && $policy !== OutboxPolicy::Deliver) {
+                if ($policy === OutboxPolicy::Capture) {
+                    $frame->outbox()->channel(new CookieChannel());
+                    $frame->outbox()->queue(new QueuedCookie($setCookie), CookieChannel::NAME);
+                }
+
+                return;
+            }
+        }
         $this->target()->cookies[] = $setCookie;
     }
 

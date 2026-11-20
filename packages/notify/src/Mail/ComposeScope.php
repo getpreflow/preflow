@@ -15,11 +15,12 @@ namespace Preflow\Notify\Mail;
 interface ComposeScope
 {
     /**
-     * Runs $compose for a reader of $lang and returns what it returns.
+     * Runs $compose for a reader of $lang and returns what it returns. A null $lang is resolved
+     * by the scope (the language of where the mail is composed); $compose gets the language used.
      *
      * @template T
-     * @param \Closure(): T $compose
+     * @param \Closure(string): T $compose
      * @return T
      */
-    public function run(string $lang, \Closure $compose): mixed;
+    public function run(?string $lang, \Closure $compose): mixed;
 }

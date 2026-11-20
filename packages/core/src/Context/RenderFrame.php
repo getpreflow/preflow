@@ -61,6 +61,7 @@ final class RenderFrame
                 && Contexts::depth() === 1
                 && Contexts::frame() === $this
                 && $this->context->outbox === OutboxPolicy::Deliver,
+            $this->outboxPolicy(...),
         );
     }
 
@@ -73,8 +74,9 @@ final class RenderFrame
      * What happens now to an item queued in this frame, wherever it ends up: this frame's own
      * policy when it discards or captures; while it delivers, it hands its items to the frame
      * around it, so that frame's policy (now) decides, and so on outward; the outermost frame
-     * sends. So a render that delivers inside a discarding or capturing stretch of the frame
-     * around it (Contexts::within()) queues nothing that would be sent once the stretch is over.
+     * sends. The frame's outbox applies it to everything queued (FrameOutbox::queue(),
+     * afterResponse()), so a render inside a discarding or capturing stretch of the frame around
+     * it (Contexts::within()) queues nothing that would be sent once the stretch is over.
      *
      * @since 0.81.0
      */

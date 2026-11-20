@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Notify;
 
+use Preflow\Notify\Deferred\Deferred;
 use Preflow\Notify\Deferred\DeferredQueue;
 use Preflow\Notify\Deferred\InMemoryQueue;
 
@@ -15,6 +16,11 @@ use Preflow\Notify\Deferred\InMemoryQueue;
  * unless one is given. The queue's policy() also decides whether send() delivers: an app whose
  * queue joins its render's outbox (core binds one) sends nothing from a render that must not send
  * (a preview, an audit), and lists what it would have sent where the render captures.
+ *
+ * With preflow/core, a Notifier the app binds itself (a provider's) must be given the container's
+ * queue, `$container->get(DeferredQueue::class)`: with notify's own queue it would send from
+ * internal renders and previews. Core checks this after the providers booted (it throws in debug
+ * mode and logs otherwise); queue() is what it compares.
  */
 final class Notifier
 {
@@ -43,7 +49,17 @@ final class Notifier
         private readonly bool $defer = true,
         ?DeferredQueue $queue = null,
     ) {
-        $this->queue = $queue ?? new InMemoryQueue(self::FLUSH_LIMIT, $this->log(...));
+        $this->queue = $queue ?? new InMemoryQueue($this->deliver(...), self::FLUSH_LIMIT, $this->log(...));
+    }
+
+    /**
+     * The queue sendLater() queues in (the one given, else notify's own).
+     *
+     * @since 0.81.0
+     */
+    public function queue(): DeferredQueue
+    {
+        return $this->queue;
     }
 
     /**
@@ -57,15 +73,14 @@ final class Notifier
      */
     public function sendLater(Message $message, ?\Closure $onFailure = null): void
     {
+        $item = new Deferred($message, $message->channel(), $onFailure, self::summary($message));
         if (!$this->defer && $this->queue->policy() === DeferredQueue::DELIVER) {
-            $this->deliver($message, $onFailure);
+            $this->deliver($item);
 
             return;
         }
 
-        $this->queue->push(function () use ($message, $onFailure): void {
-            $this->deliver($message, $onFailure);
-        }, self::summary($message));
+        $this->queue->push($item);
     }
 
     /**
@@ -100,15 +115,22 @@ final class Notifier
         return $this->delivered - $before;
     }
 
-    private function deliver(Message $message, ?\Closure $onFailure): bool
+    /**
+     * Sends a queued item now: a queue calls it when the item may go out. A failure never throws:
+     * it goes to the item's onFailure, else to the logger, else to error_log (without addresses).
+     * True when it was sent.
+     *
+     * @since 0.81.0
+     */
+    public function deliver(Deferred $item): bool
     {
         try {
-            $this->transmit($message);
+            $this->transmit($item->message);
             $this->delivered++;
 
             return true;
         } catch (\Throwable $e) {
-            $this->reportFailure($e, $onFailure);
+            $this->reportFailure($e, $item->onFailure);
 
             return false;
         }

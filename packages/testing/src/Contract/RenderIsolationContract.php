@@ -672,7 +672,7 @@ abstract class RenderIsolationContract extends TestCase
             }
         }
         foreach ($result->captured as $item) {
-            $this->assertStringNotContainsString($marker, self::describeItem($item), "{$name}: a captured {$item->channel} item carries the ambient marker");
+            $this->assertStringNotContainsString($marker, self::describeItem($item, body: true), "{$name}: a captured {$item->channel} item carries the ambient marker");
         }
     }
 
@@ -706,13 +706,29 @@ abstract class RenderIsolationContract extends TestCase
         }
     }
 
-    /** A queued item serialized; one that cannot be (it holds a closure, as notify's queued mail does) by its type and its channel's summary. */
-    private static function describeItem(CapturedItem $item): string
+    /**
+     * A queued item serialized. One that cannot be (it holds a closure, as notify's queued
+     * Deferred does with its onFailure) by its type, its channel's summary and, when it carries
+     * a message (a public $message), a hash of the message: its body counts as well. With
+     * $body the message itself is included, for the marker check.
+     */
+    private static function describeItem(CapturedItem $item, bool $body = false): string
     {
         try {
             return serialize($item->item);
         } catch (\Throwable) {
-            return get_debug_type($item->item) . ' (' . $item->summary . ')';
+            $line = get_debug_type($item->item) . ' (' . $item->summary . ')';
+            $message = property_exists($item->item, 'message') && is_object($item->item->message) ? $item->item->message : null;
+            if ($message === null) {
+                return $line;
+            }
+            try {
+                $serialized = serialize($message);
+            } catch (\Throwable) {
+                return $line;
+            }
+
+            return $line . ' ' . ($body ? $serialized : md5($serialized));
         }
     }
 }

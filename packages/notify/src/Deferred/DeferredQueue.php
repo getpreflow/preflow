@@ -6,7 +6,9 @@ namespace Preflow\Notify\Deferred;
 
 /**
  * Where the Notifier keeps what sendLater() queued until it goes out, and what decides whether a
- * message may go out at all. notify's own InMemoryQueue keeps 0.80's behaviour (a list flushed by
+ * message may go out at all. A queue gets each message as a Deferred value and sends it with
+ * Notifier::deliver(); how it reaches the Notifier is its own (InMemoryQueue takes the closure
+ * that sends). notify's own InMemoryQueue keeps 0.80's behaviour (a list flushed by
  * flushDeferred(), dropped while discarding()); an app passes its own, for example one that joins
  * the current render's outbox, so that a render that must not send (a preview, an audit) neither
  * queues nor sends.
@@ -25,13 +27,11 @@ interface DeferredQueue
     public const CAPTURE = 'capture';
 
     /**
-     * Queues $send, which sends one message when the queue lets it (a failure is its own to
-     * handle: it never throws). $summary says in one line what it sends ("Email to …"), for a
-     * list of what a render would have sent.
-     *
-     * @param \Closure(): void $send
+     * Queues $item until the queue sends it (with Notifier::deliver(), which reports a failure to
+     * the item's onFailure or the log and never throws). Its summary says in one line what it
+     * sends, for a list of what a render would have sent.
      */
-    public function push(\Closure $send, string $summary): void;
+    public function push(Deferred $item): void;
 
     /** Sends what is queued and may go out now. */
     public function flush(): void;

@@ -67,7 +67,15 @@ final class RenderIsolationContractTest extends TestCase
         $this->assertNotInstanceOf(IncompleteTest::class, $failure);
     }
 
-    public function test_a_pending_test_that_fails_is_incomplete_with_its_whole_diff(): void
+    public function test_a_marker_in_a_captured_mail_body_fails_the_poison_test(): void
+    {
+        $failure = $this->failureOf(IsolationSelfTest::with(['preview' => IsolationSelfTest::mailsAmbientStateInTheBody()]), 'poison');
+
+        $this->assertInstanceOf(AssertionFailedError::class, $failure, 'the body of a captured mail counts, not only its summary');
+        $this->assertNotInstanceOf(IncompleteTest::class, $failure);
+    }
+
+        public function test_a_pending_test_that_fails_is_incomplete_with_its_whole_diff(): void
     {
         $runner = IsolationSelfTest::with(['geo' => IsolationSelfTest::outer()], ['geo' => ['poison' => 'reads the outer frame']]);
 
@@ -405,6 +413,27 @@ final class IsolationSelfTest extends RenderIsolationContract
                 ? new RenderResult($result->response->withHeader('X-Leak', '1'), $result->captured, $result->skippedWrites)
                 : $result;
         };
+    }
+
+    /**
+     * Renders under its context, capturing a mail (notify's queued item: it holds a closure, so it
+     * cannot be serialized) whose body carries the app's ambient state; its summary does not.
+     */
+    public static function mailsAmbientStateInTheBody(): \Closure
+    {
+        return static fn (Application $app, RenderContext $ctx): RenderResult => self::inFrame(
+            $ctx->because(Purpose::Preview)->capturing()->skippingWrites(),
+            static function (): string {
+                Contexts::frame()->outbox()->queue(new \Preflow\Notify\Deferred\Deferred(
+                    new \Preflow\Notify\Email('member@site.test', 'Welcome', 'Hello ' . self::$siteState),
+                    'email',
+                    static function (): void {},
+                    'Email to member@site.test: Welcome',
+                ), 'notify');
+
+                return self::describe(Contexts::current());
+            },
+        );
     }
 
     /** Renders in a frame of its own under the context it is given. */

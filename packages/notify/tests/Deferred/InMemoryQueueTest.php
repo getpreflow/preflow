@@ -5,40 +5,54 @@ declare(strict_types=1);
 namespace Preflow\Notify\Tests\Deferred;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Notify\Deferred\Deferred;
 use Preflow\Notify\Deferred\DeferredQueue;
 use Preflow\Notify\Deferred\InMemoryQueue;
+use Preflow\Notify\Email;
 
 /** notify's own queue, used without a render frame: as 0.80's Notifier queue was. */
 final class InMemoryQueueTest extends TestCase
 {
-    public function test_flush_runs_what_was_pushed_in_order_once(): void
+    /** @var list<string> */
+    private array $sent = [];
+
+    private function queue(int $limit = 100, ?\Closure $log = null, ?\Closure $send = null): InMemoryQueue
     {
-        $queue = new InMemoryQueue();
-        $ran = [];
+        return new InMemoryQueue($send ?? function (Deferred $item): void {
+            $this->sent[] = $item->message instanceof Email ? $item->message->to[0] : '?';
+        }, $limit, $log);
+    }
+
+    private static function item(string $to): Deferred
+    {
+        return new Deferred(new Email($to, 'S', 'T'), 'email', null, 'Email to ' . $to . ': S');
+    }
+
+    public function test_flush_sends_what_was_pushed_in_order_once(): void
+    {
+        $queue = $this->queue();
         foreach (['a', 'b', 'c'] as $name) {
-            $queue->push(static function () use (&$ran, $name): void {
-                $ran[] = $name;
-            }, 'Mail ' . $name);
+            $queue->push(self::item($name . '@x.test'));
         }
 
-        $this->assertSame([], $ran);
+        $this->assertSame([], $this->sent);
         $queue->flush();
         $queue->flush();
-        $this->assertSame(['a', 'b', 'c'], $ran);
+        $this->assertSame(['a@x.test', 'b@x.test', 'c@x.test'], $this->sent);
     }
 
     public function test_what_a_flush_queues_goes_out_in_the_same_flush_up_to_the_limit(): void
     {
         $logged = [];
-        $queue = new InMemoryQueue(limit: 3, log: static function (string $line) use (&$logged): void {
-            $logged[] = $line;
-        });
         $runs = 0;
-        $again = static function () use (&$again, &$runs, $queue): void {
+        $queue = null;
+        $queue = $this->queue(3, static function (string $line) use (&$logged): void {
+            $logged[] = $line;
+        }, static function (Deferred $item) use (&$runs, &$queue): void {
             $runs++;
-            $queue->push($again, 'again');
-        };
-        $queue->push($again, 'again');
+            $queue->push($item);
+        });
+        $queue->push(self::item('again@x.test'));
 
         $queue->flush();
 
@@ -48,13 +62,8 @@ final class InMemoryQueueTest extends TestCase
 
     public function test_discarding_drops_what_is_pushed_nests_and_ends_on_an_exception(): void
     {
-        $queue = new InMemoryQueue();
-        $ran = [];
-        $push = static function (string $name) use ($queue, &$ran): void {
-            $queue->push(static function () use (&$ran, $name): void {
-                $ran[] = $name;
-            }, $name);
-        };
+        $queue = $this->queue();
+        $push = static fn (string $name) => $queue->push(self::item($name . '@x.test'));
         $push('before');
 
         $this->assertSame(DeferredQueue::DELIVER, $queue->policy());
@@ -62,7 +71,7 @@ final class InMemoryQueueTest extends TestCase
             $this->assertSame(DeferredQueue::DISCARD, $queue->policy());
             $push('during');
             $queue->discarding(static fn () => $push('nested'));
-            $push('after nested');
+            $push('after-nested');
 
             return 'rendered';
         });
@@ -79,6 +88,6 @@ final class InMemoryQueueTest extends TestCase
         $this->assertSame('rendered', $result);
         $this->assertSame(DeferredQueue::DELIVER, $queue->policy());
         $queue->flush();
-        $this->assertSame(['before', 'after'], $ran);
+        $this->assertSame(['before@x.test', 'after@x.test'], $this->sent);
     }
 }

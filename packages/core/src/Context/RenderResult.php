@@ -27,7 +27,7 @@ final readonly class RenderResult
         public ?\Throwable $failure = null,
     ) {}
 
-    /** How many captured items were queued for $channel ('mail', 'cookies'). */
+    /** How many captured items were queued for $channel ('notify', 'cookies'). */
     public function wouldSend(string $channel): int
     {
         $count = 0;

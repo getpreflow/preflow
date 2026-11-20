@@ -28,7 +28,7 @@ final class BasicMailLayout implements MailLayout
         }
 
         return "<!doctype html>\n"
-            . '<html lang="' . $e($content->lang) . "\">\n"
+            . '<html lang="' . $e($content->lang ?? 'en') . "\">\n"
             . '<head><meta charset="utf-8"><title>' . $e(MailText::oneLine($content->subject)) . "</title></head>\n"
             . "<body style=\"margin:0;padding:0;background:#ffffff;color:#1a1a1a;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55\">\n"
             . "<div style=\"max-width:560px;margin:0 auto;padding:32px 24px\">\n"

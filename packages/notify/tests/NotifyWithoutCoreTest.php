@@ -63,18 +63,25 @@ final class NotifyWithoutCoreTest extends TestCase
             /** @var list<string> */
             public array $langs = [];
 
-            public function run(string $lang, \Closure $compose): mixed
+            public function run(?string $lang, \Closure $compose): mixed
             {
-                $this->langs[] = $lang;
+                $this->langs[] = $lang ?? 'none';
 
-                return $compose();
+                return $compose($lang ?? 'it');
             }
         };
+        // Without a language: notify's own scope composes in 'en', as before 0.81.
+        $plain = (new Mailer($notifier, new BasicMailLayout(), new MailConfig()))->compose(new MailContent('Hello', 'Text'), 'a@x.test');
+        $this->assertStringContainsString('<html lang="en">', (string) $plain->html);
+
         $mailer = new Mailer($notifier, new BasicMailLayout(), new MailConfig(), $scope);
         $mailer->compose(new MailContent('Hallo', 'Text', 'de'), 'a@x.test');
         $mailer->sendLater(new MailContent('Bonjour', 'Texte', 'fr'), 'b@x.test');
+        // The scope resolves a missing language; the layout gets the one it resolved.
+        $resolved = $mailer->compose(new MailContent('Ciao', 'Testo'), 'c@x.test');
 
-        $this->assertSame(['de', 'fr'], $scope->langs);
+        $this->assertSame(['de', 'fr', 'none'], $scope->langs);
+        $this->assertStringContainsString('<html lang="it">', (string) $resolved->html);
         $this->assertSame(1, $notifier->flushDeferred());
         $this->assertNoCoreClassLoaded();
     }

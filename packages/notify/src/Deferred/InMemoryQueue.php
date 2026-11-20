@@ -14,27 +14,29 @@ namespace Preflow\Notify\Deferred;
  */
 final class InMemoryQueue implements DeferredQueue
 {
-    /** @var list<\Closure(): void> */
+    /** @var list<Deferred> */
     private array $queued = [];
 
     /** How many discarding() calls are running; push() drops while above 0. */
     private int $discarding = 0;
 
     /**
+     * @param \Closure(Deferred): void $send sends one item (the Notifier passes its deliver())
      * @param int $limit most sends one flush() runs; the rest stay queued and the limit is logged
      * @param (\Closure(string): void)|null $log where the limit line goes (error_log when null)
      */
     public function __construct(
+        private readonly \Closure $send,
         private readonly int $limit = 100,
         private readonly ?\Closure $log = null,
     ) {}
 
-    public function push(\Closure $send, string $summary): void
+    public function push(Deferred $item): void
     {
         if ($this->discarding > 0) {
             return;
         }
-        $this->queued[] = $send;
+        $this->queued[] = $item;
     }
 
     public function flush(): void
@@ -46,8 +48,7 @@ final class InMemoryQueue implements DeferredQueue
                 $this->log !== null ? ($this->log)($line) : error_log($line);
                 break;
             }
-            $send = array_shift($this->queued);
-            $send();
+            ($this->send)(array_shift($this->queued));
         }
     }
 

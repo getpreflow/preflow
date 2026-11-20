@@ -13,7 +13,7 @@ namespace Preflow\Core\Context;
  */
 interface Outbox
 {
-    /** Queue $item for the channel named $channel (for example 'mail' or 'cookies'). */
+    /** Queue $item for the channel named $channel (for example 'notify' or 'cookies'). */
     public function queue(object $item, string $channel): void;
 
     /** Run $work after the response has gone out (a cache rebuild, a slow notification). */

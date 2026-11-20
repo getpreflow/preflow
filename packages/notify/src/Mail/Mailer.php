@@ -20,7 +20,9 @@ use Preflow\Notify\TransportException;
  * and the one whose flushDeferred() sends what sendLater() queued. Core passes a Closure that
  * reads the container.
  *
- * The HTML part is rendered inside the ComposeScope (since 0.81.0) for the content's language:
+ * The HTML part is rendered inside the ComposeScope (since 0.81.0) for the content's language
+ * (when it has none, the scope's: the current render's locale with core, else 'en'); the layout
+ * gets the content with that language:
  * notify's own DirectCompose renders where the Mailer is called; core's renders in the
  * recipient's context, so the layout's texts and locale are the reader's, not the sender's.
  * Whether send() delivers is the Notifier's to decide (a preview or an audit sends nothing).
@@ -47,7 +49,11 @@ final class Mailer
             to: $to,
             subject: MailText::oneLine($content->subject),
             text: $content->text,
-            html: $this->scope->run($content->lang, fn (): string => $this->layout->html($content, $accent, $template)),
+            html: $this->scope->run($content->lang, fn (string $lang): string => $this->layout->html(
+                $content->lang === $lang ? $content : new MailContent($content->subject, $content->text, $lang, $content->action, $content->vars, $content->links),
+                $accent,
+                $template,
+            )),
             from: $from ?? $this->config->from,
         );
     }

@@ -15,6 +15,13 @@ namespace Preflow\Core\Context;
  *   after-response work is dropped.
  * A render that throws leaves nothing behind: its frame's outbox is dropped whatever the policy.
  *
+ * The policy also applies when something is queued (since 0.81.0): queue() and afterResponse()
+ * follow the frame's policy at that moment (RenderFrame::outboxPolicy(), which a within()
+ * stretch changes and a frame that delivers takes from the frame around it). Under Discard both
+ * are dropped at once; under Capture an item is kept as captured only (drain() returns it, it is
+ * never sent, also when the frame delivers once the stretch is over) and the work is dropped. So
+ * nothing queued in a discarding or capturing stretch goes out after it, on any channel.
+ *
  * Only the outermost open frame under Deliver sends: deliver() and runAfterResponse() throw a
  * LogicException anywhere else (inside a preview, an audit, a nested render, or on a closed
  * frame), so a captured mail is never sent. The frame's owner uses Contexts::deliverNow().
@@ -26,7 +33,7 @@ namespace Preflow\Core\Context;
  */
 final class FrameOutbox implements Outbox
 {
-    /** @var list<array{string, object}> channel name and item, in queue order */
+    /** @var list<array{string, object, bool}> channel name, item and whether it is captured only, in queue order */
     private array $items = [];
 
     /** @var list<\Closure(): void> */
@@ -35,19 +42,92 @@ final class FrameOutbox implements Outbox
     /**
      * @param array<string, OutboxChannel> $channels the channels known to the parent frame
      * @param (\Closure(): bool)|null $sends whether this outbox may send now (RenderFrame passes it; null never sends)
+     * @param (\Closure(): OutboxPolicy)|null $policy since 0.81.0: the frame's policy now (RenderFrame passes
+     *        outboxPolicy(); null delivers)
      *
      * @internal RenderFrame
      */
-    public function __construct(private array $channels = [], private ?\Closure $sends = null) {}
+    public function __construct(private array $channels = [], private ?\Closure $sends = null, private ?\Closure $policy = null) {}
 
     public function queue(object $item, string $channel): void
     {
-        $this->items[] = [$channel, $item];
+        $policy = $this->policy();
+        if ($policy === OutboxPolicy::Discard) {
+            return;
+        }
+        $this->items[] = [$channel, $item, $policy === OutboxPolicy::Capture];
     }
 
     public function afterResponse(\Closure $work): void
     {
+        if ($this->policy() !== OutboxPolicy::Deliver) {
+            return;
+        }
         $this->work[] = $work;
+    }
+
+    /**
+     * The channel registered under $name for this frame, or null.
+     *
+     * @since 0.81.0
+     */
+    public function channelNamed(string $name): ?OutboxChannel
+    {
+        return $this->channels[$name] ?? null;
+    }
+
+    /**
+     * Takes the items queued for $channel out and returns those that may be sent, in queue order
+     * (an item queued while the frame captured is dropped: it was never to be sent). The other
+     * channels' items stay. For the owner of a channel that sends its own items now (notify's
+     * flushDeferred() in a command).
+     *
+     * @since 0.81.0
+     *
+     * @return list<object>
+     */
+    public function take(string $channel): array
+    {
+        $taken = [];
+        $kept = [];
+        foreach ($this->items as $entry) {
+            if ($entry[0] !== $channel) {
+                $kept[] = $entry;
+            } elseif (!$entry[2]) {
+                $taken[] = $entry[1];
+            }
+        }
+        $this->items = $kept;
+
+        return $taken;
+    }
+
+    /**
+     * Moves the items queued for $channel to $to, as they are (captured only stays captured
+     * only), and registers the channel there when $to does not know one of that name. For a
+     * request of its own that failed inside another frame: its mail still goes with that frame.
+     *
+     * @since 0.81.0
+     */
+    public function handOn(string $channel, FrameOutbox $to): void
+    {
+        $kept = [];
+        foreach ($this->items as $entry) {
+            if ($entry[0] === $channel) {
+                $to->items[] = $entry;
+            } else {
+                $kept[] = $entry;
+            }
+        }
+        $this->items = $kept;
+        if (isset($this->channels[$channel])) {
+            $to->channels[$channel] ??= $this->channels[$channel];
+        }
+    }
+
+    private function policy(): OutboxPolicy
+    {
+        return $this->policy === null ? OutboxPolicy::Deliver : ($this->policy)();
     }
 
     /** Registers $c for this frame and the frames opened inside it (one per name; a later one replaces it). */
@@ -92,7 +172,10 @@ final class FrameOutbox implements Outbox
         $this->mustSend('deliver');
         $batches = [];
         $failure = null;
-        foreach ($this->items as [$channel, $item]) {
+        foreach ($this->items as [$channel, $item, $capturedOnly]) {
+            if ($capturedOnly) {
+                continue; // queued while the frame captured: listed, never sent
+            }
             if (!isset($this->channels[$channel])) {
                 $failure ??= new \LogicException("No outbox channel '{$channel}' is registered, so a queued " . $item::class . ' cannot be sent.');
                 continue;
@@ -165,11 +248,13 @@ final class FrameOutbox implements Outbox
     public function moveTo(FrameOutbox $parent): void
     {
         $parent->channels += $this->channels;
-        foreach ($this->items as [$channel, $item]) {
-            $parent->queue($item, $channel);
+        // As they are: the policy applied when each was queued (the frame's own, then the one
+        // around it, which cannot change while this frame is open).
+        foreach ($this->items as $entry) {
+            $parent->items[] = $entry;
         }
         foreach ($this->work as $work) {
-            $parent->afterResponse($work);
+            $parent->work[] = $work;
         }
         $this->discard();
     }
