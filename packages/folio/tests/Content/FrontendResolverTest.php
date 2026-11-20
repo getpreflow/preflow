@@ -82,6 +82,24 @@ final class FrontendResolverTest extends TestCase
         $this->assertNull($resolver->resolve('/draft-page'));
     }
 
+    /**
+     * A type without publishing: a render that reads working copies (a whole-page preview) finds a
+     * record whose status is not published yet; matchPublished() and a visitor's render do not.
+     */
+    public function test_a_working_copies_render_finds_an_unpublished_record_of_a_type_without_publishing(): void
+    {
+        $live = new \Preflow\Publishing\LiveContent($this->dm, new \Preflow\Publishing\SchemaPublishingTypes($this->dm));
+        $resolver = new FrontendResolver($this->dm, 'page', null, null, $live);
+        $visitor = \Preflow\Testing\ContextFactory::forTest();
+
+        $preview = \Preflow\Core\Context\Contexts::run($visitor->workingCopies(), static fn (): array => [
+            $resolver->match('/draft-page')?->record->get('slug'),
+            $resolver->matchPublished('/draft-page'),
+        ]);
+        $this->assertSame(['draft-page', null], $preview);
+        $this->assertNull(\Preflow\Core\Context\Contexts::run($visitor, static fn () => $resolver->match('/draft-page')), 'a visitor never finds it');
+    }
+
     public function test_two_types_with_different_patterns_resolve(): void
     {
         $this->writeType('page', ['route' => '/{slug}', 'home' => 'home']);

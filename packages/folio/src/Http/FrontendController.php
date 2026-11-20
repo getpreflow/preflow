@@ -204,17 +204,22 @@ final class FrontendController
 
         // The rest of this request shows the working copy: draft references show too, the data
         // writes the page would make are skipped and listed (a shared draft changes no data), and
-        // the page cache never stores it. It stays the visit of a real person (since 0.81.0):
-        // the site's own error page, the debug toolbar, and what it queues (its session's
-        // cookies) goes out as on any page. The next request reads published again: the narrow
-        // ends with this request's frame.
-        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->skippingWrites());
+        // the page cache never stores it. It stays the visit of a real person (since 0.81.0): the
+        // site's own error page, the debug toolbar, its session; what the request itself queues
+        // (its middleware's cookies) goes out as on any page. The page's own render captures what
+        // it would send (mail, cookies, after-response work): a skipped write takes the path a real visit
+        // takes, so mail about it would tell someone of data that was never written. The next
+        // request reads published again: the narrow ends with this request's frame. The page's
+        // locale is narrowed first, so the response's middleware keeps it after the stretch.
+        $locale = $this->locale($request, $working);
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->skippingWrites()->in($locale));
+        $html = Contexts::within(Contexts::current()->capturing(), fn (): string => $this->render($request, $working, $route, true));
 
         return new Response(200, [
             'Content-Type' => 'text/html; charset=UTF-8',
             'X-Robots-Tag' => 'noindex',
             'Cache-Control' => 'private, no-store',
-        ], $this->render($request, $working, $route, true));
+        ], $html);
     }
 
     /** First existing template of the route's chain (userland, per-type, generic). */

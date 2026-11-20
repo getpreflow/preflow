@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Members\Access;
 
 use Preflow\Auth\Access\AllowsRoles;
+use Preflow\Auth\Access\ComparesRoles;
 use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Auth\Authenticatable;
@@ -18,7 +19,7 @@ use Preflow\Members\MembersConfig;
  * everything). With rbac, rbac's resolver answers instead (MembersServiceProvider leaves it).
  * A role view (view as role) gets the same from its roles (allowsRoles()).
  */
-final class MemberAccess implements PermissionResolver, ListsRoles, AllowsRoles
+final class MemberAccess implements PermissionResolver, ListsRoles, AllowsRoles, ComparesRoles
 {
     public function __construct(
         private readonly PermissionResolver $fallback,
@@ -47,6 +48,25 @@ final class MemberAccess implements PermissionResolver, ListsRoles, AllowsRoles
         }
 
         return $this->fallback instanceof AllowsRoles && $this->fallback->allowsRoles($roles, $population, $permission, $subject);
+    }
+
+    /**
+     * Members: admitted roles grant members.access and nothing else, which a user already has when
+     * they are admitted themselves. Another population is the resolver's before it (ComparesRoles),
+     * or, when it cannot compare, only roles the user holds themselves.
+     *
+     * @since 0.81.0
+     */
+    public function rolesWithin(array $roles, string $population, Authenticatable $user): bool
+    {
+        if ($population === 'members') {
+            return !MemberRoles::admitted(MemberRoles::normalize($roles)) || MemberRoles::admitted($user->getRoles());
+        }
+        if ($this->fallback instanceof ComparesRoles) {
+            return $this->fallback->rolesWithin($roles, $population, $user);
+        }
+
+        return array_diff($roles, array_map('strval', array_filter($user->getRoles(), static fn (mixed $role): bool => is_string($role) || is_int($role)))) === [];
     }
 
     /** Members have the one role "member"; another population's roles are the resolver's before it (none when it lists none). */

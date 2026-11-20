@@ -21,4 +21,33 @@ final class Pattern
 
         return false;
     }
+
+    /**
+     * Whether the patterns $held cover every pattern in $granted: each granted pattern is matched
+     * by a held one as a name would be ("*" covers all, "page.*" covers "page.edit" and "page.*",
+     * "page.edit" covers only itself). Resolvers whose grants are patterns compare roles with it
+     * (ComparesRoles).
+     *
+     * @since 0.81.0
+     *
+     * @param list<string> $held
+     * @param list<string> $granted
+     */
+    public static function covers(array $held, array $granted): bool
+    {
+        foreach ($granted as $pattern) {
+            $covered = false;
+            foreach ($held as $own) {
+                if (self::matches($own, $pattern)) {
+                    $covered = true;
+                    break;
+                }
+            }
+            if (!$covered) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

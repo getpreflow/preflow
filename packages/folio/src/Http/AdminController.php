@@ -1719,17 +1719,6 @@ final class AdminController
     }
 
     /**
-     * The preview bar's address (board PageEditor): the edited copy's address as "host/path" (the
-     * host of app.url; without one, the path), "· draft" while it differs from what is live, and
-     * the live address for Open (only while the record is on the site: a publishing type's live
-     * copy, at its own address; another type's stored record). Null address: the record has none in
-     * this language yet (a route parameter without a value), so the bar offers no copy or open.
-     *
-     * @param array<string, mixed>      $values
-     * @param array<string, mixed>|null $publishing publishingContext()
-     * @return array{address: ?string, url: ?string, draft: bool, live_url: ?string, copied: string}|null
-     */
-    /**
      * The whole-page preview beside the live one (form.twig, page-preview.js): the record's real
      * page through PagePreviewController, for a saved record of a routed type. A new record has
      * no page yet (url null: "Save once to preview the whole page"); "View as" offers the roles
@@ -1759,6 +1748,17 @@ final class AdminController
         ];
     }
 
+    /**
+     * The preview bar's address (board PageEditor): the edited copy's address as "host/path" (the
+     * host of app.url; without one, the path), "· draft" while it differs from what is live, and
+     * the live address for Open (only while the record is on the site: a publishing type's live
+     * copy, at its own address; another type's stored record). Null address: the record has none in
+     * this language yet (a route parameter without a value), so the bar offers no copy or open.
+     *
+     * @param array<string, mixed>      $values
+     * @param array<string, mixed>|null $publishing publishingContext()
+     * @return array{address: ?string, url: ?string, draft: bool, live_url: ?string, copied: string}|null
+     */
     private function previewBar(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew, ?array $publishing): ?array
     {
         if ($this->frontend->routeFor($type) === null) {

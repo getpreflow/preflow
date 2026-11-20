@@ -86,3 +86,14 @@
 .folio-pp-effect { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
 .folio-pp-effect::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pp-inverse-accent); }
 .folio-pp-note { opacity: .8; }
+
+/* The whole-page preview of a page that redirects (templates/admin/preview/redirect.twig). */
+.folio-pp-redirect-page { margin: 0; }
+.folio-pp-redirect {
+  box-sizing: border-box;
+  max-width: 40rem;
+  margin: 15vh auto 0;
+  padding: 0 24px;
+  font: 400 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  overflow-wrap: anywhere;
+}

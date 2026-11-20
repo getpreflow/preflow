@@ -2156,7 +2156,6 @@ final class FolioServiceProvider extends ServiceProvider
         return $extensions->isEnabled('codes') && $extensions->get('codes')->class === \Preflow\Folio\Codes\Extension::class;
     }
 
-    /** The field types of the rbac admin (Rbac\Fields), and the permissions editor's assets (assets/rbac/). */
     /**
      * A role's label for "View as": rbac's stored label as the admin reads it (Messages::roleLabel());
      * null without rbac (the role's name is shown).
@@ -2179,6 +2178,7 @@ final class FolioServiceProvider extends ServiceProvider
         };
     }
 
+    /** The field types of the rbac admin (Rbac\Fields), and the permissions editor's assets (assets/rbac/). */
     private static function registerRbacFields(Container $container): void
     {
         $coverage = $container->get(\Preflow\Rbac\PermissionCoverage::class);

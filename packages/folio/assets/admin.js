@@ -204,21 +204,30 @@
         });
     }
 
-    // Messages count only from Folio's own frames: the drawer and the previews (live and whole page,
-    // page-preview.js). A same-origin window elsewhere (another tab, a popup, a frame on a site page)
-    // cannot steer the editor.
+    // Messages count only from Folio's own frames: the drawer and the live preview. A same-origin
+    // window elsewhere (another tab, a popup, a frame on a site page) cannot steer the editor.
     function fromOwnFrame(source) {
         if (!source) { return false; }
         var drawerFrame = drawerEl ? drawerEl.querySelector('iframe') : null;
         if (drawerFrame && drawerFrame.contentWindow === source) { return true; }
-        var pageFrame = document.querySelector('.folio-page-frame');
-        if (pageFrame && pageFrame.contentWindow === source) { return true; }
         return !!(preview && preview.frame && preview.frame.contentWindow === source);
     }
 
+    // The whole-page preview (page-preview.js) runs the site's whole layout, its scripts included:
+    // only the preview bridge's messages (click-to-edit) count from it, nothing a drawer may say.
+    function fromPageFrame(source) {
+        var pageFrame = source ? document.querySelector('.folio-page-frame') : null;
+        return !!(pageFrame && pageFrame.contentWindow === source);
+    }
+
     function onMessage(e) {
-        if (e.origin !== window.location.origin || !fromOwnFrame(e.source)) { return; }
+        if (e.origin !== window.location.origin) { return; }
         var data = e.data;
+        if (fromPageFrame(e.source)) {
+            if (data && typeof data === 'object' && data.source === 'folio-preview') { onPreviewMessage(data); }
+            return;
+        }
+        if (!fromOwnFrame(e.source)) { return; }
         if (data && typeof data === 'object' && data.source === 'folio-assets') { onAssetsPicked(data); return; }
         if (data && typeof data === 'object' && data.source === 'folio-preview') { onPreviewMessage(data); return; }
         if (data && typeof data === 'object' && data.source === 'folio-drawer-cancel') { closeDrawer(); return; }

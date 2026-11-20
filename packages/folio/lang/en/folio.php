@@ -307,7 +307,8 @@ return [
         'report' => 'What this page would do',
         'would_send' => 'This page would send :count mail|This page would send :count mails',
         'would_write' => 'This page would write :count record|This page would write :count records',
-        'links_leave' => 'Plain links and forms open the live site.',
+        'links_leave' => 'Links and forms do nothing in this preview.',
+        'redirects' => 'This page redirects to :target.',
     ],
     // The editor's "SEO & sharing" section (with SEO on: records with a frontend route and the site).
     'seo' => [

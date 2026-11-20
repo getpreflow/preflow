@@ -30,7 +30,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * without the Set-Cookie and hypermedia headers it may carry (never the admin's to send), never
  * cached or indexed, with the preview-editor bridge and the preview bar (what the page would send
  * and write) added as external files and markup only. A record that was never saved, or has no
- * address in the language, has no page: 404.
+ * address in the language, has no page: 404. A page that redirects (its login, a moved address)
+ * is answered with a notice of where it would go (200, no Location), so the frame stays in the
+ * preview.
  *
  * @since 0.81.0
  */
@@ -64,8 +66,10 @@ final class PagePreviewController
             return NotFound::response($request, FolioText::get('folio.errors.not_found'));
         }
 
+        $as = $query['as'] ?? '';
         try {
-            $role = $this->viewAs->roleView(is_string($query['as'] ?? null) ? $query['as'] : '');
+            // A list or another shape (?as[]=…) is no choice either.
+            $role = $this->viewAs->roleView(is_string($as) ? $as : throw new \DomainException('View as takes one value.'));
         } catch (\DomainException) {
             return Forbidden::response($request, $this->engine, $this->prefix, $this->catalog);
         }
@@ -79,6 +83,15 @@ final class PagePreviewController
     private function answer(RenderResult $result): ResponseInterface
     {
         $response = $result->response;
+        $status = $response->getStatusCode();
+        if ($status >= 300 && $status < 400 && $response->hasHeader('Location')) {
+            // A redirect (a gated page's login, a moved address) is shown, never followed: the frame
+            // would leave the preview for the live site, under the editor's session.
+            $response = new \Nyholm\Psr7\Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->engine->render(
+                '@folio/admin/preview/redirect.twig',
+                ['target' => $response->getHeaderLine('Location')],
+            ));
+        }
         $strip = ['Set-Cookie', ...($this->hypermedia?->ownedHeaders() ?? []), ...($this->hypermedia?->nonceHeaders() ?? [])];
         foreach (array_keys($response->getHeaders()) as $name) {
             if (HypermediaProtocols::matches($name, $strip)) {

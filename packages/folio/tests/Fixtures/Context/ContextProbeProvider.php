@@ -16,7 +16,8 @@ use Preflow\View\TemplateFunctionDefinition;
  * - context_probe(): the current render's context as "locale|surface|reads|viewer|purpose";
  * - context_after(): queues after-response work that records the probe as it is then;
  * - probe_cookie(): queues the cookie "probe=1" on the current frame;
- * - probe_effects(): writes a note when $write is on, throws when $fail is on.
+ * - probe_effects(): writes a note when $write is on, queues a mail (notify) when $mail is on,
+ *   throws when $fail is on.
  */
 final class ContextProbeProvider extends ServiceProvider
 {
@@ -28,6 +29,9 @@ final class ContextProbeProvider extends ServiceProvider
 
     /** probe_effects() writes a note (a page that writes on GET). */
     public static bool $write = false;
+
+    /** probe_effects() queues a mail (a page that mails on GET). */
+    public static bool $mail = false;
 
     /** probe_effects() throws (a page that fails). */
     public static bool $fail = false;
@@ -62,6 +66,9 @@ final class ContextProbeProvider extends ServiceProvider
                 if (self::$write) {
                     $dm = $container->get(\Preflow\Data\DataManager::class);
                     $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('note'), ['uuid' => bin2hex(random_bytes(4)), 'name' => 'Visited']), false);
+                }
+                if (self::$mail) {
+                    $container->get(\Preflow\Notify\Notifier::class)->sendLater(new \Preflow\Notify\Email('owner@site.test', 'Visited', 'Someone read the page.'));
                 }
 
                 return '';

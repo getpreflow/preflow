@@ -1,8 +1,9 @@
 {# The whole-page preview's bar (PagePreviewController), added to the previewed page before </body>:
-   what the page would have sent and written (captured and skipped, never done) and that plain links
-   and forms leave the preview. Markup only: it lives in the site's page, under the site's policy;
-   preview-editor.css styles it, and it never takes clicks from the page outside its own box. #}
-<aside class="folio-pp-bar" data-folio-preview-report aria-label="{{ t('folio.preview.report') }}">
+   what the page would have sent and written (captured and skipped, never done) and that links and
+   forms do nothing here (the preview-editor bridge stops them, so the frame never becomes the live
+   site under the editor's session). Markup only: it lives in the site's page, under the site's
+   policy; preview-editor.css styles it. Its texts are the admin's, so it says which language they are in. #}
+<aside class="folio-pp-bar" lang="{{ current_locale() }}" data-folio-preview-report aria-label="{{ t('folio.preview.report') }}">
     {%- if mail > 0 %}<span class="folio-pp-effect">{{ t('folio.preview.would_send', {count: mail}, mail) }}</span>{% endif -%}
     {%- if writes > 0 %}<span class="folio-pp-effect">{{ t('folio.preview.would_write', {count: writes}, writes) }}</span>{% endif -%}
     <span class="folio-pp-note">{{ t('folio.preview.links_leave') }}</span>

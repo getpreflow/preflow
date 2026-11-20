@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Rbac;
 
 use Preflow\Auth\Access\AllowsRoles;
+use Preflow\Auth\Access\ComparesRoles;
 use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
@@ -19,7 +20,7 @@ use Preflow\Auth\Authenticatable;
  * A role view (view as role) is answered by allowsRoles(): its roles' stored grants only, never
  * that bootstrap.
  */
-final class RbacResolver implements PermissionResolver, ListsRoles, AllowsRoles
+final class RbacResolver implements PermissionResolver, ListsRoles, AllowsRoles, ComparesRoles
 {
     /** @var array<string, true> messages already logged this request */
     private array $logged = [];
@@ -120,6 +121,18 @@ final class RbacResolver implements PermissionResolver, ListsRoles, AllowsRoles
         }
 
         return array_values(array_unique($patterns));
+    }
+
+    /**
+     * Whether $roles in $population grant no pattern the user's own roles do not cover
+     * (Pattern::covers()): rbac's grants do not depend on the subject, so this is exact for every
+     * subject. Before rbac is installed a staff user may do everything (patterns() is "*").
+     *
+     * @since 0.81.0
+     */
+    public function rolesWithin(array $roles, string $population, Authenticatable $user): bool
+    {
+        return Pattern::covers($this->patterns($user, $population), $this->grantsFor($roles, $population));
     }
 
     /** Whether rbac is installed here (the store caches it and forgets it on install()); logs the bootstrap once while it is not. */

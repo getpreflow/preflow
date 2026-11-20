@@ -38,6 +38,9 @@ function editor({ autosave = true, split = false } = {}) {
         frame = el(stage, 'iframe', { name: 'folio-preview-frame' }, 'folio-preview-frame');
         frame.contentWindow.location = { href: 'https://site.test/folio/page/preview' };
         frame.contentWindow.postMessage = (msg) => { log.posted.push(msg); };
+        // The whole-page preview's frame (page-preview.js) beside it.
+        const page = el(stage, 'iframe', { name: 'folio-page-frame' }, 'folio-preview-frame folio-page-frame');
+        page.contentWindow.location = { href: 'https://site.test/folio/preview/page/page/p1' };
     }
     const wrap = el(host, 'div', {}, 'folio-form');
     const form = el(wrap, 'form', autosave ? { id: 'folio-record', 'hx-post': '/folio/page/p1/autosave', 'hx-target': '#folio-save-state' } : { id: 'folio-record' });
@@ -174,6 +177,21 @@ test('the card with the focus stays selected in the preview until another card i
     e.log.posted = [];
     e.w.receive({ source: 'folio-preview', type: 'ready' }, 'https://site.test', e.doc.querySelector('iframe').contentWindow);
     assert.deepEqual(e.log.posted.map((m) => [m.uid, m.field, m.sticky]), [['b2', null, true], [null, 'title', false]]);
+});
+
+test('the whole-page frame is heard for the preview bridge only, never as a drawer', () => {
+    const e = editor({ split: true });
+    e.cards[1].input.focus();
+    const page = e.doc.querySelector('iframe.folio-page-frame').contentWindow;
+    let saved = 0;
+    e.doc.addEventListener('folio:drawer-saved', () => { saved++; });
+
+    e.w.receive({ source: 'folio-drawer', type: 'page', id: 'p9' }, 'https://site.test', page);
+    assert.equal(saved, 0, 'a site script in the page frame cannot speak as a drawer');
+
+    e.log.posted = [];
+    e.w.receive({ source: 'folio-preview', type: 'ready' }, 'https://site.test', page);
+    assert.deepEqual(e.log.posted.map((m) => m.uid), ['b2'], 'the bridge\'s own messages count');
 });
 
 test('opening a card by its chevron selects it in the preview', () => {

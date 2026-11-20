@@ -53,6 +53,18 @@ final class PagePreviewControllerTest extends TestCase
             . '{% if can("members.access") %}<b class="members">MEMBERS-ONLY</b>{% endif %}<p class="who">{{ auth_check() ? "in" : "out" }}</p>'
             . '{{ page_side_effects() }}<script nonce="{{ csp_nonce() }}">window.previewed = true;</script></body></html>');
         ini_set('error_log', $this->dir . '/php.log');
+        // A routed type without publishing (its visitors see records whose status is "published"),
+        // and a gated one (visitors are sent to its login).
+        $this->writeModel('event', [
+            'label' => 'Events', 'publishing' => false, 'frontend' => ['route' => '/events/{slug}'],
+            'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string'], 'status' => ['type' => 'string']],
+        ]);
+        $this->writeModel('secret', [
+            'label' => 'Secrets', 'frontend' => ['route' => '/secret/{slug}', 'permission' => 'members.access', 'login' => '/login'],
+            'fields' => ['title' => ['type' => 'string'], 'slug' => ['type' => 'string']],
+        ]);
+        $this->write('resources/folio/frontend/event.twig', '<html><head></head><body><h1>EVENT {{ record.title }}</h1></body></html>');
+        $this->write('resources/folio/frontend/secret.twig', '<html><head></head><body><h1>SECRET {{ record.title }}</h1></body></html>');
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, " . var_export(PagePreviewSiteProvider::class, true) . "];\n");
 
         $store = $this->app()->container()->get(RoleStore::class);
@@ -64,6 +76,8 @@ final class PagePreviewControllerTest extends TestCase
         $this->publisher()->publish($this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]), null);
         $this->working('post', 'p1', ['title' => ['en' => 'Draft', 'de' => 'Entwurf'], 'slug' => ['en' => 'hello', 'de' => 'hallo'], '_locales' => ['en', 'de']]);
         $this->working('note', 'n1', ['name' => 'A note']);
+        $this->working('event', 'e1', ['title' => 'Draft party', 'slug' => 'party', 'status' => 'draft']);
+        $this->working('secret', 's1', ['title' => 'Hidden', 'slug' => 'x']);
         // Staff sign in from here on (an app with auth starts its session when it boots).
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -122,7 +136,7 @@ final class PagePreviewControllerTest extends TestCase
 
         $body = (string) $this->send('GET', '/folio/preview/page/post/p1?locale=en')->getBody();
 
-        $this->assertMatchesRegularExpression('#<aside class="folio-pp-bar"[^>]*>.*This page would send 1 mail<.*This page would write 1 record<.*Plain links and forms open the live site\.#s', $body);
+        $this->assertMatchesRegularExpression('#<aside class="folio-pp-bar" lang="en"[^>]*>.*This page would send 1 mail<.*This page would write 1 record<.*Links and forms do nothing in this preview\.#s', $body, 'in the admin\'s language, marked as such');
         $this->assertSame($before, $notes(), 'nothing was written');
         $this->assertSame([], $this->session->container()->get(TransportFactory::class)->get('mail')->sent(), 'nothing was sent');
         $this->assertSame(0, $this->session->container()->get(Notifier::class)->flushDeferred(), 'nothing waits to be sent');
@@ -135,6 +149,7 @@ final class PagePreviewControllerTest extends TestCase
         $this->assertSame(200, $this->send('GET', '/folio/preview/page/post/p1?locale=en')->getStatusCode(), 'the preview itself needs post.edit only');
         $this->assertSame(403, $this->send('GET', '/folio/preview/page/post/p1?locale=en&as=member:gold')->getStatusCode(), 'view as needs site.view_as');
         $this->assertSame(403, $this->send('GET', '/folio/preview/page/post/p1?locale=en&as=nonsense')->getStatusCode());
+        $this->assertSame(403, $this->send('GET', '/folio/preview/page/post/p1?locale=en&as[]=member:gold')->getStatusCode(), 'one value, never a list');
         $this->assertSame(0, Contexts::depth());
     }
 
@@ -218,6 +233,35 @@ final class PagePreviewControllerTest extends TestCase
         $this->assertSame(200, $form->getStatusCode(), 'still signed in');
         $this->assertStringContainsString('<p class="who">out</p>', (string) $this->visitor('/hello')->getBody(), 'the next visitor is nobody');
         $this->assertStringContainsString('<h1>Hello</h1>', (string) $this->visitor('/hello')->getBody(), 'reading the published page');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_preview_shows_an_unpublished_record_of_a_type_without_publishing(): void
+    {
+        $this->signIn('admin@site.test');
+
+        $preview = $this->send('GET', '/folio/preview/page/event/e1');
+
+        $this->assertSame(200, $preview->getStatusCode());
+        $this->assertStringContainsString('<h1>EVENT Draft party</h1>', (string) $preview->getBody(), 'the draft, as its editor sees it');
+        $this->assertSame(404, $this->visitor('/events/party')->getStatusCode(), 'a visitor still finds nothing there');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_page_that_redirects_shows_where_it_goes_instead_of_leaving_the_preview(): void
+    {
+        $this->signIn('admin@site.test');
+
+        $visitor = $this->send('GET', '/folio/preview/page/secret/s1');
+        $gold = (string) $this->send('GET', '/folio/preview/page/secret/s1?as=member:gold')->getBody();
+
+        $body = (string) $visitor->getBody();
+        $this->assertSame(200, $visitor->getStatusCode(), 'the frame stays in the preview');
+        $this->assertFalse($visitor->hasHeader('Location'));
+        $this->assertStringContainsString('This page redirects to /login?next=%2Fsecret%2Fx.', $body, 'where a visitor would be sent, as text');
+        $this->assertStringContainsString('<aside class="folio-pp-bar"', $body, 'with the bar');
+        $this->assertSame('private, no-store', $visitor->getHeaderLine('Cache-Control'));
+        $this->assertStringContainsString('<h1>SECRET Hidden</h1>', $gold, 'a member passes the gate and sees the page');
     }
 
     /** A page that fails shows its own error page in the preview; the admin's request is unharmed. */

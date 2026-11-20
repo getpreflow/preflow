@@ -163,12 +163,13 @@ final class Access
 
     /**
      * Whether the user signed in for this request may view the site as $view (view as role) by
-     * their roles: a role view of the members' population always (a visitor's roles), a staff
-     * role view only when the resolver can answer for roles (AllowsRoles) and every declared
-     * permission the view's roles grant is one this user holds too, so nobody sees the site with
-     * more rights than their own (an editor never as an admin). Nobody signed in, or a role view
-     * itself, may not. Whether they may view as roles at all is the permission the caller asks
-     * (site.view_as with rbac).
+     * their roles: a role view of the members' population always (a visitor's roles); a staff
+     * role view only when the resolver answers for roles (AllowsRoles) and its roles grant nothing
+     * the user may not do. A resolver that compares roles (ComparesRoles) says so by its own rules,
+     * on any subject; without it, only roles the user holds themselves count. So nobody sees the
+     * site with more rights than their own (an editor never as an admin). Nobody signed in, or a
+     * role view itself, may not. Whether they may view as roles at all is the permission the
+     * caller asks (site.view_as with rbac).
      *
      * @since 0.81.0
      */
@@ -184,15 +185,12 @@ final class Access
         if (!$this->resolver instanceof AllowsRoles) {
             return false;
         }
-        foreach (array_keys($this->registry->all()) as $permission) {
-            if ($this->registry->disabledReason($permission) === null
-                && $this->resolver->allowsRoles($view->roles, 'staff', $permission, null)
-                && !$this->can($permission)) {
-                return false;
-            }
+        if ($this->resolver instanceof ComparesRoles) {
+            return $this->resolver->rolesWithin($view->roles, 'staff', $user);
         }
+        $own = array_map('strval', array_filter($user->getRoles(), static fn (mixed $role): bool => is_string($role) || is_int($role)));
 
-        return true;
+        return array_diff($view->roles, $own) === [];
     }
 
     /** Whether $view's roles allow $permission on $subject (AllowsRoles); false when the resolver cannot say. */

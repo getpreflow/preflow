@@ -72,7 +72,8 @@ final class ViewAs
 
     /**
      * The role view $value names, when the editor may view as it; null for '' (an anonymous
-     * visitor).
+     * visitor). Only that one role is checked: it must be a role the resolver lists for its
+     * population, and Access::mayViewAs() must allow it.
      *
      * @throws \DomainException when $value is not a choice the editor has (a role they may not view as, a malformed value)
      */
@@ -81,11 +82,18 @@ final class ViewAs
         if ($value === '') {
             return null;
         }
-        if (!in_array($value, array_column($this->options(), 'value'), true)) {
+        $parts = explode(':', $value, 2);
+        $listed = ['member' => 'members', 'staff' => 'staff'][$parts[0]] ?? null;
+        $role = $parts[1] ?? '';
+        if ($listed === null || $role === '' || str_contains($role, ',') || !$this->allowed()
+            || !in_array($role, $this->access?->roles($listed) ?? [], true)) {
             throw new \DomainException("View as '{$value}' is not offered to this editor.");
         }
-        [$population, $role] = explode(':', $value, 2);
+        $view = new RoleView($parts[0], [$role]);
+        if ($this->access?->mayViewAs($view) !== true) {
+            throw new \DomainException("View as '{$value}' is not offered to this editor.");
+        }
 
-        return new RoleView($population, [$role]);
+        return $view;
     }
 }

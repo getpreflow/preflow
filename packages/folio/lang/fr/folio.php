@@ -295,7 +295,8 @@ return [
         'report' => 'Ce que cette page ferait',
         'would_send' => 'Cette page enverrait :count e-mail|Cette page enverrait :count e-mails',
         'would_write' => 'Cette page écrirait :count enregistrement|Cette page écrirait :count enregistrements',
-        'links_leave' => 'Les liens et formulaires simples ouvrent le site en ligne.',
+        'links_leave' => 'Les liens et formulaires sont inactifs dans cet aperçu.',
+        'redirects' => 'Cette page redirige vers :target.',
     ],
     'seo' => [
         'title' => 'SEO et partage',

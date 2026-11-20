@@ -63,12 +63,13 @@ final class FolioContextTest extends TestCase
         Contexts::reset();
         Deprecations::reset();
         ContextProbeProvider::$seen = ContextProbeProvider::$after = [];
-        ContextProbeProvider::$write = ContextProbeProvider::$fail = false;
+        ContextProbeProvider::$write = ContextProbeProvider::$fail = ContextProbeProvider::$mail = false;
         $this->scaffoldPublishing();
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://site.test'];\n");
         // Content in en (the default) and de; the visitor's locale comes from Accept-Language (send()).
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'cookie', 'cookie' => false];\n");
         $this->write('config/seo.php', "<?php\nreturn ['enabled' => true];\n");
+        $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'site@site.test']]];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><head><title>{{ record.title }}</title></head><body><h1>{{ record.title }}</h1>'
             . '{% if auth_check() %}<b class="members">MEMBERS</b>{% endif %}<p class="probe">{{ context_probe() }}</p>{{ probe_cookie() }}{{ probe_effects() }}</body></html>');
         $this->write('app/pages/index.twig', '<p class="home">{{ context_probe() }}|{{ interface_locale }}|{{ t("folio.common.save") }}|{{ folio_url("post", "p1")|default("none") }}</p>');
@@ -187,7 +188,7 @@ final class FolioContextTest extends TestCase
     public function test_live_preview_skips_writes_and_keeps_what_it_would_send(): void
     {
         $this->signIn();
-        ContextProbeProvider::$write = true;
+        ContextProbeProvider::$write = ContextProbeProvider::$mail = true;
         $notes = fn (): int => count($this->session->container()->get(\Preflow\Data\DataManager::class)->queryType('note')->get()->items());
         $before = $notes();
 
@@ -195,6 +196,8 @@ final class FolioContextTest extends TestCase
 
         $this->assertSame(200, $preview->getStatusCode());
         $this->assertSame($before, $notes(), 'the write was skipped');
+        $this->assertSame([], $this->session->container()->get(\Preflow\Notify\TransportFactory::class)->get('mail')->sent(), 'the mail was not sent with the admin\'s request');
+        $this->assertSame(0, $this->session->container()->get(\Preflow\Notify\Notifier::class)->flushDeferred(), 'nor left to be sent');
         $this->assertStringNotContainsString('probe=', implode("\n", $preview->getHeader('Set-Cookie')), 'the page\'s cookie is not set with the admin\'s response');
         $this->assertSame(0, Contexts::depth());
     }
@@ -245,6 +248,34 @@ final class FolioContextTest extends TestCase
         $this->assertSame(500, $failed->getStatusCode());
         $this->assertStringContainsString('The probed page failed.', (string) $failed->getBody(), 'the debug error page of a visit, not the internal render\'s bare one');
         $this->assertSame(0, Contexts::depth());
+    }
+
+    /**
+     * A share preview's page that mails on GET: the mail is captured with the page (it would tell
+     * someone of a write that was skipped); an ordinary page's mail still goes out.
+     */
+    #[RunInSeparateProcess]
+    public function test_share_preview_captures_the_mail_of_the_page(): void
+    {
+        $this->working('post', 'p1', ['title' => ['de' => 'Entwurf', 'en' => 'Draft'], 'slug' => ['de' => 'hallo', 'en' => 'hello'], '_locales' => ['de', 'en']]);
+        $this->signIn();
+        $share = (string) $this->send('POST', '/folio/post/p1/share', ['_locale' => 'de'])->getBody();
+        $this->assertSame(1, preg_match('/folio_preview=([A-Za-z0-9_.\-]+)/', $share, $m), $share);
+        $sent = fn (): array => $this->session->container()->get(\Preflow\Notify\TransportFactory::class)->get('mail')->sent();
+        ContextProbeProvider::$mail = true;
+
+        $shared = $this->session->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/hallo?folio_preview=' . $m[1])
+            ->withHeader('Accept-Language', 'de')->withQueryParams(['folio_preview' => $m[1]]));
+
+        $this->assertStringContainsString('<h1>Entwurf</h1>', (string) $shared->getBody());
+        $this->assertStringContainsString('<p class="probe">de|public|working|admin@site.test|visit</p>', (string) $shared->getBody(), 'the page\'s locale and read mode');
+        $this->assertSame([], $sent(), 'the shared draft\'s mail is captured');
+        $this->assertSame(0, $this->session->container()->get(\Preflow\Notify\Notifier::class)->flushDeferred());
+        $this->assertSame(0, Contexts::depth());
+
+        // Proof: the published page, visited, sends its mail.
+        $this->send('GET', '/hallo');
+        $this->assertCount(1, $sent());
     }
 
     #[RunInSeparateProcess]

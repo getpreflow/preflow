@@ -343,9 +343,9 @@ final class AccessTest extends TestCase
     }
 
     /**
-     * Who may view the site as which role: every member role; a staff role only when its grants
-     * are all the user's own (an editor never as an admin); nobody signed out, and never a role
-     * view itself.
+     * Who may view the site as which role, with a resolver that compares roles: every member role;
+     * a staff role only when its grants are all the user's own (an editor never as an admin);
+     * nobody signed out, and never a role view itself.
      */
     public function test_may_view_as_never_grants_more_than_the_users_own_roles(): void
     {
@@ -353,8 +353,13 @@ final class AccessTest extends TestCase
             'staff' => array_merge(...array_map(static fn (string $role): array => ['admin' => ['*'], 'editor' => ['page.edit', 'page.view'], 'viewer' => ['page.view']][$role] ?? [], $roles ?: ['none'])),
             default => in_array('gold', $roles, true) ? ['page.view'] : [],
         };
-        $resolver = new class ($grants) implements PermissionResolver, \Preflow\Auth\Access\AllowsRoles {
+        $resolver = new class ($grants) implements PermissionResolver, \Preflow\Auth\Access\AllowsRoles, \Preflow\Auth\Access\ComparesRoles {
             public function __construct(private readonly \Closure $grants) {}
+
+            public function rolesWithin(array $roles, string $population, Authenticatable $user): bool
+            {
+                return \Preflow\Auth\Access\Pattern::covers(($this->grants)($user->getRoles(), $population), ($this->grants)($roles, $population));
+            }
 
             public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
             {
@@ -399,5 +404,75 @@ final class AccessTest extends TestCase
 
             return [$default->mayViewAs($views['viewer']), $default->mayViewAs($views['gold'])];
         }));
+    }
+
+    /** A resolver that compares roles decides: when it says a role grants more, the view is refused. */
+    public function test_may_view_as_asks_a_resolver_that_compares_roles(): void
+    {
+        $resolver = new class implements PermissionResolver, \Preflow\Auth\Access\AllowsRoles, \Preflow\Auth\Access\ComparesRoles {
+            /** @var list<array{list<string>, string, string}> */
+            public array $asked = [];
+
+            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                return true;
+            }
+
+            public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
+            {
+                return true;
+            }
+
+            public function rolesWithin(array $roles, string $population, Authenticatable $user): bool
+            {
+                $this->asked[] = [$roles, $population, $user->getAuthId()];
+
+                return $roles !== ['reviewer'];
+            }
+        };
+        $access = $this->access(populations: ['staff' => 'staff']);
+        $access->setResolver($resolver);
+
+        $answers = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($access): array {
+            @$this->auth->setUser(new TestUser('ed', roles: ['editor']), 'staff');
+
+            return [$access->mayViewAs(new \Preflow\Core\Context\RoleView('staff', ['reviewer'])), $access->mayViewAs(new \Preflow\Core\Context\RoleView('staff', ['viewer']))];
+        });
+
+        $this->assertSame([false, true], $answers);
+        $this->assertSame([[['reviewer'], 'staff', 'ed'], [['viewer'], 'staff', 'ed']], $resolver->asked);
+    }
+
+    /**
+     * A resolver whose grants depend on the subject and that cannot compare roles: it may grant a
+     * role something on some subjects that a null-subject question never shows, so only the staff
+     * roles the user holds themselves are offered (fail closed).
+     */
+    public function test_may_view_as_without_comparison_allows_only_the_users_own_roles(): void
+    {
+        $resolver = new class implements PermissionResolver, \Preflow\Auth\Access\AllowsRoles {
+            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                return $this->allowsRoles($user->getRoles(), $population, $permission, $subject);
+            }
+
+            /** A reviewer may view pages in review only: with no subject, the answer is no. */
+            public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
+            {
+                return in_array('reviewer', $roles, true) && $permission === 'page.view' && $subject instanceof \stdClass && ($subject->inReview ?? false);
+            }
+        };
+        $access = $this->access(populations: ['staff' => 'staff']);
+        $access->setResolver($resolver);
+        $reviewer = new \Preflow\Core\Context\RoleView('staff', ['reviewer']);
+
+        $may = fn (array $roles): bool => \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($access, $roles, $reviewer): bool {
+            @$this->auth->setUser(new TestUser('u', roles: $roles), 'staff');
+
+            return $access->mayViewAs($reviewer);
+        });
+
+        $this->assertFalse($may(['writer']), 'a writer without page.view never views as the reviewer');
+        $this->assertTrue($may(['writer', 'reviewer']), 'one who holds the role may');
     }
 }

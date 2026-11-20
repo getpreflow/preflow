@@ -75,6 +75,39 @@ final class SyntheticGrantsTest extends TestCase
         $this->assertSame(['pages.edit', 'pages.publish'], $resolver->grantsFor([' editor ', 'editor', 'nobody'], 'staff'));
     }
 
+    /** rolesWithin(): a role's patterns all covered by the user's own (view as role never above one's rights). */
+    public function test_roles_within_compares_the_roles_patterns_with_the_users(): void
+    {
+        $resolver = self::resolver([
+            ['staff', 'admin', ['*']],
+            ['staff', 'editor', ['pages.edit', 'pages.publish']],
+            ['staff', 'writer', ['pages.edit', 'assets.*']],
+            ['staff', 'assets', ['assets.upload']],
+        ]);
+        $user = static fn (array $roles): \Preflow\Auth\Authenticatable => new class ($roles) implements \Preflow\Auth\Authenticatable {
+            use \Preflow\Auth\AuthenticatableTrait;
+
+            public function __construct(private readonly array $roles) {}
+
+            public function getAuthId(): string
+            {
+                return 'u';
+            }
+
+            public function getRoles(): array
+            {
+                return $this->roles;
+            }
+        };
+
+        $this->assertInstanceOf(\Preflow\Auth\Access\ComparesRoles::class, $resolver);
+        $this->assertTrue($resolver->rolesWithin(['editor', 'writer'], 'staff', $user(['admin'])), '"*" covers everything');
+        $this->assertFalse($resolver->rolesWithin(['admin'], 'staff', $user(['editor'])), 'never as an admin');
+        $this->assertTrue($resolver->rolesWithin(['assets'], 'staff', $user(['writer'])), '"assets.*" covers "assets.upload"');
+        $this->assertFalse($resolver->rolesWithin(['writer'], 'staff', $user(['editor'])), '"assets.*" is not the editor\'s');
+        $this->assertTrue($resolver->rolesWithin(['editor'], 'staff', $user(['editor'])));
+    }
+
     /**
      * Until rbac is installed, staff may do everything (allows() and patterns() say so, so turning
      * rbac on never locks the admin out); a role view has no stored roles to read then and gets

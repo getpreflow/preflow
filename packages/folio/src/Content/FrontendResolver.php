@@ -17,7 +17,9 @@ use Preflow\Publishing\ShadowTypes;
  * LiveContent): the published snapshots of publishing types for a visitor, their working copies
  * in a whole-page preview (so the page and folio_find() show the same version). matchPublished()
  * always reads the published site, whatever the read mode: what a visitor would find at an
- * address (redirect targets, the SEO audit's pages).
+ * address (redirect targets, the SEO audit's pages). The same holds for a type without publishing:
+ * match() in a working-copies render finds its unpublished records (the "frontend.published"
+ * status filter is left out), matchPublished() keeps the filter.
  *
  * For the page cache, a page found this way depends on its record (by id) and on its address
  * (DataTags::address() of the path), not on the whole published table its lookup queried: the
@@ -166,7 +168,9 @@ final class FrontendResolver
             if ($localized) {
                 $query = $query->locale($locale);
             }
-            if (!$route->publishing) {
+            // A type without publishing shows its records whose status says published; a render that
+            // reads working copies (a whole-page preview) sees the drafts too, as its editor does.
+            if (!$route->publishing && ($onlyPublished || !$this->showsWorkingCopies())) {
                 $query = $route->published($query, $this->definition($route->type));
             }
             foreach ($params as $field => $value) {
@@ -336,6 +340,12 @@ final class FrontendResolver
         sort($types);
 
         return sprintf('"%s" and "%s"', ...$types);
+    }
+
+    /** Whether the current render reads working copies at all (its read mode, LiveContent); never without it. */
+    private function showsWorkingCopies(): bool
+    {
+        return $this->live?->showsWorkingCopies() ?? false;
     }
 
     /** Whether the current render reads $type's working copies (LiveContent); never without it. */

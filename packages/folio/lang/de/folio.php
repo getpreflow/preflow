@@ -295,7 +295,8 @@ return [
         'report' => 'Was diese Seite tun würde',
         'would_send' => 'Diese Seite würde :count Mail senden|Diese Seite würde :count Mails senden',
         'would_write' => 'Diese Seite würde :count Datensatz schreiben|Diese Seite würde :count Datensätze schreiben',
-        'links_leave' => 'Einfache Links und Formulare öffnen die Live-Website.',
+        'links_leave' => 'Links und Formulare tun in dieser Vorschau nichts.',
+        'redirects' => 'Diese Seite leitet weiter zu :target.',
     ],
     'seo' => [
         'title' => 'SEO & Teilen',
