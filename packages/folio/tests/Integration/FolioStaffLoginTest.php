@@ -254,7 +254,7 @@ final class FolioStaffLoginTest extends TestCase
     public function test_forgot_answers_before_the_mail_goes_and_is_throttled(): void
     {
         $this->makeStaff();
-        (new \ReflectionProperty(\Preflow\Core\Application::class, 'emitting'))->setValue($this->flow, true); // as run(): mail after the response
+        $this->flow->holdMailForFlush(); // as run(): mail after the response
 
         $this->assertSame(200, $this->post('/folio/forgot', ['email' => 'ada@site.test'])->getStatusCode());
         $this->assertSame([], $this->mails(), 'the answer is out before the mail');

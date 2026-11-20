@@ -78,7 +78,7 @@ final class StaffLifecycleTest extends TestCase
             $this->account('s-mgr', 'mgr', ['manager']);
         }
         // As run(): queued mails go out after the response (flush() sends them here).
-        (new \ReflectionProperty(\Preflow\Core\Application::class, 'emitting'))->setValue($this->session, true);
+        $this->session->holdMailForFlush();
     }
 
     /** @param list<string> $roles */

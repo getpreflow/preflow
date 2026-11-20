@@ -106,7 +106,11 @@ use Preflow\View\Seo\SeoContext;
  *   time, give the same output; with clockFormat(), the body holds the frozen time.
  *
  * Every render has a CSP nonce of its own; during these tests each one is NONCE
- * (NonceGenerator::fixedForTests()), so pages that print one compare byte for byte.
+ * (NonceGenerator::fixedForTests()), so pages that print one compare byte for byte. In the poison
+ * test the outer frame's nonce is OUTER_NONCE instead (in the clean and the poisoned run), and no
+ * render may print it: a render in a frame of its own that printed the nonce of the page around
+ * it would break that page's policy or leak it. Only the PDF path may (PART_PATHS): a PDF's HTML
+ * (PdfRenderer::html()) is part of the page that shows it and prints that page's nonce.
  *
  * Superglobals are restored after each test.
  *
@@ -184,6 +188,12 @@ abstract class RenderIsolationContract extends TestCase
 
     /** The CSP nonce every render gets during these tests (NonceGenerator::fixedForTests()). */
     public const string NONCE = 'aXNvbGF0aW9uLWNvbnRyYWN0LW5vbmNl';
+
+    /** The CSP nonce of the outer frame in the poison test; no render prints it (but PART_PATHS). */
+    public const string OUTER_NONCE = 'b3V0ZXItZnJhbWUtbm9uY2UtaXNvbGF0aW9u';
+
+    /** Paths whose output is part of the caller's page (PdfRenderer::html()): they print its nonce. */
+    public const array PART_PATHS = ['pdf'];
 
     protected function setUp(): void
     {
@@ -278,8 +288,13 @@ abstract class RenderIsolationContract extends TestCase
         $this->eachPath('poison', $this->checkedPaths(), function (string $name, \Closure $render) use ($ctx): void {
             // The clean render first, on the same app: the poison stays in its services.
             $app = $this->freshApp();
-            $clean = $this->rendered($this->inOuterFrame($name, $this->context(), fn (): RenderResult => $this->render($name, $render, $app, $ctx)));
+            $clean = $this->rendered($this->inOuterFrame($name, $this->context(), function () use ($name, $render, $app, $ctx): RenderResult {
+                $this->outerNonce($app);
+
+                return $this->render($name, $render, $app, $ctx);
+            }));
             $result = $this->inOuterFrame($name, $this->poisonedVisitor(), function () use ($name, $render, $app, $ctx): RenderResult {
+                $this->outerNonce($app);
                 $this->poison($app);
 
                 return $this->render($name, $render, $app, $ctx);
@@ -287,6 +302,9 @@ abstract class RenderIsolationContract extends TestCase
 
             $this->assertSame($clean, $this->rendered($result), "{$name}: the poisoned outer frame changed the render (status and body)");
             $this->assertNoMarker($name, $result);
+            if (!in_array($name, self::PART_PATHS, true)) {
+                $this->assertStringNotContainsString(self::OUTER_NONCE, $this->signature($result), "{$name}: the render printed the CSP nonce of the frame around it, not one of its own");
+            }
         });
     }
 
@@ -515,6 +533,24 @@ abstract class RenderIsolationContract extends TestCase
             ->workingCopies()
             ->admin('xx')
             ->at(new \DateTimeImmutable('1999-12-31T23:59:59Z'));
+    }
+
+    /**
+     * Gives the current (outer) frame the nonce OUTER_NONCE, where the app has a NonceGenerator;
+     * every render after it gets NONCE again.
+     */
+    private function outerNonce(Application $app): void
+    {
+        $container = $app->container();
+        if (!class_exists(NonceGenerator::class) || !$container->bound(NonceGenerator::class)) {
+            return;
+        }
+        NonceGenerator::fixedForTests(self::OUTER_NONCE);
+        try {
+            $container->get(NonceGenerator::class)->get();
+        } finally {
+            NonceGenerator::fixedForTests(self::NONCE);
+        }
     }
 
     /** Sets the legacy ambient sources to the marker, in the current (outer) frame. */

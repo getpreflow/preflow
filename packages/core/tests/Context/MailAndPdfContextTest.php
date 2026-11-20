@@ -324,6 +324,32 @@ final class MailAndPdfContextTest extends TestCase
         $this->assertContains('part:3', $tags, 'what a nested request reads counts for the page');
     }
 
+    /**
+     * Inside an internal render (a page cache rebuild) a nested request still joins the rebuild's
+     * page, and a nested fragment request still answers a page of its own: it keeps a nonce of its
+     * own, although it takes the rebuild's purpose.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_nested_fragment_request_inside_an_internal_render_keeps_its_own_nonce(): void
+    {
+        file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [" . var_export(PartRoute::class, true) . "];\n");
+        $app = $this->app();
+        $nonces = $app->container()->get(NonceGenerator::class);
+        $rebuild = RenderContext::internal(Purpose::Rebuild, $app->site(), new SystemClock(), '/');
+
+        [$page, $plain, $fragment] = Contexts::run($rebuild, static function () use ($app, $nonces): array {
+            $page = $nonces->get();
+            $plain = (string) $app->handle(new ServerRequest('GET', 'https://site.test/part'))->getBody();
+            $fragment = (string) $app->handle(new ServerRequest('GET', 'https://site.test/part', ['HX-Request' => 'true']))->getBody();
+
+            return [$page, $plain, $fragment];
+        });
+
+        $this->assertSame($page, $plain, 'a nested request inside the rebuild prints the rebuild\'s nonce');
+        $this->assertNotSame($page, $fragment, 'a nested fragment request inside the rebuild answers with a nonce of its own');
+        $this->assertNotSame('', $fragment);
+    }
+
     /** Inside an internal render (the SEO audit) a PDF and a mail keep its purpose: they leave no trace either. */
     #[RunInSeparateProcess]
     public function test_a_pdf_and_a_mail_inside_an_internal_render_keep_its_purpose(): void
@@ -335,20 +361,26 @@ final class MailAndPdfContextTest extends TestCase
         $mailer = $app->container()->get(Mailer::class);
         $seen = new \ArrayObject();
         $request = new ServerRequest('GET', 'https://site.test/');
-        $doc = new RecordingDocument($this->dir . '/cert.twig', $seen, 'cert', static function () use ($seen, $request): void {
-            $seen['internal'] = InternalRender::is($request);
+        // html() and render() note what they saw under names of their own, so both are checked.
+        $html = new RecordingDocument($this->dir . '/cert.twig', $seen, 'html', static function () use ($seen, $request): void {
+            $seen['html internal'] = InternalRender::is($request);
+        });
+        $pdf = new RecordingDocument($this->dir . '/cert.twig', $seen, 'render', static function () use ($seen, $request): void {
+            $seen['render internal'] = InternalRender::is($request);
         });
         $audit = RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/');
 
-        $mail = Contexts::run($audit, static function () use ($renderer, $mailer, $doc): string {
-            $renderer->html($doc);
-            $renderer->render($doc);
+        $mail = Contexts::run($audit, static function () use ($renderer, $mailer, $html, $pdf): string {
+            $renderer->html($html);
+            $renderer->render($pdf);
 
             return (string) $mailer->compose(new MailContent('Hi', 'Text', 'en'), 'reader@site.test')->html;
         });
 
-        $this->assertSame('Audit', $seen['cert']['purpose']);
-        $this->assertTrue($seen['internal'], 'InternalRender::is() inside the PDF');
+        $this->assertSame('Audit', $seen['html']['purpose'], 'html() keeps the audit\'s purpose');
+        $this->assertTrue($seen['html internal'], 'InternalRender::is() inside html()');
+        $this->assertSame('Audit', $seen['render']['purpose'], 'render() keeps the audit\'s purpose');
+        $this->assertTrue($seen['render internal'], 'InternalRender::is() inside render()');
         $this->assertSame('Audit|internal', $mail, 'the mail keeps the audit\'s purpose');
     }
 

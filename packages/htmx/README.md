@@ -38,6 +38,7 @@ $driver->isHistoryRestore($request)  // HX-History-Restore-Request: true
 $driver->varyHeaders()               // HX-Request, HX-Target, HX-History-Restore-Request
 $driver->navigate($response, $url)   // HX-Redirect: $url, or HX-Refresh: true for null
 $driver->announceNonce($response, $n)// HX-Nonce: $n (nonceHeaders(): HX-Nonce)
+$driver->ownedHeaders()              // HX-*: a page or component may not set these as response hints (0.81)
 $driver->pageNonce($request)         // null: htmx re-stamps scripts with the page nonce itself
 ```
 
@@ -73,12 +74,16 @@ swaps the response into; the endpoint renders the component without its wrapper 
 another element), `applyEffects(ResponseInterface): ResponseInterface` (the recorded effects as
 the client reads them: headers, or events in the body; called on every endpoint response) and
 core's `HypermediaProtocol`: `isFragmentRequest()`, `isHistoryRestore()`, `varyHeaders()`,
-`navigate()`, `announceNonce()` / `nonceHeaders()` and `pageNonce()` (a client that sends its
+`navigate()`, `announceNonce()` / `nonceHeaders()`, `ownedHeaders()` (since 0.81: the response
+headers that are the client's, which `ResponseHeaderHints` then refuses; a trailing `*` is a
+prefix) and `pageNonce()` (a client that sends its
 page's CSP nonce back with a fragment request is answered with it, so its effect scripts pass the
 page's policy). `pageNonce()` returns untrusted input: core adopts it for fragment requests only
 (not plain requests or history restores), for that response only, never stores the response,
 and the driver must not print the nonce into the page — its client reads `script.nonce` at
-request time. An unknown class throws at boot. Check a driver with
+request time. Since 0.81 a driver keeps what `triggerEvent()`, `redirect()` and `pushUrl()`
+record per render frame (a frame slot, as `ResponseHeaders` does): an effect recorded in one
+render never reaches another render's response. An unknown class throws at boot. Check a driver with
 `Preflow\Testing\Contract\HypermediaDriverContract` (preflow/testing).
 
 ### `ComponentToken`

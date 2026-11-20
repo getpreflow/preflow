@@ -158,7 +158,7 @@ TWIG);
     /** Like Application::run(): handle() leaves the queued mail alone until the test flushes it. */
     private function holdTheFlush(): void
     {
-        (new \ReflectionProperty(Application::class, 'emitting'))->setValue($this->flow, true);
+        $this->flow->holdMailForFlush();
     }
 
     private function linkToken(int $mail, string $page): string

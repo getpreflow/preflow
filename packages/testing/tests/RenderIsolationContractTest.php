@@ -67,6 +67,17 @@ final class RenderIsolationContractTest extends TestCase
         $this->assertNotInstanceOf(IncompleteTest::class, $failure);
     }
 
+    public function test_a_render_that_prints_the_outer_frames_nonce_fails_the_poison_test(): void
+    {
+        $failure = $this->failureOf(IsolationSelfTest::with(['audit' => IsolationSelfTest::printsNonce(outer: true)]), 'poison');
+
+        $this->assertInstanceOf(AssertionFailedError::class, $failure, 'a render in a frame of its own printed the page\'s nonce');
+        $this->assertNotInstanceOf(IncompleteTest::class, $failure);
+        $this->assertStringContainsString('nonce of the frame around it', $failure->getMessage());
+        $this->assertNull($this->failureOf(IsolationSelfTest::with(['audit' => IsolationSelfTest::printsNonce(outer: false)]), 'poison'), 'its own nonce passes');
+        $this->assertNull($this->failureOf(IsolationSelfTest::with(['pdf' => IsolationSelfTest::printsNonce(outer: true)]), 'poison'), 'a PDF\'s HTML is part of the page and prints its nonce');
+    }
+
     public function test_a_marker_in_a_captured_mail_body_fails_the_poison_test(): void
     {
         $failure = $this->failureOf(IsolationSelfTest::with(['preview' => IsolationSelfTest::mailsAmbientStateInTheBody()]), 'poison');
@@ -281,7 +292,9 @@ final class IsolationSelfTest extends RenderIsolationContract
     {
         $app = Application::create(['app' => ['name' => 'self-test', 'key' => 'isolation-self-test-key-0123456789']]);
         // The collectors a booted app binds: the contract plants its marker asset and title in them.
-        $app->container()->instance(\Preflow\View\AssetCollector::class, new \Preflow\View\AssetCollector(new \Preflow\View\NonceGenerator()));
+        $nonces = new \Preflow\View\NonceGenerator();
+        $app->container()->instance(\Preflow\View\NonceGenerator::class, $nonces);
+        $app->container()->instance(\Preflow\View\AssetCollector::class, new \Preflow\View\AssetCollector($nonces));
         $app->container()->instance(\Preflow\View\Seo\SeoContext::class, new \Preflow\View\Seo\SeoContext());
         $app->container()->instance(\Preflow\Core\Http\CookieQueue::class, new \Preflow\Core\Http\CookieQueue());
         // What printsOnce() printed already, per app (as an asset registry's printed marks).
@@ -437,6 +450,20 @@ final class IsolationSelfTest extends RenderIsolationContract
     }
 
     /** Renders in a frame of its own under the context it is given. */
+    /** Renders under its context and prints a CSP nonce: the outer frame's (taken before its frame opens), or its own. */
+    public static function printsNonce(bool $outer): \Closure
+    {
+        return static function (Application $app, RenderContext $ctx) use ($outer): RenderResult {
+            $nonces = $app->container()->get(\Preflow\View\NonceGenerator::class);
+            $page = $outer ? $nonces->get() : null;
+
+            return self::inFrame(
+                $ctx->because(Purpose::Audit)->discarding()->skippingWrites(),
+                static fn (): string => self::describe(Contexts::current()) . '|<script nonce="' . ($page ?? $nonces->get()) . '"></script>',
+            );
+        };
+    }
+
     public static function own(): \Closure
     {
         return static fn (Application $app, RenderContext $ctx): RenderResult

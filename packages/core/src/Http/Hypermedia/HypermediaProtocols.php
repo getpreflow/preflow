@@ -109,6 +109,37 @@ final class HypermediaProtocols
     }
 
     /**
+     * Every client's ownedHeaders(), each name once (case-insensitive).
+     *
+     * @since 0.81.0
+     * @return list<string>
+     */
+    public function ownedHeaders(): array
+    {
+        return self::unique(array_merge(...array_map(static fn (HypermediaProtocol $p): array => $p->ownedHeaders(), $this->protocols)));
+    }
+
+    /**
+     * Whether $name (any case) is one of $names, where a name ending in '*' stands for every
+     * header that starts with the rest.
+     *
+     * @since 0.81.0
+     * @param list<string> $names
+     */
+    public static function matches(string $name, array $names): bool
+    {
+        $lower = strtolower($name);
+        foreach ($names as $owned) {
+            $owned = strtolower($owned);
+            if (str_ends_with($owned, '*') ? str_starts_with($lower, substr($owned, 0, -1)) : $lower === $owned) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param list<string> $names
      * @return list<string>
      */

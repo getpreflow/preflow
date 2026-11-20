@@ -500,7 +500,8 @@ final class FrameCollectorsTest extends TestCase
 
     public function test_headers_core_owns_are_refused(): void
     {
-        $hints = ResponseHeaderHints::ofCurrentFrame(static fn (): array => ['Signal-Nonce']);
+        // The headers the app's hypermedia clients own (htmx: HX-*) and their nonce headers come from the app.
+        $hints = ResponseHeaderHints::ofCurrentFrame(static fn (): array => ['Signal-Nonce', 'HX-*']);
         foreach (['Set-Cookie', 'content-security-policy', 'Content-Security-Policy-Report-Only', 'Content-Length', 'Content-Type', 'Transfer-Encoding', 'Location', 'HX-Trigger', 'hx-push-url', 'X-Page-Cache', 'X-Page-Cache-Skip', 'signal-nonce'] as $name) {
             try {
                 $hints->set($name, 'x');
@@ -521,6 +522,29 @@ final class FrameCollectorsTest extends TestCase
         $hints->set('Cache-Control', 'no-store');
         $hints->set('X-Robots-Tag', 'noindex');
         $this->assertSame(['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex'], $hints->all());
+
+        $withoutHtmx = ResponseHeaderHints::ofCurrentFrame(static fn (): array => ['Signal-Effects']);
+        $withoutHtmx->set('HX-Trigger', 'x');
+        $this->assertSame(['HX-Trigger' => 'x'], $withoutHtmx->all(), 'core reserves what the app\'s clients own, not htmx\'s headers by name');
+    }
+
+    /** A booted app reserves the headers its hypermedia driver owns (HypermediaProtocol::ownedHeaders()). */
+    #[RunInSeparateProcess]
+    public function test_the_app_reserves_the_headers_its_hypermedia_clients_own(): void
+    {
+        $this->hintSite();
+        $app = \Preflow\Core\Application::create($this->dir);
+        $app->boot();
+        $hints = $app->container()->get(ResponseHeaderHints::class);
+
+        foreach (['HX-Trigger', 'hx-retarget', 'HX-Nonce'] as $name) {
+            try {
+                $hints->set($name, 'x');
+                $this->fail("{$name} was accepted");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('set by the framework', $e->getMessage(), $name);
+            }
+        }
     }
 
     #[RunInSeparateProcess]

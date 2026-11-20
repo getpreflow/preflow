@@ -18,6 +18,13 @@ use Psr\Http\Message\ResponseInterface;
  * target, the page cache's vary headers, navigating, nonces) are the HypermediaProtocol
  * methods it extends: core finds the app's driver in HypermediaProtocols, so auth, CSRF, the
  * security headers, the page cache and GEO treat its requests as it says.
+ *
+ * Since 0.81 what a driver records for a response (triggerEvent(), redirect(), pushUrl()) and
+ * what applyEffects() adds from the render (its nonce) belong to the render frame they were
+ * recorded in: keep them in a frame slot (Contexts::frame()->slot(), as ResponseHeaders does),
+ * so an effect recorded in one render (the SEO audit, a preview, a request the page asks for)
+ * never reaches another render's response, and Contexts::within() keeps the frame's. The
+ * headers they are sent in are the driver's (ownedHeaders()). HypermediaDriverContract checks both.
  */
 interface HypermediaDriver extends HypermediaProtocol
 {
@@ -35,7 +42,7 @@ interface HypermediaDriver extends HypermediaProtocol
         string $targetId,
     ): HtmlAttributes;
 
-    /** Ask the client to fire this event when the response arrives (recorded, sent by applyEffects()). */
+    /** Ask the client to fire this event when the response arrives (recorded in the current render frame, sent by applyEffects()). */
     public function triggerEvent(string $event): void;
 
     /** Ask the client to go to this URL (recorded, sent by applyEffects()). */
@@ -45,9 +52,9 @@ interface HypermediaDriver extends HypermediaProtocol
     public function pushUrl(string $url): void;
 
     /**
-     * The response with the effects recorded so far (triggerEvent(), redirect(), pushUrl()) in
-     * the form the client reads them: headers, or events in the body. The component endpoint
-     * calls it on every response it sends.
+     * The response with the effects the current render frame recorded so far (triggerEvent(),
+     * redirect(), pushUrl()) in the form the client reads them: headers, or events in the body.
+     * The component endpoint calls it on every response it sends.
      */
     public function applyEffects(ResponseInterface $response): ResponseInterface;
 

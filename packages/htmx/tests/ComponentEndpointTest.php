@@ -589,6 +589,11 @@ final class EndpointOtherDriver implements \Preflow\Htmx\HypermediaDriver
         return [];
     }
 
+    public function ownedHeaders(): array
+    {
+        return [];
+    }
+
     public function pageNonce(ServerRequestInterface $request): ?string
     {
         return $request->getHeaderLine('Other-Nonce') ?: null;

@@ -31,6 +31,35 @@ use Preflow\Testing\WebApplication;
 $response = WebApplication::boot($basePath)->handle($request); // one app per request, as on the server
 ```
 
+Since 0.81 a request can carry the render context it runs in, for that request only (the next one
+is a plain visit again). It works with any app's `handle()`:
+
+```php
+use Preflow\Core\Context\RenderContext;
+
+// "now" is this time for the whole request (and the page cache neither serves nor stores it)
+$app->handle(WebApplication::at(new \DateTimeImmutable('2026-03-01T09:00:00Z'), $request));
+// any other derivation of the request's context
+$app->handle(WebApplication::withContext(static fn (RenderContext $ctx) => $ctx->workingCopies(), $request));
+```
+
+`actingAs($user, $request, $guard = null)` (trait `Preflow\Testing\AuthTestHelpers`) signs the
+user in the same way: the frame `handle()` opens has them as its viewer from the start, before the
+first middleware runs. All three build on core's `Application::withDerivedContext()`.
+
+## Frame balance (0.81)
+
+`Preflow\Testing\FrameBalanceExtension` checks after every test that no render frame was left
+open (`Contexts::depth()` is 0 again). A test that leaves one open makes the run fail with a
+PHPUnit warning naming the test, and the frames are closed so the next test starts clean. Opt in
+from `phpunit.xml`:
+
+```xml
+<extensions>
+    <bootstrap class="Preflow\Testing\FrameBalanceExtension"/>
+</extensions>
+```
+
 ## ComponentTestCase
 
 Extend to test Preflow components. `TestApplication` is wired up automatically in `setUp()`.
@@ -158,7 +187,7 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 | Suite | Interface | Hooks |
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
-| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)` |
+| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and that `ownedHeaders()` names every header the driver writes |
 | `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `reopenDriver()`, `emptyDriver()`, `declareFullText(string $type, array $fields)`, `declareUnique(string $type, string $field)`, `textRuleMissing()` (the last five since 0.78); capability tests run when the driver implements the interface |
 | `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |
 
@@ -335,6 +364,9 @@ request that asks for it. The four tests:
   `poisonApp()`. The render's status and body must equal the same render's under a clean outer
   frame, and its body, headers and captured items must not contain the marker. A path that reads
   the frame around it, the bound request or the outer collectors instead of its own context fails.
+  The outer frame's CSP nonce is `RenderIsolationContract::OUTER_NONCE` (every render's own is
+  `NONCE`), and no render may print it, except the `pdf` path (`PART_PATHS`): a PDF's HTML is part
+  of the page that shows it and prints that page's nonce.
 - **The outer frame is byte-equal after each render** (`frame`). With the same poison, these are
   the same before and after the render: the current context (serialized, without the PSR
   request), the frame's queued cookies and mail, the `CookieQueue`, the bound `RequestContext`,

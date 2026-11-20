@@ -7,10 +7,12 @@ namespace Preflow\Testing\Contract;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
 use Preflow\Htmx\HtmlAttributes;
 use Preflow\Htmx\HypermediaDriver;
 use Preflow\Htmx\SwapStrategy;
+use Preflow\Testing\ContextFactory;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -69,7 +71,14 @@ use Psr\Http\Message\ServerRequestInterface;
  *   the response for a reload (null); announceNonce() keeps the content and writes only headers
  *   nonceHeaders() lists (the page cache never stores those); pageNonce() returns the nonce
  *   pageNonceRequest() sent; core (HypermediaProtocols::pageNonce()) takes it from a fragment request only, never
- *   from a plain request or a history restore.
+ *   from a plain request or a history restore;
+ * - since 0.81, effects stay in the render frame they were recorded in: one recorded in a page's
+ *   frame is not in the response of a render in a frame of its own (Contexts::run()) inside it,
+ *   and one recorded there is not in the page's; one recorded inside Contexts::within() is the
+ *   frame's; outside every render the effects are the driver's own;
+ * - since 0.81, ownedHeaders() names the response headers the driver writes: every header
+ *   applyEffects(), navigate() and announceNonce() add is in ownedHeaders() or nonceHeaders()
+ *   (a name ending in '*' is a prefix), so a page cannot set them as response hints.
  */
 abstract class HypermediaDriverContract extends TestCase
 {
@@ -287,6 +296,61 @@ abstract class HypermediaDriverContract extends TestCase
         $this->assertSame($nonce, $clients->pageNonce($fragment ?? throw new \LogicException('pageNonceRequest() returned null')));
     }
 
+    public function test_effects_stay_in_the_render_frame_they_were_recorded_in(): void
+    {
+        $page = ContextFactory::forTest();
+        $other = $page->in('xx')->because(\Preflow\Core\Context\Purpose::Audit)->discarding()->skippingWrites();
+
+        [$inner, $outer] = Contexts::run($page, function () use ($other): array {
+            $this->driver->triggerEvent('page-event');
+            $inner = Contexts::run($other, function (): string {
+                $before = self::text($this->driver->applyEffects(new Response(200)));
+                $this->driver->triggerEvent('render-event');
+
+                return $before . "\n---\n" . self::text($this->driver->applyEffects(new Response(200)));
+            });
+            Contexts::within(Contexts::current()->in('xx'), function (): void {
+                $this->driver->pushUrl('/within-the-frame');
+            });
+
+            return [$inner, self::text($this->driver->applyEffects(new Response(200)))];
+        });
+        [$innerBefore, $innerAfter] = explode("\n---\n", $inner);
+
+        $this->assertStringNotContainsString('page-event', $innerBefore, 'an effect the page recorded is not in the response of a render in a frame of its own');
+        $this->assertStringContainsString('render-event', $innerAfter, 'the render\'s own effect is in its response');
+        $this->assertStringNotContainsString('page-event', $innerAfter);
+        $this->assertStringContainsString('page-event', $outer, 'the page\'s effect is still in its response');
+        $this->assertStringNotContainsString('render-event', $outer, 'the render\'s effect never reaches the page\'s response');
+        $this->assertStringContainsString('/within-the-frame', $outer, 'Contexts::within() keeps the frame: its effect is the page\'s');
+        $this->assertStringNotContainsString('page-event', self::text($this->driver->applyEffects(new Response(200))), 'outside every render the effects are the driver\'s own');
+    }
+
+    public function test_owned_headers_name_every_header_the_driver_writes(): void
+    {
+        $owned = [...$this->driver->ownedHeaders(), ...$this->driver->nonceHeaders()];
+        foreach ($this->driver->ownedHeaders() as $name) {
+            $this->assertMatchesRegularExpression('/^[A-Za-z0-9-]+\*?$/', $name, 'ownedHeaders() lists header names, a trailing * for a prefix');
+        }
+        $plain = new Response(200, ['X-Kept' => 'yes'], '<p>the fragment</p>');
+        $this->driver->triggerEvent('cart-updated');
+        $this->driver->redirect('/thanks');
+        $this->driver->pushUrl('/items?page=2');
+        $written = [
+            'applyEffects()' => $this->driver->applyEffects($plain),
+            'navigate($url)' => $this->driver->navigate($plain, '/login'),
+            'navigate(null)' => $this->driver->navigate($plain, null),
+            'announceNonce()' => $this->driver->announceNonce($plain, 'cGFnZS1ub25jZS0xMjM0NQ=='),
+        ];
+        foreach ($written as $call => $response) {
+            foreach (array_keys($response->getHeaders()) as $name) {
+                if (!$plain->hasHeader((string) $name)) {
+                    $this->assertTrue(HypermediaProtocols::matches((string) $name, $owned), "{$call} wrote {$name}: ownedHeaders() (or nonceHeaders()) must name it");
+                }
+            }
+        }
+    }
+
     public function test_trigger_event_is_recorded(): void
     {
         $this->driver->triggerEvent('cart-updated');
@@ -357,6 +421,12 @@ abstract class HypermediaDriverContract extends TestCase
         }
 
         return $lines;
+    }
+
+    /** Every header line and the body of $response, as one text. */
+    private static function text(ResponseInterface $response): string
+    {
+        return implode("\n", self::lines($response));
     }
 
     private function assertEffect(string $expected, string $call): void

@@ -101,6 +101,12 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
         return ['HX-Nonce'];
     }
 
+    /** Every HX-* response header: htmx reads them (HX-Trigger, HX-Redirect, HX-Push-Url, HX-Retarget…). */
+    public function ownedHeaders(): array
+    {
+        return ['HX-*'];
+    }
+
     /** htmx re-stamps the scripts it inserts with the page's nonce itself (inlineScriptNonce): none comes back. */
     public function pageNonce(ServerRequestInterface $request): ?string
     {

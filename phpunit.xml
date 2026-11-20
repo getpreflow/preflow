@@ -95,6 +95,10 @@
             <group>live</group>
         </exclude>
     </groups>
+    <extensions>
+        <!-- After every test no render frame is left open (Contexts::depth() is 0 again) -->
+        <bootstrap class="Preflow\Testing\FrameBalanceExtension"/>
+    </extensions>
     <source>
         <include>
             <directory>packages/components/src</directory>

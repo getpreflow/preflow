@@ -18,10 +18,11 @@ use Psr\Http\Message\ResponseInterface;
  * render's response. A component reaches it through the container; a template through
  * `response_header(name, value)`. Hints made with `new` are a plain list of their own.
  *
- * Headers core or the hypermedia client owns are refused (RESERVED, the HX- and X-Page-Cache
- * families, and what the app adds: its clients' nonce headers): a cookie goes through the
+ * Headers core or a hypermedia client owns are refused (RESERVED, the X-Page-Cache family, and
+ * what the app adds: the headers its clients own and their nonce headers, HypermediaProtocol::
+ * ownedHeaders() and nonceHeaders(), htmx's HX-* family among them): a cookie goes through the
  * CookieQueue, a redirect is a response of its own, the content's type and length come from the
- * route, the CSP carries the render's nonce.
+ * route, the CSP carries the render's nonce, the client's headers come from its driver's calls.
  *
  * The error page gets only the hints that make it less cacheable (restrictive(): no-store,
  * no-cache, private, must-revalidate, proxy-revalidate of Cache-Control), never one that makes a
@@ -54,7 +55,8 @@ final class ResponseHeaderHints
      * The hints that follow the render frames: each call works on the current frame's own.
      *
      * @param (\Closure(): list<string>)|null $reserved since 0.81.0: more header names nobody may set
-     *        (the app passes its hypermedia clients' nonce headers)
+     *        (the app passes the headers its hypermedia clients own and their nonce headers); a
+     *        name ending in '*' stands for every header that starts with the rest
      */
     public static function ofCurrentFrame(?\Closure $reserved = null): self
     {
@@ -78,8 +80,8 @@ final class ResponseHeaderHints
             throw new \InvalidArgumentException("Not a response header: {$name}.");
         }
         $lower = strtolower($name);
-        if (in_array($lower, self::RESERVED, true) || str_starts_with($lower, 'hx-') || str_starts_with($lower, 'x-page-cache')
-            || in_array($lower, array_map(strtolower(...), $this->reserved?->__invoke() ?? []), true)) {
+        if (in_array($lower, self::RESERVED, true) || str_starts_with($lower, 'x-page-cache')
+            || \Preflow\Core\Http\Hypermedia\HypermediaProtocols::matches($lower, $this->reserved?->__invoke() ?? [])) {
             throw new \InvalidArgumentException("The {$name} header is set by the framework, not by a page or component.");
         }
         $this->target()->headers[$lower] = [$name, $value];

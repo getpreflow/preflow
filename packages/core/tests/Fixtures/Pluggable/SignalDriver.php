@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Tests\Fixtures\Pluggable;
 
+require_once __DIR__ . '/SignalEffects.php';
+
+use Preflow\Core\Context\Contexts;
 use Preflow\Htmx\HtmlAttributes;
 use Preflow\Htmx\HypermediaDriver;
 use Preflow\Htmx\SwapStrategy;
@@ -11,13 +14,25 @@ use Preflow\View\AssetCollector;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-/** A non-htmx driver (Datastar-style data-on:* attributes), named as app.hypermedia. */
+/**
+ * A non-htmx driver (Datastar-style data-on:* attributes), named as app.hypermedia. Its effects
+ * are kept per render frame (a frame slot), as HypermediaDriver asks.
+ */
 class SignalDriver implements HypermediaDriver
 {
-    /** @var list<string> */
-    private array $effects = [];
+    /** The effects outside every render. */
+    private SignalEffects $effects;
 
-    public function __construct(public readonly AssetCollector $assets) {}
+    public function __construct(public readonly AssetCollector $assets)
+    {
+        $this->effects = new SignalEffects();
+    }
+
+    /** The effects of the current render frame. */
+    private function effects(): SignalEffects
+    {
+        return Contexts::depth() === 0 ? $this->effects : Contexts::frame()->slot(SignalEffects::class, static fn (): SignalEffects => new SignalEffects());
+    }
 
     public function actionAttrs(string $method, string $url, string $targetId, SwapStrategy $swap, array $extra = []): HtmlAttributes
     {
@@ -36,17 +51,17 @@ class SignalDriver implements HypermediaDriver
 
     public function triggerEvent(string $event): void
     {
-        $this->effects[] = "event {$event}";
+        $this->effects()[] = "event {$event}";
     }
 
     public function redirect(string $url): void
     {
-        $this->effects[] = "redirect {$url}";
+        $this->effects()[] = "redirect {$url}";
     }
 
     public function pushUrl(string $url): void
     {
-        $this->effects[] = "push {$url}";
+        $this->effects()[] = "push {$url}";
     }
 
     public function isFragmentRequest(ServerRequestInterface $request): bool
@@ -63,7 +78,9 @@ class SignalDriver implements HypermediaDriver
 
     public function applyEffects(ResponseInterface $response): ResponseInterface
     {
-        return $this->effects === [] ? $response : $response->withHeader('Signal-Effects', implode('; ', $this->effects));
+        $effects = $this->effects()->getArrayCopy();
+
+        return $effects === [] ? $response : $response->withHeader('Signal-Effects', implode('; ', $effects));
     }
 
     public function assetTag(): string
@@ -94,6 +111,11 @@ class SignalDriver implements HypermediaDriver
     public function nonceHeaders(): array
     {
         return [];
+    }
+
+    public function ownedHeaders(): array
+    {
+        return ['Signal-Effects', 'Signal-Location'];
     }
 
     public function pageNonce(ServerRequestInterface $request): ?string

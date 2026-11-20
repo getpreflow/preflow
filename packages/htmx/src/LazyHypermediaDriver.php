@@ -120,6 +120,11 @@ class LazyHypermediaDriver implements HypermediaDriver, StandIn
         return $this->driver()->nonceHeaders();
     }
 
+    public function ownedHeaders(): array
+    {
+        return $this->driver()->ownedHeaders();
+    }
+
     public function pageNonce(ServerRequestInterface $request): ?string
     {
         return $this->driver()->pageNonce($request);

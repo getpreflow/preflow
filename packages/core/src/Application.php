@@ -40,6 +40,53 @@ final class Application
      */
     public const string PART_HOOK = 'preflow.part_of_caller';
 
+    /**
+     * The request attribute that derives the context of the frame handle() opens for the request
+     * (withDerivedContext()). Request attributes are set in-process only, never by a client.
+     *
+     * @since 0.81.0
+     */
+    public const string DERIVE_CONTEXT = 'preflow.context.derive';
+
+    /**
+     * $request with $derive added to how handle() builds its frame's context: after
+     * RenderContext::fromRequest() (and after a derivation the request carries already), before
+     * the frame opens, so the whole request (its first middleware too) runs under it. Inside a
+     * frame of something else the request's frame is still never looser than that frame (a
+     * preview, a role view, an audit). For in-process callers: a test that signs a user in for
+     * one request (preflow/testing's actingAs()) or renders it as of a date.
+     *
+     * @since 0.81.0
+     * @param \Closure(RenderContext, Container): RenderContext $derive gets the context and the app's container
+     */
+    public static function withDerivedContext(ServerRequestInterface $request, \Closure $derive): ServerRequestInterface
+    {
+        $before = $request->getAttribute(self::DERIVE_CONTEXT);
+        if (!$before instanceof \Closure) {
+            return $request->withAttribute(self::DERIVE_CONTEXT, $derive);
+        }
+
+        return $request->withAttribute(
+            self::DERIVE_CONTEXT,
+            static fn (RenderContext $ctx, Container $container): RenderContext => $derive($before($ctx, $container), $container),
+        );
+    }
+
+    /** $ctx derived as $request asks (withDerivedContext()). */
+    private function derived(RenderContext $ctx, ServerRequestInterface $request): RenderContext
+    {
+        $derive = $request->getAttribute(self::DERIVE_CONTEXT);
+        if (!$derive instanceof \Closure) {
+            return $ctx;
+        }
+        $derived = $derive($ctx, $this->container);
+        if (!$derived instanceof RenderContext) {
+            throw new \UnexpectedValueException('A context derivation (Application::withDerivedContext()) returned ' . get_debug_type($derived) . ', not a RenderContext.');
+        }
+
+        return $derived;
+    }
+
     private readonly Container $container;
     private readonly Config $config;
     private readonly MiddlewarePipeline $pipeline;
@@ -388,10 +435,15 @@ final class Application
         // Headers a page or component adds (Cache-Control: no-store…), per render frame.
         $hintsContainer = $this->container;
         $this->container->instance(\Preflow\Core\Http\ResponseHeaderHints::class, \Preflow\Core\Http\ResponseHeaderHints::ofCurrentFrame(
-            // The nonce headers of the app's hypermedia clients (htmx: HX-Nonce) are theirs to send.
-            static fn (): array => $hintsContainer->bound(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)
-                ? $hintsContainer->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)->nonceHeaders()
-                : [],
+            // The headers the app's hypermedia clients own and their nonce headers (htmx: HX-*) are theirs to send.
+            static function () use ($hintsContainer): array {
+                if (!$hintsContainer->bound(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class)) {
+                    return [];
+                }
+                $clients = $hintsContainer->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class);
+
+                return [...$clients->ownedHeaders(), ...$clients->nonceHeaders()];
+            },
         ));
 
         // Wall-clock values (dates in content, scheduled publishing) use the app's
@@ -621,8 +673,8 @@ final class Application
     }
 
     /**
-     * While $emitting is set around a request handle() opens itself (package tests acting as run()
-     * set it by reflection), its mail waits for the next Notifier::flushDeferred(), as run() sends
+     * While $emitting is set around a request handle() opens itself (a test acting as run():
+     * holdMailForFlush()), its mail waits for the next Notifier::flushDeferred(), as run() sends
      * it after the response: it goes to notify's own queue, outside every frame.
      *
      * @param list<object> $mail notify's Deferred items
@@ -896,7 +948,8 @@ final class Application
 
     /**
      * The context of a request asked for inside $outer: its own request and purpose
-     * (RenderContext::fromRequest()), but never looser than $outer. Inside an internal render
+     * (RenderContext::fromRequest(), derived as the request asks: withDerivedContext()), but
+     * never looser than $outer. Inside an internal render
      * (Purpose::isInternal()) it takes that render's purpose. It keeps a write policy
      * stricter than Allow (Skip, Refuse), an outbox policy stricter than Deliver (Capture,
      * Discard), a role viewer (with its Skip and Capture) and frozen time (at($outer->now)), so a
@@ -913,7 +966,7 @@ final class Application
         $clock = self::onConsoleDefaultClock($outer)
             ? $this->container->get(\Psr\Clock\ClockInterface::class)
             : $outer->clock;
-        $ctx = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $clock);
+        $ctx = $this->derived(RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $clock), $request);
         if (self::marked($request)) {
             $ctx = self::asMarked($ctx);
         }
@@ -990,10 +1043,16 @@ final class Application
         return Contexts::depth() > 0 ? Contexts::current()->clock : $this->container->get(\Psr\Clock\ClockInterface::class);
     }
 
-    /** A visitor's request as the outermost render: Fragment or Visit, as its hypermedia client asks. */
+    /**
+     * A visitor's request as the outermost render: Fragment or Visit, as its hypermedia client
+     * asks, derived as the request asks (withDerivedContext()).
+     */
     private function requestContext(ServerRequestInterface $request): RenderContext
     {
-        return RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $this->container->get(\Psr\Clock\ClockInterface::class));
+        return $this->derived(
+            RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $this->container->get(\Psr\Clock\ClockInterface::class)),
+            $request,
+        );
     }
 
     /**
@@ -1085,9 +1144,22 @@ final class Application
     }
 
     /**
-     * True while run() handles its request: handle() then leaves notify's deferred mail to run(),
-     * which sends it after the response. Package tests that act as run() does set it by reflection;
-     * a request handle() then opens itself leaves its mail to the next flushDeferred() (holdForFlush()).
+     * A test seam: handle() leaves notify's deferred mail of a request it opens itself to the next
+     * Notifier::flushDeferred(), as run() sends it only after the response went out, so a test
+     * can check what the response said before the mail goes (holdForFlush()). Off again with false.
+     *
+     * @since 0.81.0
+     * @internal tests only
+     */
+    public function holdMailForFlush(bool $on = true): void
+    {
+        $this->emitting = $on;
+    }
+
+    /**
+     * True while run() handles its request (or a test held the mail, holdMailForFlush()): handle()
+     * then leaves notify's deferred mail to run(), which sends it after the response; a request
+     * handle() then opens itself leaves its mail to the next flushDeferred() (holdForFlush()).
      */
     private bool $emitting = false;
 
