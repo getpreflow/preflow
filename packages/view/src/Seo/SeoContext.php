@@ -138,15 +138,16 @@ final class SeoContext
     }
 
     /**
-     * Run $next with an empty context and put the current meta back
-     * afterwards, so an internal render (GEO) doesn't leak into the request.
+     * Run $next with no page meta and put the current meta, defaults and defaults resolver back
+     * afterwards, so an internal render (GEO) doesn't leak into the request. The site's defaults
+     * and their resolver stay visible inside (since 0.81): a render of the rest of the pipeline
+     * only (the page cache's verify) is not given them again, and a render through the whole app
+     * gets its own from the SEO middleware anyway.
      */
     public function scoped(\Closure $next): mixed
     {
         [$saved, $savedDefaults, $savedSite] = [$this->meta, $this->defaults, $this->siteDefaults];
         $this->meta = null;
-        $this->defaults = [];
-        $this->siteDefaults = null;
         try {
             return $next();
         } finally {

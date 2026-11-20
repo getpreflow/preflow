@@ -42,7 +42,9 @@ use Preflow\Core\Context\Deprecations;
  * Since 0.81 the page being rendered, its refusal and the freshness scopes belong to the render
  * frame (frame slots): a render in a frame of its own (a rebuild, verify's second render, an
  * audit page) neither stores into nor refuses the page of the frame around it. Outside every
- * frame (a script, a unit test) the cache keeps its own.
+ * frame (a script, a unit test) the cache keeps its own. A request asked for inside a visitor's
+ * render (Application::handle() in a page) is part of that page until it begins its own, as
+ * before 0.81 (nestIn()): its live parts leave placeholders and refuse() reaches that page.
  */
 final class PageCache
 {
@@ -261,19 +263,19 @@ final class PageCache
      */
     public function storing(): bool
     {
-        return $this->rendering()->key !== null;
+        return $this->rendering()->effective()->key !== null;
     }
 
     /** The key of the page being rendered for the cache in the current frame, null when none is. */
     public function key(): ?PageKey
     {
-        return $this->rendering()->key;
+        return $this->rendering()->effective()->key;
     }
 
     /** Keeps the page being rendered from being stored ($reason is what the middleware reports). */
     public function refuse(string $reason): void
     {
-        $state = $this->rendering();
+        $state = $this->rendering()->effective();
         if ($state->key !== null) {
             $state->refusal ??= $reason;
         }
@@ -282,7 +284,19 @@ final class PageCache
     /** Why the page being rendered must not be stored, null when nothing refused it. */
     public function refusal(): ?string
     {
-        return $this->rendering()->refusal;
+        return $this->rendering()->effective()->refusal;
+    }
+
+    /**
+     * Makes the current frame part of the page $parent renders (a request asked for inside a
+     * visitor's render or a rebuild) until it begins a page of its own.
+     *
+     * @internal Application
+     * @since 0.81.0
+     */
+    public function nestIn(\Preflow\Core\Context\RenderFrame $parent): void
+    {
+        $this->rendering()->parent = $parent->slot(CacheRenderState::class, static fn (): CacheRenderState => new CacheRenderState());
     }
 
     /**
@@ -290,14 +304,15 @@ final class PageCache
      * that is not stored, such as filling live parts). Returns the state before, for end().
      *
      * @internal the page cache middleware
-     * @return array{0: ?PageKey, 1: ?string}
+     * @return array{0: ?PageKey, 1: ?string, 2: bool}
      */
     public function begin(?PageKey $key): array
     {
         $state = $this->rendering();
-        $before = [$state->key, $state->refusal];
+        $before = [$state->key, $state->refusal, $state->began];
         $state->key = $key;
         $state->refusal = null;
+        $state->began = true;
 
         return $before;
     }
@@ -306,12 +321,13 @@ final class PageCache
      * Ends a render begun with begin(), restoring the state it returned.
      *
      * @internal the page cache middleware
-     * @param array{0: ?PageKey, 1: ?string} $before
+     * @param array{0: ?PageKey, 1: ?string, 2?: bool} $before
      */
     public function end(array $before): void
     {
         $state = $this->rendering();
         [$state->key, $state->refusal] = $before;
+        $state->began = $before[2] ?? false;
     }
 
     /**

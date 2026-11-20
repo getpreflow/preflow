@@ -131,14 +131,21 @@ final class SeoContextTest extends TestCase
         $this->assertSame('', $context->description());
     }
 
-    public function test_reset_and_clear_drop_the_site_defaults_resolver_and_scoped_restores_it(): void
+    public function test_reset_and_clear_drop_the_site_defaults_resolver_and_scoped_keeps_and_restores_it(): void
     {
         $site = static fn (): PageMeta => new PageMeta(description: 'Site');
         $context = new SeoContext();
 
         $context->resolveDefaultsWith($site);
-        $inner = $context->scoped(static fn (): string => $context->description());
-        $this->assertSame('', $inner);
+        // Inside scoped() only the page meta starts empty; the site's defaults stay, and whatever
+        // resolver the inner render sets is replaced by the outer one afterwards.
+        $inner = $context->scoped(static function () use ($context): string {
+            $seen = $context->description();
+            $context->resolveDefaultsWith(static fn (): PageMeta => new PageMeta(description: 'Inner'));
+
+            return $seen;
+        });
+        $this->assertSame('Site', $inner);
         $this->assertSame('Site', $context->description());
 
         $context->clearDefaultsResolver();

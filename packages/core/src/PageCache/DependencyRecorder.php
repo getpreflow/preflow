@@ -27,7 +27,10 @@ use Preflow\Core\Context\Contexts;
  * RecordingState): a render in a frame of its own (a rebuild, verify's second render, an audit
  * page, a request asked for inside another) starts with none open, so what it reads is never a
  * dependency of the page of the frame around it, and that page's scopes are not its. Outside
- * every frame (a script, a unit test) the recorder keeps its own.
+ * every frame (a script, a unit test) the recorder keeps its own. A request asked for inside a
+ * visitor's render (Application::handle() in a page) is part of that page, as before 0.81
+ * (nestIn()): what it reads and the expiries it asks for also reach the recordings of the frame
+ * around it, with the freshness of its own scope, else of the scope around the request.
  */
 final class DependencyRecorder
 {
@@ -108,10 +111,53 @@ final class DependencyRecorder
         return [$result, $this->stop($frame)];
     }
 
-    /** Whether a recording is open in the current frame. */
+    /** Whether a recording is open in the current frame, or in the page a nested request is part of. */
     public function recording(): bool
     {
-        return $this->state()->frames !== [];
+        for ($state = $this->state(); $state !== null; $state = $state->parent) {
+            if ($state->suspended > 0) {
+                return false;
+            }
+            if ($state->frames !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Makes the current frame part of the page $parent renders (a request asked for inside a
+     * visitor's render or a rebuild): what it reads and the expiries it asks for reach $parent's
+     * open recordings too. The application calls it for a nested request that is not internal.
+     *
+     * @internal Application
+     * @since 0.81.0
+     */
+    public function nestIn(\Preflow\Core\Context\RenderFrame $parent): void
+    {
+        $this->state()->parent = $parent->slot(RecordingState::class, static fn (): RecordingState => new RecordingState());
+    }
+
+    /**
+     * Runs $fn with nothing recorded in the current frame, nor forwarded to the page it is part of:
+     * a live part being filled is the visitor's, never a dependency of a page.
+     *
+     * @internal LiveParts
+     * @since 0.81.0
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    public function suspended(\Closure $fn): mixed
+    {
+        $state = $this->state();
+        $state->suspended++;
+        try {
+            return $fn();
+        } finally {
+            $state->suspended--;
+        }
     }
 
     /**
@@ -144,18 +190,16 @@ final class DependencyRecorder
      */
     public function expiresAt(\DateTimeInterface|float|int $at): void
     {
-        $state = $this->state();
-        if ($state->frames === []) {
-            return;
-        }
         $at = $at instanceof \DateTimeInterface ? (float) $at->format('U.u') : (float) $at;
-        foreach ($state->expiries as $i => $known) {
-            if ($state->starts[$i] !== null && $at <= $state->starts[$i]) {
-                $state->ignored[$i] = min($state->ignored[$i] ?? $at, $at); // already past when this render started
+        for ($state = $this->state(); $state !== null && $state->suspended === 0; $state = $state->parent) {
+            foreach ($state->expiries as $i => $known) {
+                if ($state->starts[$i] !== null && $at <= $state->starts[$i]) {
+                    $state->ignored[$i] = min($state->ignored[$i] ?? $at, $at); // already past when this render started
 
-                continue;
+                    continue;
+                }
+                $state->expiries[$i] = $known === null ? $at : min($known, $at);
             }
-            $state->expiries[$i] = $known === null ? $at : min($known, $at);
         }
     }
 
@@ -208,19 +252,37 @@ final class DependencyRecorder
     /** Notes reads of $tags (with "any record of its table" for a record, DataTags::dependencies()). */
     public function record(string ...$tags): void
     {
-        $state = $this->state();
-        if ($state->frames === []) {
-            return;
-        }
-        foreach ($tags as $tag) {
-            foreach (DataTags::dependencies($tag) as $dependency) {
-                foreach ($state->frames as $i => $frame) {
-                    $state->frames[$i][$dependency] = isset($frame[$dependency])
-                        ? self::merged($frame[$dependency], $state->freshness, $state->seconds)
-                        : [$state->freshness, $state->seconds];
+        $own = $this->state();
+        [$freshness, $seconds] = self::freshnessOf($own);
+        for ($state = $own; $state !== null && $state->suspended === 0; $state = $state->parent) {
+            if ($state->frames === []) {
+                continue;
+            }
+            foreach ($tags as $tag) {
+                foreach (DataTags::dependencies($tag) as $dependency) {
+                    foreach ($state->frames as $i => $frame) {
+                        $state->frames[$i][$dependency] = isset($frame[$dependency])
+                            ? self::merged($frame[$dependency], $freshness, $seconds)
+                            : [$freshness, $seconds];
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * The freshness reads in $state are recorded with: its own scope's, else (a nested request
+     * with no scope of its own) the scope around the request in the page it is part of.
+     *
+     * @return array{0: Freshness, 1: ?int}
+     */
+    private static function freshnessOf(RecordingState $state): array
+    {
+        while ($state->scopes === [] && $state->parent !== null) {
+            $state = $state->parent;
+        }
+
+        return [$state->freshness, $state->seconds];
     }
 
     /**

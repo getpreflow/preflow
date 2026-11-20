@@ -68,11 +68,14 @@ final class StorageByPurposeTest extends TestCase
     public function test_only_visit_and_rebuild_renders_are_stored(Purpose $purpose): void
     {
         $app = $this->site();
-        // A rebuild renders the request the Refresher builds; every other purpose a plain GET.
+        // A rebuild renders the request the Refresher builds, under internal() (it skips and
+        // discards); every other purpose a visitor's plain GET.
         $request = $purpose === Purpose::Rebuild
             ? Rebuild::request('https://example.com/about')
             : new ServerRequest('GET', 'https://example.com/about');
-        $ctx = RenderContext::fromRequest($request, $app->site(), new \Preflow\Core\Context\SystemClock())->because($purpose);
+        $ctx = $purpose === Purpose::Rebuild
+            ? RenderContext::internal(Purpose::Rebuild, $app->site(), new \Preflow\Core\Context\SystemClock(), '/about')->for($request)
+            : RenderContext::fromRequest($request, $app->site(), new \Preflow\Core\Context\SystemClock())->because($purpose);
         $this->assertTrue($ctx->isPublicDefault(), 'the public default context');
 
         $response = $app->render($ctx, $request)->response;

@@ -10,6 +10,8 @@ namespace Preflow\Core\Context;
  * - narrow(): the rest of the current frame (middleware that resolved the user or the locale);
  * - within(): a stretch of the current frame (a template preview in the visitor's texts), with
  *   the previous context back afterwards, also when the stretch throws.
+ * Both note on the frame when they enter a context that is not the public default
+ * (RenderFrame::departures()), so the page cache never stores a render that read as one.
  *
  * Code without a context parameter reads current(); outside every render it throws
  * NoRenderContext. Only code with a documented default for "no render" (DataManager writes,
@@ -152,6 +154,9 @@ final class Contexts
             throw new \TypeError('Contexts::narrow() needs a closure that returns a RenderContext, got ' . get_debug_type($narrowed) . '.');
         }
         $frame->context = $narrowed;
+        if (!$narrowed->isPublicDefault()) {
+            $frame->noteDeparture();
+        }
     }
 
     /**
@@ -170,6 +175,9 @@ final class Contexts
         $frame = self::$top ?? throw self::missing('within');
         $previous = $frame->context;
         $frame->context = $ctx;
+        if (!$ctx->isPublicDefault()) {
+            $frame->noteDeparture();
+        }
         try {
             return $fn();
         } finally {

@@ -287,10 +287,22 @@ final readonly class RenderContext implements \JsonSerializable
         return true;
     }
 
-    /** The page cache may store this render: its purpose is storable (Visit, Rebuild) and it is the public default. */
+    /**
+     * The page cache may store this render: its purpose is storable (Visit, Rebuild), it is the
+     * public default, and its write and outbox policies are its purpose's own: a visit writes and
+     * delivers (Allow, Deliver), a rebuild skips and discards (Skip, Discard; internal()). A
+     * render that captures or discards what a visit would send, or skips what it would write (a
+     * sub-request inside a capturing render, a preview), is not what a visitor gets.
+     */
     public function isStorable(): bool
     {
-        return $this->purpose->isStorable() && $this->isPublicDefault();
+        if (!$this->purpose->isStorable() || !$this->isPublicDefault()) {
+            return false;
+        }
+
+        return $this->purpose === Purpose::Rebuild
+            ? $this->writes === WritePolicy::Skip && $this->outbox === OutboxPolicy::Discard
+            : $this->writes === WritePolicy::Allow && $this->outbox === OutboxPolicy::Deliver;
     }
 
     /**

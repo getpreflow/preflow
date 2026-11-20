@@ -6,9 +6,11 @@ namespace Preflow\Core\PageCache;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\OutboxPolicy;
 use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Context\WritePolicy;
 use Preflow\Core\Http\InternalRender;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -75,7 +77,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `session`: the session was started during the request;
  * - `signed-in`: a guard resolved a user;
  * - `context`: the render's context was narrowed to one that may not be stored (working copies,
- *   a viewer, frozen time);
+ *   a viewer, frozen time), or entered one for a stretch (Contexts::within()), in its frame or in
+ *   a request asked for inside it (`refused:context`);
  * - `cache-control`: Cache-Control is private or no-store;
  * - `vary`: the response varies on a request header the key doesn't hold (anything but
  *   vary_headers, the hypermedia clients' varyHeaders() and Accept-Encoding);
@@ -234,7 +237,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $ctx = Contexts::current();
         $rebuild = $request->getAttribute(self::REBUILD) === true;
         // An internal render that may read a stored page (GEO's llms-full.txt) is served, never stored.
-        $readOnly = !$rebuild && !$this->rebuildOnly && $request->getAttribute(self::SERVE_STORED) === true && InternalRender::is($request);
+        $readOnly = !$rebuild && !$this->rebuildOnly && $request->getAttribute(self::SERVE_STORED) === true && InternalRender::is($request)
+            && $ctx->isPublicDefault(); // a stored page is what the public default sees, nothing else
         if (!$rebuild && !$readOnly && $this->rebuildOnly) {
             return $handler->handle($request);
         }
@@ -303,14 +307,16 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * Whether a render under $ctx of $key may be served from and stored in the cache: a visitor's
      * render, a rebuild's own request (a request asked for inside a rebuild keeps its purpose but
      * not its REBUILD attribute) and a hypermedia fragment under its fragment key, each only with
-     * the public default context.
+     * the public default context and its purpose's own write and outbox policies
+     * (RenderContext::isStorable(); a fragment writes and delivers as a visit does).
      */
     private static function storable(RenderContext $ctx, PageKey $key, bool $rebuild): bool
     {
         return match ($ctx->purpose) {
             Purpose::Visit => $ctx->isStorable(),
             Purpose::Rebuild => $rebuild && $ctx->isStorable(),
-            Purpose::Fragment => $key->isFragment() && $ctx->isPublicDefault(),
+            Purpose::Fragment => $key->isFragment() && $ctx->isPublicDefault()
+                && $ctx->writes === WritePolicy::Allow && $ctx->outbox === OutboxPolicy::Deliver,
             default => false,
         };
     }
@@ -451,6 +457,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
             // Published reads for the rest of the frame (a storable context reads them already), with
             // the deprecated isolate() callbacks around the render, in this frame.
             Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->published());
+            $departures = Contexts::frame()->departures();
             $handle = static fn (): ResponseInterface => $handler->handle($request);
             $response = $this->cache->aroundRender($verify && $this->fromBoot !== null
                 ? fn (): ResponseInterface => ($this->fromBoot)($handle)
@@ -458,8 +465,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
             if (!$key->isHead()) {
                 $refusal = $this->cache->refusal();
                 $reason = $refusal !== null ? 'refused:' . $refusal : $this->refusal($request, $key, $response);
-                // A context narrowed while it rendered (working copies, a viewer) is not stored.
-                $reason ??= self::storable(Contexts::current(), $key, $rebuild) ? null : 'context';
+                // A context narrowed while it rendered (working copies, a viewer) is not stored, nor
+                // one that read as another context for a stretch (within() to working copies).
+                $reason ??= self::storable(Contexts::current(), $key, $rebuild) && Contexts::frame()->departures() === $departures ? null : 'context';
                 if ($reason === null) {
                     // Inside the recording: what the carried state reads (the site's SEO defaults)
                     // is a dependency of the page too.

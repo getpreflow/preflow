@@ -644,15 +644,24 @@ final class Application
 
     /**
      * A request asked for inside a frame that is not its own: a nested frame from the request
-     * (nestedContext()). Notify's deferred mail is flushed (not under run(), which sends it after
+     * (nestedContext()). Unless it is internal, it is part of the page the frame around it renders
+     * for the page cache (DependencyRecorder::nestIn(), PageCache::nestIn()). Notify's deferred mail is flushed (not under run(), which sends it after
      * its response), as handle() did before 0.81; what else it queued and its after-response work
      * go to the frame around it when it closes.
      */
     private function handleNested(ServerRequestInterface $request): ResponseInterface
     {
         $ctx = $this->nestedContext($request, Contexts::current());
+        $outer = Contexts::frame();
 
-        return Contexts::run($ctx, function () use ($request): ResponseInterface {
+        return Contexts::run($ctx, function () use ($request, $ctx, $outer): ResponseInterface {
+            if (!$ctx->purpose->isInternal() && $this->container->has(\Preflow\Core\PageCache\PageCache::class)) {
+                // Part of the page around it, as before 0.81: what it reads, the expiries it asks for
+                // and what it refuses count for that page (the page cache middleware, if it stores
+                // the request itself, begins and records its own as well).
+                $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)->nestIn($outer);
+                $this->container->get(\Preflow\Core\PageCache\PageCache::class)->nestIn($outer);
+            }
             try {
                 $response = $this->handleInFrame($request);
             } catch (\Throwable $e) {
@@ -663,6 +672,11 @@ final class Application
             }
             if (!$this->emitting) {
                 $this->flushDeferredNotifications();
+            }
+            if (Contexts::frame()->departures() > 0 && $this->container->has(\Preflow\Core\PageCache\PageCache::class)) {
+                // It read as another context than the public default: the page around it, which it is
+                // part of, is not stored either (a no-op when that page is not rendered for the cache).
+                $this->container->get(\Preflow\Core\PageCache\PageCache::class)->refuse('context');
             }
 
             return $response;

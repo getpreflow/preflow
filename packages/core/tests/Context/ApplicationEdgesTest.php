@@ -383,7 +383,7 @@ final class ApplicationEdgesTest extends TestCase
         $req = static fn (): ServerRequest => new ServerRequest('GET', 'https://site.test/outer');
         yield 'a capturing render that skips writes' => [
             static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->capturing()->skippingWrites(),
-            ['/inner', 'visit', 'Skip', 'Capture', false, false, true],
+            ['/inner', 'visit', 'Skip', 'Capture', false, false, false],
         ];
         yield 'a verify render' => [
             static fn (Application $app): RenderContext => RenderContext::fromRequest($req(), $app->site(), new SystemClock())->discarding()->skippingWrites()->because(Purpose::Verify),

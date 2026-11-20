@@ -27,6 +27,8 @@ final class RenderFrame
 
     private ?\Throwable $failure = null;
 
+    private int $departures = 0;
+
     /** @internal Contexts::run() opens frames; $parent's channels are known to this one */
     public function __construct(RenderContext $context, ?RenderFrame $parent = null)
     {
@@ -91,6 +93,30 @@ final class RenderFrame
     public function failure(): ?\Throwable
     {
         return $this->failure;
+    }
+
+    /**
+     * Notes that the frame entered a context that is not the public default (Contexts::narrow()
+     * or within()).
+     *
+     * @internal Contexts
+     * @since 0.81.0
+     */
+    public function noteDeparture(): void
+    {
+        $this->departures++;
+    }
+
+    /**
+     * How often the frame entered a context that is not the public default through narrow() or
+     * within(), even for a stretch it left again: the page cache compares it before and after a
+     * render it may store, so draft content read inside a within() is never stored.
+     *
+     * @since 0.81.0
+     */
+    public function departures(): int
+    {
+        return $this->departures;
     }
 
     /** @return list<SkippedWrite> the writes this render skipped, its nested renders' included once they closed */

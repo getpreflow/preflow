@@ -151,12 +151,9 @@ final class FreshnessComponentTest extends TestCase
         $this->recorder->record('page');
         $this->assertSame(['page' => [Freshness::Fresh, null]], $this->recorder->stop($frame));
 
-        // Served: in the visitor's frame, whose recording (if any) is its own; the page around is not
-        // recorded into, and the part's freshness is no dependency either.
+        // Served: filled outside every recording, its freshness no dependency either.
         $frame = $this->recorder->start();
-        $visitor = \Preflow\Core\Context\RenderContext::fromRequest(new \Nyholm\Psr7\ServerRequest('GET', 'https://example.com/page'), new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en'), new \Preflow\Core\Context\SystemClock());
-        $filled = \Preflow\Core\Context\Contexts::run($visitor, fn (): string => $live->fill($stored));
-        $this->assertStringContainsString('<b>personal</b>', $filled);
+        $this->assertStringContainsString('<b>personal</b>', $live->fill($stored));
         $this->recorder->record('page');
         $this->assertSame(['page' => [Freshness::Fresh, null]], $this->recorder->stop($frame));
         $this->assertNull(ComponentRenderer::freshnessOf(PlainReader::class));

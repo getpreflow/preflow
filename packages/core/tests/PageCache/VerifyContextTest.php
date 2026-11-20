@@ -105,6 +105,33 @@ final class VerifyContextTest extends TestCase
         $this->assertSame('<p>views: 1</p>', (string) $hit->getBody());
     }
 
+    /**
+     * Verify's second render runs the rest of the pipeline only, so it never passes the SEO
+     * middleware again: the site's defaults it set for the request stay visible there (the SEO
+     * render scope resets only the page meta), and a page that prints them is stored.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_page_printing_the_site_seo_defaults_is_verified_and_stored(): void
+    {
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 't', 'debug' => 0, 'engine' => 'twig', 'key' => 'verify-context-test-key-0123456789ab', 'url' => 'https://example.com', 'locale' => 'en'];\n");
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'first'];\n");
+        file_put_contents($this->dir . '/config/seo.php', "<?php\nreturn ['enabled' => true];\n");
+        file_put_contents($this->dir . '/app/pages/about.twig', '<html><head><title>About</title></head><body><p>{{ seo_description() }}</p></body></html>');
+        $app = Application::create($this->dir);
+        $app->setRunningInConsole(false);
+        $app->boot();
+        $app->container()->get(\Preflow\View\Seo\SeoSite::class)->defaults(static fn (string $locale): \Preflow\View\Seo\PageMeta => new \Preflow\View\Seo\PageMeta(description: 'Site tagline'));
+
+        $miss = $app->handle(new ServerRequest('GET', 'https://example.com/about'));
+
+        $this->assertSame('miss', $miss->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('', $miss->getHeaderLine('X-Page-Cache-Skip'), 'verified and stored. ' . (string) @file_get_contents($this->dir . '/php.log'));
+        $this->assertStringContainsString('<p>Site tagline</p>', (string) $miss->getBody());
+        $hit = $app->handle(new ServerRequest('GET', 'https://example.com/about'));
+        $this->assertSame('hit', $hit->getHeaderLine('X-Page-Cache'));
+        $this->assertStringContainsString('<p>Site tagline</p>', (string) $hit->getBody());
+    }
+
     public function test_verify_compares_the_two_frames_meta(): void
     {
         $cache = new PageCache(recorder: new DependencyRecorder());

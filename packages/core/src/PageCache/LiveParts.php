@@ -16,8 +16,8 @@ namespace Preflow\Core\PageCache;
  * it (register()), with the visitor's request in RequestContext. At any other time (cache off,
  * a signed-in visitor, an internal render) a live part renders in place, from the same inputs.
  *
- * Filling is outside the page: a part's reads are not dependencies of the page (the cache fills
- * a page when no recording is open in its frame), PageCache::refuse() inside it does nothing, and a part that throws is replaced by ERROR (and logged), the rest of
+ * Filling is outside the page: a part's reads are not dependencies of the page (recording is
+ * suspended while it fills), PageCache::refuse() inside it does nothing, and a part that throws is replaced by ERROR (and logged), the rest of
  * the page is served; an HttpException is rethrown and becomes the page's status. Before
  * rendering, the placeholders of one kind are handed to that kind's prefetch together
  * (components: one prefetchLive() call per class).
@@ -37,8 +37,7 @@ final class LiveParts
     private array $kinds = [];
 
     /**
-     * @param DependencyRecorder $recorder not used since 0.81 (recordings belong to the render
-     *        frame, and the page cache fills a page once its recording is closed); kept for the constructor
+     * @param DependencyRecorder $recorder suspended while parts are filled
      * @param (\Closure(string): void)|null $log error_log() when null
      */
     public function __construct(
@@ -113,11 +112,11 @@ final class LiveParts
         }
         $map = [];
         if ($parts !== []) {
-            // No page is rendered for the cache meanwhile (nothing refuses one). Nothing records
-            // either: the page cache fills a page once its own recording in this frame is closed.
+            // No page is rendered for the cache meanwhile (nothing refuses one), and nothing is
+            // recorded, in this frame or for a page it is part of.
             $before = $this->cache->begin(null);
             try {
-                $map = $this->render($parts);
+                $map = $this->recorder->suspended(fn (): array => $this->render($parts));
             } finally {
                 $this->cache->end($before);
             }

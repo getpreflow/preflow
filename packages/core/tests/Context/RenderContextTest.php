@@ -249,13 +249,30 @@ final class RenderContextTest extends TestCase
     {
         $ctx = self::visit();
         foreach (Purpose::cases() as $purpose) {
+            // Each with the policies its purpose renders with: a rebuild skips and discards (internal()).
+            $as = $purpose === Purpose::Rebuild ? $ctx->skippingWrites()->discarding() : $ctx;
             $this->assertSame(
                 in_array($purpose, [Purpose::Visit, Purpose::Rebuild], true),
-                $ctx->because($purpose)->isStorable(),
+                $as->because($purpose)->isStorable(),
                 $purpose->name,
             );
         }
         $this->assertFalse($ctx->workingCopies()->isStorable(), 'a visit that is not the public default');
+    }
+
+    public function test_storable_only_with_the_purposes_own_write_and_outbox_policies(): void
+    {
+        $visit = self::visit();
+        $this->assertTrue($visit->isStorable());
+        $this->assertFalse($visit->capturing()->isStorable(), 'a visit that captures what it would send');
+        $this->assertFalse($visit->discarding()->isStorable(), 'a visit that discards what it would send');
+        $this->assertFalse($visit->skippingWrites()->isStorable(), 'a visit that skips its writes');
+        $this->assertFalse($visit->refusingWrites()->isStorable(), 'a visit that refuses its writes');
+
+        $rebuild = RenderContext::internal(Purpose::Rebuild, self::site(), new SystemClock(), '/a');
+        $this->assertTrue($rebuild->isStorable(), 'a rebuild as internal() builds it');
+        $this->assertFalse($rebuild->capturing()->isStorable());
+        $this->assertFalse($rebuild->delivering()->isStorable(), 'a rebuild never sends');
     }
 
     public function test_memo_key_differs_by_locale_reads_viewer_surface_and_facets(): void
