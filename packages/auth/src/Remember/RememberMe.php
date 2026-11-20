@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Auth\Remember;
 
 use Preflow\Auth\Support\FileLock;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\RunsSql;
@@ -49,7 +50,7 @@ final class RememberMe
         ?\Closure $clock = null,
         ?string $lockDir = null,
     ) {
-        $this->clock = $clock ?? static fn (): int => time();
+        $this->clock = $clock ?? static fn (): int => Contexts::clock()->now()->getTimestamp();
         $this->lockDir = $lockDir ?? sys_get_temp_dir();
         $this->type = new TypeDefinition(
             key: self::TABLE,

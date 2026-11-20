@@ -503,6 +503,63 @@ final class ApplicationEdgesTest extends TestCase
         $this->assertSame(['2026-01-01T00:00:00+00:00', 'live'], $seen);
     }
 
+    /** An app booted inside a command puts its bound clock on the console frame: the command reads it without handle(). */
+    #[RunInSeparateProcess]
+    public function test_a_command_that_boots_the_app_reads_the_apps_clock(): void
+    {
+        $GLOBALS['edgeDir'] = $this->dir;
+        $GLOBALS['edgeSeen'] = [];
+        $console = new Console($this->dir);
+        $console->register(new class () implements CommandInterface {
+            public function getName(): string
+            {
+                return 'clock:show';
+            }
+
+            public function getDescription(): string
+            {
+                return 'Boots the app and reads the clock';
+            }
+
+            public function execute(array $args): int
+            {
+                $app = Application::create($GLOBALS['edgeDir']);
+                $app->container()->instance(ClockInterface::class, new FrozenClock(new \DateTimeImmutable('2026-01-01T00:00:00Z')));
+                $app->boot();
+                $GLOBALS['edgeSeen'] = [Contexts::current()->clock->now()->format(DATE_ATOM), Contexts::clock()->now()->format(DATE_ATOM), Contexts::current()->isFrozen() ? 'time-shifted' : 'live'];
+
+                return 0;
+            }
+        });
+
+        $console->run(['preflow', 'clock:show']);
+
+        $this->assertSame(['2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 'live'], $GLOBALS['edgeSeen']);
+    }
+
+    /** A test's own console context on a FrozenClock keeps it: neither boot() nor a request it handles swaps in the app's clock. */
+    #[RunInSeparateProcess]
+    public function test_a_console_context_with_its_own_clock_keeps_it(): void
+    {
+        $seen = [];
+        EdgeRoutes::$routes['/blog'] = static function () use (&$seen): ResponseInterface {
+            $seen[] = Contexts::current()->now->format(DATE_ATOM);
+
+            return new Response(200, [], 'blog');
+        };
+        $own = new FrozenClock(new \DateTimeImmutable('2030-06-01T00:00:00Z'));
+
+        Contexts::run(RenderContext::console(new Site('http://localhost', ['en'], 'en'), $own), function () use (&$seen): void {
+            $app = Application::create($this->dir);
+            $app->container()->instance(ClockInterface::class, new FrozenClock(new \DateTimeImmutable('2026-01-01T00:00:00Z')));
+            $app->boot();
+            $seen[] = Contexts::clock()->now()->format(DATE_ATOM);
+            $app->handle(new ServerRequest('GET', 'https://site.test/blog'));
+        });
+
+        $this->assertSame(['2030-06-01T00:00:00+00:00', '2030-06-01T00:00:00+00:00'], $seen);
+    }
+
     #[RunInSeparateProcess]
     public function test_console_commands_run_in_a_console_frame(): void
     {

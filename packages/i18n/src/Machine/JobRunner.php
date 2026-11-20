@@ -8,6 +8,7 @@ use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimits;
 use Preflow\Ai\Limits\AiLimitsMisconfigured;
+use Preflow\Core\Context\Contexts;
 
 /**
  * Runs a translation job one item at a time, so a request or cron tick stays short and a failure
@@ -79,7 +80,7 @@ final class JobRunner
      */
     public function start(string $jobId, bool $confirmLive = false, ?string $by = null): Job
     {
-        $at = ($this->now !== null ? ($this->now)() : new \DateTimeImmutable())->format(\DATE_ATOM);
+        $at = ($this->now !== null ? ($this->now)() : Contexts::clock()->now())->format(\DATE_ATOM);
 
         return $this->update($jobId, static function (Job $job) use ($confirmLive, $by, $at): void {
             if ($job->state === 'planned' || $job->state === 'stopped' || $job->state === 'running') {

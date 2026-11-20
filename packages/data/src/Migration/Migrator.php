@@ -98,7 +98,7 @@ final class Migrator
     private function recordMigration(string $name): void
     {
         $stmt = $this->pdo->prepare('INSERT INTO preflow_migrations (migration, ran_at) VALUES (?, ?)');
-        $stmt->execute([$name, date('Y-m-d H:i:s')]);
+        $stmt->execute([$name, date('Y-m-d H:i:s')]); // clock: stamp
     }
 
     private function ensureMigrationsTable(): void

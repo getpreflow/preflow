@@ -194,6 +194,17 @@ final readonly class RenderContext implements \JsonSerializable
         return $this->copy(clock: new FrozenClock($at), now: $at, frozen: true);
     }
 
+    /**
+     * The same context on $clock: now is read from it, and the context is not frozen (at() freezes).
+     * Application::boot() puts the app's bound clock on a console frame this way.
+     *
+     * @since 0.81.0
+     */
+    public function withClock(ClockInterface $clock): self
+    {
+        return $this->copy(clock: $clock, now: $clock->now(), frozen: false);
+    }
+
     public function delivering(): self
     {
         return $this->copy(outbox: OutboxPolicy::Deliver);

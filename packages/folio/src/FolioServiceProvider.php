@@ -151,11 +151,6 @@ final class FolioServiceProvider extends ServiceProvider
             // the members check the template when a page renders, whatever order the providers boot in.
             $container->instance(\Preflow\Members\MembersDefaults::class, new \Preflow\Members\MembersDefaults(layout: '@folio/frontend/_site.twig'));
         }
-        if (interface_exists(\Preflow\Members\PageLocale::class)) {
-            $container->singleton(\Preflow\Members\PageLocale::class, static fn (Container $c): \Preflow\Members\PageLocale => new \Preflow\Folio\Members\FolioPageLocale(
-                $c->get(ContentLocale::class),
-            ));
-        }
         // Models go under Content unless their JSON names a "section"; their settings forms
         // (Extension::settings()) are singleton types under Settings.
         // Each extension may adjust its models first (prepareModel: storage, options from config).

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Http;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\I18n\Machine\TranslationWorker;
 
 /** Whether the cron job that translates queued jobs has run lately; the screens that queue or list jobs say so when it has not. */
@@ -16,6 +17,6 @@ final class WorkerWatch
     {
         $last = $worker?->lastRun();
 
-        return $last !== null && $last->getTimestamp() >= time() - self::SILENCE;
+        return $last !== null && $last->getTimestamp() >= Contexts::clock()->now()->getTimestamp() - self::SILENCE;
     }
 }

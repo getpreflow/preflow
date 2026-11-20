@@ -220,7 +220,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly ?\Preflow\Core\Http\ResponseHeaderHints $hints = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
         $this->verify = match (true) {
             $verify === null => $config->verify,
             $verify === true => PageCacheConfig::VERIFY_ALWAYS,

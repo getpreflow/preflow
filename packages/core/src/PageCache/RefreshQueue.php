@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * The pages waiting to be rebuilt, in a table of the release's index.sqlite (TagIndex::pdo()):
  *
@@ -49,7 +51,7 @@ final class RefreshQueue
         private readonly \PDO $pdo,
         ?\Closure $clock = null,
     ) {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
     }
 
     /** The queue id of a URL the index doesn't know. */

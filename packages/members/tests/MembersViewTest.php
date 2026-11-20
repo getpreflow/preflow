@@ -53,8 +53,13 @@ TWIG;
     private function render(string $template, array $vars = [], string $locale = 'en', string $uri = '/members/login', int $status = 200): ResponseInterface
     {
         $request = (new Psr17Factory())->createServerRequest('GET', 'https://site.test' . $uri)->withAttribute('locale', $locale);
+        $view = $this->view(); // boots the site ($this->flow)
+        $render = static fn (): ResponseInterface => $view->render($template, $vars, $request, $status);
 
-        return $this->view()->render($template, $vars, $request, $status);
+        // A member page renders inside a request's render (since 0.81 it renders within its locale).
+        return \Preflow\Core\Context\Contexts::depth() > 0
+            ? $render()
+            : \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::fromRequest($request, $this->flow->site(), new \Preflow\Core\Context\SystemClock()), $render);
     }
 
     private function html(string $template, array $vars = [], string $locale = 'en', string $uri = '/members/login'): string

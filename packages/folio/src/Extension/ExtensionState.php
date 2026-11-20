@@ -87,7 +87,7 @@ final class ExtensionState
         $this->dm->saveType(DynamicRecord::fromArray($this->definition(), [
             'name' => $name,
             'version' => $version,
-            'installed_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+            'installed_at' => (new \DateTimeImmutable())->format(DATE_ATOM), // clock: stamp
         ]), false);
     }
 }

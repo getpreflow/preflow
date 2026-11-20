@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeDefinition;
 use Preflow\Folio\Content\DraftRecordFactory;
@@ -68,7 +69,7 @@ final class PublishingController
             return $this->status(self::refusal('folio.publishing.not_saved_invalid', $typeDef, $e), null, true);
         }
 
-        return $this->status(self::stateText($this->publisher->state($record), new \DateTimeImmutable()), (int) $record->get('_version'));
+        return $this->status(self::stateText($this->publisher->state($record), Contexts::clock()->now()), (int) $record->get('_version'));
     }
 
     /**

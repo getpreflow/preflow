@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\PageCache;
 
 use Nyholm\Psr7\ServerRequest;
+use Preflow\Core\Context\Contexts;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -84,7 +85,7 @@ final class Refresher
         ?\Closure $log = null,
         private readonly ?string $origin = null,
     ) {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
         $this->log = $log ?? static function (string $message): void {
             error_log($message);
         };

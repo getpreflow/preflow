@@ -8,11 +8,11 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Debug\DebugCollector;
-use Preflow\Core\Http\InternalRender;
 use Preflow\DevTools\DebugToolbar;
 
-/** Adds the debug toolbar to HTML pages; an internal render (InternalRender) gets none. */
+/** Adds the debug toolbar to HTML pages; a render that leaves no trace (Purpose::leavesNoTrace(): audit, GEO, rebuild, preview) gets none. */
 final class DebugToolbarMiddleware implements MiddlewareInterface
 {
     public function __construct(
@@ -24,7 +24,7 @@ final class DebugToolbarMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $response = $handler->handle($request);
-        if (InternalRender::is($request)) {
+        if (Contexts::depth() > 0 && Contexts::current()->purpose->leavesNoTrace()) {
             return $response;
         }
 

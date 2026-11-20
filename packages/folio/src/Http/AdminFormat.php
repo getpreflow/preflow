@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Http;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Folio\FolioText;
 use Preflow\I18n\Translator;
 
@@ -70,7 +71,7 @@ final class AdminFormat
         }
         $zone = new \DateTimeZone(date_default_timezone_get());
         $date = $date->setTimezone($zone);
-        $now = ($now ?? new \DateTimeImmutable())->setTimezone($zone);
+        $now = ($now ?? Contexts::clock()->now())->setTimezone($zone);
         $seconds = $now->getTimestamp() - $date->getTimestamp();
         if ($seconds < 60) {
             return $this->text('folio.format.just_now');
@@ -127,7 +128,7 @@ final class AdminFormat
             return \DateTimeImmutable::createFromInterface($value);
         }
         if (is_int($value)) {
-            return (new \DateTimeImmutable())->setTimestamp($value);
+            return (new \DateTimeImmutable('@' . $value))->setTimezone(new \DateTimeZone(date_default_timezone_get()));
         }
         if (!is_string($value) || trim($value) === '') {
             return null;

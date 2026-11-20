@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
@@ -273,7 +274,7 @@ final class AdminController
             return true;
         }
         try {
-            return new \DateTimeImmutable($job->updatedAt) < new \DateTimeImmutable('-' . self::STALE_JOB_SECONDS . ' seconds');
+            return new \DateTimeImmutable($job->updatedAt) < Contexts::clock()->now()->modify('-' . self::STALE_JOB_SECONDS . ' seconds');
         } catch (\Exception) {
             return true;
         }
@@ -667,7 +668,7 @@ final class AdminController
 
         return new Response(200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="' . (preg_replace('/[^A-Za-z0-9_-]+/', '-', $type) ?: 'export') . '-' . date('Y-m-d') . '.xlsx"',
+            'Content-Disposition' => 'attachment; filename="' . (preg_replace('/[^A-Za-z0-9_-]+/', '-', $type) ?: 'export') . '-' . date('Y-m-d') . '.xlsx"', // clock: stamp
             'Content-Length' => (string) $size,
             'Cache-Control' => 'no-store',
         ], \Nyholm\Psr7\Stream::create($handle));

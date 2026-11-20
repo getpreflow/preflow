@@ -55,7 +55,7 @@ final class TarWriter
             . str_pad('0000000', 8, "\0")
             . str_pad('0000000', 8, "\0")
             . str_pad(sprintf('%011o', $size), 12, "\0")
-            . str_pad(sprintf('%011o', time()), 12, "\0")
+            . str_pad(sprintf('%011o', time()), 12, "\0") // clock: stamp
             . '        '            // checksum, filled below
             . '0'                   // regular file
             . str_repeat("\0", 100) // link name

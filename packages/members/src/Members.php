@@ -6,6 +6,7 @@ namespace Preflow\Members;
 
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Auth\Remember\RememberMe;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
@@ -56,7 +57,7 @@ final class Members
         private readonly ?\Closure $mailer = null,
         private readonly ?\Preflow\Core\Activity\ActivityLog $activity = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now()->setTimezone(new \DateTimeZone('UTC'));
     }
 
     public static function normalizeEmail(string $email): string
@@ -96,7 +97,7 @@ final class Members
      * it, a sign-in elsewhere); Members never assumes so. The member is confirmed at once and the
      * admission decides as after a confirmation ({@see Confirmation}: a member, or pending with
      * the owner's notice); no confirmation mail is sent. Sign the member in with {@see SignIn}.
-     * The admission's afterConfirm() gets $request, else the current request as PHP sees it ($_SERVER).
+     * The admission's afterConfirm() gets $request, else the current render's request (Contexts::current()).
      *
      * Raises MemberEvents::REGISTERED (with $request, null when none was given), then for a
      * verified address CONFIRMED and DECIDED.
@@ -150,19 +151,15 @@ final class Members
         return $record;
     }
 
-    /** The request PHP is serving, for the admission's afterConfirm() outside a controller. */
-    private static function currentRequest(): ServerRequest
+    /**
+     * The request of the current render, for the admission's afterConfirm() outside a controller;
+     * a render without one (a console command) gets a bare GET of '/'.
+     *
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render
+     */
+    private static function currentRequest(): ServerRequestInterface
     {
-        $server = $_SERVER;
-
-        return new ServerRequest(
-            is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : 'GET',
-            is_string($server['REQUEST_URI'] ?? null) ? $server['REQUEST_URI'] : '/',
-            [],
-            null,
-            '1.1',
-            $server,
-        );
+        return Contexts::current()->request?->request ?? new ServerRequest('GET', '/');
     }
 
     public function confirm(DynamicRecord $m): void

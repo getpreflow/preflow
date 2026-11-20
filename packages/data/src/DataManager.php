@@ -926,7 +926,7 @@ final class DataManager
         if (!$meta->hasTimestamps) {
             return;
         }
-        $now = new \DateTimeImmutable();
+        $now = new \DateTimeImmutable(); // clock: stamp
         foreach ([[Timestamps::CREATED_NAMES, false], [Timestamps::UPDATED_NAMES, true]] as [$names, $always]) {
             $name = Timestamps::propertyOf($model::class, $names);
             if ($name === null) {

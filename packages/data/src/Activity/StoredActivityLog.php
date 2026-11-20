@@ -8,6 +8,7 @@ use Preflow\Core\Activity\Activity;
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
 use Preflow\Core\Activity\ActivityPage;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -121,7 +122,7 @@ final class StoredActivityLog implements ActivityLog
         if ($keepDays < 0 || $keepRows < 0) {
             throw new \InvalidArgumentException('activity.keep_days and activity.keep_rows must be 0 (keep all) or more.');
         }
-        $this->clock = $clock ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->clock = $clock ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
         $this->type = new TypeDefinition(
             key: self::TABLE,
             table: self::TABLE,

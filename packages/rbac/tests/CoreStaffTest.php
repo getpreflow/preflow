@@ -331,6 +331,24 @@ final class CoreStaffTest extends TestCase
         $this->assertSame([1, "No staff account has the e-mail address \"nobody@site.test\".\n"], [$code, $out]);
     }
 
+    /** A staff invite link expires by the render's clock (auth's tokens read Contexts::clock() since 0.81). */
+    #[RunInSeparateProcess]
+    public function test_rbac_staff_expiry_uses_the_context_now(): void
+    {
+        $this->site();
+        $app = $this->app();
+        $links = $app->container()->get(AccountLinks::class);
+        $boss = $this->staff('boss@site.test', $app);
+        $at = static fn (string $when): \Preflow\Core\Context\RenderContext => \Preflow\Core\Context\RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->at(new \DateTimeImmutable($when));
+        $in = static fn (string $when, \Closure $fn): mixed => \Preflow\Core\Context\Contexts::run($at($when), $fn);
+
+        $invite = $in('2030-01-01T12:00:00Z', static fn (): string => $links->issue($boss, StaffAccounts::INVITE, 3600));
+        $reset = $in('2030-01-01T12:00:00Z', static fn (): string => $links->issue($boss, StaffAccounts::RESET, 3600));
+
+        $this->assertNull($in('2030-01-01T13:00:01Z', static fn (): ?DynamicRecord => $links->consume($invite, StaffAccounts::INVITE)), 'an hour and a second later: expired');
+        $this->assertSame('boss@site.test', $in('2030-01-01T12:59:59Z', static fn (): ?DynamicRecord => $links->consume($reset, StaffAccounts::RESET))?->get('email'), 'within the hour: valid');
+    }
+
     #[RunInSeparateProcess]
     public function test_a_disabled_account_cant_sign_in_and_its_sessions_remember_logins_and_links_end(): void
     {

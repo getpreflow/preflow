@@ -382,6 +382,7 @@ final class Application
         if (!$this->container->bound(\Psr\Clock\ClockInterface::class)) {
             $this->container->instance(\Psr\Clock\ClockInterface::class, new \Preflow\Core\Context\SystemClock());
         }
+        $this->consoleOnTheAppsClock();
         $this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);
         $this->container->bind(\Preflow\Core\Context\Outbox::class, static fn (): \Preflow\Core\Context\Outbox => Contexts::frame()->outbox());
         $this->container->instance(\Preflow\Core\Http\CookieQueue::class, \Preflow\Core\Http\CookieQueue::ofCurrentFrame());
@@ -900,14 +901,15 @@ final class Application
      * Discard), a role viewer (with its Skip and Capture) and frozen time (at($outer->now)), so a
      * page's sub-request inside a preview, a view as a role, an audit or a render as of a date
      * writes, sends and is stored no more than the render around it. The clock is $outer's; a
-     * console frame has none of its own (Console starts it on the system clock), so a command's
-     * request takes the app's bound clock. It reads what $outer reads (since 0.81): working
+     * console frame on Console's own system clock has none of its own (the app was booted before
+     * the command ran), so a command's request takes the app's bound clock; a console context on
+     * another clock (a test's FrozenClock) keeps it. It reads what $outer reads (since 0.81): working
      * copies inside an admin request or a preview, the site as of a date inside such a render;
      * a request that should read published inside them renders with Application::render().
      */
     private function nestedContext(ServerRequestInterface $request, RenderContext $outer): RenderContext
     {
-        $clock = $outer->purpose === \Preflow\Core\Context\Purpose::Console
+        $clock = self::onConsoleDefaultClock($outer)
             ? $this->container->get(\Psr\Clock\ClockInterface::class)
             : $outer->clock;
         $ctx = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $clock);
@@ -956,6 +958,29 @@ final class Application
     private static function asMarked(RenderContext $ctx): RenderContext
     {
         return $ctx->because(Purpose::Audit)->discarding();
+    }
+
+    /**
+     * A console frame has no clock of its own: Console opens it on the system clock before any app
+     * exists. Booted inside one, the app puts its own bound clock on the rest of that frame, so a
+     * command that reads Contexts::current()->clock (or Contexts::clock()) gets the clock the app or
+     * a test bound. A console context built on another clock, or frozen with at(), keeps its own.
+     */
+    private function consoleOnTheAppsClock(): void
+    {
+        if (Contexts::depth() === 0 || !self::onConsoleDefaultClock(Contexts::current())) {
+            return;
+        }
+        $clock = $this->container->get(\Psr\Clock\ClockInterface::class);
+        if (!$clock instanceof \Preflow\Core\Context\SystemClock) {
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->withClock($clock));
+        }
+    }
+
+    /** A console context on Console's own system clock, not frozen: it has no clock of its own. */
+    private static function onConsoleDefaultClock(RenderContext $ctx): bool
+    {
+        return $ctx->purpose === Purpose::Console && $ctx->clock instanceof \Preflow\Core\Context\SystemClock && !$ctx->isFrozen();
     }
 
     /** "Now" of the current render, else the app's clock (a script, the console before its frame). */
@@ -2914,7 +2939,7 @@ final class Application
             nonPublic: $container->get(\Preflow\Core\Http\NonPublicPaths::class),
             filter: new \Preflow\Routing\Redirect\NotFoundFilter($config->ignore),
             defaultLocale: $defaultLocale,
-            now: static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
+            now: static fn (): \DateTimeImmutable => Contexts::clock()->now(),
             warn: $debug->isDebug() ? $this->csrfWarning(...) : null,
             // The visitor's address includes the locale prefix LocaleMiddleware stripped.
             urlPrefix: self::carriedLocalePrefix(...),
@@ -2971,7 +2996,7 @@ final class Application
             $defaultLocale,
             (string) $this->config->get('app.name', ''),
             $geo->enabled(),
-            static fn (): \DateTimeImmutable => new \DateTimeImmutable(),
+            static fn (): \DateTimeImmutable => Contexts::clock()->now(),
             $this->sessionCookieName(),
             hypermedia: $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
             localeUrls: $this->container->get(\Preflow\Core\Http\LocaleUrls::class),

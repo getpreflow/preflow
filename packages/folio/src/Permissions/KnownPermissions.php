@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Permissions;
 
 use Preflow\Auth\Access\PermissionRegistry;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
@@ -149,6 +150,6 @@ final class KnownPermissions
 
     private static function now(): string
     {
-        return (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s\Z');
+        return Contexts::clock()->now()->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
     }
 }

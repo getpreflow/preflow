@@ -7,6 +7,7 @@ namespace Preflow\I18n\Machine;
 use Preflow\Ai\AiUnavailable;
 use Preflow\Ai\Limits\AiLimitReached;
 use Preflow\Ai\Limits\AiLimitsMisconfigured;
+use Preflow\Core\Context\Contexts;
 
 /**
  * The background side of queued translation jobs: a cron job calls work() every minute, which
@@ -160,6 +161,6 @@ final class TranslationWorker
 
     private function now(): \DateTimeImmutable
     {
-        return $this->now !== null ? ($this->now)() : new \DateTimeImmutable();
+        return $this->now !== null ? ($this->now)() : Contexts::clock()->now();
     }
 }

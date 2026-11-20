@@ -103,7 +103,7 @@ final class ManifestBuilder
 
         return [
             'version' => ManifestFile::VERSION,
-            'built' => date(DATE_ATOM),
+            'built' => date(DATE_ATOM), // clock: stamp
             'sources' => $sources,
             'runtime' => $runtime,
             'config' => $recorded['config'],

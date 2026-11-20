@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace Preflow\Blocks\Tests;
 
+use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\SystemClock;
 use Preflow\View\TemplateEngineInterface;
 
 /**
@@ -41,6 +45,7 @@ abstract class BlocksAppTestCase extends TestCase
 
     protected function tearDown(): void
     {
+        Contexts::reset();
         $this->remove($this->dir);
     }
 
@@ -61,12 +66,24 @@ abstract class BlocksAppTestCase extends TestCase
         return $this->app;
     }
 
-    /** @param array<string, mixed> $context */
-    protected function render(string $template, array $context = []): string
+    /**
+     * $template rendered as a visitor's page in $locale (blocks read the locale from the render
+     * context), or in the current render when one is open.
+     *
+     * @param array<string, mixed> $context
+     */
+    protected function render(string $template, array $context = [], string $locale = 'en'): string
     {
         $this->write('page.twig', $template);
+        $render = fn (): string => $this->app()->container()->get(TemplateEngineInterface::class)->render('page.twig', $context);
 
-        return $this->app()->container()->get(TemplateEngineInterface::class)->render('page.twig', $context);
+        return Contexts::depth() > 0 ? $render() : Contexts::run($this->visit()->in($locale), $render);
+    }
+
+    /** A visitor's GET of '/' on this app. */
+    protected function visit(): RenderContext
+    {
+        return RenderContext::fromRequest(new ServerRequest('GET', '/'), $this->app()->site(), new SystemClock());
     }
 
     private function copy(string $from, string $to): void

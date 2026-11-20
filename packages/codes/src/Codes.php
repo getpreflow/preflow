@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Codes;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -71,7 +72,7 @@ final class Codes
         $this->throttleMax = (int) ($config['throttle']['max'] ?? 10);
         $this->throttleWindow = (int) ($config['throttle']['window'] ?? 900);
         $this->lockDir = $lockDir ?? sys_get_temp_dir();
-        $this->clock = $clock ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->clock = $clock ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
         $this->randomCode = $randomCode ?? static fn (): string => rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
     }
 

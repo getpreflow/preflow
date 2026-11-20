@@ -1613,7 +1613,7 @@ extension enabled. A project's or package's own extension named `members` takes 
 `Preflow\Members\Extension` is ignored, and `folio-extensions.cache` rebuilds by itself. With the
 admin enabled Folio binds Settings → Members as the members core's `MembersSettings` and the
 member's edit page as `MemberLinks` (the link in the owner's mails). Whenever `preflow/members` is
-installed it binds its content locale as `PageLocale`, names `@folio/frontend/_site.twig` as the
+installed it names `@folio/frontend/_site.twig` as the
 member pages' default `layout` (`MembersDefaults`), and it also counts published snapshots in a member's own deletion
 (`MemberDeleteCopies`) and carries the deletion into them (pointers cleared, cascaded pages
 unpublished; the snapshot gets no revision entry).
@@ -2987,9 +2987,8 @@ the content languages (`config/i18n.php`) are separate.
 - Public pages never change with the admin's language: the translator's locale and the
   overrides are put back after every admin request.
 - Media's alt texts and captions follow the content language, not the admin's: Folio binds
-  media's `LocaleProvider` to its content locale. A site that binds media's
-  `ConfigLocaleProvider` itself is outside that wiring: it reads the translator's locale, which
-  on an admin request is the admin's language.
+  media's `LocaleProvider` to its content locale. Since 0.81 media's own `ConfigLocaleProvider`
+  reads the render context's locale too (the content language, also on an admin request).
 
 **Changing a text: the Translations screen.** *Settings → Translations*
 (`{prefix}/translations`, permission `translations.edit`) lists the texts of every `admin`

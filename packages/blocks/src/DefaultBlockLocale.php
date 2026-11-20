@@ -4,35 +4,38 @@ declare(strict_types=1);
 
 namespace Preflow\Blocks;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Data\Locales;
 
 /**
- * The BlockLocale without an app of its own: the request's current locale (the i18n
- * Translator's, when the app has one) when it is a content locale, else the default.
- * It never changes the locale, so scoped() only runs the render.
+ * The BlockLocale without an app of its own: the render context's locale when it is a content
+ * locale, else the default. Since 0.81 it reads the context, not the translator.
  */
-final class DefaultBlockLocale implements BlockLocale
+final class DefaultBlockLocale implements ContextBlockLocale
 {
-    /** @param \Closure(): ?string $current the current locale, null without one */
+    /** @param Locales $locales the content locales; a second argument (the translator's locale before 0.81) is ignored */
     public function __construct(
         private readonly Locales $locales,
-        private readonly \Closure $current,
     ) {}
 
+    /** @since 0.81.0 */
+    public function localeOf(RenderContext $ctx): string
+    {
+        return $this->locales->has($ctx->locale) ? $ctx->locale : $this->locales->default;
+    }
+
+    /**
+     * @deprecated 0.81, removed in 0.83: localeOf(Contexts::current())
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render
+     */
     public function get(): string
     {
-        $locale = ($this->current)();
-
-        return is_string($locale) && $this->locales->has($locale) ? $locale : $this->locales->default;
+        return $this->localeOf(Contexts::current());
     }
 
     public function locales(): Locales
     {
         return $this->locales;
-    }
-
-    public function scoped(callable $render): mixed
-    {
-        return $render();
     }
 }

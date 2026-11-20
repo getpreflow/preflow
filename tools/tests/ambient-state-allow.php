@@ -54,7 +54,6 @@ return [
     'folio/src/Content/ContentLocale.php' => [
         'peek' => [
             '$locale = Contexts::peek()?->locale;' => 'outside every render content renders in the default content locale (the documented default)',
-            '$ctx = Contexts::peek();' => 'scoped() outside every render just runs the render: there is no context to put back',
         ],
         'setter' => [
             'Deprecations::once(\'Preflow\\Folio\\Content\\ContentLocale::set() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).\');' => 'the deprecation message names set(); not a call',
@@ -126,6 +125,16 @@ return [
             'printf("Rebuilt %d page(s) in %.1f s; %d queued.\\n", $rebuilt, microtime(true) - $started, $refresher->queued());' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
         ],
     ],
+    'devtools/src/Command/ThrottlePruneCommand.php' => [
+        'clock' => [
+            '$clock = $this->clock ?? static fn (): float => microtime(true);' => 'the command\'s run-time budget (--every repeats until it is spent): measures elapsed time or a deadline; a frozen context clock must not apply',
+        ],
+    ],
+    'data/src/Driver/JsonFileDriver.php' => [
+        'clock' => [
+            'if (!$settled && time() > $quick[1] && ($cached[\'quick\'] ?? null) === $quick) {' => 'compares with a directory mtime (the file system\'s clock, whole seconds); a frozen context clock must not apply',
+        ],
+    ],
     'media/src/Preview/VideoPreviewRenderer.php' => [
         'clock' => [
             '$deadline = microtime(true) + $this->timeLimit;' => 'measures elapsed time or a deadline; a frozen context clock must not apply',
@@ -143,10 +152,22 @@ return [
         'setter' => 'UserPreferences::setLocale() stores a person\'s admin language; it changes no render state',
     ],
 
+    'members/src/MembersView.php' => [
+        'setter' => [
+            '$this->pageLocale->set($locale);' => 'the deprecated PageLocale hook (removed in 0.83): an app\'s own one is still told the page\'s locale, inside the page\'s within(); drop it with PageLocale',
+        ],
+    ],
+
     // peek: only code with a documented default outside a render (ruling R1).
     'core/src/Context/NoRenderContext.php' => [
         'peek' => [
             ". 'Open one with Contexts::run(), or use Contexts::peek() where a default without a render is documented.'," => 'the exception message names peek(); not a call',
+        ],
+    ],
+
+    'media/src/ImageTag.php' => [
+        'peek' => [
+            '$ctx = Contexts::peek();' => 'outside every render (a script, a unit test) alt text follows the LocaleProvider\'s current(), as before 0.81 (the documented default)',
         ],
     ],
 
@@ -212,6 +233,7 @@ return [
         ],
         'static-state' => [
             'private static array $liveClasses = [];' => 'whether a component class is live: a per-class fact',
+            'private static array $freshnessOf = [];' => 'a component class\'s #[Freshness] attribute (or false), from reflection: a per-class fact',
         ],
     ],
     'data/src/Model.php' => [

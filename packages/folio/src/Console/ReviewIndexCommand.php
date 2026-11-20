@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Console;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\TypeDefinition;
 use Preflow\DevTools\Command\CommandInterface;
@@ -32,7 +33,7 @@ final class ReviewIndexCommand implements CommandInterface
         $registry = $dm->getTypeRegistry() ?? throw new \LogicException('folio:review-index needs a TypeRegistry.');
         $fieldTypes = $c->get(FieldTypeRegistry::class);
         $updater = $c->get(ReviewIndexUpdater::class);
-        $now = (new \DateTimeImmutable())->format(DATE_ATOM);
+        $now = Contexts::clock()->now()->format(DATE_ATOM);
 
         $entries = [];
         foreach ($c->get(TypeCatalog::class)->all() as $listing) {

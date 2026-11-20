@@ -8,6 +8,7 @@ use App\Models\User;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\AuthManager;
 use Preflow\Auth\PasswordHasherInterface;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Routing\Attributes\Post;
@@ -92,7 +93,7 @@ final class AuthController
         $user->email = $email;
         $user->passwordHash = $this->hasher->hash($password);
         $user->roles = [];
-        $user->createdAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->createdAt = Contexts::clock()->now()->format('Y-m-d H:i:s');
 
         $this->dataManager->save($user);
 

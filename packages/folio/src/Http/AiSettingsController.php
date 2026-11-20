@@ -13,6 +13,7 @@ use Preflow\Ai\Limits\AiLimits;
 use Preflow\Ai\Limits\AiLimitsMisconfigured;
 use Preflow\Auth\Authenticatable;
 use Preflow\Ai\Usage\UsageLog;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\TypeCatalog;
@@ -214,7 +215,7 @@ final class AiSettingsController
     private function statusPage(ServerRequestInterface $request, ?array $test = null, int $code = 200, array $headers = []): ResponseInterface
     {
         $status = $this->ai->status();
-        $now = new \DateTimeImmutable('first day of this month 00:00:00');
+        $now = Contexts::clock()->now()->modify('first day of this month 00:00:00');
         $months = [];
         foreach ([[$now, 'this'], [$now->modify('-1 month'), 'last']] as [$from, $which]) {
             $months[] = $this->month($from, $which);

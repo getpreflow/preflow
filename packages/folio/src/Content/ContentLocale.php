@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Content;
 
-use Preflow\Blocks\BlockLocale;
+use Preflow\Blocks\ContextBlockLocale;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Context\RenderContext;
@@ -14,10 +14,10 @@ use Preflow\Data\Locales;
  * The locale content is rendered in: the current render's locale (RenderContext::$locale; the
  * page's locale on the frontend, the editing locale in previews) when it is one of the content
  * locales, else the default one. Field types that render referenced records (relation, matrix)
- * follow it, and so do blocks (BlockLocale). It holds no state of its own since 0.81: a render
+ * follow it, and so do blocks (ContextBlockLocale). It holds no state of its own since 0.81: a render
  * in another locale is a context with ->in($locale).
  */
-final class ContentLocale implements BlockLocale
+final class ContentLocale implements ContextBlockLocale
 {
     public function __construct(
         private readonly Locales $locales,
@@ -49,19 +49,14 @@ final class ContentLocale implements BlockLocale
     }
 
     /**
-     * Runs $render and puts the current render's context back afterwards (also when it throws),
-     * so a narrow inside it (an internal render that changes its locale) ends with it. Outside
-     * every render it just runs it. BlockLocale asks for it; nothing in Folio needs it since 0.81.
+     * The locale blocks render in under $ctx: its locale when it is a content locale, else the
+     * default one.
      *
-     * @template T
-     * @param callable(): T $render
-     * @return T
+     * @since 0.81.0
      */
-    public function scoped(callable $render): mixed
+    public function localeOf(RenderContext $ctx): string
     {
-        $ctx = Contexts::peek();
-
-        return $ctx === null ? $render() : Contexts::within($ctx, \Closure::fromCallable($render));
+        return $this->content($ctx->locale);
     }
 
     public function locales(): Locales

@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Models\Post;
 use Nyholm\Psr7\Response;
 use Preflow\Auth\Http\AuthMiddleware;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\SortDirection;
@@ -94,14 +95,14 @@ final class BlogAdminController
         } else {
             $post = new Post();
             $post->uuid = $this->generateUuid();
-            $post->created_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $post->created_at = Contexts::clock()->now()->format('Y-m-d H:i:s');
         }
 
         $post->title = $title;
         $post->slug = $slug;
         $post->body = $postBody;
         $post->status = $status;
-        $post->updated_at = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $post->updated_at = Contexts::clock()->now()->format('Y-m-d H:i:s');
 
         $this->dm->save($post);
 

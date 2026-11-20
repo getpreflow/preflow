@@ -171,7 +171,7 @@ final class StoredOverrides implements TranslationOverrides
                 'key' => $key,
                 'text' => $text,
                 'updated_by' => $by ?? '',
-                'updated_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+                'updated_at' => (new \DateTimeImmutable())->format(DATE_ATOM), // clock: stamp
             ]), false);
         }
         // A skipped write (a preview, a view as a role) changed no text: the compiled texts stay.

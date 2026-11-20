@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\Slugs;
 use Preflow\DevTools\Command\CommandInterface;
@@ -73,7 +74,7 @@ final class EmployerCreateCommand implements CommandInterface
             $user->passwordHash = (new NativePasswordHasher())->hash($password);
             $user->roles = ['employer'];
             $user->company = $company->uuid;
-            $user->createdAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $user->createdAt = Contexts::clock()->now()->format('Y-m-d H:i:s');
             $data->save($user);
         } catch (ValidationException $e) {
             foreach ($e->errors() as $field => $messages) {

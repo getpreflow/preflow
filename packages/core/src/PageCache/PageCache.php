@@ -67,7 +67,7 @@ final class PageCache
         private readonly ?DependencyRecorder $recorder = null,
         ?\Closure $clock = null,
     ) {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
         $this->own = new CacheRenderState();
     }
 

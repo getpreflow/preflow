@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\View\Audit;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\View\Seo\PublicPages;
 
 /**
@@ -43,7 +44,7 @@ final class Audits
         ?\Closure $now = null,
         private readonly ?\Closure $sleep = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
     }
 
     /**

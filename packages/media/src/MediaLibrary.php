@@ -7,6 +7,7 @@ namespace Preflow\Media;
 use Preflow\Core\Activity\Activity;
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Locales;
@@ -169,7 +170,7 @@ final class MediaLibrary
         private readonly ?ActivityLog $activity = null,
         private readonly ?LoggerInterface $logger = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
     }
 
     public function definition(): TypeDefinition

@@ -158,7 +158,7 @@ final class MemberEventsTest extends TestCase
         $this->flowSite();
         $this->listen();
 
-        $m = $this->flow->container()->get(Members::class)->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true);
+        $m = $this->rendering(fn () => $this->flow->container()->get(Members::class)->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true));
         $this->flow->container()->get(SignIn::class)->in($m, $this->request('GET', '/'));
 
         $this->assertSame([MemberEvents::REGISTERED, MemberEvents::CONFIRMED, MemberEvents::DECIDED, MemberEvents::SIGNED_IN], $this->names());

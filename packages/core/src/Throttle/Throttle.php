@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Throttle;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\WritePolicy;
 use Preflow\Core\Context\Writes;
 use Preflow\Data\CounterReset;
@@ -70,7 +71,7 @@ final class Throttle
         ?\Closure $clock = null,
         ?string $lockDir = null,
     ) {
-        $this->clock = $clock ?? static fn (): int => time();
+        $this->clock = $clock ?? static fn (): int => Contexts::clock()->now()->getTimestamp();
         $this->type = new TypeDefinition(
             key: self::TABLE,
             table: self::TABLE,
@@ -107,7 +108,7 @@ final class Throttle
         $ip = $request->getServerParams()['REMOTE_ADDR'] ?? null;
         $ip = is_string($ip) && $ip !== '' ? self::network($ip) : 'unknown';
 
-        return hash_hmac('sha256', $ip, $this->key . '|' . gmdate('Y-m-d'));
+        return hash_hmac('sha256', $ip, $this->key . '|' . gmdate('Y-m-d', ($this->clock)()));
     }
 
     /**

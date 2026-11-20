@@ -55,7 +55,7 @@ final class LoggedAiClient implements AiClient
     private function record(string $purpose, string $provider, string $model, TokenUsage $usage, bool $failed): void
     {
         try {
-            $this->log->record(new UsageEntry(new \DateTimeImmutable(), $purpose, $provider, $model, $usage, $this->cost($model, $usage), $failed));
+            $this->log->record(new UsageEntry(new \DateTimeImmutable(), $purpose, $provider, $model, $usage, $this->cost($model, $usage), $failed)); // clock: stamp
         } catch (\RuntimeException) {
             // Bookkeeping must not turn a good answer into an error.
         }

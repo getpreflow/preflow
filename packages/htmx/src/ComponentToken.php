@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Exceptions\SecurityException;
 
 /**
@@ -69,7 +70,7 @@ class ComponentToken
 
         $data = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
 
-        if ($maxAge !== null && (time() - ($data['t'] ?? 0)) > $maxAge) {
+        if ($maxAge !== null && ($this->currentTime() - ($data['t'] ?? 0)) > $maxAge) {
             throw new SecurityException('Component token expired.');
         }
 
@@ -81,8 +82,9 @@ class ComponentToken
         );
     }
 
+    /** "Now" for issuing and for the age check: the current render's clock, the system clock outside every render. */
     protected function currentTime(): int
     {
-        return time();
+        return Contexts::clock()->now()->getTimestamp();
     }
 }

@@ -52,6 +52,25 @@ final class ThrottleTest extends DataTestCase
         $this->migrate();
     }
 
+    /** The daily salt of client() follows the current render's clock (it read the system date before 0.81). */
+    public function test_throttle_daily_salt_follows_the_context_clock(): void
+    {
+        $t = new Throttle($this->dataManager(), 'secret');
+        $request = new ServerRequest('GET', '/', [], null, '1.1', ['REMOTE_ADDR' => '203.0.113.7']);
+        $site = new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en');
+        $at = static fn (string $when): \Preflow\Core\Context\RenderContext => \Preflow\Core\Context\RenderContext::console($site, new \Preflow\Core\Context\SystemClock())->at(new \DateTimeImmutable($when));
+        $client = static fn (string $when): string => \Preflow\Core\Context\Contexts::run($at($when), static fn (): string => $t->client($request));
+
+        try {
+            $evening = $client('2026-01-01T23:59:00Z');
+            $this->assertNotSame($evening, $client('2026-01-02T00:01:00Z'), 'a new day, a new salt');
+            $this->assertSame($evening, $client('2026-01-01T23:59:00Z'), 'the same day, the same hash');
+            $this->assertSame($evening, $client('2026-01-01T00:00:00Z'), 'the salt is the day, not the minute');
+        } finally {
+            \Preflow\Core\Context\Contexts::reset();
+        }
+    }
+
     public function test_allows_until_max_then_blocks(): void
     {
         $t = $this->throttle();
@@ -101,7 +120,7 @@ final class ThrottleTest extends DataTestCase
         $request = new ServerRequest('GET', '/', [], null, '1.1', ['REMOTE_ADDR' => '203.0.113.7']);
         $client = $this->throttle()->client($request);
         $this->assertStringNotContainsString('203.0.113.7', $client);
-        $this->assertSame(hash_hmac('sha256', '203.0.113.7', 'secret|' . gmdate('Y-m-d')), $client);
+        $this->assertSame(hash_hmac('sha256', '203.0.113.7', 'secret|' . gmdate('Y-m-d', $this->now)), $client);
         $forwarded = $request->withHeader('X-Forwarded-For', '198.51.100.1');
         $this->assertSame($client, $this->throttle()->client($forwarded));
     }
@@ -115,11 +134,11 @@ final class ThrottleTest extends DataTestCase
         $a = $client('2001:db8:1:2::1');
         $this->assertSame($a, $client('2001:0db8:0001:0002:ffff:ffff:ffff:fffe'));
         $this->assertSame($a, $client('2001:DB8:1:2:abcd::9'));
-        $this->assertSame(hash_hmac('sha256', '2001:db8:1:2::/64', 'secret|' . gmdate('Y-m-d')), $a);
+        $this->assertSame(hash_hmac('sha256', '2001:db8:1:2::/64', 'secret|' . gmdate('Y-m-d', $this->now)), $a);
         $this->assertNotSame($a, $client('2001:db8:1:3::1'));
 
         // IPv4 unchanged, also when written IPv4-mapped.
-        $this->assertSame(hash_hmac('sha256', '203.0.113.7', 'secret|' . gmdate('Y-m-d')), $client('203.0.113.7'));
+        $this->assertSame(hash_hmac('sha256', '203.0.113.7', 'secret|' . gmdate('Y-m-d', $this->now)), $client('203.0.113.7'));
         $this->assertSame($client('203.0.113.7'), $client('::ffff:203.0.113.7'));
         $this->assertNotSame($client('203.0.113.7'), $client('203.0.113.8'));
     }
@@ -150,7 +169,7 @@ final class ThrottleTest extends DataTestCase
         $a = $t->client(new ServerRequest('GET', '/'));
         $b = $t->client(new ServerRequest('GET', '/other'));
         $this->assertSame($a, $b);
-        $this->assertSame(hash_hmac('sha256', 'unknown', 'secret|' . gmdate('Y-m-d')), $a);
+        $this->assertSame(hash_hmac('sha256', 'unknown', 'secret|' . gmdate('Y-m-d', $this->now)), $a);
     }
 
     public function test_works_on_sqlite_and_json(): void

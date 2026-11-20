@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Routing;
 
 use Nyholm\Psr7\Response;
-use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Routing\Redirect\Redirect;
@@ -33,7 +33,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   is every path whose first segment starts with '--' (framework endpoints such as
  *   '/--component' and '/--locale'), or whose second does behind a locale prefix
  *   ('/de/--component/x'), whether or not it is registered as non-public.
- * - Internal renders (InternalRender::is) are left alone: the app asked for that exact path.
+ * - Internal renders (the render's purpose is internal: audit, GEO, rebuild, verify, preview;
+ *   since 0.81) are left alone: the app asked for that exact path.
  * - With a redirect entry for the clean path (exact or area, in the locale the address names) the
  *   answer is that entry's status and target in one response, not the clean 301 and then the
  *   entry's; the query is kept and the same Location rules apply. An entry that points back at
@@ -116,7 +117,7 @@ final class CanonicalPathMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $method = $request->getMethod();
-        if (($method !== 'GET' && $method !== 'HEAD') || InternalRender::is($request)) {
+        if (($method !== 'GET' && $method !== 'HEAD') || Contexts::depth() > 0 && Contexts::current()->purpose->isInternal()) {
             return $handler->handle($request);
         }
 

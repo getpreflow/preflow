@@ -147,6 +147,31 @@ final class CanonicalPathMiddlewareTest extends TestCase
         $this->assertSame('', $r->getHeaderLine('Location'));
     }
 
+    /** Since 0.81 the gate asks the render's purpose: every internal one (the page cache's verify too) gets the path it asked for. */
+    public function test_clean_path_gate_skips_every_internal_purpose(): void
+    {
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                return new Response(200, [], 'faq');
+            }
+        };
+        $site = new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en');
+        $clock = new \Preflow\Core\Context\SystemClock();
+        $request = new ServerRequest('GET', '/faq/');
+        $process = static fn (\Preflow\Core\Context\RenderContext $ctx): ResponseInterface => \Preflow\Core\Context\Contexts::run($ctx, static fn (): ResponseInterface => (new CanonicalPathMiddleware())->process($request, $handler));
+
+        $visit = $process(\Preflow\Core\Context\RenderContext::fromRequest($request, $site, $clock));
+        $this->assertSame(301, $visit->getStatusCode());
+        $this->assertSame('/faq', $visit->getHeaderLine('Location'));
+
+        $purposes = [\Preflow\Core\Context\Purpose::Audit, \Preflow\Core\Context\Purpose::Geo, \Preflow\Core\Context\Purpose::Rebuild, \Preflow\Core\Context\Purpose::Verify, \Preflow\Core\Context\Purpose::Preview];
+        foreach ($purposes as $purpose) {
+            $r = $process(\Preflow\Core\Context\RenderContext::internal($purpose, $site, $clock, '/faq/'));
+            $this->assertSame([200, 'faq', ''], [$r->getStatusCode(), (string) $r->getBody(), $r->getHeaderLine('Location')], $purpose->name);
+        }
+    }
+
     public function test_root_with_query_only_is_not_rewritten(): void
     {
         $r = $this->send('GET', '/?x');

@@ -219,12 +219,12 @@ final class FolioContextTest extends TestCase
 
             $locale->set('xx');
             $this->assertSame('en', $locale->get(), 'not a content locale: the default');
-            $this->assertSame('en', $locale->scoped(static function () use ($locale): string {
+            $this->assertSame('en', Contexts::within(Contexts::current(), static function () use ($locale): string {
                 $locale->set('de');
 
                 return 'en';
             }));
-            $this->assertSame('en', $locale->get(), 'scoped() puts the context back');
+            $this->assertSame('en', $locale->get(), 'within() puts the context back');
         });
 
         $this->assertSame('en', $locale->get(), 'the frame is gone');

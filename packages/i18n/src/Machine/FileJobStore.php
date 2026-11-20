@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * One JSON file per job under a directory. Ids become file names, so only a safe alphabet is accepted.
  * Item messages can quote a provider's answer, so invalid UTF-8 is replaced rather than failing the save.
@@ -22,7 +24,7 @@ final class FileJobStore implements JobStore
         if (!is_dir($this->dir) && !@mkdir($this->dir, 0775, true) && !is_dir($this->dir)) {
             throw new \RuntimeException("Cannot create job directory {$this->dir}.");
         }
-        $job->updatedAt = (new \DateTimeImmutable())->format(\DATE_ATOM);
+        $job->updatedAt = Contexts::clock()->now()->format(\DATE_ATOM);
         $path = $this->path($job->id);
         $tmp = $path . '.' . bin2hex(random_bytes(4)) . '.tmp';
         // Write beside the target, then rename: a reader never sees a half-written job.

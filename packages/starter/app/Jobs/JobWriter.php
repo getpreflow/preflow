@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Models\Job;
 use App\Models\User;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\Slugs;
 use Preflow\Validation\ValidationException;
@@ -120,6 +121,6 @@ final class JobWriter
 
     private static function now(): string
     {
-        return (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        return Contexts::clock()->now()->format('Y-m-d H:i:s');
     }
 }

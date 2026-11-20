@@ -147,18 +147,16 @@ final class BlocksAppTest extends BlocksAppTestCase
         $c = $this->app()->container();
         $this->assertInstanceOf(DefaultBlockLocale::class, $c->get(BlockLocale::class));
         $this->assertInstanceOf(DefaultBlockTextCleaner::class, $c->get(BlockTextCleaner::class));
-        $this->assertSame('en', $c->get(BlockLocale::class)->get());
+        $this->assertSame('en', $c->get(BlockLocale::class)->localeOf($this->visit()));
 
-        $c->get(\Preflow\I18n\Translator::class)->setLocale('de');
-        $html = $this->render('{{ blocks(page) }}', ['page' => self::PAGE]);
+        $html = $this->render('{{ blocks(page) }}', ['page' => self::PAGE], 'de');
 
-        $this->assertSame('de', $c->get(BlockLocale::class)->get());
+        $this->assertSame('de', $c->get(BlockLocale::class)->localeOf($this->visit()->in('de')));
         $this->assertStringContainsString('<h2>Hallo</h2>', $html);
         $this->assertStringContainsString('<q>Zitiert</q>', $html);
         $this->assertStringContainsString('<em>as stored</em>', $html, 'no cleaning without a cleaner of the app');
 
-        $c->get(\Preflow\I18n\Translator::class)->setLocale('fr');
-        $this->assertSame('en', $c->get(BlockLocale::class)->get(), 'not a content locale: the default');
+        $this->assertSame('en', $c->get(BlockLocale::class)->localeOf($this->visit()->in('fr')), 'not a content locale: the default');
     }
 
     public function test_an_app_binds_its_own_locale_and_cleaner(): void
@@ -170,7 +168,24 @@ final class BlocksAppTest extends BlocksAppTestCase
                 return ['body' => strip_tags((string) ($block['body'] ?? ''))] + $block;
             }
         });
-        $c->instance(BlockLocale::class, new DefaultBlockLocale($c->get(\Preflow\Data\Locales::class), static fn (): string => 'de'));
+        $c->instance(BlockLocale::class, new class ($c->get(\Preflow\Data\Locales::class)) implements \Preflow\Blocks\ContextBlockLocale {
+            public function __construct(private readonly \Preflow\Data\Locales $locales) {}
+
+            public function localeOf(\Preflow\Core\Context\RenderContext $ctx): string
+            {
+                return 'de';
+            }
+
+            public function get(): string
+            {
+                return 'de';
+            }
+
+            public function locales(): \Preflow\Data\Locales
+            {
+                return $this->locales;
+            }
+        });
         // The renderer is built on first use, with what is bound then.
         $html = $this->render('{{ blocks(page) }}', ['page' => self::PAGE]);
 

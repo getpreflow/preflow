@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * The review index as one JSON file. The worker and web requests both write it, so every change reads
  * and rewrites the file under an exclusive lock on a sibling .lock file; the write goes to a temp file
@@ -16,7 +18,7 @@ final class FileReviewIndex implements ReviewIndex
     /** @param ?\Closure(): \DateTimeInterface $now */
     public function __construct(private readonly string $file, ?\Closure $now = null)
     {
-        $this->now = $now ?? static fn (): \DateTimeInterface => new \DateTimeImmutable();
+        $this->now = $now ?? static fn (): \DateTimeInterface => Contexts::clock()->now();
     }
 
     public function put(string $collection, string $id, string $title, array $counts): void

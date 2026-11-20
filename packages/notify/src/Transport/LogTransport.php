@@ -40,7 +40,7 @@ final class LogTransport implements Transport
 
     private function format(Message $message): string
     {
-        $summary = sprintf('[%s] %s', date(DATE_ATOM), $message->channel());
+        $summary = sprintf('[%s] %s', date(DATE_ATOM), $message->channel()); // clock: stamp
         $body = '';
 
         if ($message instanceof Email) {

@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
 use Preflow\Core\Application;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Slugs;
@@ -80,7 +81,7 @@ final class EmployerCreateCommand implements CommandInterface
             $user->passwordHash = (new NativePasswordHasher())->hash($password);
             $user->roles = ['employer'];
             $user->company = $company->uuid;
-            $user->createdAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+            $user->createdAt = Contexts::clock()->now()->format('Y-m-d H:i:s');
             $data->save($user);
         } catch (ValidationException|PublishFailed $e) {
             // A refused publish leaves the company as a draft; the errors say what to fix.
