@@ -382,7 +382,6 @@ final class Application
         if (!$this->container->bound(\Psr\Clock\ClockInterface::class)) {
             $this->container->instance(\Psr\Clock\ClockInterface::class, new \Preflow\Core\Context\SystemClock());
         }
-        $this->consoleOnTheAppsClock();
         $this->container->bind(RequestContext::class, static fn (): ?RequestContext => Contexts::peek()?->request);
         $this->container->bind(\Preflow\Core\Context\Outbox::class, static fn (): \Preflow\Core\Context\Outbox => Contexts::frame()->outbox());
         $this->container->instance(\Preflow\Core\Http\CookieQueue::class, \Preflow\Core\Http\CookieQueue::ofCurrentFrame());
@@ -462,6 +461,8 @@ final class Application
         // Register user service providers
         $this->bootProviders();
         $this->bootLazyUserProviders();
+        // After the providers: one of them may bind the app's clock (in register() or boot()).
+        $this->consoleOnTheAppsClock();
         $this->runProvidersBootedHooks();
         $this->checkNotifierQueue($debug);
 

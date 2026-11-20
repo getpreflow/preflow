@@ -104,12 +104,16 @@ final class Members
      *
      * @param array<string, mixed> $extra
      * @throws EmailTakenException when the address already has an account (check with findByEmail())
+     * @throws \Preflow\Core\Context\NoRenderContext with $emailVerified, no $request and no render open (nothing is stored)
      */
     public function register(string $email, string $name, string $password, string $language, array $extra = [], bool $emailVerified = false, ?ServerRequestInterface $request = null): DynamicRecord
     {
         if ($emailVerified && $this->confirmation === null) {
             throw new \LogicException('Members::register(emailVerified: true) needs the members services (Members from the container).');
         }
+        // The admission's request is resolved before anything is written: outside every render
+        // this throws, and nothing is stored (a retry would otherwise find the address taken).
+        $confirmRequest = $emailVerified ? $request ?? self::currentRequest() : null;
         $def = ($this->dm->getTypeRegistry() ?? throw new \LogicException('No type registry.'))->get(self::TYPE);
         $email = self::normalizeEmail($email);
         if ($this->findByEmail($email) !== null) {
@@ -145,7 +149,7 @@ final class Members
         }
         $this->events?->dispatch(MemberEvents::REGISTERED, ['member' => $record, 'request' => $request]);
         if ($emailVerified) {
-            ($this->confirmation)()->confirm($record, $request ?? self::currentRequest());
+            ($this->confirmation)()->confirm($record, $confirmRequest ?? self::currentRequest());
         }
 
         return $record;

@@ -537,6 +537,39 @@ final class ApplicationEdgesTest extends TestCase
         $this->assertSame(['2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', 'live'], $GLOBALS['edgeSeen']);
     }
 
+    /** A clock a service provider binds reaches the console frame too: the frame takes the app's clock after the providers ran. */
+    #[RunInSeparateProcess]
+    public function test_a_command_reads_a_clock_a_provider_binds(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(EdgeClockProvider::class, true) . "];\n");
+        $GLOBALS['edgeDir'] = $this->dir;
+        $GLOBALS['edgeSeen'] = [];
+        $console = new Console($this->dir);
+        $console->register(new class () implements CommandInterface {
+            public function getName(): string
+            {
+                return 'clock:provider';
+            }
+
+            public function getDescription(): string
+            {
+                return 'Boots the app and reads the clock a provider bound';
+            }
+
+            public function execute(array $args): int
+            {
+                Application::create($GLOBALS['edgeDir'])->boot();
+                $GLOBALS['edgeSeen'] = [Contexts::clock()->now()->format(DATE_ATOM), Contexts::current()->now->format(DATE_ATOM)];
+
+                return 0;
+            }
+        });
+
+        $console->run(['preflow', 'clock:provider']);
+
+        $this->assertSame(['2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00'], $GLOBALS['edgeSeen']);
+    }
+
     /** A test's own console context on a FrozenClock keeps it: neither boot() nor a request it handles swaps in the app's clock. */
     #[RunInSeparateProcess]
     public function test_a_console_context_with_its_own_clock_keeps_it(): void
@@ -829,6 +862,15 @@ final class ApplicationEdgesTest extends TestCase
         }
 
         return $notices;
+    }
+}
+
+/** Binds a frozen clock, as an app's provider (or a testing helper) may. */
+final class EdgeClockProvider extends \Preflow\Core\Container\ServiceProvider
+{
+    public function register(Container $container): void
+    {
+        $container->instance(ClockInterface::class, new FrozenClock(new \DateTimeImmutable('2026-01-01T00:00:00Z')));
     }
 }
 

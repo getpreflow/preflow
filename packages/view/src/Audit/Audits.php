@@ -33,7 +33,7 @@ final class Audits
 
     /**
      * @param string $file the report file (AuditReport::file($basePath))
-     * @param ?\Closure(): \DateTimeImmutable $now the clock (default: the system's)
+     * @param ?\Closure(): \DateTimeImmutable $now the clock (default: the current render's, Contexts::clock(); the system's outside every render)
      * @param ?\Closure(int $microseconds): void $sleep waits between two tries of the lock (default usleep())
      */
     public function __construct(

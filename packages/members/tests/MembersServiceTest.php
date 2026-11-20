@@ -40,7 +40,7 @@ final class MembersServiceTest extends TestCase
         $first = $members->register('ada@example.com', 'Ada', 'correct horse battery', 'en');
 
         try {
-            $members->register(' ADA@example.com ', 'Ada Two', 'correct horse battery', 'en', emailVerified: true);
+            $members->register(' ADA@example.com ', 'Ada Two', 'correct horse battery', 'en', emailVerified: true, request: new \Nyholm\Psr7\ServerRequest('POST', '/signup'));
             $this->fail('a second account on the same address');
         } catch (\Preflow\Members\EmailTakenException $e) {
             $this->assertSame('ada@example.com', $e->email);

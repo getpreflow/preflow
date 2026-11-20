@@ -78,4 +78,20 @@ final class MembersContextTest extends TestCase
 
         $this->assertSame(['POST /signup/verified'], $seen);
     }
+
+    /** Outside every render a verified registration fails before it writes: no half-registered member is left behind. */
+    #[RunInSeparateProcess]
+    public function test_a_verified_registration_without_a_render_stores_nothing(): void
+    {
+        $this->flowSite();
+        $members = $this->flow->container()->get(Members::class);
+
+        try {
+            $members->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true);
+            $this->fail('NoRenderContext expected');
+        } catch (\Preflow\Core\Context\NoRenderContext) {
+        }
+
+        $this->assertNull($members->findByEmail('ada@example.com'));
+    }
 }
