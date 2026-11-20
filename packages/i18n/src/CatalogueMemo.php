@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Preflow\I18n;
 
 /**
- * The translator's text cache for one render context: the locale its texts are in, whether its
- * surface has overrides on, and the texts resolved so far.
+ * The translator's text cache per text locale and overrides switch (shared by every render
+ * context with the same two): the locale its texts are in, whether overrides are on, and the
+ * texts resolved so far.
  *
  * @internal Translator
  *

@@ -23,8 +23,9 @@ use Preflow\Core\Context\RenderContext;
  * overrides off; on the admin surface they are in its interface locale, with the overrides the
  * surface asks for. Outside every render (a script, a unit test) the translator uses its own
  * default: the locale given to the constructor and overrides off. The texts a context resolved
- * are kept for that context as long as it lives (a WeakMap: switching back to a context with
- * within() finds them again); keys an override can answer are always asked again.
+ * are kept per text locale and overrides switch, so every context with the same two (a loop that
+ * builds a new context per item, within() back and forth) shares them; keys an override can
+ * answer are always asked again.
  */
 final class Translator
 {
@@ -40,12 +41,13 @@ final class Translator
     private bool $overridesOn = false;
 
     /**
-     * One text cache per render context, dropped with its context: its text locale, its overrides
-     * switch, and "{locale}\0{key}" => the text (null: none) for keys no override can answer.
+     * The text caches, one per text locale and overrides switch (all a render context changes in
+     * how a key resolves): "{locale}" or "{locale}\x01" (overrides on) => its texts, for keys no
+     * override can answer. Contexts with the same two share one; forgetMemos() drops them all.
      *
-     * @var \WeakMap<RenderContext, CatalogueMemo>
+     * @var array<string, CatalogueMemo>
      */
-    private \WeakMap $memos;
+    private array $memos = [];
 
     /** @var list<string> key prefixes of groups without a scope that take overrides too (overridable()) */
     private array $overridablePrefixes = [];
@@ -66,7 +68,6 @@ final class Translator
     ) {
         $this->locale = $locale;
         $this->overrides = new NoTranslationOverrides();
-        $this->memos = new \WeakMap();
     }
 
     /**
@@ -430,8 +431,8 @@ final class Translator
     }
 
     /**
-     * The text locale and the overrides switch now: the current render's (kept with its text cache
-     * while the context lives), else the translator's own default.
+     * The text locale and the overrides switch now: the current render's (with the text cache for
+     * those two), else the translator's own default.
      *
      * @return array{string, bool, CatalogueMemo|null} the locale, overrides on, the current render's cache (null outside every render)
      */
@@ -441,19 +442,19 @@ final class Translator
         if ($ctx === null) {
             return [$this->locale, $this->overridesOn, null];
         }
-        $memo = $this->memos[$ctx] ?? null;
-        if ($memo === null) {
-            $memo = new CatalogueMemo($ctx->surface->admin ? (string) $ctx->surface->uiLocale : $ctx->locale, $ctx->surface->overrides);
-            $this->memos[$ctx] = $memo;
-        }
+        // Only the text locale and the overrides switch change how a key resolves (the fallback
+        // chain and the layers are the translator's own; the surface counts through these two).
+        $locale = $ctx->surface->admin ? (string) $ctx->surface->uiLocale : $ctx->locale;
+        $overrides = $ctx->surface->overrides;
+        $memo = $this->memos[$overrides ? $locale . "\x01" : $locale] ??= new CatalogueMemo($locale, $overrides);
 
-        return [$memo->locale, $memo->overrides, $memo];
+        return [$locale, $overrides, $memo];
     }
 
     /** Drops every context's text cache: what resolves a key changed (files, scopes, overrides, the default). */
     private function forgetMemos(): void
     {
-        $this->memos = new \WeakMap();
+        $this->memos = [];
     }
 
     /**
