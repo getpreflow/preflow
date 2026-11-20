@@ -20,11 +20,13 @@ use Preflow\I18n\Translator;
 final class ValidatorFactory
 {
     /**
-     * @param (\Closure(): ?Translator)|null $contextTranslator
+     * @param (\Closure(): ?Translator)|null $contextTranslator since 0.81.0: asked at each make()
+     *        when no translator was given (the translator for the current render, null for English)
      */
     public function __construct(
         private readonly RuleFactory $ruleFactory,
         private ?Translator $translator = null,
+        /** @since 0.81.0 */
         private readonly ?\Closure $contextTranslator = null,
     ) {}
 

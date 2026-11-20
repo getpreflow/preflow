@@ -369,23 +369,45 @@ final class LocaleContextTest extends TestCase
         self::deprecations(fn () => $this->assertSame('', (new LocaleMiddleware($this->translator(), ['en'], 'en'))->urlPrefix(), 'outside every render no URL, no prefix'));
     }
 
+    /** @return \WeakMap<RenderContext, \Preflow\I18n\CatalogueMemo> the translator's text caches */
+    private static function memos(Translator $t): \WeakMap
+    {
+        return (new \ReflectionProperty(Translator::class, 'memos'))->getValue($t);
+    }
+
     public function test_catalogue_cache_is_keyed_per_context(): void
     {
         $t = $this->translator();
 
         Contexts::run(self::visit(), function () use ($t): void {
+            $en = Contexts::current();
             for ($i = 0; $i < 1000; $i++) {
                 $this->assertSame('Hello', $t->get('site.hi'));
             }
             $this->assertSame(['en' => 1], $GLOBALS['preflow_locale_ctx_loads'], '1000 calls under one context load the catalogue once');
+            $memos = self::memos($t);
+            $this->assertCount(1, $memos, 'one cache for the one context');
+            $this->assertSame(["en\0site.hi" => 'Hello'], $memos[$en]->texts, 'the text resolved once, kept for the context');
 
-            // Another context in the same frame resolves its own texts; nothing stale is kept.
+            // Served from the cache: a text planted there is what the next call gives.
+            $memos[$en]->texts["en\0site.hi"] = 'From the cache';
+            $this->assertSame('From the cache', $t->get('site.hi'));
+            $memos[$en]->texts["en\0site.hi"] = 'Hello';
+
+            // Another context in the same frame has a cache of its own; the first one is kept.
             Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->in('de'));
+            $de = Contexts::current();
             for ($i = 0; $i < 1000; $i++) {
                 $this->assertSame('Hallo', $t->get('site.hi'));
             }
-            Contexts::within(Contexts::current()->in('en'), function () use ($t): void {
-                $this->assertSame('Hello', $t->get('site.hi'));
+            $this->assertCount(2, self::memos($t));
+            $this->assertSame(["de\0site.hi" => 'Hallo'], self::memos($t)[$de]->texts);
+            $this->assertSame(["en\0site.hi" => 'Hello'], self::memos($t)[$en]->texts);
+
+            // Switching back to a context finds its cache again (within() ping-pong).
+            self::memos($t)[$en]->texts["en\0site.hi"] = 'From the cache';
+            Contexts::within($en, function () use ($t): void {
+                $this->assertSame('From the cache', $t->get('site.hi'));
             });
             $this->assertSame('Hallo', $t->get('site.hi'));
         });
@@ -394,6 +416,8 @@ final class LocaleContextTest extends TestCase
         });
 
         $this->assertSame(['en' => 1, 'de' => 1], $GLOBALS['preflow_locale_ctx_loads'], 'each locale\'s file read once in the process');
+        gc_collect_cycles();
+        $this->assertCount(0, self::memos($t), 'a cache goes with its context');
 
         // A change to the translator's layers is seen at once, also under the same context.
         Contexts::run(self::visit(), function () use ($t): void {
@@ -401,6 +425,7 @@ final class LocaleContextTest extends TestCase
             $t->setOverrides(self::overrides());
             $t->alwaysOverride('site');
             $this->assertSame('Override en', $t->get('site.hi'));
+            $this->assertSame([], self::memos($t)[Contexts::current()]->texts, 'an overridable key is never kept');
         });
     }
 }

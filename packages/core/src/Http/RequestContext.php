@@ -30,6 +30,7 @@ final readonly class RequestContext
         public string $path,
         public string $method,
         public ?ServerRequestInterface $request = null,
+        /** @since 0.81.0 the locale prefix the URL carried ('/de'), '' for none */
         public string $localePrefix = '',
     ) {}
 }

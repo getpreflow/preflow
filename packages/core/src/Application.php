@@ -3085,11 +3085,11 @@ final class Application
      * The locale prefix the current render's URL carried ('/de'; '/en' for the default locale
      * written into the URL), '' for none: what LocaleMiddleware set in the request part. The page
      * cache's key, component URLs and the redirect check use it, so they see the address as the
-     * visitor wrote it.
+     * visitor wrote it. Outside every render there is no URL, so no prefix.
      */
     private static function carriedLocalePrefix(): string
     {
-        return Contexts::peek()?->request?->localePrefix ?? '';
+        return Contexts::depth() > 0 ? Contexts::current()->request?->localePrefix ?? '' : '';
     }
 
     /**
