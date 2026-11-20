@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\View;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The skip link (_layout.twig): the first thing a keyboard reaches on every admin page, before the
@@ -14,6 +15,8 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
  */
 final class SkipLinkTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

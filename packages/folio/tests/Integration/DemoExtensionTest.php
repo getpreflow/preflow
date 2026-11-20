@@ -11,6 +11,7 @@ use Preflow\Core\Application;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Console\ExtensionsCheckCommand;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The shipped examples/folio-demo "demo" extension: it passes folio:extensions:check, and
@@ -19,6 +20,8 @@ use Preflow\Folio\Console\ExtensionsCheckCommand;
  */
 final class DemoExtensionTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const DEMO = __DIR__ . '/../../../../examples/folio-demo';
 
     private string $copy = '';

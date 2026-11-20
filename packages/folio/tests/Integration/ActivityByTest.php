@@ -11,10 +11,13 @@ use Preflow\Core\Activity\ActivityLog;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Publishing\Publisher;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The admin's autosave, unpublish and delete tell the activity log who did it. */
 final class ActivityByTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

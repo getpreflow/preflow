@@ -39,6 +39,7 @@ use Preflow\Rbac\Tests\Fixtures\PasswordPageProvider;
 use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
 use Preflow\Rbac\Tests\Fixtures\UnavailablePasswordPageProvider;
 use Preflow\Testing\ArraySession;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Staff accounts on a site without Folio (its classes can't be loaded): the staff type from
@@ -47,6 +48,8 @@ use Preflow\Testing\ArraySession;
  */
 final class CoreStaffTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const string PASSWORD = 'a long enough password';
     private const string LAST = 'At least one account must keep the right to manage staff and roles.';
     private const string NO_LINK_PAGE = 'No page to set a password is configured; use staff:password, or install an admin that provides one.';

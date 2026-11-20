@@ -9,10 +9,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The sidebar save endpoint runs behind the CSRF middleware of the full app. */
 final class NavPreferenceCsrfTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

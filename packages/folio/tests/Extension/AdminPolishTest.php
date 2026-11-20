@@ -13,6 +13,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Panel-only record actions, badge list columns, side panels and tabs, on a "member" type
@@ -20,6 +21,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AdminPolishTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

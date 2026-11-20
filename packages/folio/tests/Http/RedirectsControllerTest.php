@@ -13,6 +13,7 @@ use Preflow\Folio\Redirects\NotFoundEntries;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → Redirects ({prefix}/redirects): the list of entries, the not-found tab, the add/edit
@@ -23,6 +24,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class RedirectsControllerTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $booted = null;

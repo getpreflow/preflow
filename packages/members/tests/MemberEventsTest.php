@@ -14,10 +14,13 @@ use Preflow\Members\SignIn;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The members hooks: listeners in order, "after" failures logged, DELETING may refuse; each event once with its payload. */
 final class MemberEventsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

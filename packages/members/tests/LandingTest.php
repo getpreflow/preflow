@@ -9,10 +9,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** GET {path}: the members' default landing, unless the site has its own page there. */
 final class LandingTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

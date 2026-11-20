@@ -15,6 +15,7 @@ use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\WriteOutcomeStatus;
 use Preflow\Publishing\Publisher;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Every Folio entry point that saves a record goes through the RecordWriter (0.71): the form,
@@ -25,6 +26,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class WriterEntryPointsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const string LATER = '2099-01-01T09:00';

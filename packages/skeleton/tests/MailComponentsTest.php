@@ -13,6 +13,7 @@ use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Notify\Mail\MailContent;
 use Preflow\Notify\Mail\Mailer;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A mail renders in a context without a request (its recipient's). The skeleton's Navigation and
@@ -21,6 +22,8 @@ use Preflow\Notify\Mail\Mailer;
  */
 final class MailComponentsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

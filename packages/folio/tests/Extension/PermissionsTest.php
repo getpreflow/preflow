@@ -10,6 +10,7 @@ use Preflow\Auth\Access\Access;
 use Preflow\Core\Application;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Extensions declare permissions (#[DeclaresPermission], screens, record actions); those
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class PermissionsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

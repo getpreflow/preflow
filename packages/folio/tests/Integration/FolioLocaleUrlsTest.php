@@ -13,6 +13,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Redirects\RedirectEntries;
 use Preflow\Publishing\Publisher;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio on a site whose default language carries its prefix too (config/i18n.php prefix_default,
@@ -21,6 +22,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class FolioLocaleUrlsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

@@ -308,7 +308,7 @@ request.
 | `varyHeaders()` | the page cache key and the `Vary` names a stored response may use |
 | `navigate($response, ?$url)` | AuthMiddleware (to the login), the expired-session answer (reload), `MembersView::navigate()` |
 | `announceNonce($response, $nonce)`, `nonceHeaders()` | SecurityHeadersMiddleware (htmx: `HX-Nonce`); the page cache never stores those headers, a 304 drops them |
-| `ownedHeaders()` (0.81) | `ResponseHeaderHints`: a page or component may not set the headers a client owns (htmx: `HX-*`; a trailing `*` is a prefix), nor its nonce headers |
+| `ownedHeaders()` (0.81, optional interface `OwnsResponseHeaders`) | `ResponseHeaderHints`: a page or component may not set the headers a client owns (htmx: `HX-*`; a trailing `*` is a prefix), nor its nonce headers. A client without the interface gets only its nonce headers reserved |
 | `pageNonce($request)` | `handle()`: a client that sends its page's CSP nonce back is answered with it (`NonceGenerator::adoptInFrame()`, for that request's frame), so the scripts and styles the response puts into the page pass the page's policy |
 
 The configured driver (`hypermedia` other than htmx) is built eagerly at the end of the boot, right

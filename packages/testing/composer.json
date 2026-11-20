@@ -17,6 +17,7 @@
         "nyholm/psr7": "^1.8"
     },
     "conflict": {
+        "preflow/auth": "<0.81.0",
         "preflow/core": "<0.81.0",
         "preflow/data": "<0.79.0",
         "preflow/htmx": "<0.65",

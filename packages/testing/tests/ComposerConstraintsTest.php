@@ -9,7 +9,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Since 0.81: core 0.81 (the render context: ContextFactory builds a RenderContext on a FrozenClock,
  * RenderIsolationContract runs renders in Contexts frames and compares RenderResults); view 0.81 (NonceGenerator::fixedForTests(),
- * with which RenderIsolationContract gives every render the same nonce).
+ * with which RenderIsolationContract gives every render the same nonce); auth 0.81 (AuthManager::viewerOf() and
+ * defaultGuardName(), with which actingAs() builds the viewer of the request's frame).
  * Since 0.78: data 0.78 (the capability interfaces StorageDriverContract tests: AtomicCounters, CounterReset, RankedSearch, RunsSql,
  * Transactions; TextMatch, which the text-rule scenarios compare with).
  * Since 0.77: data 0.77 (ConditionalUpdates, which StorageDriverContract tests, and the Unicode LIKE behaviour it documents).
@@ -27,7 +28,7 @@ final class ComposerConstraintsTest extends TestCase
     {
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
-        $this->assertSame(['preflow/core' => '<0.81.0', 'preflow/data' => '<0.79.0', 'preflow/htmx' => '<0.65', 'preflow/view' => '<0.81.0'], $composer['conflict'] ?? null);
+        $this->assertSame(['preflow/auth' => '<0.81.0', 'preflow/core' => '<0.81.0', 'preflow/data' => '<0.79.0', 'preflow/htmx' => '<0.65', 'preflow/view' => '<0.81.0'], $composer['conflict'] ?? null);
         $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
     }
 }

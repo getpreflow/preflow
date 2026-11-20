@@ -19,10 +19,13 @@ use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Notify\Notifier;
 use Preflow\Testing\ArraySession;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Accounts a project creates with an address it has proven itself, and signing them in. */
 final class VerifiedAccountTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

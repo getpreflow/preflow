@@ -15,6 +15,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Data\Migration\MigrationRegistry;
 use Preflow\Data\Migration\Migrator;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A temp app with Folio, staff auth (admin) and the codes extension enabled (a fake
@@ -22,6 +23,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class CodesInFolioTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private ?Application $session = null;
     private bool $hasCodesAlias = true;

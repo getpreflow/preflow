@@ -20,6 +20,7 @@ use Preflow\Members\MemberType;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Viewer;
 use Preflow\Rbac\RbacResolver;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The members core on a Folio site: Folio's members admin takes the core's member type and adds
@@ -28,6 +29,8 @@ use Preflow\Rbac\RbacResolver;
  */
 final class MembersCoreInFolioTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

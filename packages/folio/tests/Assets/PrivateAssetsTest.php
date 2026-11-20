@@ -18,6 +18,7 @@ use Preflow\Folio\Field\HandlesUpload;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UploadedFileInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Private assets: an asset field with "private": true stores its uploads under
@@ -31,6 +32,8 @@ use Psr\Http\Message\UploadedFileInterface;
 #[RequiresPhpExtension('fileinfo')]
 final class PrivateAssetsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

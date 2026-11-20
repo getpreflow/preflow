@@ -13,10 +13,13 @@ use Preflow\Auth\UserProviderInterface;
 use Preflow\Core\Application;
 use Preflow\Core\Debug\DebugCollector;
 use Preflow\Folio\Users\RecordProviders;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** RecordUser and RecordUserProvider moved to preflow/auth in 0.38; the Folio names are gone since 0.72. */
 final class LegacyRecordUserNamesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir = '';
 
     protected function tearDown(): void

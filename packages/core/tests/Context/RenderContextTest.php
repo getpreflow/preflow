@@ -550,11 +550,6 @@ final class HeaderProtocol implements HypermediaProtocol
         return [];
     }
 
-    public function ownedHeaders(): array
-    {
-        return [];
-    }
-
     public function pageNonce(ServerRequestInterface $request): ?string
     {
         return null;

@@ -9,10 +9,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Controllers render page templates through PageResponder, through a whole booted app. */
 final class PageResponderTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

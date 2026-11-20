@@ -24,12 +24,15 @@ use Preflow\View\Pdf\PdfResponse;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\Tests\Pdf\Fixtures\CertificateDocument;
 use Smalot\PdfParser\Parser;
+use Preflow\Testing\ChecksFrameBalance;
 
 require_once __DIR__ . '/Fixtures/CertificateDocument.php';
 require_once __DIR__ . '/Fixtures/InFrame.php';
 
 final class PdfRendererTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

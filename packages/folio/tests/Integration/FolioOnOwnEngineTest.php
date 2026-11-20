@@ -16,6 +16,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Tests\Fixtures\PhpEngine\PhtmlEngineFactory;
 use Preflow\Folio\View\FolioEngine;
 use Preflow\View\TemplateEngineInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio on an app whose engine is not Twig (app.engine names a TemplateEngineFactory of .phtml
@@ -24,6 +25,8 @@ use Preflow\View\TemplateEngineInterface;
  */
 final class FolioOnOwnEngineTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

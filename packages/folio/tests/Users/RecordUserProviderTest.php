@@ -26,9 +26,12 @@ use Preflow\Testing\ArraySession;
 use Preflow\Testing\MysqlTestDatabase;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class RecordUserProviderTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private DataManager $dm;
     private TypeCatalog $catalog;

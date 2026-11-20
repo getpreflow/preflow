@@ -15,10 +15,13 @@ use Preflow\Core\Tests\Fixtures\Geo\GeoEntriesProvider;
 use Preflow\Core\Tests\Fixtures\Seo\SeoSiteProvider;
 use Preflow\View\Geo\GeoEntry;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** SEO and GEO with prefix_default and redirect_bare (config/i18n.php). */
 final class LocaleUrlsSeoTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'locale-urls-seo-test-key-0123456789';

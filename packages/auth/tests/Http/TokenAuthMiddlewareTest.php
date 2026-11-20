@@ -25,9 +25,12 @@ use Preflow\Data\ModelMetadata;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class TokenAuthMiddlewareTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private TestUser $user;
     private AuthManager $manager;
     private string $plain;

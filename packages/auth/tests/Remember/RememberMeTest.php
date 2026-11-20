@@ -38,9 +38,12 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class RememberMeTest extends DataTestCase
 {
+    use ChecksFrameBalance;
+
     private const CONFIG = ['cookie' => 'ss_member', 'days' => 30, 'path' => '/', 'secure' => true];
 
     private int $now = 1_000_000;

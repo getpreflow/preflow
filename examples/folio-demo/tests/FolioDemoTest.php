@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Smoke test for the shipped examples/folio-demo app: it must boot through the
@@ -17,6 +18,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class FolioDemoTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private function get(string $uri): ResponseInterface
     {
         $app = Application::create(dirname(__DIR__));

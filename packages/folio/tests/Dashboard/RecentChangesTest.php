@@ -15,6 +15,7 @@ use Preflow\Folio\Http\AdminFormat;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Media\MediaLibrary;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The dashboard's "Recent changes" (0.77, GET {prefix}?part=recent after the page): the 5 newest
@@ -24,6 +25,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class RecentChangesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

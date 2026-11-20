@@ -17,10 +17,13 @@ use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
 use Preflow\Rbac\RoleList;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Lock, unlock and resend in the members admin: the Locked badge, the three actions, the panel lines. */
 final class MemberAdminLockTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     protected function setUp(): void

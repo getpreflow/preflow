@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
 use Preflow\Core\Http\Hypermedia\StandIn;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -15,7 +16,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * take services a provider binds. Every call goes to the one driver, built once through the
  * container.
  */
-class LazyHypermediaDriver implements HypermediaDriver, StandIn
+class LazyHypermediaDriver implements HypermediaDriver, StandIn, OwnsResponseHeaders
 {
     private ?HypermediaDriver $driver = null;
 
@@ -120,9 +121,12 @@ class LazyHypermediaDriver implements HypermediaDriver, StandIn
         return $this->driver()->nonceHeaders();
     }
 
+    /** The driver's own (OwnsResponseHeaders), none when it owns no headers. */
     public function ownedHeaders(): array
     {
-        return $this->driver()->ownedHeaders();
+        $driver = $this->driver();
+
+        return $driver instanceof OwnsResponseHeaders ? $driver->ownedHeaders() : [];
     }
 
     public function pageNonce(ServerRequestInterface $request): ?string

@@ -17,6 +17,7 @@ use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\Staff\StaffAccounts;
 use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * staff:roles on a site without Folio: grant, revoke, replace and show an existing account's
@@ -24,6 +25,8 @@ use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
  */
 final class StaffRolesCommandTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const string LAST = 'At least one account must keep the right to manage staff and roles.';
 
     private string $dir;

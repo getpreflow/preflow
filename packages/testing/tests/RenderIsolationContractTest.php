@@ -17,6 +17,7 @@ use Preflow\Core\Context\Site;
 use Preflow\Core\Http\RequestContext;
 use Preflow\Testing\ContextFactory;
 use Preflow\Testing\Contract\RenderIsolationContract;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The contract's own tests: a path that renders under the context it is given passes all four;
@@ -25,6 +26,8 @@ use Preflow\Testing\Contract\RenderIsolationContract;
  */
 final class RenderIsolationContractTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const TESTS = [
         'poison' => 'test_poisoned_ambient_state_never_reaches_the_render',
         'frame' => 'test_outer_frame_is_byte_equal_after_each_render',
@@ -76,6 +79,9 @@ final class RenderIsolationContractTest extends TestCase
         $this->assertStringContainsString('nonce of the frame around it', $failure->getMessage());
         $this->assertNull($this->failureOf(IsolationSelfTest::with(['audit' => IsolationSelfTest::printsNonce(outer: false)]), 'poison'), 'its own nonce passes');
         $this->assertNull($this->failureOf(IsolationSelfTest::with(['pdf' => IsolationSelfTest::printsNonce(outer: true)]), 'poison'), 'a PDF\'s HTML is part of the page and prints its nonce');
+        $own = $this->failureOf(IsolationSelfTest::with(['pdf' => IsolationSelfTest::printsNonce(outer: false)]), 'poison');
+        $this->assertInstanceOf(AssertionFailedError::class, $own, 'a PDF\'s HTML that prints a nonce of its own no longer joins the page');
+        $this->assertStringContainsString('nonce of the page around it', $own->getMessage());
     }
 
     public function test_a_marker_in_a_captured_mail_body_fails_the_poison_test(): void
@@ -449,7 +455,6 @@ final class IsolationSelfTest extends RenderIsolationContract
         );
     }
 
-    /** Renders in a frame of its own under the context it is given. */
     /** Renders under its context and prints a CSP nonce: the outer frame's (taken before its frame opens), or its own. */
     public static function printsNonce(bool $outer): \Closure
     {
@@ -464,6 +469,7 @@ final class IsolationSelfTest extends RenderIsolationContract
         };
     }
 
+    /** Renders in a frame of its own under the context it is given. */
     public static function own(): \Closure
     {
         return static fn (Application $app, RenderContext $ctx): RenderResult

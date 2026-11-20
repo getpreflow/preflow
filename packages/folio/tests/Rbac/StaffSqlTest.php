@@ -12,6 +12,7 @@ use Preflow\DevTools\Command\MigrateCommand;
 use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Rbac\RoleList;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The staff type on SQL (storage alias "staff"): migrate creates the table, an account is
@@ -19,6 +20,8 @@ use Preflow\Testing\MysqlTestDatabase;
  */
 final class StaffSqlTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

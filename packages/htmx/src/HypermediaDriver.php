@@ -24,7 +24,9 @@ use Psr\Http\Message\ResponseInterface;
  * recorded in: keep them in a frame slot (Contexts::frame()->slot(), as ResponseHeaders does),
  * so an effect recorded in one render (the SEO audit, a preview, a request the page asks for)
  * never reaches another render's response, and Contexts::within() keeps the frame's. The
- * headers they are sent in are the driver's (ownedHeaders()). HypermediaDriverContract checks both.
+ * headers they are sent in are the driver's: implement Preflow\Core\Http\Hypermedia\OwnsResponseHeaders
+ * (optional; without it pages may set your effect headers as response hints). See the test
+ * fixture SignalDriver/SignalEffects for a frame slot. HypermediaDriverContract checks both.
  */
 interface HypermediaDriver extends HypermediaProtocol
 {

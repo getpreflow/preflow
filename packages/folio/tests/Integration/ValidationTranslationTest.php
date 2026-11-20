@@ -11,6 +11,7 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidatorFactory;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Validation messages in Folio's forms (Ruling 2): an admin request validates with the
@@ -19,6 +20,8 @@ use Preflow\Validation\ValidatorFactory;
  */
 final class ValidationTranslationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

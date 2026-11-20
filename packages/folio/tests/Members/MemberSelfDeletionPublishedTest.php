@@ -12,6 +12,7 @@ use Preflow\Publishing\Publisher;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 use Preflow\Members\Members;
 use Preflow\Members\Tests\Support\MemberFlows;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A member's own deletion on a Folio site reaches the published snapshots of publishing types:
@@ -20,6 +21,8 @@ use Preflow\Members\Tests\Support\MemberFlows;
  */
 final class MemberSelfDeletionPublishedTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

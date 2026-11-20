@@ -30,6 +30,7 @@ use Preflow\Core\Tests\PageCache\Fixtures\NegotiatedLocaleRedirect;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Serving and storing: the middleware on its own (a handler stands in for the pipeline inside
@@ -38,6 +39,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class PageCacheMiddlewareTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private string $root;

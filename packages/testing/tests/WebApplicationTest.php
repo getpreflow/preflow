@@ -10,9 +10,12 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageCacheMiddleware;
 use Preflow\Testing\WebApplication;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class WebApplicationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

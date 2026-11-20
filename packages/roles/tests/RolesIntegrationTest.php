@@ -8,9 +8,12 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Core\Application;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class RolesIntegrationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

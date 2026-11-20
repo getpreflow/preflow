@@ -16,6 +16,7 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\I18n\Translator;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio's own words in the user's interface language: the shell, the dashboard, a content list
@@ -25,6 +26,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AdminTranslationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use \Preflow\Folio\Tests\Support\AdminTexts;
     use StaffScaffold;
 

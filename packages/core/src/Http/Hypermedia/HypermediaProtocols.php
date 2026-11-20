@@ -109,14 +109,22 @@ final class HypermediaProtocols
     }
 
     /**
-     * Every client's ownedHeaders(), each name once (case-insensitive).
+     * The headers of every client that owns some (OwnsResponseHeaders::ownedHeaders()), each name
+     * once (case-insensitive); a client without that interface owns none here.
      *
      * @since 0.81.0
      * @return list<string>
      */
     public function ownedHeaders(): array
     {
-        return self::unique(array_merge(...array_map(static fn (HypermediaProtocol $p): array => $p->ownedHeaders(), $this->protocols)));
+        $owned = [];
+        foreach ($this->protocols as $protocol) {
+            if ($protocol instanceof OwnsResponseHeaders) {
+                array_push($owned, ...$protocol->ownedHeaders());
+            }
+        }
+
+        return self::unique($owned);
     }
 
     /**

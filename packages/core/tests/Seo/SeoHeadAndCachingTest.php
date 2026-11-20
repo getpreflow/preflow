@@ -25,10 +25,13 @@ use Preflow\View\Seo\SeoSite;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Head tags and JSON-LD on HTML pages, and ETag / 304 for responses that are the same for everyone. */
 final class SeoHeadAndCachingTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'seo-head-test-key-0123456789abcdef';

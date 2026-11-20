@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\DevTools\Command\MigrateCommand;
 use Preflow\Folio\Console\ExtensionsApplyCommand;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * preflow/starter-folio's own staff table (its migration, copied below) has the columns of rbac's
@@ -17,6 +18,8 @@ use Preflow\Folio\Console\ExtensionsApplyCommand;
  */
 final class StarterStaffTableTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     /** packages/starter-folio/migrations/2026_11_09_004_create_staff.php, as the starter ships it. */

@@ -6,6 +6,7 @@ namespace Preflow\Folio\Tests\Rbac;
 
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Roles edited in Folio (Settings → Roles): the permission and role field types and the
@@ -13,6 +14,8 @@ use PHPUnit\Framework\TestCase;
  */
 final class RolesInFolioTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

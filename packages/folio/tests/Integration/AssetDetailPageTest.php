@@ -17,6 +17,7 @@ use Preflow\Media\CropRect;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Tests\Support\StoredAssets;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * An asset's details are their own page ({prefix}/assets/{id}), reached from the library with the
@@ -28,6 +29,8 @@ use Psr\Http\Message\ResponseInterface;
 #[RequiresFunction('imagewebp')]
 final class AssetDetailPageTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

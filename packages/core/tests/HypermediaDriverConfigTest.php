@@ -28,10 +28,13 @@ use Preflow\Htmx\HypermediaDriver;
 use Preflow\Htmx\LazyHypermediaDriver;
 use Preflow\View\FormHypermediaDriver;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** app.hypermedia names the app's HypermediaDriver; hd.*, the component endpoint and forms use it. */
 final class HypermediaDriverConfigTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const KEY = 'hypermedia-config-test-key-0123456789';
 
     private string $dir;

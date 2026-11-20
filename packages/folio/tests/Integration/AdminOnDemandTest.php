@@ -17,6 +17,7 @@ use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\AdminNav;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio's admin setup on demand (Application::onRequest()): a web request outside the admin
@@ -26,6 +27,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AdminOnDemandTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const string ADMIN_EMAIL = 'admin@site.test';
     private const string PASSWORD = 'secret';
     private const array PACKAGES = ['folio', 'rbac', 'members', 'codes', 'validation', 'i18n', 'media'];

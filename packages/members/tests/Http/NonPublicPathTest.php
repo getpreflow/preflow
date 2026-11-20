@@ -9,10 +9,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The members area is not a public page: redirects and the not-found list leave it alone. */
 final class NonPublicPathTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

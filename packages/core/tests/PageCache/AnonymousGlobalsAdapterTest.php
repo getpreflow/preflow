@@ -13,10 +13,13 @@ use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Core\PageCache\AnonymousGlobals;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The superglobal adapter: internal frames see an anonymous visitor's superglobals, every other frame the real ones. */
 final class AnonymousGlobalsAdapterTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     protected function setUp(): void
     {
         Contexts::reset();

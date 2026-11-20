@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\Http;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The redesigned fields in the editor (0.75): a text value that starts with a line break keeps it in
@@ -15,6 +16,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class EditorFieldsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void

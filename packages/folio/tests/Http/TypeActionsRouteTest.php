@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Tests\Rbac\RbacAppScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A type's editor actions (data's "readonly": true, "creatable": false) as Folio renders and
@@ -19,6 +20,8 @@ use Preflow\Folio\Tests\Rbac\RbacAppScaffold;
  */
 final class TypeActionsRouteTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

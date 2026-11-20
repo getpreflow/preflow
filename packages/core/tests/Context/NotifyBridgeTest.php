@@ -33,6 +33,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Core's bridges to notify's seams: Notifier::sendLater() and send() follow the current frame's
@@ -42,6 +43,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class NotifyBridgeTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

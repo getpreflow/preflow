@@ -13,6 +13,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\Pluggable\SignalDriver;
 use Preflow\View\NonceGenerator;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A page nonce a client sends back is untrusted input: adopted for a fragment request only, for
@@ -20,6 +21,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class PageNonceAdoptionTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     /** 24 base64 characters, also a word on the page: what a poisoned store would replace. */
     private const string WORD = 'cGFnZS1ub25jZS0xMjM0NQ==';
 

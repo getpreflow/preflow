@@ -11,6 +11,7 @@ use Preflow\Core\Application;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A full app with auth and preflow/roles and extensions (written by the test) whose type
@@ -19,6 +20,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class NoticeHooksTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

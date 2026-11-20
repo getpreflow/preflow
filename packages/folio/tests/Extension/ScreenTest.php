@@ -18,6 +18,7 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A full app with auth and preflow/roles and the Members fixture extension
@@ -26,6 +27,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class ScreenTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const FIXTURES = __DIR__ . '/../Fixtures/extensions/app';

@@ -13,6 +13,7 @@ use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Publishing\PreviewLinks;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A "resource" type gated by frontend.permission "members.access" (declared by a
@@ -21,6 +22,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class FrontendGateTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

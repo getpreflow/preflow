@@ -17,10 +17,13 @@ use Preflow\Core\PageCache\TagIndex;
 use Preflow\DevTools\Command\CacheClearCommand;
 use Preflow\DevTools\Command\PagesRefreshCommand;
 use Preflow\DevTools\Command\PagesWorkCommand;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** pages:work and pages:refresh, and cache:clear pages, on a site with the page cache on. */
 final class PagesCommandsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

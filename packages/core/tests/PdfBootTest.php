@@ -18,10 +18,13 @@ use Preflow\View\Pdf\PdfConfig;
 use Preflow\View\Pdf\PdfDocument;
 use Preflow\View\Pdf\PdfEngine;
 use Preflow\View\Pdf\PdfRenderer;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The Application binds the PDF renderer, mPDF as its engine, and reads view.pdf from config/view.php. */
 final class PdfBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     #[RunInSeparateProcess]
     public function test_renderer_and_mpdf_engine_are_bound_with_default_config(): void
     {

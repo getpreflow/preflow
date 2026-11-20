@@ -10,6 +10,7 @@ use Preflow\Publishing\PublishState;
 use Preflow\Folio\Seo\SeoSection;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The editor's "SEO & sharing" section: shown only with SEO on, for a type with a frontend
@@ -18,6 +19,8 @@ use Preflow\Data\Migration\MigrationRegistry;
  */
 final class SeoSectionFormTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void

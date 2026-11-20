@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * An SQL-stored extension type ("member" of a "members" extension written by the test) that a
@@ -15,6 +16,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class ExtendedTypeAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

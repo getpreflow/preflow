@@ -19,6 +19,7 @@ use Preflow\Rbac\Console\StaffResetCommand;
 use Preflow\Rbac\Staff\StaffAccounts;
 use Preflow\Rbac\Staff\StaffLinks;
 use Preflow\Rbac\Staff\StaffPopulation;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The staff commands on a Folio site: they use Folio's staff guard, an invite mailed from a
@@ -27,6 +28,8 @@ use Preflow\Rbac\Staff\StaffPopulation;
  */
 final class StaffCommandsInFolioTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

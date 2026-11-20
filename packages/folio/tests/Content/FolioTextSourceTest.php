@@ -27,9 +27,12 @@ use Preflow\I18n\Machine\TextSources;
 use Preflow\I18n\Machine\TranslationSettings;
 use Preflow\I18n\Machine\TranslationUnit;
 use Preflow\I18n\Machine\WriteOutcomeStatus;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class FolioTextSourceTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 

@@ -18,6 +18,7 @@ use Preflow\Folio\Http\AiDraftController;
 use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * "Write a draft" in rich text: POST {prefix}/_ai/draft writes nothing, answers sanitised HTML and
@@ -27,6 +28,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AiDraftRouteTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 

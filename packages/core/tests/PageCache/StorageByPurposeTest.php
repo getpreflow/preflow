@@ -25,6 +25,7 @@ use Preflow\Core\PageCache\TagIndex;
 use Preflow\Core\Tests\PageCache\Fixtures\PurposeRoutes;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Only a visitor's render and a rebuild are ever stored, and only when the context is what an
@@ -33,6 +34,8 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class StorageByPurposeTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

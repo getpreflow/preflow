@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio with auth and preflow/roles: an editor (view, edit, assets.view,
@@ -18,6 +19,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class FolioPermissionsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

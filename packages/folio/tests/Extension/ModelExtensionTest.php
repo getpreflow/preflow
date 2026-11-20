@@ -14,6 +14,7 @@ use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ModelExtension;
 use Preflow\Folio\Extension\Settings\ExtensionSettings;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A site model file with "extends": true adds fields (and list columns) to a type an enabled
@@ -22,6 +23,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class ModelExtensionTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

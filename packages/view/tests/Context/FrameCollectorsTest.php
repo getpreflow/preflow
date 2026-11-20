@@ -28,6 +28,7 @@ use Preflow\View\Seo\PageMeta;
 use Preflow\View\Seo\SeoContext;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * What a render collects lives in its render frame (0.81): assets, page meta, GEO blocks, the CSP
@@ -37,6 +38,8 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class FrameCollectorsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private ?string $dir = null;
 
     protected function setUp(): void
@@ -528,7 +531,31 @@ final class FrameCollectorsTest extends TestCase
         $this->assertSame(['HX-Trigger' => 'x'], $withoutHtmx->all(), 'core reserves what the app\'s clients own, not htmx\'s headers by name');
     }
 
-    /** A booted app reserves the headers its hypermedia driver owns (HypermediaProtocol::ownedHeaders()). */
+    /**
+     * A driver without OwnsResponseHeaders (one written for 0.80) still loads and works; core then
+     * reserves only its nonce headers, so a page may set its effect headers.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_driver_without_owned_headers_reserves_only_its_nonce_headers(): void
+    {
+        $this->hintSite();
+        $this->write('config/app.php', "<?php\nreturn ['name'=>'t','debug'=>0,'engine'=>'twig','key'=>'frame-hints-test-key-0123456789abcd','url'=>'https://example.com','locale'=>'en','hypermedia'=>" . var_export(PlainHeadersDriver::class, true) . "];\n");
+        $app = Application::create($this->dir);
+        $app->boot();
+        $hints = $app->container()->get(ResponseHeaderHints::class);
+
+        try {
+            $hints->set('Plain-Nonce', 'x');
+            $this->fail('the driver\'s nonce header was accepted');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('set by the framework', $e->getMessage());
+        }
+        $hints->set('Plain-Effects', 'x');
+        $this->assertSame(['Plain-Effects' => 'x'], $hints->all(), 'without OwnsResponseHeaders a page may set the driver\'s effect headers');
+        $this->assertSame(200, $this->get('/plain')->getStatusCode(), 'the app serves with the driver');
+    }
+
+    /** A booted app reserves the headers its hypermedia driver owns (OwnsResponseHeaders::ownedHeaders(), htmx through LazyHypermediaDriver). */
     #[RunInSeparateProcess]
     public function test_the_app_reserves_the_headers_its_hypermedia_clients_own(): void
     {
@@ -556,5 +583,75 @@ final class FrameCollectorsTest extends TestCase
         $asked = $this->get('/thanks', ['Accept' => 'text/markdown']);
         $this->assertStringContainsString('text/html', $asked->getHeaderLine('Content-Type'), 'the HTML response the client would get anyway');
         $this->assertSame(200, $this->get('/plain.md')->getStatusCode(), 'a shared page keeps its Markdown');
+    }
+}
+
+/** A 0.80-style driver: HypermediaDriver without OwnsResponseHeaders. */
+final class PlainHeadersDriver implements \Preflow\Htmx\HypermediaDriver
+{
+    public function actionAttrs(string $method, string $url, string $targetId, \Preflow\Htmx\SwapStrategy $swap, array $extra = []): \Preflow\Htmx\HtmlAttributes
+    {
+        return new \Preflow\Htmx\HtmlAttributes(['data-' . $method => $url, 'data-target' => $targetId, ...$extra]);
+    }
+
+    public function listenAttrs(string $event, string $url, string $targetId): \Preflow\Htmx\HtmlAttributes
+    {
+        return new \Preflow\Htmx\HtmlAttributes(['data-on-' . $event => $url, 'data-target' => $targetId]);
+    }
+
+    public function triggerEvent(string $event): void {}
+
+    public function redirect(string $url): void {}
+
+    public function pushUrl(string $url): void {}
+
+    public function applyEffects(ResponseInterface $response): ResponseInterface
+    {
+        return $response;
+    }
+
+    public function assetTag(): string
+    {
+        return '';
+    }
+
+    public function isFragmentRequest(ServerRequestInterface $request): bool
+    {
+        return $request->hasHeader('Plain-Request');
+    }
+
+    public function isHistoryRestore(ServerRequestInterface $request): bool
+    {
+        return false;
+    }
+
+    public function fragmentTarget(ServerRequestInterface $request): ?string
+    {
+        return null;
+    }
+
+    public function varyHeaders(): array
+    {
+        return ['Plain-Request'];
+    }
+
+    public function navigate(ResponseInterface $response, ?string $url): ResponseInterface
+    {
+        return $response->withHeader('Plain-Effects', $url ?? 'reload');
+    }
+
+    public function announceNonce(ResponseInterface $response, string $nonce): ResponseInterface
+    {
+        return $response->withHeader('Plain-Nonce', $nonce);
+    }
+
+    public function nonceHeaders(): array
+    {
+        return ['Plain-Nonce'];
+    }
+
+    public function pageNonce(ServerRequestInterface $request): ?string
+    {
+        return null;
     }
 }

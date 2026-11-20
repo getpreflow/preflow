@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The public "members" group ("Sie"): the German registration page is byte for byte the one
@@ -15,6 +16,8 @@ use Preflow\Members\Tests\Support\MembersScaffold;
  */
 final class RegisterSnapshotTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

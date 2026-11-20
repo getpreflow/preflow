@@ -9,9 +9,11 @@ use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
+use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
 use Preflow\Htmx\HtmlAttributes;
 use Preflow\Htmx\HypermediaDriver;
 use Preflow\Htmx\SwapStrategy;
+use Preflow\Testing\ChecksFrameBalance;
 use Preflow\Testing\ContextFactory;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -76,12 +78,15 @@ use Psr\Http\Message\ServerRequestInterface;
  *   frame is not in the response of a render in a frame of its own (Contexts::run()) inside it,
  *   and one recorded there is not in the page's; one recorded inside Contexts::within() is the
  *   frame's; outside every render the effects are the driver's own;
- * - since 0.81, ownedHeaders() names the response headers the driver writes: every header
+ * - since 0.81, for a driver that implements OwnsResponseHeaders (optional; skipped otherwise),
+ *   ownedHeaders() names the response headers the driver writes: every header
  *   applyEffects(), navigate() and announceNonce() add is in ownedHeaders() or nonceHeaders()
  *   (a name ending in '*' is a prefix), so a page cannot set them as response hints.
  */
 abstract class HypermediaDriverContract extends TestCase
 {
+    use ChecksFrameBalance;
+
     /** The driver under test. */
     abstract protected function createDriver(): HypermediaDriver;
 
@@ -328,6 +333,9 @@ abstract class HypermediaDriverContract extends TestCase
 
     public function test_owned_headers_name_every_header_the_driver_writes(): void
     {
+        if (!$this->driver instanceof OwnsResponseHeaders) {
+            $this->markTestSkipped('implement OwnsResponseHeaders so pages cannot set your headers');
+        }
         $owned = [...$this->driver->ownedHeaders(), ...$this->driver->nonceHeaders()];
         foreach ($this->driver->ownedHeaders() as $name) {
             $this->assertMatchesRegularExpression('/^[A-Za-z0-9-]+\*?$/', $name, 'ownedHeaders() lists header names, a trailing * for a prefix');

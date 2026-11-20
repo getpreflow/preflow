@@ -14,6 +14,7 @@ use Preflow\Data\DataManager;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\Users\StaffPasswords;
 use Preflow\Notify\Notifier;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The Folio login with record users (staff): throttled, enumeration-resistant, remember-me when
@@ -22,6 +23,8 @@ use Preflow\Notify\Notifier;
  */
 final class FolioStaffLoginTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

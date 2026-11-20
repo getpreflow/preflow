@@ -7,9 +7,12 @@ namespace Preflow\Core\Tests\Http\Session;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Http\Session\NativeSession;
 use Preflow\Core\Http\Session\FlashType;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class NativeSessionTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     /**
      * @runInSeparateProcess
      */

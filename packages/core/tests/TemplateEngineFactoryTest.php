@@ -25,10 +25,13 @@ use Preflow\View\SharingTemplateEngine;
 use Preflow\View\TemplateEngineContext;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateEngineInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** app.engine may name a TemplateEngineFactory: its engine renders file pages and components. */
 final class TemplateEngineFactoryTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

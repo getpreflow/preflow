@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\View\FolioEngine;
 use Preflow\Folio\View\InkMarks;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The ink layer's marks (INK.md): a fixed seed places the same marks every time, inside the box's
@@ -16,6 +17,8 @@ use Preflow\Folio\View\InkMarks;
  */
 final class InkMarksTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     private const AREA = ['x' => [0.5, 1.0], 'y' => [0, 1]];

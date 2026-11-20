@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\Publishing\Publisher;
 use Preflow\Folio\Tests\Support\StaffScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The revisions panel names who made a revision: the account's name for the id of a record user,
@@ -16,6 +17,8 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
  */
 final class RevisionAuthorTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

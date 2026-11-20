@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Media\MediaLibrary;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * GET {prefix}/_search?q= (the ⌘K palette's records, SearchController): records of the types the
@@ -19,6 +20,8 @@ use Preflow\Media\MediaLibrary;
  */
 final class SearchRouteTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

@@ -9,9 +9,12 @@ use PHPUnit\Framework\TestCase;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class PublishingAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 

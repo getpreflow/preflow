@@ -9,10 +9,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Validation needs no database (0.66): RuleFactory, ValidatorFactory and app/Rules/ without config/data.php. */
 final class ValidationWithoutDataTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

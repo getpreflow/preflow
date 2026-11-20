@@ -8,10 +8,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** A session guard's remember-me cookie is Secure by the guard's setting, else the session's, else APP_SECURE. */
 final class RememberCookieSecureTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

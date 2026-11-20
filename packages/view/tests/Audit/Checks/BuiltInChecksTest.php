@@ -17,10 +17,13 @@ use Preflow\View\Audit\RunCheck;
 use Preflow\View\Audit\SiteCheck;
 use Preflow\View\Seo\PublicPage;
 use Preflow\View\Seo\PublicPages;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The built-in checks as the app registers them, and one audit of the app's pages with them. */
 final class BuiltInChecksTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

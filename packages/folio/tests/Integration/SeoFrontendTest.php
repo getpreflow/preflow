@@ -18,6 +18,7 @@ use Preflow\Folio\Tests\Fixtures\Seo\JobSchemaProvider;
 use Preflow\Folio\Tests\Support\AssetFixtures;
 use Preflow\Media\MediaLibrary;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio pages with SEO on: share cards and JSON-LD from the record, a site's
@@ -28,6 +29,8 @@ use Psr\Http\Message\ResponseInterface;
 #[RequiresFunction('imagewebp')]
 final class SeoFrontendTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use AssetFixtures;
 
     private string $dir;

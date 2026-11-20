@@ -20,6 +20,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The Application's CsrfMiddleware asks a bound ExpiredSessionHandler (bound by a service provider).
@@ -27,6 +28,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class CsrfExpiredSessionBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private bool $routeRan = false;
 
     #[RunInSeparateProcess]

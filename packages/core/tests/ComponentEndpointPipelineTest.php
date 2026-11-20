@@ -13,10 +13,13 @@ use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\PipelineCounter\PipelineCounter;
 use Preflow\Htmx\ComponentToken;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Component requests (/--component) run through the app's middleware and error handling. */
 final class ComponentEndpointPipelineTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'pipeline-test-key-0123456789abcdef';

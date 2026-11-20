@@ -11,6 +11,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Auth\ArrayUser;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RoleView;
 use Preflow\Testing\AuthTestHelpers;
 use Preflow\Testing\FrameBalanceExtension;
 use Preflow\Testing\WebApplication;
@@ -18,6 +19,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The testing helpers build the context of the request they prepare (actingAs(), at(),
@@ -26,6 +28,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class ContextHelpersTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use AuthTestHelpers;
 
     private string $dir;
@@ -114,6 +118,58 @@ final class ContextHelpersTest extends TestCase
         } catch (\LogicException $e) {
             $this->assertStringContainsString('Site\\PageTest::test_open left 1 render frame open', $e->getMessage());
         }
+    }
+
+    /**
+     * A test that leaves a frame open fails: in the runner's process through FrameBalanceExtension,
+     * in a separate process through ChecksFrameBalance. Each fixture runs in a PHPUnit subprocess
+     * with the framework's phpunit.xml.
+     */
+    public function test_a_frame_left_open_fails_the_test_in_its_own_process(): void
+    {
+        foreach (['FrameLeakInProcessCase' => 'test_leaves_a_frame_open', 'FrameLeakIsolatedCase' => 'test_leaves_a_frame_open_in_its_own_process'] as $case => $test) {
+            [$exit, $output] = self::phpunit(__DIR__ . "/Fixtures/FrameLeak/{$case}.php");
+
+            $this->assertNotSame(0, $exit, "{$case}: the run fails\n{$output}");
+            $this->assertStringContainsString("{$case}::{$test} left 1 render frame open", $output, $case);
+        }
+    }
+
+    /** A role view stays one: actingAs() does not sign a user in over it, as AuthManager::setUser() does not. */
+    #[RunInSeparateProcess]
+    public function test_acting_as_keeps_a_role_view(): void
+    {
+        $app = WebApplication::boot($this->dir);
+        $opened = [];
+        $app->onRequest(static function () use (&$opened): void {
+            $opened[] = Contexts::current()->viewer->isSynthetic();
+        });
+        $request = WebApplication::withContext(
+            static fn (RenderContext $ctx): RenderContext => $ctx->asRole(new RoleView('staff', ['editor'])),
+            new ServerRequest('GET', 'https://site.test/probe'),
+        );
+
+        $body = (string) $app->handle($this->actingAs(new ArrayUser('ada@site.test', 'ada@site.test', '', []), $request))->getBody();
+
+        $this->assertSame([true], $opened, 'the frame opens as the role view');
+        $this->assertStringNotContainsString('ada@site.test', $body);
+    }
+
+    /** @return array{int, string} the exit code and the output of PHPUnit run over $file */
+    private static function phpunit(string $file): array
+    {
+        $root = dirname(__DIR__, 3);
+        $process = proc_open(
+            [PHP_BINARY, $root . '/vendor/bin/phpunit', '-c', $root . '/phpunit.xml', '--no-progress', $file],
+            [1 => ['pipe', 'w'], 2 => ['redirect', 1]],
+            $pipes,
+            $root,
+        );
+        self::assertIsResource($process);
+        $output = (string) stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+
+        return [proc_close($process), $output];
     }
 
     public function test_the_framework_suites_check_the_frame_balance(): void

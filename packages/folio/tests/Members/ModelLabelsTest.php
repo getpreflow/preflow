@@ -12,6 +12,7 @@ use Preflow\I18n\TranslationRegistry;
 use Preflow\I18n\Translator;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The member model's labels (type, sidebar section, fields) are keys of the admin group
@@ -20,6 +21,8 @@ use Preflow\Folio\Tests\Members\Support\MembersScaffold;
  */
 final class ModelLabelsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     protected function tearDown(): void

@@ -11,6 +11,7 @@ use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Who may sign into Folio: staff, through folio.guard (default: the app's default guard). A guard
@@ -18,6 +19,8 @@ use Preflow\Core\Application;
  */
 final class FolioStaffGuardTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

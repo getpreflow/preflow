@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
 use Preflow\View\FormHypermediaDriver;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver
+final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsResponseHeaders
 {
     private ?HtmxAssets $assets = null;
 

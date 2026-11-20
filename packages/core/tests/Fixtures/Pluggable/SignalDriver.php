@@ -7,6 +7,7 @@ namespace Preflow\Core\Tests\Fixtures\Pluggable;
 require_once __DIR__ . '/SignalEffects.php';
 
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
 use Preflow\Htmx\HtmlAttributes;
 use Preflow\Htmx\HypermediaDriver;
 use Preflow\Htmx\SwapStrategy;
@@ -18,7 +19,7 @@ use Psr\Http\Message\ServerRequestInterface;
  * A non-htmx driver (Datastar-style data-on:* attributes), named as app.hypermedia. Its effects
  * are kept per render frame (a frame slot), as HypermediaDriver asks.
  */
-class SignalDriver implements HypermediaDriver
+class SignalDriver implements HypermediaDriver, OwnsResponseHeaders
 {
     /** The effects outside every render. */
     private SignalEffects $effects;

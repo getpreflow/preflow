@@ -13,6 +13,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\ExtensionsFile;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A model part with "opt_in": true is off until the site lists it under "enabled_parts":
@@ -22,6 +23,8 @@ use Preflow\Folio\Extension\ExtensionsFile;
  */
 final class OptInPartTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private \Closure $autoload;
 

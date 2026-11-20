@@ -13,6 +13,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\FolioPermissionMiddleware;
 use Preflow\Routing\RouteEntry;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The two roles of the spec's example on a staff site, on every Folio admin route and screen:
@@ -27,6 +28,8 @@ use Preflow\Routing\RouteEntry;
  */
 final class TwoRolesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private const array ACCOUNTS = ['super' => 0, 'content' => 1, 'plain' => 2];

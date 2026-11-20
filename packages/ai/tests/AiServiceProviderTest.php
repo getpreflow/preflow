@@ -13,9 +13,12 @@ use Preflow\Ai\Settings\AiSettingsStore;
 use Preflow\Ai\Usage\Pricing;
 use Preflow\Ai\Usage\UsageLog;
 use Preflow\Core\Application;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class AiServiceProviderTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

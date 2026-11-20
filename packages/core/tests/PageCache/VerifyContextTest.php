@@ -34,6 +34,7 @@ use Preflow\Notify\TransportFactory;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Verify's second render (the page rendered once more as another anonymous visitor before it is
@@ -43,6 +44,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class VerifyContextTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

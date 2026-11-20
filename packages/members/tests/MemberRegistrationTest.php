@@ -21,10 +21,13 @@ use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
 use Preflow\Members\MemberRoles;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Registration and the double opt-in: the register page, the confirm link, the admission's decision. */
 final class MemberRegistrationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

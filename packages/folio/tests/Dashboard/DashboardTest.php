@@ -22,6 +22,7 @@ use Preflow\Folio\Dashboard\NeedsYou;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The dashboard (0.76): the "New …" button, the ink band's stats, "Needs you" (Folio's own cards
@@ -29,6 +30,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class DashboardTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

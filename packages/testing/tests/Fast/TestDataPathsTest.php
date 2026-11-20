@@ -9,9 +9,12 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Testing\Fast\TestDataPaths;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class TestDataPathsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $root = '';
 
     protected function setUp(): void

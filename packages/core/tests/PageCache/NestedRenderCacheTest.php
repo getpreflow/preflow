@@ -29,6 +29,7 @@ use Preflow\Core\PageCache\Refresher;
 use Preflow\Core\PageCache\TagIndex;
 use Preflow\Core\Tests\PageCache\Fixtures\PurposeRoutes;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A request asked for inside a visitor's page (Application::handle() in a route) is part of that
@@ -42,6 +43,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class NestedRenderCacheTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

@@ -17,10 +17,13 @@ use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\HeaderGuard;
 use Preflow\Core\Tests\Fixtures\PipelineCounter\PipelineCounter;
 use Preflow\Htmx\ComponentToken;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Guards from config/auth.php: custom classes, a members guard, resolution order. */
 final class AuthGuardsBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'guards-test-key-0123456789abcdef00';

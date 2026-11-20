@@ -21,6 +21,9 @@ trait AuthTestHelpers
      * for it has the user as its viewer from the start (Application::withDerivedContext()),
      * before the first middleware runs. The identity middleware takes the user as it is (no
      * guard is asked, no cookie is set). The next request without actingAs() is nobody's again.
+     * A request that renders as a role view (WebApplication::withContext() with asRole()) keeps
+     * its role view, as AuthManager::setUser() does. It works with handle(); render() takes its
+     * context from its caller, so the derivation is not used there.
      *
      * @param string|null $guard the guard they signed in with; null is the default guard
      */
@@ -37,6 +40,10 @@ trait AuthTestHelpers
         return Application::withDerivedContext(
             $request,
             static function (RenderContext $ctx, Container $container) use ($user, $guard): RenderContext {
+                if ($ctx->viewer->isSynthetic()) {
+                    // A role view stays one: nobody signs in over it.
+                    return $ctx;
+                }
                 // An app without auth has no default guard: the user's identity is the viewer's all the same.
                 $name = $guard ?? ($container->bound(AuthManager::class) ? $container->get(AuthManager::class)->defaultGuardName() : 'default');
 

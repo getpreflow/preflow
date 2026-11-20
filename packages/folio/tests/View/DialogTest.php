@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\View;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The styled dialog (partials/_dialog.twig, admin.js's folioConfirm / folioAlert): every layout that
@@ -15,6 +16,8 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
  */
 final class DialogTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     private const FOLIO = __DIR__ . '/../..';

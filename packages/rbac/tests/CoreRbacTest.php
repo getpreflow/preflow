@@ -20,6 +20,7 @@ use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * rbac on a site without Folio (its classes can't be loaded, as when the package isn't
@@ -27,6 +28,8 @@ use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
  */
 final class CoreRbacTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private string|false $errorLog = false;
 

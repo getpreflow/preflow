@@ -15,6 +15,7 @@ use Preflow\Folio\Http\FolioPermissionMiddleware;
 use Preflow\Folio\Tests\Support\CounterExtension;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → Cache ({prefix}/cache): the registered caches with their size, clearing one or
@@ -23,6 +24,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class CacheScreenTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use CounterExtension;
 

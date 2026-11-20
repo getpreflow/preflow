@@ -12,10 +12,13 @@ use Preflow\Auth\Access\PermissionResolver;
 use Preflow\Core\Application;
 use Preflow\Rbac\RbacResolver;
 use Preflow\Roles\ConfigRoleResolver;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** rbac's resolver on a Folio site: Folio's built-in extension "rbac" only shows or hides the admin. */
 final class RbacResolverInFolioTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

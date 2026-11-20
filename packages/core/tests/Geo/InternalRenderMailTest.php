@@ -17,6 +17,7 @@ use Preflow\Notify\Notifier;
 use Preflow\Notify\SentMessage;
 use Preflow\Notify\TransportFactory;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Since 0.74 an internal render drops the mail its page queues (core's anonymous render scope,
@@ -25,6 +26,8 @@ use Psr\Http\Message\ServerRequestInterface;
  */
 final class InternalRenderMailTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

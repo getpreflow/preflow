@@ -16,12 +16,15 @@ use Preflow\Folio\Seo\FolioPageMeta;
 use Preflow\Folio\Tests\Support\AssetFixtures;
 use Preflow\Media\MediaLibrary;
 use Preflow\View\Seo\PageMeta;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** A Folio page's share card data from its record, the type's mapped fields and the site singleton. */
 #[RequiresPhpExtension('gd')]
 #[RequiresFunction('imagewebp')]
 final class FolioPageMetaTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use AssetFixtures;
 
     private string $dir;

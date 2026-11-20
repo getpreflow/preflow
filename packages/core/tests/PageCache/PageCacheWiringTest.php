@@ -19,10 +19,13 @@ use Preflow\Core\PageCache\PageStore;
 use Preflow\Core\PageCache\StoredPage;
 use Preflow\Core\PageCache\TagIndex;
 use Preflow\Data\DataManager;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The Application connects the data layer to the page cache only when the cache is on. */
 final class PageCacheWiringTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

@@ -21,6 +21,7 @@ use Preflow\Core\Tests\Fixtures\Geo\GeoEntriesProvider;
 use Preflow\View\Geo\GeoEntry;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\TemplateFunctionDefinition;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * GEO's Markdown views and llms-full.txt render their pages through Application::render() as
@@ -29,6 +30,8 @@ use Preflow\View\TemplateFunctionDefinition;
  */
 final class GeoIsolationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

@@ -9,11 +9,14 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Testing\MysqlTestDatabase;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The staff login and password pages with staff, tokens, remember rows and throttle on MySQL. */
 #[Group('mysql')]
 final class FolioStaffLoginMysqlTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

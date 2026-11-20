@@ -21,6 +21,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Review Focus 4: a page that writes on GET (a view counter) under the SEO audit renders as a
@@ -29,6 +30,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class AuditSkippedWritesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

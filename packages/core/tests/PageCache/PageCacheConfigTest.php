@@ -8,9 +8,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\PageCache\PageCacheConfig;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class PageCacheConfigTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     public function test_every_key_is_read(): void
     {
         $config = PageCacheConfig::fromArray([

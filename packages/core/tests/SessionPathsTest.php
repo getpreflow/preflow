@@ -15,6 +15,7 @@ use Preflow\Testing\ArraySession;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * session.paths: public pages get no session (and so no cookie), unless the visitor brings the
@@ -22,6 +23,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class SessionPathsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     public function test_no_session_outside_configured_paths(): void
     {
         $session = new ArraySession();

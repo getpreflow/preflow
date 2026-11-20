@@ -70,18 +70,6 @@ interface HypermediaProtocol
     public function nonceHeaders(): array;
 
     /**
-     * The response headers that belong to the client: the ones it reads to act on a response
-     * (htmx: HX-Trigger, HX-Redirect, HX-Push-Url…) and the ones navigate(), announceNonce() and,
-     * for a driver, applyEffects() write. A page or component may not set them as response hints
-     * (ResponseHeaderHints refuses them): the client's own calls do. A name ending in '*' stands
-     * for every header that starts with the rest ('HX-*'). Case does not matter.
-     *
-     * @since 0.81.0
-     * @return list<string>
-     */
-    public function ownedHeaders(): array;
-
-    /**
      * The CSP nonce of the page the request came from, when the client sends it back (null
      * otherwise). Core then answers with that nonce, so the scripts and styles the response
      * puts into the page pass the page's Content-Security-Policy.

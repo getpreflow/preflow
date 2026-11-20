@@ -17,10 +17,13 @@ use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\View\Audit\AuditRegistry;
 use Preflow\View\Audit\PageRenderer;
 use Preflow\View\Tests\Audit\Fixtures\AuditTestRoutes;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** PageRenderer as the app binds it: renders through the full pipeline, production-like, from the CLI. */
 final class PageRendererAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

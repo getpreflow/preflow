@@ -54,7 +54,8 @@ final class Application
      * the frame opens, so the whole request (its first middleware too) runs under it. Inside a
      * frame of something else the request's frame is still never looser than that frame (a
      * preview, a role view, an audit). For in-process callers: a test that signs a user in for
-     * one request (preflow/testing's actingAs()) or renders it as of a date.
+     * one request (preflow/testing's actingAs()) or renders it as of a date. render() ignores it:
+     * its caller gives the context.
      *
      * @since 0.81.0
      * @param \Closure(RenderContext, Container): RenderContext $derive gets the context and the app's container
@@ -641,7 +642,7 @@ final class Application
                 try {
                     $response = $this->handleInFrame($request);
                 } catch (\Throwable $e) {
-                    if (!$internal) {
+                    if (!$internal && self::sends()) {
                         if (!$this->emitting) {
                             $this->logFailure($this->flushDeferredNotifications(...), 'Deferred notifications could not be flushed');
                         } else {
@@ -651,9 +652,11 @@ final class Application
                     }
                     throw $e;
                 }
-                if (!$internal) {
+                if (!$internal && self::sends()) {
                     // In-process callers (CLI, tests) have no later emit step: what the request
                     // queued is sent now. run() sends after the response has gone out instead.
+                    // A request whose context captures or discards (a role view a test derived
+                    // for it, Application::withDerivedContext()) sends nothing.
                     if (!$this->emitting) {
                         $this->flushDeferredNotifications();
                     } else {
@@ -670,6 +673,12 @@ final class Application
         } finally {
             $this->holdForFlush($held);
         }
+    }
+
+    /** Whether the current frame delivers what it queued (OutboxPolicy::Deliver, as far as its parents let it). */
+    private static function sends(): bool
+    {
+        return Contexts::frame()->outboxPolicy() === \Preflow\Core\Context\OutboxPolicy::Deliver;
     }
 
     /**
@@ -1144,9 +1153,10 @@ final class Application
     }
 
     /**
-     * A test seam: handle() leaves notify's deferred mail of a request it opens itself to the next
-     * Notifier::flushDeferred(), as run() sends it only after the response went out, so a test
-     * can check what the response said before the mail goes (holdForFlush()). Off again with false.
+     * A test seam, never for production code: handle() leaves notify's deferred mail of a request
+     * it opens itself to the next Notifier::flushDeferred(), as run() sends it only after the
+     * response went out, so a test can check what the response said before the mail goes
+     * (holdForFlush()). Off again with false; run() also turns it off when it finishes.
      *
      * @since 0.81.0
      * @internal tests only

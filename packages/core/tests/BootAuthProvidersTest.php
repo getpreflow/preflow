@@ -20,10 +20,13 @@ use Preflow\Core\Tests\Fixtures\LateServiceProvider;
 use Preflow\Core\Tests\Fixtures\LateServiceUserProvider;
 use Preflow\Core\Tests\Fixtures\MissingTypeUserProvider;
 use Preflow\Data\Migration\MigrationRegistry;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** User providers from config/auth.php (any class), and the auth services core binds. */
 final class BootAuthProvidersTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

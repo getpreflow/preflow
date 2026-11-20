@@ -205,7 +205,7 @@ final class AuthManager
      * alone is its role view.
      *
      * @param non-empty-array<string, Authenticatable> $users
-     * @internal the identity middleware and the shims
+     * @internal the identity middleware, the shims and preflow/testing's actingAs()
      */
     public static function viewerOf(array $users, string $primary): Viewer
     {

@@ -16,6 +16,7 @@ use Preflow\Media\CropRect;
 use Preflow\Media\MediaLibrary;
 use Preflow\Media\Tests\Support\StoredAssets;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio's Edit image screen ({prefix}/assets/{id}/edit), through the real app with a signed-in
@@ -26,6 +27,8 @@ use Psr\Http\Message\ResponseInterface;
 #[RequiresFunction('imagewebp')]
 final class AssetEditorTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

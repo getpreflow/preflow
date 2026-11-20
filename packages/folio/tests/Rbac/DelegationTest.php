@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Folio\Rbac\Types\RoleRules;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Nobody grants permissions they don't hold: a staff editor saves or deletes only roles
@@ -18,6 +19,8 @@ use Preflow\Folio\Rbac\Types\RoleRules;
  */
 final class DelegationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private const array EDITOR = ['folio.dashboard', 'rbac_role.*', 'page.*'];

@@ -187,7 +187,7 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 | Suite | Interface | Hooks |
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
-| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and that `ownedHeaders()` names every header the driver writes |
+| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and, for a driver that implements `OwnsResponseHeaders`, that `ownedHeaders()` names every header it writes (skipped otherwise) |
 | `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `reopenDriver()`, `emptyDriver()`, `declareFullText(string $type, array $fields)`, `declareUnique(string $type, string $field)`, `textRuleMissing()` (the last five since 0.78); capability tests run when the driver implements the interface |
 | `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |
 
@@ -366,7 +366,7 @@ request that asks for it. The four tests:
   the frame around it, the bound request or the outer collectors instead of its own context fails.
   The outer frame's CSP nonce is `RenderIsolationContract::OUTER_NONCE` (every render's own is
   `NONCE`), and no render may print it, except the `pdf` path (`PART_PATHS`): a PDF's HTML is part
-  of the page that shows it and prints that page's nonce.
+  of the page that shows it, so a nonce it prints must be that page's, never one of its own.
 - **The outer frame is byte-equal after each render** (`frame`). With the same poison, these are
   the same before and after the render: the current context (serialized, without the PSR
   request), the frame's queued cookies and mail, the `CookieQueue`, the bound `RequestContext`,

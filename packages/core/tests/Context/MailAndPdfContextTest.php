@@ -36,6 +36,7 @@ use Preflow\View\Pdf\PdfDocument;
 use Preflow\View\Pdf\PdfEngine;
 use Preflow\View\Pdf\PdfRenderer;
 use Preflow\View\TemplateEngineInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A mail's HTML part renders in its recipient's context (the reader's locale and texts, nobody
@@ -45,6 +46,8 @@ use Preflow\View\TemplateEngineInterface;
  */
 final class MailAndPdfContextTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private Application $app;

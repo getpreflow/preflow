@@ -11,10 +11,13 @@ use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Data\DynamicRecord;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** RoleStore::ensure() grants a seed's permissions once: what an editor removed stays removed. */
 final class GrantOnceTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

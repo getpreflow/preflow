@@ -11,6 +11,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\View\ImageUrlTransformer;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class CdnTransformer implements ImageUrlTransformer
 {
@@ -30,6 +31,8 @@ final class CdnImageProvider extends ServiceProvider
 
 final class ImageTransformerProviderTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

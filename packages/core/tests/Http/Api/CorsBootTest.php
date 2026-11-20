@@ -14,10 +14,13 @@ use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageKey;
 use Preflow\Core\PageCache\PageStore;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** CORS through a booted app: on error responses, and around the page cache. */
 final class CorsBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

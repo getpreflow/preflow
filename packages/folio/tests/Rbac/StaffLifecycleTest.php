@@ -16,6 +16,7 @@ use Preflow\Notify\Email;
 use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The life of a staff account: invited on create, invite and reset links sent by those who may
@@ -26,6 +27,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class StaffLifecycleTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use \Preflow\Folio\Tests\Support\AdminTexts;
     use RbacAppScaffold;
 

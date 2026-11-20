@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\View;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The admin shell (_layout.twig, partials/_user_menu.twig, partials/_rail.twig): the sidebar with the
@@ -16,6 +17,8 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
  */
 final class ShellTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

@@ -15,10 +15,13 @@ use Preflow\Core\Tests\Fixtures\Geo\GeoEntriesProvider;
 use Preflow\Core\Tests\Fixtures\Geo\GeoRenderCount;
 use Preflow\View\Geo\GeoEntry;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** /llms.txt and /llms-full.txt per locale, built from GeoEntries (config/geo.php). */
 final class LlmsEndpointsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'geo-llms-test-key-0123456789abcdef';

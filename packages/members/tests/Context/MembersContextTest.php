@@ -16,10 +16,13 @@ use Preflow\Members\MembersView;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The members read the locale, the request and the clock from the render context. */
 final class MembersContextTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
     use MemberFlows;
 

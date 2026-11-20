@@ -14,6 +14,7 @@ use Preflow\Members\MembersConfig;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The members core on a site with auth, data, routing, view, notify and i18n, and neither Folio
@@ -21,6 +22,8 @@ use Preflow\Members\Tests\Support\MembersScaffold;
  */
 final class NoFolioTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

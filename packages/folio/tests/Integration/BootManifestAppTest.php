@@ -20,6 +20,7 @@ use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\ExtensionsFile;
 use Preflow\Publishing\Publisher;
 use Preflow\I18n\TranslationRegistry;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The boot manifest on a realistic site, in web mode: Folio pages with component and data-only
@@ -30,6 +31,8 @@ use Preflow\I18n\TranslationRegistry;
  */
 final class BootManifestAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const array PACKAGES = ['folio', 'rbac', 'validation', 'i18n', 'media'];
     private const array PATHS = ['/', '/about', '/de/about', '/de', '/no-such-page', '/robots.txt', '/sitemap.xml', '/llms.txt', '/about.md', '/folio/login'];
 

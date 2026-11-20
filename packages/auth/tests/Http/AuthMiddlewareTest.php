@@ -228,7 +228,6 @@ final class AuthMiddlewareTest extends TestCase
                 }
                 public function announceNonce(ResponseInterface $response, string $nonce): ResponseInterface { return $response; }
                 public function nonceHeaders(): array { return []; }
-                public function ownedHeaders(): array { return []; }
                 public function pageNonce(ServerRequestInterface $request): ?string { return null; }
             };
             $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig(), self::clients($client));

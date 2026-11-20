@@ -21,6 +21,7 @@ use Preflow\Core\Http\RequestContext;
 use Preflow\Core\Identity;
 use Preflow\I18n\TranslationOverrides;
 use Preflow\I18n\Translator;
+use Preflow\Testing\ChecksFrameBalance;
 use Preflow\Testing\ContextFactory;
 use Preflow\View\AssetCollector;
 use Preflow\View\JsPosition;
@@ -109,8 +110,9 @@ use Preflow\View\Seo\SeoContext;
  * (NonceGenerator::fixedForTests()), so pages that print one compare byte for byte. In the poison
  * test the outer frame's nonce is OUTER_NONCE instead (in the clean and the poisoned run), and no
  * render may print it: a render in a frame of its own that printed the nonce of the page around
- * it would break that page's policy or leak it. Only the PDF path may (PART_PATHS): a PDF's HTML
- * (PdfRenderer::html()) is part of the page that shows it and prints that page's nonce.
+ * it would break that page's policy or leak it. The PDF path (PART_PATHS) is the reverse: a PDF's
+ * HTML (PdfRenderer::html()) is part of the page that shows it, so a nonce it prints must be
+ * that page's (OUTER_NONCE), never one of its own.
  *
  * Superglobals are restored after each test.
  *
@@ -118,6 +120,8 @@ use Preflow\View\Seo\SeoContext;
  */
 abstract class RenderIsolationContract extends TestCase
 {
+    use ChecksFrameBalance;
+
     /** The internal render paths a runner may cover. */
     public const array PATHS = ['audit', 'geo', 'rebuild', 'verify', 'preview', 'mail', 'pdf'];
 
@@ -302,8 +306,13 @@ abstract class RenderIsolationContract extends TestCase
 
             $this->assertSame($clean, $this->rendered($result), "{$name}: the poisoned outer frame changed the render (status and body)");
             $this->assertNoMarker($name, $result);
+            $signature = $this->signature($result);
             if (!in_array($name, self::PART_PATHS, true)) {
-                $this->assertStringNotContainsString(self::OUTER_NONCE, $this->signature($result), "{$name}: the render printed the CSP nonce of the frame around it, not one of its own");
+                $this->assertStringNotContainsString(self::OUTER_NONCE, $signature, "{$name}: the render printed the CSP nonce of the frame around it, not one of its own");
+            } elseif (str_contains($signature, self::NONCE) || str_contains($signature, self::OUTER_NONCE)) {
+                // Part of the page around it: where it prints a nonce, it is that page's.
+                $this->assertStringContainsString(self::OUTER_NONCE, $signature, "{$name}: is part of the page around it but printed a nonce of its own, not the nonce of the page around it");
+                $this->assertStringNotContainsString(self::NONCE, $signature, "{$name}: is part of the page around it but printed a nonce of its own, not the nonce of the page around it");
             }
         });
     }

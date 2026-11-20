@@ -46,7 +46,8 @@ final class WebApplication
 
     /**
      * $request rendered as of $now: its context is frozen there (RenderContext::at()), so "now"
-     * is $now for the whole request, and the page cache neither serves nor stores it.
+     * is $now for the whole request, and the page cache neither serves nor stores it. It works with
+     * handle(); render() takes its context from its caller and ignores it.
      *
      * @since 0.81.0
      */
@@ -59,6 +60,7 @@ final class WebApplication
      * $request rendered in the context $derive makes of the one it would get
      * (Application::withDerivedContext()): another locale, working copies, a role view… Inside a
      * frame of something else (a preview, an audit) it is still never looser than that frame.
+     * It works with handle(); render() takes its context from its caller and ignores it.
      *
      * @since 0.81.0
      * @param \Closure(RenderContext): RenderContext $derive

@@ -19,8 +19,9 @@ use Psr\Http\Message\ResponseInterface;
  * `response_header(name, value)`. Hints made with `new` are a plain list of their own.
  *
  * Headers core or a hypermedia client owns are refused (RESERVED, the X-Page-Cache family, and
- * what the app adds: the headers its clients own and their nonce headers, HypermediaProtocol::
- * ownedHeaders() and nonceHeaders(), htmx's HX-* family among them): a cookie goes through the
+ * what the app adds: the headers its clients own and their nonce headers, OwnsResponseHeaders::
+ * ownedHeaders() and HypermediaProtocol::nonceHeaders(), htmx's HX-* family among them; a client
+ * without OwnsResponseHeaders gets only its nonce headers reserved): a cookie goes through the
  * CookieQueue, a redirect is a response of its own, the content's type and length come from the
  * route, the CSP carries the render's nonce, the client's headers come from its driver's calls.
  *

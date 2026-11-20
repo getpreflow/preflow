@@ -20,9 +20,12 @@ use Preflow\Folio\Tests\Support\CounterExtension;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\TarReader;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class ExtensionsCommandsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use CounterExtension;
 

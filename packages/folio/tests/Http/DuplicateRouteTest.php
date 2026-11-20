@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Tests\Rbac\RbacAppScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * "Duplicate" from a list row: POST {prefix}/{type}/{id}/duplicate (CSRF token, the type's create
@@ -19,6 +20,8 @@ use Preflow\Folio\Tests\Rbac\RbacAppScaffold;
  */
 final class DuplicateRouteTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

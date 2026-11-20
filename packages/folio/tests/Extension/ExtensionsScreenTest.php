@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Http\FolioPermissionMiddleware;
 use Preflow\Folio\Tests\Support\CounterExtension;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → Extensions ({prefix}/extensions) in a scaffolded app (no auth) with the
@@ -16,6 +17,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class ExtensionsScreenTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use CounterExtension;
 

@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The page cache on a Folio site in web mode: what staff publish is what the next anonymous
@@ -17,6 +18,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class PageCacheAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void

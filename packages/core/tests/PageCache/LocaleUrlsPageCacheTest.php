@@ -17,10 +17,13 @@ use Preflow\Core\PageCache\Refresher;
 use Preflow\Core\PageCache\StoredPage;
 use Preflow\Core\PageCache\TagIndex;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The page cache with prefix_default and redirect_bare: keys carry the prefix, redirects are never stored. */
 final class LocaleUrlsPageCacheTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

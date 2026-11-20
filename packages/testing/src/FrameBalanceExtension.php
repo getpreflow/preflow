@@ -13,8 +13,12 @@ use PHPUnit\TextUI\Configuration\Configuration;
  * Checks after every test that no render frame was left open: Contexts::depth() is back to 0
  * (every handle(), render() and Contexts::run() closed the frame it opened, also when it threw).
  * A test that leaves one open makes the run fail with a PHPUnit warning that names the test; the
- * frames are closed then (Contexts::reset()), so the next test starts clean. Tests that run in a
- * separate process are checked in their own process only where it loads the extension.
+ * frames are closed then (Contexts::reset()), so the next test starts clean.
+ *
+ * It sees in-process tests only: PHPUnit starts no extension in the child process of a test that
+ * runs in a separate process, and in the parent the depth is always 0. Test classes with
+ * #[RunInSeparateProcess] or #[RunTestsInSeparateProcesses] use the trait ChecksFrameBalance,
+ * which fails the test in its own process (the framework's Tools suite requires it).
  *
  * Opt in from phpunit.xml (the framework's own suites do):
  *

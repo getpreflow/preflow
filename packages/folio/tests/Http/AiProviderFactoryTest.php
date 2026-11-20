@@ -15,6 +15,7 @@ use Preflow\Ai\Testing\FakeAiClient;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio's Translate and Settings → AI with a provider of the app's own (config/ai.php `provider`
@@ -22,6 +23,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AiProviderFactoryTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const A = 'aaaaaaaaaaaaaaaa';

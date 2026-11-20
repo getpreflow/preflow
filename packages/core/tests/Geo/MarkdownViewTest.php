@@ -15,10 +15,13 @@ use Preflow\Core\Tests\Fixtures\Geo\GeoMdCard;
 use Preflow\Core\Tests\Fixtures\Geo\GeoMdPlain;
 use Preflow\Core\Tests\Fixtures\Geo\GeoTestRoutes;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Markdown views of public pages: /page.md, /index.md and Accept: text/markdown (config/geo.php). */
 final class MarkdownViewTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'geo-markdown-test-key-0123456789ab';

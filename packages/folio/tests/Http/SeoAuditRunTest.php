@@ -22,6 +22,7 @@ use Preflow\View\Audit\RenderedPage;
 use Preflow\View\Audit\Severity;
 use Preflow\View\Seo\PublicPages;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Running the SEO audit from Settings → SEO audit (seo.audit.run): run (a plain POST, one step,
@@ -32,6 +33,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class SeoAuditRunTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

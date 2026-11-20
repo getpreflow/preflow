@@ -14,6 +14,7 @@ use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\Tests\Fixtures\Geo\GeoMailRoutes;
 use Preflow\Notify\SentMessage;
 use Preflow\Notify\TransportFactory;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Since 0.75 the page cache's verify render (the page rendered once more as another visitor) drops
@@ -22,6 +23,8 @@ use Preflow\Notify\TransportFactory;
  */
 final class VerifyMailTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

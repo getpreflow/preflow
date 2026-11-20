@@ -33,6 +33,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The SEO audit and page cache rebuilds render through Application::render() in an internal
@@ -42,6 +43,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class InternalRendersTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

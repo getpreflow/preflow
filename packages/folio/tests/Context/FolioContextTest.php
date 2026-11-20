@@ -35,6 +35,7 @@ use Preflow\View\Seo\PublicPages;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Since 0.81 Folio builds contexts and changes no service: an admin request runs within the
@@ -49,6 +50,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class FolioContextTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

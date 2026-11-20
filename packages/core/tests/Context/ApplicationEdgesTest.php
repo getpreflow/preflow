@@ -36,6 +36,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The edges where a render context starts (Application::run(), handle() without a frame, the
@@ -45,6 +46,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class ApplicationEdgesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

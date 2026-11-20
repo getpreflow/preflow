@@ -13,10 +13,13 @@ use Preflow\Core\Application;
 use Preflow\Core\Tests\Fixtures\PipelineCounter\PipelineCounter;
 use Preflow\Htmx\ComponentToken;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Component URLs made on a /de/… page keep /de, so the action runs in German. */
 final class ComponentLocalePrefixTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'locale-prefix-test-key-0123456789ab';

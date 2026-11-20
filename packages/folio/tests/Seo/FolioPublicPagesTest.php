@@ -14,6 +14,7 @@ use Preflow\View\Geo\GeoEntries;
 use Preflow\View\Geo\GeoEntry;
 use Preflow\View\Seo\PublicPage;
 use Preflow\View\Seo\PublicPages;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio's published pages as public pages, per locale: the sitemap channel with
@@ -21,6 +22,8 @@ use Preflow\View\Seo\PublicPages;
  */
 final class FolioPublicPagesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void
