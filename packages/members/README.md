@@ -433,6 +433,21 @@ and `fr`. Without `config/i18n.php` the pages run in a single locale with no pre
   when the mail fails.
 - `last_login_at` (readonly) is set on every sign-in: login, confirmation and reset.
 
+## Viewing the site as a member role
+
+While the site is viewed as a role (view as role: a preview of a page as a member role, built
+with `RenderContext::asRole()`), no account is signed in and none is read:
+
+- `Viewer::member()` returns an in-memory member record of the member type
+  (`Members::synthetic()`): every field `null`, the role view's roles in `roles`, and a reserved id
+  `preflow:synthetic:member:{roles}` that no account has. A page that shows the member's own data
+  shows empty values. A staff role view has no member (`null`) and counts as staff.
+- `Viewer::isSynthetic()` tells code that the member is no account.
+- Saving or deleting that record is skipped by the role view's write policy (and reported), like
+  every write there; nothing reaches the store. On the account page a password change or a
+  deletion is answered like a wrong current password.
+- `Viewer::canAccess()` follows the role's grants (`members.access` for an admitted member role).
+
 ## In Folio
 
 - Members (sidebar section Members) with a waiting badge and a State column, newest first,

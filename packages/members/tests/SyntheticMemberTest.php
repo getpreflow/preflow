@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Members\Tests;
 
+use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
@@ -13,17 +14,18 @@ use Preflow\Core\Context\SystemClock;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Members\Access\MemberAccess;
+use Preflow\Members\Http\AccountController;
 use Preflow\Members\MembersConfig;
-use Preflow\Members\SyntheticMember;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Members\Viewer;
 use Preflow\Testing\ChecksFrameBalance;
-use Nyholm\Psr7\ServerRequest;
 
 /**
- * Viewing the site as a member role (view as role) shows a member without an account: Viewer::member()
- * gives a SyntheticMember whose profile fields are empty, so a page that reads the member's own data
- * shows empty values, never anybody's real data, and nothing about it can be saved.
+ * Viewing the site as a member role (view as role) shows a member without an account:
+ * Viewer::member() gives an in-memory record of the member type with every field empty and the
+ * role view's reserved id, so a page that reads the member's own data shows empty values, never
+ * anybody's real data. The role view's write policy stops saving or deleting it, and the account
+ * page changes nothing.
  */
 final class SyntheticMemberTest extends TestCase
 {
@@ -36,11 +38,25 @@ final class SyntheticMemberTest extends TestCase
         $this->removeScaffold();
     }
 
-    private function asRole(RoleView $view): RenderContext
+    private function visit(string $method = 'GET', string $path = '/members'): RenderContext
     {
-        return RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/members'), $this->container()->get(\Preflow\Core\Application::class)->site(), new SystemClock())
-            ->asVisitor()
-            ->asRole($view);
+        return RenderContext::fromRequest(new ServerRequest($method, 'https://site.test' . $path), $this->container()->get(\Preflow\Core\Application::class)->site(), new SystemClock());
+    }
+
+    private function asRole(RoleView $view, string $method = 'GET', string $path = '/members'): RenderContext
+    {
+        return $this->visit($method, $path)->asVisitor()->asRole($view);
+    }
+
+    /** @return list<array<string, mixed>> every stored member, as stored */
+    private function stored(DataManager $dm): array
+    {
+        return array_map(static fn (DynamicRecord $r): array => $r->toArray(), $dm->queryType(MembersConfig::TYPE)->get()->items());
+    }
+
+    private function ada(): void
+    {
+        $this->saveRecord(MembersConfig::TYPE, ['uuid' => 'm-1', 'email' => 'ada@site.test', 'name' => 'Ada', 'password_hash' => 'x', 'roles' => ['member'], 'language' => 'en']);
     }
 
     #[RunInSeparateProcess]
@@ -48,47 +64,61 @@ final class SyntheticMemberTest extends TestCase
     {
         $this->scaffold();
         $this->migrate();
+        $this->ada();
         $viewer = $this->container()->get(Viewer::class);
         $dm = $this->container()->get(DataManager::class);
-        $before = $dm->queryType(MembersConfig::TYPE)->get()->total();
+        $before = $this->stored($dm);
 
-        [$member, $name, $language, $staff, $access] = Contexts::run($this->asRole(new RoleView('member', ['member', 'gold'])), static fn (): array => [
-            $viewer->member(), $viewer->name(), $viewer->language('de'), $viewer->isStaff(), $viewer->canAccess(),
-        ]);
+        [$member, $name, $language, $staff, $access, $synthetic, $skipped] = Contexts::run($this->asRole(new RoleView('member', ['member', 'gold'])), static function () use ($viewer, $dm): array {
+            $member = $viewer->member();
+            $seen = [$member, $viewer->name(), $viewer->language('de'), $viewer->isStaff(), $viewer->canAccess(), $viewer->isSynthetic()];
+            // Code that changes the member writes through the data layer: the role view's write policy skips it.
+            $member?->set('email', 'someone@site.test');
+            $dm->saveType($member, false);
+            $dm->deleteType(MembersConfig::TYPE, (string) $member?->getId());
+            $dm->deleteType(MembersConfig::TYPE, 'm-1');
 
-        $this->assertInstanceOf(SyntheticMember::class, $member);
-        $this->assertSame('preflow:synthetic:member:gold,member', $member->getAuthId());
-        $this->assertSame($member->getAuthId(), $member->getId());
+            return [...$seen, Contexts::frame()->skippedWrites()];
+        });
+
+        $this->assertInstanceOf(DynamicRecord::class, $member);
+        $this->assertSame(MembersConfig::TYPE, $member->getType()->key);
+        $this->assertSame('preflow:synthetic:member:gold,member', $member->getId());
         $this->assertSame(['gold', 'member'], $member->get('roles'));
-        foreach (['name', 'email', 'language', 'password_hash', 'created_at', 'phone'] as $field) {
+        foreach (['name', 'password_hash', 'language'] as $field) {
             $this->assertNull($member->get($field), $field);
-            $this->assertNull($member->{$field}, $field . ' (as a template reads it)');
         }
-        $this->assertSame(['roles' => ['gold', 'member']], $member->toArray());
-        $this->assertSame(['', 'de', false, true], [$name, $language, $staff, $access], 'no name, the page language, no staff, admitted by its roles');
+        $this->assertSame(['', 'de', false, true, true], [$name, $language, $staff, $access, $synthetic], 'no name, the page language, no staff, admitted by its roles, viewed as a role');
+        $this->assertCount(3, $skipped, 'the save and both deletes were skipped and reported');
+        $this->assertSame($before, $this->stored($dm), 'no member was written or deleted');
+
+        // A visitor's own render is no role view.
+        $this->assertFalse(Contexts::run($this->visit(), static fn (): bool => $viewer->isSynthetic()));
+    }
+
+    /** The account page under a member role view: a password change and a deletion change nothing. */
+    #[RunInSeparateProcess]
+    public function test_the_account_page_changes_nothing_under_a_role_view(): void
+    {
+        $this->scaffold();
+        $this->migrate();
+        $this->ada();
+        $account = $this->container()->get(AccountController::class);
+        $dm = $this->container()->get(DataManager::class);
+        $before = $this->stored($dm);
 
         foreach ([
-            'set' => static fn () => $member->set('email', 'someone@site.test'),
-            'remove' => static fn () => $member->remove('email'),
-            'assign' => static function () use ($member): void {
-                $member->email = 'someone@site.test';
-            },
-        ] as $what => $change) {
-            try {
-                $change();
-                $this->fail("{$what}: a synthetic member is read-only");
-            } catch (\LogicException $e) {
-                $this->assertStringContainsString('read-only', $e->getMessage(), $what);
-            }
+            'password' => ['/members/account/password', ['current' => '', 'password' => 'a-new-password-1', 'repeat' => 'a-new-password-1']],
+            'delete' => ['/members/account/delete', ['current' => '', 'confirm' => '1']],
+        ] as $action => [$path, $body]) {
+            $status = Contexts::run($this->asRole(new RoleView('member', ['member']), 'POST', $path), static fn (): int => $account->{$action}(
+                (new ServerRequest('POST', 'https://site.test' . $path))->withParsedBody($body),
+            )->getStatusCode());
+            $this->assertSame(422, $status, $action . ': refused as a wrong current password');
         }
-        $this->assertNull($member->get('email'));
-        $this->assertNotInstanceOf(DynamicRecord::class, $member, 'no record: the data layer cannot save it');
-        try {
-            $dm->saveType($member); // @phpstan-ignore argument.type
-            $this->fail('a synthetic member cannot be saved');
-        } catch (\TypeError) {
-        }
-        $this->assertSame($before, $dm->queryType(MembersConfig::TYPE)->get()->total(), 'no member was written');
+        $this->assertSame($before, $this->stored($dm));
+        $show = Contexts::run($this->asRole(new RoleView('member', ['member']), 'GET', '/members/account'), static fn (): int => $account->show(new ServerRequest('GET', 'https://site.test/members/account'))->getStatusCode());
+        $this->assertSame(200, $show, 'the account page renders with empty fields');
     }
 
     /** A staff role view is no member; a pending member role is a member without access. */
@@ -98,11 +128,11 @@ final class SyntheticMemberTest extends TestCase
         $this->scaffold();
         $viewer = $this->container()->get(Viewer::class);
 
-        [$member, $staff, $access] = Contexts::run($this->asRole(new RoleView('staff', ['admin'])), static fn (): array => [$viewer->member(), $viewer->isStaff(), $viewer->canAccess()]);
-        $this->assertSame([null, true, false], [$member, $staff, $access], 'staff viewed as a role: no member, staff, and members.access is no staff grant');
+        [$member, $staff, $access, $synthetic] = Contexts::run($this->asRole(new RoleView('staff', ['admin'])), static fn (): array => [$viewer->member(), $viewer->isStaff(), $viewer->canAccess(), $viewer->isSynthetic()]);
+        $this->assertSame([null, true, false, true], [$member, $staff, $access, $synthetic], 'staff viewed as a role: no member, staff, and members.access is no staff grant');
 
         [$member, $access] = Contexts::run($this->asRole(new RoleView('member', ['pending'])), static fn (): array => [$viewer->member(), $viewer->canAccess()]);
-        $this->assertInstanceOf(SyntheticMember::class, $member);
+        $this->assertInstanceOf(DynamicRecord::class, $member);
         $this->assertFalse($access, 'a pending member may not use the members area');
     }
 

@@ -10,6 +10,7 @@ use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
+use Preflow\Core\Context\RoleView;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Validation\ValidationException;
@@ -82,6 +83,24 @@ final class Members
         }
 
         return false;
+    }
+
+    /**
+     * The member a role view (view as role) shows: an in-memory record of the member type with
+     * every field null, the role view's roles, and its reserved id ('preflow:synthetic:…'),
+     * which no account has. Nothing is read or stored: saving or deleting it inside the role view
+     * is skipped by its write policy, like every write there.
+     *
+     * @since 0.81.0
+     */
+    public function synthetic(RoleView $view): DynamicRecord
+    {
+        $type = $this->dm->getTypeRegistry()->get(MembersConfig::TYPE);
+        $data = array_fill_keys(array_keys($type->fields), null);
+        $data['roles'] = $view->roles;
+        $data[$type->idField] = $view->identity()->getAuthId();
+
+        return DynamicRecord::fromArray($type, $data);
     }
 
     public function find(string $id): ?DynamicRecord

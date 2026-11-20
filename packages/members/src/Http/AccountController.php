@@ -17,7 +17,6 @@ use Preflow\Members\Links;
 use Preflow\Members\Members;
 use Preflow\Members\MembersConfig;
 use Preflow\Members\MembersView;
-use Preflow\Members\SyntheticMember;
 use Preflow\Members\Viewer;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -124,10 +123,10 @@ final class AccountController
     }
 
     /**
-     * The signed-in member (a SyntheticMember while the site is viewed as a member role), or null
-     * with $gate set to where everybody else goes.
+     * The signed-in member (an in-memory one without an account while the site is viewed as a
+     * member role), or null with $gate set to where everybody else goes.
      */
-    private function member(ServerRequestInterface $request, ?ResponseInterface &$gate): DynamicRecord|SyntheticMember|null
+    private function member(ServerRequestInterface $request, ?ResponseInterface &$gate): ?DynamicRecord
     {
         $member = $this->viewer->canAccess() ? $this->viewer->member() : null;
         if ($member !== null) {
@@ -142,10 +141,10 @@ final class AccountController
         return null;
     }
 
-    /** A synthetic member (view as role) has no password: never right, and nothing is counted. */
-    private function currentIsRight(DynamicRecord|SyntheticMember $member, string $current): bool
+    /** Viewed as a role, the member has no password: never right, and nothing is counted. */
+    private function currentIsRight(DynamicRecord $member, string $current): bool
     {
-        if ($member instanceof SyntheticMember) {
+        if ($this->viewer->isSynthetic()) {
             return false;
         }
         [, $window] = $this->config->throttle('login');
@@ -172,7 +171,7 @@ final class AccountController
         return 'member:' . $id;
     }
 
-    private function page(ServerRequestInterface $request, DynamicRecord|SyntheticMember $member, string $notice = '', string $error = '', int $status = 200): ResponseInterface
+    private function page(ServerRequestInterface $request, DynamicRecord $member, string $notice = '', string $error = '', int $status = 200): ResponseInterface
     {
         return $this->view->render('account', [
             'email' => (string) $member->get('email'),
