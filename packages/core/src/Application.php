@@ -644,8 +644,8 @@ final class Application
 
     /**
      * A request asked for inside a frame that is not its own: a nested frame from the request
-     * (nestedContext()). Unless it is internal, it is part of the page the frame around it renders
-     * for the page cache (DependencyRecorder::nestIn(), PageCache::nestIn()), and a stretch it
+     * (nestedContext()). It is part of the page the frame around it renders for the page cache
+     * (DependencyRecorder::nestIn(), PageCache::nestIn()), whatever its purpose, and a stretch it
      * renders as another context than the public default refuses that page. Notify's deferred
      * mail is flushed (not under run(), which sends it after its response), as handle() did
      * before 0.81; what else it queued and its after-response work go to the frame around it
@@ -657,10 +657,13 @@ final class Application
         $outer = Contexts::frame();
 
         return Contexts::run($ctx, function () use ($request, $ctx, $outer): ResponseInterface {
-            if (!$ctx->purpose->isInternal() && $this->container->has(\Preflow\Core\PageCache\PageCache::class)) {
+            if ($this->container->has(\Preflow\Core\PageCache\PageCache::class)) {
                 // Part of the page around it, as before 0.81: what it reads, the expiries it asks for
                 // and what it refuses count for that page (the page cache middleware, if it stores
-                // the request itself, begins and records its own as well).
+                // the request itself, begins and records its own as well). Whatever the purpose: a
+                // rebuild and verify's second render need it like a visit; an audit, GEO or a
+                // preview render begins no page and records nothing, so there it changes nothing,
+                // and the request keeps their purpose (nestedContext()), so it is never stored.
                 $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)->nestIn($outer);
                 $this->container->get(\Preflow\Core\PageCache\PageCache::class)->nestIn($outer);
             }

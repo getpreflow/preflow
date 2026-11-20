@@ -24,6 +24,7 @@ use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageCacheMiddleware;
 use Preflow\Core\PageCache\PageKey;
 use Preflow\Core\PageCache\PageStore;
+use Preflow\Core\PageCache\Rebuild;
 use Preflow\Core\PageCache\Refresher;
 use Preflow\Core\PageCache\TagIndex;
 use Preflow\Core\Tests\PageCache\Fixtures\PurposeRoutes;
@@ -35,7 +36,9 @@ use Psr\Http\Message\ResponseInterface;
  * live parts leave placeholders the page fills per visitor. A render that reads as another
  * context than the public default for a stretch (Contexts::within()), in its own frame or in a
  * request inside it, is never stored. A stored page is served to an internal render only under
- * the public default context.
+ * the public default context. The same holds inside a rebuild and inside verify's second render,
+ * whose sub-requests keep their purpose and are never stored themselves; an audit, GEO or a
+ * preview begins no page, so their sub-requests record and store nothing.
  */
 final class NestedRenderCacheTest extends TestCase
 {
@@ -201,16 +204,140 @@ final class NestedRenderCacheTest extends TestCase
         $this->assertSame(0, $this->index()->count());
     }
 
+    #[RunInSeparateProcess]
+    public function test_a_rebuild_keeps_what_its_sub_request_reads(): void
+    {
+        $app = $this->site();
+        PurposeRoutes::$routes['/inner'] = static function (mixed $r, Container $c): ResponseInterface {
+            $c->get(DependencyRecorder::class)->record('menu');
+
+            return new Response(200, ['Content-Type' => 'text/html'], 'inner');
+        };
+        PurposeRoutes::$routes['/outer'] = static fn (): ResponseInterface => new Response(
+            200,
+            ['Content-Type' => 'text/html'],
+            '<p>' . (string) $app->handle(self::bypassed('/inner'))->getBody() . '</p>',
+        );
+
+        $rebuilt = $this->rebuild($app, '/outer');
+
+        $this->assertSame('miss', $rebuilt->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('', $rebuilt->getHeaderLine('X-Page-Cache-Skip'));
+        $this->assertNotNull($this->store()->get($this->key('/outer')), 'the rebuilt page');
+        $this->assertArrayHasKey($this->key('/outer')->id(), $this->index()->pagesFor(['menu']), 'tagged with what its sub-request read');
+        $this->assertSame(1, $this->index()->count(), 'the sub-request (purpose Rebuild, not the rebuild\'s own request) is not stored itself');
+
+        // A later write to it still forgets the rebuilt page.
+        (new Refresher($this->store(), $this->config()))->invalidate(DataTags::changes('menu'));
+        $this->assertNull($this->store()->get($this->key('/outer')));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_a_rebuild_stores_the_placeholder_of_a_live_part_in_its_sub_request(): void
+    {
+        $app = $this->site();
+        $live = $app->container()->get(LiveParts::class);
+        $live->register('probe', static fn (array $recipe): string => '<b>live ' . $recipe['n'] . '</b>');
+        PurposeRoutes::$routes['/part'] = static fn (): ResponseInterface => new Response(
+            200,
+            ['Content-Type' => 'text/html'],
+            $live->placeholder('probe', ['n' => 1]) ?? 'rendered in place',
+        );
+        PurposeRoutes::$routes['/outer'] = static fn (): ResponseInterface => new Response(
+            200,
+            ['Content-Type' => 'text/html'],
+            '<p>' . (string) $app->handle(self::bypassed('/part'))->getBody() . '</p>',
+        );
+
+        $this->assertSame('', $this->rebuild($app, '/outer')->getHeaderLine('X-Page-Cache-Skip'));
+
+        $stored = (string) $this->store()->get($this->key('/outer'))?->body;
+        $this->assertStringNotContainsString('rendered in place', $stored);
+        $this->assertStringNotContainsString('<b>live 1</b>', $stored);
+        $this->assertTrue($live->in($stored), 'the stored page holds the placeholder');
+        $this->assertSame('<p><b>live 1</b></p>', (string) $app->handle(new ServerRequest('GET', 'https://example.com/outer'))->getBody(), 'filled on the hit');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_verify_stores_a_page_with_a_live_part_in_a_bypassed_sub_request(): void
+    {
+        $app = $this->site('always');
+        $live = $app->container()->get(LiveParts::class);
+        $live->register('probe', static fn (array $recipe): string => '<b>live ' . $recipe['n'] . '</b>');
+        $seen = [];
+        PurposeRoutes::$routes['/part'] = static function () use ($live, &$seen): ResponseInterface {
+            $seen[] = Contexts::current()->purpose->value;
+
+            return new Response(200, ['Content-Type' => 'text/html'], $live->placeholder('probe', ['n' => 1]) ?? 'rendered in place');
+        };
+        PurposeRoutes::$routes['/outer'] = static fn (): ResponseInterface => new Response(
+            200,
+            ['Content-Type' => 'text/html'],
+            '<p>' . (string) $app->handle(self::bypassed('/part'))->getBody() . '</p>',
+        );
+
+        $response = $app->handle(new ServerRequest('GET', 'https://example.com/outer'));
+
+        $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('', $response->getHeaderLine('X-Page-Cache-Skip'), 'both renders leave the placeholder: stored. ' . (string) @file_get_contents($this->dir . '/php.log'));
+        $this->assertSame(['visit', 'verify'], $seen, 'the sub-request of verify\'s render keeps the purpose Verify');
+        $this->assertSame('<p><b>live 1</b></p>', (string) $response->getBody());
+        $this->assertTrue($live->in((string) $this->store()->get($this->key('/outer'))?->body));
+        $this->assertSame(1, $this->index()->count());
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_audit_or_geo_render_with_a_sub_request_records_and_stores_nothing(): void
+    {
+        $app = $this->site();
+        $recorder = $app->container()->get(DependencyRecorder::class);
+        $cache = $app->container()->get(PageCache::class);
+        $seen = [];
+        PurposeRoutes::$routes['/inner'] = static function () use ($recorder, $cache, &$seen): ResponseInterface {
+            $recorder->record('menu');
+            $seen[] = [Contexts::current()->purpose->value, $recorder->recording(), $cache->storing()];
+
+            return new Response(200, ['Content-Type' => 'text/html'], 'inner');
+        };
+        PurposeRoutes::$routes['/outer'] = static function () use ($app, $recorder, $cache, &$seen): ResponseInterface {
+            $inner = $app->handle(new ServerRequest('GET', 'https://example.com/inner'));
+            $seen[] = ['outer', $recorder->recording(), $cache->storing()];
+
+            return new Response(200, ['Content-Type' => 'text/html'], '<p>' . $inner->getHeaderLine('X-Page-Cache') . '</p>');
+        };
+
+        foreach ([Purpose::Audit, Purpose::Geo, Purpose::Preview] as $purpose) {
+            $ctx = RenderContext::internal($purpose, $app->site(), new SystemClock(), '/outer');
+            $response = $app->render($ctx, new ServerRequest('GET', 'https://example.com/outer'))->response;
+            $this->assertSame('<p></p>', (string) $response->getBody(), $purpose->value . ': the sub-request passes the cache by');
+        }
+
+        $this->assertSame([
+            ['audit', false, false], ['outer', false, false],
+            ['geo', false, false], ['outer', false, false],
+            ['preview', false, false], ['outer', false, false],
+        ], $seen, 'no page begun and no recording open, in the render or its sub-request');
+        $this->assertSame(0, $this->index()->count());
+        $this->assertSame([], $this->index()->pagesFor(['menu']));
+    }
+
+    private function rebuild(Application $app, string $path): ResponseInterface
+    {
+        $ctx = RenderContext::internal(Purpose::Rebuild, $app->site(), new SystemClock(), $path);
+
+        return $app->render($ctx, Rebuild::request('https://example.com' . $path))->response;
+    }
+
     /** A sub-request the page cache passes by (a host it does not cache), as a POST or an admin path would. */
     private static function bypassed(string $path): ServerRequest
     {
         return new ServerRequest('GET', 'https://example.com' . $path, ['X-Forwarded-Host' => 'elsewhere.test']);
     }
 
-    private function site(): Application
+    private function site(string $verify = 'off'): Application
     {
         file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 't', 'debug' => 0, 'engine' => 'twig', 'key' => 'page-cache-nested-key-0123456789ab', 'url' => 'https://example.com', 'locale' => 'en'];\n");
-        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'off'];\n");
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => '{$verify}'];\n");
         file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [" . var_export(PurposeRoutes::class, true) . "];\n");
         $app = Application::create($this->dir);
         $app->setRunningInConsole(false);
