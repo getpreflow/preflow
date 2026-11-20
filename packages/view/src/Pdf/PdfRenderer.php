@@ -14,11 +14,16 @@ use Preflow\View\TemplateEngineInterface;
  * wrappers: the template's output, <style> blocks included, is the page.
  *
  * Each render (since 0.81.0) runs in a render frame of its own under the
- * caller's context (its viewer, locale and read mode) with purpose Pdf and
- * discarding: what the templates collect (assets, page meta) or queue (mail,
- * cookies, after-response work) stays out of the caller's response, and two
- * renders, nested or one after the other, share nothing. It needs a current
- * render (a request, a command, Contexts::run()).
+ * caller's context (its viewer, locale and read mode) with purpose Pdf (or
+ * the caller's internal purpose, inside the SEO audit say) and discarding:
+ * CSS and page meta the templates collect stay out of the caller's page, and
+ * mail, cookies and after-response work they queue are dropped (never sent),
+ * while data the document writes (in resolveState()) is written: send mail
+ * from the code that calls the renderer. The frame is part of the caller's
+ * output (Contexts::part()): the page it is printed into records its reads and
+ * refusals for the page cache and shares its CSP nonce. Two renders, nested or
+ * one after the other, share nothing else. It needs a current render (a
+ * request, a command, Contexts::run()).
  */
 final class PdfRenderer
 {
@@ -70,13 +75,18 @@ final class PdfRenderer
     }
 
     /**
-     * $render in a frame of its own: the caller's context, as a PDF, discarding what it queues.
+     * $render in a frame of its own that is part of the caller's output (Contexts::part(): the page
+     * a preview is printed into records its reads and refusals and prints its nonce): the caller's
+     * context, as a PDF (inside an internal render, such as the SEO audit, with that render's
+     * purpose), discarding what it queues.
      *
      * @param \Closure(): string $render
      */
     private static function own(\Closure $render): string
     {
-        return Contexts::run(Contexts::current()->because(Purpose::Pdf)->discarding(), $render);
+        $ctx = Contexts::current();
+
+        return Contexts::part(($ctx->purpose->isInternal() ? $ctx : $ctx->because(Purpose::Pdf))->discarding(), $render);
     }
 
     private function previewHtml(PdfDocument $doc): string

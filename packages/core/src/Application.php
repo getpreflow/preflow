@@ -32,6 +32,14 @@ use Preflow\Core\Routing\RouterInterface;
 
 final class Application
 {
+    /**
+     * The name of the onEnter() hook that makes a frame opened with Contexts::part() part of its
+     * caller's page (page cache recording and refusals, CSP nonce).
+     *
+     * @since 0.81.0
+     */
+    public const string PART_HOOK = 'preflow.part_of_caller';
+
     private readonly Container $container;
     private readonly Config $config;
     private readonly MiddlewarePipeline $pipeline;
@@ -368,6 +376,9 @@ final class Application
         // Internal renders (audit, GEO, rebuilds, verify, previews) see an anonymous visitor's
         // superglobals, for site code that still reads them; once per process, by name.
         Contexts::onEnter(\Preflow\Core\PageCache\AnonymousGlobals::adapter(), \Preflow\Core\PageCache\AnonymousGlobals::HOOK);
+        // A frame whose output goes into its caller's (Contexts::part(): a PDF preview in a page,
+        // a request the page asks for in-process) is part of that page; once per process, by name.
+        Contexts::onEnter($this->joinCallersPage(...), self::PART_HOOK);
         if (!$this->container->bound(\Psr\Clock\ClockInterface::class)) {
             $this->container->instance(\Psr\Clock\ClockInterface::class, new \Preflow\Core\Context\SystemClock());
         }
@@ -701,7 +712,7 @@ final class Application
     /**
      * A request asked for inside a frame that is not its own: a nested frame from the request
      * (nestedContext()). It is part of the page the frame around it renders for the page cache
-     * (DependencyRecorder::nestIn(), PageCache::nestIn()), whatever its purpose, and a stretch it
+     * (Contexts::part(), joinCallersPage()), whatever its purpose, and a stretch it
      * renders as another context than the public default refuses that page. What it queued and
      * its after-response work go to the frame around it when it closes, notify's mail included:
      * it goes out when that frame sends (a request after its response; a command when it ends,
@@ -715,25 +726,9 @@ final class Application
     {
         $ctx = $this->nestedContext($request, Contexts::current());
         $outer = Contexts::frame();
-        // What it renders goes into the page around it, so it uses that page's CSP nonce; a
-        // fragment request answers a page of its own (its own nonce, or the one it sent back).
-        $sharesNonce = RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $ctx->clock)->purpose !== Purpose::Fragment
-            && class_exists(\Preflow\View\NonceGenerator::class) && $this->container->bound(\Preflow\View\NonceGenerator::class);
 
-        return Contexts::run($ctx, function () use ($request, $ctx, $outer, $sharesNonce): ResponseInterface {
-            if ($sharesNonce) {
-                $this->container->get(\Preflow\View\NonceGenerator::class)->share($outer);
-            }
-            if ($this->container->has(\Preflow\Core\PageCache\PageCache::class)) {
-                // Part of the page around it, as before 0.81: what it reads, the expiries it asks for
-                // and what it refuses count for that page (the page cache middleware, if it stores
-                // the request itself, begins and records its own as well). Whatever the purpose: a
-                // rebuild and verify's second render need it like a visit; an audit, GEO or a
-                // preview render begins no page and records nothing, so there it changes nothing,
-                // and the request keeps their purpose (nestedContext()), so it is never stored.
-                $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)->nestIn($outer);
-                $this->container->get(\Preflow\Core\PageCache\PageCache::class)->nestIn($outer);
-            }
+        // Part of the page around it (joinCallersPage()): its reads, expiries, refusals and nonce.
+        return Contexts::part($ctx, function () use ($request, $outer): ResponseInterface {
             try {
                 $response = $this->handleInFrame($request);
             } catch (\Throwable $e) {
@@ -754,6 +749,46 @@ final class Application
 
             return $response;
         });
+    }
+
+    /**
+     * The onEnter() hook for a frame that is part of its caller's output (Contexts::part(): a PDF
+     * preview printed into a page, a request the page asks for in-process): what it reads, the
+     * expiries it asks for and what it refuses count for the page around it, as before 0.81 (the
+     * page cache middleware, if it stores the nested request itself, begins and records its own as
+     * well), and it prints that page's CSP nonce. Whatever the purpose: a rebuild and verify's
+     * second render need it like a visit; an audit, GEO or a preview render begins no page and
+     * records nothing, so there it changes nothing. A request of its own that is a fragment answers
+     * a page of its own, so it keeps its own nonce (or the one it sent back).
+     *
+     * @return null nothing to undo: the joined collectors are the frame's own slots
+     */
+    private function joinCallersPage(RenderContext $ctx, RenderFrame $frame): ?\Closure
+    {
+        $outer = $frame->partOf();
+        if ($outer === null) {
+            return null;
+        }
+        if (class_exists(\Preflow\View\NonceGenerator::class) && $this->container->bound(\Preflow\View\NonceGenerator::class) && !$this->answersOwnPage($ctx, $outer)) {
+            $this->container->get(\Preflow\View\NonceGenerator::class)->share($outer);
+        }
+        if ($this->container->has(\Preflow\Core\PageCache\PageCache::class)) {
+            $this->container->get(\Preflow\Core\PageCache\DependencyRecorder::class)->nestIn($outer);
+            $this->container->get(\Preflow\Core\PageCache\PageCache::class)->nestIn($outer);
+        }
+
+        return null;
+    }
+
+    /** $ctx renders a request of its own (not $outer's) that is a fragment request. */
+    private function answersOwnPage(RenderContext $ctx, RenderFrame $outer): bool
+    {
+        $request = $ctx->request?->request;
+        if ($request === null || $request === $outer->context->request?->request) {
+            return false;
+        }
+
+        return RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $ctx->clock)->purpose === Purpose::Fragment;
     }
 
     /**

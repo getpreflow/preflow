@@ -251,10 +251,17 @@ final readonly class RenderContext implements \JsonSerializable
         return $this->copy(purpose: $p);
     }
 
-    /** A mail to someone reading in $locale: an anonymous visitor, public texts, published reads, no request. */
+    /**
+     * A mail to someone reading in $locale: an anonymous visitor, public texts, published reads, no
+     * request. Its purpose is Mail, except inside an internal render (Purpose::isInternal(), since
+     * 0.81.0), whose purpose it keeps: a mail composed during the SEO audit or a preview leaves no
+     * trace where that render leaves none.
+     */
     public function forRecipient(string $locale): self
     {
-        return $this->asVisitor()->public()->in($locale)->published()->because(Purpose::Mail)->copy(request: null);
+        $mail = $this->asVisitor()->public()->in($locale)->published()->copy(request: null);
+
+        return $this->purpose->isInternal() ? $mail : $mail->because(Purpose::Mail);
     }
 
     /** $facet added, replacing one of the same class. */

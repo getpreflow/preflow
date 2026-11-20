@@ -37,6 +37,8 @@ final class RenderFrame
 
     private readonly ?RenderFrame $parent;
 
+    private readonly bool $part;
+
     /** @var array<string, object> */
     private array $slots = [];
 
@@ -47,9 +49,16 @@ final class RenderFrame
 
     private int $departures = 0;
 
-    /** @internal Contexts::run() opens frames; $parent's channels are known to this one */
-    public function __construct(RenderContext $context, ?RenderFrame $parent = null)
+    /**
+     * @internal Contexts::run() and part() open frames; $parent's channels are known to this one
+     * @param bool $part since 0.81.0: the frame's output is part of $parent's (Contexts::part())
+     */
+    public function __construct(RenderContext $context, ?RenderFrame $parent = null, bool $part = false)
     {
+        if ($part && $parent === null) {
+            throw new \LogicException('A render frame that is part of its caller\'s output needs the caller\'s frame.');
+        }
+        $this->part = $part;
         $this->context = $context;
         $this->openedOutbox = $context->outbox;
         $this->openedWrites = $context->writes;
@@ -63,6 +72,19 @@ final class RenderFrame
                 && $this->context->outbox === OutboxPolicy::Deliver,
             $this->outboxPolicy(...),
         );
+    }
+
+    /**
+     * The frame whose output this frame's output becomes part of (Contexts::part(): a PDF preview
+     * printed into a page, a request a page asks for in-process); null for a frame of its own
+     * (Contexts::run()). Collectors that belong to the page as a whole (the page cache's
+     * recording and refusals, the CSP nonce) join that frame's from an onEnter() hook.
+     *
+     * @since 0.81.0
+     */
+    public function partOf(): ?RenderFrame
+    {
+        return $this->part ? $this->parent : null;
     }
 
     public function outbox(): FrameOutbox

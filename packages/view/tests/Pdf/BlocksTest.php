@@ -11,6 +11,7 @@ use Preflow\Blade\BladeEngine;
 use Preflow\Twig\TwigEngine;
 use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
+use Preflow\View\Pdf\Blocks;
 use Preflow\View\Pdf\MpdfEngine;
 use Preflow\View\Pdf\PageSettings;
 use Preflow\View\Pdf\PdfConfig;
@@ -335,6 +336,35 @@ final class BlocksTest extends TestCase
         preg_match('/data:image\/jpeg;base64,([^"]+)/', $html, $m);
         $this->assertSame([1200, 800], array_slice((array) getimagesizefromstring((string) base64_decode($m[1])), 0, 2));
         $this->assertFalse(is_dir($this->dir . '/pdf'), 'the preview writes no temp files');
+    }
+
+    /**
+     * A PDF render that throws inside a frame shared with other work takes its mark with it: the
+     * next template rendered in the same frame writes browser blocks again, and the next PDF in
+     * it writes mPDF markup.
+     */
+    public function test_a_failing_pdf_render_leaves_no_mark_in_its_frame(): void
+    {
+        file_put_contents($this->dir . '/break.twig', '{{ pdf_page_break() }}');
+        $templates = $this->templates('twig');
+
+        $seen = InFrame::run(function () use ($templates): array {
+            try {
+                Blocks::forPdf($this->config(), static function () use ($templates): never {
+                    $templates->render('break.twig', []);
+                    throw new \RuntimeException('the engine failed');
+                });
+            } catch (\RuntimeException) {
+            }
+
+            return [
+                $templates->render('break.twig', []),
+                Blocks::forPdf($this->config(), static fn (): string => $templates->render('break.twig', [])),
+            ];
+        });
+
+        $this->assertStringContainsString('pdf-page-break', $seen[0], 'after the failed PDF the frame renders browser blocks');
+        $this->assertSame('<pagebreak />', $seen[1], 'the next PDF in the frame writes mPDF markup');
     }
 
     private function config(): PdfConfig

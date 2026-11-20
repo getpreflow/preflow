@@ -8,6 +8,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Blade\BladeEngine;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\NoRenderContext;
 use Preflow\Twig\TwigEngine;
 use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
@@ -304,6 +306,32 @@ final class PdfRendererTest extends TestCase
         $disposition = $download->getHeaderLine('Content-Disposition');
         $this->assertStringStartsWith('attachment; filename="Zertifikat ___.pdf"', $disposition);
         $this->assertStringContainsString("filename*=UTF-8''Zertifikat%20%22%C3%84%22.pdf", $disposition);
+    }
+
+    /** PdfRenderer renders from the current render (since 0.81.0): outside every render it refuses, with no fallback. */
+    public function test_outside_every_render_it_throws_no_render_context(): void
+    {
+        Contexts::reset();
+        file_put_contents($this->dir . '/plain.twig', '<p>x</p>');
+        $doc = new class ($this->dir . '/plain.twig') extends PdfDocument {
+            public function __construct(private readonly string $file) {}
+
+            public function template(): string
+            {
+                return $this->file;
+            }
+        };
+        $config = new PdfConfig($this->dir . '/pdf');
+        $renderer = new PdfRenderer($this->templates('twig'), new MpdfEngine($config), $config);
+
+        foreach (['html' => static fn () => $renderer->html($doc), 'render' => static fn () => $renderer->render($doc)] as $method => $call) {
+            try {
+                $call();
+                $this->fail("{$method}() rendered outside every render");
+            } catch (NoRenderContext) {
+                $this->assertSame(0, Contexts::depth(), $method);
+            }
+        }
     }
 
     private function renderer(string $extension, ?string $tempDir = null): InFrame

@@ -14,15 +14,22 @@ use Preflow\Core\Container\Container;
 use Preflow\Core\Container\ServiceProvider;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\OutboxPolicy;
+use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Core\Context\Viewer;
 use Preflow\Core\Http\CookieQueue;
+use Preflow\Core\Http\InternalRender;
+use Preflow\Core\PageCache\DependencyRecorder;
+use Preflow\Core\PageCache\PageCache;
+use Preflow\Core\PageCache\PageCacheConfig;
+use Preflow\Core\PageCache\PageKey;
 use Preflow\I18n\Translator;
 use Preflow\Notify\Mail\MailContent;
-use Preflow\Notify\Mail\MailLayout;
 use Preflow\Notify\Mail\Mailer;
+use Preflow\Notify\Mail\MailLayout;
 use Preflow\View\AssetCollector;
+use Preflow\View\NonceGenerator;
 use Preflow\View\Pdf\Blocks;
 use Preflow\View\Pdf\PageSettings;
 use Preflow\View\Pdf\PdfDocument;
@@ -203,6 +210,148 @@ final class MailAndPdfContextTest extends TestCase
         $this->assertStringContainsString('pdf-page-break', $seen['in a page frame']);
     }
 
+    /** A PDF preview printed into a page is part of it: what the document reads is recorded for the page. */
+    #[RunInSeparateProcess]
+    public function test_a_pdf_preview_in_a_page_records_its_reads_for_the_page(): void
+    {
+        file_put_contents($this->dir . '/cert.twig', '<p>certificate</p>');
+        $app = $this->app();
+        $renderer = $app->container()->get(PdfRenderer::class);
+        $recorder = $app->container()->get(DependencyRecorder::class);
+        $doc = new RecordingDocument($this->dir . '/cert.twig', new \ArrayObject(), 'cert', static fn () => $recorder->record('cert:42'));
+
+        $tags = Contexts::run($this->visit($app), static function () use ($renderer, $recorder, $doc): array {
+            $recording = $recorder->start();
+            $recorder->record('page:1');
+            $renderer->html($doc);
+
+            return array_keys($recorder->stop($recording));
+        });
+
+        $this->assertContains('page:1', $tags);
+        $this->assertContains('cert:42', $tags, 'the PDF\'s read is part of the page');
+    }
+
+    /** A mail composed while a page renders is not part of the page: what its layout reads is not recorded for it. */
+    #[RunInSeparateProcess]
+    public function test_a_mail_composed_in_a_page_records_nothing_for_the_page(): void
+    {
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(HtmlPdfEngineProvider::class, true) . ', ' . var_export(ReadingLayoutProvider::class, true) . "];\n");
+        $app = $this->app();
+        $mailer = $app->container()->get(Mailer::class);
+        $recorder = $app->container()->get(DependencyRecorder::class);
+
+        [$html, $tags] = Contexts::run($this->visit($app), static function () use ($mailer, $recorder): array {
+            $recording = $recorder->start();
+            $recorder->record('page:1');
+            $html = (string) $mailer->compose(new MailContent('Hi', 'Text', 'en'), 'reader@site.test')->html;
+
+            return [$html, array_keys($recorder->stop($recording))];
+        });
+
+        $this->assertSame('<p>read</p>', $html, 'the layout ran');
+        $this->assertContains('page:1', $tags);
+        $this->assertNotContains('mail:7', $tags, 'the mail\'s read is not the page\'s');
+    }
+
+    /** A PDF preview printed into a page uses the page's CSP nonce, so the page's policy allows its styles. */
+    #[RunInSeparateProcess]
+    public function test_a_pdf_preview_in_a_page_uses_the_pages_nonce(): void
+    {
+        file_put_contents($this->dir . '/styled.twig', '{% apply css %}.cert { color: red; }{% endapply %}<head>{{ head() }}</head><p>certificate</p>');
+        $app = $this->app();
+        $renderer = $app->container()->get(PdfRenderer::class);
+        $nonces = $app->container()->get(NonceGenerator::class);
+        $doc = new RecordingDocument($this->dir . '/styled.twig', new \ArrayObject(), 'styled');
+
+        [$page, $html] = Contexts::run($this->visit($app), static fn (): array => [$nonces->get(), $renderer->html($doc)]);
+
+        $this->assertStringContainsString('.cert', $html);
+        $this->assertStringContainsString('nonce="' . $page . '"', $html, 'the preview\'s style carries the page\'s nonce');
+    }
+
+    /** What the document refuses inside the PDF (a CSRF field, a live part) keeps the page from being stored. */
+    #[RunInSeparateProcess]
+    public function test_a_refusal_inside_a_pdf_reaches_the_page(): void
+    {
+        file_put_contents($this->dir . '/config/page_cache.php', "<?php\nreturn ['enabled' => true];\n");
+        file_put_contents($this->dir . '/cert.twig', '<p>certificate</p>');
+        $app = $this->app();
+        $renderer = $app->container()->get(PdfRenderer::class);
+        $cache = $app->container()->get(PageCache::class);
+        $key = PageKey::fromRequest(new ServerRequest('GET', 'https://site.test/'), $app->container()->get(PageCacheConfig::class));
+        $this->assertNotNull($key);
+        $doc = new RecordingDocument($this->dir . '/cert.twig', new \ArrayObject(), 'cert', static fn () => $cache->refuse('pdf-part'));
+
+        $refusal = Contexts::run($this->visit($app), static function () use ($renderer, $cache, $key, $doc): ?string {
+            $before = $cache->begin($key);
+            try {
+                $renderer->html($doc);
+
+                return $cache->refusal();
+            } finally {
+                $cache->end($before);
+            }
+        });
+
+        $this->assertSame('pdf-part', $refusal);
+    }
+
+    /**
+     * A request a page asks for in-process joins the page through the same seam (Contexts::part()):
+     * its reads are the page's and it prints the page's nonce; a fragment request answers a page
+     * of its own, with a nonce of its own, and its reads still count for the page.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_nested_request_still_joins_the_page(): void
+    {
+        file_put_contents($this->dir . '/config/middleware.php', "<?php\nreturn [" . var_export(PartRoute::class, true) . "];\n");
+        $app = $this->app();
+        $recorder = $app->container()->get(DependencyRecorder::class);
+        $nonces = $app->container()->get(NonceGenerator::class);
+
+        [$page, $plain, $fragment, $tags] = Contexts::run($this->visit($app), static function () use ($app, $recorder, $nonces): array {
+            $recording = $recorder->start();
+            $page = $nonces->get();
+            $plain = (string) $app->handle(new ServerRequest('GET', 'https://site.test/part'))->getBody();
+            $fragment = (string) $app->handle(new ServerRequest('GET', 'https://site.test/part', ['HX-Request' => 'true']))->getBody();
+
+            return [$page, $plain, $fragment, array_keys($recorder->stop($recording))];
+        });
+
+        $this->assertSame($page, $plain, 'a nested request prints the page\'s nonce');
+        $this->assertNotSame($page, $fragment, 'a nested fragment request answers with a nonce of its own');
+        $this->assertContains('part:3', $tags, 'what a nested request reads counts for the page');
+    }
+
+    /** Inside an internal render (the SEO audit) a PDF and a mail keep its purpose: they leave no trace either. */
+    #[RunInSeparateProcess]
+    public function test_a_pdf_and_a_mail_inside_an_internal_render_keep_its_purpose(): void
+    {
+        file_put_contents($this->dir . '/cert.twig', '<p>certificate</p>');
+        file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [" . var_export(HtmlPdfEngineProvider::class, true) . ', ' . var_export(PurposeLayoutProvider::class, true) . "];\n");
+        $app = $this->app();
+        $renderer = $app->container()->get(PdfRenderer::class);
+        $mailer = $app->container()->get(Mailer::class);
+        $seen = new \ArrayObject();
+        $request = new ServerRequest('GET', 'https://site.test/');
+        $doc = new RecordingDocument($this->dir . '/cert.twig', $seen, 'cert', static function () use ($seen, $request): void {
+            $seen['internal'] = InternalRender::is($request);
+        });
+        $audit = RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/');
+
+        $mail = Contexts::run($audit, static function () use ($renderer, $mailer, $doc): string {
+            $renderer->html($doc);
+            $renderer->render($doc);
+
+            return (string) $mailer->compose(new MailContent('Hi', 'Text', 'en'), 'reader@site.test')->html;
+        });
+
+        $this->assertSame('Audit', $seen['cert']['purpose']);
+        $this->assertTrue($seen['internal'], 'InternalRender::is() inside the PDF');
+        $this->assertSame('Audit|internal', $mail, 'the mail keeps the audit\'s purpose');
+    }
+
     /** "{locale}|{t('mail.hello')}|{in or out}" of the current render, as the app's services see it. */
     private function line(): string
     {
@@ -211,6 +360,11 @@ final class MailAndPdfContextTest extends TestCase
         $auth = $this->app->container()->get(AuthManager::class);
 
         return $ctx->locale . '|' . $translator->get('mail.hello') . '|' . ($auth->user() !== null ? 'in' : 'out');
+    }
+
+    private function visit(Application $app): RenderContext
+    {
+        return RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/'), $app->site(), new SystemClock());
     }
 
     /** A signed-in admin on a German admin screen. */
@@ -314,5 +468,53 @@ final class QueueingLayoutProvider extends ServiceProvider
                 return '<p>queued</p>';
             }
         });
+    }
+}
+
+/** Binds a mail layout that reads a tagged record while it renders. */
+final class ReadingLayoutProvider extends ServiceProvider
+{
+    public function register(Container $container): void
+    {
+        $container->singleton(MailLayout::class, static fn (Container $c): MailLayout => new class ($c) implements MailLayout {
+            public function __construct(private readonly Container $c) {}
+
+            public function html(MailContent $content, string $accent, ?string $template = null): string
+            {
+                $this->c->get(DependencyRecorder::class)->record('mail:7');
+
+                return '<p>read</p>';
+            }
+        });
+    }
+}
+
+/** Binds a mail layout that prints the purpose it renders under and whether it is internal. */
+final class PurposeLayoutProvider extends ServiceProvider
+{
+    public function register(Container $container): void
+    {
+        $container->singleton(MailLayout::class, static fn (): MailLayout => new class implements MailLayout {
+            public function html(MailContent $content, string $accent, ?string $template = null): string
+            {
+                return Contexts::current()->purpose->name . '|' . (InternalRender::is(new \Nyholm\Psr7\ServerRequest('GET', '/')) ? 'internal' : 'visitor');
+            }
+        });
+    }
+}
+
+/** Answers /part with the nonce it renders with, after reading a tagged record. */
+final class PartRoute implements \Psr\Http\Server\MiddlewareInterface
+{
+    public function __construct(private readonly Container $container) {}
+
+    public function process(\Psr\Http\Message\ServerRequestInterface $request, \Psr\Http\Server\RequestHandlerInterface $handler): \Psr\Http\Message\ResponseInterface
+    {
+        if ($request->getUri()->getPath() !== '/part') {
+            return $handler->handle($request);
+        }
+        $this->container->get(DependencyRecorder::class)->record('part:3');
+
+        return new \Nyholm\Psr7\Response(200, [], $this->container->get(NonceGenerator::class)->get());
     }
 }

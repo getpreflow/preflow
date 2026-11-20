@@ -6,7 +6,8 @@ namespace Preflow\Core\Context;
 
 /**
  * The one holder of the current render context. Three tools change it, and only these:
- * - run(): a new render in a new frame (frames nest; the outer one is back afterwards);
+ * - run(): a new render in a new frame (frames nest; the outer one is back afterwards), or
+ *   part() for one whose output goes into the current frame's (RenderFrame::partOf());
  * - narrow(): the rest of the current frame (middleware that resolved the user or the locale);
  * - within(): a stretch of the current frame (a template preview in the visitor's texts), with
  *   the previous context back afterwards, also when the stretch throws.
@@ -78,6 +79,42 @@ final class Contexts
      */
     public static function run(RenderContext $ctx, \Closure $render): mixed
     {
+        return self::open($ctx, $render, false);
+    }
+
+    /**
+     * Runs $render in a new frame under $ctx, as run() does, for output that becomes part of the
+     * current frame's output (a PDF preview printed into the page, a request the page asks for
+     * in-process). The frame keeps its own context, outbox, collectors and skipped writes, as
+     * with run(); RenderFrame::partOf() names the frame it is part of, so what belongs to the
+     * output as a whole (the page cache's recording and refusals, the CSP nonce) can join that
+     * frame's from an onEnter() hook. Core's application registers that hook; any other
+     * collector registers its own. A render that is never part of the caller's output (a mail)
+     * uses run().
+     *
+     * @since 0.81.0
+     * @template R
+     * @param \Closure(): R $render
+     * @return R
+     *
+     * @throws NoRenderContext outside every render (there is no output to be part of)
+     */
+    public static function part(RenderContext $ctx, \Closure $render): mixed
+    {
+        if (self::$top === null) {
+            throw self::missing('part');
+        }
+
+        return self::open($ctx, $render, true);
+    }
+
+    /**
+     * @template R
+     * @param \Closure(): R $render
+     * @return R
+     */
+    private static function open(RenderContext $ctx, \Closure $render, bool $part): mixed
+    {
         $depth = count(self::$frames);
         $debug = self::$debug;
         $parent = self::$top;
@@ -88,7 +125,7 @@ final class Contexts
                 WritePolicy::Allow => $ctx,
             };
         }
-        $frame = new RenderFrame($ctx, $parent);
+        $frame = new RenderFrame($ctx, $parent, $part);
         self::$frames[] = $frame;
         self::$top = $frame;
 

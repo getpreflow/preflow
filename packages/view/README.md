@@ -925,8 +925,11 @@ page, also when your CSS has `@page` rules) and a custom `width`/`height` in mm 
 orientation). A template is tied to one engine's syntax, so use the extension of the engine you run.
 
 Each `render()` and `html()` (since 0.81) runs in a render of its own, made from the caller's: the same viewer,
-locale and read mode, as a PDF. CSS, page meta, cookies or mail its templates collect or queue stay out of your
-response, and two PDFs, nested or one after the other, share nothing. Call it where a render runs (a request, a
+locale and read mode, as a PDF. CSS and page meta its templates collect stay out of your page. Mail, cookies and
+after-response work queued while it renders are dropped (never sent), while data the document writes (in
+`resolveState()`) is written: send mail from the code that calls the renderer. A preview printed into a page is part
+of that page: the page cache records what it reads and refuses, and it uses the page's CSP nonce. Two PDFs, nested or
+one after the other, share nothing else. Call it where a render runs (a request, a
 command, `Contexts::run()`); outside every render it throws `NoRenderContext`. For a PDF in another language than the
 request's, wrap the call in `Contexts::within(Contexts::current()->in('fr'), …)`.
 

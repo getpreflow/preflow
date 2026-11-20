@@ -435,6 +435,27 @@ final class ContextsTest extends TestCase
         });
     }
 
+    /** part() opens a frame like run(), whose partOf() names the caller's frame; it needs one. */
+    public function test_part_opens_a_frame_that_names_the_frame_it_is_part_of(): void
+    {
+        $seen = Contexts::run(self::ctx('/'), static function (): array {
+            $page = Contexts::frame();
+            $own = Contexts::run(self::ctx('/own'), static fn (): ?RenderFrame => Contexts::frame()->partOf());
+            [$part, $depth] = Contexts::part(self::ctx('/part'), static fn (): array => [Contexts::frame()->partOf(), Contexts::depth()]);
+
+            return [$page, $own, $part, $depth, $page->partOf(), Contexts::frame()];
+        });
+
+        $this->assertNull($seen[1], 'a frame of its own (run()) is part of nothing');
+        $this->assertSame($seen[0], $seen[2], 'a part frame names the caller\'s frame');
+        $this->assertSame(2, $seen[3], 'it is a frame of its own');
+        $this->assertNull($seen[4], 'the outermost frame is part of nothing');
+        $this->assertSame($seen[0], $seen[5], 'the caller\'s frame is current again');
+
+        $this->expectException(NoRenderContext::class);
+        Contexts::part(self::ctx('/'), static fn (): null => null);
+    }
+
     private static function mailChannel(): OutboxChannel
     {
         return new class implements OutboxChannel {
