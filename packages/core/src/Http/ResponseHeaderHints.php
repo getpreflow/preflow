@@ -26,8 +26,8 @@ use Psr\Http\Message\ResponseInterface;
  * The error page gets only the hints that make it less cacheable (restrictive(): no-store,
  * no-cache, private, must-revalidate, proxy-revalidate of Cache-Control), never one that makes a
  * failure cacheable. Live parts render after the route answered: what they add goes on the
- * response the visitor is served (all hints on a miss, the restrictive ones on a cache hit),
- * never on the stored page.
+ * response the visitor is served, only the restrictive ones (a per-visitor part never widens
+ * caching), never on the stored page.
  *
  * @since 0.81.0
  */

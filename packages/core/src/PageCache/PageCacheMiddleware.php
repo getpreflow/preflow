@@ -191,7 +191,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
      *        renders, since 0.81; null: in a frame of its own (Contexts::run()) without more
      * @param \Preflow\Core\Http\ResponseHeaderHints|null $hints since 0.81.0: the frame's header hints, put on
      *        the served response after its live parts were filled (they render after the route
-     *        answered): all of them on a miss, the restrictive ones on a hit; never on the stored page
+     *        answered): only the restrictive ones, on a miss and a hit; never on the stored page
      */
     public function __construct(
         private readonly PageCacheConfig $config,
@@ -529,8 +529,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
         // The visitor's own live parts, whether the page was stored or not.
         if ($content !== null && $html && $this->live !== null && $this->live->in($content)) {
             $response = $response->withBody(\Nyholm\Psr7\Stream::create($this->live->fill($content)));
-            // What they added goes on this visitor's response; the stored page was stored before.
-            $response = $this->hints?->applyTo($response) ?? $response;
+            // What they added that makes this visitor's response less cacheable (a live part never
+            // widens caching); the stored page was stored before.
+            $response = $this->hints?->applyRestrictiveTo($response) ?? $response;
         }
 
         // A rebuild's response goes to Refresher::work() only, which retries one a write refused.

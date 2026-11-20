@@ -336,6 +336,14 @@ final class FrameCollectorsTest extends TestCase
                 $this->hints->set('Cache-Control', 'no-store');
             }
             PHP, '<p>Yours.</p>', live: true);
+        $this->component('LivePublic', <<<'PHP'
+            public function __construct(private readonly \Preflow\Core\Http\ResponseHeaderHints $hints) {}
+            public function resolveState(): void
+            {
+                $this->hints->set('Cache-Control', 'public, max-age=3600');
+            }
+            PHP, '<p>Mine.</p>', live: true);
+        $this->write('app/pages/live-public.twig', "<html><body><main><p>Shared.</p>{{ component('LivePublic') }}</main></body></html>");
         $this->write('app/pages/sent.twig', "<html><body><main>{{ component('NoStore') }}</main></body></html>");
         $this->write('app/pages/thanks.twig', "<html><body><main>{{ response_header('Cache-Control', 'no-store') }}<p>Thanks.</p></main></body></html>");
         $this->write('app/pages/plain.twig', '<html><body><main><p>Plain.</p></main></body></html>');
@@ -454,6 +462,15 @@ final class FrameCollectorsTest extends TestCase
         $hit = $this->get('/live');
         $this->assertSame('hit', $hit->getHeaderLine('X-Page-Cache'));
         $this->assertSame('no-store', $hit->getHeaderLine('Cache-Control'), 'a hit carries the restrictive part');
+
+        // A live part never widens caching, on a miss as on a hit.
+        foreach (['miss', 'hit'] as $expected) {
+            $response = $this->get('/live-public');
+            $this->assertSame($expected, $response->getHeaderLine('X-Page-Cache'));
+            $this->assertStringContainsString('Mine.', (string) $response->getBody());
+            $this->assertStringNotContainsString('public', $response->getHeaderLine('Cache-Control'), "{$expected}: not made public");
+            $this->assertStringNotContainsString('max-age=3600', $response->getHeaderLine('Cache-Control'), $expected);
+        }
     }
 
     #[RunInSeparateProcess]
