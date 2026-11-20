@@ -235,18 +235,6 @@ return [
     'notify/src/Transport/LogTransport.php' => [
         '$summary = sprintf(\'[%s] %s\', date(DATE_ATOM), $message->channel());', // clock
     ],
-    'publishing/src/Console/PublishScheduledCommand.php' => [
-        '$result = $app->container()->get(Scheduler::class)->runDue(new \\DateTimeImmutable());', // clock
-    ],
-    'publishing/src/PreviewLinks.php' => [
-        '$this->now = $now ?? static fn (): int => time();', // clock
-    ],
-    'publishing/src/Publisher.php' => [
-        '$this->now = $now ?? static fn (): \\DateTimeImmutable => new \\DateTimeImmutable();', // clock
-    ],
-    'publishing/src/RecordWriter.php' => [
-        '$this->now = $now ?? static fn (): \\DateTimeImmutable => new \\DateTimeImmutable();', // clock
-    ],
     'rbac/src/Console/ImportConfigStaffCommand.php' => [
         '\'created_at\' => (new \\DateTimeImmutable())->format(DATE_ATOM),', // clock
     ],

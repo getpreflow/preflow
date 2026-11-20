@@ -99,9 +99,15 @@ final class PublishCommandsTest extends PublishingAppTestCase
      */
     private function runCommand(CommandInterface $command, array $args = []): array
     {
+        // In a console frame, as the console runs every command (since 0.81).
+        $console = \Preflow\Core\Context\RenderContext::console($this->app()->site(), new \Preflow\Core\Context\SystemClock());
         ob_start();
-        $code = $command->execute($args);
+        try {
+            $code = \Preflow\Core\Context\Contexts::run($console, static fn (): int => $command->execute($args));
+        } finally {
+            $out = (string) ob_get_clean();
+        }
 
-        return [$code, (string) ob_get_clean()];
+        return [$code, $out];
     }
 }

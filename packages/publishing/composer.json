@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.77 || @dev",
+        "preflow/core": "^0.81.0 || @dev",
         "preflow/data": "^0.78 || @dev",
         "preflow/validation": "^0.70 || @dev"
     },
@@ -20,7 +20,7 @@
         "psr/log": "RecordWriter logs to the app's bound Psr\\Log\\LoggerInterface (an after-save hook failing behind a failed publish)"
     },
     "conflict": {
-        "preflow/core": "<0.77",
+        "preflow/core": "<0.81.0",
         "preflow/data": "<0.78",
         "preflow/devtools": "<0.26",
         "preflow/folio": "<0.72",

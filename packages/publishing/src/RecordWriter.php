@@ -6,6 +6,8 @@ namespace Preflow\Publishing;
 
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\SystemClock;
 use Preflow\Data\Attributes\Timestamps;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -52,7 +54,12 @@ final class RecordWriter
     /** The manual list position (RecordTypes::orderable()). */
     public const string ORDER = '_order';
 
-    /** @var \Closure(): \DateTimeImmutable */
+    /**
+     * The time a "Publish at" must lie after when it is saved. By default (since 0.81) the current
+     * render's clock (Contexts::peek()?->clock), and the system clock outside every render.
+     *
+     * @var \Closure(): \DateTimeImmutable
+     */
     private readonly \Closure $now;
 
     private readonly RecordStore $store;
@@ -69,7 +76,7 @@ final class RecordWriter
         private readonly ?LoggerInterface $logger = null,
         ?ActivityLog $activity = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => (Contexts::peek()?->clock ?? new SystemClock())->now();
         $this->store = new RecordStore($dm, $publisher, $hooks, $index, $addresses);
         $this->activity = new ActivityNotes($activity, $logger);
     }

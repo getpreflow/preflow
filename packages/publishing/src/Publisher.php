@@ -6,6 +6,8 @@ namespace Preflow\Publishing;
 
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\SystemClock;
 use Preflow\Data\AggregatingStorage;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -57,7 +59,12 @@ final class Publisher
     /** How many ids states() reads per query. */
     private const int STATES_CHUNK = 500;
 
-    /** @var \Closure(): \DateTimeImmutable */
+    /**
+     * The time of publish stamps and revisions. By default (since 0.81) the current render's clock
+     * (Contexts::peek()?->clock), and the system clock outside every render.
+     *
+     * @var \Closure(): \DateTimeImmutable
+     */
     private readonly \Closure $now;
 
     public function __construct(
@@ -77,7 +84,7 @@ final class Publisher
         if ($keepRevisions !== null && $keepRevisions < 0) {
             throw new \InvalidArgumentException('publishing.revisions must be 0 (keep all) or more.');
         }
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => (Contexts::peek()?->clock ?? new SystemClock())->now();
         $this->activity = new ActivityNotes($activity, $logger);
         $this->logger = $logger;
     }

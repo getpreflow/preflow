@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\SystemClock;
+
 /**
  * Signed share-preview tokens: base64url(json [type, id, nonce, expires]) "."
  * base64url(HMAC-SHA256). The nonce is the record's _share_token, so rotating
@@ -14,7 +17,12 @@ final class PreviewLinks
 {
     public const string DEFAULT_KEY = 'preflow-default-key-change-me!!';
 
-    /** @var \Closure(): int */
+    /**
+     * The time links expire against. By default (since 0.81) the current render's clock
+     * (Contexts::peek()?->clock), and the system clock outside every render.
+     *
+     * @var \Closure(): int
+     */
     private readonly \Closure $now;
 
     public function __construct(
@@ -22,7 +30,7 @@ final class PreviewLinks
         private readonly int $ttl = 604800,
         ?\Closure $now = null,
     ) {
-        $this->now = $now ?? static fn (): int => time();
+        $this->now = $now ?? static fn (): int => (Contexts::peek()?->clock ?? new SystemClock())->now()->getTimestamp();
     }
 
     public function enabled(): bool

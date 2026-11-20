@@ -51,6 +51,26 @@ return [
             '$ctx = Contexts::peek();' => 'outside every render (a script, a unit test) the translator uses its own default locale and overrides switch (ruling R1)',
         ],
     ],
+    'publishing/src/LiveContent.php' => [
+        'peek' => [
+            'return Contexts::peek()?->reads;' => 'outside every render (a script, a unit test) reads see published snapshots (ruling R1), unless the deprecated setters changed that default',
+        ],
+    ],
+    'publishing/src/Publisher.php' => [
+        'peek' => [
+            '$this->now = $now ?? static fn (): \\DateTimeImmutable => (Contexts::peek()?->clock ?? new SystemClock())->now();' => 'the clock seam: the current render\'s clock, the system clock outside every render (a script, a unit test)',
+        ],
+    ],
+    'publishing/src/RecordWriter.php' => [
+        'peek' => [
+            '$this->now = $now ?? static fn (): \\DateTimeImmutable => (Contexts::peek()?->clock ?? new SystemClock())->now();' => 'the clock seam: the current render\'s clock, the system clock outside every render (a script, a unit test)',
+        ],
+    ],
+    'publishing/src/PreviewLinks.php' => [
+        'peek' => [
+            '$this->now = $now ?? static fn (): int => (Contexts::peek()?->clock ?? new SystemClock())->now()->getTimestamp();' => 'the clock seam: the current render\'s clock, the system clock outside every render (a script, a unit test)',
+        ],
+    ],
     'i18n/src/LocaleMiddleware.php' => [
         'peek' => [
             'return Contexts::peek()?->request?->localePrefix ?? \'\';' => 'the deprecated urlPrefix(): outside every render no URL, so no prefix (\'\', as 0.80 gave outside process())',
