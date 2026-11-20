@@ -1,0 +1,178 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Preflow\Auth\Tests\Access;
+
+use PHPUnit\Framework\TestCase;
+use Preflow\Auth\Access\Access;
+use Preflow\Auth\Access\AccessPreviewGate;
+use Preflow\Auth\Access\AllowsRoles;
+use Preflow\Auth\Access\PermissionRegistry;
+use Preflow\Auth\Access\PermissionResolver;
+use Preflow\Auth\Authenticatable;
+use Preflow\Auth\AuthManager;
+use Preflow\Auth\Tests\Fixtures\TestUser;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Preview\PreviewClaims;
+use Preflow\Core\Context\Preview\PreviewToken;
+use Preflow\Core\Context\Preview\PreviewTokenRejected;
+use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RoleView;
+use Preflow\Testing\ContextFactory;
+
+/**
+ * T7 of the preview token's threat model: what the issuer was checked for is checked again, through
+ * Access, at every use of the token.
+ */
+final class AccessPreviewGateTest extends TestCase
+{
+    private const KEY = 'access-preview-gate-test-key-0123456789';
+
+    private const SESSION = 'editor-session-id-0001';
+
+    /** @var array<string, list<string>> role => the permissions it grants (staff) */
+    private array $grants = ['editor' => ['page.edit', 'page.view', 'site.view_as'], 'viewer' => ['page.view']];
+
+    private AuthManager $auth;
+
+    private Access $access;
+
+    protected function setUp(): void
+    {
+        Contexts::reset();
+        $registry = new PermissionRegistry();
+        foreach (['page.edit', 'page.view', 'site.view_as'] as $name) {
+            $registry->declare($name);
+        }
+        $this->auth = new AuthManager([], 'staff');
+        $this->access = new Access($this->auth, $registry, true, ['staff' => 'staff']);
+        $grants = &$this->grants;
+        $this->access->setResolver(new class ($grants) implements PermissionResolver, AllowsRoles {
+            /** @param array<string, list<string>> $grants */
+            public function __construct(private array &$grants) {}
+
+            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                return $this->allowsRoles($user->getRoles(), $population, $permission, $subject);
+            }
+
+            public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
+            {
+                foreach ($roles as $role) {
+                    if (in_array($permission, $this->grants[$role] ?? [], true)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        });
+    }
+
+    protected function tearDown(): void
+    {
+        Contexts::reset();
+    }
+
+    /** A permission taken from the editor's role after the token was issued: the next use is refused. */
+    public function test_revoked_permission_rejects_the_token(): void
+    {
+        $token = $this->issue(['page.edit']);
+        $this->assertSame('ed', $this->admit($token)->issuer, 'admitted while the editor may edit');
+
+        $this->grants['editor'] = ['page.view', 'site.view_as']; // a role edited in the admin, or with staff:roles
+
+        $this->assertRejected('permission', fn () => $this->admit($token));
+    }
+
+    /**
+     * The role view a token carries is re-checked through mayViewAs() at every use: an editor
+     * reduced to viewer still holds the one permission the token requires, but may no longer view
+     * the site as an editor.
+     */
+    public function test_a_role_view_the_editor_may_no_longer_take_rejects_the_token(): void
+    {
+        $role = new RoleView('staff', ['editor']);
+        $token = $this->issue(['page.view'], $role);
+        $this->assertEquals($role, $this->admit($token)->role);
+
+        $this->assertRejected('permission', fn () => $this->admit($token, roles: ['viewer']));
+    }
+
+    /** It answers for the request's real viewer only: nobody and a role view get nothing, nor does an empty check. */
+    public function test_the_gate_fails_closed(): void
+    {
+        $gate = new AccessPreviewGate($this->access);
+        $role = new RoleView('staff', ['viewer']);
+
+        $answers = Contexts::run(ContextFactory::forTest(), function () use ($gate, $role): array {
+            $anonymous = Contexts::current();
+            @$this->auth->setUser(new TestUser('ed', roles: ['editor']), 'staff');
+            $editor = Contexts::current();
+
+            return [
+                'editor' => $gate->allows($editor, ['page.edit']),
+                'editor may view as' => $gate->mayViewAs($editor, new RoleView('staff', ['editor'])),
+                'nothing to check' => $gate->allows($editor, []),
+                'every one held' => $gate->allows($editor, ['page.edit', 'page.view']),
+                'anonymous' => $gate->allows($anonymous, ['page.view']),
+                'anonymous view as' => $gate->mayViewAs($anonymous, $role),
+                'a role view' => $gate->allows(ContextFactory::forTest()->asRole(new RoleView('staff', ['editor'])), ['page.view']),
+            ];
+        });
+
+        $this->assertSame([
+            'editor' => true, 'editor may view as' => true, 'nothing to check' => false, 'every one held' => true,
+            'anonymous' => false, 'anonymous view as' => false, 'a role view' => false,
+        ], $answers);
+
+        // Asked from inside a role view's frame: nothing.
+        $inside = Contexts::run(ContextFactory::forTest()->asRole($role), function () use ($gate): bool {
+            $editor = ContextFactory::forTest()->as(\Preflow\Auth\AuthManager::viewerOf(['staff' => new TestUser('ed', roles: ['editor'])], 'staff'));
+
+            return $gate->allows($editor, ['page.view']);
+        });
+        $this->assertFalse($inside);
+
+        // Outside every render, it opens a frame of its own and leaves none behind.
+        $editor = ContextFactory::forTest()->as(\Preflow\Auth\AuthManager::viewerOf(['staff' => new TestUser('ed', roles: ['viewer'])], 'staff'));
+        $this->assertSame([true, false], [$gate->allows($editor, ['page.view']), $gate->allows($editor, ['page.edit'])]);
+        $this->assertSame(0, Contexts::depth());
+    }
+
+    // --- helpers -------------------------------------------------------------------------------
+
+    /** @param list<string> $requires */
+    private function issue(array $requires, ?RoleView $role = null): string
+    {
+        return Contexts::run(ContextFactory::forTest(), function () use ($requires, $role): string {
+            @$this->auth->setUser(new TestUser('ed', roles: ['editor']), 'staff');
+            $preview = ContextFactory::forTest()->asVisitor()->workingCopies()->because(Purpose::Preview);
+
+            return (new PreviewToken(self::KEY))->issue($role === null ? $preview : $preview->asRole($role), self::SESSION, Contexts::current()->viewer->primary(), $requires);
+        });
+    }
+
+    /** A follow-up request of the editor (holding $roles) admitted through the auth gate. @param list<string> $roles */
+    private function admit(string $token, array $roles = ['editor']): PreviewClaims
+    {
+        return Contexts::run(ContextFactory::forTest(), function () use ($token, $roles): PreviewClaims {
+            @$this->auth->setUser(new TestUser('ed', roles: $roles), 'staff');
+
+            return (new PreviewToken(self::KEY))->admit($token, self::SESSION, Contexts::current(), new AccessPreviewGate($this->access));
+        });
+    }
+
+    private function assertRejected(string $reason, \Closure $admit, string $message = ''): void
+    {
+        try {
+            $admit();
+        } catch (PreviewTokenRejected $e) {
+            $this->assertSame($reason, $e->reason, $message);
+
+            return;
+        }
+        $this->fail("admitted, expected '{$reason}'" . ($message === '' ? '' : " ({$message})"));
+    }
+}

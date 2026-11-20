@@ -282,6 +282,18 @@ final readonly class RenderContext implements \JsonSerializable
     }
 
     /**
+     * The same context without the facet of class $c (this context when it has none).
+     *
+     * @since 0.81.0
+     *
+     * @param class-string<Facet> $c
+     */
+    public function without(string $c): self
+    {
+        return isset($this->extensions[$c]) ? $this->copy(extensions: array_diff_key($this->extensions, [$c => true])) : $this;
+    }
+
+    /**
      * The facet of class $c, or null.
      *
      * @template T of object

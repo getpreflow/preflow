@@ -125,6 +125,26 @@ final class WholePagePreviewTest extends TestCase
         $this->assertSame(0, Contexts::depth());
     }
 
+    /**
+     * The preview derives from the caller's context: its facets carry over (a tenant, a variant),
+     * but never a preview token's grant, which grants the caller's reading mode, not the preview's.
+     */
+    #[RunInSeparateProcess]
+    public function test_the_preview_keeps_the_callers_facets_but_never_a_preview_grant(): void
+    {
+        $app = $this->site();
+        $request = new ServerRequest('GET', 'https://site.test/editor');
+        $from = RenderContext::fromRequest($request, $app->site(), new SystemClock())->admin('en')
+            ->with(new WholePagePreviewFacet('tenant-a'))
+            ->with(new \Preflow\Core\Context\Preview\PreviewGrant('v1.callers-token.x.y'));
+
+        $body = (string) Contexts::run($from, static fn (): RenderResult => $app->preview(Contexts::current(), '/about', 'en'))->response->getBody();
+
+        $this->assertStringContainsString('<p class="facets">tenant-a|no-grant</p>', $body);
+        $this->assertStringNotContainsString('callers-token', $body);
+        $this->assertSame(0, Contexts::depth());
+    }
+
     #[RunInSeparateProcess]
     public function test_a_preview_path_is_a_clean_path(): void
     {
@@ -172,7 +192,7 @@ final class WholePagePreviewTest extends TestCase
         $this->write('app/pages/_layout.twig', '<html><head><title>{% block title %}{% endblock %}</title></head><body><header class="layout"><nav>{{ nav_titles()|join(" · ") }}</nav></header>{% block main %}{% endblock %}</body></html>');
         $this->write('app/pages/about.twig', "{% extends '_layout.twig' %}{% block title %}{{ page_title('about') }}{% endblock %}{% block main %}{{ seo({'title': page_title('about')}) }}{{ visit_with_side_effects() }}"
             . '<main><h1>{{ page_title("about") }}</h1><p class="who">{{ current_locale() }}|{{ preview_probe() }}</p>'
-            . '<p class="cookie">{{ request_probe() }}</p><script nonce="{{ csp_nonce() }}">window.previewed = true;</script></main>{% endblock %}');
+            . '<p class="cookie">{{ request_probe() }}</p><p class="facets">{{ facets_probe() }}</p><script nonce="{{ csp_nonce() }}">window.previewed = true;</script></main>{% endblock %}');
         $this->write('app/pages/editor.twig', '<p>editor</p>');
 
         $app = Application::create($this->dir);
@@ -233,6 +253,15 @@ final class WholePagePreviewProvider extends ServiceProvider
             ]),
         ));
         $engine->addFunction(new TemplateFunctionDefinition(
+            name: 'facets_probe',
+            callable: static function (): string {
+                $ctx = Contexts::current();
+                $grant = $ctx->get(\Preflow\Core\Context\Preview\PreviewGrant::class);
+
+                return ($ctx->get(WholePagePreviewFacet::class)?->memoKey() ?? '-') . '|' . ($grant === null ? 'no-grant' : 'grant:' . $grant->token());
+            },
+        ));
+        $engine->addFunction(new TemplateFunctionDefinition(
             name: 'request_probe',
             callable: static function (): string {
                 $request = Contexts::current()->request?->request;
@@ -250,5 +279,21 @@ final class WholePagePreviewProvider extends ServiceProvider
                 return '';
             },
         ));
+    }
+}
+
+/** A facet of the caller's (a tenant): it carries over into the preview. */
+final readonly class WholePagePreviewFacet implements \Preflow\Core\Context\Facet
+{
+    public function __construct(public string $tenant) {}
+
+    public function isPublicDefault(): bool
+    {
+        return true;
+    }
+
+    public function memoKey(): string
+    {
+        return $this->tenant;
     }
 }

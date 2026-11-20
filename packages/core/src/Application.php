@@ -509,6 +509,10 @@ final class Application
         $this->bootPageCacheServing($debug);
         $this->bootSession();
         $this->bootCsrf($debug, new \Preflow\Core\Http\Csrf\StatelessCsrfToken((string) $secretKey));
+        // Signed preview tokens (a key derived from app.key) and the gate each use is checked
+        // against: nobody without auth; bootAuth() binds auth's, an app's provider may bind its own.
+        $this->container->instance(\Preflow\Core\Context\Preview\PreviewToken::class, new \Preflow\Core\Context\Preview\PreviewToken((string) $secretKey));
+        $this->container->instance(\Preflow\Core\Context\Preview\PreviewGate::class, new \Preflow\Core\Context\Preview\DenyAllPreviewGate());
         $this->bootAuth();
 
         // Register user service providers
@@ -742,7 +746,8 @@ final class Application
      * RenderContext::asRole()).
      *
      * The context derives from $from (the caller's own, Contexts::current() in an editor's
-     * request), so the site, the clock (a frozen one too) and the facets carry over; the viewer,
+     * request), so the site, the clock (a frozen one too) and the facets carry over (never a
+     * PreviewGrant: a preview token of the caller's); the viewer,
      * the surface, the locale, the read mode, both policies, the purpose and the request do not.
      * The request is a new GET of $path on the site's origin: nothing of the caller's (cookies,
      * session, headers, attributes, the locale prefix its URL carried) reaches the page. The
@@ -763,7 +768,10 @@ final class Application
         }
         // On the site's own origin (app.url), as the SEO audit asks for its pages.
         $request = new \Nyholm\Psr7\ServerRequest('GET', rtrim($from->site->origin, '/') . $path);
-        $ctx = $from->asVisitor()->public()->in($locale)->workingCopies()->capturing()->skippingWrites()
+        // A preview token $from carries grants the caller's reading mode, not this preview's: it
+        // never carries over (a preview's own grant comes from PreviewToken::grant()).
+        $ctx = $from->without(\Preflow\Core\Context\Preview\PreviewGrant::class)
+            ->asVisitor()->public()->in($locale)->workingCopies()->capturing()->skippingWrites()
             ->because(Purpose::Preview)->for($request)->prefixed('');
 
         return $this->render($as !== null ? $ctx->asRole($as) : $ctx, $request);
@@ -3744,6 +3752,9 @@ final class Application
         }
         $access = new \Preflow\Auth\Access\Access($authManager, $registry, (bool) $this->config->get('app.debug', false), $populations);
         $this->container->instance(\Preflow\Auth\Access\Access::class, $access);
+        // Preview tokens are re-checked through Access at every use (not without config/auth.php,
+        // where can() allows everything: the default gate admits no token there).
+        $this->container->instance(\Preflow\Core\Context\Preview\PreviewGate::class, new \Preflow\Auth\Access\AccessPreviewGate($access));
 
         // Bind the default guard's provider under UserProviderInterface so controllers can resolve it
         $defaultProviderName = $authConfig['guards'][$defaultGuard]['provider'] ?? null;

@@ -76,6 +76,26 @@ final class BootAuthProvidersTest extends TestCase
         $this->assertSame('m1', $provider->findById('m1')?->getAuthId());
     }
 
+    /** Preview tokens: signed with app.key's derived key; with config/auth.php their uses are checked through Access. */
+    #[RunInSeparateProcess]
+    public function test_preview_tokens_are_bound_with_the_access_gate(): void
+    {
+        $app = $this->boot(['class' => ConfigEntryUserProvider::class, 'ids' => ['m1']]);
+
+        $this->assertTrue($app->container()->get(\Preflow\Core\Context\Preview\PreviewToken::class)->enabled());
+        $this->assertInstanceOf(\Preflow\Auth\Access\AccessPreviewGate::class, $app->container()->get(\Preflow\Core\Context\Preview\PreviewGate::class));
+    }
+
+    /** Without config/auth.php, can() allows everything, so no token is admitted: the deny-all gate stays. */
+    #[RunInSeparateProcess]
+    public function test_without_auth_config_no_preview_token_is_admitted(): void
+    {
+        $app = Application::create($this->dir);
+        $app->boot();
+
+        $this->assertInstanceOf(\Preflow\Core\Context\Preview\DenyAllPreviewGate::class, $app->container()->get(\Preflow\Core\Context\Preview\PreviewGate::class));
+    }
+
     #[RunInSeparateProcess]
     public function test_chain_provider_tries_named_providers_in_order(): void
     {
