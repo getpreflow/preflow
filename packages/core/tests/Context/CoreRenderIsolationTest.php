@@ -36,7 +36,8 @@ use Preflow\View\Pdf\PdfRenderer;
  *
  * Each path runs the render the way its caller does in 0.81: audit, GEO and rebuild as
  * internal renders through Application::render(), verify as the visitor's context discarding and
- * skipping writes, preview as a whole-page preview of working copies; mail through the Mailer
+ * skipping writes, preview through Application::preview() (the whole-page preview of working
+ * copies, its locale given explicitly); mail through the Mailer
  * (whose compose scope renders in the recipient's context) and PDF through PdfRenderer, each
  * called in the caller's frame, so the entry point itself must open the frame it renders in.
  */
@@ -92,8 +93,7 @@ final class CoreRenderIsolationTest extends RenderIsolationContract
             'rebuild' => self::internal(Purpose::Rebuild),
             'verify' => static fn (Application $app, RenderContext $ctx): RenderResult
                 => self::page($app, $ctx->discarding()->skippingWrites()->because(Purpose::Verify)),
-            'preview' => static fn (Application $app, RenderContext $ctx): RenderResult
-                => self::page($app, $ctx->asVisitor()->public()->workingCopies()->capturing()->skippingWrites()->because(Purpose::Preview)),
+            'preview' => static fn (Application $app, RenderContext $ctx): RenderResult => $app->preview($ctx, '/', $ctx->locale),
             'mail' => static fn (Application $app, RenderContext $ctx): RenderResult => self::caller(
                 $ctx,
                 static fn (): string => (string) $app->container()->get(Mailer::class)->compose(new MailContent('Isolation', 'Text', $ctx->locale), 'reader@site.test', template: $template())->html,

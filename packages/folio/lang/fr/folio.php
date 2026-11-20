@@ -281,6 +281,22 @@ return [
         'details' => 'Détails',
         'delete_named' => 'Supprimer « :label »',
     ],
+    // L'aperçu de la page entière dans l'éditeur (0.81) : la vraie page, telle que les visiteurs la verront une fois publiée.
+    'preview' => [
+        'mode' => 'Aperçu',
+        'live' => 'En direct',
+        'whole_page' => 'Page entière',
+        'whole_page_frame' => 'Aperçu de la page entière',
+        'save_first' => 'Enregistrez une fois pour prévisualiser la page entière',
+        'view_as' => 'Voir en tant que',
+        'anonymous' => 'Visiteur (non connecté)',
+        'member_roles' => 'Rôles des membres',
+        'staff_roles' => 'Rôles de l\'équipe',
+        'report' => 'Ce que cette page ferait',
+        'would_send' => 'Cette page enverrait :count e-mail|Cette page enverrait :count e-mails',
+        'would_write' => 'Cette page écrirait :count enregistrement|Cette page écrirait :count enregistrements',
+        'links_leave' => 'Les liens et formulaires simples ouvrent le site en ligne.',
+    ],
     'seo' => [
         'title' => 'SEO et partage',
         'share_title' => 'Titre de partage',

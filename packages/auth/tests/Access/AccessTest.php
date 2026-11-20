@@ -341,4 +341,63 @@ final class AccessTest extends TestCase
             $this->assertTrue($access->can('page.edit'));
         });
     }
+
+    /**
+     * Who may view the site as which role: every member role; a staff role only when its grants
+     * are all the user's own (an editor never as an admin); nobody signed out, and never a role
+     * view itself.
+     */
+    public function test_may_view_as_never_grants_more_than_the_users_own_roles(): void
+    {
+        $grants = static fn (array $roles, string $population): array => match ($population) {
+            'staff' => array_merge(...array_map(static fn (string $role): array => ['admin' => ['*'], 'editor' => ['page.edit', 'page.view'], 'viewer' => ['page.view']][$role] ?? [], $roles ?: ['none'])),
+            default => in_array('gold', $roles, true) ? ['page.view'] : [],
+        };
+        $resolver = new class ($grants) implements PermissionResolver, \Preflow\Auth\Access\AllowsRoles {
+            public function __construct(private readonly \Closure $grants) {}
+
+            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                return $this->allowsRoles($user->getRoles(), $population, $permission, $subject);
+            }
+
+            public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
+            {
+                foreach (($this->grants)($roles, $population) as $pattern) {
+                    if (\Preflow\Auth\Access\Pattern::matches($pattern, $permission)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        };
+        $access = $this->access(populations: ['staff' => 'staff']);
+        $access->setResolver($resolver);
+        $views = ['admin' => new \Preflow\Core\Context\RoleView('staff', ['admin']), 'editor' => new \Preflow\Core\Context\RoleView('staff', ['editor']),
+            'viewer' => new \Preflow\Core\Context\RoleView('staff', ['viewer']), 'gold' => new \Preflow\Core\Context\RoleView('member', ['gold'])];
+        $may = function (?array $roles) use ($access, $views): array {
+            return \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($access, $views, $roles): array {
+                if ($roles !== null) {
+                    @$this->auth->setUser(new TestUser(roles: $roles), 'staff');
+                }
+
+                return array_map(static fn (\Preflow\Core\Context\RoleView $view): bool => $access->mayViewAs($view), $views);
+            });
+        };
+
+        $this->assertSame(['admin' => true, 'editor' => true, 'viewer' => true, 'gold' => true], $may(['admin']));
+        $this->assertSame(['admin' => false, 'editor' => true, 'viewer' => true, 'gold' => true], $may(['editor']), 'never as a role with more rights');
+        $this->assertSame(['admin' => false, 'editor' => false, 'viewer' => true, 'gold' => true], $may(['viewer']));
+        $this->assertSame(['admin' => false, 'editor' => false, 'viewer' => false, 'gold' => false], $may(null), 'nobody signed in');
+        $this->assertSame([false], \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->asRole($views['admin']), static fn (): array => [$access->mayViewAs($views['gold'])]), 'not from inside a role view');
+
+        // A resolver that cannot answer for roles: no staff role, member roles still.
+        $default = $this->access(populations: ['staff' => 'staff']);
+        $this->assertSame([false, true], \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($default, $views): array {
+            @$this->auth->setUser(new TestUser(roles: ['admin']), 'staff');
+
+            return [$default->mayViewAs($views['viewer']), $default->mayViewAs($views['gold'])];
+        }));
+    }
 }

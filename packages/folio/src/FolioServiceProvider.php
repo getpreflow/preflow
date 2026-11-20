@@ -563,6 +563,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
             // The site's locale URL rule (core binds it from config/i18n.php): "/en/…" with prefix_default.
             $c->bound(\Preflow\Core\Http\LocaleUrls::class) ? $c->get(\Preflow\Core\Http\LocaleUrls::class) : null,
+            // What the render reads: a whole-page preview finds the working copy at its address.
+            $c->get(\Preflow\Publishing\LiveContent::class),
         ));
 
         $uploadsDir = $this->uploadsDir($app);
@@ -700,6 +702,7 @@ final class FolioServiceProvider extends ServiceProvider
             pageMeta: $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\Folio\Seo\FolioPageMeta::class) : null,
             siteUrl: is_string($appUrl = $app->config()->get('app.url')) && $appUrl !== '' ? $appUrl : null,
             typeActions: $c->get(\Preflow\Folio\Content\TypeActions::class),
+            viewAs: $c->get(\Preflow\Folio\Http\ViewAs::class),
             dashboard: new \Preflow\Folio\Dashboard\Dashboard(
                 $c->get(TypeCatalog::class),
                 $c->get(DataManager::class),
@@ -788,6 +791,23 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
             self::translator($c, $app),
+        ));
+        // The whole-page preview (core's Application::preview()) and its "View as" control.
+        $container->bind(\Preflow\Folio\Http\ViewAs::class, fn (Container $c) => new \Preflow\Folio\Http\ViewAs(
+            $c->get(\Preflow\Auth\Access\Access::class),
+            self::roleLabels($c),
+        ));
+        $container->bind(\Preflow\Folio\Http\PagePreviewController::class, fn (Container $c) => new \Preflow\Folio\Http\PagePreviewController(
+            $c->get(Application::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(DataManager::class),
+            $c->get(FrontendResolver::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $prefix,
+            $c->get(\Preflow\Folio\Http\ViewAs::class),
+            $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
+            $c->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -2137,6 +2157,28 @@ final class FolioServiceProvider extends ServiceProvider
     }
 
     /** The field types of the rbac admin (Rbac\Fields), and the permissions editor's assets (assets/rbac/). */
+    /**
+     * A role's label for "View as": rbac's stored label as the admin reads it (Messages::roleLabel());
+     * null without rbac (the role's name is shown).
+     *
+     * @return (\Closure(string, string): string)|null
+     */
+    private static function roleLabels(Container $c): ?\Closure
+    {
+        if (!class_exists(\Preflow\Rbac\RoleStore::class) || !$c->bound(\Preflow\Rbac\RoleStore::class)) {
+            return null;
+        }
+        $records = [];
+
+        return static function (string $population, string $role) use ($c, &$records): string {
+            $records[$population] ??= $c->get(\Preflow\Rbac\RoleStore::class)->records($population);
+            $label = ($records[$population][$role] ?? null)?->get('label');
+            $stored = is_string($label) && $label !== '' ? $label : $role;
+
+            return $c->bound(\Preflow\Rbac\Messages::class) ? $c->get(\Preflow\Rbac\Messages::class)->roleLabel($population, $role, $stored) : $stored;
+        };
+    }
+
     private static function registerRbacFields(Container $container): void
     {
         $coverage = $container->get(\Preflow\Rbac\PermissionCoverage::class);
@@ -2292,6 +2334,8 @@ final class FolioServiceProvider extends ServiceProvider
             // Preview-only editor bridge: injected into admin preview renders, never the public site.
             'preview-editor.css' => 'preview-editor.css',
             'preview-editor.js' => 'preview-editor.js',
+            // The editor's whole-page preview: its tabs, "View as" and the refresh after each autosave.
+            'page-preview.js' => 'page-preview.js',
             'trix.css' => 'vendor/trix.css',
             'trix.js' => 'vendor/trix.umd.min.js',
             // The Edit image screen: Cropper.js (vendored) and its adapter.

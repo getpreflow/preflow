@@ -55,3 +55,34 @@
 @media (prefers-reduced-motion: reduce) {
   .folio-pe-box { transition: none; }
 }
+
+/* The whole-page preview's bar (templates/admin/preview/bar.twig): what the page would send and
+   write, and that plain links leave the preview. A dark pill at the bottom left, above the page
+   and out of its layout; the inverse values of the admin's toasts. */
+.folio-pp-bar {
+  --pp-inverse: #1b2320;
+  --pp-inverse-fg: #e9f0ec;
+  --pp-inverse-accent: #34d399;
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 2147483001;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: var(--pp-inverse);
+  color: var(--pp-inverse-fg);
+  box-shadow: 0 12px 32px rgb(20 20 16 / .14), 0 2px 6px rgb(20 20 16 / .06); /* the admin's --shadow-lg (light) */
+  font: 500 12px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: normal;
+  text-align: left;
+}
+.folio-pp-effect { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.folio-pp-effect::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--pp-inverse-accent); }
+.folio-pp-note { opacity: .8; }

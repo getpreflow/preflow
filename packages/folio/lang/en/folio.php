@@ -293,6 +293,22 @@ return [
         'details' => 'Details',
         'delete_named' => 'Delete “:label”',
     ],
+    // The editor's whole-page preview (0.81): the record's real page as a visitor will see it once published.
+    'preview' => [
+        'mode' => 'Preview',
+        'live' => 'Live',
+        'whole_page' => 'Whole page',
+        'whole_page_frame' => 'Whole page preview of this page',
+        'save_first' => 'Save once to preview the whole page',
+        'view_as' => 'View as',
+        'anonymous' => 'Visitor (not signed in)',
+        'member_roles' => 'Member roles',
+        'staff_roles' => 'Staff roles',
+        'report' => 'What this page would do',
+        'would_send' => 'This page would send :count mail|This page would send :count mails',
+        'would_write' => 'This page would write :count record|This page would write :count records',
+        'links_leave' => 'Plain links and forms open the live site.',
+    ],
     // The editor's "SEO & sharing" section (with SEO on: records with a frontend route and the site).
     'seo' => [
         'title' => 'SEO & sharing',

@@ -732,6 +732,44 @@ final class Application
     }
 
     /**
+     * The whole-page preview of the page at $path: a GET of $path through the whole application
+     * (layout, navigation, SEO, components), rendered with render() in a frame of its own, as an
+     * anonymous visitor on the public surface will see it in $locale once the working copies are
+     * published (RenderContext::workingCopies()). What it would send is captured and the data
+     * writes it would make are skipped, both reported on the result (RenderResult::wouldSend(),
+     * wouldWrite()); its purpose is Preview, so it leaves no trace and the page cache neither
+     * stores nor serves it. With $as, the visitor is signed in with those roles (view as role,
+     * RenderContext::asRole()).
+     *
+     * The context derives from $from (the caller's own, Contexts::current() in an editor's
+     * request), so the site, the clock (a frozen one too) and the facets carry over; the viewer,
+     * the surface, the locale, the read mode, both policies, the purpose and the request do not.
+     * The request is a new GET of $path on the site's origin: nothing of the caller's (cookies,
+     * session, headers, attributes, the locale prefix its URL carried) reaches the page. The
+     * caller's frame is untouched.
+     *
+     * The result's response is the page's own: its Content-Security-Policy holds the nonce its
+     * inline scripts and styles carry. Answer with that response (adding headers, or external
+     * files to its body, is fine); pasting its body into another response breaks those scripts.
+     *
+     * @since 0.81.0
+     *
+     * @throws \InvalidArgumentException when $path is not a path starting with '/', or carries a query or a fragment
+     */
+    public function preview(RenderContext $from, string $path, string $locale, ?\Preflow\Core\Context\RoleView $as = null): RenderResult
+    {
+        if (!str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '?') || str_contains($path, '#')) {
+            throw new \InvalidArgumentException("A preview is a clean GET of a path starting with '/', without a query or fragment, got '{$path}'.");
+        }
+        // On the site's own origin (app.url), as the SEO audit asks for its pages.
+        $request = new \Nyholm\Psr7\ServerRequest('GET', rtrim($from->site->origin, '/') . $path);
+        $ctx = $from->asVisitor()->public()->in($locale)->workingCopies()->capturing()->skippingWrites()
+            ->because(Purpose::Preview)->for($request)->prefixed('');
+
+        return $this->render($as !== null ? $ctx->asRole($as) : $ctx, $request);
+    }
+
+    /**
      * render() with $handle in place of the whole application: the page cache's verify renders
      * the rest of its pipeline for another visitor this way, in a frame of its own exactly as
      * render() opens one.

@@ -12,6 +12,7 @@ final class FolioRoutes
     private const BLOCKS = 'Preflow\\Folio\\Http\\BlockEditorController';
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
+    private const PAGE_PREVIEW = 'Preflow\\Folio\\Http\\PagePreviewController';
     private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
     private const ASSETS = 'Preflow\\Folio\\Http\\AssetLibraryController';
     private const EXTENSIONS = 'Preflow\\Folio\\Http\\ExtensionsController';
@@ -119,6 +120,8 @@ final class FolioRoutes
             ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes
             ['GET',  $prefix . '/_search',             'search', self::SEARCH], // the ⌘K palette's records; before the generic {type} routes
+            // The whole-page preview of a saved record (its real page; ?locale=&as=). No generic route has four segments.
+            ['GET',  $prefix . '/preview/page/{type}/{id}', 'show', self::PAGE_PREVIEW],
         ], $aiDraft ? [
             // "Write a draft" (only while the draft writer is available); before POST {type}/{id}, which "_ai/draft" would match.
             ['POST', $prefix . '/_ai/draft',           'draft', self::AI_DRAFT],

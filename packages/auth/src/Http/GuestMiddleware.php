@@ -19,7 +19,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * decides: the role view's user (AuthManager::user(), signed in as its roles) does. It is sent
  * away when it counts as signed in with this guard: its population is the guard's (Access,
  * since 0.81.0), so a staff role view still sees the members' login page. Without Access the
- * role view counts as signed in with every guard.
+ * role view counts as signed in with every guard. An internal render (Purpose::isInternal()) asks
+ * no guard either (since 0.81.0): only the user its context has counts.
  */
 final class GuestMiddleware implements MiddlewareInterface
 {
@@ -43,7 +44,10 @@ final class GuestMiddleware implements MiddlewareInterface
                 : null;
         } else {
             $user = $this->authManager->guardName() === $name ? $this->authManager->user() : null;
-            $user ??= $this->authManager->guard($name)->user($request);
+            // An internal render asks no guard (since 0.81.0): only the user its context has counts.
+            if (!Contexts::current()->purpose->isInternal()) {
+                $user ??= $this->authManager->guard($name)->user($request);
+            }
         }
         if ($user !== null) {
             return new Response(302, ['Location' => $this->redirectTo]);

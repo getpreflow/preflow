@@ -89,8 +89,9 @@ final class AuditTargets
                 $path = ($m[1] ?? '') === '' ? '/' : $m[1];
             }
             // match() compares route values unencoded: "/%C3%BCber-uns" is the page "über-uns".
-            $found = $this->resolver->match($path, $lookup)
-                ?? ($path !== rawurldecode($path) ? $this->resolver->match(rawurldecode($path), $lookup) : null);
+            // The page the audit rendered: the published one, also in an admin request (working copies).
+            $found = $this->resolver->matchPublished($path, $lookup)
+                ?? ($path !== rawurldecode($path) ? $this->resolver->matchPublished(rawurldecode($path), $lookup) : null);
         } catch (\Throwable) {
             return null;
         }

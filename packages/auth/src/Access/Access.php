@@ -161,6 +161,40 @@ final class Access
         return false;
     }
 
+    /**
+     * Whether the user signed in for this request may view the site as $view (view as role) by
+     * their roles: a role view of the members' population always (a visitor's roles), a staff
+     * role view only when the resolver can answer for roles (AllowsRoles) and every declared
+     * permission the view's roles grant is one this user holds too, so nobody sees the site with
+     * more rights than their own (an editor never as an admin). Nobody signed in, or a role view
+     * itself, may not. Whether they may view as roles at all is the permission the caller asks
+     * (site.view_as with rbac).
+     *
+     * @since 0.81.0
+     */
+    public function mayViewAs(RoleView $view): bool
+    {
+        $user = $this->auth?->user();
+        if ($user === null || $user instanceof SyntheticUser) {
+            return false;
+        }
+        if (self::populationOfRoleView($view) === 'members') {
+            return true;
+        }
+        if (!$this->resolver instanceof AllowsRoles) {
+            return false;
+        }
+        foreach (array_keys($this->registry->all()) as $permission) {
+            if ($this->registry->disabledReason($permission) === null
+                && $this->resolver->allowsRoles($view->roles, 'staff', $permission, null)
+                && !$this->can($permission)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /** Whether $view's roles allow $permission on $subject (AllowsRoles); false when the resolver cannot say. */
     private function grants(RoleView $view, string $permission, ?object $subject): bool
     {

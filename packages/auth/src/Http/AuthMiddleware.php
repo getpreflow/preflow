@@ -25,7 +25,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * renders as a role view (view as role) is never narrowed and no guard is asked: it passes as its
  * SyntheticUser when it counts as signed in with this guard, its population being the guard's
  * (Access, since 0.81.0, as GuestMiddleware decides), and is treated as signed out otherwise
- * (also without Access).
+ * (also without Access). An internal render (Purpose::isInternal(): audit, GEO, rebuild, verify,
+ * preview) asks no guard either (since 0.81.0): it passes as the user its context has, if any.
  */
 final class AuthMiddleware implements MiddlewareInterface
 {
@@ -62,7 +63,11 @@ final class AuthMiddleware implements MiddlewareInterface
             }
         } else {
             $user = $this->authManager->guardName() === $name ? $this->authManager->user() : null;
-            $user ??= $this->authManager->guard($name)->user($request);
+            // An internal render (audit, GEO, rebuild, verify, preview) is whoever its caller chose
+            // (since 0.81.0): no guard is asked, whatever the request carries.
+            if (!Contexts::current()->purpose->isInternal()) {
+                $user ??= $this->authManager->guard($name)->user($request);
+            }
             if ($user !== null && AuthManager::isReserved($user)) {
                 $user = null;
             }

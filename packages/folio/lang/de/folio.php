@@ -281,6 +281,22 @@ return [
         'details' => 'Details',
         'delete_named' => '„:label“ löschen',
     ],
+    // Die Vorschau der ganzen Seite im Editor (0.81): die echte Seite, wie Besucher sie nach dem Veröffentlichen sehen.
+    'preview' => [
+        'mode' => 'Vorschau',
+        'live' => 'Live',
+        'whole_page' => 'Ganze Seite',
+        'whole_page_frame' => 'Vorschau der ganzen Seite',
+        'save_first' => 'Speichere einmal, um die ganze Seite in der Vorschau zu sehen',
+        'view_as' => 'Ansehen als',
+        'anonymous' => 'Besucher (nicht angemeldet)',
+        'member_roles' => 'Rollen für Mitglieder',
+        'staff_roles' => 'Rollen für Mitarbeitende',
+        'report' => 'Was diese Seite tun würde',
+        'would_send' => 'Diese Seite würde :count Mail senden|Diese Seite würde :count Mails senden',
+        'would_write' => 'Diese Seite würde :count Datensatz schreiben|Diese Seite würde :count Datensätze schreiben',
+        'links_leave' => 'Einfache Links und Formulare öffnen die Live-Website.',
+    ],
     'seo' => [
         'title' => 'SEO & Teilen',
         'share_title' => 'Titel beim Teilen',

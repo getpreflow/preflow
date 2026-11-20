@@ -35,10 +35,11 @@ use Preflow\View\Pdf\PdfRenderer;
  *
  * Each path renders the way its caller does in 0.81: audit, GEO and rebuild as internal renders
  * of /hello through Application::render(), verify as the visitor's context discarding and
- * skipping writes, preview as a whole-page preview of working copies in the locale it is given
- * (set explicitly, never the admin frame's); mail through the Mailer and PDF through PdfRenderer,
- * each called in the caller's frame. Folio keeps no ambient state of its own (it only builds
- * contexts), so poisonApp() has nothing to add to the contract's poison.
+ * skipping writes, preview through Application::preview() (the entry Folio's whole-page preview
+ * calls) in the locale it is given (set explicitly, never the admin frame's); mail through the
+ * Mailer and PDF through PdfRenderer, each called in the caller's frame. Folio keeps no ambient
+ * state of its own (it only builds contexts), so poisonApp() has nothing to add to the contract's
+ * poison.
  */
 #[RunTestsInSeparateProcesses]
 final class FolioRenderIsolationTest extends RenderIsolationContract
@@ -99,8 +100,7 @@ final class FolioRenderIsolationTest extends RenderIsolationContract
             'rebuild' => self::internal(Purpose::Rebuild),
             'verify' => static fn (Application $app, RenderContext $ctx): RenderResult
                 => self::page($app, $ctx->discarding()->skippingWrites()->because(Purpose::Verify)),
-            'preview' => static fn (Application $app, RenderContext $ctx): RenderResult
-                => self::page($app, $ctx->asVisitor()->public()->in($ctx->locale)->workingCopies()->capturing()->skippingWrites()->because(Purpose::Preview)),
+            'preview' => static fn (Application $app, RenderContext $ctx): RenderResult => $app->preview($ctx, '/hello', $ctx->locale),
             'mail' => static fn (Application $app, RenderContext $ctx): RenderResult => self::caller(
                 $ctx,
                 static fn (): string => (string) $app->container()->get(Mailer::class)->compose(new MailContent('Isolation', 'Text', $ctx->locale), 'reader@site.test', template: $template())->html,
@@ -119,12 +119,12 @@ final class FolioRenderIsolationTest extends RenderIsolationContract
         $ctx = $this->context();
 
         $published = (string) self::page($app, $ctx->because(Purpose::Audit)->discarding()->skippingWrites())->response->getBody();
-        $working = (string) self::page($app, $ctx->in('de')->workingCopies()->because(Purpose::Preview)->capturing()->skippingWrites())->response->getBody();
+        $working = (string) $app->preview($ctx, '/hello', 'de')->response->getBody();
 
         $this->assertStringContainsString('<h1>Hello</h1><p>Hello|', $published);
-        // The route's record comes from the published table whatever the read mode (the shared
-        // preview finds its own); folio_find() reads as the context says.
-        $this->assertStringContainsString('<p>Entwurf|', $working);
+        // The route's record is read as the context says too, as folio_find() reads (since 0.81.0;
+        // 0.80 read it from the published table whatever the read mode).
+        $this->assertStringContainsString('<h1>Entwurf</h1><p>Entwurf|', $working);
         $this->assertStringContainsString('|de|', $working);
         $this->assertSame(0, Contexts::depth());
     }

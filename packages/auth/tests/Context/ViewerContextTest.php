@@ -598,6 +598,36 @@ final class ViewerContextTest extends DataTestCase
     }
 
     /**
+     * AuthMiddleware and GuestMiddleware in an internal render (a preview of a members' page, the
+     * SEO audit of a login page) ask no guard either: the anonymous visitor the caller chose is
+     * signed out, whatever the request carries.
+     */
+    public function test_auth_and_guest_middleware_ask_no_guard_in_an_internal_render(): void
+    {
+        $asked = new CountingGuard(new TestUser('editor', roles: ['admin']));
+        $auth = new AuthManager(['web' => $asked], 'web');
+        $preview = RenderContext::internal(Purpose::Preview, ContextFactory::forTest()->site, ContextFactory::forTest()->clock, '/members');
+
+        $answers = Contexts::run($preview, static fn (): array => [
+            (new \Preflow\Auth\Http\GuestMiddleware($auth, '/home'))->process(self::request('/login'), new Capture(static fn () => null))->getStatusCode(),
+            (static function () use ($auth): int {
+                try {
+                    return (new AuthMiddleware($auth, 'web'))->process(self::request('/members'), new Capture(static fn () => null))->getStatusCode();
+                } catch (\Preflow\Core\Exceptions\HttpException $e) {
+                    return $e->statusCode;
+                }
+            })(),
+        ]);
+
+        $this->assertSame([200, 401], $answers, 'signed out: the login page shows, the members\' page refuses');
+        $this->assertSame(0, $asked->asked, 'the session the request carries was never read');
+
+        // A visitor's request still asks the guard.
+        Contexts::run(ContextFactory::forTest(), static fn (): int => (new \Preflow\Auth\Http\GuestMiddleware($auth, '/home'))->process(self::request('/login'), new Capture(static fn () => null))->getStatusCode());
+        $this->assertSame(1, $asked->asked);
+    }
+
+    /**
      * Regression (0.75, kept by the frames): a request signed back in from its remember-me cookie
      * queues the rotated cookie, then renders a page internally (the SEO audit's step), whose own
      * ResolveUserMiddleware runs in the render's frame; the rotated cookie still reaches the

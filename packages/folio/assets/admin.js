@@ -204,12 +204,15 @@
         });
     }
 
-    // Messages count only from Folio's own frames: the drawer and the preview. A same-origin
-    // window elsewhere (another tab, a popup, a frame on a site page) cannot steer the editor.
+    // Messages count only from Folio's own frames: the drawer and the previews (live and whole page,
+    // page-preview.js). A same-origin window elsewhere (another tab, a popup, a frame on a site page)
+    // cannot steer the editor.
     function fromOwnFrame(source) {
         if (!source) { return false; }
         var drawerFrame = drawerEl ? drawerEl.querySelector('iframe') : null;
         if (drawerFrame && drawerFrame.contentWindow === source) { return true; }
+        var pageFrame = document.querySelector('.folio-page-frame');
+        if (pageFrame && pageFrame.contentWindow === source) { return true; }
         return !!(preview && preview.frame && preview.frame.contentWindow === source);
     }
 

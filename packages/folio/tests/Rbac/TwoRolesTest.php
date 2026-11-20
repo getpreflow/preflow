@@ -179,6 +179,8 @@ final class TwoRolesTest extends TestCase
             $row('POST /folio/{type}/_bulk/delete', "/folio/{$type}/_bulk/delete", ['ids' => ['missing']], 422);
             $row('POST /folio/{type}/_bulk/{name}', "/folio/{$type}/_bulk/nothing", ['ids' => ['missing']], 404);
             $row('POST /folio/{type}/{id}/preview', "/folio/{$type}/{$id}/preview", $update, 200);
+            // Past the permission check: the record has no address (no slug), so no page to show (404).
+            $row('GET /folio/preview/page/{type}/{id}', "/folio/preview/page/{$type}/{$id}", [], 404);
             $row('POST /folio/{type}/{id}/unpublish', "/folio/{$type}/{$id}/unpublish", [], 404);
             $row('POST /folio/{type}/{id}/discard', "/folio/{$type}/{$id}/discard", [], 404);
             $row('POST /folio/{type}/{id}/autosave', "/folio/{$type}/{$id}/autosave", $update, 404);

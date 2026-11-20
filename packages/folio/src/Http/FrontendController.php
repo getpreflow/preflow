@@ -6,7 +6,6 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Core\Context\Contexts;
-use Preflow\Core\Context\Purpose;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Exceptions\NotFoundHttpException;
@@ -203,10 +202,13 @@ final class FrontendController
             return $refused;
         }
 
-        // The rest of this request is a preview of the working copy: draft references show too,
-        // nothing it renders leaves a trace (Purpose::Preview), and the page cache never stores it.
-        // The next request reads published again: the narrow ends with this request's frame.
-        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->because(Purpose::Preview));
+        // The rest of this request shows the working copy: draft references show too, the data
+        // writes the page would make are skipped and listed (a shared draft changes no data), and
+        // the page cache never stores it. It stays the visit of a real person (since 0.81.0):
+        // the site's own error page, the debug toolbar, and what it queues (its session's
+        // cookies) goes out as on any page. The next request reads published again: the narrow
+        // ends with this request's frame.
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->skippingWrites());
 
         return new Response(200, [
             'Content-Type' => 'text/html; charset=UTF-8',

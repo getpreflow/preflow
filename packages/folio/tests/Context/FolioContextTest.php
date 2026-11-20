@@ -63,13 +63,14 @@ final class FolioContextTest extends TestCase
         Contexts::reset();
         Deprecations::reset();
         ContextProbeProvider::$seen = ContextProbeProvider::$after = [];
+        ContextProbeProvider::$write = ContextProbeProvider::$fail = false;
         $this->scaffoldPublishing();
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://site.test'];\n");
         // Content in en (the default) and de; the visitor's locale comes from Accept-Language (send()).
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'cookie', 'cookie' => false];\n");
         $this->write('config/seo.php', "<?php\nreturn ['enabled' => true];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><head><title>{{ record.title }}</title></head><body><h1>{{ record.title }}</h1>'
-            . '{% if auth_check() %}<b class="members">MEMBERS</b>{% endif %}<p class="probe">{{ context_probe() }}</p>{{ probe_cookie() }}</body></html>');
+            . '{% if auth_check() %}<b class="members">MEMBERS</b>{% endif %}<p class="probe">{{ context_probe() }}</p>{{ probe_cookie() }}{{ probe_effects() }}</body></html>');
         $this->write('app/pages/index.twig', '<p class="home">{{ context_probe() }}|{{ interface_locale }}|{{ t("folio.common.save") }}|{{ folio_url("post", "p1")|default("none") }}</p>');
         $publisher = $this->publisher();
         $publisher->publish($this->working('post', 'p1', ['title' => ['de' => 'Hallo', 'en' => 'Hello'], 'slug' => ['de' => 'hallo', 'en' => 'hello'], '_locales' => ['de', 'en']]), null);
@@ -132,7 +133,7 @@ final class FolioContextTest extends TestCase
         $body = (string) $preview->getBody();
         $this->assertStringContainsString('<h1>Entwurf</h1>', $body);
         $this->assertStringNotContainsString('MEMBERS', $body, 'the signed-in editor is not who the page renders for');
-        $this->assertStringContainsString('<p class="probe">de|public|working|nobody|visit</p>', $body);
+        $this->assertStringContainsString('<p class="probe">de|public|working|nobody|preview</p>', $body, 'nothing it renders leaves a trace');
     }
 
     #[RunInSeparateProcess]
@@ -142,7 +143,7 @@ final class FolioContextTest extends TestCase
 
         $preview = (string) $this->send('POST', '/folio/post/p1/preview', ['title' => 'Draft', 'slug' => 'hello', '_locale' => 'en'])->getBody();
 
-        $this->assertStringContainsString('<p class="probe">en|public|working|nobody|visit</p>', $preview, 'the editing locale, set explicitly');
+        $this->assertStringContainsString('<p class="probe">en|public|working|nobody|preview</p>', $preview, 'the editing locale, set explicitly');
         $this->assertSame(0, Contexts::depth());
         $this->assertStringContainsString('<p class="home">de|public|published|admin@site.test|visit|en|Speichern|/hallo</p>', (string) $this->send('GET', '/')->getBody(), 'the content locale is the visitor\'s, not the preview\'s en');
         $admin = $this->send('GET', '/folio');
@@ -169,12 +170,81 @@ final class FolioContextTest extends TestCase
         $shared = $this->session->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/hallo?folio_preview=' . $m[1])
             ->withHeader('Accept-Language', 'de')->withQueryParams(['folio_preview' => $m[1]]));
         $this->assertStringContainsString('<h1>Entwurf</h1>', (string) $shared->getBody());
-        $this->assertStringContainsString('<p class="probe">de|public|working|admin@site.test|preview</p>', (string) $shared->getBody());
+        // A real visit of the shared draft (since 0.81.0 no internal Preview: the site's own error page, the debug toolbar).
+        $this->assertStringContainsString('<p class="probe">de|public|working|admin@site.test|visit</p>', (string) $shared->getBody());
 
         $public = (string) $this->send('GET', '/hallo')->getBody();
 
         $this->assertStringContainsString('<h1>Hallo</h1>', $public, 'the next request reads published');
         $this->assertSame('de|public|published|admin@site.test|visit', end(ContextProbeProvider::$after), 'and so does its after-response work');
+    }
+
+    /**
+     * The live preview writes nothing and sends nothing with the admin's request (since 0.81.0): a
+     * page that writes on GET is skipped, the cookie it queues is captured, never set.
+     */
+    #[RunInSeparateProcess]
+    public function test_live_preview_skips_writes_and_keeps_what_it_would_send(): void
+    {
+        $this->signIn();
+        ContextProbeProvider::$write = true;
+        $notes = fn (): int => count($this->session->container()->get(\Preflow\Data\DataManager::class)->queryType('note')->get()->items());
+        $before = $notes();
+
+        $preview = $this->send('POST', '/folio/post/p1/preview', ['title' => 'Draft', 'slug' => 'hello', '_locale' => 'en']);
+
+        $this->assertSame(200, $preview->getStatusCode());
+        $this->assertSame($before, $notes(), 'the write was skipped');
+        $this->assertStringNotContainsString('probe=', implode("\n", $preview->getHeader('Set-Cookie')), 'the page\'s cookie is not set with the admin\'s response');
+        $this->assertSame(0, Contexts::depth());
+    }
+
+    /** A live preview that fails leaves the admin request as it was: their locale, texts and identity. */
+    #[RunInSeparateProcess]
+    public function test_an_error_in_the_live_preview_restores_the_admins_locale_and_identity(): void
+    {
+        $this->signIn();
+        ContextProbeProvider::$fail = true;
+
+        $preview = $this->send('POST', '/folio/post/p1/preview', ['title' => 'Draft', 'slug' => 'hello', '_locale' => 'en']);
+
+        $this->assertSame(500, $preview->getStatusCode());
+        $this->assertStringContainsString('The probed page failed.', (string) $preview->getBody(), 'the admin\'s own (debug) error page');
+        $this->assertSame(0, Contexts::depth());
+        ContextProbeProvider::$fail = false;
+        $admin = $this->send('GET', '/folio');
+        $this->assertSame(200, $admin->getStatusCode(), 'still signed in');
+        $this->assertStringContainsString('<html lang="fr">', (string) $admin->getBody(), 'the admin\'s interface language');
+    }
+
+    /**
+     * The share preview is a real person's visit of the draft: a page that fails shows the site's
+     * error page for that visit (the detailed one in debug mode, as on any page), not the bare page
+     * of an internal render; a page that writes on GET is skipped.
+     */
+    #[RunInSeparateProcess]
+    public function test_share_preview_is_a_visit_that_writes_nothing(): void
+    {
+        $this->working('post', 'p1', ['title' => ['de' => 'Entwurf', 'en' => 'Draft'], 'slug' => ['de' => 'hallo', 'en' => 'hello'], '_locales' => ['de', 'en']]);
+        $this->signIn();
+        $share = (string) $this->send('POST', '/folio/post/p1/share', ['_locale' => 'de'])->getBody();
+        $this->assertSame(1, preg_match('/folio_preview=([A-Za-z0-9_.\-]+)/', $share, $m), $share);
+        $shared = fn (): ResponseInterface => $this->session->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/hallo?folio_preview=' . $m[1])
+            ->withHeader('Accept-Language', 'de')->withQueryParams(['folio_preview' => $m[1]]));
+        $notes = fn (): int => count($this->session->container()->get(\Preflow\Data\DataManager::class)->queryType('note')->get()->items());
+        $before = $notes();
+
+        ContextProbeProvider::$write = true;
+        $page = $shared();
+        $this->assertStringContainsString('<h1>Entwurf</h1>', (string) $page->getBody());
+        $this->assertSame($before, $notes(), 'the write was skipped');
+        $this->assertSame('private, no-store', $page->getHeaderLine('Cache-Control'));
+
+        ContextProbeProvider::$fail = true;
+        $failed = $shared();
+        $this->assertSame(500, $failed->getStatusCode());
+        $this->assertStringContainsString('The probed page failed.', (string) $failed->getBody(), 'the debug error page of a visit, not the internal render\'s bare one');
+        $this->assertSame(0, Contexts::depth());
     }
 
     #[RunInSeparateProcess]

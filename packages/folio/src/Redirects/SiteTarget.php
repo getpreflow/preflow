@@ -107,7 +107,8 @@ final class SiteTarget implements PageExists, SiteAddresses, LanguageRedirectedA
     }
 
     /**
-     * The page holding an address of an entry locale. Tried with the path decoded too:
+     * The page holding an address of an entry locale on the published site (whatever the render
+     * reads: an admin request reads working copies). Tried with the path decoded too:
      * FrontendResolver::match() compares route values unencoded, so "/%C3%BCber-uns" alone would
      * miss the page "über-uns".
      */
@@ -115,8 +116,8 @@ final class SiteTarget implements PageExists, SiteAddresses, LanguageRedirectedA
     {
         $locale = $this->lookupLocale($locale);
 
-        return $this->resolver->match($path, $locale)
-            ?? ($path !== rawurldecode($path) ? $this->resolver->match(rawurldecode($path), $locale) : null);
+        return $this->resolver->matchPublished($path, $locale)
+            ?? ($path !== rawurldecode($path) ? $this->resolver->matchPublished(rawurldecode($path), $locale) : null);
     }
 
     /**

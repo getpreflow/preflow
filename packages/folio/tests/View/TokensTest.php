@@ -33,6 +33,7 @@ final class TokensTest extends TestCase
         ],
         'preview-editor.css' => [
             '.folio-pe-overlay' => 'injected into the site page where Folio\'s tokens do not exist: this rule is its own small token set',
+            '.folio-pp-bar' => 'the whole-page preview\'s bar, also in the site page: its own token set (the admin\'s inverse values) and the light --shadow-lg',
         ],
     ];
 

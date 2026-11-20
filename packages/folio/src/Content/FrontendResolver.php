@@ -10,9 +10,14 @@ use Preflow\Data\LocaleValue;
 use Preflow\Publishing\ShadowTypes;
 
 /**
- * Maps a public path to a published record of any type that declares a
- * "frontend" route. Routes are tried most specific first; '' resolves to the
- * record named by the (single) "home" declaration.
+ * Maps a public path to a record of any type that declares a "frontend" route. Routes are tried
+ * most specific first; '' resolves to the record named by the (single) "home" declaration.
+ *
+ * match() reads the records as the current render's read mode says (since 0.81.0, through
+ * LiveContent): the published snapshots of publishing types for a visitor, their working copies
+ * in a whole-page preview (so the page and folio_find() show the same version). matchPublished()
+ * always reads the published site, whatever the read mode: what a visitor would find at an
+ * address (redirect targets, the SEO audit's pages).
  *
  * For the page cache, a page found this way depends on its record (by id) and on its address
  * (DataTags::address() of the path), not on the whole published table its lookup queried: the
@@ -38,6 +43,8 @@ final class FrontendResolver
         private readonly ?\Preflow\Core\PageCache\PageCache $pageCache = null,
         /** The site's locale URL rule (core binds it from config/i18n.php); null: today's rule, the default unprefixed */
         private readonly ?\Preflow\Core\Http\LocaleUrls $urls = null,
+        /** since 0.81.0: whether the current render reads working copies (match()); null reads the published site, as before 0.81 */
+        private readonly ?\Preflow\Publishing\LiveContent $live = null,
     ) {
         $this->routes = self::ordered(is_string($routes) ? [self::legacy($routes)] : $routes);
     }
@@ -99,11 +106,30 @@ final class FrontendResolver
     }
 
     /**
+     * The record at $path as the current render reads it: the published snapshot of a publishing
+     * type, or its working copy where the render reads working copies (a whole-page preview).
+     *
      * @param string|null $locale the request's locale (from LocaleMiddleware); translated
      *                            route values are matched in it, and records not
      *                            visible in it (_locales) are skipped
      */
     public function match(string $path, ?string $locale = null): ?ResolvedRecord
+    {
+        return $this->find($path, $locale, onlyPublished: false);
+    }
+
+    /**
+     * The record a visitor finds at $path: always the published snapshot of a publishing type,
+     * whatever the render reads.
+     *
+     * @since 0.81.0
+     */
+    public function matchPublished(string $path, ?string $locale = null): ?ResolvedRecord
+    {
+        return $this->find($path, $locale, onlyPublished: true);
+    }
+
+    private function find(string $path, ?string $locale, bool $onlyPublished): ?ResolvedRecord
     {
         $path = trim($path, '/');
         $found = null;
@@ -123,7 +149,10 @@ final class FrontendResolver
                 continue;
             }
 
-            $published = $route->publishing ? ShadowTypes::published($this->definition($route->type)) : null;
+            // A publishing type's published snapshots, or its working copies (drafts too) where the render reads them.
+            $published = $route->publishing && ($onlyPublished || !$this->readsWorkingCopies($route->type))
+                ? ShadowTypes::published($this->definition($route->type))
+                : null;
             if ($published !== null) {
                 // Any route this path tries could claim it: a table or bulk write of its records
                 // (an import, a pull, a site's raw write, none through the Publisher) changes the
@@ -307,6 +336,12 @@ final class FrontendResolver
         sort($types);
 
         return sprintf('"%s" and "%s"', ...$types);
+    }
+
+    /** Whether the current render reads $type's working copies (LiveContent); never without it. */
+    private function readsWorkingCopies(string $type): bool
+    {
+        return $this->live?->readsWorkingCopies($type) ?? false;
     }
 
     /** The definition of a routed type (for FrontendRoute::published()). @internal */

@@ -15,7 +15,8 @@ use Preflow\View\TemplateFunctionDefinition;
  * Template functions for FolioContextTest:
  * - context_probe(): the current render's context as "locale|surface|reads|viewer|purpose";
  * - context_after(): queues after-response work that records the probe as it is then;
- * - probe_cookie(): queues the cookie "probe=1" on the current frame.
+ * - probe_cookie(): queues the cookie "probe=1" on the current frame;
+ * - probe_effects(): writes a note when $write is on, throws when $fail is on.
  */
 final class ContextProbeProvider extends ServiceProvider
 {
@@ -24,6 +25,12 @@ final class ContextProbeProvider extends ServiceProvider
 
     /** @var list<string> what each context_after() work saw */
     public static array $after = [];
+
+    /** probe_effects() writes a note (a page that writes on GET). */
+    public static bool $write = false;
+
+    /** probe_effects() throws (a page that fails). */
+    public static bool $fail = false;
 
     public function register(Container $container): void {}
 
@@ -42,6 +49,20 @@ final class ContextProbeProvider extends ServiceProvider
                 Contexts::frame()->outbox()->afterResponse(static function (): void {
                     self::$after[] = self::probe();
                 });
+
+                return '';
+            },
+        ));
+        $engine->addFunction(new TemplateFunctionDefinition(
+            name: 'probe_effects',
+            callable: static function () use ($container): string {
+                if (self::$fail) {
+                    throw new \RuntimeException('The probed page failed.');
+                }
+                if (self::$write) {
+                    $dm = $container->get(\Preflow\Data\DataManager::class);
+                    $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($dm->getTypeRegistry()->get('note'), ['uuid' => bin2hex(random_bytes(4)), 'name' => 'Visited']), false);
+                }
 
                 return '';
             },
