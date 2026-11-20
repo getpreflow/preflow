@@ -22,7 +22,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Since 0.81 it changes no service: the handler runs inside Contexts::within() on the admin
  * surface (RenderContext::admin(), overrides on), so the translator, FolioText, the validators
  * and InterfaceLocales::current() answer in the interface language for that stretch only. The
- * context's locale stays the content language. Afterwards (also when the handler throws) the
+ * context's locale is the default content locale for that stretch (what the admin's content
+ * readers showed before 0.81); the visitor's is on the request (FRONTEND_LOCALE). Afterwards (also when the handler throws) the
  * request's frame is on the surface it was on before, so work after the response (and a later
  * request) gets the visitor's texts and English validation, as before 0.81. A preview inside
  * the admin renders with asFrontend().
@@ -52,6 +53,8 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         private readonly ?\Preflow\Validation\ValidatorFactory $validators = null,
         /** the admin's 404 page, on the request for NotFound::response() (attribute NotFound::class) */
         private readonly ?NotFound $notFound = null,
+        /** @since 0.81.0 the content locale the admin renders its content in (Folio's default content locale); null: the site's default locale */
+        private readonly ?string $contentDefault = null,
     ) {}
 
     /** @throws \Preflow\Core\Context\NoRenderContext outside every render */
@@ -59,8 +62,7 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
     {
         $locale = $this->localeFor($request);
         $ctx = Contexts::current();
-        // A request of its own, not one nested in another render (an admin page asked for in-process).
-        if ($this->onStart !== null && Contexts::depth() === 1) {
+        if ($this->onStart !== null && !self::insideAdmin()) {
             ($this->onStart)();
         }
 
@@ -71,7 +73,24 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
             $request = $request->withAttribute(NotFound::class, $this->notFound);
         }
 
-        return Contexts::within($ctx->admin($locale, overrides: true), static fn (): ResponseInterface => $handler->handle($request));
+        // The admin's texts in its interface language; its content in the default content locale,
+        // as before 0.81 (an editor's locale cookie or browser language never picks which
+        // translation the admin lists, labels and settings show). The visitor's locale stays on
+        // the request (FRONTEND_LOCALE) for asFrontend().
+        $admin = $ctx->admin($locale, overrides: true)->in($this->contentDefault ?? $ctx->site->defaultLocale);
+
+        return Contexts::within($admin, static fn (): ResponseInterface => $handler->handle($request));
+    }
+
+    /**
+     * Whether this admin request runs inside another one: the current context, or the frame this
+     * request is part of (Application::handleNested()), is already on the admin surface. The
+     * outermost admin request refreshes what onStart refreshes, also when it is handled inside a
+     * console or test frame.
+     */
+    private static function insideAdmin(): bool
+    {
+        return Contexts::current()->surface->admin || Contexts::frame()->partOf()?->context->surface->admin === true;
     }
 
     /**

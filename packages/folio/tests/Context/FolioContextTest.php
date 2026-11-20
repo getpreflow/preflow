@@ -43,8 +43,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  * its own request only; the SEO audit run from Folio leaves the admin's frame as it was; the
  * content locale, Folio's texts and the content memos follow the context.
  *
- * The site: content in de (default) and en, an admin who reads the admin in French, the admin's
- * override "Override save" of folio.common.save in German.
+ * The site: content in en (the default) and de, visitors who read it in German (Accept-Language,
+ * the cookie strategy), an admin who reads the admin in French, the admin's override
+ * "Override save" of folio.common.save in German.
  */
 final class FolioContextTest extends TestCase
 {
@@ -61,7 +62,8 @@ final class FolioContextTest extends TestCase
         ContextProbeProvider::$seen = ContextProbeProvider::$after = [];
         $this->scaffoldPublishing();
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://site.test'];\n");
-        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'de', 'available' => ['de', 'en'], 'fallback' => 'de', 'url_strategy' => 'prefix'];\n");
+        // Content in en (the default) and de; the visitor's locale comes from Accept-Language (send()).
+        $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'cookie', 'cookie' => false];\n");
         $this->write('config/seo.php', "<?php\nreturn ['enabled' => true];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><head><title>{{ record.title }}</title></head><body><h1>{{ record.title }}</h1>'
             . '{% if auth_check() %}<b class="members">MEMBERS</b>{% endif %}<p class="probe">{{ context_probe() }}</p>{{ probe_cookie() }}</body></html>');
@@ -103,14 +105,17 @@ final class FolioContextTest extends TestCase
         $this->assertSame(200, $admin->getStatusCode());
         $body = (string) $admin->getBody();
         $this->assertStringContainsString('<html lang="fr">', $body, 'the interface language, through the lazy engine global');
-        $this->assertStringContainsString('<p class="probe">de|admin:fr:overrides|working|admin@site.test|visit</p>', $body, 'the override page: admin surface, the content locale stays the visitor\'s');
-        $this->assertSame(['de|public|working|admin@site.test|visit'], ContextProbeProvider::$after, 'work after the response: working copies as in 0.80, the visitor\'s texts');
+        // The override page: admin surface in fr; content in the default content locale (as in 0.80),
+        // although the editor's browser asks for de: folio_url() gives the en address.
+        $this->assertStringContainsString('<p class="probe">en|admin:fr:overrides|working|admin@site.test|visit</p><a class="url">/hello</a>', $body);
+        $this->assertSame(['de|public|working|admin@site.test|visit'], ContextProbeProvider::$after, 'work after the response: working copies as in 0.80, the visitor\'s locale and texts');
         $this->assertSame(0, Contexts::depth());
 
+        // Another browser: no session, nothing of the admin request.
+        $_SESSION = ['_flash' => ['current' => [], 'previous' => []]];
         $home = (string) $this->send('GET', '/')->getBody();
 
-        // The admin's session reaches the site too (a signed-in visitor), but nothing of the admin request.
-        $this->assertStringContainsString('<p class="home">de|public|published|admin@site.test|visit|en|Speichern|/hallo</p>', $home, 'visitor locale, the default interface locale, no overrides');
+        $this->assertStringContainsString('<p class="home">de|public|published|nobody|visit|en|Speichern|/hallo</p>', $home, 'nobody signed in, the visitor\'s locale, the default interface locale, no overrides');
     }
 
     #[RunInSeparateProcess]
@@ -136,7 +141,7 @@ final class FolioContextTest extends TestCase
 
         $this->assertStringContainsString('<p class="probe">en|public|working|nobody|visit</p>', $preview, 'the editing locale, set explicitly');
         $this->assertSame(0, Contexts::depth());
-        $this->assertStringContainsString('<p class="home">de|public|published|admin@site.test|visit|en|Speichern|/hallo</p>', (string) $this->send('GET', '/')->getBody(), 'the content locale is the visitor\'s again');
+        $this->assertStringContainsString('<p class="home">de|public|published|admin@site.test|visit|en|Speichern|/hallo</p>', (string) $this->send('GET', '/')->getBody(), 'the content locale is the visitor\'s, not the preview\'s en');
         $admin = $this->send('GET', '/folio');
         $this->assertSame(200, $admin->getStatusCode(), 'still signed in');
         $this->assertStringContainsString('<html lang="fr">', (string) $admin->getBody());
@@ -159,7 +164,7 @@ final class FolioContextTest extends TestCase
         }, 'folio-context-test');
 
         $shared = $this->session->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/hallo?folio_preview=' . $m[1])
-            ->withQueryParams(['folio_preview' => $m[1]]));
+            ->withHeader('Accept-Language', 'de')->withQueryParams(['folio_preview' => $m[1]]));
         $this->assertStringContainsString('<h1>Entwurf</h1>', (string) $shared->getBody());
         $this->assertStringContainsString('<p class="probe">de|public|working|admin@site.test|preview</p>', (string) $shared->getBody());
 
@@ -180,9 +185,11 @@ final class FolioContextTest extends TestCase
         $this->assertSame(200, $step->getStatusCode());
         $audited = array_values(array_filter(ContextProbeProvider::$seen, static fn (string $p): bool => str_ends_with($p, '|audit')));
         $this->assertNotEmpty($audited, 'a page was audited');
-        $this->assertSame(['de|public|published|nobody|audit'], array_values(array_unique($audited)), 'as a visitor');
+        foreach ($audited as $probe) {
+            $this->assertMatchesRegularExpression('/^(en|de)\|public\|published\|nobody\|audit$/', $probe, 'as a visitor');
+        }
         $this->assertStringNotContainsString('probe=', implode("\n", $step->getHeader('Set-Cookie')), 'what the audited page queued stays in its frame');
-        $this->assertStringContainsString('Audit', (string) $step->getBody());
+        $this->assertTrue($step->hasHeader('HX-Redirect') || str_contains((string) $step->getBody(), 'audit'), 'the progress partial, or the way to the finished report');
         $this->assertSame(0, Contexts::depth());
         $admin = $this->send('GET', '/folio/seo-audit');
         $this->assertSame(200, $admin->getStatusCode(), 'still signed in');
@@ -204,11 +211,11 @@ final class FolioContextTest extends TestCase
             $this->assertSame('de', $locale->get());
             $this->assertSame('de', Contexts::current()->locale, 'it narrowed the frame');
 
-            Contexts::run(ContextFactory::forTest($site), function () use ($locale): void {
-                $this->assertSame('en', $locale->get(), 'a render of its own starts from its context');
-                $locale->set('de');
+            Contexts::run(ContextFactory::forTest($site)->in('de'), function () use ($locale): void {
+                $locale->set('en');
+                $this->assertSame('en', $locale->get(), 'the inner frame narrowed');
             });
-            $this->assertSame('de', $locale->get());
+            $this->assertSame('de', $locale->get(), 'the inner frame\'s set() ended with it');
 
             $locale->set('xx');
             $this->assertSame('en', $locale->get(), 'not a content locale: the default');
@@ -231,13 +238,13 @@ final class FolioContextTest extends TestCase
         $collections = $app->container()->get(Collections::class);
         $titles = static fn (): array => array_column($collections->list('post'), 'title');
 
-        Contexts::run(RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock()), function () use ($titles): void {
+        Contexts::run(RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->in('de'), function () use ($titles): void {
             $this->assertSame(['Hallo'], $titles());
             $this->assertSame(['Entwurf'], Contexts::within(Contexts::current()->workingCopies(), $titles), 'working copies: read anew');
             $this->assertSame(['Hello'], Contexts::within(Contexts::current()->in('en'), $titles), 'another locale: read anew');
             $this->assertSame(['Hallo'], $titles(), 'published again: the first list');
         });
-        Contexts::run(RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->workingCopies(), function () use ($titles): void {
+        Contexts::run(RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->in('de')->workingCopies(), function () use ($titles): void {
             $this->assertSame(['Entwurf'], $titles(), 'a frame of its own starts empty');
         });
     }
@@ -251,7 +258,8 @@ final class FolioContextTest extends TestCase
 
         $this->assertSame('Save', FolioText::get('folio.common.save'), 'outside every render: English');
         Contexts::run(RenderContext::console($site, new \Preflow\Core\Context\SystemClock()), function () use ($translator): void {
-            $this->assertSame('Speichern', FolioText::get('folio.common.save'), 'public surface: Folio\'s own texts in the render\'s locale');
+            $this->assertSame('Save', FolioText::get('folio.common.save'));
+            $this->assertSame('Speichern', Contexts::within(Contexts::current()->in('de'), static fn (): string => FolioText::get('folio.common.save')), 'public surface: Folio\'s own texts in the render\'s locale');
             Contexts::within(Contexts::current()->admin('fr'), function () use ($translator): void {
                 $this->assertSame('Enregistrer', FolioText::get('folio.common.save'));
                 $this->assertSame('fr', FolioText::locale());
@@ -272,6 +280,20 @@ final class FolioContextTest extends TestCase
         $this->signIn();
         $app = $this->session;
         $role = new RoleView('staff', ['admin']);
+        $asRole = RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->asRole($role);
+        $f = new Psr17Factory();
+
+        // A real htmx POST (an audit step) and the sign-in page (no AdminAuthMiddleware), handled inside a role view's frame
+        // (view as role): refused, not a 500 from the setUser() shim, and nothing ran.
+        $step = Contexts::run($asRole, static fn (): ResponseInterface => $app->handle($f->createServerRequest('POST', '/folio/seo-audit/step')
+            ->withHeader('HX-Request', 'true')->withHeader('Sec-Fetch-Site', 'same-origin')->withParsedBody([])));
+        $login = Contexts::run($asRole, static fn (): ResponseInterface => $app->handle($f->createServerRequest('GET', '/folio/login')));
+
+        $this->assertSame(403, $step->getStatusCode());
+        $this->assertSame(403, $login->getStatusCode());
+        $this->assertFileDoesNotExist(AuditReport::file($this->dir), 'no audit step ran');
+
+        // Its SyntheticUser on the request: refused by AdminAuthMiddleware too.
         $handler = new class implements RequestHandlerInterface {
             public bool $reached = false;
 
@@ -283,20 +305,102 @@ final class FolioContextTest extends TestCase
             }
         };
         $middleware = new AdminAuthMiddleware($app->container()->get(\Preflow\Auth\AuthManager::class), '/folio', $app->container()->get(AdminNav::class));
-        $request = (new Psr17Factory())->createServerRequest('GET', '/folio/post');
-
-        // A role view's frame (view as role): refused, not a 500 from the setUser() shim.
-        $asRole = Contexts::run(RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->asRole($role), static fn (): ResponseInterface => $middleware->process($request, $handler));
-        // Its SyntheticUser on the request: refused too.
         $asUser = Contexts::run(RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock()), static fn (): ResponseInterface => $middleware->process(
-            $request->withAttribute(\Preflow\Auth\Authenticatable::class, new \Preflow\Auth\SyntheticUser($role)),
+            $f->createServerRequest('GET', '/folio/post')->withAttribute(\Preflow\Auth\Authenticatable::class, new \Preflow\Auth\SyntheticUser($role)),
             $handler,
         ));
-
-        $this->assertSame(403, $asRole->getStatusCode());
         $this->assertSame(403, $asUser->getStatusCode());
         $this->assertFalse($handler->reached, 'no admin route (an import, the extensions file) is reached');
         $this->assertSame(200, $this->send('GET', '/folio')->getStatusCode(), 'the real admin still gets in');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_admin_routes_refuse_a_synthetic_viewer_without_auth_config(): void
+    {
+        $app = $this->app(); // no config/auth.php: no AdminAuthMiddleware on the admin routes
+        $asRole = RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->asRole(new RoleView('staff', ['admin']));
+
+        $response = Contexts::run($asRole, static fn (): ResponseInterface => $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio')));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertSame(200, $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio'))->getStatusCode(), 'a real request gets in');
+    }
+
+    #[RunInSeparateProcess]
+    public function test_every_admin_route_starts_with_the_synthetic_viewer_refusal(): void
+    {
+        $this->signIn();
+        $this->dashboardOverride();
+        $this->write('app/Folio/Stats/Screens/Board.php', <<<'PHP'
+            <?php
+            namespace App\Folio\Stats\Screens;
+            #[\Preflow\Folio\Extension\Attributes\FolioScreen('board', 'Board', permission: 'stats.view')]
+            final class Board
+            {
+                #[\Preflow\Routing\Attributes\Get('/')]
+                public function index(): \Preflow\Folio\Extension\Screen\ScreenView
+                {
+                    return new \Preflow\Folio\Extension\Screen\ScreenView('@stats/board.twig');
+                }
+
+                #[\Preflow\Routing\Attributes\Post('/refresh')]
+                public function refresh(): \Psr\Http\Message\ResponseInterface
+                {
+                    return new \Nyholm\Psr7\Response(204);
+                }
+            }
+            PHP);
+        $app = $this->app();
+        $app->handle((new Psr17Factory())->createServerRequest('GET', '/folio/login')); // the admin's routes are set up
+        $router = $app->container()->get(\Preflow\Core\Routing\RouterInterface::class);
+        $static = ['Preflow\\Folio\\Http\\AssetController', 'Preflow\\Folio\\Http\\UploadController', 'Preflow\\Folio\\Http\\ExtensionAssetController'];
+        $signedOut = ['Preflow\\Folio\\Http\\AuthController', 'Preflow\\Folio\\Http\\PasswordController'];
+
+        $checked = [];
+        foreach ($router->getCollection()->all() as $route) {
+            if (!str_starts_with($route->pattern, '/folio/') && $route->pattern !== '/folio') {
+                continue;
+            }
+            $class = explode('@', is_string($route->handler) ? $route->handler : '')[0];
+            if (in_array($class, $static, true)) {
+                $this->assertSame([], $route->middleware, $route->pattern . ': a static file');
+                continue;
+            }
+            $where = $route->method . ' ' . $route->pattern;
+            $this->assertSame(\Preflow\Folio\Http\WorkingCopyMiddleware::class, $route->middleware[0] ?? null, $where);
+            if (!in_array($class, $signedOut, true)) {
+                $this->assertContains(AdminAuthMiddleware::class, $route->middleware, $where);
+            }
+            $checked[] = $where;
+        }
+
+        $this->assertContains('GET /folio/board', $checked, 'an extension screen');
+        $this->assertContains('POST /folio/board/refresh', $checked, 'a screen action');
+        $this->assertContains('POST /folio/seo-audit/step', $checked, 'an htmx fragment');
+        $this->assertContains('POST /folio/login', $checked, 'the sign-in page');
+        $this->assertGreaterThan(50, count($checked));
+    }
+
+    #[RunInSeparateProcess]
+    public function test_an_admin_request_inside_another_frame_reads_overrides_afresh(): void
+    {
+        $this->signIn();
+        $app = $this->session;
+        $overrides = $app->container()->get(StoredOverrides::class);
+        $dm = $app->container()->get(\Preflow\Data\DataManager::class);
+
+        $pages = Contexts::run(RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock()), function () use ($overrides, $dm): array {
+            $first = (string) $this->send('GET', '/folio')->getBody();
+            // Another process saves an override: its row, and the compiled file gone.
+            $overrides->ensureTable();
+            $dm->saveType(\Preflow\Data\DynamicRecord::fromArray($overrides->definition(), ['id' => 'fr:folio.layout.log_out', 'locale' => 'fr', 'key' => 'folio.layout.log_out', 'text' => 'Partir']), false);
+            @unlink($this->dir . '/storage/cache/folio-translations-fr.php');
+
+            return [$first, (string) $this->send('GET', '/folio')->getBody()];
+        });
+
+        $this->assertStringContainsString('Se déconnecter', $pages[0]);
+        $this->assertStringContainsString('Partir', $pages[1], 'the outermost admin request refreshed the overrides');
     }
 
     public function test_long_requests_record_their_limits_on_the_frame(): void
@@ -330,7 +434,7 @@ final class FolioContextTest extends TestCase
             #[\Preflow\Folio\Extension\Attributes\FolioExtension(name: 'stats', label: 'Stats')]
             final class Extension extends \Preflow\Folio\Extension\Extension {}
             PHP);
-        $this->write('app/Folio/Stats/templates/board.twig', "{% extends '@folio/admin/_layout.twig' %}{% block content %}<p class=\"probe\">{{ context_probe() }}</p>{{ context_after() }}{% endblock %}");
+        $this->write('app/Folio/Stats/templates/board.twig', "{% extends '@folio/admin/_layout.twig' %}{% block content %}<p class=\"probe\">{{ context_probe() }}</p><a class=\"url\">{{ folio_url('post', 'p1') }}</a>{{ context_after() }}{% endblock %}");
         $this->write('config/folio/extensions.json', (string) json_encode(['enabled' => ['stats' => new \stdClass()]]));
         $this->write('app/Folio/Overrides/Content/Index.php', <<<'PHP'
             <?php
@@ -391,7 +495,7 @@ final class FolioContextTest extends TestCase
     /** @param array<string, string> $body */
     private function send(string $method, string $uri, array $body = [], bool $htmx = false): ResponseInterface
     {
-        $req = (new Psr17Factory())->createServerRequest($method, $uri);
+        $req = (new Psr17Factory())->createServerRequest($method, $uri)->withHeader('Accept-Language', 'de');
         if ($method !== 'GET') {
             $req = $req->withHeader('Sec-Fetch-Site', 'same-origin');
             if (session_id() !== '') {

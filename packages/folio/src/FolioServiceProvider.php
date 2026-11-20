@@ -944,6 +944,7 @@ final class FolioServiceProvider extends ServiceProvider
                 $c->get(TypeCatalog::class),
                 static fn (string $permission): bool => !$c->has(\Preflow\Auth\Access\Access::class) || $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
             ) : null,
+            contentDefault: $c->get(ContentLocale::class)->locales()->default,
         ));
         $container->bind(\Preflow\Folio\Http\LocaleController::class, fn (Container $c) => new \Preflow\Folio\Http\LocaleController(
             $c->get(\Preflow\Folio\Users\UserPreferences::class),

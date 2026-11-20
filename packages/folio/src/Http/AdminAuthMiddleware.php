@@ -37,7 +37,9 @@ final class AdminAuthMiddleware implements MiddlewareInterface
     /** @throws \Preflow\Core\Context\NoRenderContext outside every render */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if (Contexts::current()->viewer->isSynthetic() || $request->getAttribute(Authenticatable::class) instanceof SyntheticUser) {
+        // WorkingCopyMiddleware, first on every admin route, refuses these already; this copy keeps a
+        // route that runs this middleware alone safe too.
+        if (WorkingCopyMiddleware::refusesViewer($request)) {
             return new Response(403, ['Content-Type' => 'text/plain; charset=UTF-8', 'Cache-Control' => 'private, no-store'], 'Forbidden');
         }
         // Only Folio's staff guard signs into the admin; a user resolved for it already (or set in

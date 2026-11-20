@@ -63,7 +63,8 @@ final class AdminLocaleMiddlewareTest extends TestCase
     }
 
     /**
-     * Runs $fn in a visitor's frame of a site whose content is in Italian.
+     * Runs $fn in a visitor's frame of a site whose content is in English (the default) and
+     * Italian, the visitor reading it in Italian (not the default, so a reset would show).
      *
      * @template T
      * @param \Closure(): T $fn
@@ -71,7 +72,7 @@ final class AdminLocaleMiddlewareTest extends TestCase
      */
     private function frame(\Closure $fn): mixed
     {
-        return Contexts::run(ContextFactory::forTest(new Site('http://localhost', ['it'], 'it')), $fn);
+        return Contexts::run(ContextFactory::forTest(new Site('http://localhost', ['en', 'it'], 'en'))->in('it'), $fn);
     }
 
     private function middleware(string $default = 'en'): AdminLocaleMiddleware
@@ -111,14 +112,16 @@ final class AdminLocaleMiddlewareTest extends TestCase
         $seen = [];
 
         $this->frame(function () use ($ada, &$seen): void {
-            $this->middleware()->process($this->request($ada), $this->handler(function () use (&$seen): void {
-                $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out'), Contexts::current()->locale];
+            $this->middleware()->process($this->request($ada), $this->handler(function (ServerRequestInterface $request) use (&$seen): void {
+                $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out'), Contexts::current()->locale, $request->getAttribute(AdminLocaleMiddleware::FRONTEND_LOCALE)];
             }));
-            $this->middleware('de')->process($this->request(new ArrayUser('bob', 'bob@site.test', '')), $this->handler(function () use (&$seen): void {
-                $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out'), Contexts::current()->locale];
+            $this->middleware('de')->process($this->request(new ArrayUser('bob', 'bob@site.test', '')), $this->handler(function (ServerRequestInterface $request) use (&$seen): void {
+                $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out'), Contexts::current()->locale, $request->getAttribute(AdminLocaleMiddleware::FRONTEND_LOCALE)];
             }));
 
-            $this->assertSame([['fr', 'Override fr', 'it'], ['de', 'Override de', 'it']], $seen, 'the content locale stays the frontend\'s');
+            // The admin's content in the default content locale (as before 0.81); the visitor's locale on the request.
+            $this->assertSame([['fr', 'Override fr', 'en', 'it'], ['de', 'Override de', 'en', 'it']], $seen);
+            $this->assertSame('it', Contexts::current()->locale, 'the visitor\'s locale again');
             $this->assertSame('it', $this->translator->getLocale(), 'the frontend locale again');
             $this->assertSame('Abmelden', $this->translator->get('folio.layout.log_out', [], 'de'), 'overrides off again');
             $this->assertFalse(Contexts::current()->surface->admin);

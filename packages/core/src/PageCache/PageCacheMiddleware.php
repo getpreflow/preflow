@@ -85,7 +85,7 @@ use Psr\Http\Server\RequestHandlerInterface;
  * - `content-type`: not text, JSON, XML or JavaScript;
  * - `size`: the body is larger than MAX_BODY;
  * - `refused:{reason}`: code called PageCache::refuse(), or a store check a package registered
- *   said so (PageCache::refuseWhen(); Folio's `working-copy`);
+ *   said so (PageCache::refuseWhen());
  * - `index`: the tag index can't be used (the cache is off then);
  * - `pending`: an invalidation that could not reach the index is still pending (PendingInvalidations);
  * - `invalidated`: a write changed what the page read while it rendered;
