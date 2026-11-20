@@ -60,12 +60,14 @@ final class AdminAuthMiddlewareTest extends TestCase
 
     public function test_passes_through_when_authenticated(): void
     {
-        $user = new \Preflow\Auth\ArrayUser('a@b.test', 'a@b.test', 'H', ['admin']);
-        $am = new AuthManager(['session' => $this->guard($user)], 'session');
-        $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
-        $res = $mw->process((new Psr17Factory())->createServerRequest('GET', '/folio'), $this->handler());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new \Preflow\Auth\ArrayUser('a@b.test', 'a@b.test', 'H', ['admin']);
+            $am = new AuthManager(['session' => $this->guard($user)], 'session');
+            $mw = new AdminAuthMiddleware($am, '/folio', new \Preflow\Folio\Http\AdminNav(new \Preflow\Folio\Content\TypeCatalog(sys_get_temp_dir() . '/folio_none'), static fn (): bool => true, '/folio'));
+            $res = $mw->process((new Psr17Factory())->createServerRequest('GET', '/folio'), $this->handler());
 
-        $this->assertSame(200, $res->getStatusCode());
-        $this->assertSame($user, $am->user());
+            $this->assertSame(200, $res->getStatusCode());
+            $this->assertSame($user, $am->user());
+        });
     }
 }

@@ -122,11 +122,41 @@ final class RememberMeTest extends DataTestCase
      * Runs $guard's ResolveUserMiddleware (behind a SessionMiddleware when $paths is given)
      * with $then as the controller.
      *
+     * The request runs in a render frame of its own, as the application opens one; the second
+     * item answers user() and guardName() as AuthManager did at the end of that frame.
+     *
+     * @param array<string, string> $cookies
+     * @param list<string>|null     $paths
+     * @return array{ResponseInterface, object, ?ServerRequestInterface}
+     */
+    private function handle(SessionGuard $guard, array $cookies = [], ?\Closure $then = null, ?ArraySession $session = null, string $path = '/members', ?array $paths = null): array
+    {
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($guard, $cookies, $then, $session, $path, $paths): array {
+            [$response, $authManager, $captured] = $this->handleInFrame($guard, $cookies, $then, $session, $path, $paths);
+            $seen = new class ($authManager->user(), $authManager->guardName()) {
+                public function __construct(private readonly ?Authenticatable $user, private readonly ?string $guard) {}
+
+                public function user(): ?Authenticatable
+                {
+                    return $this->user;
+                }
+
+                public function guardName(): ?string
+                {
+                    return $this->guard;
+                }
+            };
+
+            return [$response, $seen, $captured];
+        });
+    }
+
+    /**
      * @param array<string, string> $cookies
      * @param list<string>|null     $paths
      * @return array{ResponseInterface, AuthManager, ?ServerRequestInterface}
      */
-    private function handle(SessionGuard $guard, array $cookies = [], ?\Closure $then = null, ?ArraySession $session = null, string $path = '/members', ?array $paths = null): array
+    private function handleInFrame(SessionGuard $guard, array $cookies, ?\Closure $then, ?ArraySession $session, string $path, ?array $paths): array
     {
         $authManager = new AuthManager(['member' => $guard], 'member');
         $request = (new Psr17Factory())->createServerRequest('GET', $path)->withCookieParams($cookies);
@@ -614,43 +644,45 @@ final class RememberMeTest extends DataTestCase
 
     public function test_rotated_cookie_reaches_error_responses(): void
     {
-        $remember = $this->remember();
-        $cookie = $remember->issue('member', 'user-1');
-        $queue = new CookieQueue();
-        $guard = $this->guard($remember, queue: $queue);
-        $authManager = new AuthManager(['member' => $guard], 'member');
-        $session = new ArraySession();
-        $session->start();
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $remember = $this->remember();
+            $cookie = $remember->issue('member', 'user-1');
+            $queue = new CookieQueue();
+            $guard = $this->guard($remember, queue: $queue);
+            $authManager = new AuthManager(['member' => $guard], 'member');
+            $session = new ArraySession();
+            $session->start();
 
-        $pipeline = new MiddlewarePipeline();
-        $pipeline->pipe(new class($session) implements MiddlewareInterface {
-            public function __construct(private readonly SessionInterface $session) {}
+            $pipeline = new MiddlewarePipeline();
+            $pipeline->pipe(new class($session) implements MiddlewareInterface {
+                public function __construct(private readonly SessionInterface $session) {}
 
-            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
-            {
-                return $handler->handle($request->withAttribute(SessionInterface::class, $this->session));
-            }
+                public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+                {
+                    return $handler->handle($request->withAttribute(SessionInterface::class, $this->session));
+                }
+            });
+            $pipeline->pipe(new ResolveUserMiddleware($authManager, ['member' => $guard]));
+            $router = new class implements RouterInterface {
+                public function match(ServerRequestInterface $request): Route
+                {
+                    throw new NotFoundHttpException('gone');
+                }
+            };
+            $fail = fn (): ResponseInterface => throw new \LogicException('not dispatched');
+            $kernel = new Kernel(new Container(), $router, $pipeline, new ErrorHandler(new ProdErrorRenderer()), $fail, $fail, cookies: $queue);
+
+            $response = $kernel->handle((new Psr17Factory())->createServerRequest('GET', '/members/stale')->withCookieParams(['ss_member' => $cookie]));
+
+            $this->assertSame(404, $response->getStatusCode());
+            $this->assertSame('user-1', $session->get('_auth_user_id.member'));
+            $rotated = self::cookieValue($response);
+            $this->assertNotSame($cookie, $rotated);
+            $this->assertSame([], $queue->pull());
+            // The browser got the new value: it works (and rotates) once the grace is over.
+            $this->now += RememberMe::GRACE + 1;
+            $this->assertNotNull($remember->resolve('member', $rotated)['cookie'] ?? null);
         });
-        $pipeline->pipe(new ResolveUserMiddleware($authManager, ['member' => $guard]));
-        $router = new class implements RouterInterface {
-            public function match(ServerRequestInterface $request): Route
-            {
-                throw new NotFoundHttpException('gone');
-            }
-        };
-        $fail = fn (): ResponseInterface => throw new \LogicException('not dispatched');
-        $kernel = new Kernel(new Container(), $router, $pipeline, new ErrorHandler(new ProdErrorRenderer()), $fail, $fail, cookies: $queue);
-
-        $response = $kernel->handle((new Psr17Factory())->createServerRequest('GET', '/members/stale')->withCookieParams(['ss_member' => $cookie]));
-
-        $this->assertSame(404, $response->getStatusCode());
-        $this->assertSame('user-1', $session->get('_auth_user_id.member'));
-        $rotated = self::cookieValue($response);
-        $this->assertNotSame($cookie, $rotated);
-        $this->assertSame([], $queue->pull());
-        // The browser got the new value: it works (and rotates) once the grace is over.
-        $this->now += RememberMe::GRACE + 1;
-        $this->assertNotNull($remember->resolve('member', $rotated)['cookie'] ?? null);
     }
 
     #[RunInSeparateProcess]

@@ -40,6 +40,11 @@ return [
             '$session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);' => 'outside every render there is no request and so no session: flash(), csrf_token() and old() read none (the documented default)',
         ],
     ],
+    'auth/src/AuthManager.php' => [
+        'peek' => [
+            'return Contexts::peek()?->viewer;' => 'outside every render nobody is signed in: user() is null, users() empty (the documented default; Access::can() then denies)',
+        ],
+    ],
     'core/src/Context/Writes.php' => [
         'peek' => [
             'return Contexts::peek()?->writes ?? WritePolicy::Allow;' => 'outside every render writes run (ruling R1: DataManager writes allow without a frame)',

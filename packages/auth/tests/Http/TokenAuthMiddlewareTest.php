@@ -96,13 +96,15 @@ final class TokenAuthMiddlewareTest extends TestCase
 
     public function test_valid_bearer_token_passes_and_handler_sees_the_user(): void
     {
-        $handler = $this->handler();
-        $response = (new TokenAuthMiddleware($this->manager))->process($this->request('Bearer ' . $this->plain), $handler);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $handler = $this->handler();
+            $response = (new TokenAuthMiddleware($this->manager))->process($this->request('Bearer ' . $this->plain), $handler);
 
-        $this->assertSame(200, $response->getStatusCode());
-        $this->assertSame($this->user, $handler->seen->getAttribute(Authenticatable::class));
-        $this->assertSame($this->user, $this->manager->user());
-        $this->assertSame('api', $this->manager->guardName());
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertSame($this->user, $handler->seen->getAttribute(Authenticatable::class));
+            $this->assertSame($this->user, $this->manager->user());
+            $this->assertSame('api', $this->manager->guardName());
+        });
     }
 
     /** @return array<string, array{0: ?string}> */
@@ -119,22 +121,26 @@ final class TokenAuthMiddlewareTest extends TestCase
     #[\PHPUnit\Framework\Attributes\DataProvider('rejectedHeaders')]
     public function test_missing_or_bad_token_is_401_with_www_authenticate(?string $header): void
     {
-        try {
-            (new TokenAuthMiddleware($this->manager))->process($this->request($header), $this->handler());
-            $this->fail('Expected a 401.');
-        } catch (UnauthorizedHttpException $e) {
-            $this->assertSame(401, $e->statusCode);
-            $this->assertSame(['WWW-Authenticate' => 'Bearer'], $e->headers);
-        }
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function () use ($header): void {
+            try {
+                (new TokenAuthMiddleware($this->manager))->process($this->request($header), $this->handler());
+                $this->fail('Expected a 401.');
+            } catch (UnauthorizedHttpException $e) {
+                $this->assertSame(401, $e->statusCode);
+                $this->assertSame(['WWW-Authenticate' => 'Bearer'], $e->headers);
+            }
+        });
     }
 
     public function test_a_signed_in_session_user_without_a_token_is_401(): void
     {
-        // Another guard resolved the user earlier in the request (ResolveUserMiddleware does).
-        $this->manager->setUser($this->user, 'web');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            // Another guard resolved the user earlier in the request (ResolveUserMiddleware does).
+            $this->manager->setUser($this->user, 'web');
 
-        $this->expectException(UnauthorizedHttpException::class);
-        (new TokenAuthMiddleware($this->manager))->process($this->request(), $this->handler());
+            $this->expectException(UnauthorizedHttpException::class);
+            (new TokenAuthMiddleware($this->manager))->process($this->request(), $this->handler());
+        });
     }
 
     public function test_without_a_token_guard_it_is_401(): void
@@ -155,31 +161,33 @@ final class TokenAuthMiddlewareTest extends TestCase
 
     public function test_named_second_token_guard_is_the_one_used(): void
     {
-        $provider = new class implements UserProviderInterface {
-            public function findById(string $id): ?Authenticatable { return new TestUser(uuid: $id); }
-            public function findByCredentials(array $credentials): ?Authenticatable { return null; }
-        };
-        $pdo = new \PDO('sqlite::memory:');
-        $pdo->exec('CREATE TABLE user_tokens (uuid TEXT PRIMARY KEY, tokenHash TEXT, userId TEXT, name TEXT, createdAt TEXT)');
-        $dm = new DataManager(['default' => new SqliteDriver($pdo)]);
-        $token = new PersonalAccessToken();
-        $token->uuid = 't2';
-        $token->tokenHash = PersonalAccessToken::hashToken('plain-two');
-        $token->userId = 'second-user';
-        $dm->save($token);
-        // The first token guard finds nothing (its own empty table); the second knows the token.
-        $emptyDm = new DataManager(['default' => new SqliteDriver((function () { $p = new \PDO('sqlite::memory:'); $p->exec('CREATE TABLE user_tokens (uuid TEXT PRIMARY KEY, tokenHash TEXT, userId TEXT, name TEXT, createdAt TEXT)'); return $p; })())]);
-        $manager = new AuthManager(['one' => new TokenGuard($provider, $emptyDm), 'two' => new TokenGuard($provider, $dm)], 'one');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $provider = new class implements UserProviderInterface {
+                public function findById(string $id): ?Authenticatable { return new TestUser(uuid: $id); }
+                public function findByCredentials(array $credentials): ?Authenticatable { return null; }
+            };
+            $pdo = new \PDO('sqlite::memory:');
+            $pdo->exec('CREATE TABLE user_tokens (uuid TEXT PRIMARY KEY, tokenHash TEXT, userId TEXT, name TEXT, createdAt TEXT)');
+            $dm = new DataManager(['default' => new SqliteDriver($pdo)]);
+            $token = new PersonalAccessToken();
+            $token->uuid = 't2';
+            $token->tokenHash = PersonalAccessToken::hashToken('plain-two');
+            $token->userId = 'second-user';
+            $dm->save($token);
+            // The first token guard finds nothing (its own empty table); the second knows the token.
+            $emptyDm = new DataManager(['default' => new SqliteDriver((function () { $p = new \PDO('sqlite::memory:'); $p->exec('CREATE TABLE user_tokens (uuid TEXT PRIMARY KEY, tokenHash TEXT, userId TEXT, name TEXT, createdAt TEXT)'); return $p; })())]);
+            $manager = new AuthManager(['one' => new TokenGuard($provider, $emptyDm), 'two' => new TokenGuard($provider, $dm)], 'one');
 
-        $this->assertSame('one', $manager->tokenGuardName());
-        $this->assertSame('two', $manager->tokenGuardName('two'));
-        $handler = $this->handler();
-        (new TokenAuthMiddleware($manager, 'two'))->process($this->request('Bearer plain-two'), $handler);
-        $this->assertSame('second-user', $handler->seen->getAttribute(Authenticatable::class)->getAuthId());
-        $this->assertSame('two', $manager->guardName());
+            $this->assertSame('one', $manager->tokenGuardName());
+            $this->assertSame('two', $manager->tokenGuardName('two'));
+            $handler = $this->handler();
+            (new TokenAuthMiddleware($manager, 'two'))->process($this->request('Bearer plain-two'), $handler);
+            $this->assertSame('second-user', $handler->seen->getAttribute(Authenticatable::class)->getAuthId());
+            $this->assertSame('two', $manager->guardName());
 
-        $this->expectException(UnauthorizedHttpException::class);
-        (new TokenAuthMiddleware($manager))->process($this->request('Bearer plain-two'), $this->handler());
+            $this->expectException(UnauthorizedHttpException::class);
+            (new TokenAuthMiddleware($manager))->process($this->request('Bearer plain-two'), $this->handler());
+        });
     }
 
     public function test_named_guard_that_is_not_configured_is_401(): void

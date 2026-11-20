@@ -62,14 +62,16 @@ final class AuthManagerTest extends TestCase
 
     public function test_set_and_get_user(): void
     {
-        $manager = new AuthManager(['web' => $this->makeGuard()], 'web');
-        $user = new TestUser();
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $manager = new AuthManager(['web' => $this->makeGuard()], 'web');
+            $user = new TestUser();
 
-        $this->assertNull($manager->user());
+            $this->assertNull($manager->user());
 
-        $manager->setUser($user);
+            $manager->setUser($user);
 
-        $this->assertSame($user, $manager->user());
+            $this->assertSame($user, $manager->user());
+        });
     }
 
     public function test_provider_of_a_guard(): void

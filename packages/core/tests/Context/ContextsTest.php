@@ -8,8 +8,11 @@ use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\NoRenderContext;
+use Preflow\Core\Context\OutboxPolicy;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderFrame;
+use Preflow\Core\Context\RoleView;
+use Preflow\Core\Context\Viewer;
 use Preflow\Core\Context\Site;
 use Preflow\Core\Context\SystemClock;
 use Preflow\Core\Http\LocaleUrls;
@@ -287,6 +290,77 @@ final class ContextsTest extends TestCase
             @unlink($log);
             Contexts::debug(false);
         }
+    }
+
+    /**
+     * A role viewer stays safe: inside its frame neither narrow() nor within() may swap it for
+     * a real or anonymous viewer (asVisitor() is refused, not silently dropped); another role
+     * view is fine. A new frame (run()) may render as someone else.
+     */
+    public function test_a_role_viewer_cannot_be_left_inside_its_frame(): void
+    {
+        $role = self::ctx('/a')->asRole(new RoleView('member', ['gold']));
+
+        Contexts::run($role, function () use ($role): void {
+            foreach ([
+                'narrow asVisitor' => static fn () => Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->asVisitor()),
+                'narrow as' => static fn () => Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->as(Viewer::anonymous())),
+                'within' => static fn () => Contexts::within($role->asVisitor(), static fn (): null => null),
+            ] as $name => $leave) {
+                try {
+                    $leave();
+                    $this->fail("{$name}: leaving a role view inside its frame must be refused");
+                } catch (\LogicException $e) {
+                    $this->assertStringContainsString('role view', $e->getMessage(), $name);
+                }
+                $this->assertSame($role, Contexts::current(), "{$name}: the role context is kept");
+            }
+
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->asRole(new RoleView('member', ['silver'])));
+            $this->assertSame('role:member:silver', Contexts::current()->viewer->key(), 'another role view is allowed');
+
+            $seen = Contexts::run(self::ctx('/b'), static fn (): string => Contexts::current()->viewer->key());
+            $this->assertSame('anon', $seen, 'a new frame renders under its own context');
+        });
+    }
+
+    /**
+     * render()'s caller sets what a render may send and write: inside the frame, narrow() and
+     * within() never loosen it (a Capture never becomes Deliver, a Skip never Allow), also in
+     * the outermost frame, where a Deliver would send at once.
+     */
+    public function test_narrow_and_within_cannot_loosen_what_the_frame_was_opened_with(): void
+    {
+        $capturing = self::ctx('/a')->capturing()->skippingWrites();
+
+        Contexts::run($capturing, function () use ($capturing): void {
+            $this->assertSame(1, Contexts::depth());
+            foreach ([
+                'narrow delivering' => static fn () => Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->delivering()),
+                'within delivering' => static fn () => Contexts::within($capturing->delivering(), static fn (): null => null),
+                'narrow allow' => static fn () => Contexts::narrow(static fn (RenderContext $c): RenderContext => self::ctx('/a')->capturing()),
+            ] as $name => $loosen) {
+                try {
+                    $loosen();
+                    $this->fail("{$name}: loosening the frame must be refused");
+                } catch (\LogicException $e) {
+                    $this->assertStringContainsString('opened', $e->getMessage(), $name);
+                }
+                $this->assertSame($capturing, Contexts::current(), $name);
+            }
+
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->discarding()->refusingWrites());
+            $this->assertSame(OutboxPolicy::Discard, Contexts::current()->outbox, 'tightening is allowed');
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->capturing()->skippingWrites());
+            $this->assertSame(OutboxPolicy::Capture, Contexts::current()->outbox, 'back to what the frame was opened with');
+        });
+
+        // A frame opened delivering may narrow back to delivering.
+        Contexts::run(self::ctx('/a'), static function (): void {
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->capturing());
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->delivering());
+        });
+        $this->assertSame(0, Contexts::depth());
     }
 
     private static function ctx(string $path): RenderContext

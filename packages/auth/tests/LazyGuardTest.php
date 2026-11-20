@@ -42,21 +42,23 @@ final class LazyGuardTest extends TestCase
 
     public function test_the_middleware_and_the_manager_share_the_one_guard(): void
     {
-        $built = 0;
-        $lazy = $this->lazy($built);
-        $auth = new AuthManager(['api' => $lazy], 'api');
-        $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
-            public function handle(ServerRequestInterface $r): \Psr\Http\Message\ResponseInterface
-            {
-                return new \Nyholm\Psr7\Response(204);
-            }
-        };
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $built = 0;
+            $lazy = $this->lazy($built);
+            $auth = new AuthManager(['api' => $lazy], 'api');
+            $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
+                public function handle(ServerRequestInterface $r): \Psr\Http\Message\ResponseInterface
+                {
+                    return new \Nyholm\Psr7\Response(204);
+                }
+            };
 
-        (new ResolveUserMiddleware($auth, ['api' => $lazy]))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
+            (new ResolveUserMiddleware($auth, ['api' => $lazy]))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
 
-        $this->assertSame(1, $built);
-        $this->assertSame($lazy->built(), $auth->guard('api'));
-        $this->assertSame(1, $built);
+            $this->assertSame(1, $built);
+            $this->assertSame($lazy->built(), $auth->guard('api'));
+            $this->assertSame(1, $built);
+        });
     }
 
     public function test_a_class_that_is_no_guard_is_refused_when_built(): void

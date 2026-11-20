@@ -6,6 +6,8 @@ namespace Preflow\Auth\Http;
 
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Exceptions\UnauthorizedHttpException;
 use Preflow\Core\Http\Api\ApiConfig;
 use Preflow\Core\Http\Hypermedia\HypermediaProtocols;
@@ -15,6 +17,12 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
+/**
+ * Lets only users of one guard through (401, or the guard's login for browsers). The user passes
+ * as the render frame's viewer: the frame is narrowed to them (RenderContext::as()) unless they
+ * are its primary user already, and the request carries the context and the user. A frame that
+ * renders as a role view (view as role) is never let through and never narrowed.
+ */
 final class AuthMiddleware implements MiddlewareInterface
 {
     /**
@@ -34,8 +42,16 @@ final class AuthMiddleware implements MiddlewareInterface
     {
         // Only this guard's users pass: a signed-in member is no staff user, and vice versa.
         $name = $this->guard ?? $this->authManager->defaultGuardName();
-        $user = $this->authManager->guardName() === $name ? $this->authManager->user() : null;
-        $user ??= $this->authManager->guard($name)->user($request);
+        $user = null;
+        // A role view (view as role) passes no guarded route and is never replaced: no guard is
+        // asked, so the request's own session cannot sign the real user in under it.
+        if (!Contexts::current()->viewer->isSynthetic()) {
+            $user = $this->authManager->guardName() === $name ? $this->authManager->user() : null;
+            $user ??= $this->authManager->guard($name)->user($request);
+            if ($user !== null && AuthManager::isReserved($user)) {
+                $user = null;
+            }
+        }
         if ($user === null) {
             $login = $this->api === null ? null : $this->authManager->loginPath($name);
             if ($login !== null) {
@@ -64,9 +80,12 @@ final class AuthMiddleware implements MiddlewareInterface
             throw new UnauthorizedHttpException();
         }
         if ($this->authManager->user() !== $user) {
-            $this->authManager->setUser($user, $name);
+            // The guard's user is the frame's only one from here on, as setUser() made it before 0.81.
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(AuthManager::viewerOf([$name => $user], $name)));
         }
-        $request = $request->withAttribute(Authenticatable::class, $user);
+        $request = $request
+            ->withAttribute(Authenticatable::class, $user)
+            ->withAttribute(RenderContext::class, Contexts::current());
         return $handler->handle($request);
     }
 }

@@ -23,17 +23,6 @@ return [
     'ai/src/LoggedAiClient.php' => [
         '$this->log->record(new UsageEntry(new \\DateTimeImmutable(), $purpose, $provider, $model, $usage, $this->cost($model, $usage), $failed));', // clock
     ],
-    'auth/src/Http/AuthMiddleware.php' => [
-        '$this->authManager->setUser($user, $name);', // setter
-    ],
-    'auth/src/Http/ResolveUserMiddleware.php' => [
-        '$this->authManager->setUser(null);', // setter
-        '$this->authManager->setUser($user, $name);', // setter
-        '$this->authManager->addUser($other, $otherName);', // setter
-    ],
-    'auth/src/Http/TokenAuthMiddleware.php' => [
-        '$this->authManager->setUser($user, $name);', // setter
-    ],
     'auth/src/Remember/RememberMe.php' => [
         '$this->clock = $clock ?? static fn (): int => time();', // clock
     ],
@@ -50,11 +39,8 @@ return [
         'now: static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
         '$this->container->get(\\Preflow\\View\\Geo\\RenderScopes::class)->add(', // setter
         'static fn (): \\DateTimeImmutable => new \\DateTimeImmutable(),', // clock
-        '$auth?->setUser(null);', // setter
         '$translator?->setLocale($siteLocale);', // setter
         '$translator?->useOverrides(false);', // setter
-        '$auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);', // setter
-        '$auth->addUser($user, $name);', // setter
         '$translator->setLocale($locale);', // setter
         '$translator->useOverrides($overrides);', // setter
         '$render = static fn (): ResponseInterface => $notifier->discardingQueued($mail);', // setter

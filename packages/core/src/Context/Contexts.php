@@ -12,6 +12,11 @@ namespace Preflow\Core\Context;
  *   the previous context back afterwards, also when the stretch throws.
  * Both note on the frame when they enter a context that is not the public default
  * (RenderFrame::departures()), so the page cache never stores a render that read as one.
+ * Neither loosens the frame: what run()'s caller allowed it to send and write stays the most it
+ * may (a frame opened capturing or discarding never delivers, one opened skipping or refusing
+ * writes never allows them), and a role viewer (view as role) is never swapped for a real or an
+ * anonymous one inside its frame (another role view is fine). Both are refused with a
+ * LogicException; a render as someone else opens its own frame with run().
  *
  * Code without a context parameter reads current(); outside every render it throws
  * NoRenderContext. Only code with a documented default for "no render" (DataManager writes,
@@ -145,6 +150,8 @@ final class Contexts
      * @param \Closure(RenderContext): RenderContext $with
      *
      * @throws NoRenderContext outside every render
+     * @throws \LogicException (since 0.81.0) when the new context would loosen the frame or
+     *                         leave its role view (see the class docblock); the frame keeps its context
      */
     public static function narrow(\Closure $with): void
     {
@@ -153,6 +160,7 @@ final class Contexts
         if (!$narrowed instanceof RenderContext) {
             throw new \TypeError('Contexts::narrow() needs a closure that returns a RenderContext, got ' . get_debug_type($narrowed) . '.');
         }
+        self::admit($frame, $narrowed, 'narrow');
         $frame->context = $narrowed;
         if (!$narrowed->isPublicDefault()) {
             $frame->noteDeparture();
@@ -169,10 +177,13 @@ final class Contexts
      * @return R
      *
      * @throws NoRenderContext outside every render
+     * @throws \LogicException (since 0.81.0) when $ctx would loosen the frame or leave its role
+     *                         view (see the class docblock); $fn does not run
      */
     public static function within(RenderContext $ctx, \Closure $fn): mixed
     {
         $frame = self::$top ?? throw self::missing('within');
+        self::admit($frame, $ctx, 'within');
         $previous = $frame->context;
         $frame->context = $ctx;
         if (!$ctx->isPublicDefault()) {
@@ -337,6 +348,25 @@ final class Contexts
         }
         if ($failure !== null) {
             throw $failure;
+        }
+    }
+
+    /**
+     * Refuses a context that would let $frame send or write more than run() opened it with, or
+     * that swaps its role viewer for a real or an anonymous one.
+     *
+     * @throws \LogicException
+     */
+    private static function admit(RenderFrame $frame, RenderContext $next, string $method): void
+    {
+        if ($frame->context->viewer->isSynthetic() && !$next->viewer->isSynthetic()) {
+            throw new \LogicException("Contexts::{$method}() cannot leave the role view this frame renders as (view as role): a render as someone else opens its own frame with Contexts::run().");
+        }
+        if ($next->outbox === OutboxPolicy::Deliver && $frame->openedOutbox !== OutboxPolicy::Deliver) {
+            throw new \LogicException("Contexts::{$method}() cannot make a frame deliver that was opened with outbox policy {$frame->openedOutbox->name}: its caller decides what the render may send.");
+        }
+        if ($next->writes === WritePolicy::Allow && $frame->openedWrites !== WritePolicy::Allow) {
+            throw new \LogicException("Contexts::{$method}() cannot make a frame write that was opened with write policy {$frame->openedWrites->name}: its caller decides what the render may write.");
         }
     }
 

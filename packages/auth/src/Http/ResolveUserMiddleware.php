@@ -9,6 +9,10 @@ use Preflow\Auth\AuthManager;
 use Preflow\Auth\GuardInterface;
 use Preflow\Auth\LazyGuard;
 use Preflow\Auth\SessionGuard;
+use Preflow\Auth\SyntheticUser;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Viewer;
 use Preflow\Core\Http\Session\SessionInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -17,18 +21,31 @@ use Psr\Http\Server\RequestHandlerInterface;
 
 /**
  * Finds who is signed in for this request (never a 401: AuthMiddleware decides
- * that). Guards are asked in order, default first; the first user wins for can(), though every signed-in guard's user is kept for canAny(). A user
- * already on the request (set in-process, e.g. by tests) is taken as is.
+ * that) and narrows the request's render frame to them (Contexts::narrow() with
+ * RenderContext::as()): AuthManager reads the frame's viewer. The request goes on
+ * with the narrowed context as its RenderContext attribute and the primary user
+ * as its Authenticatable. Guards are asked in order, default first; the first
+ * user wins for can(), though every signed-in guard's user is kept for canAny().
+ * A user already on the request (set in-process, e.g. by tests) is taken as is
+ * (a SyntheticUser as its role view). Any other user whose id is reserved for role views counts as nobody, whichever guard
+ * returned it.
+ *
+ * A frame that renders as a role view (view as role, and a request asked for
+ * inside one) keeps it: no guard is asked, so the session or remember-me cookie
+ * the request carries never signs the real user in, and nothing is written or
+ * queued; the request carries the role view's SyntheticUser.
  *
  * A session guard with a remember-me cookie signs its user back in from the
  * cookie when its session has nobody (every such guard, not only up to the
  * winner, so a member stays remembered beside a signed-in staff user). Cookies
  * the guards queue (login, logout, rotation) go on the response, only where the
- * request has a session: public pages never get a Set-Cookie. When the handler
- * throws, the Kernel applies the render frame's CookieQueue to the error response. Cookies
- * queued outside this middleware's window (before it or after the handler returned) are never
- * set: the request's render frame drops them at its end, as the shared queue's next pull did
- * before 0.81.
+ * request has a session: public pages never get a Set-Cookie. The guards queue
+ * into the render frame's own CookieQueue (the application's follows the frame),
+ * so a render in its own frame inside this request (the SEO audit, a preview)
+ * neither sees nor takes them. When the handler throws, the Kernel applies the
+ * frame's CookieQueue to the error response. Cookies queued in the frame before
+ * this middleware are dropped, and ones queued after the handler returned are
+ * never set (the frame drops them at its end), as before 0.81.
  */
 final class ResolveUserMiddleware implements MiddlewareInterface
 {
@@ -40,45 +57,49 @@ final class ResolveUserMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        // Cookies left from a request that never reached the end (long-running workers) are dropped.
+        $viewer = Contexts::current()->viewer;
+        if ($viewer->isSynthetic()) {
+            $user = $this->authManager->user();
+
+            return $handler->handle($request
+                ->withAttribute(Authenticatable::class, $user)
+                ->withAttribute(AuthManager::GUARD_ATTRIBUTE, $this->authManager->guardName())
+                ->withAttribute(RenderContext::class, Contexts::current()));
+        }
+
+        // What this frame queued before the guards ran is not this middleware's to set.
         $this->pullCookies();
 
-        $user = $request->getAttribute(Authenticatable::class);
+        $users = [];
         $name = null;
-        $others = [];
-        if ($user instanceof Authenticatable) {
-            $preset = $request->getAttribute(AuthManager::GUARD_ATTRIBUTE);
-            $name = is_string($preset) ? $preset : $this->authManager->defaultGuardName();
-        } else {
-            $user = null;
+        $preset = $request->getAttribute(Authenticatable::class);
+        if ($preset instanceof SyntheticUser || ($preset instanceof Authenticatable && !AuthManager::isReserved($preset))) {
+            $guard = $request->getAttribute(AuthManager::GUARD_ATTRIBUTE);
+            $name = is_string($guard) ? $guard : $this->authManager->defaultGuardName();
+            $users[$name] = $preset;
+        } elseif (!$preset instanceof Authenticatable) {
             foreach ($this->guards as $guardName => $guard) {
                 $guard = LazyGuard::of($guard);
                 $found = $guard->user($request);
                 if ($found === null && $guard instanceof SessionGuard) {
                     $found = $guard->restore($request);
                 }
-                if ($found === null) {
+                if ($found === null || AuthManager::isReserved($found)) {
                     continue;
                 }
-                if ($user === null) {
-                    $user = $found;
-                    $name = (string) $guardName;
-                } else {
-                    $others[(string) $guardName] = $found;
-                }
+                $name ??= (string) $guardName;
+                $users[(string) $guardName] = $found;
             }
         }
 
-        if ($user === null || $name === null) {
-            // Nobody this time: never keep the previous request's user (tests, long-running workers).
-            $this->authManager->setUser(null);
-        } else {
-            $this->authManager->setUser($user, $name);
-            foreach ($others as $otherName => $other) {
-                $this->authManager->addUser($other, $otherName);
-            }
+        // Nobody this time: the frame's viewer is anonymous, whatever it was before.
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(
+            $name === null ? Viewer::anonymous() : AuthManager::viewerOf($users, $name),
+        ));
+        $request = $request->withAttribute(RenderContext::class, Contexts::current());
+        if ($name !== null) {
             $request = $request
-                ->withAttribute(Authenticatable::class, $user)
+                ->withAttribute(Authenticatable::class, $users[$name])
                 ->withAttribute(AuthManager::GUARD_ATTRIBUTE, $name);
         }
 
@@ -95,7 +116,7 @@ final class ResolveUserMiddleware implements MiddlewareInterface
         return $response;
     }
 
-    /** @return list<string> every session guard's queued Set-Cookie values */
+    /** @return list<string> every session guard's queued Set-Cookie values (the current frame's, for the application's guards) */
     private function pullCookies(): array
     {
         $cookies = [];

@@ -368,7 +368,6 @@ final class MarkdownViewTest extends TestCase
         $member = (new \Preflow\Auth\ConfigUserProvider([['id' => 'member', 'email' => 'member@site.test', 'password_hash' => '']]))
             ->findById($userId);
         $this->assertNotNull($member);
-        $auth->setUser($member, 'session');
 
         // A render called from inside a signed-in request: the app renders the page as GEO's own render.
         $geo = $app->container()->get(\Preflow\View\Geo\GeoMiddleware::class);
@@ -379,16 +378,17 @@ final class MarkdownViewTest extends TestCase
                 throw new \LogicException('the app renders the page itself');
             }
         };
-        $markdown = \Preflow\Core\Context\Contexts::run(
-            \Preflow\Core\Context\RenderContext::fromRequest($outer, $app->site(), new \Preflow\Core\Context\SystemClock()),
-            static fn (): ?string => $geo->render($outer, $handler, '/member'),
+        [$markdown, $after] = \Preflow\Core\Context\Contexts::run(
+            // The signed-in request's frame, as its identity middleware narrowed it.
+            \Preflow\Core\Context\RenderContext::fromRequest($outer, $app->site(), new \Preflow\Core\Context\SystemClock())
+                ->as(new \Preflow\Core\Context\Viewer(['session' => $member], 'session')),
+            static fn (): array => [$geo->render($outer, $handler, '/member'), [$auth->user(), $auth->guardName()]],
         );
 
         $this->assertStringStartsWith('# Member', (string) $markdown);
         $this->assertStringContainsString('Public text', (string) $markdown);
         $this->assertStringNotContainsString('Signed in as member', (string) $markdown);
-        $this->assertSame($member, $auth->user(), 'the request\'s user is back afterwards');
-        $this->assertSame('session', $auth->guardName());
+        $this->assertSame([$member, 'session'], $after, 'the request\'s user is back afterwards');
     }
 
     #[RunInSeparateProcess]

@@ -8,7 +8,6 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
-use Preflow\Auth\AuthManager;
 use Preflow\Auth\Record\RecordUser;
 use Preflow\Members\MemberRoles;
 use Preflow\Members\MembersConfig;
@@ -128,9 +127,12 @@ final class NoFolioTest extends TestCase
         $this->assertSame($allowed ? 200 : 303, $this->send('GET', '/members/account', cookies: ['site_member' => $cookie])->getStatusCode(), 'the account page');
 
         $c = $this->app()->container();
-        $c->get(AuthManager::class)->addUser(new RecordUser($this->member($state . '@example.com')), MembersConfig::GUARD);
-        $this->assertSame($allowed, $c->get(Access::class)->canAny(MembersConfig::PERMISSION), 'members.access');
-        $this->assertFalse($c->get(Access::class)->canAny(MembersConfig::DECIDE), 'nothing else');
+        // Signed in as the request's identity middleware does it: the render's viewer.
+        $viewer = new \Preflow\Core\Context\Viewer([MembersConfig::GUARD => new RecordUser($this->member($state . '@example.com'))]);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->as($viewer), function () use ($c, $allowed): void {
+            $this->assertSame($allowed, $c->get(Access::class)->canAny(MembersConfig::PERMISSION), 'members.access');
+            $this->assertFalse($c->get(Access::class)->canAny(MembersConfig::DECIDE), 'nothing else');
+        });
     }
 
     #[RunInSeparateProcess]

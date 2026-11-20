@@ -5,10 +5,16 @@ declare(strict_types=1);
 namespace Preflow\Auth;
 
 use Preflow\Auth\Remember\RememberMe;
+use Preflow\Core\Context\SyntheticIdentity;
 use Preflow\Core\Http\CookieQueue;
 use Preflow\Core\Http\Session\SessionInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
+/**
+ * Signs users in with the session (and a remember-me cookie, when configured). Ids reserved for
+ * role views (SyntheticIdentity::PREFIX) are never resolved, from the session or a remember-me
+ * row, and never signed in.
+ */
 final class SessionGuard implements GuardInterface
 {
     /**
@@ -36,7 +42,8 @@ final class SessionGuard implements GuardInterface
      * @param string       $name       this guard's name (the remember rows are per guard)
      * @param array{cookie?: string, days?: int, path?: string, secure?: bool} $remember
      *                                 remember-me cookie; empty (or no $rememberMe) means none
-     * @param CookieQueue  $cookies    where its Set-Cookie values wait for the response (the app's follows the render frame; shared with the Kernel)
+     * @param CookieQueue  $cookies    where its Set-Cookie values wait for the response (the application's is
+     *                                 CookieQueue::ofCurrentFrame(): the current render frame's own queue, shared with the Kernel)
      * @param array{lifetime?: int, domain?: string, secure?: bool} $marker the session cookie's lifetime,
      *                                 domain and Secure flag, which the signed-in marker follows
      */
@@ -62,11 +69,15 @@ final class SessionGuard implements GuardInterface
 
         $userId = $session->get($this->sessionKey);
 
-        if ($userId === null) {
+        // An id reserved for role views (SyntheticIdentity::PREFIX) is nobody's account.
+        if ($userId === null || str_starts_with((string) $userId, SyntheticIdentity::PREFIX)) {
             return null;
         }
 
         $user = $this->provider->findById($userId);
+        if ($user !== null && AuthManager::isReserved($user)) {
+            return null;
+        }
         // The user's sessions were ended (password changed elsewhere): this one signs out too.
         if ($user instanceof HasSessionEpoch && (string) $session->get($this->epochKey(), '0') !== $user->getSessionEpoch()) {
             $session->remove($this->sessionKey);
@@ -101,9 +112,16 @@ final class SessionGuard implements GuardInterface
         return $this->hasher->verify($password, $user->getPasswordHash());
     }
 
-    /** $remember also queues a remember-me cookie, when this guard has one configured. */
+    /**
+     * $remember also queues a remember-me cookie, when this guard has one configured.
+     *
+     * @throws \LogicException for a user whose id is reserved for role views (a SyntheticUser): a role view never signs in
+     */
     public function login(Authenticatable $user, ServerRequestInterface $request, bool $remember = false): void
     {
+        if (AuthManager::isReserved($user)) {
+            throw new \LogicException('A role view (view as role) never signs in: its id is reserved and no guard resolves it.');
+        }
         $session = $request->getAttribute(SessionInterface::class);
 
         if ($session === null) {
@@ -142,7 +160,10 @@ final class SessionGuard implements GuardInterface
         }
 
         $resolved = $this->rememberMe->resolve($this->name, $cookie);
-        $user = $resolved === null ? null : $this->provider->findById($resolved['userId']);
+        $user = $resolved === null || str_starts_with($resolved['userId'], SyntheticIdentity::PREFIX) ? null : $this->provider->findById($resolved['userId']);
+        if ($user !== null && AuthManager::isReserved($user)) {
+            $user = null;
+        }
         if ($user === null) {
             if ($resolved !== null) {
                 $this->rememberMe->forget($this->name, $cookie);

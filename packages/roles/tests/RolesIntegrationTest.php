@@ -6,7 +6,6 @@ namespace Preflow\Roles\Tests;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
-use Preflow\Auth\AuthManager;
 use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\Core\Application;
 
@@ -69,11 +68,13 @@ final class RolesIntegrationTest extends TestCase
     public function test_an_editor_is_answered_from_config_roles(): void
     {
         $app = $this->app();
-        $app->container()->get(AuthManager::class)->setUser(new TestUser(roles: ['editor']), 'admin');
         $access = $app->container()->get(Access::class);
 
-        $this->assertTrue($access->can('page.edit'));
-        $this->assertFalse($access->can('site.edit'));
+        // Signed in as the request's identity middleware does it: the render's viewer.
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['admin' => new TestUser(roles: ['editor'])], 'admin')), function () use ($access): void {
+            $this->assertTrue($access->can('page.edit'));
+            $this->assertFalse($access->can('site.edit'));
+        });
     }
 
     /**
@@ -82,8 +83,10 @@ final class RolesIntegrationTest extends TestCase
     public function test_without_a_roles_file_staff_keep_allow_all(): void
     {
         $app = $this->app(withRoles: false);
-        $app->container()->get(AuthManager::class)->setUser(new TestUser(roles: ['editor']), 'admin');
+        $access = $app->container()->get(Access::class);
 
-        $this->assertTrue($app->container()->get(Access::class)->can('site.edit'));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['admin' => new TestUser(roles: ['editor'])], 'admin')), function () use ($access): void {
+            $this->assertTrue($access->can('site.edit'));
+        });
     }
 }

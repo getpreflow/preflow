@@ -7,7 +7,6 @@ namespace Preflow\Rbac\Tests\Console;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
-use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
 use Preflow\DevTools\Command\MigrateCommand;
 use Preflow\Rbac\Console\InstallCommand;
@@ -147,9 +146,11 @@ final class StaffRolesCommandTest extends TestCase
         $c = $app->container();
         $user = $c->get(\Preflow\Auth\UserProviderInterface::class)->findByCredentials(['email' => 'ada@site.test']);
         $this->assertNotNull($user);
-        $c->get(AuthManager::class)->setUser($user, 'session');
-        $this->assertTrue($c->get(Access::class)->can('reports.view'));
-        $this->assertFalse($c->get(Access::class)->can('reports.export'));
+        // Signed in as the request's identity middleware does it: the render's viewer.
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['session' => $user], 'session')), function () use ($c): void {
+            $this->assertTrue($c->get(Access::class)->can('reports.view'));
+            $this->assertFalse($c->get(Access::class)->can('reports.export'));
+        });
 
         $this->assertSame(0, $this->command('staff:roles', ['ada@site.test', '--grant=exporter,reporter'])[0]);
         $this->assertSame(['reporter', 'exporter'], $this->roles('ada@site.test'));

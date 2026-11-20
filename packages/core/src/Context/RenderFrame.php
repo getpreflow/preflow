@@ -17,6 +17,22 @@ final class RenderFrame
     /** The context the frame renders under now. Only Contexts::narrow() and within() replace it. */
     public RenderContext $context;
 
+    /**
+     * The outbox policy run() opened the frame with: narrow() and within() never make the frame
+     * deliver when this does not.
+     *
+     * @since 0.81.0
+     */
+    public readonly OutboxPolicy $openedOutbox;
+
+    /**
+     * The write policy run() opened the frame with: narrow() and within() never make the frame
+     * write when this does not.
+     *
+     * @since 0.81.0
+     */
+    public readonly WritePolicy $openedWrites;
+
     private FrameOutbox $outbox;
 
     /** @var array<string, object> */
@@ -33,6 +49,8 @@ final class RenderFrame
     public function __construct(RenderContext $context, ?RenderFrame $parent = null)
     {
         $this->context = $context;
+        $this->openedOutbox = $context->outbox;
+        $this->openedWrites = $context->writes;
         $outermost = $parent === null;
         $this->outbox = new FrameOutbox(
             $parent?->outbox->channels() ?? [],

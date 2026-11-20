@@ -291,10 +291,12 @@ final class CoreStaffTest extends TestCase
         $app = $this->app();
         $user = $app->container()->get(AuthManager::class)->guard('session')->user($this->request($session));
         $this->assertInstanceOf(RecordUser::class, $user);
-        $app->container()->get(AuthManager::class)->setUser($user, 'session');
+        // Signed in as the request's identity middleware does it: the render's viewer.
         $access = $app->container()->get(Access::class);
-        $this->assertTrue($access->can('reports.view'));
-        $this->assertFalse($access->can('reports.export'));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['session' => $user], 'session')), function () use ($access): void {
+            $this->assertTrue($access->can('reports.view'));
+            $this->assertFalse($access->can('reports.export'));
+        });
 
         [$code, $out] = $this->command('staff:list');
         $this->assertSame(0, $code);

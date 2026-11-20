@@ -222,48 +222,52 @@ final class MembersServiceTest extends TestCase
 
     public function test_viewer_reads_the_members_guard(): void
     {
-        $c = $this->container();
-        $viewer = $c->get(Viewer::class);
-        $this->assertNull($viewer->member());
-        $this->assertFalse($viewer->isStaff());
-        $this->assertSame('', $viewer->name());
-        $this->assertSame('en', $viewer->language('en'));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $c = $this->container();
+            $viewer = $c->get(Viewer::class);
+            $this->assertNull($viewer->member());
+            $this->assertFalse($viewer->isStaff());
+            $this->assertSame('', $viewer->name());
+            $this->assertSame('en', $viewer->language('en'));
 
-        $m = $this->members()->register('ada@example.com', 'Ada', 'correct horse battery', 'de', []);
-        $c->get(AuthManager::class)->addUser(new RecordUser($m), 'members');
+            $m = $this->members()->register('ada@example.com', 'Ada', 'correct horse battery', 'de', []);
+            $c->get(AuthManager::class)->addUser(new RecordUser($m), 'members');
 
-        $this->assertSame($m->getId(), $viewer->member()?->getId());
-        $this->assertSame('Ada', $viewer->name());
-        $this->assertSame('de', $viewer->language('en'));
-        $this->assertFalse($viewer->isStaff());
+            $this->assertSame($m->getId(), $viewer->member()?->getId());
+            $this->assertSame('Ada', $viewer->name());
+            $this->assertSame('de', $viewer->language('en'));
+            $this->assertFalse($viewer->isStaff());
 
-        $c->get(AuthManager::class)->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'session');
-        $this->assertTrue($viewer->isStaff(), 'the default guard is staff');
+            $c->get(AuthManager::class)->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'session');
+            $this->assertTrue($viewer->isStaff(), 'the default guard is staff');
 
-        // A default guard of the members population (the starter's employers) is no staff.
-        $auth = $c->get(AuthManager::class);
-        $notStaff = new Viewer($auth, new \Preflow\Auth\Access\Access($auth, $c->get(\Preflow\Auth\Access\PermissionRegistry::class), false, ['session' => 'members']), $this->members());
-        $auth->addUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
-        $this->assertFalse($notStaff->isStaff());
+            // A default guard of the members population (the starter's employers) is no staff.
+            $auth = $c->get(AuthManager::class);
+            $notStaff = new Viewer($auth, new \Preflow\Auth\Access\Access($auth, $c->get(\Preflow\Auth\Access\PermissionRegistry::class), false, ['session' => 'members']), $this->members());
+            $auth->addUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
+            $this->assertFalse($notStaff->isStaff());
+        });
     }
 
     public function test_viewer_finds_staff_on_folio_s_guard_beside_another_default_guard(): void
     {
-        $c = $this->container();
-        $auth = $c->get(AuthManager::class);
-        // The starter's employers guard is the default; Folio signs staff in through the "staff" guard (folio.guard),
-        // which it marks as staff.
-        $access = new \Preflow\Auth\Access\Access($auth, $c->get(\Preflow\Auth\Access\PermissionRegistry::class), false, ['session' => 'employers']);
-        $access->markStaffGuard('staff');
-        $viewer = new Viewer($auth, $access, $this->members());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $c = $this->container();
+            $auth = $c->get(AuthManager::class);
+            // The starter's employers guard is the default; Folio signs staff in through the "staff" guard (folio.guard),
+            // which it marks as staff.
+            $access = new \Preflow\Auth\Access\Access($auth, $c->get(\Preflow\Auth\Access\PermissionRegistry::class), false, ['session' => 'employers']);
+            $access->markStaffGuard('staff');
+            $viewer = new Viewer($auth, $access, $this->members());
 
-        $auth->setUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
-        $this->assertFalse($viewer->isStaff(), 'an employer is no staff');
-        $this->assertSame('', $viewer->name());
+            $auth->setUser(new \Preflow\Auth\ArrayUser('employer', 'boss@firm.test', '', []), 'session');
+            $this->assertFalse($viewer->isStaff(), 'an employer is no staff');
+            $this->assertSame('', $viewer->name());
 
-        $auth->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'staff');
-        $this->assertTrue($viewer->isStaff());
-        $this->assertSame('admin@site.test', $viewer->name());
+            $auth->addUser(new \Preflow\Auth\ArrayUser('admin', 'admin@site.test', '', ['admin']), 'staff');
+            $this->assertTrue($viewer->isStaff());
+            $this->assertSame('admin@site.test', $viewer->name());
+        });
     }
 
     private function members(): Members

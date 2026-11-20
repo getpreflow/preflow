@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Auth;
 
+use Preflow\Core\Context\SyntheticIdentity;
 use Preflow\Data\DataManager;
 use Psr\Http\Message\ServerRequestInterface;
 
@@ -40,7 +41,13 @@ final class TokenGuard implements GuardInterface
             return null;
         }
 
-        return $this->provider->findById($tokenModel->userId);
+        // An id reserved for role views (SyntheticIdentity::PREFIX) is nobody's account.
+        if (str_starts_with((string) $tokenModel->userId, SyntheticIdentity::PREFIX)) {
+            return null;
+        }
+        $user = $this->provider->findById($tokenModel->userId);
+
+        return $user === null || AuthManager::isReserved($user) ? null : $user;
     }
 
     public function validate(array $credentials): bool

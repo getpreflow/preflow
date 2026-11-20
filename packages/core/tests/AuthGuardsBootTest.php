@@ -64,6 +64,26 @@ final class AuthGuardsBootTest extends TestCase
         return $app;
     }
 
+    /**
+     * Handles $request and returns the response and the guard AuthManager named at the end of the
+     * request's frame (afterwards, outside every render, nobody is signed in).
+     *
+     * @return array{\Psr\Http\Message\ResponseInterface, ?string}
+     */
+    private function handleSeeingGuard(Application $app, \Psr\Http\Message\ServerRequestInterface $request): array
+    {
+        $auth = $app->container()->get(AuthManager::class);
+        $seen = null;
+        // The leave closure of the request's frame runs while that frame is still the current one.
+        \Preflow\Core\Context\Contexts::onEnter(static function () use ($auth, &$seen): \Closure {
+            return static function () use ($auth, &$seen): void {
+                $seen = $auth->guardName();
+            };
+        }, 'auth-guards-boot-test');
+
+        return [$app->handle($request), $seen];
+    }
+
     private function idOf(string $email): string
     {
         return (string) (new \Preflow\Auth\ConfigUserProvider([['email' => $email, 'password_hash' => '']]))->findByCredentials(['email' => $email])?->getAuthId();
@@ -73,10 +93,10 @@ final class AuthGuardsBootTest extends TestCase
     public function test_custom_guard_class_is_built_from_config(): void
     {
         $app = $this->boot(['staff' => ['class' => HeaderGuard::class, 'provider' => 'users', 'population' => 'staff']]);
-        $res = $app->handle((new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('admin@site.test')));
+        [$res, $guard] = $this->handleSeeingGuard($app, (new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('admin@site.test')));
 
         $this->assertStringContainsString('yes', (string) $res->getBody());
-        $this->assertSame('staff', $app->container()->get(AuthManager::class)->guardName());
+        $this->assertSame('staff', $guard);
     }
 
     #[RunInSeparateProcess]
@@ -107,10 +127,10 @@ final class AuthGuardsBootTest extends TestCase
             'staff' => ['class' => \Preflow\Auth\SessionGuard::class, 'provider' => 'users', 'population' => 'staff'],
             'members' => ['class' => HeaderGuard::class, 'provider' => 'users', 'population' => 'members'],
         ]);
-        $res = $app->handle((new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('member@site.test')));
+        [$res, $guard] = $this->handleSeeingGuard($app, (new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('member@site.test')));
 
         $this->assertStringContainsString('no', (string) $res->getBody()); // members: named permissions denied by default
-        $this->assertSame('members', $app->container()->get(AuthManager::class)->guardName());
+        $this->assertSame('members', $guard);
     }
 
     #[RunInSeparateProcess]
@@ -120,9 +140,9 @@ final class AuthGuardsBootTest extends TestCase
             'members' => ['class' => HeaderGuard::class, 'provider' => 'users', 'population' => 'members'],
             'staff' => ['class' => HeaderGuard::class, 'provider' => 'users', 'population' => 'staff'],
         ], default: 'staff');
-        $app->handle((new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('admin@site.test')));
+        [, $guard] = $this->handleSeeingGuard($app, (new Psr17Factory())->createServerRequest('GET', '/')->withHeader('X-User', $this->idOf('admin@site.test')));
 
-        $this->assertSame('staff', $app->container()->get(AuthManager::class)->guardName());
+        $this->assertSame('staff', $guard);
     }
 
     #[RunInSeparateProcess]
@@ -190,17 +210,19 @@ final class AuthGuardsBootTest extends TestCase
 
     public function test_auth_middleware_for_a_named_guard(): void
     {
-        $auth = new AuthManager(['staff' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([])), 'members' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([['email' => 'm@site.test', 'password_hash' => '']]))], 'staff');
-        $auth->setUser(new \Preflow\Auth\ArrayUser('m@site.test', 'm@site.test', '', []), 'members');
-        $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
-            public function handle(\Psr\Http\Message\ServerRequestInterface $r): \Psr\Http\Message\ResponseInterface { return new \Nyholm\Psr7\Response(204); }
-        };
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $auth = new AuthManager(['staff' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([])), 'members' => new HeaderGuard(new \Preflow\Auth\ConfigUserProvider([['email' => 'm@site.test', 'password_hash' => '']]))], 'staff');
+            $auth->setUser(new \Preflow\Auth\ArrayUser('m@site.test', 'm@site.test', '', []), 'members');
+            $handler = new class implements \Psr\Http\Server\RequestHandlerInterface {
+                public function handle(\Psr\Http\Message\ServerRequestInterface $r): \Psr\Http\Message\ResponseInterface { return new \Nyholm\Psr7\Response(204); }
+            };
 
-        $res = (new \Preflow\Auth\Http\AuthMiddleware($auth, 'members'))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
-        $this->assertSame(204, $res->getStatusCode());
+            $res = (new \Preflow\Auth\Http\AuthMiddleware($auth, 'members'))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
+            $this->assertSame(204, $res->getStatusCode());
 
-        $this->expectException(\Preflow\Core\Exceptions\UnauthorizedHttpException::class);
-        (new \Preflow\Auth\Http\AuthMiddleware($auth))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
+            $this->expectException(\Preflow\Core\Exceptions\UnauthorizedHttpException::class);
+            (new \Preflow\Auth\Http\AuthMiddleware($auth))->process((new Psr17Factory())->createServerRequest('GET', '/'), $handler);
+        });
     }
 
     #[RunInSeparateProcess]

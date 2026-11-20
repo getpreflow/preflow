@@ -44,29 +44,35 @@ final class AccessTest extends TestCase
 
     public function test_user_is_the_signed_in_user(): void
     {
-        $access = $this->access();
-        $this->assertNull($access->user());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $access = $this->access();
+            $this->assertNull($access->user());
 
-        $user = new TestUser();
-        $this->auth->setUser($user, 'site');
-        $this->assertSame($user, $access->user());
-        $this->assertNull((new Access(null, $this->registry, false, []))->user());
+            $user = new TestUser();
+            $this->auth->setUser($user, 'site');
+            $this->assertSame($user, $access->user());
+            $this->assertNull((new Access(null, $this->registry, false, []))->user());
+        });
     }
 
     public function test_staff_may_do_everything_by_default(): void
     {
-        $access = $this->access(populations: ['folio' => 'staff']);
-        $this->auth->setUser(new TestUser(), 'folio');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $access = $this->access(populations: ['folio' => 'staff']);
+            $this->auth->setUser(new TestUser(), 'folio');
 
-        $this->assertTrue($access->can('page.publish'));
+            $this->assertTrue($access->can('page.publish'));
+        });
     }
 
     public function test_members_are_denied_by_default(): void
     {
-        $access = $this->access();
-        $this->auth->setUser(new TestUser(), 'site'); // no population: members
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $access = $this->access();
+            $this->auth->setUser(new TestUser(), 'site'); // no population: members
 
-        $this->assertFalse($access->can('page.publish'));
+            $this->assertFalse($access->can('page.publish'));
+        });
     }
 
     public function test_without_a_user_nothing_is_allowed(): void
@@ -76,21 +82,25 @@ final class AccessTest extends TestCase
 
     public function test_undeclared_permission_throws_in_debug(): void
     {
-        $this->auth->setUser(new TestUser(), 'folio');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $this->auth->setUser(new TestUser(), 'folio');
 
-        $this->expectException(UndeclaredPermission::class);
-        $this->access(debug: true, populations: ['folio' => 'staff'])->can('pgae.edit');
+            $this->expectException(UndeclaredPermission::class);
+            $this->access(debug: true, populations: ['folio' => 'staff'])->can('pgae.edit');
+        });
     }
 
     public function test_undeclared_permission_is_denied_and_logged_once_in_production(): void
     {
-        $access = $this->access(populations: ['folio' => 'staff']);
-        $this->auth->setUser(new TestUser(), 'folio');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $access = $this->access(populations: ['folio' => 'staff']);
+            $this->auth->setUser(new TestUser(), 'folio');
 
-        $this->assertFalse($access->can('pgae.edit'));
-        $this->assertFalse($access->can('pgae.edit'));
+            $this->assertFalse($access->can('pgae.edit'));
+            $this->assertFalse($access->can('pgae.edit'));
 
-        $this->assertSame(1, substr_count((string) file_get_contents($this->log), 'pgae.edit'));
+            $this->assertSame(1, substr_count((string) file_get_contents($this->log), 'pgae.edit'));
+        });
     }
 
     public function test_the_resolver_is_the_default_until_one_is_set(): void
@@ -105,17 +115,19 @@ final class AccessTest extends TestCase
 
     public function test_a_resolver_answers_once_set(): void
     {
-        $access = $this->access(populations: ['folio' => 'staff']);
-        $this->auth->setUser(new TestUser(roles: ['editor']), 'folio');
-        $access->setResolver(new class implements PermissionResolver {
-            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
-            {
-                return $population === 'staff' && $user->hasRole('editor') && $permission === 'page.edit';
-            }
-        });
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $access = $this->access(populations: ['folio' => 'staff']);
+            $this->auth->setUser(new TestUser(roles: ['editor']), 'folio');
+            $access->setResolver(new class implements PermissionResolver {
+                public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+                {
+                    return $population === 'staff' && $user->hasRole('editor') && $permission === 'page.edit';
+                }
+            });
 
-        $this->assertTrue($access->can('page.edit'));
-        $this->assertFalse($access->can('page.publish'));
+            $this->assertTrue($access->can('page.edit'));
+            $this->assertFalse($access->can('page.publish'));
+        });
     }
 
     public function test_population_from_config_or_marked_staff_guard(): void
@@ -163,14 +175,16 @@ final class AccessTest extends TestCase
 
     public function test_population_of_the_signed_in_user(): void
     {
-        $access = $this->access(populations: ['folio' => 'staff']);
-        $this->assertNull($access->population(), 'nobody signed in');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $access = $this->access(populations: ['folio' => 'staff']);
+            $this->assertNull($access->population(), 'nobody signed in');
 
-        $this->auth->setUser(new TestUser(), 'folio');
-        $this->assertSame('staff', $access->population());
-        $this->auth->setUser(new TestUser(), 'site');
-        $this->assertSame('members', $access->population());
-        $this->assertNull((new Access(null, $this->registry, false, []))->population(), 'no auth configured');
+            $this->auth->setUser(new TestUser(), 'folio');
+            $this->assertSame('staff', $access->population());
+            $this->auth->setUser(new TestUser(), 'site');
+            $this->assertSame('members', $access->population());
+            $this->assertNull((new Access(null, $this->registry, false, []))->population(), 'no auth configured');
+        });
     }
 
     public function test_without_auth_configured_everything_is_allowed(): void
@@ -180,34 +194,40 @@ final class AccessTest extends TestCase
 
     public function test_typo_in_a_family_throws_in_debug(): void
     {
-        $this->auth->setUser(new \Preflow\Auth\Tests\Fixtures\TestUser(), 'folio');
-        $this->expectException(\Preflow\Auth\Access\UndeclaredPermission::class);
-        $this->access(debug: true, populations: ['folio' => 'staff'])->can('page.pubish');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $this->auth->setUser(new \Preflow\Auth\Tests\Fixtures\TestUser(), 'folio');
+            $this->expectException(\Preflow\Auth\Access\UndeclaredPermission::class);
+            $this->access(debug: true, populations: ['folio' => 'staff'])->can('page.pubish');
+        });
     }
 
     public function test_disabled_permission_denied_not_thrown_in_debug(): void
     {
-        $this->registry->declare('members.approve', 'Approve', 'Members');
-        $this->registry->disable('members.approve', 'extension members');
-        $this->auth->setUser(new TestUser(), 'folio');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $this->registry->declare('members.approve', 'Approve', 'Members');
+            $this->registry->disable('members.approve', 'extension members');
+            $this->auth->setUser(new TestUser(), 'folio');
 
-        $this->assertFalse($this->access(debug: true, populations: ['folio' => 'staff'])->can('members.approve'));
-        $this->assertSame('extension members', $this->registry->disabledReason('members.approve'));
-        $this->assertNull($this->registry->disabledReason('page.view'));
+            $this->assertFalse($this->access(debug: true, populations: ['folio' => 'staff'])->can('members.approve'));
+            $this->assertSame('extension members', $this->registry->disabledReason('members.approve'));
+            $this->assertNull($this->registry->disabledReason('page.view'));
+        });
     }
 
     public function test_disabled_logged_once(): void
     {
-        $this->registry->declare('members.approve');
-        $this->registry->disable('members.approve', 'extension members');
-        $access = $this->access(populations: ['folio' => 'staff']);
-        $this->auth->setUser(new TestUser(), 'folio');
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $this->registry->declare('members.approve');
+            $this->registry->disable('members.approve', 'extension members');
+            $access = $this->access(populations: ['folio' => 'staff']);
+            $this->auth->setUser(new TestUser(), 'folio');
 
-        $access->can('members.approve');
-        $access->can('members.approve');
+            $access->can('members.approve');
+            $access->can('members.approve');
 
-        $log = (string) file_get_contents($this->log);
-        $this->assertSame(1, substr_count($log, 'permission members.approve belongs to a disabled extension members'));
+            $log = (string) file_get_contents($this->log);
+            $this->assertSame(1, substr_count($log, 'permission members.approve belongs to a disabled extension members'));
+        });
     }
 
     public function test_disabled_permission_denied_without_auth(): void

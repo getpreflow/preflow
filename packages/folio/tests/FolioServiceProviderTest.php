@@ -361,19 +361,25 @@ final class FolioServiceProviderTest extends TestCase
             $app->setRouter(new Router(pagesDir: null, controllers: []));
             $app->registerProvider(new FolioServiceProvider());
             $app->boot();
+            $ctx = \Preflow\Testing\ContextFactory::forTest();
             if ($signedIn) {
                 $auth = new \Preflow\Auth\AuthManager([], 'web');
-                $auth->setUser(new \Preflow\Auth\ArrayUser('u1', 'u@site.test', ''), 'web');
+                $ctx = $ctx->as(new \Preflow\Core\Context\Viewer(['web' => new \Preflow\Auth\ArrayUser('u1', 'u@site.test', '')], 'web'));
                 $app->container()->singleton(\Preflow\Auth\AuthManager::class, static fn () => $auth);
                 $app->container()->singleton(\Preflow\Data\DataManager::class, static fn () => new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))]));
             }
             $nav = $app->container()->get(\Preflow\Folio\Http\AdminNav::class);
             $nav->setCurrentPath('/folio/profile');
-            $out = [];
-            foreach ($nav->sections() as $section) {
-                $out[$section['name']] = $section;
-            }
-            return $out;
+
+            // The signed-in user is the render's viewer.
+            return \Preflow\Core\Context\Contexts::run($ctx, static function () use ($nav): array {
+                $out = [];
+                foreach ($nav->sections() as $section) {
+                    $out[$section['name']] = $section;
+                }
+
+                return $out;
+            });
         } finally {
             @unlink($base . '/config/folio.php');
             @rmdir($base . '/config');

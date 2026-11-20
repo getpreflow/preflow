@@ -3054,11 +3054,10 @@ final class Application
      * Around an internal render (audit, GEO, rebuild, verify, preview), inside its frame: the
      * render scopes packages added (RenderScopes, e.g. a content locale), and what services that
      * do not read the context yet still need set aside and put back by hand, so nothing passes
-     * between the request and its renders: the signed-in users (nobody is signed in during it),
-     * the translator (the render's locale, no admin overrides), mail queued with
+     * between the request and its renders: the translator (the render's locale, no admin overrides), mail queued with
      * Notifier::sendLater() (dropped, since 0.74) and the asset registries (what boot registered,
      * nothing printed, for the render; the request's own back afterwards). The context itself (frame, cookies, outbox, superglobals,
-     * session) needs none of this; each service leaves this list when it reads the context.
+     * session, the signed-in users: auth reads the frame's viewer) needs none of this; each service leaves this list when it reads the context.
      *
      * @param \Closure(): ResponseInterface $handle
      */
@@ -3081,28 +3080,14 @@ final class Application
             : null;
         $locale = $translator?->getLocale();
         $overrides = $translator?->usesOverrides() ?? false;
-        $auth = class_exists(\Preflow\Auth\AuthManager::class) && $container->bound(\Preflow\Auth\AuthManager::class)
-            ? $container->get(\Preflow\Auth\AuthManager::class)
-            : null;
-        $users = $auth?->users() ?? [];
-        $guard = $auth?->guardName();
         // The render's locale: the site's default unless its caller chose one.
         $siteLocale = $ctx->locale;
 
-        $auth?->setUser(null);
         $translator?->setLocale($siteLocale);
         $translator?->useOverrides(false);
         try {
             return self::withoutQueuedMail($container, $render);
         } finally {
-            if ($auth !== null) {
-                $auth->setUser($guard !== null ? ($users[$guard] ?? null) : null, $guard);
-                foreach ($users as $name => $user) {
-                    if ($name !== $guard) {
-                        $auth->addUser($user, $name);
-                    }
-                }
-            }
             if ($translator !== null && $locale !== null) {
                 $translator->setLocale($locale);
                 $translator->useOverrides($overrides);

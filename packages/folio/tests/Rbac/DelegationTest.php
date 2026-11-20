@@ -64,8 +64,15 @@ final class DelegationTest extends TestCase
         $this->assertNull($coverage->held(), 'nobody signed in: delegation does not apply');
 
         $this->as('editor');
+        // Read while the request's frame is still open (afterwards, outside every render, nobody is signed in).
+        $held = null;
+        \Preflow\Core\Context\Contexts::onEnter(static function () use ($coverage, &$held): \Closure {
+            return static function () use ($coverage, &$held): void {
+                $held = $coverage->held();
+            };
+        }, 'delegation-test');
         $this->send('GET', '/folio/rbac_role');
-        $this->assertSame(self::EDITOR, $coverage->held());
+        $this->assertSame(self::EDITOR, $held);
     }
 
     #[RunInSeparateProcess]
