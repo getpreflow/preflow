@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Auth\Http;
 
+use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Context\Contexts;
@@ -21,7 +22,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  * Lets only users of one guard through (401, or the guard's login for browsers). The user passes
  * as the render frame's viewer: the frame is narrowed to them (RenderContext::as()) unless they
  * are its primary user already, and the request carries the context and the user. A frame that
- * renders as a role view (view as role) is never let through and never narrowed.
+ * renders as a role view (view as role) is never narrowed and no guard is asked: it passes as its
+ * SyntheticUser when it counts as signed in with this guard, its population being the guard's
+ * (Access, since 0.81.0, as GuestMiddleware decides), and is treated as signed out otherwise
+ * (also without Access).
  */
 final class AuthMiddleware implements MiddlewareInterface
 {
@@ -36,6 +40,8 @@ final class AuthMiddleware implements MiddlewareInterface
         private readonly ?string $guard = null,
         private readonly ?ApiConfig $api = null,
         private readonly ?HypermediaProtocols $hypermedia = null,
+        /** since 0.81.0: the guards' populations, which a role view is compared with */
+        private readonly ?Access $access = null,
     ) {}
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
@@ -43,9 +49,18 @@ final class AuthMiddleware implements MiddlewareInterface
         // Only this guard's users pass: a signed-in member is no staff user, and vice versa.
         $name = $this->guard ?? $this->authManager->defaultGuardName();
         $user = null;
-        // A role view (view as role) passes no guarded route and is never replaced: no guard is
-        // asked, so the request's own session cannot sign the real user in under it.
-        if (!Contexts::current()->viewer->isSynthetic()) {
+        // A role view (view as role) is never replaced: no guard is asked, so the request's own
+        // session cannot sign the real user in under it. It passes a guard of its own population.
+        $roleView = Contexts::current()->viewer->roleView;
+        if ($roleView !== null) {
+            if ($this->access !== null && Access::populationOfRoleView($roleView) === $this->access->populationOf($name)) {
+                $request = $request
+                    ->withAttribute(Authenticatable::class, $this->authManager->user())
+                    ->withAttribute(RenderContext::class, Contexts::current());
+
+                return $handler->handle($request);
+            }
+        } else {
             $user = $this->authManager->guardName() === $name ? $this->authManager->user() : null;
             $user ??= $this->authManager->guard($name)->user($request);
             if ($user !== null && AuthManager::isReserved($user)) {

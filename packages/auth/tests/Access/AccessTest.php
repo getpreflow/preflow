@@ -242,13 +242,13 @@ final class AccessTest extends TestCase
     }
 
     /**
-     * A role view (view as role) is answered from its roles' grants in its own population
-     * (GrantsForRoles), never by allows() and never by a guard: the population 'staff' of a role
+     * A role view (view as role) is answered for its roles in its own population
+     * (AllowsRoles), never by allows() and never by a guard: the population 'staff' of a role
      * view does not make it a staff guard's user, and a staff guard of that name changes nothing.
      */
     public function test_a_role_view_is_answered_from_its_roles_grants(): void
     {
-        $resolver = new class implements PermissionResolver, \Preflow\Auth\Access\GrantsForRoles {
+        $resolver = new class implements PermissionResolver, \Preflow\Auth\Access\AllowsRoles {
             /** @var list<array{list<string>, string}> */
             public array $asked = [];
 
@@ -257,14 +257,20 @@ final class AccessTest extends TestCase
                 throw new \LogicException('allows() is never asked for a role view');
             }
 
-            public function grantsFor(array $roles, string $population): array
+            public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
             {
                 $this->asked[] = [$roles, $population];
-
-                return match ($population) {
+                $patterns = match ($population) {
                     'staff' => in_array('editor', $roles, true) ? ['page.edit', 'page.view'] : [],
                     'members' => in_array('gold', $roles, true) ? ['page.*'] : [],
                 };
+                foreach ($patterns as $pattern) {
+                    if (\Preflow\Auth\Access\Pattern::matches($pattern, $permission)) {
+                        return true;
+                    }
+                }
+
+                return false;
             }
         };
         $access = $this->access(populations: ['staff' => 'staff', 'member' => 'staff']);
@@ -282,6 +288,43 @@ final class AccessTest extends TestCase
         $this->assertContains([['gold'], 'members'], $resolver->asked);
         $this->assertSame('staff', Access::populationOfRoleView(new \Preflow\Core\Context\RoleView('staff', [])));
         $this->assertSame('members', Access::populationOfRoleView(new \Preflow\Core\Context\RoleView('members', [])));
+    }
+
+    /**
+     * The subject reaches the resolver: one that lets authors see only public posts (and their own,
+     * which a role view has none of) gives an author role view no access to anybody's private
+     * post, through can() and canAny() alike.
+     */
+    public function test_a_role_view_question_carries_its_subject(): void
+    {
+        $resolver = new class implements PermissionResolver, \Preflow\Auth\Access\AllowsRoles {
+            /** @var list<?object> */
+            public array $subjects = [];
+
+            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                return $permission === 'page.view' && $user->hasRole('author') && ($subject?->public === true || $subject?->owner === $user->getAuthId());
+            }
+
+            public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
+            {
+                $this->subjects[] = $subject;
+
+                return $permission === 'page.view' && in_array('author', $roles, true) && $subject?->public === true;
+            }
+        };
+        $access = $this->access(populations: ['members' => 'members']);
+        $access->setResolver($resolver);
+        $public = (object) ['public' => true, 'owner' => 'm-2'];
+        $private = (object) ['public' => false, 'owner' => 'm-2'];
+
+        $answers = \Preflow\Core\Context\Contexts::run(
+            \Preflow\Testing\ContextFactory::forTest()->asRole(new \Preflow\Core\Context\RoleView('member', ['author'])),
+            static fn (): array => [$access->can('page.view', $public), $access->can('page.view', $private), $access->canAny('page.view', $public), $access->canAny('page.view', $private)],
+        );
+
+        $this->assertSame([true, false, true, false], $answers);
+        $this->assertSame([$public, $private, $public, $private], $resolver->subjects, 'every question carried its subject');
     }
 
     /** A resolver that cannot say what roles grant (auth's default: staff may do everything) grants a role view nothing. */

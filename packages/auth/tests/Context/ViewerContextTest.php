@@ -510,6 +510,46 @@ final class ViewerContextTest extends DataTestCase
         $this->assertSame(302, $status(new \Preflow\Auth\Http\GuestMiddleware($auth, '/members', 'members'), new RoleView('staff', ['admin'])));
     }
 
+    /**
+     * A guarded route of one guard lets a role view through when the role view counts as signed in
+     * with that guard (its population is the guard's), without asking a guard or narrowing; one of
+     * another population is treated as signed out. A members-only page and its guest-only login
+     * never send a role view round in a loop: exactly one of them answers it.
+     */
+    public function test_auth_middleware_lets_a_role_view_of_its_population_through(): void
+    {
+        $staffGuard = new CountingGuard(new TestUser('editor', roles: ['admin']));
+        $membersGuard = new CountingGuard(null);
+        $auth = new AuthManager(['staff' => $staffGuard, 'members' => $membersGuard], 'staff');
+        $access = new \Preflow\Auth\Access\Access($auth, new \Preflow\Auth\Access\PermissionRegistry(), false, ['staff' => 'staff', 'members' => 'members']);
+        $membersPage = new AuthMiddleware($auth, 'members', access: $access);
+        $staffPage = new AuthMiddleware($auth, 'staff', access: $access);
+        $membersLogin = new \Preflow\Auth\Http\GuestMiddleware($auth, '/members/home', 'members', $access);
+        $answer = static function (\Psr\Http\Server\MiddlewareInterface $middleware, RoleView $view): array {
+            return Contexts::run(ContextFactory::forTest()->asRole($view), static function () use ($middleware): array {
+                $handler = new Capture(static fn () => null);
+                try {
+                    $status = $middleware->process(self::request('/members/home'), $handler)->getStatusCode();
+                } catch (UnauthorizedHttpException) {
+                    $status = 401;
+                }
+
+                return [$status, $handler->request?->getAttribute(Authenticatable::class)?->getAuthId(), Contexts::current()->viewer->isSynthetic()];
+            });
+        };
+
+        $this->assertSame([200, 'preflow:synthetic:member:gold', true], $answer($membersPage, new RoleView('member', ['gold'])), 'a member role view passes a members page as itself');
+        $this->assertSame([401, null, true], $answer($staffPage, new RoleView('member', ['gold'])), 'a member role view is signed out on a staff page');
+        $this->assertSame([401, null, true], $answer($membersPage, new RoleView('staff', ['admin'])), 'a staff role view is signed out on a members page');
+        $this->assertSame([200, 'preflow:synthetic:staff:admin', true], $answer($staffPage, new RoleView('staff', ['admin'])));
+        // No loop: the members page passes a member role view, its login sends it on; a staff role view gets the login, not the page.
+        $this->assertSame(302, $answer($membersLogin, new RoleView('member', ['gold']))[0]);
+        $this->assertSame(200, $answer($membersLogin, new RoleView('staff', ['admin']))[0]);
+        $this->assertSame([0, 0], [$staffGuard->asked, $membersGuard->asked], 'no guard was asked');
+        // Without Access a role view never passes, as before.
+        $this->assertSame(401, $answer(new AuthMiddleware($auth, 'members'), new RoleView('member', ['gold']))[0]);
+    }
+
     /** A template reading the user's fields renders in a role view, also with strict variables. */
     public function test_a_synthetic_user_reads_in_a_strict_template(): void
     {

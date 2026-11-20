@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Roles;
 
-use Preflow\Auth\Access\GrantsForRoles;
+use Preflow\Auth\Access\AllowsRoles;
 use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
@@ -14,9 +14,9 @@ use Preflow\Auth\Authenticatable;
  * Simple roles: config/roles.php lists, per population, each role's permission
  * patterns. A user may do X when any of their roles (getRoles()) in their
  * population has a pattern matching X. Unknown roles grant nothing. A role view (view as
- * role) gets what its roles list (grantsFor()).
+ * role) is answered for its roles alone (allowsRoles()).
  */
-final class ConfigRoleResolver implements PermissionResolver, ListsRoles, GrantsForRoles
+final class ConfigRoleResolver implements PermissionResolver, ListsRoles, AllowsRoles
 {
     /** @var array<string, true> unknown roles already logged this request */
     private array $logged = [];
@@ -56,10 +56,30 @@ final class ConfigRoleResolver implements PermissionResolver, ListsRoles, Grants
     }
 
     /**
-     * Every pattern config/roles.php lists for $roles in $population, in role order, each once; a
-     * pure function of the roles (a role view's grants).
+     * Whether $roles in $population allow $permission: a listed pattern matches it, as allows()
+     * matches a user's roles (the subject is not looked at, as allows() does not).
      *
      * @since 0.81.0
+     */
+    public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
+    {
+        foreach ($this->grantsFor($roles, $population) as $pattern) {
+            if (Pattern::matches($pattern, $permission)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Every pattern config/roles.php lists for $roles in $population, in role order, each once; a
+     * pure function of the roles.
+     *
+     * @since 0.81.0
+     *
+     * @param list<string> $roles
+     * @return list<string>
      */
     public function grantsFor(array $roles, string $population): array
     {

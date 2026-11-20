@@ -116,7 +116,12 @@ final class ConfigRoleResolverTest extends TestCase
     {
         $r = $this->resolver();
 
-        $this->assertInstanceOf(\Preflow\Auth\Access\GrantsForRoles::class, $r);
+        $this->assertInstanceOf(\Preflow\Auth\Access\AllowsRoles::class, $r);
+        $this->assertTrue($r->allowsRoles(['editor'], 'staff', 'page.edit', null));
+        $this->assertFalse($r->allowsRoles(['editor'], 'staff', 'page', null));
+        $this->assertTrue($r->allowsRoles(['admin'], 'staff', 'anything.at.all', null));
+        $this->assertFalse($r->allowsRoles(['premium'], 'staff', 'downloads.premium', null), 'a role is read in its own population');
+        $this->assertTrue($r->allowsRoles(['premium'], 'members', 'downloads.premium', null));
         $this->assertSame(['page.*', 'news.*', 'assets.*'], $r->grantsFor(['editor'], 'staff'));
         $this->assertSame(['*', 'page.*', 'news.*', 'assets.*'], $r->grantsFor(['admin', 'editor', 'admin'], 'staff'));
         $this->assertSame(['downloads.premium'], $r->grantsFor(['premium'], 'members'));

@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * "^0.27 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
- * Composer from pairing rbac with a release that lacks the APIs it calls: auth 0.81.0 (Access\GrantsForRoles, which RbacResolver
+ * Composer from pairing rbac with a release that lacks the APIs it calls: auth 0.81.0 (Access\AllowsRoles, which RbacResolver
  * implements for role views; since 0.69 AccountLinks, StaffAccounts' password links;
  * since 0.65 ListsRoles,
  * which RbacResolver implements; since 0.27 Access::population(), ConfigUserProvider::entries(), the chain provider), core 0.62 (builds

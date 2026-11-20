@@ -3728,6 +3728,7 @@ final class Application
                 null,
                 $this->container->has(\Preflow\Core\Http\Api\ApiConfig::class) ? $this->container->get(\Preflow\Core\Http\Api\ApiConfig::class) : null,
                 $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+                $access,
             ),
         );
         $this->container->instance(

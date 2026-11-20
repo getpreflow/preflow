@@ -291,6 +291,40 @@ final class ViewAsRoleTest extends TestCase
         $this->assertSame(['', 'MEMBERS-ONLY|in'], [$response->getHeaderLine('X-Page-Cache'), self::main($response)]);
     }
 
+    /**
+     * Started from an admin's request whose session is open and holds a flash for this page, a
+     * role view rendered as a visit (or a fragment) leaves that session alone: it is not aged,
+     * read or closed, and the role view reads no session.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_role_render_leaves_the_admins_session_alone(): void
+    {
+        $app = $this->site();
+        $session = $app->container()->get(\Preflow\Core\Http\Session\SessionInterface::class);
+        $session->start();
+        $session->flash('note', 'Saved.');
+        $session->ageFlash(); // as the admin's request began: the flash is this page's to show
+        $session->set('admin_key', 'kept');
+        ViewAsRoutes::$routes['/peek'] = static fn (): ResponseInterface => new Response(200, ['Content-Type' => 'text/plain'], var_export(\Preflow\Core\Http\Session\SessionMiddleware::ofCurrentRender() !== null, true));
+        $request = (new ServerRequest('GET', 'https://site.test/peek'))->withCookieParams(['viewas' => $session->getId()]);
+
+        $seen = Contexts::run(self::admin($app, $request), static function () use ($app, $request): array {
+            $seen = [];
+            foreach ([Purpose::Visit, Purpose::Fragment] as $purpose) {
+                $ctx = RenderContext::fromRequest($request, $app->site(), new SystemClock())->asVisitor()->asRole(new RoleView('member', ['gold']))->because($purpose);
+                $seen[] = (string) $app->render($ctx, $request)->response->getBody();
+            }
+
+            return $seen;
+        });
+
+        $this->assertSame(['false', 'false'], $seen, 'the role view reads no session');
+        $this->assertTrue($session->isStarted());
+        $this->assertSame(PHP_SESSION_ACTIVE, session_status(), 'the admin\'s session is still open');
+        $this->assertSame('Saved.', $session->getFlash('note'), 'the admin\'s flash was not aged away');
+        $this->assertSame('kept', $session->get('admin_key'));
+    }
+
     #[RunInSeparateProcess]
     public function test_a_role_render_never_leaks_into_the_next_request(): void
     {

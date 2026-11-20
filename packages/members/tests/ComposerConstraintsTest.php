@@ -9,7 +9,7 @@ use PHPUnit\Framework\TestCase;
 /**
  * Since 0.81.0: core 0.81.0 (Context\Contexts: a member page renders within its locale, Members reads the
  * render's request and clock; Deprecations for the deprecated PageLocale; Context\RoleView, which Members::synthetic() builds a role view's member from),
- * auth 0.81.0 (SyntheticUser and Access::populationOfRoleView(), which Viewer reads a role view with; Access\GrantsForRoles,
+ * auth 0.81.0 (SyntheticUser and Access::populationOfRoleView(), which Viewer reads a role view with; Access\AllowsRoles,
  * which MemberAccess implements).
  * Since 0.78: core 0.78 (Http\LocaleUrls, which Links takes for the locale prefix, bound with the translator before any provider registers, so members keeps no fallback for either). Since 0.77: core 0.77 (Activity\ActivityLog, which Members and members:prune call, and ActivityActors, where MembersServiceProvider registers the account-deletion actor).
  *

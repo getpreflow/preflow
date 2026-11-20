@@ -17,10 +17,10 @@ use Preflow\Core\Context\RoleView;
  * those of a disabled extension.
  *
  * A role view (view as role: the user is a SyntheticUser) has no account and no guard: it is
- * answered from what its roles grant in its own population (populationOfRoleView()), through
- * the resolver's GrantsForRoles (since 0.81.0). No account is read and the resolver's allows()
- * is never asked for it, so a role view never gets more than its roles' own grants; a resolver
- * without GrantsForRoles grants it nothing.
+ * answered for its roles in its own population (populationOfRoleView()), subject included,
+ * through the resolver's AllowsRoles (since 0.81.0). No account is read and the resolver's
+ * allows() is never asked for it, so a role view never gets more than its roles allow; a
+ * resolver without AllowsRoles grants it nothing.
  */
 final class Access
 {
@@ -136,7 +136,7 @@ final class Access
             return false;
         }
         if ($user instanceof SyntheticUser) {
-            return $this->grants($user->view, $permission);
+            return $this->grants($user->view, $permission, $subject);
         }
 
         return $this->resolver->allows($user, $this->populationOf($this->auth->guardName() ?? ''), $permission, $subject);
@@ -153,7 +153,7 @@ final class Access
             return $early;
         }
         foreach ($this->auth?->users() ?? [] as $guard => $user) {
-            if ($user instanceof SyntheticUser ? $this->grants($user->view, $permission) : $this->resolver->allows($user, $this->populationOf((string) $guard), $permission, $subject)) {
+            if ($user instanceof SyntheticUser ? $this->grants($user->view, $permission, $subject) : $this->resolver->allows($user, $this->populationOf((string) $guard), $permission, $subject)) {
                 return true;
             }
         }
@@ -161,19 +161,11 @@ final class Access
         return false;
     }
 
-    /** Whether $view's roles grant $permission (GrantsForRoles); false when the resolver cannot say. */
-    private function grants(RoleView $view, string $permission): bool
+    /** Whether $view's roles allow $permission on $subject (AllowsRoles); false when the resolver cannot say. */
+    private function grants(RoleView $view, string $permission, ?object $subject): bool
     {
-        if (!$this->resolver instanceof GrantsForRoles) {
-            return false;
-        }
-        foreach ($this->resolver->grantsFor($view->roles, self::populationOfRoleView($view)) as $pattern) {
-            if (Pattern::matches($pattern, $permission)) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->resolver instanceof AllowsRoles
+            && $this->resolver->allowsRoles($view->roles, self::populationOfRoleView($view), $permission, $subject);
     }
 
     /** The answer that holds whoever is signed in (disabled, no auth, undeclared), or null to ask the user. */

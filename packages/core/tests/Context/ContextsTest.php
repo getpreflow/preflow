@@ -470,10 +470,11 @@ final class ContextsTest extends TestCase
         try {
             $captured = Contexts::run(self::ctx('/'), static function () use ($channel, &$ran): array {
                 Contexts::frame()->outbox()->channel($channel);
+                // Narrowed before anything is queued (a frame holding queued work is refused).
+                Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->asRole(new RoleView('member', ['gold'])));
                 Contexts::frame()->outbox()->afterResponse(static function () use (&$ran): void {
                     $ran = true;
                 });
-                Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->asRole(new RoleView('member', ['gold'])));
                 Contexts::frame()->outbox()->queue(new QueuedMail('ada@example.test'), 'mail');
                 Contexts::deliverQueued();
                 Contexts::deliverNow();
@@ -489,6 +490,48 @@ final class ContextsTest extends TestCase
         $this->assertFalse($ran, 'the after-response work never ran');
         $this->assertSame('', (string) file_get_contents($log), 'nothing was logged');
         @unlink($log);
+    }
+
+    /**
+     * A frame that queued real mail and after-response work (an admin's request) cannot be
+     * narrowed into a role view: the mail would only be captured and silently dropped. The frame
+     * keeps its context and still sends.
+     */
+    public function test_narrowing_a_frame_that_holds_queued_mail_into_a_role_view_is_refused(): void
+    {
+        $channel = self::mailChannel();
+        $ran = false;
+
+        [$refused, $viewer] = Contexts::run(self::ctx('/'), static function () use ($channel, &$ran): array {
+            Contexts::frame()->outbox()->channel($channel);
+            Contexts::frame()->outbox()->queue(new QueuedMail('admin@example.test'), 'mail');
+            Contexts::frame()->outbox()->afterResponse(static function () use (&$ran): void {
+                $ran = true;
+            });
+            $refused = null;
+            try {
+                Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->asRole(new RoleView('member', ['gold'])));
+            } catch (\LogicException $e) {
+                $refused = $e->getMessage();
+            }
+            $viewer = Contexts::current()->viewer;
+            Contexts::deliverQueued();
+
+            return [$refused, $viewer];
+        });
+
+        $this->assertNotNull($refused);
+        $this->assertStringContainsString('queued mail or after-response work', (string) $refused);
+        $this->assertFalse($viewer->isSynthetic(), 'the frame keeps its context');
+        $this->assertCount(1, $channel->sent, 'the mail is still sent');
+        $this->assertFalse($ran, 'deliverQueued() drops after-response work, as it always does');
+
+        // Only after-response work queued: refused as well.
+        $this->expectException(\LogicException::class);
+        Contexts::run(self::ctx('/'), static function (): void {
+            Contexts::frame()->outbox()->afterResponse(static function (): void {});
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->asRole(new RoleView('member', ['gold'])));
+        });
     }
 
     private static function mailChannel(): OutboxChannel

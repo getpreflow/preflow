@@ -136,15 +136,41 @@ final class SyntheticMemberTest extends TestCase
         $this->assertFalse($access, 'a pending member may not use the members area');
     }
 
+    /**
+     * A member type with a number id cannot stand for a role view's member: its reserved id would
+     * compare as 0 in SQL. Members::synthetic() refuses it.
+     */
+    public function test_a_member_type_with_a_number_id_is_refused(): void
+    {
+        $dir = sys_get_temp_dir() . '/members_intid_' . bin2hex(random_bytes(4));
+        @mkdir($dir, 0777, true);
+        try {
+            $registry = new \Preflow\Data\TypeRegistry($dir);
+            $registry->define([
+                'key' => MembersConfig::TYPE, 'table' => 'member', 'id_field' => 'id', 'label' => 'Members',
+                'fields' => ['id' => ['type' => 'integer'], 'email' => ['type' => 'string'], 'roles' => ['type' => 'string']],
+            ]);
+            $dm = new DataManager(drivers: ['default' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))], typeRegistry: $registry);
+            $members = new \Preflow\Members\Members($dm, new \Preflow\Auth\NativePasswordHasher());
+
+            $this->expectException(\LogicException::class);
+            $this->expectExceptionMessage('is not a string');
+            $members->synthetic(new RoleView('member', ['member']));
+        } finally {
+            @rmdir($dir);
+        }
+    }
+
     /** Without rbac, members' own resolver gives a member role view the grants an admitted member has. */
     public function test_member_access_grants_follow_the_roles(): void
     {
         $access = new MemberAccess(new \Preflow\Auth\Access\DefaultResolver());
 
-        $this->assertSame([MembersConfig::PERMISSION], $access->grantsFor(['member'], 'members'));
-        $this->assertSame([MembersConfig::PERMISSION], $access->grantsFor(['gold', 'member'], 'members'));
-        $this->assertSame([], $access->grantsFor(['member', 'pending'], 'members'));
-        $this->assertSame([], $access->grantsFor([], 'members'));
-        $this->assertSame([], $access->grantsFor(['admin'], 'staff'), 'auth\'s default resolver lists no grants for a role: a staff role view gets nothing');
+        $this->assertTrue($access->allowsRoles(['member'], 'members', MembersConfig::PERMISSION, null));
+        $this->assertTrue($access->allowsRoles(['gold', 'member'], 'members', MembersConfig::PERMISSION, null));
+        $this->assertFalse($access->allowsRoles(['member'], 'members', MembersConfig::DECIDE, null));
+        $this->assertFalse($access->allowsRoles(['member', 'pending'], 'members', MembersConfig::PERMISSION, null));
+        $this->assertFalse($access->allowsRoles([], 'members', MembersConfig::PERMISSION, null));
+        $this->assertFalse($access->allowsRoles(['admin'], 'staff', 'page.edit', null), 'auth\'s default resolver cannot answer for roles: a staff role view gets nothing');
     }
 }

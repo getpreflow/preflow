@@ -19,7 +19,8 @@ namespace Preflow\Core\Context;
  * as role) is never swapped for a real or an anonymous one inside its frame (another role view
  * is fine). within() never starts a role view in a frame that is not one: what a stretch queues
  * stays in the frame, whose own policy sends it at its end, so a role view starts with run()
- * (Application::render()), or with narrow(), which holds to the end of the frame. Each is
+ * (Application::render()), or with narrow(), which holds to the end of the frame and is refused
+ * once the frame queued mail or after-response work (it would be captured, never sent). Each is
  * refused with a LogicException; a render as someone else opens its own frame with run().
  * A frame inside a frame never writes more than the frame around it does now (run()).
  *
@@ -323,7 +324,9 @@ final class Contexts
      * is thrown at the end (the owner of a request logs it).
      *
      * A frame that renders as a role view (view as role; one narrowed to it too) sends nothing:
-     * its outbox only captures, so this returns quietly (since 0.81.0).
+     * its outbox only captures, so this returns quietly (since 0.81.0). A frame that holds
+     * queued work is never narrowed into a role view (narrow() refuses it), so nothing real is
+     * lost here.
      *
      * @throws NoRenderContext outside every render
      * @throws \LogicException unless the current frame is the outermost one and delivers
@@ -344,7 +347,8 @@ final class Contexts
      * as data written before it stays written).
      *
      * A frame that renders as a role view (view as role; one narrowed to it too) sends nothing:
-     * its after-response work is dropped and this returns quietly, its captured items stay.
+     * its after-response work is dropped and this returns quietly, its captured items stay
+     * (narrow() refuses a frame that queued anything before it became a role view).
      *
      * @since 0.81.0
      *
@@ -449,6 +453,10 @@ final class Contexts
         }
         if ($method === 'within' && $next->viewer->isSynthetic() && !$frame->context->viewer->isSynthetic()) {
             throw new \LogicException('Contexts::within() cannot start a role view (view as role): what the stretch queued would be sent with the frame. Render as a role with Contexts::run() (Application::render()).');
+        }
+        if ($next->viewer->isSynthetic() && !$frame->context->viewer->isSynthetic() && $frame->outbox()->pending() !== [0, 0]) {
+            // What the frame queued before is real (the admin's own mail): a role view would only capture it.
+            throw new \LogicException("Contexts::{$method}() cannot turn a frame that already queued mail or after-response work into a role view (view as role): it would be captured and never sent. Render as a role with Contexts::run() (Application::render()).");
         }
         if ($next->outbox === OutboxPolicy::Deliver && $frame->openedOutbox !== OutboxPolicy::Deliver) {
             throw new \LogicException("Contexts::{$method}() cannot make a frame deliver that was opened with outbox policy {$frame->openedOutbox->name}: its caller decides what the render may send.");

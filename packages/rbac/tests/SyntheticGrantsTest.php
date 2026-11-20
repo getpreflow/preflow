@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Rbac\Tests;
 
 use PHPUnit\Framework\TestCase;
-use Preflow\Auth\Access\GrantsForRoles;
+use Preflow\Auth\Access\AllowsRoles;
 use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\SqliteDriver;
@@ -51,7 +51,16 @@ final class SyntheticGrantsTest extends TestCase
             ['members', 'editor', ['forum.post']],
         ]);
 
-        $this->assertInstanceOf(GrantsForRoles::class, $resolver);
+        $this->assertInstanceOf(AllowsRoles::class, $resolver);
+        // The question a role view asks: its roles, in its own population.
+        $this->assertTrue($resolver->allowsRoles(['editor'], 'staff', 'pages.edit', null));
+        $this->assertFalse($resolver->allowsRoles(['editor'], 'staff', 'site.view_as', null));
+        $this->assertTrue($resolver->allowsRoles(['writer'], 'staff', 'assets.upload', null), 'patterns match as allows() matches them');
+        $this->assertTrue($resolver->allowsRoles(['admin'], 'staff', 'site.view_as', null));
+        $this->assertTrue($resolver->allowsRoles(['editor'], 'members', 'forum.post', null));
+        $this->assertFalse($resolver->allowsRoles(['editor'], 'members', 'pages.edit', null), 'a role name is read in its own population');
+        $this->assertFalse($resolver->allowsRoles(['gold'], 'staff', 'members.access', null));
+        $this->assertFalse($resolver->allowsRoles([], 'staff', 'pages.edit', null));
         $this->assertSame(['pages.edit', 'pages.publish'], $resolver->grantsFor(['editor'], 'staff'));
         $this->assertSame(['pages.edit', 'pages.publish', 'assets.*'], $resolver->grantsFor(['editor', 'writer'], 'staff'), 'each pattern once, in role order');
         $this->assertSame($resolver->grantsFor(['editor', 'writer'], 'staff'), $resolver->grantsFor(['editor', 'writer'], 'staff'), 'the same roles give the same grants');
@@ -77,6 +86,7 @@ final class SyntheticGrantsTest extends TestCase
 
         $this->assertSame([], $resolver->grantsFor(['admin'], 'staff'));
         $this->assertSame([], $resolver->grantsFor(['member'], 'members'));
+        $this->assertFalse($resolver->allowsRoles(['admin'], 'staff', 'pages.edit', null));
     }
 
     /** rbac declares the permission to view the site as a role; the staff role "admin" holds it from the start. */

@@ -442,6 +442,8 @@ with `RenderContext::asRole()`), no account is signed in and none is read:
   (`Members::synthetic()`): every field `null`, the role view's roles in `roles`, and a reserved id
   `preflow:synthetic:member:{roles}` that no account has. A page that shows the member's own data
   shows empty values. A staff role view has no member (`null`) and counts as staff.
+- The member type needs a string id (the default `uuid`): with a number id the reserved id would
+  compare as `0` in SQL, so `Members::synthetic()` refuses such a type with a `LogicException`.
 - `Viewer::isSynthetic()` tells code that the member is no account.
 - Saving or deleting that record is skipped by the role view's write policy (and reported), like
   every write there; nothing reaches the store. On the account page a password change or a

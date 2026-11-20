@@ -42,7 +42,9 @@ final class SessionMiddleware implements MiddlewareInterface
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         // An internal render (audit, GEO, rebuild, verify, preview) is an anonymous visitor's: no session.
-        if ($request->getAttribute(self::WITHOUT_SESSION) === true || Contexts::depth() > 0 && Contexts::current()->purpose->isInternal()) {
+        // Nor has a role view (view as role, since 0.81.0), whatever its purpose: the session the
+        // request carries is the editor's, never started, aged, read, written or closed by it.
+        if ($request->getAttribute(self::WITHOUT_SESSION) === true || Contexts::depth() > 0 && (Contexts::current()->purpose->isInternal() || Contexts::current()->viewer->isSynthetic())) {
             return $handler->handle($request);
         }
         $onPath = $this->applies($request->getUri()->getPath());
@@ -72,13 +74,17 @@ final class SessionMiddleware implements MiddlewareInterface
     /**
      * The session of the current render: the SessionInterface attribute its request carries once
      * this middleware started the session. Null outside every render, and in a render without a
-     * session (an internal render, a public path without the session cookie). flash(),
+     * session (an internal render, a public path without the session cookie), and under a role
+     * view (view as role), also one narrowed into a role view after its session started. flash(),
      * csrf_token() and old() read it, so a render never reads another render's session.
      *
      * @since 0.81.0
      */
     public static function ofCurrentRender(): ?SessionInterface
     {
+        if (Contexts::depth() > 0 && Contexts::current()->viewer->isSynthetic()) {
+            return null;
+        }
         $session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);
 
         return $session instanceof SessionInterface ? $session : null;
