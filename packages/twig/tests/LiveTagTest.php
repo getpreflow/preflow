@@ -45,7 +45,7 @@ final class LiveTagTest extends TestCase
             $this->logged[] = $m;
         });
         $this->engine = new TwigEngine([$this->dir], new AssetCollector(new NonceGenerator()), liveParts: $this->live);
-        $this->engine->addGlobal('site', 'Holz');
+        $this->engine->addGlobal('site', 'Acme');
     }
 
     protected function tearDown(): void
@@ -58,14 +58,14 @@ final class LiveTagTest extends TestCase
         $this->template('page.twig', '<main>{{ secret }}|{% live with {number: object.number} %}[{{ number }}/{{ secret|default("none") }}/{{ object|default("none") }}/{{ site }}]{% endlive %}</main>');
         $context = ['secret' => 'outer', 'object' => ['number' => 7]];
 
-        $this->assertSame('<main>outer|[7/none/none/Holz]</main>', $this->engine->render('page.twig', $context), 'in place');
+        $this->assertSame('<main>outer|[7/none/none/Acme]</main>', $this->engine->render('page.twig', $context), 'in place');
 
         $stored = $this->storing(fn (): string => $this->engine->render('page.twig', $context));
         $this->assertStringNotContainsString('[7', $stored, 'not rendered while storing');
         $this->assertSame(1, preg_match('/^<main>outer\|(<!--pc:l:[A-Za-z0-9_-]+:[0-9a-f]{32}-->)<\/main>$/', $stored, $m));
         $this->assertSame([$m[1] => ['twig', ['t' => 'page.twig', 'b' => '__live_1', 'w' => ['number' => 7]]]], (new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->find($stored));
 
-        $this->assertSame('<main>outer|[7/none/none/Holz]</main>', $this->live->fill($stored), 'filled as in place');
+        $this->assertSame('<main>outer|[7/none/none/Acme]</main>', $this->live->fill($stored), 'filled as in place');
     }
 
     public function test_live_blocks_in_layouts_loops_and_component_templates(): void
