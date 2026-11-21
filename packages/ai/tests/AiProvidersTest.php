@@ -17,10 +17,13 @@ use Preflow\Ai\Testing\FakeAiClientFactory;
 use Preflow\Ai\Usage\Pricing;
 use Preflow\Ai\Usage\UsageEntry;
 use Preflow\Ai\Usage\UsageLog;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** config/ai.php "provider": the built-in names, "fake", or the class of an AiClientFactory (0.66). */
 final class AiProvidersTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private function log(): UsageLog
     {
         return new class implements UsageLog {

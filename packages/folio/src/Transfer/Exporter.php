@@ -60,7 +60,7 @@ final class Exporter
         $writer = new TarWriter($stream);
         $writer->addString('folio-export.json', json_encode([
             'format' => 1,
-            'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+            'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM), // clock: stamp
             'only' => $only,
             'tables' => $summary['tables'],
             'media' => $summary['media'],

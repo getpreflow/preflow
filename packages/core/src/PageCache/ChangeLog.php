@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * What writes changed in this process, merged: an import of 300 jobs is one invalidation, not 300.
  * flush() hands the pending tags to the invalidator (Refresher::invalidate()) in one call; the
@@ -46,7 +48,7 @@ final class ChangeLog
         private readonly int $flushAbove = 0,
         ?\Closure $clock = null,
     ) {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
     }
 
     /** @param iterable<string> $tags tags that changed (DataTags::changes() already applied) */

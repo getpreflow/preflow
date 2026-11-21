@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A full app with an extension screen that declares one CSS and one JS file (the Shop
@@ -18,6 +19,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class ScreenAssetsAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

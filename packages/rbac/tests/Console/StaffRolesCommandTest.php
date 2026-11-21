@@ -7,7 +7,6 @@ namespace Preflow\Rbac\Tests\Console;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
-use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
 use Preflow\DevTools\Command\MigrateCommand;
 use Preflow\Rbac\Console\InstallCommand;
@@ -18,6 +17,7 @@ use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\Staff\StaffAccounts;
 use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * staff:roles on a site without Folio: grant, revoke, replace and show an existing account's
@@ -25,6 +25,8 @@ use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
  */
 final class StaffRolesCommandTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const string LAST = 'At least one account must keep the right to manage staff and roles.';
 
     private string $dir;
@@ -38,7 +40,7 @@ final class StaffRolesCommandTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/rbac_staff_roles_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\" . ReportsProvider::class . '::class, \\' . \Preflow\Rbac\RbacServiceProvider::class . "::class];\n");
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
@@ -147,9 +149,11 @@ final class StaffRolesCommandTest extends TestCase
         $c = $app->container();
         $user = $c->get(\Preflow\Auth\UserProviderInterface::class)->findByCredentials(['email' => 'ada@site.test']);
         $this->assertNotNull($user);
-        $c->get(AuthManager::class)->setUser($user, 'session');
-        $this->assertTrue($c->get(Access::class)->can('reports.view'));
-        $this->assertFalse($c->get(Access::class)->can('reports.export'));
+        // Signed in as the request's identity middleware does it: the render's viewer.
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['session' => $user], 'session')), function () use ($c): void {
+            $this->assertTrue($c->get(Access::class)->can('reports.view'));
+            $this->assertFalse($c->get(Access::class)->can('reports.export'));
+        });
 
         $this->assertSame(0, $this->command('staff:roles', ['ada@site.test', '--grant=exporter,reporter'])[0]);
         $this->assertSame(['reporter', 'exporter'], $this->roles('ada@site.test'));

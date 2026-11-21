@@ -14,10 +14,13 @@ use Preflow\Core\Tests\Fixtures\Rendering\RenderingBroken;
 use Preflow\Core\Tests\Fixtures\Rendering\RenderingLiveGate;
 use Preflow\Core\Tests\Fixtures\Rendering\RenderingOuter;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** File pages through the whole app: Blade pages, inline JS, HTTP errors thrown by components. */
 final class PageRenderingTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

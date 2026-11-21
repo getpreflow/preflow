@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A full app: the dashboard override returns the same ScreenView a screen returns, and the page
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class ScreenOverrideAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

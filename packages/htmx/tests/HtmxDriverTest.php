@@ -139,5 +139,68 @@ final class HtmxDriverTest extends TestCase
 
         $this->assertSame($collector->getNonce(), $response->getHeaderLine('HX-Nonce'));
     }
-}
 
+    /** A preview token handed on in the page: hx-headers on <body>, every htmx request from the page sends it. */
+    public function test_carry_headers_puts_hx_headers_on_the_body(): void
+    {
+        $driver = new HtmxDriver(new ResponseHeaders());
+        $headers = ['X-Preflow-Preview' => 'v1.a"b\'c<d>&e'];
+        $decode = static fn (string $html): array => preg_match('#<body[^>]* hx-headers="([^"]*)"#', $html, $m) === 1 ? json_decode(html_entity_decode($m[1], ENT_QUOTES), true) : [];
+
+        $plain = $driver->carryHeaders('<html><body class="page"><p>x</p></body></html>', $headers);
+        $this->assertSame($headers, $decode($plain), 'escaped for the attribute, read back exactly');
+        $this->assertStringContainsString('<body class="page" hx-headers="', $plain);
+        $this->assertStringEndsWith('><p>x</p></body></html>', $plain, 'nothing else changes');
+
+        $own = $driver->carryHeaders("<body hx-headers='{\"X-Own\":\"1\"}'>", $headers);
+        $this->assertSame($headers + ['X-Own' => '1'], $decode($own), 'the page\'s own headers stay');
+
+        $this->assertSame('<p>fragment</p>', $driver->carryHeaders('<p>fragment</p>', $headers), 'no body, no change');
+        $this->assertSame('<body hx-headers="js:x()" hx-history="false">', $driver->carryHeaders('<body hx-headers="js:x()">', $headers), 'a script value is left alone (out of history still)');
+        $this->assertSame('<body hx-headers={} hx-history="false">', $driver->carryHeaders('<body hx-headers={}>', $headers), 'an unquoted one too: never a second hx-headers');
+
+        // The real <body>: not one in a comment or a script string; a quoted ">" in its attributes is fine.
+        $page = '<head><!-- <body class="old"> --><script>var t = "<body>";</script></head><body data-x="a>b"><p>x</p></body>';
+        $carried = $driver->carryHeaders($page, $headers);
+        $this->assertStringContainsString('<!-- <body class="old"> --><script>var t = "<body>";</script></head><body data-x="a>b" hx-headers="', $carried);
+        $this->assertSame(1, preg_match('# hx-headers="([^"]*)"#', $carried, $m));
+        $this->assertSame($headers, json_decode(html_entity_decode($m[1], ENT_QUOTES), true));
+    }
+
+    /** Task 22 I1: a page that carries the token is kept out of htmx's history cache; the page's own hx-history is replaced. */
+    public function test_carry_headers_keeps_the_page_out_of_history(): void
+    {
+        $driver = new HtmxDriver(new ResponseHeaders());
+
+        $carried = $driver->carryHeaders('<body hx-history="true" class="p"><p>x</p></body>', ['X-Preflow-Preview' => 't']);
+
+        $this->assertStringContainsString(' hx-history="false"', $carried);
+        $this->assertStringNotContainsString('hx-history="true"', $carried);
+        $this->assertSame(1, substr_count($carried, 'hx-history'));
+        $this->assertStringContainsString('class="p"', $carried);
+    }
+
+    /**
+     * Task 22 re-check: the page stays out of htmx's history also where the headers can't be added:
+     * a body whose own hx-headers is a js: value or unquoted (no token there), and a whole document
+     * without a <body> tag (one is added, with the headers). A fragment is left alone.
+     */
+    public function test_carry_headers_keeps_history_off_where_it_cannot_carry_the_headers(): void
+    {
+        $driver = new HtmxDriver(new ResponseHeaders());
+        $headers = ['X-Preflow-Preview' => 'the-token'];
+
+        foreach (['<body hx-headers="js:{a: 1}" hx-history="true">', '<body hx-headers={a}>'] as $body) {
+            $carried = $driver->carryHeaders($body . '<p>x</p></body>', $headers);
+            $this->assertStringContainsString(' hx-history="false">', $carried, $body);
+            $this->assertStringNotContainsString('the-token', $carried, 'the token is left out: ' . $body);
+            $this->assertSame(1, substr_count($carried, 'hx-history'));
+        }
+
+        $document = $driver->carryHeaders('<!DOCTYPE html><html><head><title>T</title></head><p>x</p></html>', $headers);
+        $this->assertStringContainsString('</head><body hx-headers="', $document);
+        $this->assertStringContainsString(' hx-history="false"><p>x</p>', $document);
+        $this->assertStringContainsString('the-token', $document);
+        $this->assertSame('<p>fragment</p>', $driver->carryHeaders('<p>fragment</p>', $headers));
+    }
+}

@@ -16,12 +16,15 @@ use Preflow\Folio\Seo\FolioPageMeta;
 use Preflow\Folio\Tests\Support\AssetFixtures;
 use Preflow\Media\MediaLibrary;
 use Preflow\View\Seo\PageMeta;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** A Folio page's share card data from its record, the type's mapped fields and the site singleton. */
 #[RequiresPhpExtension('gd')]
 #[RequiresFunction('imagewebp')]
 final class FolioPageMetaTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use AssetFixtures;
 
     private string $dir;
@@ -29,7 +32,7 @@ final class FolioPageMetaTest extends TestCase
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/folio_page_meta_' . bin2hex(random_bytes(4));
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Meta', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-meta-test-key-01234'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Meta', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-meta-test-key-01234-0123456789abcdef'];\n");
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");

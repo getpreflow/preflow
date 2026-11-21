@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace Preflow\I18n;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
+use Preflow\Core\Context\RenderContext;
+
 /**
  * Translations by dot key ("group.area.name"). For each locale of the fallback chain (the
  * asked locale, then the fallback locale given to the constructor, then "en") the first
@@ -13,9 +17,19 @@ namespace Preflow\I18n;
  * lang/{locale}/{group}.php key by key, then
  * the package's file (addDefaults(), usually through TranslationRegistry). A key found
  * nowhere comes back as the key itself.
+ *
+ * Since 0.81 the locale and the overrides switch come from the render context
+ * (Contexts::current()): on the public surface the texts are in the context's locale with
+ * overrides off; on the admin surface they are in its interface locale, with the overrides the
+ * surface asks for. Outside every render (a script, a unit test) the translator uses its own
+ * default: the locale given to the constructor and overrides off. The texts a context resolved
+ * are kept per text locale and overrides switch, so every context with the same two (a loop that
+ * builds a new context per item, within() back and forth) shares them; keys an override can
+ * answer are always asked again.
  */
 final class Translator
 {
+    /** Outside every render: the locale the texts are in (the constructor's, or setLocale() there). */
     private string $locale;
 
     /** @var array<string, string> group => 'admin'|'public' */
@@ -23,7 +37,17 @@ final class Translator
 
     private TranslationOverrides $overrides;
 
+    /** Outside every render: whether overrides are on (useOverrides() there). */
     private bool $overridesOn = false;
+
+    /**
+     * The text caches, one per text locale and overrides switch (all a render context changes in
+     * how a key resolves): "{locale}" or "{locale}\x01" (overrides on) => its texts, for keys no
+     * override can answer. Contexts with the same two share one; forgetMemos() drops them all.
+     *
+     * @var array<string, CatalogueMemo>
+     */
+    private array $memos = [];
 
     /** @var list<string> key prefixes of groups without a scope that take overrides too (overridable()) */
     private array $overridablePrefixes = [];
@@ -31,7 +55,7 @@ final class Translator
     /** @var array<string, true> groups whose overrides apply on every request (alwaysOverride()) */
     private array $alwaysOverridden = [];
 
-    /** @var array<string, array<string, mixed>> Cache: "locale.group" => translations */
+    /** @var array<string, array<string, mixed>> Cache: "locale.group" => translations (the files; the same for every context) */
     private array $loaded = [];
 
     /** @var array<string, list<string>> group => lang directories of packages, in the order added */
@@ -54,7 +78,7 @@ final class Translator
      */
     public function get(string $key, array $params = [], ?string $locale = null): string
     {
-        $value = $this->lookup($key, $locale ?? $this->locale);
+        $value = $this->lookup($key, $locale);
 
         return $value === null ? $key : $this->replaceParams($value, $params);
     }
@@ -66,7 +90,7 @@ final class Translator
      */
     public function choice(string $key, int $count, array $params = [], ?string $locale = null): string
     {
-        $value = $this->lookup($key, $locale ?? $this->locale);
+        $value = $this->lookup($key, $locale);
         if ($value === null) {
             return $key;
         }
@@ -84,7 +108,9 @@ final class Translator
      */
     public function has(string $key, ?string $locale = null): bool
     {
-        return $this->valueIn($key, $locale ?? $this->locale) !== null;
+        [$current, $overrides] = $this->current();
+
+        return $this->valueIn($key, $locale ?? $current, $this->overrideApplies($key, $overrides)) !== null;
     }
 
     /**
@@ -95,6 +121,7 @@ final class Translator
     public function addDefaults(string $group, string $langPath): void
     {
         $this->defaults[$group][] = rtrim($langPath, '/');
+        $this->forgetMemos();
         foreach (array_keys($this->loaded) as $cacheKey) {
             if (str_ends_with($cacheKey, '.' . $group)) {
                 unset($this->loaded[$cacheKey]);
@@ -117,6 +144,7 @@ final class Translator
         $this->addDefaults($group, $langPath);
         $this->scopes[$group] ??= $scope;
         $this->keepAdminGroupsAdminOnly();
+        $this->forgetMemos();
     }
 
     /**
@@ -129,6 +157,7 @@ final class Translator
     {
         $this->scopes = array_replace($this->scopes, $scopes);
         $this->keepAdminGroupsAdminOnly();
+        $this->forgetMemos();
     }
 
     /** A group declared "admin" after alwaysOverride() (its package registered later) is no longer always overridden. */
@@ -149,6 +178,7 @@ final class Translator
     public function setOverrides(TranslationOverrides $overrides): void
     {
         $this->overrides = $overrides;
+        $this->forgetMemos();
     }
 
     /** The override layer in use (NoTranslationOverrides until one is set). */
@@ -165,6 +195,7 @@ final class Translator
     {
         if ($prefix !== '' && !in_array($prefix, $this->overridablePrefixes, true)) {
             $this->overridablePrefixes[] = $prefix;
+            $this->forgetMemos();
         }
     }
 
@@ -185,6 +216,7 @@ final class Translator
             throw new \InvalidArgumentException("The group \"{$group}\" is an admin group; its overrides stay admin-only.");
         }
         $this->alwaysOverridden[$group] = true;
+        $this->forgetMemos();
     }
 
     /**
@@ -220,16 +252,37 @@ final class Translator
         return false;
     }
 
-    /** Overrides are off by default; Folio turns them on for admin requests. */
+    /**
+     * Turns overrides on or off for the rest of the current render: on narrows its frame to the
+     * admin surface with overrides, in the locale the texts are in now; off narrows an admin
+     * surface to one without (on the public surface they are off already). Outside every render
+     * it switches the translator's own default.
+     *
+     * @deprecated 0.81, removed in 0.83: narrow the frame to the surface, Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale, $overrides))
+     */
     public function useOverrides(bool $on): void
     {
-        $this->overridesOn = $on;
+        Deprecations::once('Preflow\I18n\Translator::useOverrides() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($uiLocale, $overrides)).');
+        if (Contexts::depth() === 0) {
+            $this->overridesOn = $on;
+            $this->forgetMemos();
+
+            return;
+        }
+        Contexts::narrow(static function (RenderContext $ctx) use ($on): RenderContext {
+            $surface = $ctx->surface;
+            if (!$surface->admin) {
+                return $on ? $ctx->admin($ctx->locale, true) : $ctx;
+            }
+
+            return $surface->overrides === $on ? $ctx : $ctx->admin((string) $surface->uiLocale, $on);
+        });
     }
 
-    /** Whether overrides are on now (so a caller that turns them on can restore the state it found). */
+    /** Whether overrides are on now: the current render's surface asks for them (outside every render, the translator's own default). */
     public function usesOverrides(): bool
     {
-        return $this->overridesOn;
+        return $this->current()[1];
     }
 
     /**
@@ -340,14 +393,35 @@ final class Translator
         return $entries;
     }
 
+    /**
+     * The locale the texts are in now: the current render's locale on the public surface, its
+     * interface locale on the admin surface; outside every render the translator's own default.
+     */
     public function getLocale(): string
     {
-        return $this->locale;
+        return $this->current()[0];
     }
 
+    /**
+     * Sets the locale the texts are in for the rest of the current render: narrows its frame to
+     * $locale (on the admin surface, to that interface locale, which is what getLocale() gives
+     * there). Outside every render it sets the translator's own default.
+     *
+     * @deprecated 0.81, removed in 0.83: Contexts::narrow(fn ($ctx) => $ctx->in($locale)) for the
+     *             rest of the render, Contexts::within($ctx->in($locale), $fn) for a stretch of it
+     */
     public function setLocale(string $locale): void
     {
-        $this->locale = $locale;
+        Deprecations::once('Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).');
+        if (Contexts::depth() === 0) {
+            $this->locale = $locale;
+            $this->forgetMemos();
+
+            return;
+        }
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->surface->admin
+            ? $ctx->admin($locale, $ctx->surface->overrides)
+            : $ctx->in($locale));
     }
 
     /** The site's default locale, the second step of the fallback chain. */
@@ -356,23 +430,83 @@ final class Translator
         return $this->fallbackLocale;
     }
 
-    /** The first text along the fallback chain: the locale, the fallback locale, then en. */
-    private function lookup(string $key, string $locale): ?string
+    /**
+     * The text locale and the overrides switch now: the current render's (with the text cache for
+     * those two), else the translator's own default.
+     *
+     * @return array{string, bool, CatalogueMemo|null} the locale, overrides on, the current render's cache (null outside every render)
+     */
+    private function current(): array
     {
-        foreach (array_unique([$locale, $this->fallbackLocale, 'en']) as $candidate) {
-            $value = $this->valueIn($key, $candidate);
-            if ($value !== null) {
-                return $value;
-            }
+        $ctx = Contexts::peek();
+        if ($ctx === null) {
+            return [$this->locale, $this->overridesOn, null];
         }
+        // Only the text locale and the overrides switch change how a key resolves (the fallback
+        // chain and the layers are the translator's own; the surface counts through these two).
+        $locale = $ctx->surface->admin ? (string) $ctx->surface->uiLocale : $ctx->locale;
+        $overrides = $ctx->surface->overrides;
+        $memo = $this->memos[$overrides ? $locale . "\x01" : $locale] ??= new CatalogueMemo($locale, $overrides);
 
-        return null;
+        return [$locale, $overrides, $memo];
     }
 
-    /** The text in exactly one locale: an override (when it applies), else the files. */
-    private function valueIn(string $key, string $locale): ?string
+    /** Drops every context's text cache: what resolves a key changed (files, scopes, overrides, the default). */
+    private function forgetMemos(): void
     {
-        if (($this->overridesOn && $this->isOverridable($key)) || isset($this->alwaysOverridden[strstr($key, '.', true) ?: $key])) {
+        $this->memos = [];
+    }
+
+    /**
+     * The first text along the fallback chain: the locale (default: the current one), the fallback
+     * locale, then en. Inside a render a key no override can answer is kept for its context.
+     */
+    private function lookup(string $key, ?string $locale): ?string
+    {
+        // current() without its array: this runs for every t().
+        $ctx = Contexts::peek();
+        if ($ctx === null) {
+            $memo = null;
+            $current = $this->locale;
+            $overrides = $this->overridesOn;
+        } else {
+            $surface = $ctx->surface;
+            $current = $surface->admin ? (string) $surface->uiLocale : $ctx->locale;
+            $overrides = $surface->overrides;
+            $memo = $this->memos[$overrides ? $current . "\x01" : $current] ??= new CatalogueMemo($current, $overrides);
+        }
+        $locale ??= $current;
+        $memoKey = $locale . "\0" . $key;
+        if ($memo !== null && array_key_exists($memoKey, $memo->texts)) {
+            return $memo->texts[$memoKey];
+        }
+
+        $applies = $this->overrideApplies($key, $overrides);
+        $found = null;
+        foreach (array_unique([$locale, $this->fallbackLocale, 'en']) as $candidate) {
+            $value = $this->valueIn($key, $candidate, $applies);
+            if ($value !== null) {
+                $found = $value;
+                break;
+            }
+        }
+        if ($memo !== null && !$applies) {
+            $memo->texts[$memoKey] = $found;
+        }
+
+        return $found;
+    }
+
+    /** Whether an override can answer $key now (so its text is never kept: an override may change). */
+    private function overrideApplies(string $key, bool $overrides): bool
+    {
+        return ($overrides && $this->isOverridable($key)) || isset($this->alwaysOverridden[strstr($key, '.', true) ?: $key]);
+    }
+
+    /** The text in exactly one locale: an override (when $overrideApplies), else the files. */
+    private function valueIn(string $key, string $locale, bool $overrideApplies): ?string
+    {
+        if ($overrideApplies) {
             $override = $this->overrides->get($locale, $key);
             if ($override !== null) {
                 return $override;

@@ -6,6 +6,7 @@ namespace App\Seeds;
 
 use App\Models\User;
 use Preflow\Auth\NativePasswordHasher;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 
 final class UserSeeder
@@ -19,7 +20,7 @@ final class UserSeeder
         $user->email = 'admin@preflow.dev';
         $user->passwordHash = $hasher->hash('password');
         $user->roles = ['admin'];
-        $user->createdAt = (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        $user->createdAt = Contexts::clock()->now()->format('Y-m-d H:i:s');
 
         $data->save($user);
     }

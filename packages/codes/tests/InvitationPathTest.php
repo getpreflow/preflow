@@ -20,7 +20,7 @@ final class InvitationPathTest extends CodesAppTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/codes.php', "<?php\nreturn " . var_export([
             'purposes' => ['example.invite' => ['label' => 'Invitation', 'readable' => false, 'ttl' => 30]],
             'throttle' => ['max' => 10, 'window' => 900],

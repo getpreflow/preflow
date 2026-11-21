@@ -6,24 +6,25 @@ namespace Preflow\View\Tests\Audit;
 
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Context\SkippedWrite;
 use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionMiddleware;
-use Preflow\View\AssetCollector;
 use Preflow\View\Audit\PageRenderer;
-use Preflow\View\Geo\RenderScopes;
-use Preflow\View\NonceGenerator;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
 /** PageRenderer on its own, with a stand-in for the app (PageRendererAppTest renders through a booted one). */
 final class PageRendererTest extends TestCase
 {
-    public function test_renders_a_clean_marked_get_without_session_query_or_cookies(): void
+    public function test_renders_a_clean_get_without_session_query_or_cookies_in_the_pages_locale(): void
     {
         $seen = null;
+        $seenLocale = null;
         $renderer = new PageRenderer(
-            static function (ServerRequestInterface $request) use (&$seen): ResponseInterface {
+            static function (ServerRequestInterface $request, string $locale) use (&$seen, &$seenLocale): ResponseInterface {
                 $seen = $request;
+                $seenLocale = $locale;
 
                 return new Response(200, ['Content-Type' => 'text/html'], '<p>ok</p>');
             },
@@ -41,7 +42,9 @@ final class PageRendererTest extends TestCase
         $this->assertSame('text/html', $page->header('Content-Type'));
 
         $this->assertInstanceOf(ServerRequestInterface::class, $seen);
-        $this->assertTrue(InternalRender::is($seen));
+        $this->assertSame('de', $seenLocale, 'the app renders the page in its locale');
+        // Not marked: the app's internal Audit render says it leaves no trace, not the request.
+        $this->assertNull($seen->getAttribute(InternalRender::ATTRIBUTE));
         $this->assertTrue($seen->getAttribute(SessionMiddleware::WITHOUT_SESSION));
         $this->assertSame('GET', $seen->getMethod());
         $this->assertSame('https://site.test/de/spiele', (string) $seen->getUri());
@@ -110,53 +113,19 @@ final class PageRendererTest extends TestCase
         $this->assertSame([], $seen->getCookieParams());
     }
 
-    public function test_runs_inside_the_render_scopes(): void
+    public function test_the_writes_a_render_skipped_are_on_its_page(): void
     {
-        $scopes = new RenderScopes();
-        $log = [];
-        $scopes->add(static function (ServerRequestInterface $request, \Closure $next) use (&$log): ResponseInterface {
-            $log[] = 'in ' . $request->getUri()->getPath() . (InternalRender::is($request) ? ' marked' : '');
-            $response = $next();
-            $log[] = 'out';
-
-            return $response;
-        });
+        $write = new SkippedWrite('default', 'counter', 'home', 'save');
         $renderer = new PageRenderer(
-            static function () use (&$log): ResponseInterface {
-                $log[] = 'render';
-
-                return new Response(204);
-            },
+            static fn (): RenderResult => new RenderResult(new Response(200, ['Content-Type' => 'text/html'], '<p>1</p>'), [], [$write]),
             'https://site.test',
-            $scopes,
         );
 
-        $this->assertSame(204, $renderer->render('/x')->status);
-        $this->assertSame(['in /x marked', 'render', 'out'], $log);
-    }
+        $page = $renderer->render('/counter');
 
-    public function test_each_render_starts_from_the_assets_it_found_and_leaves_none_behind(): void
-    {
-        $assets = new AssetCollector(new NonceGenerator());
-        $assets->addJs('window.booted = 1;');
-        $renderer = new PageRenderer(
-            static function () use ($assets): ResponseInterface {
-                $assets->addCss('.page { color: red; }');
-
-                return new Response(200, [], $assets->renderCss() . $assets->renderJsBody());
-            },
-            'https://site.test',
-            assets: $assets,
-        );
-
-        $first = $renderer->render('/a')->body;
-        $second = $renderer->render('/b')->body;
-
-        $this->assertStringContainsString('.page', $first);
-        $this->assertStringContainsString('window.booted', $first);
-        $this->assertSame($first, $second);
-        $this->assertFalse($assets->hasCss());
-        $this->assertTrue($assets->hasJs());
+        $this->assertSame('<p>1</p>', $page->body);
+        $this->assertSame([$write], $page->skippedWrites);
+        $this->assertSame([], (new PageRenderer(static fn (): ResponseInterface => new Response(200), 'https://site.test'))->render('/')->skippedWrites);
     }
 
     public function test_a_thrown_error_becomes_a_500_page_with_its_message(): void
@@ -173,17 +142,5 @@ final class PageRendererTest extends TestCase
         $this->assertSame('text/plain; charset=UTF-8', $page->header('Content-Type'));
         $this->assertNull($page->dom());
         $this->assertSame('LogicException: Template missing', $page->body);
-    }
-
-    public function test_an_error_in_a_scope_is_caught_too(): void
-    {
-        $scopes = new RenderScopes();
-        $scopes->add(static fn (): ResponseInterface => throw new \RuntimeException('Scope failed'));
-        $renderer = new PageRenderer(static fn (): ResponseInterface => new Response(200), 'https://site.test', $scopes);
-
-        $page = $renderer->render('/');
-
-        $this->assertSame(500, $page->status);
-        $this->assertSame('RuntimeException: Scope failed', $page->body);
     }
 }

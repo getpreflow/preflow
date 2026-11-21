@@ -13,6 +13,7 @@ use Preflow\Core\Activity\ActivityLog;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * GET {prefix}/activity (ActivityController, 0.77): the activity log the person may see, 50 rows a
@@ -22,6 +23,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class ActivityScreenTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

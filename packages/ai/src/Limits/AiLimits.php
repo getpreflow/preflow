@@ -101,7 +101,8 @@ final class AiLimits
         }
         $this->assertKey();
         $client = $this->throttle->forPerson($authId);
-        $hits = $this->throttle->hit(self::purpose($action), $client, $limit['per']);
+        // Counted in a preview or an audit too: the AI call it allows really happens (accounting).
+        $hits = $this->throttle->hit(self::purpose($action), $client, $limit['per'], accounting: true);
         if ($hits > $limit['max']) {
             throw $this->reached($action, $limit, $client);
         }

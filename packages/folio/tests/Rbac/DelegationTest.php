@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DataManager;
 use Preflow\Rbac\PermissionCoverage;
 use Preflow\Folio\Rbac\Types\RoleRules;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Nobody grants permissions they don't hold: a staff editor saves or deletes only roles
@@ -18,6 +19,8 @@ use Preflow\Folio\Rbac\Types\RoleRules;
  */
 final class DelegationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private const array EDITOR = ['folio.dashboard', 'rbac_role.*', 'page.*'];
@@ -64,8 +67,15 @@ final class DelegationTest extends TestCase
         $this->assertNull($coverage->held(), 'nobody signed in: delegation does not apply');
 
         $this->as('editor');
+        // Read while the request's frame is still open (afterwards, outside every render, nobody is signed in).
+        $held = null;
+        \Preflow\Core\Context\Contexts::onEnter(static function () use ($coverage, &$held): \Closure {
+            return static function () use ($coverage, &$held): void {
+                $held = $coverage->held();
+            };
+        }, 'delegation-test');
         $this->send('GET', '/folio/rbac_role');
-        $this->assertSame(self::EDITOR, $coverage->held());
+        $this->assertSame(self::EDITOR, $held);
     }
 
     #[RunInSeparateProcess]
@@ -85,7 +95,7 @@ final class DelegationTest extends TestCase
     {
         // The admin speaks its interface language (here the site's: de); the site's
         // lang/{locale}/rbac.php still changes single keys.
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'locale' => 'de'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef', 'locale' => 'de'];\n");
         $this->write('lang/de/rbac.php', "<?php\nreturn ['delegation' => ['grant' => 'Nein: :patterns']];\n");
         $this->write('lang/en/rbac.php', "<?php\nreturn ['delegation' => ['last' => 'Keep one admin.']];\n");
         $this->editorSetup();

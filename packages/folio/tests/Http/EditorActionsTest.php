@@ -11,6 +11,7 @@ use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Publishing\PublishState;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The editor's action bar (0.75): Save draft and Publish sit in the topbar, outside the record form,
@@ -20,6 +21,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class EditorActionsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

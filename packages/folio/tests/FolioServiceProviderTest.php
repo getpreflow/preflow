@@ -163,7 +163,7 @@ final class FolioServiceProviderTest extends TestCase
             @mkdir(dirname($dir . '/' . $rel), 0777, true);
             file_put_contents($dir . '/' . $rel, $content);
         };
-        $w('config/app.php', "<?php\nreturn ['name' => 'T', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-sp-test-key'];\n");
+        $w('config/app.php', "<?php\nreturn ['name' => 'T', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-sp-test-key-0123456789abcdef'];\n");
         $w('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
         $w('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $w('config/folio.php', '<?php return ' . var_export($folio, true) . ";\n");
@@ -326,16 +326,19 @@ final class FolioServiceProviderTest extends TestCase
     {
         [$app, $dir] = $this->appWith([]);
         $locale = $app->container()->get(\Preflow\Folio\Content\ContentLocale::class);
-        $request = (new \Nyholm\Psr7\Factory\Psr17Factory())->createServerRequest('GET', '/');
+        $site = new \Preflow\Core\Context\Site('http://localhost', ['en', 'de'], 'en');
 
-        $app->container()->get(\Preflow\View\Geo\RenderScopes::class)->run($request, function () use ($locale): \Psr\Http\Message\ResponseInterface {
-            $locale->set('en');
+        // Since 0.81 an internal render (GEO, the audit) is a frame of its own: what it sets ends with it.
+        $outer = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($site)->in('de'), static function () use ($locale, $site): string {
+            \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest($site), static function () use ($locale): void {
+                $locale->set('en');
+            });
 
-            return new \Nyholm\Psr7\Response(200);
+            return \Preflow\Core\Context\Contexts::current()->locale;
         });
 
-        // The request never chose a content locale, and the render's choice didn't stay.
-        $this->assertNull((new \ReflectionProperty($locale, 'locale'))->getValue($locale));
+        $this->assertSame('de', $outer, 'the request\'s locale, not the render\'s choice');
+        \Preflow\Core\Context\Contexts::reset();
         $this->rrmdir($dir);
     }
 
@@ -361,19 +364,25 @@ final class FolioServiceProviderTest extends TestCase
             $app->setRouter(new Router(pagesDir: null, controllers: []));
             $app->registerProvider(new FolioServiceProvider());
             $app->boot();
+            $ctx = \Preflow\Testing\ContextFactory::forTest();
             if ($signedIn) {
                 $auth = new \Preflow\Auth\AuthManager([], 'web');
-                $auth->setUser(new \Preflow\Auth\ArrayUser('u1', 'u@site.test', ''), 'web');
+                $ctx = $ctx->as(new \Preflow\Core\Context\Viewer(['web' => new \Preflow\Auth\ArrayUser('u1', 'u@site.test', '')], 'web'));
                 $app->container()->singleton(\Preflow\Auth\AuthManager::class, static fn () => $auth);
                 $app->container()->singleton(\Preflow\Data\DataManager::class, static fn () => new \Preflow\Data\DataManager(['default' => new \Preflow\Data\Driver\SqliteDriver(new \PDO('sqlite::memory:'))]));
             }
             $nav = $app->container()->get(\Preflow\Folio\Http\AdminNav::class);
             $nav->setCurrentPath('/folio/profile');
-            $out = [];
-            foreach ($nav->sections() as $section) {
-                $out[$section['name']] = $section;
-            }
-            return $out;
+
+            // The signed-in user is the render's viewer.
+            return \Preflow\Core\Context\Contexts::run($ctx, static function () use ($nav): array {
+                $out = [];
+                foreach ($nav->sections() as $section) {
+                    $out[$section['name']] = $section;
+                }
+
+                return $out;
+            });
         } finally {
             @unlink($base . '/config/folio.php');
             @rmdir($base . '/config');

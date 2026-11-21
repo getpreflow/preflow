@@ -20,7 +20,7 @@ final class PreviewBarTest extends TestCase
     protected function setUp(): void
     {
         $this->scaffoldPublishing();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://example.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef', 'url' => 'https://example.test'];\n");
     }
 
     protected function tearDown(): void
@@ -106,7 +106,7 @@ final class PreviewBarTest extends TestCase
 
     public function test_without_app_url_the_pill_shows_the_path(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         $this->publishPost('p1', 'hello');
 
         $bar = self::bar($this->editor('p1'));

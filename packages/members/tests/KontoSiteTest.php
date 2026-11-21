@@ -11,6 +11,7 @@ use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Members\MemberRoles;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A second site, not the first example site: the members under /konto, German (default) and French, everyone
@@ -19,6 +20,8 @@ use Preflow\Members\MemberRoles;
  */
 final class KontoSiteTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

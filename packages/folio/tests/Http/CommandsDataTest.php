@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The ⌘K palette's screens and actions (partials/_commands.twig, CommandPalette): one JSON block per
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class CommandsDataTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

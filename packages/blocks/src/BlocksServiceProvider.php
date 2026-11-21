@@ -76,10 +76,7 @@ final class BlocksServiceProvider extends ServiceProvider
     {
         // The defaults, where no provider (the app's, Folio) bound its own in register().
         if (!$container->bound(BlockLocale::class)) {
-            $container->singleton(BlockLocale::class, static fn (Container $c): BlockLocale => new DefaultBlockLocale(
-                $c->get(Locales::class),
-                static fn (): ?string => self::translatorLocale($c),
-            ));
+            $container->singleton(BlockLocale::class, static fn (Container $c): BlockLocale => new DefaultBlockLocale($c->get(Locales::class)));
         }
         if (!$container->bound(BlockTextCleaner::class)) {
             $container->singleton(BlockTextCleaner::class, static fn (): BlockTextCleaner => new DefaultBlockTextCleaner());
@@ -145,15 +142,5 @@ final class BlocksServiceProvider extends ServiceProvider
             return;
         }
         error_log($message);
-    }
-
-    private static function translatorLocale(Container $c): ?string
-    {
-        $translator = 'Preflow\I18n\Translator';
-        if (!class_exists($translator) || !$c->bound($translator)) {
-            return null;
-        }
-
-        return $c->get($translator)->getLocale();
     }
 }

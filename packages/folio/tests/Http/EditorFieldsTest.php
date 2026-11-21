@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\Http;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The redesigned fields in the editor (0.75): a text value that starts with a line break keeps it in
@@ -15,6 +16,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class EditorFieldsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void
@@ -58,7 +61,7 @@ final class EditorFieldsTest extends TestCase
     #[RunInSeparateProcess]
     public function test_the_address_field_has_the_prefix_and_the_copy_button(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://example.com'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef', 'url' => 'https://example.com'];\n");
         $this->working('post', 'p1', ['title' => ['en' => 'Hello', 'de' => 'Hallo'], 'slug' => ['en' => 'hello', 'de' => 'hallo']]);
 
         $page = (string) $this->get('/folio/post/p1/edit')->getBody();

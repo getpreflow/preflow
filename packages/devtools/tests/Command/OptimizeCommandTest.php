@@ -18,7 +18,7 @@ final class OptimizeCommandTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/optimize_cmd_' . bin2hex(random_bytes(4));
         mkdir($this->dir . '/config', 0777, true);
         file_put_contents($this->dir . '/.env', '');
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 0, 'key' => 'optimize-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 0, 'key' => 'optimize-test-key-0123456789abcdef'];\n");
     }
 
     protected function tearDown(): void
@@ -59,7 +59,7 @@ final class OptimizeCommandTest extends TestCase
         $this->assertSame(0, $code, $out);
         $this->assertSame("Boot manifest is current.\n", $out);
 
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 0, 'key' => 'optimize-test-key', 'name' => 'Changed'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 0, 'key' => 'optimize-test-key-0123456789abcdef', 'name' => 'Changed'];\n");
         [$code, $out] = $this->optimize(['--check']);
         $this->assertSame(1, $code);
         $this->assertSame("Boot manifest is out of date (run preflow optimize):\n  config: changed\n", $out);
@@ -67,7 +67,7 @@ final class OptimizeCommandTest extends TestCase
 
     public function test_debug_on_writes_no_manifest(): void
     {
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 1, 'key' => 'optimize-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 1, 'key' => 'optimize-test-key-0123456789abcdef'];\n");
 
         [$code, $out] = $this->optimize([]);
 

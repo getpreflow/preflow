@@ -15,10 +15,13 @@ use Preflow\View\Seo\PublicPage;
 use Preflow\View\Seo\RobotsTxt;
 use Preflow\View\Seo\SeoConfig;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** /robots.txt, /sitemap.xml and security.txt (config/seo.php), and nothing at all with SEO off. */
 final class SeoEndpointsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private const KEY = 'seo-endpoints-test-key-0123456789ab';

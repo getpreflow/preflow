@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Http\Csrf;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * Signed, session-less CSRF token: v1.{slot}.{base64url(hmac)}.
  * Not tied to a visitor; valid in the slot it was issued and the next one.
@@ -21,7 +23,7 @@ final class StatelessCsrfToken
 
     public function __construct(private readonly string $key, ?\Closure $clock = null)
     {
-        $this->clock = $clock ?? static fn (): int => time();
+        $this->clock = $clock ?? static fn (): int => Contexts::clock()->now()->getTimestamp();
     }
 
     public function enabled(): bool

@@ -122,7 +122,10 @@ final class AccountController
         return $this->view->redirect($this->links->localize($this->locale($request), $this->config->register()));
     }
 
-    /** The signed-in member, or null with $gate set to where everybody else goes. */
+    /**
+     * The signed-in member (an in-memory one without an account while the site is viewed as a
+     * member role), or null with $gate set to where everybody else goes.
+     */
     private function member(ServerRequestInterface $request, ?ResponseInterface &$gate): ?DynamicRecord
     {
         $member = $this->viewer->canAccess() ? $this->viewer->member() : null;
@@ -138,8 +141,12 @@ final class AccountController
         return null;
     }
 
+    /** Viewed as a role, the member has no password: never right, and nothing is counted. */
     private function currentIsRight(DynamicRecord $member, string $current): bool
     {
+        if ($this->viewer->isSynthetic()) {
+            return false;
+        }
         [, $window] = $this->config->throttle('login');
         if ($this->hasher->verify($current, (string) $member->get('password_hash'))) {
             $this->throttle->clear(MembersConfig::THROTTLE_LOGIN, $this->key((string) $member->getId()));

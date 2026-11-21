@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Content;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\DynamicRecord;
@@ -16,9 +17,15 @@ use Preflow\Data\TypeRegistry;
 use Preflow\Folio\Content\ContentLocale;
 use Preflow\Folio\Content\Singletons;
 use Preflow\Folio\Content\TypeCatalog;
+use Preflow\Testing\ContextFactory;
 
 final class SingletonsTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        Contexts::reset();
+    }
+
     public function test_memoized_per_request(): void
     {
         $dir = sys_get_temp_dir() . '/sgl_' . bin2hex(random_bytes(4));
@@ -52,10 +59,15 @@ final class SingletonsTest extends TestCase
 
         $singletons = new Singletons($dm, new TypeCatalog($dir . '/models'), new ContentLocale(Locales::single('en')));
 
-        $this->assertSame('S', $singletons->get('site')['name']);
-        $this->assertSame('S', $singletons->get('site')['name']);
-        $this->assertSame(1, $spy->finds);
-        $this->assertNull($singletons->get('nope'));
+        // Memoised per render frame (and context); a frame of its own reads again.
+        Contexts::run(ContextFactory::forTest(), function () use ($singletons, $spy): void {
+            $this->assertSame('S', $singletons->get('site')['name']);
+            $this->assertSame('S', $singletons->get('site')['name']);
+            $this->assertSame(1, $spy->finds);
+            $this->assertNull($singletons->get('nope'));
+        });
+        Contexts::run(ContextFactory::forTest(), fn () => $singletons->get('site'));
+        $this->assertSame(2, $spy->finds);
     }
 
     public function test_memoised_settings_are_still_a_read_of_every_page(): void
@@ -73,9 +85,11 @@ final class SingletonsTest extends TestCase
         $dm->observe($log);
         $singletons = new Singletons($dm, new TypeCatalog($dir . '/models'), new ContentLocale(Locales::single('en')));
 
-        $singletons->get('site');
-        $singletons->get('site');
-        $singletons->record('site');
+        Contexts::run(ContextFactory::forTest(), static function () use ($singletons): void {
+            $singletons->get('site');
+            $singletons->get('site');
+            $singletons->record('site');
+        });
 
         $this->assertSame(['site#site', 'site#site', 'site#site'], $log->take());
         exec('rm -rf ' . escapeshellarg($dir));

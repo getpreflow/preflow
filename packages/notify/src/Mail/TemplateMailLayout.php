@@ -22,7 +22,7 @@ final class TemplateMailLayout implements MailLayout
     public function html(MailContent $content, string $accent, ?string $template = null): string
     {
         return $this->engine->render($template ?? $this->defaultTemplate, [
-            'lang' => $content->lang,
+            'lang' => $content->lang ?? 'en',
             'subject' => MailText::oneLine($content->subject),
             'accent' => $accent,
             'paragraphs' => MailText::paragraphs($content->text, $accent, $content->links),

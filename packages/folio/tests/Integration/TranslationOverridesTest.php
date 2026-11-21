@@ -18,6 +18,7 @@ use Preflow\Folio\Translations\StoredOverrides;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\I18n\Translator;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → Translations: admins change interface texts per language. An override wins on
@@ -27,6 +28,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class TranslationOverridesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

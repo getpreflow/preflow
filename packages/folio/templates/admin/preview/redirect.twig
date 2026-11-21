@@ -1,0 +1,13 @@
+{# The whole-page preview of a page that answers with a redirect (PagePreviewController): the frame stays
+   in the preview and says where a visitor would be sent (the address as text, never followed), instead of
+   following it to the live site under the editor's session. No inline script or style; preview-editor.css
+   styles it, and the bar is added before </body>. #}
+<!DOCTYPE html>
+<html lang="{{ current_locale() }}">
+<head><meta charset="utf-8"><title>{{ t('folio.preview.whole_page') }}</title></head>
+<body class="folio-pp-redirect-page">
+<main class="folio-pp-redirect" data-folio-preview-redirect>
+    <p>{{ t('folio.preview.redirects', {target: target}) }}</p>
+</main>
+</body>
+</html>

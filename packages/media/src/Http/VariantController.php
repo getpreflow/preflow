@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Media\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Writes;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Http\InternalRender;
 use Preflow\Media\Asset;
@@ -23,9 +24,12 @@ use Psr\Http\Message\ServerRequestInterface;
  *   {…}-edit-{key}, a public document's preview {…}-preview), with a width the presets allow;
  * - the base of one of its box plans ({delivery stem}-{preset}-{key}), with a width of that plan.
  * Anything else under the media URL (an old key, an unknown preset, another width) is a
- * 404 that writes nothing. An internal render (InternalRender) makes nothing either: it gets
- * the variant if it exists; one that would be made but is not yet on disk is a 404 with
- * "X-Preflow-Variant: pending", so it can be told from one that does not exist.
+ * 404 that writes nothing. Making a variant is a 'file' write of the write policy (Writes,
+ * storage 'media'): a render that skips writes (a preview, the SEO audit) makes nothing and
+ * reports the skipped write; it gets the variant if it exists; one that would be made but is not
+ * yet on disk is a 404 with "X-Preflow-Variant: pending", so it can be told from one that does
+ * not exist. A render that refuses writes fails with WritesRefused. A request marked with the
+ * deprecated InternalRender::mark() makes nothing either.
  */
 final class VariantController
 {
@@ -53,7 +57,7 @@ final class VariantController
             if (!$this->library->allowsVariant($delivery, $width, $format, $this->widths->allowed())) {
                 throw new NotFoundHttpException('Not found');
             }
-            if (InternalRender::is($request)) {
+            if (!$this->makes($request, $path)) {
                 return $this->existing($path, $format);
             }
             $file = $this->library->variantFile($delivery, $width, $format, $this->widths->allowed());
@@ -70,7 +74,7 @@ final class VariantController
             if (!$this->library->allowsBox($plan, $width, $format)) {
                 throw new NotFoundHttpException('Not found');
             }
-            if (InternalRender::is($request)) {
+            if (!$this->makes($request, $path)) {
                 return $this->existing($path, $format);
             }
             $file = $this->library->boxFile($plan, $width, $format);
@@ -79,6 +83,16 @@ final class VariantController
         }
 
         throw new NotFoundHttpException('Not found');
+    }
+
+    /** Whether the request may make the variant at $path: one on disk is only served, which writes nothing. */
+    private function makes(ServerRequestInterface $request, string $path): bool
+    {
+        if (is_file($this->library->absolute($path))) {
+            return true;
+        }
+
+        return Writes::allowed('media', 'variants', $path, 'file') && !InternalRender::is($request);
     }
 
     private static function stem(Asset $asset): string

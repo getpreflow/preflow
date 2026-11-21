@@ -17,6 +17,7 @@ use Preflow\Folio\Extension\Customization\Customizations;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\AdminNav;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio's admin setup on demand (Application::onRequest()): a web request outside the admin
@@ -26,6 +27,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AdminOnDemandTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const string ADMIN_EMAIL = 'admin@site.test';
     private const string PASSWORD = 'secret';
     private const array PACKAGES = ['folio', 'rbac', 'members', 'codes', 'validation', 'i18n', 'media'];
@@ -260,7 +263,7 @@ final class AdminOnDemandTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/folio_on_demand_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'On demand', 'debug' => 0, 'engine' => 'twig', 'key' => 'on-demand-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'On demand', 'debug' => 0, 'engine' => 'twig', 'key' => 'on-demand-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => " . var_export($prefix, true) . "];\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([

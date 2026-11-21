@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * Invalidations that could not reach the tag index (SQLite busy, the file unusable), kept in
  * {releaseDir}/pending-invalidations, one JSON line each ({"at": microtime, "tags": [...]}),
@@ -143,7 +145,7 @@ final class PendingInvalidations
     private static function parse(string $content): array
     {
         $entries = [];
-        $last = microtime(true);
+        $last = (float) Contexts::clock()->now()->format('U.u');
         foreach (explode("\n", $content) as $line) {
             if (trim($line) === '') {
                 continue;

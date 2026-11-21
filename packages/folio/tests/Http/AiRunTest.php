@@ -14,6 +14,7 @@ use Preflow\I18n\Machine\FileJobStore;
 use Preflow\I18n\Machine\FileRecordLease;
 use Preflow\I18n\Machine\Job;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The whole-type run screen: plan with an estimate, start, one record per step request with a
@@ -21,6 +22,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AiRunTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 

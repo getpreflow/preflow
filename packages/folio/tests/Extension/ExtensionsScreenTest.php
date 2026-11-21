@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Http\FolioPermissionMiddleware;
 use Preflow\Folio\Tests\Support\CounterExtension;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → Extensions ({prefix}/extensions) in a scaffolded app (no auth) with the
@@ -16,6 +17,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class ExtensionsScreenTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use CounterExtension;
 
@@ -39,7 +42,7 @@ final class ExtensionsScreenTest extends TestCase
     #[RunInSeparateProcess]
     public function test_screen_read_only_in_production(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         $this->counter(['screen:board']);
         $before = (string) file_get_contents($this->dir . '/config/folio/extensions.json');
 
@@ -88,7 +91,7 @@ final class ExtensionsScreenTest extends TestCase
     #[RunInSeparateProcess]
     public function test_allow_admin_changes_config_wins_over_debug(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio', 'extensions' => ['allow_admin_changes' => true]];\n");
         $this->counter([]);
 

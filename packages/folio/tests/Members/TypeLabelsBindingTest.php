@@ -9,10 +9,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\TypeLabels;
 use Preflow\Folio\Content\DisplayTypeLabels;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Folio binds Data's TypeLabels to its display labels, in the asked language. */
 final class TypeLabelsBindingTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     protected function tearDown(): void

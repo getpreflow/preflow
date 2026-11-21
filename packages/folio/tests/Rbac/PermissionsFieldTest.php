@@ -10,6 +10,7 @@ use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Field\FieldContext;
 use Preflow\Folio\Rbac\Fields\PermissionsFieldType;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The permissions editor: "Everything" as a switch, the content types as a matrix (rows by
@@ -18,6 +19,8 @@ use Preflow\Folio\Rbac\Fields\PermissionsFieldType;
  */
 final class PermissionsFieldTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private const VERBS = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete'];

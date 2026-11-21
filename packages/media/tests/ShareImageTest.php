@@ -9,7 +9,6 @@ use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Exceptions\NotFoundHttpException;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Data\Locales;
@@ -62,11 +61,9 @@ final class ShareImageTest extends TestCase
     {
         $path = substr($url, strlen('/media/'));
         $request = (new Psr17Factory())->createServerRequest('GET', $url)->withAttribute('path', $path);
-        if ($internal) {
-            $request = InternalRender::mark($request);
-        }
+        $serve = fn () => (new VariantController($lib, ImageWidths::fromConfig([], [480]), Formats::fromConfig([])))->serve($request);
 
-        return (new VariantController($lib, ImageWidths::fromConfig([], [480]), Formats::fromConfig([])))->serve($request);
+        return $internal ? self::internally($serve) : $serve();
     }
 
     /** 2000x1500 JPEG: red down to y=1000, blue below. */
@@ -199,5 +196,14 @@ final class ShareImageTest extends TestCase
         $this->assertSame([true], $ok);
         $this->assertSame(IMAGETYPE_JPEG, getimagesize($dest)[2]);
         $this->assertSame(0xFFFFFF, imagecolorat(imagecreatefromjpeg($dest), 2, 2) & 0xFFFFFF);
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

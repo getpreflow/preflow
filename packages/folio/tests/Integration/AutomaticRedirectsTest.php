@@ -272,8 +272,18 @@ final class AutomaticRedirectsTest extends TestCase
             public function getRoles(): array { return ['editor']; }
             public function hasRole(string $role): bool { return $role === 'editor'; }
         };
+        // Signed in as an identity middleware does it: every request's frame renders as $user.
+        $this->app()->addMiddleware(new class ($user) implements \Psr\Http\Server\MiddlewareInterface {
+            public function __construct(private readonly Authenticatable $user) {}
+
+            public function process(\Psr\Http\Message\ServerRequestInterface $request, \Psr\Http\Server\RequestHandlerInterface $handler): \Psr\Http\Message\ResponseInterface
+            {
+                \Preflow\Core\Context\Contexts::narrow(fn (\Preflow\Core\Context\RenderContext $ctx): \Preflow\Core\Context\RenderContext => $ctx->as(new \Preflow\Core\Context\Viewer(['web' => $this->user], 'web')));
+
+                return $handler->handle($request);
+            }
+        });
         $auth = new AuthManager([], 'web');
-        $auth->setUser($user, 'web');
         $access = new Access($auth, $container->get(Access::class)->registry(), false, ['web' => 'staff']);
         $access->setResolver(new class($permission) implements PermissionResolver {
             public function __construct(private readonly string $denied) {}

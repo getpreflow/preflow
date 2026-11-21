@@ -98,17 +98,22 @@ later still reaches the app's engine but that sharer misses it (logged with `err
 templates so on any app engine (see the Folio README, "Template engines"). A Twig app's engine is the
 `TwigEngine` itself, as before.
 
-### A fragment answered with its page's nonce: `NonceGenerator::adopt()` (0.65)
+### A fragment answered with its page's nonce: `NonceGenerator::adoptInFrame()` (0.65, 0.81)
 
-`NonceGenerator::adopt(string $nonce): bool` makes the request use another nonce (a base64 value
-of at least 22 characters; anything else is ignored); `release()` goes back to the request's own,
-`adopted()` tells. Core calls `adopt()` with `HypermediaProtocols::pageNonce()` when a fragment
-request's client sends its page's nonce back, so the fragment's scripts and styles (component
-assets, a driver's effect scripts) carry the page's nonce and pass its Content-Security-Policy.
-The value is untrusted client input: never from a plain request or a history restore, released
-when the kernel has answered (after-response rebuilds and internal renders use the own nonce), and
-the page cache never stores such a response (`refused:page-nonce`). A driver must not print the
-nonce into the page; its client reads `script.nonce` when it sends the request.
+Each render frame has its own CSP nonce (0.81): a request's outermost frame and every render the
+app makes of itself (the SEO audit, GEO, a page cache rebuild, verify, a preview) get one of their
+own; a request a page asks for in-process shares the page's (`share()`), unless it is a fragment
+request. `NonceGenerator::adoptInFrame(string $nonce): bool` makes the rest of the current frame use
+another nonce (a base64 value of at least 22 characters; anything else is ignored), `adopted()`
+tells. Core calls it with `HypermediaProtocols::pageNonce()` when a fragment request's client sends
+its page's nonce back, so the fragment's scripts and styles (component assets, a driver's effect
+scripts) carry the page's nonce and pass its Content-Security-Policy. The value is untrusted client
+input: never from a plain request or a history restore, gone when the request's frame ends
+(after-response rebuilds and internal renders have nonces of their own), and the page cache never
+stores such a response (`refused:page-nonce`). A driver must not print the nonce into the page; its
+client reads `script.nonce` when it sends the request. Before 0.81 the nonce was one per process,
+with `adopt()` and `release()` around the request. A test that compares renders byte for byte
+fixes the nonce with `NonceGenerator::fixedForTests($nonce)` (null: random again).
 
 ## TemplateExtensionProvider
 
@@ -139,6 +144,36 @@ final class MyExtensionProvider implements TemplateExtensionProvider
 ```
 
 Built-in providers: `ComponentsExtensionProvider`, `HtmxExtensionProvider`, `TranslationExtensionProvider`.
+
+## Response headers from a page: `response_header()` (0.81)
+
+A page or component can add a header to the response it renders, for example `no-store` on a
+form's outcome page:
+
+```twig
+{{ response_header('Cache-Control', 'no-store') }}{# prints nothing #}
+```
+
+In PHP the same is `Preflow\Core\Http\ResponseHeaderHints` from the container
+(`->set($name, $value)`). The kernel puts the headers on the response the route gives. Each render
+has its own list, so a header one render adds never reaches another render's response.
+
+- The page cache treats a `no-store` or `private` added this way like any such response and never
+  stores the page. GEO skips such a page too (no Markdown view, not in `llms.txt`).
+- The headers core and the hypermedia client own are refused (`ResponseHeaderHints::RESERVED`:
+  `Set-Cookie`, `Location`, `Content-Type`, `Content-Length`, `Transfer-Encoding`, both CSP headers, the page cache's own
+  `X-Page-Cache` family; plus the headers the installed client owns, htmx's `HX-*`, through
+  core's optional `OwnsResponseHeaders`). A cookie goes through the `CookieQueue`, a redirect is a
+  response of its own.
+- An error page gets only the hints that make it less cacheable (`no-store`, `no-cache`, `private`,
+  `must-revalidate`, `proxy-revalidate`), never one that would make a failure cacheable.
+- A live part renders after the page answered: only its restrictive hints reach the response the
+  visitor gets, never the stored page.
+
+Since 0.81 every render collects its own assets and gets its own CSP nonce (one per render frame):
+an in-process sub-request no longer adds its CSS and
+scripts to the page's head, and an internal render (audit, GEO, rebuild) never prints the
+visitor's nonce.
 
 ## AssetCollector API
 
@@ -762,27 +797,42 @@ and was skipped there"; a site or run check reports under its group id (`etag`, 
 
 ### No trace
 
-An audit render is marked as internal (`Preflow\Core\Http\InternalRender`, the request attribute
-`preflow.internal_render`) and leaves nothing behind. Honouring the marker, the app writes no not-found
-entry and counts no redirect hit; media generates no image variant (a variant that is allowed but not yet
-made answers 404 with the header `X-Preflow-Variant: pending`, which the audit counts as fine; anything
-else missing is a plain 404 and a finding); no debug toolbar is added; no session file is written. Mail the page queues
-with `Notifier::sendLater()` is dropped, not held back (since 0.74, in every internal render: the audit's,
-GEO's and page cache rebuilds; `Notifier::discardingQueued()`), also when a step runs inside a web request
-whose end flushes the queue: that request sends only its own mail. `Notifier::send()` and `Mailer::send()`
-send at once and are the exception: a page that sends mail synchronously on a GET still sends it. The page
-renders as a visitor: nobody signed in, no session, PHP's superglobals as an anonymous visitor's (no
-cookies, no form data, `REMOTE_ADDR` 127.0.0.1), and with Folio the published site (no working copies, even
-for a step run from the admin). Site code that has side effects on a visit (counters, logs) can skip
-them:
+Since 0.81 an audit render is an internal render (`Application::render()` with
+`RenderContext::internal(Purpose::Audit, …)`): a render frame and a context of its own. It leaves
+nothing behind:
+
+- It renders as an anonymous visitor: nobody signed in, no session, no visitor cookies, form data
+  or superglobals, and with Folio the published site (no working copies, even for a step run from
+  the admin).
+- It writes no data. Every write (`save()`, `insert()`, counters, raw SQL writes) is skipped and
+  listed: the report shows them per page (`RenderedPage::$skippedWrites`, "this page writes on a
+  GET"), and the code around a skipped write goes on as if it had written (`save()`, `insert()` and
+  `update()` return normally; raw `execute()` returns 0, a counter returns its stored value). No not-found entry, no
+  redirect hit, no image variant (a variant that is allowed but not yet made answers 404 with
+  `X-Preflow-Variant: pending`, which the audit counts as fine), no session file.
+- It sends no mail: `sendLater()`, `send()` and `Mailer::send()` are all dropped (before 0.81
+  `send()` still sent).
+- No debug toolbar is added, and the request that runs the step keeps its own assets, nonce,
+  cookies, mail and debug collector.
+
+Before 0.81 a package that kept request state added a wrapper with `RenderScopes::add()` (view's
+`Geo\RenderScopes`). Every internal render now has its own frame and context, so that is no longer
+needed: `RenderScopes::add()` is deprecated since 0.81 and removed in 0.83 (a scope added with it
+still runs around each internal render, inside its frame). Keep such state in a frame slot
+(`Contexts::frame()->slot()`), or key a memo with `RenderContext::memoKey()`.
+
+Site code that should skip a side effect that is no data write (a file, a call to another service)
+asks the context:
 
 ```php
-use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Context\Contexts;
 
-if (!InternalRender::is($request)) {
-    $this->visits->count($request->getUri()->getPath());
+if (!Contexts::current()->purpose->leavesNoTrace()) {
+    $this->statsService->ping($request->getUri()->getPath());
 }
 ```
+
+`InternalRender::is($request)` gives the same answer (it reads the current render's purpose).
 
 ### Limits worth knowing
 
@@ -918,6 +968,15 @@ return PdfResponse::download($bytes, $doc->fileName());   // or PdfResponse::inl
 margins in mm, `headerTemplate`/`footerTemplate` (templates rendered with the same variables and repeated on every
 page, also when your CSS has `@page` rules) and a custom `width`/`height` in mm (together, they win over format and
 orientation). A template is tied to one engine's syntax, so use the extension of the engine you run.
+
+Each `render()` and `html()` (since 0.81) runs in a render of its own, made from the caller's: the same viewer,
+locale and read mode, as a PDF. CSS and page meta its templates collect stay out of your page. Mail, cookies and
+after-response work queued while it renders are dropped (never sent), while data the document writes (in
+`resolveState()`) is written: send mail from the code that calls the renderer. A preview printed into a page is part
+of that page: the page cache records what it reads and refuses, and it uses the page's CSP nonce. Two PDFs, nested or
+one after the other, share nothing else. Call it where a render runs (a request, a
+command, `Contexts::run()`); outside every render it throws `NoRenderContext`. For a PDF in another language than the
+request's, wrap the call in `Contexts::within(Contexts::current()->in('fr'), …)`.
 
 `html()` is only a preview: a browser lays the page out, mPDF does not, so page numbers are empty, page breaks are a
 dashed line and the layout is approximate. Check the real thing with `render()`. `PdfResponse` sends

@@ -6,6 +6,8 @@ namespace Preflow\Publishing;
 
 use Preflow\Core\Activity\ActivityKind;
 use Preflow\Core\Activity\ActivityLog;
+use Preflow\Core\Context\WritePolicy;
+use Preflow\Core\Context\Writes;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
@@ -155,6 +157,11 @@ final class RecordDeleter
                 }
             }
         });
+        if (Writes::policy() !== WritePolicy::Allow) {
+            // Skipped and reported (a preview, a view as a role): nothing was deleted, so nothing
+            // follows it, neither the index, the addresses, the activity log nor the after-hooks.
+            return;
+        }
         $erasure = $this->personal->personal($type) || array_any($deletes, fn (DynamicRecord $r): bool => $this->personal->personal($r->getType()->key));
         foreach ($deletes as $record) {
             $this->index?->forget($record->getType()->key, (string) $record->getId());

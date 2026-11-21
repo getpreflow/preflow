@@ -13,6 +13,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Extension\ExtensionRegistry;
 use Preflow\Folio\Extension\ExtensionsFile;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A model part with "opt_in": true is off until the site lists it under "enabled_parts":
@@ -22,6 +23,8 @@ use Preflow\Folio\Extension\ExtensionsFile;
  */
 final class OptInPartTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private \Closure $autoload;
 
@@ -150,7 +153,7 @@ final class OptInPartTest extends TestCase
     private function appConfig(string $extensions): void
     {
         putenv('APP_DEBUG=1');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Ext', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-optin-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Ext', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-optin-test-key-0123456789abcdef'];\n");
         $this->write('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json', 'models_path' => __DIR__ . '/models'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");

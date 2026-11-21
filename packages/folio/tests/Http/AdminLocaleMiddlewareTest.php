@@ -9,6 +9,8 @@ use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\ArrayUser;
 use Preflow\Auth\Authenticatable;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Site;
 use Preflow\Data\DataManager;
 use Preflow\Data\Driver\JsonFileDriver;
 use Preflow\Folio\Http\AdminLocaleMiddleware;
@@ -16,13 +18,15 @@ use Preflow\Folio\Http\InterfaceLocales;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\I18n\TranslationOverrides;
 use Preflow\I18n\Translator;
+use Preflow\Testing\ContextFactory;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
 /**
- * The admin request runs in the user's interface language with overrides on; afterwards (also
- * after an exception) the translator is back in the frontend's locale with overrides off.
+ * The admin request runs in the user's interface language with overrides on (within the admin
+ * surface, since 0.81); afterwards (also after an exception) the frame is back on the public
+ * surface: the translator in the frontend's locale with overrides off.
  */
 final class AdminLocaleMiddlewareTest extends TestCase
 {
@@ -47,6 +51,7 @@ final class AdminLocaleMiddlewareTest extends TestCase
 
     protected function tearDown(): void
     {
+        Contexts::reset();
         $it = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST,
@@ -55,6 +60,19 @@ final class AdminLocaleMiddlewareTest extends TestCase
             $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
         }
         @rmdir($this->dir);
+    }
+
+    /**
+     * Runs $fn in a visitor's frame of a site whose content is in English (the default) and
+     * Italian, the visitor reading it in Italian (not the default, so a reset would show).
+     *
+     * @template T
+     * @param \Closure(): T $fn
+     * @return T
+     */
+    private function frame(\Closure $fn): mixed
+    {
+        return Contexts::run(ContextFactory::forTest(new Site('http://localhost', ['en', 'it'], 'en'))->in('it'), $fn);
     }
 
     private function middleware(string $default = 'en'): AdminLocaleMiddleware
@@ -93,16 +111,21 @@ final class AdminLocaleMiddlewareTest extends TestCase
         $this->prefs->setLocale('ada', 'fr');
         $seen = [];
 
-        $this->middleware()->process($this->request($ada), $this->handler(function () use (&$seen): void {
-            $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out')];
-        }));
-        $this->middleware('de')->process($this->request(new ArrayUser('bob', 'bob@site.test', '')), $this->handler(function () use (&$seen): void {
-            $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out')];
-        }));
+        $this->frame(function () use ($ada, &$seen): void {
+            $this->middleware()->process($this->request($ada), $this->handler(function (ServerRequestInterface $request) use (&$seen): void {
+                $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out'), Contexts::current()->locale, $request->getAttribute(AdminLocaleMiddleware::FRONTEND_LOCALE)];
+            }));
+            $this->middleware('de')->process($this->request(new ArrayUser('bob', 'bob@site.test', '')), $this->handler(function (ServerRequestInterface $request) use (&$seen): void {
+                $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out'), Contexts::current()->locale, $request->getAttribute(AdminLocaleMiddleware::FRONTEND_LOCALE)];
+            }));
 
-        $this->assertSame([['fr', 'Override fr'], ['de', 'Override de']], $seen);
-        $this->assertSame('it', $this->translator->getLocale(), 'the frontend locale again');
-        $this->assertSame('Abmelden', $this->translator->get('folio.layout.log_out', [], 'de'), 'overrides off again');
+            // The admin's content in the default content locale (as before 0.81); the visitor's locale on the request.
+            $this->assertSame([['fr', 'Override fr', 'en', 'it'], ['de', 'Override de', 'en', 'it']], $seen);
+            $this->assertSame('it', Contexts::current()->locale, 'the visitor\'s locale again');
+            $this->assertSame('it', $this->translator->getLocale(), 'the frontend locale again');
+            $this->assertSame('Abmelden', $this->translator->get('folio.layout.log_out', [], 'de'), 'overrides off again');
+            $this->assertFalse(Contexts::current()->surface->admin);
+        });
     }
 
     public function test_a_handler_that_throws_leaves_nothing_behind(): void
@@ -110,17 +133,19 @@ final class AdminLocaleMiddlewareTest extends TestCase
         $ada = new ArrayUser('ada', 'ada@site.test', '');
         $this->prefs->setLocale('ada', 'fr');
 
-        try {
-            $this->middleware()->process($this->request($ada), $this->handler(static function (): void {
-                throw new \RuntimeException('boom');
-            }));
-            $this->fail('the exception goes on');
-        } catch (\RuntimeException $e) {
-            $this->assertSame('boom', $e->getMessage());
-        }
+        $this->frame(function () use ($ada): void {
+            try {
+                $this->middleware()->process($this->request($ada), $this->handler(static function (): void {
+                    throw new \RuntimeException('boom');
+                }));
+                $this->fail('the exception goes on');
+            } catch (\RuntimeException $e) {
+                $this->assertSame('boom', $e->getMessage());
+            }
 
-        $this->assertSame('it', $this->translator->getLocale());
-        $this->assertSame('Se déconnecter', $this->translator->get('folio.layout.log_out', [], 'fr'), 'overrides off: the file text');
+            $this->assertSame('it', $this->translator->getLocale());
+            $this->assertSame('Se déconnecter', $this->translator->get('folio.layout.log_out', [], 'fr'), 'overrides off: the file text');
+        });
     }
 
     public function test_signed_out_pages_follow_the_browser_when_it_names_an_offered_language(): void
@@ -130,9 +155,11 @@ final class AdminLocaleMiddlewareTest extends TestCase
             $seen[] = $this->translator->getLocale();
         };
 
-        $this->middleware()->process($this->request(null, 'fr-CH,fr;q=0.9'), $this->handler($record));
-        $this->middleware('de')->process($this->request(null, 'it, es;q=0.8'), $this->handler($record));
-        $this->middleware()->process($this->request(null), $this->handler($record));
+        $this->frame(function () use ($record): void {
+            $this->middleware()->process($this->request(null, 'fr-CH,fr;q=0.9'), $this->handler($record));
+            $this->middleware('de')->process($this->request(null, 'it, es;q=0.8'), $this->handler($record));
+            $this->middleware()->process($this->request(null), $this->handler($record));
+        });
 
         $this->assertSame(['fr', 'de', 'en'], $seen);
     }
@@ -145,7 +172,7 @@ final class AdminLocaleMiddlewareTest extends TestCase
             $seen[] = $this->translator->getLocale();
         };
 
-        $this->middleware('it')->process($this->request(new ArrayUser('ada', 'ada@site.test', '')), $this->handler($record));
+        $this->frame(fn () => $this->middleware('it')->process($this->request(new ArrayUser('ada', 'ada@site.test', '')), $this->handler($record)));
 
         $this->assertSame(['en'], $seen, 'no Folio texts in "it": English');
         $this->assertSame(['de', 'en', 'fr'], $this->middleware()->interfaceLocales());
@@ -157,13 +184,15 @@ final class AdminLocaleMiddlewareTest extends TestCase
         $this->prefs->setLocale('ada', 'fr');
         $seen = [];
 
-        $this->middleware()->process($this->request($ada), $this->handler(function (ServerRequestInterface $request) use (&$seen): void {
+        $this->frame(function () use ($ada, &$seen): void {
+            $this->middleware()->process($this->request($ada), $this->handler(function (ServerRequestInterface $request) use (&$seen): void {
             $seen[] = AdminLocaleMiddleware::asFrontend($this->translator, $request, fn (): array => [
                 $this->translator->getLocale(),
                 $this->translator->get('folio.layout.log_out', [], 'fr'),
             ]);
             $seen[] = [$this->translator->getLocale(), $this->translator->get('folio.layout.log_out')];
-        }));
+            }));
+        });
 
         $this->assertSame([['it', 'Se déconnecter'], ['fr', 'Override fr']], $seen);
     }

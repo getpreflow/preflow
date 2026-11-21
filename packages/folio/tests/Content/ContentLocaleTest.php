@@ -5,39 +5,40 @@ declare(strict_types=1);
 namespace Preflow\Folio\Tests\Content;
 
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Site;
 use Preflow\Data\Locales;
 use Preflow\Folio\Content\ContentLocale;
+use Preflow\Testing\ContextFactory;
 
+/** The content locale is the render's locale (since 0.81); blocks ask it with the context (ContextBlockLocale). */
 final class ContentLocaleTest extends TestCase
 {
-    public function test_scoped_puts_the_locale_back(): void
+    protected function tearDown(): void
     {
-        $locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
-        $locale->set('de');
-
-        $seen = $locale->scoped(function () use ($locale): string {
-            $locale->set('en');
-
-            return $locale->get();
-        });
-
-        $this->assertSame('en', $seen);
-        $this->assertSame('de', $locale->get());
+        Contexts::reset();
     }
 
-    public function test_scoped_puts_the_locale_back_when_the_render_throws(): void
+    private static function context(): RenderContext
+    {
+        return ContextFactory::forTest(new Site('http://localhost', ['en', 'de'], 'en'));
+    }
+
+    public function test_it_is_the_renders_locale_when_it_is_a_content_locale(): void
     {
         $locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
-        $locale->set('de');
 
-        try {
-            $locale->scoped(function () use ($locale): void {
-                $locale->set('en');
-                throw new \RuntimeException('render failed');
-            });
-        } catch (\RuntimeException) {
-        }
+        $this->assertSame('en', $locale->get(), 'outside every render: the default');
+        $this->assertSame('de', Contexts::run(self::context()->in('de'), $locale->get(...)));
+        $this->assertSame('en', Contexts::run(self::context()->in('fr'), $locale->get(...)), 'not a content locale: the default');
+    }
 
-        $this->assertSame('de', $locale->get());
+    public function test_blocks_get_the_locale_of_the_context_they_are_given(): void
+    {
+        $locale = new ContentLocale(new Locales(['en', 'de'], 'en'));
+
+        $this->assertSame('de', $locale->localeOf(self::context()->in('de')));
+        $this->assertSame('en', $locale->localeOf(self::context()->in('fr')), 'not a content locale: the default');
     }
 }

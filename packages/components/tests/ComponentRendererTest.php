@@ -336,6 +336,18 @@ final class ComponentRendererTest extends TestCase
         }
         $this->assertSame([], $errors, 'not reported as a component error');
 
+        // A write the render refused (a preview fragment) is the request's 403 as well.
+        $this->engine->onRender = static fn (): string => throw new \Preflow\Core\Context\WritesRefused(new \Preflow\Core\Context\SkippedWrite('default', 'items', '1', 'save'));
+        foreach (['render', 'renderFragment', 'renderResolved', 'renderResolvedFragment'] as $method) {
+            try {
+                $renderer->{$method}(new RenderableComponent());
+                $this->fail($method . ' should rethrow a refused write');
+            } catch (\Preflow\Core\Context\WritesRefused $e) {
+                $this->assertSame('items', $e->write->type);
+            }
+        }
+        $this->assertSame([], $errors, 'a refused write is no component error');
+
         // Any other failure keeps the boundary.
         $this->engine->onRender = static fn (): string => throw new \RuntimeException('broken');
         $this->assertStringContainsString('Component unavailable', (new ComponentRenderer($this->engine, new ErrorBoundary(DebugLevel::Off)))->render(new BrokenWithFallback()));

@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 use Preflow\Members\MembersConfig;
 use Preflow\Members\Tests\Support\MemberFlows;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio offers its frontend layout (@folio/frontend/_site.twig, the site's resources/folio/frontend/_site.twig)
@@ -16,6 +17,8 @@ use Preflow\Members\Tests\Support\MemberFlows;
  */
 final class MembersLayoutDefaultTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

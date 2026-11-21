@@ -11,6 +11,7 @@ use Preflow\Core\Http\Csrf\CsrfSignInPaths;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * CSRF through the member pages: the login and the registration under the configured members path
@@ -20,6 +21,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class CsrfSignInTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

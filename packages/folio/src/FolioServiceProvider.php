@@ -151,11 +151,6 @@ final class FolioServiceProvider extends ServiceProvider
             // the members check the template when a page renders, whatever order the providers boot in.
             $container->instance(\Preflow\Members\MembersDefaults::class, new \Preflow\Members\MembersDefaults(layout: '@folio/frontend/_site.twig'));
         }
-        if (interface_exists(\Preflow\Members\PageLocale::class)) {
-            $container->singleton(\Preflow\Members\PageLocale::class, static fn (Container $c): \Preflow\Members\PageLocale => new \Preflow\Folio\Members\FolioPageLocale(
-                $c->get(ContentLocale::class),
-            ));
-        }
         // Models go under Content unless their JSON names a "section"; their settings forms
         // (Extension::settings()) are singleton types under Settings.
         // Each extension may adjust its models first (prepareModel: storage, options from config).
@@ -211,12 +206,6 @@ final class FolioServiceProvider extends ServiceProvider
         // Blocks render in it too (preflow/blocks asks BlockLocale), unless the app bound its own.
         if (!$container->bound(\Preflow\Blocks\BlockLocale::class)) {
             $container->instance(\Preflow\Blocks\BlockLocale::class, $contentLocale);
-        }
-        // GEO renders pages internally (Markdown views): each keeps its content locale to itself.
-        if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
-            $container->get(\Preflow\View\Geo\RenderScopes::class)->add(
-                static fn (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next): \Psr\Http\Message\ResponseInterface => $contentLocale->scoped($next),
-            );
         }
         // The published pages are the site's public pages (sitemap with SEO, llms.txt with GEO);
         // llms.txt takes its name and summary from the site singleton, SEO its defaults and share image.
@@ -380,6 +369,9 @@ final class FolioServiceProvider extends ServiceProvider
             // Whether a Folio page holds an address: the bare-path redirect (config/i18n.php redirect_bare)
             // asks SiteTarget as one of core's page lookups, so "/hello" goes to "/en/hello" and
             // "/no-such-page" stays a 404. Core's own PageExists id stays free for the site's pages.
+            // It answers from the published site (LiveRecords) under any read mode, on purpose: an
+            // address is held by what visitors see. The redirect gates that ask it are skipped for
+            // internal renders and previews, so a working copy never decides a redirect.
             $container->get(\Preflow\Core\Routing\PageLookups::class)->add(\Preflow\Folio\Redirects\SiteTarget::class);
             // The write rules of a redirect entry (routing's), for every writer: the entries' save() and
             // Settings → Redirects. What only the site knows is answered by Folio's own classes.
@@ -522,9 +514,7 @@ final class FolioServiceProvider extends ServiceProvider
             authors: new \Preflow\Folio\Users\AuthorNames($c->get(DataManager::class), static fn (): array => self::recordProviders($c), static fn (): ?\Preflow\Auth\UserProviderInterface => self::staffProviderOrNone($c), $c->bound(\Preflow\Core\Activity\ActivityActors::class) ? $c->get(\Preflow\Core\Activity\ActivityActors::class) : null),
         ));
 
-        self::isolatePageCacheRenders($container);
-        $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class,fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
-            $c->get(\Preflow\Publishing\LiveContent::class),
+        $container->bind(\Preflow\Folio\Http\WorkingCopyMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\WorkingCopyMiddleware(
             $c->get(\Preflow\Folio\Http\AdminNav::class),
         ));
         $navCollapsed = self::navCollapsed($folioCfg);
@@ -573,6 +563,8 @@ final class FolioServiceProvider extends ServiceProvider
             $c->has(\Preflow\Core\PageCache\PageCache::class) ? $c->get(\Preflow\Core\PageCache\PageCache::class) : null,
             // The site's locale URL rule (core binds it from config/i18n.php): "/en/…" with prefix_default.
             $c->bound(\Preflow\Core\Http\LocaleUrls::class) ? $c->get(\Preflow\Core\Http\LocaleUrls::class) : null,
+            // What the render reads: a whole-page preview finds the working copy at its address.
+            $c->get(\Preflow\Publishing\LiveContent::class),
         ));
 
         $uploadsDir = $this->uploadsDir($app);
@@ -710,6 +702,7 @@ final class FolioServiceProvider extends ServiceProvider
             pageMeta: $c->bound(\Preflow\Folio\Seo\FolioPageMeta::class) ? $c->get(\Preflow\Folio\Seo\FolioPageMeta::class) : null,
             siteUrl: is_string($appUrl = $app->config()->get('app.url')) && $appUrl !== '' ? $appUrl : null,
             typeActions: $c->get(\Preflow\Folio\Content\TypeActions::class),
+            viewAs: $c->get(\Preflow\Folio\Http\ViewAs::class),
             dashboard: new \Preflow\Folio\Dashboard\Dashboard(
                 $c->get(TypeCatalog::class),
                 $c->get(DataManager::class),
@@ -798,6 +791,23 @@ final class FolioServiceProvider extends ServiceProvider
             $c->get(\Preflow\View\AssetCollector::class),
             $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
             self::translator($c, $app),
+        ));
+        // The whole-page preview (core's Application::preview()) and its "View as" control.
+        $container->bind(\Preflow\Folio\Http\ViewAs::class, fn (Container $c) => new \Preflow\Folio\Http\ViewAs(
+            $c->get(\Preflow\Auth\Access\Access::class),
+            self::roleLabels($c),
+        ));
+        $container->bind(\Preflow\Folio\Http\PagePreviewController::class, fn (Container $c) => new \Preflow\Folio\Http\PagePreviewController(
+            $c->get(Application::class),
+            $c->get(TypeCatalog::class),
+            $c->get(TypeRegistry::class),
+            $c->get(DataManager::class),
+            $c->get(FrontendResolver::class),
+            $c->get(\Preflow\Folio\View\FolioEngine::class),
+            $prefix,
+            $c->get(\Preflow\Folio\Http\ViewAs::class),
+            $c->get(\Preflow\Folio\Http\AdminAssetUrls::class),
+            $c->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
         ));
         $container->bind(AssetController::class, fn (Container $c) => new AssetController(
             dirname(__DIR__) . '/assets',
@@ -932,19 +942,24 @@ final class FolioServiceProvider extends ServiceProvider
 
             return new \Preflow\Folio\Http\InterfaceLocales($translator, self::interfaceDefault($app, $folioCfg), $locales);
         });
+        // Folio's words in PHP (FolioText: field types, notices) on the admin surface: the app's
+        // translator, with Folio's texts and the admins' overrides (looked up once, when first asked).
+        $folioTexts = null;
+        \Preflow\Folio\FolioText::translatorFrom(static function () use (&$folioTexts, $container, $app): \Preflow\I18n\Translator {
+            return $folioTexts ??= self::translator($container, $app);
+        });
         $container->bind(\Preflow\Folio\Http\AdminLocaleMiddleware::class, fn (Container $c) => new \Preflow\Folio\Http\AdminLocaleMiddleware(
             self::translator($c, $app),
             $c->get(\Preflow\Folio\Http\InterfaceLocales::class),
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
-            $c->has(TemplateEngineInterface::class) ? $c->get(\Preflow\Folio\View\FolioEngine::class) : null,
-            static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),
-            self::validatorFactory($c),
-            $c->has(TemplateEngineInterface::class) ? new \Preflow\Folio\Http\NotFound(
+            onStart: static fn () => $c->get(\Preflow\Folio\Translations\OverridesCache::class)->startRequest(),
+            notFound: $c->has(TemplateEngineInterface::class) ? new \Preflow\Folio\Http\NotFound(
                 $c->get(\Preflow\Folio\View\FolioEngine::class),
                 $prefix,
                 $c->get(TypeCatalog::class),
                 static fn (string $permission): bool => !$c->has(\Preflow\Auth\Access\Access::class) || $c->get(\Preflow\Auth\Access\Access::class)->can($permission),
             ) : null,
+            contentDefault: $c->get(ContentLocale::class)->locales()->default,
         ));
         $container->bind(\Preflow\Folio\Http\LocaleController::class, fn (Container $c) => new \Preflow\Folio\Http\LocaleController(
             $c->get(\Preflow\Folio\Users\UserPreferences::class),
@@ -1094,67 +1109,6 @@ final class FolioServiceProvider extends ServiceProvider
             max(1, (int) ($this->folioConfig($app)['password_min'] ?? 10)),
             $c->get(\Preflow\Folio\Users\StaffGuard::class)->name,
         ));
-    }
-
-    /**
-     * The published site for every render that isn't the admin's own: what the page cache may
-     * store (a visitor's miss, verify's second render, a rebuild behind an admin request) and
-     * every internal render (RenderScopes: the SEO audit's pages, also a step run from Folio, and
-     * GEO's Markdown views) read published snapshots with empty memos, whatever the request around
-     * it switched on (WorkingCopyMiddleware on every admin route, a share preview). A page the
-     * page cache would store while working copies show anyway is refused (`refused:working-copy`).
-     */
-    private static function isolatePageCacheRenders(Container $container): void
-    {
-        $published = self::publishedReads($container);
-        if ($container->bound(\Preflow\View\Geo\RenderScopes::class)) {
-            $container->get(\Preflow\View\Geo\RenderScopes::class)->add(
-                static function (\Psr\Http\Message\ServerRequestInterface $sub, \Closure $next) use ($published): \Psr\Http\Message\ResponseInterface {
-                    $restore = $published();
-                    try {
-                        return $next();
-                    } finally {
-                        $restore();
-                    }
-                },
-            );
-        }
-        if (!$container->bound(\Preflow\Core\PageCache\PageCache::class)) {
-            return;
-        }
-        $pageCache = $container->get(\Preflow\Core\PageCache\PageCache::class);
-        $pageCache->isolate($published);
-        $pageCache->refuseWhen('working-copy', static fn (): bool => $container->resolved(\Preflow\Publishing\LiveContent::class)
-            && $container->get(\Preflow\Publishing\LiveContent::class)->showsWorkingCopies());
-    }
-
-    /**
-     * Switches to the published site for one render: LiveContent reads published snapshots, the
-     * Collections and Singletons memos start empty. Answers the function that puts it all back.
-     *
-     * @return \Closure(): (\Closure(): void)
-     */
-    private static function publishedReads(Container $container): \Closure
-    {
-        return static function () use ($container): \Closure {
-            $restores = [$container->get(\Preflow\Publishing\LiveContent::class)->isolate()];
-            foreach ([\Preflow\Folio\Content\Collections::class, \Preflow\Folio\Content\Singletons::class] as $memo) {
-                // One not built yet starts empty; one built during the render is emptied after it.
-                $restores[] = $container->resolved($memo)
-                    ? $container->get($memo)->isolate()
-                    : static function () use ($container, $memo): void {
-                        if ($container->resolved($memo)) {
-                            $container->get($memo)->isolate();
-                        }
-                    };
-            }
-
-            return static function () use ($restores): void {
-                foreach (array_reverse($restores) as $restore) {
-                    $restore();
-                }
-            };
-        };
     }
 
     /**
@@ -1604,9 +1558,14 @@ final class FolioServiceProvider extends ServiceProvider
                 isSafe: false,
             ));
 
-            // The interface language of the admin request (AdminLocaleMiddleware updates it) and the
-            // offered languages with their own names (the sidebar switch, the account page).
-            $engine->addGlobal('interface_locale', $container->get(\Preflow\Folio\Http\InterfaceLocales::class)->default());
+            // The interface language of the render (InterfaceLocales::current(): the admin surface's,
+            // read each time it is printed or compared) and the offered languages with their own
+            // names (the sidebar switch, the account page).
+            $engine->addGlobal('interface_locale', new \Preflow\Folio\Http\InterfaceLocale(
+                static fn (): \Preflow\Folio\Http\InterfaceLocales => $container->get(\Preflow\Folio\Http\InterfaceLocales::class),
+            ));
+            // Built on first use now (no longer at boot): `preflow optimize` still puts its languages in the manifest.
+            $app->bootManifest()->whenBuilding(static fn (): \Preflow\Folio\Http\InterfaceLocales => $container->get(\Preflow\Folio\Http\InterfaceLocales::class));
             // The sidebar's site switcher: the site's name and its environment (null in production).
             $engine->addGlobal('folio_site', [
                 'name' => (string) ($app->config()->get('app.name') ?: 'Folio'),
@@ -2197,6 +2156,28 @@ final class FolioServiceProvider extends ServiceProvider
         return $extensions->isEnabled('codes') && $extensions->get('codes')->class === \Preflow\Folio\Codes\Extension::class;
     }
 
+    /**
+     * A role's label for "View as": rbac's stored label as the admin reads it (Messages::roleLabel());
+     * null without rbac (the role's name is shown).
+     *
+     * @return (\Closure(string, string): string)|null
+     */
+    private static function roleLabels(Container $c): ?\Closure
+    {
+        if (!class_exists(\Preflow\Rbac\RoleStore::class) || !$c->bound(\Preflow\Rbac\RoleStore::class)) {
+            return null;
+        }
+        $records = [];
+
+        return static function (string $population, string $role) use ($c, &$records): string {
+            $records[$population] ??= $c->get(\Preflow\Rbac\RoleStore::class)->records($population);
+            $label = ($records[$population][$role] ?? null)?->get('label');
+            $stored = is_string($label) && $label !== '' ? $label : $role;
+
+            return $c->bound(\Preflow\Rbac\Messages::class) ? $c->get(\Preflow\Rbac\Messages::class)->roleLabel($population, $role, $stored) : $stored;
+        };
+    }
+
     /** The field types of the rbac admin (Rbac\Fields), and the permissions editor's assets (assets/rbac/). */
     private static function registerRbacFields(Container $container): void
     {
@@ -2353,6 +2334,8 @@ final class FolioServiceProvider extends ServiceProvider
             // Preview-only editor bridge: injected into admin preview renders, never the public site.
             'preview-editor.css' => 'preview-editor.css',
             'preview-editor.js' => 'preview-editor.js',
+            // The editor's whole-page preview: its tabs, "View as" and the refresh after each autosave.
+            'page-preview.js' => 'page-preview.js',
             'trix.css' => 'vendor/trix.css',
             'trix.js' => 'vendor/trix.umd.min.js',
             // The Edit image screen: Cropper.js (vendored) and its adapter.

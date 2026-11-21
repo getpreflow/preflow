@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Components;
 
+use Preflow\Core\Context\RefusedInPreview;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\PageCache\LiveParts;
 use Preflow\View\AssetCollector;
@@ -167,7 +168,8 @@ final class ComponentRenderer
      *
      * The boundary catches every failure except an HttpException (a 403, a 404…): that one is
      * rethrown in every render method, so the page or the action answers with its status
-     * (since 0.63.2; before, the boundary showed its fallback with a 200).
+     * (since 0.63.2; before, the boundary showed its fallback with a 200). So is a write the
+     * render refused, or anything else a preview refuses (RefusedInPreview, since 0.81.0): the request answers 403.
      */
     public function render(Component $component): string
     {
@@ -207,7 +209,7 @@ final class ComponentRenderer
                 );
             }
             return $this->wrapHtml($component, $innerHtml);
-        } catch (HttpException $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -238,7 +240,7 @@ final class ComponentRenderer
                 );
             }
             return $html;
-        } catch (HttpException $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -265,7 +267,7 @@ final class ComponentRenderer
                 );
             }
             return $html;
-        } catch (HttpException $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -292,7 +294,7 @@ final class ComponentRenderer
                 );
             }
             return $this->wrapHtml($component, $innerHtml);
-        } catch (HttpException $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -306,24 +308,14 @@ final class ComponentRenderer
     }
 
     /**
-     * The component's inner HTML. While GEO captures, the render runs in its own
-     * frame; a component that declared a geo block is replaced by its placeholder.
+     * The component's inner HTML. While GEO captures, the render runs in a block of its
+     * own; a component that declared a geo block is replaced by its placeholder.
      */
     private function renderInner(Component $component): string
     {
-        $geo = $this->geoCollector;
-        if ($geo === null || !$geo->capturing()) {
-            return $this->renderTemplate($component);
-        }
-
-        $geo->enter();
-        try {
-            $html = $this->renderTemplate($component);
-        } finally {
-            $block = $geo->leave();
-        }
-
-        return $block === null ? $html : $geo->placeholder($block);
+        return $this->geoCollector === null
+            ? $this->renderTemplate($component)
+            : $this->geoCollector->component(fn (): string => $this->renderTemplate($component));
     }
 
     private function renderTemplate(Component $component): string

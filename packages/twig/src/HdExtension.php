@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Twig;
 
+use Preflow\Core\Context\Preview\PreviewUrls;
 use Twig\Extension\AbstractExtension;
 use Twig\Extension\GlobalsInterface;
 use Twig\TwigFunction;
@@ -78,7 +79,7 @@ final class HdExtension extends AbstractExtension implements GlobalsInterface
         array $props = [],
     ): string {
         $tokenStr = $this->token->encode($componentClass, $props, 'render');
-        $url = $this->endpointPrefix . '/render?token=' . urlencode($tokenStr);
+        $url = PreviewUrls::carry($this->endpointPrefix . '/render?token=' . urlencode($tokenStr));
 
         $attrs = $this->driver->listenAttrs($event, $url, $componentId);
 
@@ -105,7 +106,7 @@ final class HdExtension extends AbstractExtension implements GlobalsInterface
         array $props = [],
     ): string {
         $tokenStr = $this->token->encode($componentClass, $props, $action);
-        return $this->endpointPrefix . '/action?token=' . urlencode($tokenStr);
+        return PreviewUrls::carry($this->endpointPrefix . '/action?token=' . urlencode($tokenStr));
     }
 
     /**
@@ -122,7 +123,7 @@ final class HdExtension extends AbstractExtension implements GlobalsInterface
         array $extra,
     ): string {
         $tokenStr = $this->token->encode($componentClass, $props, $action);
-        $url = $this->endpointPrefix . '/action?token=' . urlencode($tokenStr);
+        $url = PreviewUrls::carry($this->endpointPrefix . '/action?token=' . urlencode($tokenStr));
 
         $attrs = $this->driver->actionAttrs($method, $url, $componentId, $swap, $extra);
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Preflow\Auth\Authenticatable;
+use Preflow\Core\Context\Contexts;
 use Preflow\Folio\Users\UserPreferences;
 use Preflow\I18n\Translator;
 use Preflow\View\TemplateEngineInterface;
@@ -16,13 +17,16 @@ use Psr\Http\Server\RequestHandlerInterface;
 /**
  * Runs an admin request in the user's interface language: the signed-in user's stored choice
  * (UserPreferences), else the default (folio.locale, else app.locale, else English). Signed-out
- * admin pages (sign-in, password) take the browser's language when it is offered. Admin
- * overrides are on for the request, and the validator factory translates its messages
- * (a site's own forms, outside admin requests, keep English ones).
+ * admin pages (sign-in, password) take the browser's language when it is offered.
  *
- * The translator is shared with the frontend: on the way out, also when the handler throws,
- * the locale and the overrides state are put back as they were, so nothing reaches a later
- * public request. A preview inside the admin renders with asFrontend().
+ * Since 0.81 it changes no service: the handler runs inside Contexts::within() on the admin
+ * surface (RenderContext::admin(), overrides on), so the translator, FolioText, the validators
+ * and InterfaceLocales::current() answer in the interface language for that stretch only. The
+ * context's locale is the default content locale for that stretch (what the admin's content
+ * readers showed before 0.81); the visitor's is on the request (FRONTEND_LOCALE). Afterwards (also when the handler throws) the
+ * request's frame is on the surface it was on before, so work after the response (and a later
+ * request) gets the visitor's texts and English validation, as before 0.81. A preview inside
+ * the admin renders with asFrontend().
  *
  * Every admin route runs it, so it also hands the request the admin's 404 page (NotFound).
  *
@@ -30,52 +34,63 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class AdminLocaleMiddleware implements MiddlewareInterface
 {
-    /** Request attribute: the translator's locale before the admin request (the frontend's). */
+    /** Request attribute: the content locale of the admin request (the frontend's; the context's locale). */
     public const string FRONTEND_LOCALE = 'folio.frontend_locale';
 
     /** Request attribute: the interface locale of this admin request. */
     public const string LOCALE = 'folio.interface_locale';
 
     public function __construct(
+        /** not used since 0.81.0 (the translator follows the render context); kept for the constructor's shape */
         private readonly Translator $translator,
         private readonly InterfaceLocales $locales,
         private readonly UserPreferences $preferences,
+        /** not used since 0.81.0 (interface_locale is a lazy engine global); kept for the constructor's shape */
         private readonly ?TemplateEngineInterface $engine = null,
         /** @var (\Closure(): void)|null run when an admin request starts (not a nested one): the overrides' cache reads afresh */
         private readonly ?\Closure $onStart = null,
-        /** the shared validator factory: Folio's forms validate with the translator, in the interface language */
+        /** not used since 0.81.0 (the admin surface translates validators); kept for the constructor's shape */
         private readonly ?\Preflow\Validation\ValidatorFactory $validators = null,
         /** the admin's 404 page, on the request for NotFound::response() (attribute NotFound::class) */
         private readonly ?NotFound $notFound = null,
+        /** @since 0.81.0 the content locale the admin renders its content in (Folio's default content locale); null: the site's default locale */
+        private readonly ?string $contentDefault = null,
     ) {}
 
+    /** @throws \Preflow\Core\Context\NoRenderContext outside every render */
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $locale = $this->localeFor($request);
-        $previousLocale = $this->translator->getLocale();
-        $previousOverrides = $this->translator->usesOverrides();
-        $previousCurrent = $this->locales->currentOrNull();
-        if (!$previousOverrides && $this->onStart !== null) {
+        $ctx = Contexts::current();
+        if ($this->onStart !== null && !self::insideAdmin()) {
             ($this->onStart)();
         }
 
-        $this->enter($locale, true, $locale);
-        $previousText = \Preflow\Folio\FolioText::use($this->translator); // Folio's words in PHP (field types, notices)
-        $previousValidation = $this->validators?->useTranslator($this->translator);
-        try {
-            $request = $request
-                ->withAttribute(self::FRONTEND_LOCALE, $request->getAttribute(self::FRONTEND_LOCALE) ?? $previousLocale)
-                ->withAttribute(self::LOCALE, $locale);
-            if ($this->notFound !== null) {
-                $request = $request->withAttribute(NotFound::class, $this->notFound);
-            }
-
-            return $handler->handle($request);
-        } finally {
-            $this->validators?->useTranslator($previousValidation);
-            \Preflow\Folio\FolioText::use($previousText);
-            $this->enter($previousLocale, $previousOverrides, $previousCurrent);
+        $request = $request
+            ->withAttribute(self::FRONTEND_LOCALE, $request->getAttribute(self::FRONTEND_LOCALE) ?? $ctx->locale)
+            ->withAttribute(self::LOCALE, $locale);
+        if ($this->notFound !== null) {
+            $request = $request->withAttribute(NotFound::class, $this->notFound);
         }
+
+        // The admin's texts in its interface language; its content in the default content locale,
+        // as before 0.81 (an editor's locale cookie or browser language never picks which
+        // translation the admin lists, labels and settings show). The visitor's locale stays on
+        // the request (FRONTEND_LOCALE) for asFrontend().
+        $admin = $ctx->admin($locale, overrides: true)->in($this->contentDefault ?? $ctx->site->defaultLocale);
+
+        return Contexts::within($admin, static fn (): ResponseInterface => $handler->handle($request));
+    }
+
+    /**
+     * Whether this admin request runs inside another one: the current context, or the frame this
+     * request is part of (Application::handleNested()), is already on the admin surface. The
+     * outermost admin request refreshes what onStart refreshes, also when it is handled inside a
+     * console or test frame.
+     */
+    private static function insideAdmin(): bool
+    {
+        return Contexts::current()->surface->admin || Contexts::frame()->partOf()?->context->surface->admin === true;
     }
 
     /**
@@ -90,7 +105,10 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
 
     /**
      * Runs $render (a frontend template rendered inside an admin request, the page preview) in
-     * the frontend's state: its locale, overrides off. Outside an admin request it just runs it.
+     * the frontend's texts: within the public surface in the request's content locale. Outside
+     * an admin request it just runs it.
+     *
+     * @param Translator $translator not used since 0.81.0 (the translator follows the render context)
      *
      * @template T
      * @param \Closure(): T $render
@@ -102,16 +120,8 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         if (!is_string($frontend)) {
             return $render();
         }
-        $locale = $translator->getLocale();
-        $overrides = $translator->usesOverrides();
-        $translator->setLocale($frontend);
-        $translator->useOverrides(false);
-        try {
-            return $render();
-        } finally {
-            $translator->setLocale($locale);
-            $translator->useOverrides($overrides);
-        }
+
+        return Contexts::within(Contexts::current()->public()->in($frontend), $render);
     }
 
     private function localeFor(ServerRequestInterface $request): string
@@ -123,13 +133,5 @@ final class AdminLocaleMiddleware implements MiddlewareInterface
         $chosen = $this->preferences->locale($user->getAuthId());
 
         return $chosen !== null && $this->locales->offers($chosen) ? $chosen : $this->locales->default();
-    }
-
-    private function enter(string $locale, bool $overrides, ?string $current): void
-    {
-        $this->translator->setLocale($locale);
-        $this->translator->useOverrides($overrides);
-        $this->locales->setCurrent($current);
-        $this->engine?->addGlobal('interface_locale', $this->locales->current());
     }
 }

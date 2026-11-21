@@ -15,10 +15,13 @@ use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Notify\Notifier;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** A locked member signs in nowhere (login, reset, confirm, SignIn::in()); every sign-in notes last_login_at. */
 final class LockedSignInTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

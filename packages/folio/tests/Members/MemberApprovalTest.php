@@ -22,10 +22,13 @@ use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The owner's decision in Folio: waiting badge, state column, Decision panel, accept and decline. */
 final class MemberApprovalTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     protected function setUp(): void

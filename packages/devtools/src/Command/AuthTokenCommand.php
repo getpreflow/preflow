@@ -104,7 +104,7 @@ final class AuthTokenCommand implements CommandInterface
         $token->tokenHash = \Preflow\Auth\PersonalAccessToken::hashToken($plain);
         $token->userId = $userId;
         $token->name = $name;
-        $token->createdAt = date('c');
+        $token->createdAt = date('c'); // clock: stamp
         $dm->save($token);
 
         echo "Token for {$subject} ({$name}), shown once:\n{$plain}\n";

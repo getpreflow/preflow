@@ -149,6 +149,6 @@ final class KnownPermissions
 
     private static function now(): string
     {
-        return (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s\Z');
+        return (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s\Z'); // clock: stamp
     }
 }

@@ -11,9 +11,12 @@ use Preflow\Auth\Access\Access;
 use Preflow\Auth\ArrayUser;
 use Preflow\Core\Application;
 use Preflow\Testing\AuthTestHelpers;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class AuthTestHelpersTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use AuthTestHelpers;
 
     private string $dir;

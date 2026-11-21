@@ -23,7 +23,7 @@ abstract class PublishingAppTestCase extends TestCase
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/publishing_app_' . bin2hex(random_bytes(4));
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Publishing', 'debug' => 1, 'key' => 'publishing-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Publishing', 'debug' => 1, 'key' => 'publishing-app-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Publishing\\PublishingServiceProvider::class];\n");
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
         $fixtures = var_export(__DIR__ . '/Fixtures', true);

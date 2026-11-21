@@ -26,9 +26,12 @@ use Preflow\Testing\ArraySession;
 use Preflow\Testing\MysqlTestDatabase;
 use Preflow\Validation\RuleFactory;
 use Preflow\Validation\ValidatorFactory;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class RecordUserProviderTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private DataManager $dm;
     private TypeCatalog $catalog;
@@ -315,7 +318,7 @@ final class RecordUserProviderTest extends TestCase
             @mkdir(dirname($dir . '/' . $rel), 0777, true);
             file_put_contents($dir . '/' . $rel, $content);
         };
-        $w('config/app.php', "<?php\nreturn ['name' => 'T', 'debug' => 0, 'engine' => 'twig', 'key' => 'record-user-test-key-0123456789'];\n");
+        $w('config/app.php', "<?php\nreturn ['name' => 'T', 'debug' => 0, 'engine' => 'twig', 'key' => 'record-user-test-key-0123456789-0123456789abcdef'];\n");
         $w('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         // Folio signs staff in through its own guard: a members default guard would stop the boot (0.65).
         $w('config/folio.php', "<?php\nreturn ['path' => '/folio', 'guard' => 'staff'];\n");

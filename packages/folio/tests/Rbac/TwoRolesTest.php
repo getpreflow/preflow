@@ -13,6 +13,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\Screen\ScreenRegistry;
 use Preflow\Folio\Http\FolioPermissionMiddleware;
 use Preflow\Routing\RouteEntry;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The two roles of the spec's example on a staff site, on every Folio admin route and screen:
@@ -27,6 +28,8 @@ use Preflow\Routing\RouteEntry;
  */
 final class TwoRolesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private const array ACCOUNTS = ['super' => 0, 'content' => 1, 'plain' => 2];
@@ -176,6 +179,8 @@ final class TwoRolesTest extends TestCase
             $row('POST /folio/{type}/_bulk/delete', "/folio/{$type}/_bulk/delete", ['ids' => ['missing']], 422);
             $row('POST /folio/{type}/_bulk/{name}', "/folio/{$type}/_bulk/nothing", ['ids' => ['missing']], 404);
             $row('POST /folio/{type}/{id}/preview', "/folio/{$type}/{$id}/preview", $update, 200);
+            // Past the permission check: the record has no address (no slug), so no page to show (404).
+            $row('GET /folio/preview/page/{type}/{id}', "/folio/preview/page/{$type}/{$id}", [], 404);
             $row('POST /folio/{type}/{id}/unpublish', "/folio/{$type}/{$id}/unpublish", [], 404);
             $row('POST /folio/{type}/{id}/discard', "/folio/{$type}/{$id}/discard", [], 404);
             $row('POST /folio/{type}/{id}/autosave', "/folio/{$type}/{$id}/autosave", $update, 404);
@@ -251,7 +256,7 @@ final class TwoRolesTest extends TestCase
             ],
             'session' => ['cookie' => 'rbac_two_roles_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
         // AI on, so Folio registers the AI routes and the table covers them. The fake provider (0.66)
         // needs no key and answers locally: no request leaves the machine (an unknown provider now stops the boot).

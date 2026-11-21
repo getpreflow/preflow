@@ -59,6 +59,7 @@ final class CollectionsTest extends TestCase
 
     protected function tearDown(): void
     {
+        \Preflow\Core\Context\Contexts::reset();
         $rii = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST,
@@ -99,9 +100,12 @@ final class CollectionsTest extends TestCase
         $edited->set('name', ['en' => 'Edited']);
         $this->publisher->saveDraft($edited, null);
 
-        $this->live->showWorkingCopies();
+        $listed = \Preflow\Core\Context\Contexts::run(
+            \Preflow\Testing\ContextFactory::forTest()->workingCopies(),
+            fn (): array => array_column($this->collections()->list('app'), 'name'),
+        );
 
-        $this->assertSame(['Edited'], array_column($this->collections()->list('app'), 'name'));
+        $this->assertSame(['Edited'], $listed);
     }
 
     public function test_sort_descending(): void
@@ -118,10 +122,10 @@ final class CollectionsTest extends TestCase
         $record = DynamicRecord::fromArray($this->def('app'), ['uuid' => 'x', '_order' => 1, 'name' => ['en' => 'A', 'de' => 'B'], '_locales' => ['en', 'de']]);
         $this->dm->saveType($record, false);
         $this->publisher->publish($this->dm->findType('app', 'x') ?? throw new \RuntimeException(), null);
-        $this->locale->set('de');
-
-        $this->assertSame('B', $this->collections()->list('app')[0]['name']);
-        $this->assertSame('B', $this->collections()->find('app', 'x')['name'] ?? null);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('de'), function (): void {
+            $this->assertSame('B', $this->collections()->list('app')[0]['name']);
+            $this->assertSame('B', $this->collections()->find('app', 'x')['name'] ?? null);
+        });
     }
 
     public function test_find_returns_null_for_unpublished(): void
@@ -145,12 +149,16 @@ final class CollectionsTest extends TestCase
         $this->dm->observe($log);
         $collections = $this->collections();
 
-        $collections->list('app');
-        $first = $log->take();
-        $collections->list('app'); // the next page rendered in this process: a memo hit
+        [$first, $second] = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), static function () use ($collections, $log): array {
+            $collections->list('app');
+            $first = $log->take();
+            $collections->list('app'); // the list again in the same render: a memo hit
+
+            return [$first, $log->take()];
+        });
 
         $this->assertContains('app__published', $first);
-        $this->assertSame($first, $log->take());
+        $this->assertSame($first, $second);
     }
 
     private function collections(): Collections

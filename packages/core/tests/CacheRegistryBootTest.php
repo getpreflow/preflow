@@ -11,10 +11,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Cache\CacheRegistry;
 use Preflow\Core\Tests\Fixtures\CacheSourceProvider;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The Application owns a CacheRegistry and registers the framework's own caches in it. */
 final class CacheRegistryBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     #[RunInSeparateProcess]
     public function test_the_json_query_cache_is_registered(): void
     {

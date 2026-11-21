@@ -9,10 +9,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** What every member route shares: CSRF on each form, a session only where the members live, the routes per locale. */
 final class MembersHttpTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

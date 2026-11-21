@@ -145,7 +145,7 @@ final class StaffPasswords
             if ($record === null) {
                 return; // deleted meanwhile: nothing to stamp
             }
-            $record->set($field, (new \DateTimeImmutable())->format(DATE_ATOM));
+            $record->set($field, (new \DateTimeImmutable())->format(DATE_ATOM)); // clock: stamp
             $this->dm->saveType($record, false);
         } catch (\Throwable) {
             error_log('folio: last sign-in not saved for account ' . AccountLinks::subject($record));

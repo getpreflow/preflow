@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\Users\UserPreferences;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A site extension's screen label (and the texts of its attributes) may be keys of the site's
@@ -16,6 +17,8 @@ use Preflow\Folio\Users\UserPreferences;
  */
 final class ScreenLabelsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     private \Closure $autoload;

@@ -39,7 +39,8 @@ final class PreviewEditorJsTest extends TestCase
     {
         $js = $this->file('preview-editor.js');
         $this->assertStringContainsString("closest('a[href]')", $js);
-        $this->assertStringContainsString("charAt(0) !== '#'", $js); // same-page anchors still scroll
+        // Same-page anchors still scroll, by hand: the page's <base> would make them load the page's address (preview-select.test.mjs).
+        $this->assertStringContainsString("href.charAt(0) === '#'", $js);
     }
 
     public function test_highlight_scrolls_into_view(): void

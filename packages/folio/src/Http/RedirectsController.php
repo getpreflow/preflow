@@ -6,6 +6,7 @@ namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
 use Preflow\Auth\Authenticatable;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Data\Locales;
 use Preflow\Data\Text\TextMatch;
@@ -204,7 +205,7 @@ final class RedirectsController
             if ($row === null) {
                 return self::unknown($request);
             }
-            $this->notFound->dismiss($row['id'], new \DateTimeImmutable());
+            $this->notFound->dismiss($row['id'], Contexts::clock()->now());
             self::flash($request, FolioText::get('folio.redirects.dismissed', ['address' => $this->visible($row['locale'], $row['path'])]));
 
             return new Response(302, ['Location' => $this->prefix . '/redirects?tab=not-found']);

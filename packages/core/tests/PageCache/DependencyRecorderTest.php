@@ -193,24 +193,39 @@ final class DependencyRecorderTest extends TestCase
         $recorder->stop($again);
     }
 
-    public function test_outside_records_no_reads_no_expiry_and_no_freshness_of_the_scope_around(): void
+    /**
+     * Recordings and freshness scopes belong to the render frame: a render in a frame of its own
+     * (a rebuild, verify's second render) records nothing into the page around it, and that
+     * page's scope is not its; outside every frame the recorder keeps its own.
+     */
+    public function test_a_render_in_a_frame_of_its_own_records_nothing_for_the_page_around_it(): void
     {
         $recorder = new DependencyRecorder();
-        $page = $recorder->start();
-        $recorder->within(Freshness::NextVisit, null, function () use ($recorder): void {
-            $recorder->outside(function () use ($recorder): void {
-                // A live part: what it reads and asks for is not the page's.
-                $recorder->record('personal');
-                $recorder->expiresAt(1.0);
-                $own = $recorder->start();
-                $recorder->record('own');
-                $this->assertSame(['own' => [Freshness::Fresh, null]], $recorder->stop($own), 'the scope around is not its');
+        $ctx = \Preflow\Core\Context\RenderContext::console(new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock());
+        $outside = $recorder->start();
+
+        $page = \Preflow\Core\Context\Contexts::run($ctx, function () use ($recorder, $ctx): array {
+            $this->assertFalse($recorder->recording(), 'a frame starts with no recording open');
+            $page = $recorder->start();
+            $recorder->within(Freshness::NextVisit, null, function () use ($recorder, $ctx): void {
+                \Preflow\Core\Context\Contexts::run($ctx, function () use ($recorder): void {
+                    // Another render: what it reads and asks for is not the page's.
+                    $this->assertFalse($recorder->recording());
+                    $recorder->record('personal');
+                    $recorder->expiresAt(1.0);
+                    $own = $recorder->start();
+                    $recorder->record('own');
+                    $this->assertSame(['own' => [Freshness::Fresh, null]], $recorder->stop($own), 'the scope around is not its');
+                });
+                $recorder->record('page');
             });
-            $recorder->record('page');
+            $this->assertNull($recorder->expiry($page));
+
+            return $recorder->stop($page);
         });
 
-        $this->assertNull($recorder->expiry($page));
-        $this->assertSame(['page' => [Freshness::NextVisit, null]], $recorder->stop($page));
+        $this->assertSame(['page' => [Freshness::NextVisit, null]], $page);
+        $this->assertSame([], $recorder->stop($outside), 'outside every frame, the recorder\'s own recording saw none of it');
     }
 
     public function test_an_expiry_at_or_before_the_render_start_is_ignored_for_that_recording(): void

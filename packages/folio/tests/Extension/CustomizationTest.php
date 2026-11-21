@@ -13,6 +13,7 @@ use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A full app with auth and preflow/roles and a "crm" extension (written by the test)
@@ -21,6 +22,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class CustomizationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

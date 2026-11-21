@@ -9,10 +9,13 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Folio\Tests\Support\CounterExtension;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Extension::seed(): folio:extensions:apply runs it on every run, install() once per version. */
 final class ExtensionsApplySeedTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use CounterExtension;
 

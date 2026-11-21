@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Preflow\I18n;
 
 use Nyholm\Psr7\Response;
-use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Http\IsHttps;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
@@ -15,15 +17,22 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
+/**
+ * Resolves the request's locale (the URL prefix, else the cookie and Accept-Language where the
+ * strategy allows them; in an internal render without a prefix, the locale its caller chose)
+ * and narrows the render frame to it (since 0.81): the context's locale, its request part
+ * pointed at the request without the prefix, and the prefix that URL carried
+ * (RequestContext::$localePrefix). The frame keeps them to its end; nothing is put back by hand,
+ * and a render of its own (an internal render, a nested request) has its own frame. Inside a
+ * render only: outside every frame process() throws NoRenderContext.
+ */
 final class LocaleMiddleware implements MiddlewareInterface
 {
     /** Files search engines and crawlers fetch by their exact address: never language-redirected. */
     private const array NEVER_REDIRECTED = ['/robots.txt', '/sitemap.xml', '/llms.txt'];
 
-    /** The locale prefix stripped from the current request's URL ('/de'), or ''. */
-    private string $urlPrefix = '';
-
     /**
+     * @param Translator $translator kept for the constructor's shape; since 0.81 the translator reads the locale from the context
      * @param string[] $availableLocales
      * @param string   $urlStrategy 'prefix' | 'none'
      * @param LocaleUrls|null $urls with redirectBare on (and the prefix strategy), a bare
@@ -47,30 +56,20 @@ final class LocaleMiddleware implements MiddlewareInterface
     ) {}
 
     /**
-     * The locale prefix the current request's URL carried ('/de'; '/en' when the
-     * default locale was in the URL), or '' when it carried none. Only set while
-     * process() runs; cleared on entry and restored when it returns or throws.
+     * The locale prefix the current render's URL carried ('/de'; '/en' when the default locale
+     * was in the URL), or '' when it carried none or outside every render: the context's
+     * RequestContext::$localePrefix, which process() sets.
+     *
+     * @deprecated 0.81, removed in 0.83: read Contexts::current()->request->localePrefix
      */
     public function urlPrefix(): string
     {
-        return $this->urlPrefix;
+        Deprecations::once('Preflow\I18n\LocaleMiddleware::urlPrefix() is deprecated since 0.81 and is removed in 0.83; use Contexts::current()->request->localePrefix.');
+
+        return Contexts::peek()?->request?->localePrefix ?? '';
     }
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
-    {
-        // Cleared on entry, restored on the way out (returned or thrown): renders after
-        // the response (deferred mail) and nested handles never see a stale prefix.
-        $previous = $this->urlPrefix;
-        $this->urlPrefix = '';
-
-        try {
-            return $this->localize($request, $handler);
-        } finally {
-            $this->urlPrefix = $previous;
-        }
-    }
-
-    private function localize(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
         $switched = $this->switchLanguage($request);
         if ($switched !== null) {
@@ -80,6 +79,7 @@ final class LocaleMiddleware implements MiddlewareInterface
         $locale = $this->defaultLocale;
         $strippedRequest = $request;
         $bare = false;
+        $prefix = '';
 
         // 1. URL prefix detection (highest priority)
         if ($this->urlStrategy === 'prefix') {
@@ -87,7 +87,7 @@ final class LocaleMiddleware implements MiddlewareInterface
             if ($result !== null) {
                 $locale = $result['locale'];
                 $strippedRequest = $result['request'];
-                $this->urlPrefix = '/' . $locale;
+                $prefix = '/' . $locale;
             } else {
                 $bare = true;
             }
@@ -121,8 +121,16 @@ final class LocaleMiddleware implements MiddlewareInterface
             }
         }
 
+        // 1c. An internal render (audit, GEO, rebuild, verify, preview) of a URL without a locale
+        // prefix keeps the locale its caller chose (a page of a site whose URLs carry no locale).
+        $ctx = Contexts::current();
+        $chosen = $prefix === '' && $ctx->purpose->isInternal() && in_array($ctx->locale, $this->availableLocales, true);
+        if ($chosen) {
+            $locale = $ctx->locale;
+        }
+
         // 2. Cookie (if URL didn't match)
-        if ($locale === $this->defaultLocale && $this->urlStrategy !== 'prefix') {
+        if (!$chosen && $locale === $this->defaultLocale && $this->urlStrategy !== 'prefix') {
             $cookieLocale = $this->detectFromCookie($request);
             if ($cookieLocale !== null) {
                 $locale = $cookieLocale;
@@ -130,18 +138,17 @@ final class LocaleMiddleware implements MiddlewareInterface
         }
 
         // 3. Accept-Language header (if nothing else matched)
-        if ($locale === $this->defaultLocale && $this->urlStrategy !== 'prefix') {
+        if (!$chosen && $locale === $this->defaultLocale && $this->urlStrategy !== 'prefix') {
             $headerLocale = $this->detectFromAcceptLanguage($request);
             if ($headerLocale !== null) {
                 $locale = $headerLocale;
             }
         }
 
-        // Set the locale
-        $this->translator->setLocale($locale);
-
-        // Add locale attribute to request
+        // The locale, the request without its prefix and the prefix the URL carried, for the rest
+        // of the frame (the translator and everything else read them from the context).
         $strippedRequest = $strippedRequest->withAttribute('locale', $locale);
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->in($locale)->for($strippedRequest)->prefixed($prefix));
 
         // Handle the request
         $response = $handler->handle($strippedRequest);
@@ -200,10 +207,13 @@ final class LocaleMiddleware implements MiddlewareInterface
         ]);
     }
 
-    /** A visitor's GET or HEAD of what could be a public page (not an API, admin or component path). */
+    /**
+     * A visitor's GET or HEAD of what could be a public page (not an API, admin or component path),
+     * not an internal render (audit, GEO, rebuild, verify, preview: it renders the path it asked for).
+     */
     private function redirectable(ServerRequestInterface $request): bool
     {
-        if (!in_array($request->getMethod(), ['GET', 'HEAD'], true) || InternalRender::is($request)) {
+        if (!in_array($request->getMethod(), ['GET', 'HEAD'], true) || Contexts::current()->purpose->isInternal()) {
             return false;
         }
 

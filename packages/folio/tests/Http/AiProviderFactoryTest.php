@@ -15,6 +15,7 @@ use Preflow\Ai\Testing\FakeAiClient;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio's Translate and Settings → AI with a provider of the app's own (config/ai.php `provider`
@@ -22,6 +23,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AiProviderFactoryTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const A = 'aaaaaaaaaaaaaaaa';
@@ -111,7 +114,7 @@ final class AiProviderFactoryTest extends TestCase
     #[RunInSeparateProcess]
     public function test_the_fake_on_a_live_site_is_off_and_settings_say_why(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         $this->write('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake'];\n");
         putenv('APP_DEBUG');
         ini_set('error_log', $this->dir . '/php.log');

@@ -12,6 +12,7 @@ final class FolioRoutes
     private const BLOCKS = 'Preflow\\Folio\\Http\\BlockEditorController';
     private const ADMIN = 'Preflow\\Folio\\Http\\AdminController';
     private const PREVIEW = 'Preflow\\Folio\\Http\\PreviewController';
+    private const PAGE_PREVIEW = 'Preflow\\Folio\\Http\\PagePreviewController';
     private const PUBLISHING = 'Preflow\\Folio\\Http\\PublishingController';
     private const ASSETS = 'Preflow\\Folio\\Http\\AssetLibraryController';
     private const EXTENSIONS = 'Preflow\\Folio\\Http\\ExtensionsController';
@@ -119,6 +120,8 @@ final class FolioRoutes
             ['GET',  $prefix . '/_assets/x/{extension}/{...path}', 'serve', self::EXTENSION_ASSETS],
             ['GET',  $prefix . '/_relation/{type}',    'relationOptions'], // before the generic {type} routes
             ['GET',  $prefix . '/_search',             'search', self::SEARCH], // the ⌘K palette's records; before the generic {type} routes
+            // The whole-page preview of a saved record (its real page; ?locale=&as=). No generic route has four segments.
+            ['GET',  $prefix . '/preview/page/{type}/{id}', 'show', self::PAGE_PREVIEW],
         ], $aiDraft ? [
             // "Write a draft" (only while the draft writer is available); before POST {type}/{id}, which "_ai/draft" would match.
             ['POST', $prefix . '/_ai/draft',           'draft', self::AI_DRAFT],
@@ -183,20 +186,21 @@ final class FolioRoutes
         foreach ($defs as $def) {
             [$method, $pattern, $action] = $def;
             $handlerClass = $def[3] ?? self::ADMIN;
-            // Signed-in staff, then the user's interface language, then the route's permission
-            // (FolioPermissionMiddleware::rule), then what its type allows (TypeActionsMiddleware).
-            // Signed-out pages: the browser's language.
+            // Working copies first (the admin shows drafts of referenced records): it narrows the
+            // request's frame, so work after the response reads them too. Then signed-in staff,
+            // then the user's interface language (a stretch on the admin surface), then the
+            // route's permission (FolioPermissionMiddleware::rule), then what its type allows
+            // (TypeActionsMiddleware). Signed-out pages: the browser's language.
             if ($handlerClass === self::EXTENSION_ASSETS) {
                 $middleware = []; // public static files: no login, no drafts
             } else {
                 $middleware = ($authEnabled && $handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS)
-                    ? [self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW]
-                    : [self::LOCALE_MW];
+                    ? [self::WORKING_MW, self::AUTH_MW, self::LOCALE_MW, self::PERMISSION_MW]
+                    : [self::WORKING_MW, self::LOCALE_MW];
                 if ($handlerClass !== self::AUTH && $handlerClass !== self::PASSWORDS) {
                     // What the route's type allows (data's "readonly" / "creatable"), with or without sign-in.
                     $middleware[] = self::TYPE_ACTIONS_MW;
                 }
-                $middleware[] = self::WORKING_MW; // the admin shows drafts of referenced records
             }
             $c = PatternCompiler::compile($pattern);
             $entries[] = new RouteEntry(

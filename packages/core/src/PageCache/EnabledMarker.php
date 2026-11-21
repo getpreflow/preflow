@@ -36,7 +36,7 @@ final class EnabledMarker
             return false;
         }
 
-        return @file_put_contents($this->file, date(DATE_ATOM) . "\n") !== false;
+        return @file_put_contents($this->file, date(DATE_ATOM) . "\n") !== false; // clock: stamp
     }
 
     public function remove(): void

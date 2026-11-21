@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\DynamicRecord;
 use Preflow\Folio\Tests\Support\StaffScaffold;
 use Preflow\Folio\Users\UserPreferences;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Labels from model files in the user's interface language: a key in the site's language
@@ -18,6 +19,8 @@ use Preflow\Folio\Users\UserPreferences;
  */
 final class ModelLabelsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function tearDown(): void

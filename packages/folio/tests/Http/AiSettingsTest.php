@@ -17,6 +17,7 @@ use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\I18n\Machine\TranslationSettings;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → AI: status with the Test button and usage, tuning per level, the glossary. The key
@@ -25,6 +26,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AiSettingsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 

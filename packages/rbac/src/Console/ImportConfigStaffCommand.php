@@ -77,7 +77,7 @@ final class ImportConfigStaffCommand implements CommandInterface
                 'roles' => $names,
                 'active' => true,
                 'auth_epoch' => '0',
-                'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+                'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM), // clock: stamp
             ]);
             try {
                 $accounts->checkSave($record);

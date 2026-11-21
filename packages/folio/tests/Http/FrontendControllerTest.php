@@ -70,7 +70,7 @@ final class FrontendControllerTest extends TestCase
         $controller = new FrontendController(new FrontendResolver($dm, 'page'), $engine, new RecordRenderer($registry, $engine));
 
         $req = (new Psr17Factory())->createServerRequest('GET', '/home')->withAttribute('path', 'home');
-        $res = $controller->show($req);
+        $res = self::inFrame(fn () => $controller->show($req));
 
         $this->assertSame(200, $res->getStatusCode());
         $this->assertSame('@folio/frontend/page.twig|Home', (string) $res->getBody());
@@ -87,7 +87,7 @@ final class FrontendControllerTest extends TestCase
         $req = (new Psr17Factory())->createServerRequest('GET', '/missing')->withAttribute('path', 'missing');
 
         $this->expectException(NotFoundHttpException::class);
-        $controller->show($req);
+        self::inFrame(fn () => $controller->show($req));
     }
 
     private function alternatesController(string $base, ?string $appUrl): FrontendController
@@ -113,7 +113,7 @@ final class FrontendControllerTest extends TestCase
         $controller = $this->alternatesController(sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4)), 'https://example.test/');
         $req = (new Psr17Factory())->createServerRequest('GET', 'https://www.example.test/home')->withAttribute('path', 'home');
 
-        $this->assertSame('https://example.test/', (string) $controller->show($req)->getBody());
+        $this->assertSame('https://example.test/', (string) self::inFrame(fn () => $controller->show($req))->getBody());
     }
 
     public function test_alternates_fall_back_to_the_request_without_an_absolute_app_url(): void
@@ -122,7 +122,13 @@ final class FrontendControllerTest extends TestCase
             $controller = $this->alternatesController(sys_get_temp_dir() . '/folio_fc_' . bin2hex(random_bytes(4)), $appUrl);
             $req = (new Psr17Factory())->createServerRequest('GET', 'https://www.example.test/home')->withAttribute('path', 'home');
 
-            $this->assertSame('https://www.example.test/', (string) $controller->show($req)->getBody());
+            $this->assertSame('https://www.example.test/', (string) self::inFrame(fn () => $controller->show($req))->getBody());
         }
+    }
+
+    /** Runs $fn in a visitor's render, as the controller runs in a request. */
+    private static function inFrame(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), $fn);
     }
 }

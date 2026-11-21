@@ -83,7 +83,7 @@ final class SeoMiddleware implements MiddlewareInterface
             }
         }
 
-        $this->context->reset();
+        // The request's frame starts with no page meta (SeoContext keeps it per render frame).
         // Built at most once per request, and dropped with it so the closure doesn't keep the request alive.
         $found = false;
         $site = null;

@@ -9,9 +9,12 @@ use PHPUnit\Framework\TestCase;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class PublishingAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 
@@ -654,6 +657,18 @@ final class PublishingAppTest extends TestCase
         $this->assertStringNotContainsString('preview-editor', (string) $this->get('/hello')->getBody());
     }
 
+    /** Whoever holds a share link learns it is a draft and that its forms send to the live site; a visitor reads no such note. */
+    public function test_a_share_preview_says_its_forms_send_to_the_live_site(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+        $token = $this->shareToken('p1');
+
+        $shared = (string) $this->getWithPreview('/hello', $token)->getBody();
+        $this->assertMatchesRegularExpression('#<body[^>]*><p class="folio-share-notice" role="note">Preview of a draft\. Forms on this page send to the live site\.</p>#', $shared);
+        $this->assertMatchesRegularExpression('#<style nonce="[^"]+">[^<]*p\.folio-share-notice\[role=note\]\{all:initial !important;display:block !important;#', $shared, 'its own look, which the site\'s CSS cannot hide');
+        $this->assertStringNotContainsString('folio-share-notice', (string) $this->get('/hello')->getBody());
+    }
+
     public function test_editor_assets_are_served(): void
     {
         $this->assertSame(200, $this->get('/folio/_assets/preview-editor.js')->getStatusCode());
@@ -678,7 +693,7 @@ final class PublishingAppTest extends TestCase
         $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
         $this->shareToken('p1');
         $nonce = (string) $this->stored('post', 'p1')->get('_share_token');
-        $old = (new \Preflow\Publishing\PreviewLinks('folio-integration-test-key', 604800, fn (): int => time() - 8 * 86400))->create('post', 'p1', $nonce);
+        $old = (new \Preflow\Publishing\PreviewLinks('folio-integration-test-key-0123456789abcdef', 604800, fn (): int => time() - 8 * 86400))->create('post', 'p1', $nonce);
 
         $this->assertSame(404, $this->getWithPreview('/hello', $old)->getStatusCode());
     }

@@ -14,10 +14,13 @@ use Preflow\Folio\Console\ExtensionsApplyCommand;
 use Preflow\Folio\Extension\ExtensionState;
 use Preflow\Folio\Rbac\Extension;
 use Preflow\Rbac\RoleStore;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Extension::seed() (on every folio:extensions:apply) and RoleStore::ensure(). */
 final class InstallTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

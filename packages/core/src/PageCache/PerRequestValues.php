@@ -37,14 +37,14 @@ final class PerRequestValues
     public function __construct(private readonly string $secret) {}
 
     /**
-     * Whether the placeholders are signed with a secret: not with an empty app.key or a public
-     * one (LivePlaceholder::PUBLIC_KEYS: the default, the skeleton's example), with which anyone
+     * Whether the placeholders are signed with a secret: app.key passes AppKey::canSign() (since
+     * 0.81.0; not empty, not short, not a public one such as the default or the skeleton's example), else anyone
      * could compute a signature (and get the live nonce filled into text they put in a page).
      * Pages are not stored then.
      */
     public function signed(): bool
     {
-        return !in_array($this->secret, LivePlaceholder::PUBLIC_KEYS, true);
+        return \Preflow\Core\Security\AppKey::canSign($this->secret);
     }
 
     /**

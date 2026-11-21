@@ -31,15 +31,23 @@ final class HtmxAssetsTest extends TestCase
         $this->assertStringNotContainsString('unpkg.com', $head);
     }
 
+    /** $render in a render frame of its own, as every page render runs (0.81). */
+    private static function frame(\Closure $render): mixed
+    {
+        $site = new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en');
+
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Rebuild, $site, new \Preflow\Core\Context\SystemClock(), '/'), $render);
+    }
+
     public function test_each_render_from_the_registered_assets_gets_htmx_again(): void
     {
         // Pages rendered one after another in one process (verify's second render, rebuilds)
-        // start from what boot registered (AssetCollector::restoring()).
+        // each have a frame of their own, starting from what boot registered.
         $collector = new AssetCollector(new NonceGenerator());
         $assets = new HtmxAssets($collector, 'on-demand');
 
         foreach ([1, 2] as $render) {
-            $head = $collector->restoring(function () use ($assets, $collector): string {
+            $head = self::frame(function () use ($assets, $collector): string {
                 $assets->require();
                 $assets->require();
 
@@ -57,10 +65,10 @@ final class HtmxAssetsTest extends TestCase
         try {
             $collector = new AssetCollector(new NonceGenerator());
             $assets = new HtmxAssets($collector, 'on-demand', $script);
-            $collector->restoring(fn () => $assets->require());
+            self::frame(fn () => $assets->require());
             file_put_contents($script, 'var htmx="read again";');
 
-            $head = $collector->restoring(function () use ($collector, $script): string {
+            $head = self::frame(function () use ($collector, $script): string {
                 (new HtmxAssets($collector, 'on-demand', $script))->require();
 
                 return $collector->renderHead();

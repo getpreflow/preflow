@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Error\ErrorHandler;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Data\DataManager;
@@ -27,9 +29,11 @@ final class FrontendController
         private readonly FrontendResolver $resolver,
         private readonly TemplateEngineInterface $engine,
         private readonly RecordRenderer $records,
+        /** not used since 0.81.0 (the page's locale narrows the context); kept for the constructor's shape */
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?DataManager $dm = null,
         private readonly ?PreviewLinks $previews = null,
+        /** not used since 0.81.0 (the share preview narrows the context's read mode); kept for the constructor's shape */
         private readonly ?\Preflow\Publishing\LiveContent $live = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?FrontendGate $gate = null,
@@ -126,7 +130,8 @@ final class FrontendController
     {
         $locales = $record->getType()->locales;
         $locale = $this->locale($request, $record);
-        $this->contentLocale?->set($locale);
+        // The rest of the request renders in the page's locale (ContentLocale, blocks, texts).
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->in($locale));
 
         // hreflang and canonical need absolute URLs; 'url' stays relative for language switchers.
         $origin = $this->origin($request);
@@ -165,6 +170,8 @@ final class FrontendController
      * current _share_token (rotating it revokes links), and the request path
      * must be the record's own path in the request's language. Anything else falls back to the public page.
      * A gated type's link is for staff review: the reviewer must pass the gate too.
+     * The page says, at the top of its body, that it is a draft and that its forms send to the
+     * live site (since 0.81.0): the link carries no preview token, so they do.
      */
     private function sharedPreview(ServerRequestInterface $request): ?ResponseInterface
     {
@@ -197,13 +204,45 @@ final class FrontendController
             return $refused;
         }
 
-        $this->live?->showWorkingCopies(); // the shared draft shows draft references too
+        // The rest of this request shows the working copy: draft references show too, the data
+        // writes the page would make are skipped and listed (a shared draft changes no data), and
+        // the page cache never stores it. It stays the visit of a real person (since 0.81.0): the
+        // site's own error page, the debug toolbar, its session; what the request itself queues
+        // (its middleware's cookies) goes out as on any page. The page's own render captures what
+        // it would send (mail, cookies, after-response work): a skipped write takes the path a real visit
+        // takes, so mail about it would tell someone of data that was never written. The next
+        // request reads published again: the narrow ends with this request's frame. The page's
+        // locale is narrowed first, so the response's middleware keeps it after the stretch.
+        $locale = $this->locale($request, $working);
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->skippingWrites()->in($locale));
+        // The note's own look (with the page's nonce, in <head>), which the site's CSS can't hide or restyle.
+        $this->assets?->addCss(self::NOTICE_CSS, 'folio-share-notice');
+        $html = Contexts::within(Contexts::current()->capturing(), fn (): string => $this->render($request, $working, $route, true));
+        // Whoever holds the link learns it is a draft, and that its forms are the live site's.
+        $html = self::withNotice($html, \Preflow\Folio\FolioText::get('folio.share_preview.notice'));
 
         return new Response(200, [
             'Content-Type' => 'text/html; charset=UTF-8',
             'X-Robots-Tag' => 'noindex',
             'Cache-Control' => 'private, no-store',
-        ], $this->render($request, $working, $route, true));
+        ], $html);
+    }
+
+    /** The share-preview note's style: everything reset, then a small fixed bar, all important. */
+    private const string NOTICE_CSS = 'p.folio-share-notice[role=note]{all:initial !important;display:block !important;box-sizing:border-box !important;'
+        . 'position:relative !important;z-index:2147483647 !important;margin:0 !important;padding:8px 16px !important;'
+        . 'background:#1f2937 !important;color:#fff !important;font:500 14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif !important;'
+        . 'text-align:center !important;visibility:visible !important;opacity:1 !important}';
+
+    /** $html with $text as a note at the start of its <body>, styled by NOTICE_CSS. */
+    private static function withNotice(string $html, string $text): string
+    {
+        $note = '<p class="folio-share-notice" role="note">' . htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . '</p>';
+        if (preg_match('/<body\b[^>]*>/i', $html, $body, PREG_OFFSET_CAPTURE) !== 1) {
+            return $note . $html;
+        }
+
+        return substr_replace($html, $note, $body[0][1] + strlen($body[0][0]), 0);
     }
 
     /** First existing template of the route's chain (userland, per-type, generic). */

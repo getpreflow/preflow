@@ -13,6 +13,7 @@ use Preflow\Core\Application;
 use Preflow\Core\Boot\ManifestBuilder;
 use Preflow\Core\Tests\Fixtures\HeaderGuard;
 use Preflow\Core\Routing\RouterInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Route middleware with arguments (MiddlewareWith): AuthMiddleware for a second guard, next to
@@ -20,6 +21,8 @@ use Preflow\Core\Routing\RouterInterface;
  */
 final class RouteMiddlewareArgumentsBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

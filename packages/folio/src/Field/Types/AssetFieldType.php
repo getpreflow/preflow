@@ -438,7 +438,7 @@ final class AssetFieldType implements FieldType, HandlesUpload, \Preflow\Folio\F
         if ($ext === '' || !in_array($ext, $this->allowedExtensions($accept), true)) {
             return null; // reject disallowed extensions; never store them
         }
-        $rel = date('Y/m') . '/' . bin2hex(random_bytes(16)) . '.' . $ext;
+        $rel = date('Y/m') . '/' . bin2hex(random_bytes(16)) . '.' . $ext; // clock: stamp
         $dest = $this->uploadsDir . '/' . $rel;
         if (!is_dir(dirname($dest))) {
             mkdir(dirname($dest), 0775, true);

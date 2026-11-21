@@ -11,6 +11,7 @@ use Preflow\Blade\BladeEngine;
 use Preflow\Twig\TwigEngine;
 use Preflow\View\AssetCollector;
 use Preflow\View\NonceGenerator;
+use Preflow\View\Pdf\Blocks;
 use Preflow\View\Pdf\MpdfEngine;
 use Preflow\View\Pdf\PageSettings;
 use Preflow\View\Pdf\PdfConfig;
@@ -18,6 +19,7 @@ use Preflow\View\Pdf\PdfEngine;
 use Preflow\View\Pdf\PdfImage;
 use Preflow\View\Pdf\PdfImageSource;
 use Preflow\View\Pdf\PdfRenderer;
+use Preflow\View\Tests\Pdf\Fixtures\InFrame;
 use Preflow\View\Qr\QrCode;
 use Preflow\View\TemplateEngineInterface;
 use Preflow\View\Tests\Pdf\Fixtures\BlocksDocument;
@@ -26,6 +28,7 @@ use Psr\Container\ContainerInterface;
 use Smalot\PdfParser\Parser;
 
 require_once __DIR__ . '/Fixtures/BlocksDocument.php';
+require_once __DIR__ . '/Fixtures/InFrame.php';
 
 /**
  * The PDF building blocks (pdf_* template functions) in both template
@@ -286,7 +289,7 @@ final class BlocksTest extends TestCase
         $body = $this->template('twig', 'fonts', '<p>Plain text</p><p style="font-family: serif">Serif text</p>', '');
         $config = new PdfConfig($this->dir . '/pdf', ['Certificate Script' => $font], defaultFont: 'Certificate Script');
 
-        $pdf = (new Parser())->parseContent((new PdfRenderer($this->templates('twig'), null, $config))->render(new BlocksDocument($body)));
+        $pdf = (new Parser())->parseContent((new InFrame(new PdfRenderer($this->templates('twig'), null, $config)))->render(new BlocksDocument($body)));
 
         // The default font, given by the name the config registered, is the configured file.
         $this->assertStringContainsString('Plain text', $pdf->getText());
@@ -335,19 +338,48 @@ final class BlocksTest extends TestCase
         $this->assertFalse(is_dir($this->dir . '/pdf'), 'the preview writes no temp files');
     }
 
+    /**
+     * A PDF render that throws inside a frame shared with other work takes its mark with it: the
+     * next template rendered in the same frame writes browser blocks again, and the next PDF in
+     * it writes mPDF markup.
+     */
+    public function test_a_failing_pdf_render_leaves_no_mark_in_its_frame(): void
+    {
+        file_put_contents($this->dir . '/break.twig', '{{ pdf_page_break() }}');
+        $templates = $this->templates('twig');
+
+        $seen = InFrame::run(function () use ($templates): array {
+            try {
+                Blocks::forPdf($this->config(), static function () use ($templates): never {
+                    $templates->render('break.twig', []);
+                    throw new \RuntimeException('the engine failed');
+                });
+            } catch (\RuntimeException) {
+            }
+
+            return [
+                $templates->render('break.twig', []),
+                Blocks::forPdf($this->config(), static fn (): string => $templates->render('break.twig', [])),
+            ];
+        });
+
+        $this->assertStringContainsString('pdf-page-break', $seen[0], 'after the failed PDF the frame renders browser blocks');
+        $this->assertSame('<pagebreak />', $seen[1], 'the next PDF in the frame writes mPDF markup');
+    }
+
     private function config(): PdfConfig
     {
         return new PdfConfig($this->dir . '/pdf');
     }
 
-    private function renderer(string $ext, ?PdfEngine $engine = null): PdfRenderer
+    private function renderer(string $ext, ?PdfEngine $engine = null): InFrame
     {
-        return new PdfRenderer($this->templates($ext), $engine ?? new MpdfEngine($this->config()), $this->config());
+        return new InFrame(new PdfRenderer($this->templates($ext), $engine ?? new MpdfEngine($this->config()), $this->config()));
     }
 
-    private function previewRenderer(string $ext): PdfRenderer
+    private function previewRenderer(string $ext): InFrame
     {
-        return new PdfRenderer($this->templates($ext), null, $this->config());
+        return new InFrame(new PdfRenderer($this->templates($ext), null, $this->config()));
     }
 
     private function templates(string $ext): TemplateEngineInterface

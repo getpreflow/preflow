@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing\Console;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\DevTools\Command\CommandInterface;
 use Preflow\Publishing\Scheduler;
 
@@ -11,6 +12,11 @@ use Preflow\Publishing\Scheduler;
  * publish:scheduled publishes the records whose "Publish at" is due. Run it from cron, e.g. every
  * 5 minutes: cd /path/to/app && php preflow publish:scheduled. A run while another one is still
  * going does nothing. The package lists it in composer.json (extra.preflow.commands).
+ *
+ * "Now" is the console context's (Contexts::current()->now, since 0.81): the time the command
+ * started, or the time a context frozen with at() names. It is read in the app's timezone
+ * (app.timezone, set when the app boots, after the console built its context), the zone a
+ * "Publish at" is written in.
  */
 final class PublishScheduledCommand implements CommandInterface
 {
@@ -31,7 +37,7 @@ final class PublishScheduledCommand implements CommandInterface
         }
 
         try {
-            $result = $app->container()->get(Scheduler::class)->runDue(new \DateTimeImmutable());
+            $result = $app->container()->get(Scheduler::class)->runDue(Contexts::current()->now->setTimezone(new \DateTimeZone(date_default_timezone_get())));
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);

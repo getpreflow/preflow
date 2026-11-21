@@ -171,7 +171,7 @@ in a provider's `register()`:
 
 | Interface | Asks | Default | Folio binds |
 |---|---|---|---|
-| `BlockLocale` | the locale to render in (`get()`, `locales()`, `scoped()`) | the request's locale (i18n's Translator) when it is a content locale, else the default | its content locale (the page's; the editing locale in a preview) |
+| `BlockLocale` | the locale to render in (since 0.81 `ContextBlockLocale::localeOf(RenderContext $ctx)`, `locales()`; an implementation with only the deprecated `get()` still works until 0.83 and is reported once) | the render context's locale when it is a content locale, else the default | its content locale (the page's; the editing locale in a preview) |
 | `BlockTextCleaner` | `block(array $block): array`, the values on their way to the template | as stored | its rich-text sanitizer (nested blocks included) |
 | `BlockPreviewMarks` | the root attributes of a block in preview (`data-…` only) | `data-block`, `data-block-label` | `data-folio-block`, `data-folio-label` |
 

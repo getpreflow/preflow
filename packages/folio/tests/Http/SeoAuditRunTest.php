@@ -22,6 +22,7 @@ use Preflow\View\Audit\RenderedPage;
 use Preflow\View\Audit\Severity;
 use Preflow\View\Seo\PublicPages;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Running the SEO audit from Settings → SEO audit (seo.audit.run): run (a plain POST, one step,
@@ -32,6 +33,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class SeoAuditRunTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;
@@ -43,7 +46,7 @@ final class SeoAuditRunTest extends TestCase
     protected function setUp(): void
     {
         $this->scaffoldPublishing();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/seo.php', "<?php\nreturn ['enabled' => true];\n");
         // Who the audited page sees as signed in: the audit must render it as a visitor.
         $this->write('resources/folio/frontend/post.twig', '<html><head><title>{{ record.title }}</title></head><body><h1>{{ record.title }}</h1>'

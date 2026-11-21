@@ -28,6 +28,7 @@ use Preflow\I18n\Machine\TranslationWorker;
 use Preflow\I18n\Tests\Machine\Support\ArrayTextSource;
 use Preflow\I18n\Tests\Support\HiddenAiPackage;
 use Preflow\I18n\Tests\Support\TempLang;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * preflow/ai is only suggested: without it the machine-translation services still resolve (Folio
@@ -37,11 +38,13 @@ use Preflow\I18n\Tests\Support\TempLang;
  */
 final class I18nWithoutAiTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use TempLang;
 
     protected function setUp(): void
     {
-        $this->file('config/app.php', "<?php\nreturn ['name' => 'Machine', 'debug' => 1, 'engine' => 'twig', 'key' => 'machine-test-key'];\n");
+        $this->file('config/app.php', "<?php\nreturn ['name' => 'Machine', 'debug' => 1, 'engine' => 'twig', 'key' => 'machine-test-key-0123456789abcdef'];\n");
         $this->file('config/providers.php', "<?php\nreturn [\\" . MachineServiceProvider::class . "::class];\n");
         // AI switched on with a key: only the missing package keeps it off.
         $this->file('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'claude', 'keys' => ['claude' => 'I18N_NO_AI_TEST_KEY']];\n");

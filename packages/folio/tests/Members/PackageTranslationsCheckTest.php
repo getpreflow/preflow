@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\I18n\Console\TranslationsCheckCommand;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * `preflow translations:check` on a site with Folio, rbac, members, codes and validation
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Members\Support\MembersScaffold;
  */
 final class PackageTranslationsCheckTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     private const array PACKAGES = ['folio', 'rbac', 'members', 'codes', 'validation', 'i18n'];

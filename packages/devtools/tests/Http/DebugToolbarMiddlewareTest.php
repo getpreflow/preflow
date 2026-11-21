@@ -6,7 +6,6 @@ namespace Preflow\DevTools\Tests\Http;
 
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Debug\DebugCollector;
-use Preflow\Core\Http\InternalRender;
 use Preflow\DevTools\Http\DebugToolbarMiddleware;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Response;
@@ -58,9 +57,7 @@ final class DebugToolbarMiddlewareTest extends TestCase
     {
         $body = '<html><body><p>Hello</p></body></html>';
         $response = new Response(200, ['Content-Type' => 'text/html'], $body);
-        $request = InternalRender::mark(new ServerRequest('GET', '/'));
-
-        $result = (new DebugToolbarMiddleware(new DebugCollector()))->process($request, $this->makeHandler($response));
+        $result = self::internally(fn () => (new DebugToolbarMiddleware(new DebugCollector()))->process(new ServerRequest('GET', '/'), $this->makeHandler($response)));
 
         $this->assertSame($body, (string) $result->getBody());
     }
@@ -110,5 +107,14 @@ final class DebugToolbarMiddlewareTest extends TestCase
         $handler = $this->makeHandler($response);
         $result = $middleware->process(new ServerRequest('GET', '/'), $handler);
         $this->assertSame('value', $result->getHeaderLine('X-Custom'));
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

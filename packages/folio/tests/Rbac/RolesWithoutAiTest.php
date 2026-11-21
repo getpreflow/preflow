@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\HiddenAiPackage;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → Roles without preflow/ai: a role's permission matrix has no AI group (nothing to
@@ -15,6 +16,8 @@ use Preflow\Folio\Tests\Support\HiddenAiPackage;
  */
 final class RolesWithoutAiTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

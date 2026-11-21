@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Media\Cleanup;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\Media\Asset;
 use Preflow\Media\MediaConfig;
 use Preflow\Media\MediaLibrary;
@@ -37,7 +38,7 @@ final class AssetCleanup
         private readonly array $settings = MediaConfig::CLEANUP_DEFAULTS,
         ?\Closure $now = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
     }
 
     /** Whether the site turned cleanup on (config/media.php cleanup.enabled; off by default). */

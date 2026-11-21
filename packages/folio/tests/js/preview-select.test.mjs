@@ -70,3 +70,95 @@ test('a message that does not come from the editor window is ignored', () => {
     p.send({ uid: 'aaaaaaaaaaaaaaaa', field: null, sticky: true });
     assert.equal(p.box('is-selected').hidden, false);
 });
+
+test('links leave nothing: an in-page anchor scrolls in the preview instead of loading the page address', () => {
+    const p = preview();
+    const team = p.doc.body.appendChild(p.doc.createElement('section'));
+    team.id = 'team';
+    let scrolled = 0;
+    team.scrollIntoView = () => { scrolled++; };
+    const anchor = p.doc.body.appendChild(p.doc.createElement('a'));
+    anchor.setAttribute('href', '#team');
+    const away = p.doc.body.appendChild(p.doc.createElement('a'));
+    away.setAttribute('href', 'other-page');
+
+    assert.equal(anchor.click().defaultPrevented, true, 'the page\'s <base> never turns it into a load');
+    assert.equal(scrolled, 1, 'it scrolls to its target');
+    assert.equal(away.click().defaultPrevented, true, 'any other link stays in the preview');
+    assert.equal(scrolled, 1);
+});
+
+test('an anchor that is no valid escape neither throws nor leaves the preview', () => {
+    const p = preview();
+    const broken = p.doc.body.appendChild(p.doc.createElement('a'));
+    broken.setAttribute('href', '#%E0');
+
+    assert.equal(broken.click().defaultPrevented, true);
+});
+
+// Interactive parts switched off (the bar marks it: the site's key can't sign a preview token).
+function lockedPreview() {
+    const w = createWindow();
+    const doc = w.document;
+    w.parent = { postMessage() {}, document: { getElementById: () => null } };
+    w.requestAnimationFrame = (fn) => { fn(); return 0; };
+    w.CSS = { escape: (s) => s };
+    w.Object = Object;
+    const origCreate = doc.createElement;
+    doc.createElement = (tag) => { const e = origCreate(tag); e.style = {}; return e; };
+    const el = (parent, tag, attrs = {}) => {
+        const e = parent.appendChild(doc.createElement(tag));
+        Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+        return e;
+    };
+    const button = el(doc.body, 'button', { 'hx-post': '/--component/action?token=x' });
+    const form = el(doc.body, 'form', { action: '/subscribe', method: 'post' });
+    const block = el(doc.body, 'section', { 'data-folio-block': 'aaaaaaaaaaaaaaaa' });
+    const inBlock = el(block, 'button', {});
+    const bar = el(doc.body, 'aside', { class: 'folio-pp-bar' });
+    el(bar, 'span', { 'data-folio-preview-locked': '', 'data-folio-locked-text': 'Switched off in this preview.' });
+    load(w, PREVIEW_JS);
+    const notice = () => doc.body.children.find((c) => c.className === 'folio-pe-notice') || null;
+    return { w, doc, button, form, inBlock, notice };
+}
+
+test('switched off: a click on something interactive is stopped and says why', () => {
+    const p = lockedPreview();
+    let reached = false;
+    p.button.addEventListener('click', () => { reached = true; });
+
+    assert.equal(p.button.click().defaultPrevented, true);
+    assert.equal(reached, false, 'htmx on the button never sees it');
+    assert.ok(p.notice(), 'a notice in the frame');
+    assert.equal(p.notice().hidden, false);
+    assert.equal(p.notice().textContent, 'Switched off in this preview.');
+    assert.equal(p.notice().getAttribute('role'), 'status');
+});
+
+test('switched off: a form never submits and an htmx request is prevented', () => {
+    const p = lockedPreview();
+    let reached = false;
+    p.form.addEventListener('submit', () => { reached = true; });
+    const submit = new p.w.Event('submit', { bubbles: true, cancelable: true });
+    p.form.dispatchEvent(submit);
+    assert.equal(submit.defaultPrevented, true);
+    assert.equal(reached, false);
+    assert.equal(p.notice().hidden, false);
+
+    const request = new p.w.Event('htmx:beforeRequest', { bubbles: true, cancelable: true });
+    p.button.dispatchEvent(request);
+    assert.equal(request.defaultPrevented, true, 'htmx sends nothing');
+});
+
+test('switched off: a click in a block still selects it for editing, with no notice', () => {
+    const p = lockedPreview();
+    assert.equal(p.inBlock.click().defaultPrevented, true);
+    assert.equal(p.notice(), null);
+});
+
+test('not switched off: htmx requests go out as before', () => {
+    const p = preview();
+    const request = new p.w.Event('htmx:beforeRequest', { bubbles: true, cancelable: true });
+    p.title.dispatchEvent(request);
+    assert.equal(request.defaultPrevented, false);
+});

@@ -15,6 +15,7 @@ use Preflow\Folio\Members\FolioMembersSettings;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
 use Preflow\Members\MembersSettings;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Folio carries the members admin: its built-in extension "members", there when preflow/members
@@ -23,6 +24,8 @@ use Preflow\Members\MembersSettings;
  */
 final class MembersBuiltInTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     protected function setUp(): void

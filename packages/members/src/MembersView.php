@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Members;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
 use Preflow\Core\Http\OldInput;
 use Preflow\Data\Locales;
 use Preflow\I18n\Translator;
@@ -23,6 +25,10 @@ final class MembersView
 {
     private const string CACHE = 'private, no-store';
 
+    /**
+     * @param Translator $translator unused since 0.81 (the page's texts follow the render's locale); kept so existing calls keep working
+     * @param ?PageLocale $pageLocale deprecated since 0.81, removed in 0.83: an app's own one is still told the page's locale, inside the page's render
+     */
     public function __construct(
         private readonly TemplateEngineInterface $engine,
         private readonly AssetCollector $assets,
@@ -44,16 +50,33 @@ final class MembersView
      * flash, e.g. a form sent back after an expired session), and empty defaults for the form state (notice, error,
      * errors, old, next, next_query: "?next=..." for the links between login and register, ...), so a template never trips over an unset variable in debug mode.
      *
+     * Renders within Contexts::current()->in($locale) (since 0.81): the page's locale is the
+     * render's for the page and no longer.
+     *
      * @param array<string, mixed> $vars
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render
      */
     public function render(string $template, array $vars, ServerRequestInterface $request, int $status = 200): ResponseInterface
     {
         $locale = $request->getAttribute('locale');
         $locale = is_string($locale) && $this->locales->has($locale) ? $locale : $this->locales->default;
-        // The locale middleware did this when the site has an i18n config; without one the
-        // translator stays on the default locale, which is right for a one-language site.
-        $this->translator->setLocale($locale);
-        $this->pageLocale?->set($locale);
+
+        // The page renders in its locale (texts, the site layout's content, the members' own
+        // links); the render's locale is back afterwards, also when the page throws. Without an
+        // i18n config the locale is the default one, which is right for a one-language site.
+        return Contexts::within(Contexts::current()->in($locale), function () use ($template, $vars, $request, $status, $locale): ResponseInterface {
+            if ($this->pageLocale !== null) {
+                Deprecations::once('Preflow\Members\PageLocale::set() is deprecated since 0.81 and is removed in 0.83; use Contexts::current()->locale.');
+                $this->pageLocale->set($locale);
+            }
+
+            return $this->page($template, $vars, $request, $status, $locale);
+        });
+    }
+
+    /** @param array<string, mixed> $vars */
+    private function page(string $template, array $vars, ServerRequestInterface $request, int $status, string $locale): ResponseInterface
+    {
         $vars = $this->withFlashedInput($vars) + ['warning' => Input::flash($request, 'warning')];
 
         $html = $this->engine->render('@members/' . $template . '.twig', $vars + [

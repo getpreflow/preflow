@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The editor's tabs (0.75): Content · SEO & sharing replace the "SEO & sharing" disclosure, only
@@ -16,6 +17,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class EditorTabsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void

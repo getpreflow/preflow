@@ -5,7 +5,14 @@ declare(strict_types=1);
 namespace Preflow\Core\PageCache;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\OutboxPolicy;
+use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Context\WritePolicy;
 use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Context\Preview\PreviewToken;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -20,9 +27,19 @@ use Psr\Http\Server\RequestHandlerInterface;
  * the page's stale marker and the pending invalidations; no database, no SQLite.
  *
  * A request passes through untouched when:
+ * - it carries a preview token (the `_preview` query parameter or the X-Preflow-Preview header,
+ *   PreviewToken::PARAM and HEADER): it is never served from the cache, and nothing it renders is
+ *   stored; a response the cache serves or renders for storing says `Vary: X-Preflow-Preview`, so
+ *   a shared HTTP cache never answers a preview's request with it either;
  * - it has no key (not GET/HEAD, a host that isn't cached, a query while cache_query is off,
  *   an X-Forwarded-Proto other than http/https, an X-Forwarded-Host that isn't cached);
- * - it is an internal render (the SEO audit, GEO's Markdown views) that isn't a rebuild;
+ * - its render context may not be stored (since 0.81, the context decides, not the request):
+ *   only a visitor's render (Purpose::Visit), a rebuild (Purpose::Rebuild, its own request) and
+ *   a hypermedia fragment under its fragment key (Purpose::Fragment, as since 0.60) are, and only
+ *   with the public default context (RenderContext::isPublicDefault(): anonymous, public texts,
+ *   published reads, a clock at() did not freeze, every facet's default). The SEO audit, GEO,
+ *   verify, a preview, a mail, a PDF, a command, and a request asked for inside any of them (it
+ *   keeps the purpose of the render around it) pass through;
  * - its path is not a public page (NonPublicPaths: admin, APIs, /--component);
  * - it carries a signed-in cookie (signed_in_cookies: the auth marker and the guards'
  *   remember-me cookies) or an Authorization header: `X-Page-Cache: bypass`. A leftover
@@ -48,27 +65,30 @@ use Psr\Http\Server\RequestHandlerInterface;
  * before the work runs. With $rebuildOnly (the console: `preflow pages:work`) every other
  * request passes through untouched.
  *
- * A miss renders with its reads recorded (DependencyRecorder) and gets `X-Page-Cache: miss`.
- * Every render that may be stored (the miss, verify's second render, a rebuild) is isolated
- * (PageCache::isolate()): it starts from the state a public render starts from.
+ * A miss renders with its reads recorded (DependencyRecorder, in its frame) and gets
+ * `X-Page-Cache: miss`. It renders with published reads (the frame is narrowed to them); the
+ * deprecated PageCache::isolate() callbacks still run around it, in its frame.
  * It is stored only when none of these holds; with page_cache.explain on, the reason is sent
  * as `X-Page-Cache-Skip`:
  * - `status`: the status is not 200 (404s and redirects are never cached);
  * - `restore` / `kind`: the render is not of the kind the key stands for: a full page's key
  *   rendered for a hypermedia client's request (a history restore, which may be served the full
  *   page but is never stored), or a fragment's key without one;
- * - `app-key`: app.key is empty or the public default, so placeholders could be forged;
+ * - `app-key`: app.key fails AppKey::canSign() (empty, shorter than 32 bytes, or public), so placeholders could be forged;
  * - `stream`: the body can't be read twice (a streamed export);
  * - `set-cookie`: the response sets a cookie (a header, or a native one through header());
  * - `session`: the session was started during the request;
  * - `signed-in`: a guard resolved a user;
+ * - `context`: the render's context was narrowed to one that may not be stored (working copies,
+ *   a viewer, frozen time), or entered one for a stretch (Contexts::within()), in its frame or in
+ *   a request asked for inside it (`refused:context`);
  * - `cache-control`: Cache-Control is private or no-store;
  * - `vary`: the response varies on a request header the key doesn't hold (anything but
  *   vary_headers, the hypermedia clients' varyHeaders() and Accept-Encoding);
  * - `content-type`: not text, JSON, XML or JavaScript;
  * - `size`: the body is larger than MAX_BODY;
  * - `refused:{reason}`: code called PageCache::refuse(), or a store check a package registered
- *   said so (PageCache::refuseWhen(); Folio's `working-copy`);
+ *   said so (PageCache::refuseWhen());
  * - `index`: the tag index can't be used (the cache is off then);
  * - `pending`: an invalidation that could not reach the index is still pending (PendingInvalidations);
  * - `invalidated`: a write changed what the page read while it rendered;
@@ -76,9 +96,13 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   into HTML only; such a response goes out as it is). One without a Content-Type is HTML;
  * - `differs`: verified (page_cache.verify: 'first' for a key not verified yet in this release,
  *   'always' for every store), the page rendered once more as another anonymous visitor
- *   (another REMOTE_ADDR, no cookies) has another body or other stored headers outside its live
- *   parts and per-request values (logged with where it differs first: a header and both values,
- *   or the body's first differing byte with some context from each render);
+ *   (another REMOTE_ADDR, no cookies) has another body, other stored headers outside its live
+ *   parts and per-request values, or other carried state (SEO's page meta) (logged with where
+ *   it differs first: a header and both values, the body's first differing byte with some
+ *   context from each render, or both page meta). The second render runs in a frame of its own
+ *   ($render: the way Application::render() renders) under the visitor's context, discarding
+ *   what it would send and skipping what it would write, for the purpose Verify: nothing of it
+ *   reaches the visitor's response, mail or data;
  * - `error`: the page could not be written (logged).
  *
  * Live parts (LiveParts): while a miss renders they leave signed placeholders, which are
@@ -102,6 +126,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
     /** Request attribute: true on an internal render that rebuilds a page (it is stored, never served). */
     public const string REBUILD = 'preflow.page_cache.rebuild';
 
+    /**
+     * Request attribute: true on an internal render that may take its page from the cache (GEO's
+     * llms-full.txt): a stored page is served, a miss renders without storing anything.
+     *
+     * @since 0.81.0
+     */
+    public const string SERVE_STORED = 'preflow.page_cache.serve_stored';
+
     /** Bodies larger than this (bytes) are not stored. */
     public const int MAX_BODY = 8 * 1024 * 1024;
 
@@ -118,7 +150,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * Vary and is not cached, unless vary_headers names it; the locale LocaleMiddleware resolved
      * from it (url_strategy none) is in the key anyway.
      */
-    private const array VARY_ALLOWED = ['accept-encoding'];
+    /** Vary names a response may carry and still be stored: X-Preflow-Preview is said on every public page (0.81). */
+    private const array VARY_ALLOWED = ['accept-encoding', 'x-preflow-preview'];
 
     /** @var \Closure(): float */
     private readonly \Closure $clock;
@@ -151,17 +184,18 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param (\Closure(): list<string>)|null $sentHeaders the headers PHP queued natively; headers_list() by default
      * @param LiveParts|null $live fills the live parts of what is served
      * @param bool|string|null $verify 'first', 'always' or 'off' (true: always, false: off; config verify when null)
-     * @param (\Closure(ServerRequestInterface, \Closure(): ResponseInterface): ResponseInterface)|null $visitorScope
-     *        wraps each of the two renders of a verified page: makes $request the request being handled
-     *        and starts from the same request-scoped state (assets) both times
      * @param (\Closure(): bool)|null $applyPending applies pending invalidations, true when none is
      *        left (Refresher::applyPending()); null: a pending invalidation means no hit and no store
      * @param bool $rebuildOnly only rebuilds use the cache (the console)
      * @param (\Closure(): bool)|null $sessionActive whether a session is open, for rebuilds;
      *        session_status() === PHP_SESSION_ACTIVE when null
-     * @param (\Closure(\Closure(): ResponseInterface): ResponseInterface)|null $verifyScope wraps only
-     *        verify's second render (since 0.75): what that render queues must not happen a second
-     *        time (core drops its queued mail and cookies, as for an internal render)
+     * @param (\Closure(RenderContext, ServerRequestInterface, \Closure(): ResponseInterface): RenderResult)|null $render
+     *        renders verify's second render (the closure: the rest of the pipeline for the other
+     *        visitor) in a frame of its own under the context given, as Application::render()
+     *        renders, since 0.81; null: in a frame of its own (Contexts::run()) without more
+     * @param \Preflow\Core\Http\ResponseHeaderHints|null $hints since 0.81.0: the frame's header hints, put on
+     *        the served response after its live parts were filled (they render after the route
+     *        answered): only the restrictive ones, on a miss and a hit; never on the stored page
      */
     public function __construct(
         private readonly PageCacheConfig $config,
@@ -182,15 +216,15 @@ final class PageCacheMiddleware implements MiddlewareInterface
         ?\Closure $sentHeaders = null,
         private readonly ?LiveParts $live = null,
         bool|string|null $verify = null,
-        private readonly ?\Closure $visitorScope = null,
         private readonly ?\Closure $applyPending = null,
         private readonly bool $rebuildOnly = false,
         private readonly ?\Closure $sessionActive = null,
         private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
-        private readonly ?\Closure $verifyScope = null,
+        private readonly ?\Closure $render = null,
+        private readonly ?\Preflow\Core\Http\ResponseHeaderHints $hints = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
         $this->verify = match (true) {
             $verify === null => $config->verify,
             $verify === true => PageCacheConfig::VERIFY_ALWAYS,
@@ -201,12 +235,22 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
+        if (self::previews($request)) {
+            return $handler->handle($request); // never from the store, never into it
+        }
+        $ctx = Contexts::current();
         $rebuild = $request->getAttribute(self::REBUILD) === true;
-        if (!$rebuild && ($this->rebuildOnly || InternalRender::is($request))) {
+        // An internal render that may read a stored page (GEO's llms-full.txt) is served, never stored.
+        $readOnly = !$rebuild && !$this->rebuildOnly && $request->getAttribute(self::SERVE_STORED) === true && InternalRender::is($request)
+            && $ctx->isPublicDefault(); // a stored page is what the public default sees, nothing else
+        if (!$rebuild && !$readOnly && $this->rebuildOnly) {
             return $handler->handle($request);
         }
         $key = $this->key($request);
         if ($key === null || ($this->nonPublic !== null && ($this->nonPublic)($request->getUri()->getPath()))) {
+            return $handler->handle($request);
+        }
+        if (!$readOnly && !self::storable($ctx, $key, $rebuild)) {
             return $handler->handle($request);
         }
         $expected = $rebuild ? $request->getAttribute(Rebuild::EXPECTED_ID) : null;
@@ -237,7 +281,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
         if ($page !== null) {
             try {
-                return $this->serve($key, $page);
+                return \Preflow\Core\Context\Preview\PreviewUrls::withVary($this->serve($key, $page));
             } catch (\Preflow\Core\Exceptions\HttpException $e) {
                 throw $e; // a live part refused this visitor: the answer, as on a miss
             } catch (\Throwable $e) {
@@ -245,8 +289,40 @@ final class PageCacheMiddleware implements MiddlewareInterface
                 $this->log('page cache: ' . $key->url() . ' could not be served: ' . $e->getMessage());
             }
         }
+        if ($readOnly) {
+            return $handler->handle($request);
+        }
 
-        return $this->render($request, $handler, $key, $store);
+        return \Preflow\Core\Context\Preview\PreviewUrls::withVary($this->render($request, $handler, $key, $store));
+    }
+
+    /** Whether $request carries a preview token (the query parameter or the header). */
+    private static function previews(ServerRequestInterface $request): bool
+    {
+        if ($request->hasHeader(PreviewToken::HEADER) || array_key_exists(PreviewToken::PARAM, $request->getQueryParams())) {
+            return true;
+        }
+        parse_str($request->getUri()->getQuery(), $query);
+
+        return array_key_exists(PreviewToken::PARAM, $query);
+    }
+
+    /**
+     * Whether a render under $ctx of $key may be served from and stored in the cache: a visitor's
+     * render, a rebuild's own request (a request asked for inside a rebuild keeps its purpose but
+     * not its REBUILD attribute) and a hypermedia fragment under its fragment key, each only with
+     * the public default context and its purpose's own write and outbox policies
+     * (RenderContext::isStorable(); a fragment writes and delivers as a visit does).
+     */
+    private static function storable(RenderContext $ctx, PageKey $key, bool $rebuild): bool
+    {
+        return match ($ctx->purpose) {
+            Purpose::Visit => $ctx->isStorable(),
+            Purpose::Rebuild => $rebuild && $ctx->isStorable(),
+            Purpose::Fragment => $key->isFragment() && $ctx->isPublicDefault()
+                && $ctx->writes === WritePolicy::Allow && $ctx->outbox === OutboxPolicy::Deliver,
+            default => false,
+        };
     }
 
     /**
@@ -365,8 +441,11 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $headers[self::HEADER] = [$stale ? 'stale' : 'hit'];
         $this->cache->restoreState($page->state);
         $body = $this->values->fill($page->body);
-        if ($this->live !== null && $this->isHtml($headers, $key)) {
+        if ($this->live !== null && $this->isHtml($headers, $key) && $this->live->in($body)) {
             $body = $this->live->fill($body);
+
+            // What the live parts added: only what makes this visitor's response less cacheable.
+            return $this->hints?->applyRestrictiveTo(new Response(200, $headers, $body)) ?? new Response(200, $headers, $body);
         }
 
         return new Response(200, $headers, $body);
@@ -380,15 +459,20 @@ final class PageCacheMiddleware implements MiddlewareInterface
         $carried = [];
         $reason = null;
         $verify = !$key->isHead() && $this->verifies($request, $key, $store);
+        $rebuild = $request->getAttribute(self::REBUILD) === true;
         try {
-            // Isolated (PageCache::isolate()): from the state a public render starts from, whatever
-            // an earlier request in this process (an admin one, before its rebuilds) switched on.
-            $response = $this->cache->isolated(fn (): ResponseInterface => $verify && $this->visitorScope !== null
-                ? ($this->visitorScope)($request, static fn (): ResponseInterface => $handler->handle($request))
-                : $handler->handle($request));
+            // Published reads for the rest of the frame (a storable context reads them already), with
+            // the deprecated isolate() callbacks around the render, in this frame.
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->published());
+            $departures = Contexts::frame()->departures();
+            $handle = static fn (): ResponseInterface => $handler->handle($request);
+            $response = $this->cache->aroundRender($handle);
             if (!$key->isHead()) {
                 $refusal = $this->cache->refusal();
                 $reason = $refusal !== null ? 'refused:' . $refusal : $this->refusal($request, $key, $response);
+                // A context narrowed while it rendered (working copies, a viewer) is not stored, nor
+                // one that read as another context for a stretch (within() to working copies).
+                $reason ??= self::storable(Contexts::current(), $key, $rebuild) && Contexts::frame()->departures() === $departures ? null : 'context';
                 if ($reason === null) {
                     // Inside the recording: what the carried state reads (the site's SEO defaults)
                     // is a dependency of the page too.
@@ -426,10 +510,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
         }
         if ($reason === null && $content !== null && $verify) {
             $difference = null;
-            $differs = $this->differs($request, $handler, $key, $response, $content, $difference);
-            // What the second render left (SEO's page meta) is put back to the first one's.
-            $this->cache->restoreState($carried);
-            if ($differs) {
+            // The second render's page meta stays in its own frame: nothing to put back here.
+            if ($this->differs($request, $handler, $key, $response, $content, $carried, $difference)) {
                 $this->log('page cache: ' . $key->url() . ' differs per visitor outside live parts' . ($difference !== null ? ' (' . $difference . ')' : ''));
                 $reason = 'differs';
             }
@@ -450,7 +532,14 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
         // The visitor's own live parts, whether the page was stored or not.
         if ($content !== null && $html && $this->live !== null && $this->live->in($content)) {
+            $before = $this->hints?->get('Cache-Control');
             $response = $response->withBody(\Nyholm\Psr7\Stream::create($this->live->fill($content)));
+            // What they added that makes this visitor's response less cacheable (a live part never
+            // widens caching); the page's own hint is on it already, as on every hit. The stored
+            // page was stored before.
+            if ($this->hints !== null && $this->hints->get('Cache-Control') !== $before) {
+                $response = $this->hints->applyRestrictiveTo($response);
+            }
         }
 
         // A rebuild's response goes to Refresher::work() only, which retries one a write refused.
@@ -505,63 +594,93 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
     /**
      * Whether the page differs for another anonymous visitor: rendered once more (another
-     * REMOTE_ADDR and forwarded address, no cookies) with nothing recorded, then compared with
-     * $first (its stored headers) and $content (its body), with the per-request values and live
-     * parts as placeholders, as they are stored. A second render that would not be stored either
-     * (a cookie set for a visitor without one) or that fails differs too.
+     * REMOTE_ADDR and forwarded address, no cookies), then compared with $first (its stored
+     * headers), $content (its body) and $carried (its carried state, SEO's page meta), with the
+     * per-request values and live parts as placeholders, as they are stored. A second render that
+     * would not be stored either (a cookie set for a visitor without one) or that fails differs too.
+     *
+     * The second render is a visitor's render in a frame of its own: the visitor's context for
+     * the other visitor's request, discarding what it would send, skipping what it would write,
+     * for the purpose Verify ($render opens the frame as Application::render() does; nothing is
+     * recorded there, its page meta is its own). Inside it the page is rendered for the cache
+     * under the same key (so its live parts leave placeholders too), and everything compared is
+     * read before the frame closes: per-request values are that render's own.
+     *
+     * @param array<string, mixed> $carried PageCache::captureState() of the first render
      */
-    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, ResponseInterface $first, string $content, ?string &$difference = null): bool
+    private function differs(ServerRequestInterface $request, RequestHandlerInterface $handler, PageKey $key, ResponseInterface $first, string $content, array $carried, ?string &$difference = null): bool
     {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            // A cacheable render never has a session; one that does can't be verified.
+            $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
+
+            return true;
+        }
         $other = self::otherVisitor($request);
-        $before = $this->cache->begin($key);
+        // The visitor's context: the locale and the URL's locale prefix as the locale middleware
+        // narrowed them (for() keeps the prefix), for the other visitor's request.
+        $ctx = Contexts::current()
+            ->for($other)
+            ->discarding()
+            ->skippingWrites()
+            ->because(Purpose::Verify);
         $compared = null;
-        try {
-            // Its per-request values are its own (a token from its address): replaced inside its scope.
-            $render = function () use ($handler, $other, &$compared): ResponseInterface {
-                $response = $handler->handle($other);
+        $refused = null;
+        $address = (string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1');
+        $render = function () use ($handler, $other, $key, $address, &$compared, &$refused): ResponseInterface {
+            $before = $this->cache->begin($key);
+            try {
+                $response = AnonymousGlobals::run($address, fn (): ResponseInterface => $this->cache->aroundRender(static fn (): ResponseInterface => $handler->handle($other)));
                 $body = $response->getBody();
                 if ($body->isSeekable()) {
-                    $compared = [$this->values->toPlaceholders((string) $body), $this->comparedHeaders($response)];
+                    $state = $this->cache->refusal() === null ? $this->cache->captureState() : [];
+                    $compared = [$this->values->toPlaceholders((string) $body), $this->comparedHeaders($response), $state];
                     $body->rewind();
                 }
+                $refused = $this->cache->refusal() ?? $this->refusal($other, $key, $response);
 
                 return $response;
-            };
-            if (session_status() === PHP_SESSION_ACTIVE) {
-                // A cacheable render never has a session; one that does can't be verified.
-                $this->log('page cache: ' . $key->url() . ' could not be verified: a session is open');
-
-                return true;
+            } finally {
+                $this->cache->end($before);
             }
-            if ($this->verifyScope !== null) {
-                $inner = $render;
-                $render = fn (): ResponseInterface => ($this->verifyScope)($inner);
-            }
-            $response = AnonymousGlobals::run((string) ($other->getServerParams()['REMOTE_ADDR'] ?? '192.0.2.1'), fn (): ResponseInterface => $this->recorder->outside(fn (): ResponseInterface => $this->cache->isolated(fn (): ResponseInterface => $this->visitorScope !== null
-                ? ($this->visitorScope)($other, $render)
-                : $render())));
-            $refused = $this->cache->refusal() ?? $this->refusal($other, $key, $response);
-            if ($refused !== null) {
-                $difference = 'the second render would not be stored: ' . $refused;
-
-                return true;
-            }
+        };
+        try {
+            $this->render !== null ? ($this->render)($ctx, $other, $render) : Contexts::run($ctx, $render);
         } catch (\Throwable $e) {
             $this->log('page cache: ' . $key->url() . ' could not be verified: ' . $e->getMessage());
 
             return true;
-        } finally {
-            $this->cache->end($before);
         }
+        if ($refused !== null) {
+            $difference = 'the second render would not be stored: ' . $refused;
 
+            return true;
+        }
         if ($compared === null) {
             $difference = 'the second render has no readable body';
 
             return true;
         }
-        $difference = self::difference($this->values->toPlaceholders($content), $compared[0], $this->comparedHeaders($first), $compared[1]);
+        $difference = self::difference($this->values->toPlaceholders($content), $compared[0], $this->comparedHeaders($first), $compared[1])
+            ?? self::metaDifference($carried, $compared[2]);
 
         return $difference !== null;
+    }
+
+    /**
+     * Where the carried state of the two renders (SEO's page meta) differs, as JSON, null when it
+     * is the same (compared as it is stored).
+     *
+     * @param array<string, mixed> $first
+     * @param array<string, mixed> $second
+     */
+    private static function metaDifference(array $first, array $second): ?string
+    {
+        $flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR;
+        $a = (string) json_encode($first, $flags);
+        $b = (string) json_encode($second, $flags);
+
+        return $a === $b ? null : 'page meta: ' . self::around($a, $b);
     }
 
     /**

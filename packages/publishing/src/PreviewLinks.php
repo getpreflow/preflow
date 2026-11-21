@@ -4,17 +4,25 @@ declare(strict_types=1);
 
 namespace Preflow\Publishing;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * Signed share-preview tokens: base64url(json [type, id, nonce, expires]) "."
  * base64url(HMAC-SHA256). The nonce is the record's _share_token, so rotating
- * it revokes every link. Disabled without a real app key: links signed with an
- * empty or well-known key could be forged.
+ * it revokes every link. Disabled without a key that can sign (AppKey::canSign(): at
+ * least 32 bytes, not a public example; since 0.81.0): links signed with an empty, short
+ * or well-known key could be forged.
  */
 final class PreviewLinks
 {
     public const string DEFAULT_KEY = 'preflow-default-key-change-me!!';
 
-    /** @var \Closure(): int */
+    /**
+     * The time links expire against. By default (since 0.81) the current render's clock
+     * (Contexts::clock()), and the system clock outside every render.
+     *
+     * @var \Closure(): int
+     */
     private readonly \Closure $now;
 
     public function __construct(
@@ -22,12 +30,12 @@ final class PreviewLinks
         private readonly int $ttl = 604800,
         ?\Closure $now = null,
     ) {
-        $this->now = $now ?? static fn (): int => time();
+        $this->now = $now ?? static fn (): int => Contexts::clock()->now()->getTimestamp();
     }
 
     public function enabled(): bool
     {
-        return $this->key !== '' && $this->key !== self::DEFAULT_KEY;
+        return \Preflow\Core\Security\AppKey::canSign($this->key);
     }
 
     public function ttl(): int

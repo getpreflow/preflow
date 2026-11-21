@@ -11,7 +11,7 @@ final class LivePlaceholderTest extends TestCase
 {
     public function test_a_placeholder_carries_its_recipe_signed(): void
     {
-        $placeholders = new LivePlaceholder('secret-one');
+        $placeholders = new LivePlaceholder('secret-one-0123456789abcdef0123456789');
         $recipe = ['t' => '@folio/frontend/post.twig', 'b' => '__live_3', 'w' => ['number' => 7, 'tags' => ['a', 'ü'], 'price' => 1.0, 'none' => null]];
         $marker = $placeholders->make('twig', $recipe);
 
@@ -21,13 +21,13 @@ final class LivePlaceholderTest extends TestCase
 
     public function test_only_what_verifies_is_found(): void
     {
-        $mine = new LivePlaceholder('secret-one');
+        $mine = new LivePlaceholder('secret-one-0123456789abcdef0123456789');
         $marker = $mine->make('twig', ['t' => 'a.twig', 'b' => '__live_1', 'w' => []]);
         [, $payload, $sig] = explode(':', substr($marker, 4, -3));
-        $edited = (new LivePlaceholder('secret-one'))->make('twig', ['t' => 'b.twig', 'b' => '__live_1', 'w' => []]);
+        $edited = (new LivePlaceholder('secret-one-0123456789abcdef0123456789'))->make('twig', ['t' => 'b.twig', 'b' => '__live_1', 'w' => []]);
         [, $otherPayload] = explode(':', substr($edited, 4, -3));
 
-        $this->assertSame([], (new LivePlaceholder('secret-two'))->find($marker), 'another key');
+        $this->assertSame([], (new LivePlaceholder('secret-two-0123456789abcdef0123456789'))->find($marker), 'another key');
         $this->assertSame([], $mine->find("<!--pc:l:{$otherPayload}:{$sig}-->"), 'another payload under this signature');
         $this->assertSame([], $mine->find("<!--pc:l:{$payload}:" . str_repeat('a', 32) . '-->'), 'a made-up signature');
         $this->assertSame([], $mine->find('<!--pc:l:' . $payload . '-->'), 'no signature');
@@ -41,13 +41,14 @@ final class LivePlaceholderTest extends TestCase
 
     public function test_public_keys_are_unusable(): void
     {
-        // Empty, the built-in default and the skeleton's example key (.env.example) are public.
-        foreach (['', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY, 'change-this-to-a-random-32-char-string!'] as $key) {
+        // Empty, the built-in default and the skeleton's example key (.env.example) are public;
+        // since 0.81 (AppKey::canSign()) a key shorter than 32 bytes, also after trimming, signs nothing either.
+        foreach (['', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY, 'change-this-to-a-random-32-char-string!', "change-this-to-a-random-32-char-string!\n", 'short-secret', str_repeat('k', 31) . '  '] as $key) {
             $this->assertFalse((new LivePlaceholder($key))->usable(), $key);
             $this->assertFalse((new \Preflow\Core\PageCache\PerRequestValues($key))->signed(), $key);
         }
-        $this->assertTrue((new LivePlaceholder('a-real-secret'))->usable());
-        $this->assertTrue((new \Preflow\Core\PageCache\PerRequestValues('a-real-secret'))->signed());
+        $this->assertTrue((new LivePlaceholder('a-real-secret-0123456789abcdef0123456789'))->usable());
+        $this->assertTrue((new \Preflow\Core\PageCache\PerRequestValues('a-real-secret-0123456789abcdef0123456789'))->signed());
     }
 
     public function test_values_are_scalars_and_arrays(): void

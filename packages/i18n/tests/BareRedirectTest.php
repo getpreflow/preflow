@@ -7,7 +7,6 @@ namespace Preflow\I18n\Tests;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\Core\Http\NonPublicPaths;
 use Preflow\I18n\LocaleMiddleware;
@@ -24,6 +23,8 @@ final class BareRedirectTest extends TestCase
     private Translator $translator;
     private bool $handled = false;
     private ?ServerRequestInterface $captured = null;
+    /** The translator's locale at the end of the last dispatch(). */
+    private ?string $locale = null;
 
     protected function setUp(): void
     {
@@ -31,6 +32,11 @@ final class BareRedirectTest extends TestCase
         $this->translator = new Translator(sys_get_temp_dir() . '/preflow_bare_redirect_none', 'en', 'en');
         $this->handled = false;
         $this->captured = null;
+    }
+
+    protected function tearDown(): void
+    {
+        \Preflow\Core\Context\Contexts::reset();
     }
 
     private function middleware(
@@ -90,9 +96,20 @@ final class BareRedirectTest extends TestCase
         $this->captured = $request;
     }
 
+    /** $mw in the current render frame, else in a visitor's frame of its own (as Application::handle() opens one). */
     private function dispatch(LocaleMiddleware $mw, ServerRequestInterface $request): ResponseInterface
     {
-        return $mw->process($request, $this->handler());
+        $process = function () use ($mw, $request): ResponseInterface {
+            try {
+                return $mw->process($request, $this->handler());
+            } finally {
+                $this->locale = $this->translator->getLocale();
+            }
+        };
+
+        return \Preflow\Core\Context\Contexts::depth() > 0
+            ? $process()
+            : \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::fromRequest($request, new \Preflow\Core\Context\Site('http://localhost', self::LOCALES, 'en'), new \Preflow\Core\Context\SystemClock()), $process);
     }
 
     private function assertRedirect(string $location, ResponseInterface $response): void
@@ -219,14 +236,14 @@ final class BareRedirectTest extends TestCase
         $this->assertServed($response);
         $this->assertSame([['de', '/nope']], $asked);
         $this->assertSame('en', $this->captured?->getAttribute('locale'));
-        $this->assertSame('en', $this->translator->getLocale());
+        $this->assertSame('en', $this->locale);
     }
 
     public function test_internal_render_is_not_redirected(): void
     {
-        $request = InternalRender::mark($this->request('/faq', ['Accept-Language' => 'de']));
+        $request = $this->request('/faq', ['Accept-Language' => 'de']);
 
-        $this->assertServed($this->dispatch($this->middleware(), $request));
+        $this->assertServed(self::internally(fn () => $this->dispatch($this->middleware(), $request)));
     }
 
     public function test_without_prefix_default_default_preference_is_served_with_vary(): void
@@ -407,12 +424,21 @@ final class BareRedirectTest extends TestCase
         $served = $this->dispatch($mw, $this->request('/faq', ['Accept-Language' => 'en']));
         $this->assertSame([200, ['Vary' => ['Accept-Language, Cookie']], ''], self::full($served));
 
-        $switch = $mw->process($this->request('/--locale/de'), $this->handler());
+        $switch = $this->dispatch($mw, $this->request('/--locale/de'));
         $this->assertSame([302, [
             'Location' => ['/de'],
             'Set-Cookie' => ['locale=de; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly'],
             'Cache-Control' => ['private, no-store'],
             'X-Robots-Tag' => ['noindex'],
         ], ''], self::full($switch));
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

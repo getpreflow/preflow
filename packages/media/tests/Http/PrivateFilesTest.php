@@ -133,7 +133,7 @@ final class PrivateFilesTest extends TestCase
 
         $escaped = $this->fetch('/tools/files/' . $pdf->id);
         $this->assertSame(404, $escaped->getStatusCode());
-        $this->assertStringNotContainsString('media-integration-test-key', (string) $escaped->getBody());
+        $this->assertStringNotContainsString('media-integration-test-key-0123456789abcdef', (string) $escaped->getBody());
         $this->assertSame('private, no-store', $escaped->getHeaderLine('Cache-Control'));
 
         $this->assertNotSame(200, $this->fetch('/tools/files/..%2F..%2Fconfig%2Fapp.php')->getStatusCode());

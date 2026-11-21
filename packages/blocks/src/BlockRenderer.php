@@ -6,6 +6,8 @@ namespace Preflow\Blocks;
 
 use Preflow\Components\ComponentRenderer;
 use Preflow\Core\Container\Container;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
 use Preflow\Data\LocaleValue;
 
 /**
@@ -39,6 +41,22 @@ final class BlockRenderer
         private readonly ?\Closure $note = null,
     ) {}
 
+    /**
+     * The locale blocks render in: the BlockLocale's for the current render context; one
+     * without ContextBlockLocale is asked its deprecated get() (reported once).
+     *
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render
+     */
+    private function locale(): string
+    {
+        if ($this->locale instanceof ContextBlockLocale) {
+            return $this->locale->localeOf(Contexts::current());
+        }
+        Deprecations::once('Preflow\Blocks\BlockLocale::get() is deprecated since 0.81 and is removed in 0.83; use ContextBlockLocale::localeOf().');
+
+        return $this->locale->get();
+    }
+
     /** True while a preview render (of any depth) is running. */
     public function inPreview(): bool
     {
@@ -54,7 +72,7 @@ final class BlockRenderer
         if (!is_array($blocks)) {
             return '';
         }
-        $blocks = LocaleValue::resolveTree($blocks, $this->locale->locales(), $this->locale->get());
+        $blocks = LocaleValue::resolveTree($blocks, $this->locale->locales(), $this->locale());
 
         $out = '';
         foreach ($blocks as $block) {

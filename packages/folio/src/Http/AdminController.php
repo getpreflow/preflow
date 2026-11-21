@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\LocaleValue;
@@ -100,6 +101,8 @@ final class AdminController
         private readonly ?\Preflow\Ai\Draft\DraftWriter $draftWriter = null,
         // What each type allows (data's "readonly" / "creatable"; since 0.78): the container's; null builds one from the registry.
         ?\Preflow\Folio\Content\TypeActions $typeActions = null,
+        // The whole-page preview's "View as" choices (since 0.81); null: only the visitor.
+        private readonly ?ViewAs $viewAs = null,
     ) {
         $this->labels = $labels ?? new DisplayLabels($catalog, $registry);
         $this->translations = $translations ?? new TranslationStatus($fieldTypes, $this->labels);
@@ -273,7 +276,7 @@ final class AdminController
             return true;
         }
         try {
-            return new \DateTimeImmutable($job->updatedAt) < new \DateTimeImmutable('-' . self::STALE_JOB_SECONDS . ' seconds');
+            return new \DateTimeImmutable($job->updatedAt) < Contexts::clock()->now()->modify('-' . self::STALE_JOB_SECONDS . ' seconds');
         } catch (\Exception) {
             return true;
         }
@@ -667,7 +670,7 @@ final class AdminController
 
         return new Response(200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="' . (preg_replace('/[^A-Za-z0-9_-]+/', '-', $type) ?: 'export') . '-' . date('Y-m-d') . '.xlsx"',
+            'Content-Disposition' => 'attachment; filename="' . (preg_replace('/[^A-Za-z0-9_-]+/', '-', $type) ?: 'export') . '-' . date('Y-m-d') . '.xlsx"', // clock: stamp
             'Content-Length' => (string) $size,
             'Cache-Control' => 'no-store',
         ], \Nyholm\Psr7\Stream::create($handle));
@@ -1608,7 +1611,8 @@ final class AdminController
             // The order is admin.js, then fields.js, then editor-frame.js: fields.js uses what admin.js shares
             // (folioT, Folio.copyLater, fillAssetField, ownControls), editor-frame.js uses Folio.relativeTime.
             // The full layout loads admin.js itself and skips it here; the drawer layout loads only this list.
-            'editor_assets' => array_keys(['admin.js' => true] + $editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : []) + ['fields.js' => true, 'editor-frame.js' => true]),
+            'editor_assets' => array_keys(['admin.js' => true] + $editorAssets + ($this->publishes($type) ? ['htmx.js' => true] : []) + ['fields.js' => true, 'editor-frame.js' => true]
+                + ($this->frontend->routeFor($type) !== null ? ['page-preview.js' => true] : [])),
             'multipart' => $multipart,
             'layout' => $layout,
             // No preview in the create drawer: its form posts to the save route.
@@ -1616,6 +1620,7 @@ final class AdminController
             'previewable' => $this->frontend->routeFor($type) !== null && $layout !== '@folio/admin/_drawer_layout.twig'
                 && $this->can($type . ($isNew ? '.create' : '.edit')),
             'preview_url' => strtok($action, '?') . '/preview',
+            'page_preview' => $this->pagePreview($type, $typeDef, $values, $locale, $isNew),
             'preview_bar' => $this->previewBar($type, $typeDef, $values, $locale, $isNew, $publishing),
             'multilingual' => $multilingual,
             'languages' => $languages,
@@ -1711,6 +1716,36 @@ final class AdminController
         }
 
         return $rows;
+    }
+
+    /**
+     * The whole-page preview beside the live one (form.twig, page-preview.js): the record's real
+     * page through PagePreviewController, for a saved record of a routed type. A new record has
+     * no page yet (url null: "Save once to preview the whole page"); "View as" offers the roles
+     * the editor may view it as (ViewAs), shown only when there is a role to choose.
+     *
+     * @param array<string, mixed> $values
+     * @return array{url: ?string, view_as: list<array{label: string, options: list<array{value: string, label: string}>}>}|null
+     */
+    private function pagePreview(string $type, TypeDefinition $typeDef, array $values, string $locale, bool $isNew): ?array
+    {
+        if ($this->frontend->routeFor($type) === null) {
+            return null;
+        }
+        $id = $values[$typeDef->idField] ?? null;
+        $saved = !$isNew && is_scalar($id) && (string) $id !== '';
+        $options = $saved ? ($this->viewAs?->options() ?? []) : [];
+
+        $groups = [];
+        foreach (count($options) > 1 ? $options : [] as $option) {
+            $groups[$option['group']] ??= ['label' => $option['group'], 'options' => []];
+            $groups[$option['group']]['options'][] = ['value' => $option['value'], 'label' => $option['label']];
+        }
+
+        return [
+            'url' => $saved ? $this->prefix . '/preview/page/' . rawurlencode($type) . '/' . rawurlencode((string) $id) . '?locale=' . rawurlencode($locale) : null,
+            'view_as' => array_values($groups),
+        ];
     }
 
     /**

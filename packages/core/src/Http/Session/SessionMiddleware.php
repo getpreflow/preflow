@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Http\Session;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -39,7 +41,16 @@ final class SessionMiddleware implements MiddlewareInterface
 
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        if ($request->getAttribute(self::WITHOUT_SESSION) === true) {
+        // An internal render (audit, GEO, rebuild, verify, preview) is an anonymous visitor's: no session.
+        // Nor has a role view (view as role, since 0.81.0), whatever its purpose: the session the
+        // request carries is the editor's, never started, aged, read, written or closed by it. A
+        // session already on the request (the admin's own request handed to the role view) is
+        // taken off it, so nothing downstream (CSRF, a flash) reaches it either.
+        if ($request->getAttribute(self::WITHOUT_SESSION) === true || Contexts::depth() > 0 && (Contexts::current()->purpose->isInternal() || Contexts::current()->viewer->isSynthetic())) {
+            if (Contexts::depth() > 0 && Contexts::current()->viewer->isSynthetic()) {
+                $request = $request->withoutAttribute(SessionInterface::class);
+            }
+
             return $handler->handle($request);
         }
         $onPath = $this->applies($request->getUri()->getPath());
@@ -48,11 +59,19 @@ final class SessionMiddleware implements MiddlewareInterface
         }
 
         $this->session->start();
-        $this->session->ageFlash();
+        // A previewed page's follow-up (it carries a preview token) does not use up the editor's
+        // flash: it is meant for the editor's next own page (since 0.81.0).
+        if (\Preflow\Core\Context\Preview\PreviewToken::strip($request) === $request) {
+            $this->session->ageFlash();
+        }
 
         $request = $request->withAttribute(SessionInterface::class, $this->session);
         if (!$onPath) {
             $request = $request->withAttribute(self::RESUMED_BY_COOKIE, true);
+        }
+        if (Contexts::depth() > 0) {
+            // The render's request carries its session from here on (ofCurrentRender()).
+            Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->for($request));
         }
 
         $response = $handler->handle($request);
@@ -60,6 +79,25 @@ final class SessionMiddleware implements MiddlewareInterface
         $this->session->close();
 
         return $response;
+    }
+
+    /**
+     * The session of the current render: the SessionInterface attribute its request carries once
+     * this middleware started the session. Null outside every render, and in a render without a
+     * session (an internal render, a public path without the session cookie), and under a role
+     * view (view as role), also one narrowed into a role view after its session started. flash(),
+     * csrf_token() and old() read it, so a render never reads another render's session.
+     *
+     * @since 0.81.0
+     */
+    public static function ofCurrentRender(): ?SessionInterface
+    {
+        if (Contexts::depth() > 0 && Contexts::current()->viewer->isSynthetic()) {
+            return null;
+        }
+        $session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);
+
+        return $session instanceof SessionInterface ? $session : null;
     }
 
     private function carriesCookie(ServerRequestInterface $request): bool

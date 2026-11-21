@@ -68,6 +68,7 @@ final class FolioPermissionMiddleware implements MiddlewareInterface
         'PublishingController@revoke' => '{type}.edit',
         'PublishingController@unpublish' => '{type}.publish',
         'PreviewController@preview' => '{type}.edit',
+        'PagePreviewController@show' => '{type}.edit', // then site.view_as for "as" (in the controller)
         'AssetLibraryController@index' => 'assets.view',
         'AssetLibraryController@panel' => 'assets.view',
         'AssetLibraryController@versions' => 'assets.view',

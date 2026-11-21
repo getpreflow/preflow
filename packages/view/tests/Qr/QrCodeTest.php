@@ -10,9 +10,12 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\View\Qr\QrCode;
 use Preflow\View\ViewExtensionProvider;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class QrCodeTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     protected function tearDown(): void
     {
         QrCode::overrideLibraryClass(null);

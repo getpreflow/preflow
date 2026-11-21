@@ -9,9 +9,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Version;
+use Preflow\Testing\ChecksFrameBalance;
 
 final class VersionTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     /** @return iterable<string, array{?string, ?string, ?string}> pretty version, reference, label */
     public static function labels(): iterable
     {

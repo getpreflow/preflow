@@ -12,9 +12,14 @@ use Preflow\View\TemplateExtensionProvider;
 
 final class AuthExtensionProvider implements TemplateExtensionProvider
 {
+    /**
+     * @param SessionInterface|(\Closure(): ?SessionInterface)|null $session the session flash() and
+     *        csrf_token() read; a closure gives the current one each time (since 0.81: the current
+     *        render's, so an internal render never reads the visitor's)
+     */
     public function __construct(
         private readonly AuthManager $authManager,
-        private readonly ?SessionInterface $session = null,
+        private readonly SessionInterface|\Closure|null $session = null,
         private readonly ?Access\Access $access = null,
         /** prints a signed token on pages without a session */
         private readonly ?StatelessCsrfToken $stateless = null,
@@ -50,7 +55,7 @@ final class AuthExtensionProvider implements TemplateExtensionProvider
             ),
             new TemplateFunctionDefinition(
                 name: 'flash',
-                callable: fn (string $key, mixed $default = null) => $this->session?->getFlash($key, $default),
+                callable: fn (string $key, mixed $default = null) => $this->session()?->getFlash($key, $default),
                 isSafe: false,
             ),
         ];
@@ -61,9 +66,15 @@ final class AuthExtensionProvider implements TemplateExtensionProvider
         return [];
     }
 
+    private function session(): ?SessionInterface
+    {
+        return $this->session instanceof \Closure ? ($this->session)() : $this->session;
+    }
+
     private function csrfValue(): string
     {
-        $token = $this->session !== null ? CsrfToken::fromSession($this->session) : null;
+        $session = $this->session();
+        $token = $session !== null ? CsrfToken::fromSession($session) : null;
         if ($token !== null) {
             return $token->getValue();
         }

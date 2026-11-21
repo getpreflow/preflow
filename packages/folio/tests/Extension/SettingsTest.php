@@ -15,6 +15,7 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Folio\Transfer\ContentSet;
 use Preflow\Folio\Transfer\Exporter;
 use Preflow\View\TemplateEngineInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A "members" extension (written by the test) declaring settings: a boolean, a string,
@@ -23,6 +24,8 @@ use Preflow\View\TemplateEngineInterface;
  */
 final class SettingsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const ENV = 'FOLIO_SETTINGS_TEST_MAIL_PASSWORD';
@@ -322,7 +325,7 @@ final class SettingsTest extends TestCase
         }
 
         // Not in debug: null.
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         putenv('APP_DEBUG=0');
         $quiet = $this->app()->container()->get(ExtensionSettings::class);
         $this->assertNull($quiet->get('members', 'nope'));

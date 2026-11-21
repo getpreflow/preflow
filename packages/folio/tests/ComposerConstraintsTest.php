@@ -7,6 +7,9 @@ namespace Preflow\Folio\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.81.0: core 0.81.0 (Context\Writes, which ReviewIndexUpdater asks before it writes the review index, so a
+ * preview or a view as a role leaves the index as it is); blocks 0.81.0 (ContextBlockLocale, which ContentLocale
+ * implements); media 0.81.0 (ContextLocaleProvider, which ContentLocaleProvider implements).
  * Since 0.80.0: i18n 0.80.0 (Machine\AiPackage, the one check whether preflow/ai is installed, and MissingAiTranslator); ai is only
  * suggested (the AI features appear only when it is installed), and its conflict stays, so an installed ai is still 0.78 or newer.
  * Since 0.78.2: routing 0.78.2 (Redirect\LanguageRedirectedAddresses, which SiteTarget implements).
@@ -30,7 +33,10 @@ use PHPUnit\Framework\TestCase;
  * DisplayLabels::typeIn() naming a type in a mail's language; since 0.66 MachineTranslator::available(): Translate asks the
  * translator, not the AI connection), core 0.69.1 (Application::onProvidersBooted(), after which the console sets up the admin; since 0.68 it binds notify's Mailer with its layout and @notify templates, which StaffMailer
  * sends through; since 0.67 InstalledPackages keeps composer extra whole and ManifestBuilder reads extra.preflow.runtime, where Folio declares its extensions file; since 0.66 extra.folio.field_types
- * and blocks, which packages register with), auth 0.69 (AccountLinks, to which StaffPasswords leaves the links, the password
+ * and blocks, which packages register with), publishing 0.81.0 (LiveContent reads the context's read mode; WorkingCopyMiddleware
+ * and the share preview narrow it instead of calling showWorkingCopies()), i18n 0.81.0 (the translator follows the render
+ * context's surface, which the admin request enters instead of setting a locale), auth 0.81.0 (SyntheticUser, the role view's user, which AdminAuthMiddleware refuses
+ * with 403; since 0.69 AccountLinks, to which StaffPasswords leaves the links, the password
  * and the account lookups; since 0.65 AuthManager::provider() for a
  * staff guard that is not the default one, folio.guard; since 0.38 RecordUser and
  * RecordUserProvider moved to Preflow\Auth\Record, PasswordRehash; since 0.27 the chain
@@ -63,9 +69,10 @@ use PHPUnit\Framework\TestCase;
  * preflow/publishing (required since 0.71: the Publisher, LiveContent and the other publishing classes that were Folio's own;
  * PublishingTypes, RecordChecks, LanguageChecks, RecordIndex and RecordAddresses, which Folio's adapters implement)
  * conflicts below 0.72: 0.71 still carries the config/folio.php fallback and the shadow-table index rules 0.72 changed.
- * preflow/rbac is suggested too (Folio carries its admin since 0.69); an rbac release before 0.69 still ships that admin
- * itself (its own extension "rbac", field types and texts) and lacks StaffAccounts, StaffLinks::available() and
- * StaffMail::sendTo(), which Folio's rbac admin and staff mails call, so it conflicts.
+ * preflow/rbac is suggested too (Folio carries its admin since 0.69); an rbac release before 0.81.0 does not declare
+ * site.view_as (PreviewGate::VIEW_AS), which the whole-page preview's View as asks for (before 0.69 it still ships
+ * that admin itself, its own extension "rbac", field types and texts, and lacks StaffAccounts, StaffLinks::available()
+ * and StaffMail::sendTo(), which Folio's rbac admin and staff mails call), so it conflicts.
  */
 final class ComposerConstraintsTest extends TestCase
 {
@@ -74,7 +81,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.69', 'preflow/blocks' => '<0.75', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.78', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.80.0', 'preflow/media' => '<0.77', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.77', 'preflow/rbac' => '<0.69.1', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
+            ['preflow/ai' => '<0.78', 'preflow/auth' => '<0.81.0', 'preflow/blocks' => '<0.81.0', 'preflow/codes' => '<0.68', 'preflow/core' => '<0.81.0', 'preflow/data' => '<0.78', 'preflow/devtools' => '<0.77', 'preflow/form' => '<0.75', 'preflow/htmx' => '<0.65', 'preflow/i18n' => '<0.81.0', 'preflow/media' => '<0.81.0', 'preflow/members' => '<0.77', 'preflow/notify' => '<0.69', 'preflow/publishing' => '<0.81.0', 'preflow/rbac' => '<0.81.0', 'preflow/routing' => '<0.78.2', 'preflow/twig' => '<0.65', 'preflow/validation' => '<0.52', 'preflow/view' => '<0.74'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; ai, members, codes and rbac are suggested, not required.

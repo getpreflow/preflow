@@ -12,6 +12,7 @@ use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Media\MediaLibrary;
 use Psr\Http\Message\UploadedFileInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The library's bin: delete moves a file into it (with bin_dir), the bin page lists and
@@ -22,6 +23,8 @@ use Psr\Http\Message\UploadedFileInterface;
 #[RequiresPhpExtension('gd')]
 final class AssetBinTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const string NO_BIN = 'Deleted files are removed for good: set bin_dir in config/media.php.';

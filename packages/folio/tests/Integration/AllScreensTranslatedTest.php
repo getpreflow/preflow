@@ -17,6 +17,7 @@ use Preflow\Folio\Content\TypeCatalog;
 use Preflow\I18n\Translator;
 use Preflow\Routing\Router;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Every admin screen in another language. A site with Folio, rbac (its staff type enabled),
@@ -29,6 +30,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AllScreensTranslatedTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const string ADMIN_EMAIL = 'admin@site.test';
     private const string PASSWORD = 'secret';
     /** A staff record (admin): its own account page exists, unlike the config user's. */
@@ -267,7 +270,7 @@ final class AllScreensTranslatedTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/folio_all_screens_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'All screens', 'debug' => 0, 'engine' => 'twig', 'key' => 'all-screens-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'All screens', 'debug' => 0, 'engine' => 'twig', 'key' => 'all-screens-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $this->write('config/blocks.php', "<?php\nreturn " . var_export(['classes' => [

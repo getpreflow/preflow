@@ -143,7 +143,7 @@ final class StaffAccounts
             'roles' => RoleList::normalize($roles),
             'active' => true,
             'auth_epoch' => '0',
-            'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+            'created_at' => (new \DateTimeImmutable())->format(DATE_ATOM), // clock: stamp
         ]);
         $this->checkSave($record, $actor);
         $this->dm->saveType($record, false);
@@ -325,7 +325,7 @@ final class StaffAccounts
                 $record->set('auth_epoch', '0');
             }
             if (in_array($record->get('created_at'), [null, ''], true)) {
-                $record->set('created_at', (new \DateTimeImmutable())->format(DATE_ATOM));
+                $record->set('created_at', (new \DateTimeImmutable())->format(DATE_ATOM)); // clock: stamp
             }
         } elseif (StaffManagers::active($stored->get('active')) && !StaffManagers::active($record->get('active'))) {
             // The stored epoch's next, so a second check of the same save doesn't count twice.

@@ -11,6 +11,7 @@ use Preflow\Auth\Tests\Fixtures\TestUser;
 use Preflow\DevTools\Command\MigrateCommand;
 use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleStore;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A Folio site with the rbac extension on and its roles on SQLite: `preflow migrate` alone
@@ -18,6 +19,8 @@ use Preflow\Rbac\RoleStore;
  */
 final class FolioMigrateSeedTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void

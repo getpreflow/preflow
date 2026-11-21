@@ -90,10 +90,11 @@ final class SqliteContentTest extends TestCase
         $collections = new Collections($this->live, $this->catalog, $this->locale);
         $this->assertSame(['Two', 'Ten', 'Thirty'], array_column($collections->list('post'), 'title'));
 
-        $this->locale->set('de');
-        $collections = new Collections($this->live, $this->catalog, $this->locale);
-        $this->assertSame(['Zwei', 'Zehn', 'Thirty'], array_column($collections->list('post'), 'title'));
-        $this->assertSame('Zehn', $collections->find('post', 'a')['title'] ?? null);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('de'), function (): void {
+            $collections = new Collections($this->live, $this->catalog, $this->locale);
+            $this->assertSame(['Zwei', 'Zehn', 'Thirty'], array_column($collections->list('post'), 'title'));
+            $this->assertSame('Zehn', $collections->find('post', 'a')['title'] ?? null);
+        });
     }
 
     public function test_publish_then_live_reads_published_copy(): void
@@ -135,12 +136,12 @@ final class SqliteContentTest extends TestCase
     {
         $site = DynamicRecord::fromArray($this->dm->getTypeRegistry()->get('site'), ['uuid' => 'site', 'tagline' => ['en' => 'Live', 'de' => 'Echt'], '_locales' => ['en', 'de']]);
         $this->publisher->publish($site, null);
-        $this->locale->set('de');
-
         $singletons = new Singletons($this->dm, $this->catalog, $this->locale, $this->live);
 
-        $this->assertSame('Echt', $singletons->get('site')['tagline'] ?? null);
-        $this->assertSame(['en', 'de'], $singletons->record('site')?->availableLocales());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->in('de'), function () use ($singletons): void {
+            $this->assertSame('Echt', $singletons->get('site')['tagline'] ?? null);
+            $this->assertSame(['en', 'de'], $singletons->record('site')?->availableLocales());
+        });
     }
 
     public function test_array_field_roundtrips(): void

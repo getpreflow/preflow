@@ -11,6 +11,7 @@ use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
 use Preflow\Core\Application;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Who may sign into Folio: staff, through folio.guard (default: the app's default guard). A guard
@@ -18,6 +19,8 @@ use Preflow\Core\Application;
  */
 final class FolioStaffGuardTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void
@@ -138,10 +141,18 @@ final class FolioStaffGuardTest extends TestCase
         $this->assertArrayHasKey('_auth_user_id.staff', $_SESSION, 'signed in on the staff guard');
         $this->assertArrayNotHasKey('_auth_user_id', $_SESSION, 'not on the default (employers) guard');
 
+        // Who the dashboard request was signed in as, read while its frame is still open
+        // (afterwards, outside every render, nobody is).
+        $auth = $app->container()->get(AuthManager::class);
+        $guard = null;
+        \Preflow\Core\Context\Contexts::onEnter(static function () use ($auth, &$guard): \Closure {
+            return static function () use ($auth, &$guard): void {
+                $guard = $auth->guardName();
+            };
+        }, 'folio-staff-guard-test');
         $dash = $app->handle($f->createServerRequest('GET', '/folio'));
         $this->assertSame(200, $dash->getStatusCode());
-        $auth = $app->container()->get(AuthManager::class);
-        $this->assertSame('staff', $auth->guardName());
+        $this->assertSame('staff', $guard);
         $this->assertSame('staff', $app->container()->get(Access::class)->populationOf('staff'));
         $this->assertSame('members', $app->container()->get(Access::class)->populationOf('employers'));
     }

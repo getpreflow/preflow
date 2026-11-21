@@ -17,8 +17,8 @@ namespace Preflow\Core\PageCache;
  *
  * Text a visitor wrote can't name a template or component to render: a marker whose signature
  * doesn't verify (no key, another key, an edited payload) is not a placeholder and stays in
- * the page as the HTML comment it is. With an unusable key (empty, or the public default one
- * anybody can sign with) nothing is signed or found at all (usable()).
+ * the page as the HTML comment it is. With an unusable key (AppKey::canSign(): empty, short, or
+ * a public one anybody can sign with) nothing is signed or found at all (usable()).
  */
 final class LivePlaceholder
 {
@@ -31,16 +31,17 @@ final class LivePlaceholder
 
     /**
      * Keys anyone knows, which sign nothing for the page cache: the built-in default
-     * (StatelessCsrfToken::DEFAULT_KEY) and the skeleton's example (.env.example).
+     * (StatelessCsrfToken::DEFAULT_KEY) and the skeleton's example (.env.example). Since 0.81.0
+     * the rule is \Preflow\Core\Security\AppKey::canSign(), which also refuses short keys.
      */
-    public const array PUBLIC_KEYS = ['', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY, 'change-this-to-a-random-32-char-string!'];
+    public const array PUBLIC_KEYS = \Preflow\Core\Security\AppKey::PUBLIC_KEYS;
 
     public function __construct(private readonly string $secret) {}
 
-    /** Whether the key can sign: not empty, not a public one (PUBLIC_KEYS). */
+    /** Whether the key can sign: AppKey::canSign() (since 0.81.0: at least 32 bytes, not a public one). */
     public function usable(): bool
     {
-        return !in_array($this->secret, self::PUBLIC_KEYS, true);
+        return \Preflow\Core\Security\AppKey::canSign($this->secret);
     }
 
     /**

@@ -77,38 +77,44 @@ final class AuthMiddlewareTest extends TestCase
 
     public function test_passes_authenticated_user(): void
     {
-        $user = new TestUser();
-        $manager = $this->createManager($user);
-        $middleware = new AuthMiddleware($manager);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new TestUser();
+            $manager = $this->createManager($user);
+            $middleware = new AuthMiddleware($manager);
 
-        $handler = $this->createHandler();
-        $request = $this->createRequest();
-        $response = $middleware->process($request, $handler);
+            $handler = $this->createHandler();
+            $request = $this->createRequest();
+            $response = $middleware->process($request, $handler);
 
-        $this->assertSame(200, $response->getStatusCode());
-        $capturedRequest = $handler->getCapturedRequest();
-        $this->assertNotNull($capturedRequest);
-        $this->assertSame($user, $capturedRequest->getAttribute(Authenticatable::class));
+            $this->assertSame(200, $response->getStatusCode());
+            $capturedRequest = $handler->getCapturedRequest();
+            $this->assertNotNull($capturedRequest);
+            $this->assertSame($user, $capturedRequest->getAttribute(Authenticatable::class));
+        });
     }
 
     public function test_sets_user_on_auth_manager(): void
     {
-        $user = new TestUser();
-        $manager = $this->createManager($user);
-        $middleware = new AuthMiddleware($manager);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new TestUser();
+            $manager = $this->createManager($user);
+            $middleware = new AuthMiddleware($manager);
 
-        $middleware->process($this->createRequest(), $this->createHandler());
+            $middleware->process($this->createRequest(), $this->createHandler());
 
-        $this->assertSame($user, $manager->user());
+            $this->assertSame($user, $manager->user());
+        });
     }
 
     public function test_throws_401_when_not_authenticated(): void
     {
-        $manager = $this->createManager(null);
-        $middleware = new AuthMiddleware($manager);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $manager = $this->createManager(null);
+            $middleware = new AuthMiddleware($manager);
 
-        $this->expectException(UnauthorizedHttpException::class);
-        $middleware->process($this->createRequest(), $this->createHandler());
+            $this->expectException(UnauthorizedHttpException::class);
+            $middleware->process($this->createRequest(), $this->createHandler());
+        });
     }
 
     private function redirectManager(): AuthManager
@@ -141,86 +147,100 @@ final class AuthMiddlewareTest extends TestCase
 
     public function test_html_get_redirects_to_the_guards_login_with_next(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
 
-        $response = $this->outcome($middleware, $this->request('GET', '/employer/jobs?x=1'));
+            $response = $this->outcome($middleware, $this->request('GET', '/employer/jobs?x=1'));
 
-        $this->assertInstanceOf(ResponseInterface::class, $response);
-        $this->assertSame(302, $response->getStatusCode());
-        $this->assertSame('/employer/login?next=%2Femployer%2Fjobs%3Fx%3D1', $response->getHeaderLine('Location'));
+            $this->assertInstanceOf(ResponseInterface::class, $response);
+            $this->assertSame(302, $response->getStatusCode());
+            $this->assertSame('/employer/login?next=%2Femployer%2Fjobs%3Fx%3D1', $response->getHeaderLine('Location'));
+        });
     }
 
     public function test_api_request_still_gets_401(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
 
-        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/api/x')));
+            $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/api/x')));
+        });
     }
 
     public function test_accept_json_gets_401(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
 
-        $this->assertInstanceOf(
-            UnauthorizedHttpException::class,
-            $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['Accept' => 'application/json'])),
-        );
+            $this->assertInstanceOf(
+                UnauthorizedHttpException::class,
+                $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['Accept' => 'application/json'])),
+            );
+        });
     }
 
     public function test_post_gets_401(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
 
-        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('POST', '/employer/jobs')));
+            $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('POST', '/employer/jobs')));
+        });
     }
 
     public function test_htmx_request_gets_401_with_hx_redirect(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig(), self::clients(new HtmxDriver(new ResponseHeaders())));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig(), self::clients(new HtmxDriver(new ResponseHeaders())));
 
-        $e = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['HX-Request' => 'true']));
+            $e = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['HX-Request' => 'true']));
 
-        $this->assertInstanceOf(UnauthorizedHttpException::class, $e);
-        $this->assertSame(['HX-Redirect' => '/employer/login'], $e->headers);
+            $this->assertInstanceOf(UnauthorizedHttpException::class, $e);
+            $this->assertSame(['HX-Redirect' => '/employer/login'], $e->headers);
+        });
     }
 
     public function test_an_app_built_middleware_finds_the_clients_on_the_request(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
-        $request = $this->request('GET', '/employer/jobs', ['HX-Request' => 'true'])
-            ->withAttribute(HypermediaProtocols::class, self::clients(new HtmxDriver(new ResponseHeaders())));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig());
+            $request = $this->request('GET', '/employer/jobs', ['HX-Request' => 'true'])
+                ->withAttribute(HypermediaProtocols::class, self::clients(new HtmxDriver(new ResponseHeaders())));
 
-        $e = $this->outcome($middleware, $request);
+            $e = $this->outcome($middleware, $request);
 
-        $this->assertInstanceOf(UnauthorizedHttpException::class, $e);
-        $this->assertSame(['HX-Redirect' => '/employer/login'], $e->headers);
+            $this->assertInstanceOf(UnauthorizedHttpException::class, $e);
+            $this->assertSame(['HX-Redirect' => '/employer/login'], $e->headers);
+        });
     }
 
     public function test_another_clients_request_is_told_to_navigate_its_way(): void
     {
-        $client = new class implements HypermediaProtocol {
-            public function isFragmentRequest(ServerRequestInterface $request): bool { return $request->hasHeader('Other-Request'); }
-            public function isHistoryRestore(ServerRequestInterface $request): bool { return false; }
-            public function fragmentTarget(ServerRequestInterface $request): ?string { return null; }
-            public function varyHeaders(): array { return ['Other-Request']; }
-            public function navigate(ResponseInterface $response, ?string $url): ResponseInterface
-            {
-                return $response->withStatus(200)->withBody(\Nyholm\Psr7\Stream::create('go ' . $url));
-            }
-            public function announceNonce(ResponseInterface $response, string $nonce): ResponseInterface { return $response; }
-            public function nonceHeaders(): array { return []; }
-            public function pageNonce(ServerRequestInterface $request): ?string { return null; }
-        };
-        $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig(), self::clients($client));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $client = new class implements HypermediaProtocol {
+                public function isFragmentRequest(ServerRequestInterface $request): bool { return $request->hasHeader('Other-Request'); }
+                public function isHistoryRestore(ServerRequestInterface $request): bool { return false; }
+                public function fragmentTarget(ServerRequestInterface $request): ?string { return null; }
+                public function varyHeaders(): array { return ['Other-Request']; }
+                public function navigate(ResponseInterface $response, ?string $url): ResponseInterface
+                {
+                    return $response->withStatus(200)->withBody(\Nyholm\Psr7\Stream::create('go ' . $url));
+                }
+                public function announceNonce(ResponseInterface $response, string $nonce): ResponseInterface { return $response; }
+                public function nonceHeaders(): array { return []; }
+                public function pageNonce(ServerRequestInterface $request): ?string { return null; }
+            };
+            $middleware = new AuthMiddleware($this->redirectManager(), null, new ApiConfig(), self::clients($client));
 
-        $told = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['Other-Request' => '1']));
-        $this->assertInstanceOf(ResponseInterface::class, $told, 'a navigation in the body is sent as it is');
-        $this->assertSame('go /employer/login', (string) $told->getBody());
+            $told = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['Other-Request' => '1']));
+            $this->assertInstanceOf(ResponseInterface::class, $told, 'a navigation in the body is sent as it is');
+            $this->assertSame('go /employer/login', (string) $told->getBody());
 
-        // An htmx header means nothing to this app: a plain browser request, redirected.
-        $plain = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['HX-Request' => 'true']));
-        $this->assertInstanceOf(ResponseInterface::class, $plain);
-        $this->assertSame(302, $plain->getStatusCode());
+            // An htmx header means nothing to this app: a plain browser request, redirected.
+            $plain = $this->outcome($middleware, $this->request('GET', '/employer/jobs', ['HX-Request' => 'true']));
+            $this->assertInstanceOf(ResponseInterface::class, $plain);
+            $this->assertSame(302, $plain->getStatusCode());
+        });
     }
 
     private static function clients(HypermediaProtocol $client): HypermediaProtocols
@@ -233,36 +253,44 @@ final class AuthMiddlewareTest extends TestCase
 
     public function test_without_login_key_behaviour_is_unchanged(): void
     {
-        $middleware = new AuthMiddleware($this->createManager(null), null, new ApiConfig());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->createManager(null), null, new ApiConfig());
 
-        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/employer/jobs')));
+            $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/employer/jobs')));
+        });
     }
 
     public function test_without_api_config_nobody_is_redirected(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager());
 
-        $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/employer/jobs')));
+            $this->assertInstanceOf(UnauthorizedHttpException::class, $this->outcome($middleware, $this->request('GET', '/employer/jobs')));
+        });
     }
 
     public function test_a_login_path_with_a_query_gets_next_appended_with_an_ampersand(): void
     {
-        $manager = new AuthManager(['employers' => $this->createGuard(null)], 'employers', ['employers' => '/login?lang=en']);
-        $middleware = new AuthMiddleware($manager, null, new ApiConfig());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $manager = new AuthManager(['employers' => $this->createGuard(null)], 'employers', ['employers' => '/login?lang=en']);
+            $middleware = new AuthMiddleware($manager, null, new ApiConfig());
 
-        $response = $this->outcome($middleware, $this->request('GET', '/employer/jobs'));
+            $response = $this->outcome($middleware, $this->request('GET', '/employer/jobs'));
 
-        $this->assertInstanceOf(ResponseInterface::class, $response);
-        $this->assertSame('/login?lang=en&next=%2Femployer%2Fjobs', $response->getHeaderLine('Location'));
+            $this->assertInstanceOf(ResponseInterface::class, $response);
+            $this->assertSame('/login?lang=en&next=%2Femployer%2Fjobs', $response->getHeaderLine('Location'));
+        });
     }
 
     public function test_login_path_of_named_guard(): void
     {
-        $middleware = new AuthMiddleware($this->redirectManager(), 'staff', new ApiConfig());
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $middleware = new AuthMiddleware($this->redirectManager(), 'staff', new ApiConfig());
 
-        $response = $this->outcome($middleware, $this->request('GET', '/folio/pages'));
+            $response = $this->outcome($middleware, $this->request('GET', '/folio/pages'));
 
-        $this->assertInstanceOf(ResponseInterface::class, $response);
-        $this->assertSame('/folio/login?next=%2Ffolio%2Fpages', $response->getHeaderLine('Location'));
+            $this->assertInstanceOf(ResponseInterface::class, $response);
+            $this->assertSame('/folio/login?next=%2Ffolio%2Fpages', $response->getHeaderLine('Location'));
+        });
     }
 }

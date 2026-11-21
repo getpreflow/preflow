@@ -19,6 +19,7 @@ use Preflow\Folio\Field\HasColumnKind;
 use Preflow\Folio\Field\SearchableText;
 use Preflow\Folio\Field\Types\AbstractScalarFieldType;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A package adds field types and blocks by being installed (0.66): composer.json
@@ -27,6 +28,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class PackageFieldTypesTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void

@@ -25,10 +25,13 @@ use Preflow\View\Tests\Audit\Fixtures\AuditsTestPages;
 use Preflow\View\Tests\Audit\Fixtures\AuditsTestRoutes;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Audits: one step of the SEO audit at a time, the quick checks, the saved report and the lock probe. */
 final class AuditsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private string $file;
     private \DateTimeImmutable $clock;

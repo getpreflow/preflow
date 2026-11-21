@@ -6,6 +6,7 @@ namespace App\Jobs;
 
 use App\Models\Job;
 use App\Models\User;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\Slugs;
@@ -80,7 +81,7 @@ final class JobWriter
         $record = $this->data->findType('job', (string) $job->uuid) ?? $this->record($job);
         if ($job->postedOn === null) {
             // The first publish dates the job. Later ones keep the date, so the job keeps its place.
-            $job->postedOn = (new \DateTimeImmutable())->format('Y-m-d');
+            $job->postedOn = Contexts::clock()->now()->format('Y-m-d');
             $record->set('postedOn', $job->postedOn);
         }
         try {
@@ -187,6 +188,6 @@ final class JobWriter
 
     private static function now(): string
     {
-        return (new \DateTimeImmutable())->format('Y-m-d H:i:s');
+        return Contexts::clock()->now()->format('Y-m-d H:i:s');
     }
 }

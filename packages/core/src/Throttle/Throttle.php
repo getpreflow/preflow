@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Core\Throttle;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\WritePolicy;
+use Preflow\Core\Context\Writes;
 use Preflow\Data\CounterReset;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -32,6 +35,12 @@ use Psr\Http\Message\ServerRequestInterface;
  * window and tooMany() ignores it, so the bound is about privacy and size, not correctness.
  * Calling prune() on every request is unneeded, hit() already prunes. Rows of earlier days are
  * orphaned by the client hash's rotation and go the same way.
+ *
+ * Under the write policy (since 0.81): a hit is an 'increment' write, skipped in a preview or an
+ * audit (the count stays as stored) and refused in a preview fragment; with $accounting (the
+ * per-person AI limits) it counts under every policy, because the work it counts really happens.
+ * Housekeeping deletes (prune() from hit(), an ended row found by tooMany()/retryAfter()) run
+ * only where writes are allowed; elsewhere an ended row is simply not counted.
  *
  * client() refuses an empty or the well-known default key: a hash salted with a
  * public key could be brute-forced back to the IP. forPerson() (since 0.78) does the
@@ -62,7 +71,7 @@ final class Throttle
         ?\Closure $clock = null,
         ?string $lockDir = null,
     ) {
-        $this->clock = $clock ?? static fn (): int => time();
+        $this->clock = $clock ?? static fn (): int => Contexts::clock()->now()->getTimestamp();
         $this->type = new TypeDefinition(
             key: self::TABLE,
             table: self::TABLE,
@@ -99,7 +108,7 @@ final class Throttle
         $ip = $request->getServerParams()['REMOTE_ADDR'] ?? null;
         $ip = is_string($ip) && $ip !== '' ? self::network($ip) : 'unknown';
 
-        return hash_hmac('sha256', $ip, $this->key . '|' . gmdate('Y-m-d'));
+        return hash_hmac('sha256', $ip, $this->key . '|' . gmdate('Y-m-d', ($this->clock)()));
     }
 
     /**
@@ -164,9 +173,11 @@ final class Throttle
      * when the window ends (expires_at). A hit that starts a window prunes ended rows, once per
      * instance.
      *
+     * @param bool $accounting counts under every write policy (Writes 'accounting', since 0.81.0):
+     *                         for limits on work that happens in a preview too, such as paid AI calls
      * @return int the hits in the window, this one included (since 0.78; before, nothing)
      */
-    public function hit(string $purpose, string $client, int $windowSeconds): int
+    public function hit(string $purpose, string $client, int $windowSeconds, bool $accounting = false): int
     {
         $now = ($this->clock)();
         $hits = $this->dm->incrementIn(
@@ -176,9 +187,10 @@ final class Throttle
             1,
             ['purpose' => $purpose, 'window_start' => $now, 'expires_at' => $now + $windowSeconds],
             new CounterReset('window_start', $now - $windowSeconds + 1, ['window_start' => $now, 'expires_at' => $now + $windowSeconds]),
+            $accounting,
         );
 
-        if ($hits === 1 && !$this->pruned) {
+        if ($hits === 1 && !$this->pruned && Writes::policy() === WritePolicy::Allow) {
             $this->pruned = true;
             $this->prune();
         }
@@ -236,7 +248,9 @@ final class Throttle
         $id = $this->id($purpose, $client);
         $record = $this->dm->findIn($this->type, $id);
         if ($record !== null && $this->expired($record, $windowSeconds)) {
-            $this->dm->deleteIn($this->type, $id);
+            if (Writes::policy() === WritePolicy::Allow) {
+                $this->dm->deleteIn($this->type, $id); // housekeeping: never reported or refused
+            }
 
             return null;
         }

@@ -24,7 +24,7 @@ trait MediaApp
     {
         putenv('APP_DEBUG=1');
         $this->dir = sys_get_temp_dir() . '/media_app_' . bin2hex(random_bytes(4));
-        $this->writeFile('config/app.php', "<?php\nreturn ['name' => 'Media', 'debug' => 1, 'engine' => 'twig', 'key' => 'media-integration-test-key'];\n");
+        $this->writeFile('config/app.php', "<?php\nreturn ['name' => 'Media', 'debug' => 1, 'engine' => 'twig', 'key' => 'media-integration-test-key-0123456789abcdef'];\n");
         $this->writeFile('config/data.php', "<?php\nreturn ['drivers' => ['json' => ['driver' => \\Preflow\\Data\\Driver\\JsonFileDriver::class, 'path' => __DIR__ . '/../storage/data']], 'default' => 'json'];\n");
         $this->providers($providers);
     }

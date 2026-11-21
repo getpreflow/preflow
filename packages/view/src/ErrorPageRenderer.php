@@ -17,8 +17,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * SEO audit); development keeps the detailed page, and API requests keep JSON (ErrorHandler).
  *
  * Template variables: `status` (404), `title` ("Not Found"), `message` (what a visitor may read:
- * the status text for 403/404/405 and for any exception that is no HttpException), and `request`
- * and `route` as file pages have them.
+ * the status text for 403/404/405 and for any exception that is no HttpException, except a
+ * refused preview write, which shows "This preview does not change data."), and `request` and
+ * `route` as file pages have them.
  *
  * @since 0.66
  */

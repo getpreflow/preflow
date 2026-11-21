@@ -20,6 +20,7 @@ use Preflow\Rbac\RbacResolver;
 use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * rbac on a site without Folio (its classes can't be loaded, as when the package isn't
@@ -27,6 +28,8 @@ use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
  */
 final class CoreRbacTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
     private string|false $errorLog = false;
 
@@ -38,7 +41,7 @@ final class CoreRbacTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/rbac_core_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac core', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-core-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac core', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-core-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\" . ReportsProvider::class . "::class, \\Preflow\\Rbac\\RbacServiceProvider::class];\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'session',

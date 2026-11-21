@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\View\Audit;
 
+use Preflow\Core\Context\SkippedWrite;
+
 /**
  * The SEO audit's report: when the run started and finished, the site it ran
  * on, how many pages it has done of how many, the findings, and what a later
@@ -28,6 +30,15 @@ final class AuditReport
 
     /** @var list<Finding> */
     public array $findings = [];
+
+    /**
+     * The data writes each audited page tried while it rendered (a view counter on GET), skipped
+     * so the audit changes nothing: page URL => its writes. Pages without any are left out.
+     *
+     * @since 0.81.0
+     * @var array<string, list<SkippedWrite>>
+     */
+    public array $skippedWrites = [];
 
     /** @var list<array{0: string, 1: string}> the pages to audit: [path, locale] */
     public array $queue = [];
@@ -86,6 +97,13 @@ final class AuditReport
             'pages' => ['total' => $this->total, 'done' => $this->done()],
             'counts' => $this->counts(),
             'findings' => array_map(static fn (Finding $f): array => $f->toArray(), $this->findings),
+            'skipped_writes' => array_map(
+                static fn (array $writes): array => array_map(
+                    static fn (SkippedWrite $w): array => ['storage' => $w->storage, 'type' => $w->type, 'id' => $w->id, 'operation' => $w->operation],
+                    $writes,
+                ),
+                $this->skippedWrites,
+            ),
             'state' => [
                 'queue' => $this->queue,
                 'cursor' => $this->cursor,
@@ -117,6 +135,18 @@ final class AuditReport
             $report->findings = array_map(
                 static fn (mixed $f): Finding => Finding::fromArray($array($f)),
                 array_values($array($data['findings'] ?? [])),
+            );
+            $report->skippedWrites = array_map(
+                static fn (mixed $writes): array => array_map(
+                    static fn (mixed $w): SkippedWrite => new SkippedWrite(
+                        $string($array($w)['storage'] ?? null),
+                        $string($array($w)['type'] ?? null),
+                        isset($array($w)['id']) ? $string($array($w)['id']) : null,
+                        $string($array($w)['operation'] ?? null),
+                    ),
+                    array_values($array($writes)),
+                ),
+                array_filter($array($data['skipped_writes'] ?? []), static fn (int|string $url): bool => is_string($url), ARRAY_FILTER_USE_KEY),
             );
             $state = $array($data['state'] ?? []);
             $report->queue = array_map(

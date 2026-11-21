@@ -10,6 +10,7 @@ use Preflow\Auth\Access\Access;
 use Preflow\Data\DataManager;
 use Preflow\Folio\Permissions\KnownPermissions;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Permissions an update brought (KnownPermissions::fresh()) are announced to whoever may edit
@@ -20,6 +21,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class NewPermissionsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private const array EDITOR = ['folio.dashboard', 'rbac_role.*', 'page.*'];

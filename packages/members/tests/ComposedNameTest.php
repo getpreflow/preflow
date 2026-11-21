@@ -11,10 +11,13 @@ use Preflow\Members\Tests\Fixtures\ComposedNameAdmission;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** An admission that composes the name (ComposesName): no name field, the stored name is the admission's. */
 final class ComposedNameTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

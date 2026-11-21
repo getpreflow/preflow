@@ -15,6 +15,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Since 0.75 an internal render (the SEO audit, GEO, a page cache rebuild) keeps the Set-Cookie
@@ -25,6 +26,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class InternalRenderCookieTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

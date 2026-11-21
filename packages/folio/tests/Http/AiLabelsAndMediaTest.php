@@ -15,6 +15,7 @@ use Preflow\Folio\Translations\StoredOverrides;
 use Preflow\Media\Asset;
 use Preflow\Media\MediaLibrary;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The suggestion endpoints of Settings → Translations (interface labels of the site's editable
@@ -23,6 +24,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AiLabelsAndMediaTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
     use AssetFixtures;

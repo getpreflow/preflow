@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The page cache on a Folio site in web mode: what staff publish is what the next anonymous
@@ -17,13 +18,15 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class PageCacheAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void
     {
         $this->scaffoldPublishing();
         putenv('APP_DEBUG');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-cache-test-key-0123', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-cache-test-key-0123-0123456789abcdef0123456789', 'url' => 'https://site.test'];\n");
         $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true, 'explain' => true, 'verify' => 'always'];\n");
         $this->write('resources/folio/frontend/post.twig', '<html><body><h1>{{ record.title }}</h1></body></html>');
         // The category list: a page of the site listing the published posts.
@@ -217,7 +220,9 @@ final class PageCacheAppTest extends TestCase
         $preview = $this->app()->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/one?folio_preview=' . $m[1])
             ->withQueryParams(['folio_preview' => $m[1]]));
         $this->assertStringContainsString('<h1>Draft of one</h1>', (string) $preview->getBody());
-        $this->assertSame('refused:working-copy', $preview->getHeaderLine('X-Page-Cache-Skip'));
+        // A share preview is private (Cache-Control) and reads as a preview context (since 0.81 Folio's
+        // own `working-copy` check is gone: the context rule refuses it too).
+        $this->assertSame('cache-control', $preview->getHeaderLine('X-Page-Cache-Skip'));
         $this->assertNull($this->stored('/one?folio_preview=' . $m[1]));
 
         $public = $this->get('/one');
@@ -495,10 +500,10 @@ final class PageCacheAppTest extends TestCase
         $this->write('app/pages/secret.twig', '<p>{% live %}TOP SECRET{% endlive %}</p>{% block plain %}PLAIN BLOCK{{ w|default("") }}{% endblock %}');
         $this->write('storage/upload.txt', '{% live %}UPLOADED {{ 7 * 7 }}{% endlive %}');
         $recipe = ['t' => 'secret.twig', 'b' => '__live_1', 'w' => []];
-        $forged = (new \Preflow\Core\PageCache\LivePlaceholder('a key the visitor guessed'))->make('twig', $recipe);
+        $forged = (new \Preflow\Core\PageCache\LivePlaceholder('a key the visitor guessed-0123456789abcdef0123456789'))->make('twig', $recipe);
         $edited = (string) preg_replace('/:[0-9a-f]{32}-->/', ':' . str_repeat('0', 32) . '-->', $forged);
         // Signed with the app's own key (say the key leaked), but naming nothing declared live:
-        $appKey = new \Preflow\Core\PageCache\LivePlaceholder('folio-page-cache-test-key-0123');
+        $appKey = new \Preflow\Core\PageCache\LivePlaceholder('folio-page-cache-test-key-0123-0123456789abcdef0123456789');
         $undeclared = [
             $appKey->make('twig', ['t' => 'nowhere.twig', 'b' => '__live_1', 'w' => []]),
             $appKey->make('twig', ['t' => 'secret.twig', 'b' => 'plain', 'w' => ['w' => '<script>x</script>']]),
@@ -529,25 +534,15 @@ final class PageCacheAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_with_the_default_key_nothing_is_filled_or_stored(): void
+    public function test_with_the_default_key_the_app_does_not_start_so_nothing_is_filled_or_stored(): void
     {
-        $log = $this->captureLog();
+        // Since 0.81 (owner decision) a web app in production refuses a public key outright; the
+        // page cache's own refusal of such a key (LivePlaceholder::usable()) is pinned in core's tests.
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'url' => 'https://site.test'];\n");
-        $this->write('app/pages/secret.twig', '<p>{% live %}TOP SECRET{% endlive %}</p>');
-        $public = new \Preflow\Core\PageCache\LivePlaceholder(\Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
-        $marker = $public->make('twig', ['t' => 'secret.twig', 'b' => '__live_1', 'w' => []]);
-        $this->album('<html><body>{% live %}<p class="album">{{ album_count() }} in your album</p>{% endlive %}<div>{{ record.body|raw }}</div></body></html>', body: $marker);
 
-        foreach (['1_2' => '2', '3' => '1'] as $album => $count) {
-            $response = $this->visit('/project', ['album' => (string) $album]);
-            $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
-            $this->assertSame('app-key', $response->getHeaderLine('X-Page-Cache-Skip'));
-            $body = (string) $response->getBody();
-            $this->assertStringContainsString("<p class=\"album\">{$count} in your album</p>", $body, 'live parts render in place');
-            $this->assertStringNotContainsString('TOP SECRET', $body, 'a marker signed with the public key is never filled');
-            $this->assertStringContainsString($marker, $body);
-        }
-        $this->assertNull($this->stored('/project'));
+        $this->expectException(\Preflow\Core\Security\WeakAppKey::class);
+        $this->expectExceptionMessage('public example key');
+        $this->app();
     }
 
     #[RunInSeparateProcess]

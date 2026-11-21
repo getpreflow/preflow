@@ -15,6 +15,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Since 0.75 an internal render starts in the site's default locale: on a site without a locale
@@ -23,6 +24,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class InternalRenderLocaleTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

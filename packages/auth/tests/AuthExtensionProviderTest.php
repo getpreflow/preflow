@@ -67,31 +67,35 @@ final class AuthExtensionProviderTest extends TestCase
 
     public function test_auth_user_returns_user_when_set(): void
     {
-        $user = new TestUser();
-        $manager = $this->makeManager();
-        $manager->setUser($user);
-        $provider = new AuthExtensionProvider($manager);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $user = new TestUser();
+            $manager = $this->makeManager();
+            $manager->setUser($user);
+            $provider = new AuthExtensionProvider($manager);
 
-        $functions = $provider->getTemplateFunctions();
-        $fn = $this->findFunction($functions, 'auth_user');
+            $functions = $provider->getTemplateFunctions();
+            $fn = $this->findFunction($functions, 'auth_user');
 
-        $this->assertNotNull($fn);
-        $this->assertSame($user, ($fn->callable)());
+            $this->assertNotNull($fn);
+            $this->assertSame($user, ($fn->callable)());
+        });
     }
 
     public function test_auth_check_returns_boolean(): void
     {
-        $manager = $this->makeManager();
-        $provider = new AuthExtensionProvider($manager);
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest(), function (): void {
+            $manager = $this->makeManager();
+            $provider = new AuthExtensionProvider($manager);
 
-        $functions = $provider->getTemplateFunctions();
-        $fn = $this->findFunction($functions, 'auth_check');
+            $functions = $provider->getTemplateFunctions();
+            $fn = $this->findFunction($functions, 'auth_check');
 
-        $this->assertNotNull($fn);
-        $this->assertFalse(($fn->callable)());
+            $this->assertNotNull($fn);
+            $this->assertFalse(($fn->callable)());
 
-        $manager->setUser(new TestUser());
-        $this->assertTrue(($fn->callable)());
+            $manager->setUser(new TestUser());
+            $this->assertTrue(($fn->callable)());
+        });
     }
 
     public function test_csrf_token_returns_raw_string_without_html(): void

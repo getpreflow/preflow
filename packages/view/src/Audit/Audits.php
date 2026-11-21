@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\View\Audit;
 
+use Preflow\Core\Context\Contexts;
 use Preflow\View\Seo\PublicPages;
 
 /**
@@ -15,10 +16,10 @@ use Preflow\View\Seo\PublicPages;
  * complete or when there is none), saves its progress and returns the report;
  * steps one after another complete it. Only one full run at a time: a step
  * while another holds the lock throws AuditRunning. The app's PageRenderer
- * renders each page in core's internal render scope, which drops what the page
- * queues with sendLater() (Notifier::discardingQueued()), so the audited pages
- * send no mail, also when the step runs inside a web request whose end flushes
- * the queue: that request sends only the mail it queued itself.
+ * renders each page as an internal render, whose frame drops what the page
+ * queues with sendLater() and what it sends with send(), so the audited pages
+ * send no mail, also when the step runs inside a web request that sends its
+ * mail at its end: that request sends only the mail it queued itself.
  *
  * One per app (bound in the container next to the PageRenderer, built on first
  * use, so a request that never audits doesn't build the checks).
@@ -32,7 +33,7 @@ final class Audits
 
     /**
      * @param string $file the report file (AuditReport::file($basePath))
-     * @param ?\Closure(): \DateTimeImmutable $now the clock (default: the system's)
+     * @param ?\Closure(): \DateTimeImmutable $now the clock (default: the current render's, Contexts::clock(); the system's outside every render)
      * @param ?\Closure(int $microseconds): void $sleep waits between two tries of the lock (default usleep())
      */
     public function __construct(
@@ -43,7 +44,7 @@ final class Audits
         ?\Closure $now = null,
         private readonly ?\Closure $sleep = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now();
     }
 
     /**

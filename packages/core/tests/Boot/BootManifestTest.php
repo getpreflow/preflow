@@ -29,7 +29,7 @@ final class BootManifestTest extends TestCase
         $this->env = 'PF_MANIFEST_' . strtoupper(bin2hex(random_bytes(4)));
         $this->appDebug = getenv('APP_DEBUG');
         $this->write('.env', "{$this->env}=Old\n");
-        $this->write('config/app.php', "<?php\nreturn ['name' => getenv('{$this->env}') ?: 'none', 'debug' => 0, 'key' => 'manifest-test-key', 'locale' => 'en'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => getenv('{$this->env}') ?: 'none', 'debug' => 0, 'key' => 'manifest-test-key-0123456789abcdef', 'locale' => 'en'];\n");
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'url_strategy' => 'prefix'];\n");
         $this->write('config/site.php', "<?php\nreturn ['greeting' => 'hello', 'list' => [1, 2.5, true, null]];\n");
         $this->write('config/folio/extensions.json', "{\"enabled\": {}}\n");
@@ -92,7 +92,7 @@ final class BootManifestTest extends TestCase
 
     public function test_debug_set_by_the_environment_ignores_the_manifest(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Site', 'debug' => (int) (getenv('APP_DEBUG') ?: 0), 'key' => 'manifest-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Site', 'debug' => (int) (getenv('APP_DEBUG') ?: 0), 'key' => 'manifest-test-key-0123456789abcdef'];\n");
         putenv('APP_DEBUG'); // the .env doesn't name it
         (new ManifestBuilder($this->dir))->write();
         $this->assertTrue($this->web()->bootManifest()->active());
@@ -107,7 +107,7 @@ final class BootManifestTest extends TestCase
     public function test_debug_switched_on_in_config_on_the_server_ignores_the_manifest(): void
     {
         (new ManifestBuilder($this->dir))->write();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Site', 'debug' => 1, 'key' => 'manifest-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Site', 'debug' => 1, 'key' => 'manifest-test-key-0123456789abcdef'];\n");
         touch($this->dir . '/config/app.php', time() + 10);
 
         $app = $this->web();
@@ -119,7 +119,7 @@ final class BootManifestTest extends TestCase
     public function test_optimize_in_debug_mode_writes_no_manifest(): void
     {
         (new ManifestBuilder($this->dir))->write();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Debug', 'debug' => 1, 'key' => 'manifest-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Debug', 'debug' => 1, 'key' => 'manifest-test-key-0123456789abcdef'];\n");
 
         $result = (new ManifestBuilder($this->dir))->write();
 

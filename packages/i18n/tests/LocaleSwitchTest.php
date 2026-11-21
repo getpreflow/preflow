@@ -7,6 +7,10 @@ namespace Preflow\I18n\Tests;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7\Response;
 use PHPUnit\Framework\TestCase;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Site;
+use Preflow\Core\Context\SystemClock;
 use Preflow\Core\Http\LocaleUrls;
 use Preflow\I18n\LocaleMiddleware;
 use Preflow\I18n\Translator;
@@ -23,6 +27,11 @@ final class LocaleSwitchTest extends TestCase
     protected function setUp(): void
     {
         $this->handled = false;
+    }
+
+    protected function tearDown(): void
+    {
+        Contexts::reset();
     }
 
     private function middleware(bool $redirectBare = true, bool $prefixDefault = true, string $cookieName = 'locale', bool $cookie = false, bool $prefixed = true): LocaleMiddleware
@@ -58,7 +67,13 @@ final class LocaleSwitchTest extends TestCase
             }
         };
 
-        return $mw->process($request->withCookieParams($cookies), $handler);
+        $request = $request->withCookieParams($cookies);
+
+        // In a render frame of its own, as Application::handle() runs it (since 0.81 it narrows that frame).
+        return Contexts::run(
+            RenderContext::fromRequest($request, new Site('https://site.test', self::LOCALES, 'en'), new SystemClock()),
+            static fn (): ResponseInterface => $mw->process($request, $handler),
+        );
     }
 
     public function markHandled(): void

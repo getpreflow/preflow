@@ -18,18 +18,21 @@ final class Navigation extends Component
 
     public string $brand = '';
 
+    /** @param ?RequestContext $requestContext null where nothing was requested (a mail): no item is active */
     public function __construct(
-        private readonly RequestContext $requestContext,
+        private readonly ?RequestContext $requestContext,
     ) {}
 
     public function resolveState(): void
     {
-        $currentPath = $this->requestContext->path;
+        $currentPath = $this->requestContext?->path;
         $this->brand = $this->props['brand'] ?? '';
 
         foreach ($this->props['items'] ?? [] as $item) {
             $path = $item['path'];
-            if ($path === '/') {
+            if ($currentPath === null) {
+                $active = false;
+            } elseif ($path === '/') {
                 $active = $currentPath === '/';
             } else {
                 $active = $currentPath === $path

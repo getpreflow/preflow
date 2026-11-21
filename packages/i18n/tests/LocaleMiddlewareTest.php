@@ -10,6 +10,10 @@ use Nyholm\Psr7\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\Site;
+use Preflow\Core\Context\SystemClock;
 use Preflow\I18n\LocaleMiddleware;
 use Preflow\I18n\Translator;
 
@@ -17,6 +21,20 @@ final class LocaleMiddlewareTest extends TestCase
 {
     private string $langDir;
     private Translator $translator;
+    /** The translator's locale at the end of the last process()'s frame. */
+    private ?string $locale = null;
+
+    /** Runs $mw in a render frame of its own, as Application::handle() does (since 0.81 it narrows that frame). */
+    private function process(LocaleMiddleware $mw, ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        return Contexts::run(RenderContext::fromRequest($request, new Site('https://site.test', ['en', 'de'], 'en'), new SystemClock()), function () use ($mw, $request, $handler): ResponseInterface {
+            try {
+                return $mw->process($request, $handler);
+            } finally {
+                $this->locale = $this->translator->getLocale();
+            }
+        });
+    }
 
     protected function setUp(): void
     {
@@ -31,6 +49,7 @@ final class LocaleMiddlewareTest extends TestCase
 
     protected function tearDown(): void
     {
+        Contexts::reset();
         $this->deleteDir($this->langDir);
     }
 
@@ -74,9 +93,9 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $mw->process($this->createRequest('/de/blog'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/de/blog'), $this->createHandler($captured));
 
-        $this->assertSame('de', $this->translator->getLocale());
+        $this->assertSame('de', $this->locale);
     }
 
     public function test_strips_locale_prefix_from_uri(): void
@@ -84,7 +103,7 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $mw->process($this->createRequest('/de/blog/post'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/de/blog/post'), $this->createHandler($captured));
 
         $this->assertSame('/blog/post', $captured->getUri()->getPath());
     }
@@ -95,15 +114,15 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, $locales, 'en', 'prefix', urls: new \Preflow\Core\Http\LocaleUrls($locales, 'en'));
 
         $captured = null;
-        $mw->process($this->createRequest('/de-ch/blog/post'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/de-ch/blog/post'), $this->createHandler($captured));
         $this->assertSame('/blog/post', $captured->getUri()->getPath());
         $this->assertSame('de-ch', $captured->getAttribute('locale'));
 
-        $mw->process($this->createRequest('/de-ch'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/de-ch'), $this->createHandler($captured));
         $this->assertSame('/', $captured->getUri()->getPath());
         $this->assertSame('de-ch', $captured->getAttribute('locale'));
 
-        $mw->process($this->createRequest('/de-chx/blog'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/de-chx/blog'), $this->createHandler($captured));
         $this->assertSame('/de-chx/blog', $captured->getUri()->getPath());
         $this->assertSame('en', $captured->getAttribute('locale'));
     }
@@ -113,9 +132,9 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $mw->process($this->createRequest('/blog'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/blog'), $this->createHandler($captured));
 
-        $this->assertSame('en', $this->translator->getLocale());
+        $this->assertSame('en', $this->locale);
         $this->assertSame('/blog', $captured->getUri()->getPath());
     }
 
@@ -125,9 +144,9 @@ final class LocaleMiddlewareTest extends TestCase
 
         $request = $this->createRequest('/blog', cookies: ['locale' => 'de']);
         $captured = null;
-        $mw->process($request, $this->createHandler($captured));
+        $this->process($mw, $request, $this->createHandler($captured));
 
-        $this->assertSame('de', $this->translator->getLocale());
+        $this->assertSame('de', $this->locale);
     }
 
     public function test_detects_locale_from_accept_language(): void
@@ -136,9 +155,9 @@ final class LocaleMiddlewareTest extends TestCase
 
         $request = $this->createRequest('/blog', headers: ['Accept-Language' => 'de-DE,de;q=0.9,en;q=0.8']);
         $captured = null;
-        $mw->process($request, $this->createHandler($captured));
+        $this->process($mw, $request, $this->createHandler($captured));
 
-        $this->assertSame('de', $this->translator->getLocale());
+        $this->assertSame('de', $this->locale);
     }
 
     public function test_invalid_locale_uses_default(): void
@@ -146,9 +165,9 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $mw->process($this->createRequest('/fr/blog'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/fr/blog'), $this->createHandler($captured));
 
-        $this->assertSame('en', $this->translator->getLocale());
+        $this->assertSame('en', $this->locale);
         // Invalid prefix not stripped
         $this->assertSame('/fr/blog', $captured->getUri()->getPath());
     }
@@ -159,7 +178,7 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $response = $mw->process($this->createRequest('/de/x'), $this->createHandler($captured));
+        $response = $this->process($mw, $this->createRequest('/de/x'), $this->createHandler($captured));
 
         $this->assertFalse($response->hasHeader('Set-Cookie'));
         $this->assertSame('de', $captured->getAttribute('locale'));
@@ -170,8 +189,8 @@ final class LocaleMiddlewareTest extends TestCase
     {
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix', cookie: true);
 
-        $same = $mw->process($this->createRequest('/de/x', cookies: ['locale' => 'de']), $this->createHandler());
-        $changed = $mw->process($this->createRequest('/x', cookies: ['locale' => 'de']), $this->createHandler());
+        $same = $this->process($mw, $this->createRequest('/de/x', cookies: ['locale' => 'de']), $this->createHandler());
+        $changed = $this->process($mw, $this->createRequest('/x', cookies: ['locale' => 'de']), $this->createHandler());
 
         $this->assertFalse($same->hasHeader('Set-Cookie'));
         $this->assertStringContainsString('locale=en', $changed->getHeaderLine('Set-Cookie'));
@@ -182,9 +201,9 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $mw->process($this->createRequest('/de'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/de'), $this->createHandler($captured));
 
-        $this->assertSame('de', $this->translator->getLocale());
+        $this->assertSame('de', $this->locale);
         $this->assertSame('/', $captured->getUri()->getPath());
     }
 
@@ -193,7 +212,7 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
         $captured = null;
-        $mw->process($this->createRequest('/de/page'), $this->createHandler($captured));
+        $this->process($mw, $this->createRequest('/de/page'), $this->createHandler($captured));
 
         $this->assertSame('de', $captured->getAttribute('locale'));
     }
@@ -215,20 +234,20 @@ final class LocaleMiddlewareTest extends TestCase
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
         $seen = null;
 
-        $mw->process($this->createRequest('/de/blog'), $this->prefixProbe($mw, $seen));
+        $this->process($mw, $this->createRequest('/de/blog'), $this->prefixProbe($mw, $seen));
         $this->assertSame('/de', $seen);
 
-        $mw->process($this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
+        $this->process($mw, $this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
         $this->assertSame('', $seen);
 
-        $mw->process($this->createRequest('/en/blog'), $this->prefixProbe($mw, $seen));
+        $this->process($mw, $this->createRequest('/en/blog'), $this->prefixProbe($mw, $seen));
         $this->assertSame('/en', $seen);
 
-        $mw->process($this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
+        $this->process($mw, $this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
         $this->assertSame('', $seen);
 
         $none = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'none');
-        $none->process($this->createRequest('/de/blog'), $this->prefixProbe($none, $seen));
+        $this->process($none, $this->createRequest('/de/blog'), $this->prefixProbe($none, $seen));
         $this->assertSame('', $seen);
     }
 
@@ -243,13 +262,13 @@ final class LocaleMiddlewareTest extends TestCase
         };
 
         try {
-            $mw->process($this->createRequest('/de/blog'), $throwing);
+            $this->process($mw, $this->createRequest('/de/blog'), $throwing);
             $this->fail('expected the handler to throw');
         } catch (\RuntimeException) {
         }
 
         $seen = null;
-        $mw->process($this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
+        $this->process($mw, $this->createRequest('/blog'), $this->prefixProbe($mw, $seen));
         $this->assertSame('', $seen);
     }
 
@@ -257,7 +276,7 @@ final class LocaleMiddlewareTest extends TestCase
     {
         $mw = new LocaleMiddleware($this->translator, ['en', 'de'], 'en', 'prefix');
 
-        $mw->process($this->createRequest('/de/x'), $this->createHandler());
+        $this->process($mw, $this->createRequest('/de/x'), $this->createHandler());
 
         $this->assertSame('', $mw->urlPrefix());
     }
@@ -271,13 +290,15 @@ final class LocaleMiddlewareTest extends TestCase
             public function __construct(private LocaleMiddleware $mw, private ?string &$inner, private ?string &$outer, private RequestHandlerInterface $probe) {}
             public function handle(ServerRequestInterface $request): ResponseInterface
             {
-                $this->mw->process((new Psr17Factory())->createServerRequest('GET', '/x'), $this->probe);
+                // A nested request has a frame of its own (Application::handle() opens one).
+                $inner = (new Psr17Factory())->createServerRequest('GET', '/x');
+                Contexts::run(RenderContext::fromRequest($inner, new Site('https://site.test', ['en', 'de'], 'en'), new SystemClock()), fn () => $this->mw->process($inner, $this->probe));
                 $this->outer = $this->mw->urlPrefix();
                 return new Response(200);
             }
         };
 
-        $mw->process($this->createRequest('/de/x'), $handler);
+        $this->process($mw, $this->createRequest('/de/x'), $handler);
 
         $this->assertSame('', $inner);
         $this->assertSame('/de', $outer);

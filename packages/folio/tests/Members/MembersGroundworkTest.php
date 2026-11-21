@@ -20,10 +20,13 @@ use Preflow\Rbac\RoleList;
 use Preflow\Rbac\RoleStore;
 use Preflow\Members\Tests\Support\Dom;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The member type on SQLite (or the default storage), its roles and settings, the sidebar, no export. */
 final class MembersGroundworkTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     protected function setUp(): void

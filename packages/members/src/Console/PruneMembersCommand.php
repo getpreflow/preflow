@@ -7,6 +7,7 @@ namespace Preflow\Members\Console;
 use Preflow\Auth\Remember\RememberMe;
 use Preflow\Core\Application;
 use Preflow\Auth\Tokens\Tokens;
+use Preflow\Core\Context\Contexts;
 use Preflow\Core\Throttle\Throttle;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
@@ -120,7 +121,7 @@ final class PruneMembersCommand implements CommandInterface
             }
         }
 
-        return new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        return Contexts::clock()->now()->setTimezone(new \DateTimeZone('UTC'));
     }
 
     /** Strictly older than $days; a missing or unreadable date never expires (stored as TEXT, so compared here). */

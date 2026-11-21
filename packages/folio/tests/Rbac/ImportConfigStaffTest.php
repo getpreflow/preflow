@@ -11,6 +11,7 @@ use Preflow\Auth\UserProviderInterface;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Rbac\Console\ImportConfigStaffCommand;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * staff:import-config: the config users of the staff guard (with Folio its
@@ -19,6 +20,8 @@ use Preflow\Rbac\Console\ImportConfigStaffCommand;
  */
 final class ImportConfigStaffTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private string $hash = '';

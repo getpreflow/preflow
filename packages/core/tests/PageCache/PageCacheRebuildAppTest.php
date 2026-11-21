@@ -23,10 +23,13 @@ use Preflow\Core\PageCache\TagIndex;
 use Preflow\Data\DataManager;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Rebuilds through whole apps: after the response, from the console, under the visitors' keys. */
 final class PageCacheRebuildAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

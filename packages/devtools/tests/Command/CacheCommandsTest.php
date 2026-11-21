@@ -136,7 +136,7 @@ final class CacheCommandsTest extends TestCase
     {
         file_put_contents($this->dir . '/.env', '');
         @mkdir($this->dir . '/config');
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 0, 'key' => 'cache-clear-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['debug' => 0, 'key' => 'cache-clear-key-0123456789abcdefghij'];\n");
         (new \Preflow\Core\Boot\ManifestBuilder($this->dir))->write();
         $this->assertFileExists($this->dir . '/bootstrap/cache/boot.php');
 

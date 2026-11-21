@@ -133,7 +133,7 @@ final class FreshnessComponentTest extends TestCase
 
     public function test_on_a_live_component_it_does_nothing(): void
     {
-        $live = new LiveParts(new LivePlaceholder('freshness-test-key'), $this->cache, $this->recorder, static function (): void {});
+        $live = new LiveParts(new LivePlaceholder('freshness-test-key-0123456789abcdef0123456789'), $this->cache, $this->recorder, static function (): void {});
         $this->renderer->enableLive($live, fn (string $class, array $props): Component => $this->make($class, (string) $props['tag']));
         $key = \Preflow\Core\PageCache\PageKey::fromRequest(
             new \Nyholm\Psr7\ServerRequest('GET', 'https://example.com/page'),

@@ -8,10 +8,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Http\AdminNav;
 use Preflow\Folio\Tests\Support\StaffScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The admin layout renders each sidebar section with a heading as a <details> from the person's saved state. */
 final class SidebarSectionsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

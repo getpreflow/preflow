@@ -17,6 +17,7 @@ use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A member deletes their own account: through the data delete plan with the self rules
@@ -25,6 +26,8 @@ use Preflow\Notify\TransportFactory;
  */
 final class SelfDeletionTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

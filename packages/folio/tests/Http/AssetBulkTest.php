@@ -13,6 +13,7 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\Media\MediaLibrary;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UploadedFileInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The library screen (0.76): the selection bar's Move to bin (POST assets/bulk) refuses what a single
@@ -22,6 +23,8 @@ use Psr\Http\Message\UploadedFileInterface;
 #[RequiresPhpExtension('gd')]
 final class AssetBulkTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private ?Application $session = null;

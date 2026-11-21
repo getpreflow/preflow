@@ -39,6 +39,7 @@ use Preflow\Rbac\Tests\Fixtures\PasswordPageProvider;
 use Preflow\Rbac\Tests\Fixtures\ReportsProvider;
 use Preflow\Rbac\Tests\Fixtures\UnavailablePasswordPageProvider;
 use Preflow\Testing\ArraySession;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Staff accounts on a site without Folio (its classes can't be loaded): the staff type from
@@ -47,6 +48,8 @@ use Preflow\Testing\ArraySession;
  */
 final class CoreStaffTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private const string PASSWORD = 'a long enough password';
     private const string LAST = 'At least one account must keep the right to manage staff and roles.';
     private const string NO_LINK_PAGE = 'No page to set a password is configured; use staff:password, or install an admin that provides one.';
@@ -62,7 +65,7 @@ final class CoreStaffTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/rbac_staff_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key-0123456789abcdef'];\n");
         $this->providers();
         $this->auth();
         $this->write('config/data.php', "<?php\nreturn " . var_export([
@@ -291,10 +294,12 @@ final class CoreStaffTest extends TestCase
         $app = $this->app();
         $user = $app->container()->get(AuthManager::class)->guard('session')->user($this->request($session));
         $this->assertInstanceOf(RecordUser::class, $user);
-        $app->container()->get(AuthManager::class)->setUser($user, 'session');
+        // Signed in as the request's identity middleware does it: the render's viewer.
         $access = $app->container()->get(Access::class);
-        $this->assertTrue($access->can('reports.view'));
-        $this->assertFalse($access->can('reports.export'));
+        \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['session' => $user], 'session')), function () use ($access): void {
+            $this->assertTrue($access->can('reports.view'));
+            $this->assertFalse($access->can('reports.export'));
+        });
 
         [$code, $out] = $this->command('staff:list');
         $this->assertSame(0, $code);
@@ -327,6 +332,24 @@ final class CoreStaffTest extends TestCase
         $this->assertSame("The password needs at least 10 characters.\n", $out);
         [$code, $out] = $this->command('staff:password', ['nobody@site.test'], self::PASSWORD . "\n");
         $this->assertSame([1, "No staff account has the e-mail address \"nobody@site.test\".\n"], [$code, $out]);
+    }
+
+    /** A staff invite link expires by the render's clock (auth's tokens read Contexts::clock() since 0.81). */
+    #[RunInSeparateProcess]
+    public function test_rbac_staff_expiry_uses_the_context_now(): void
+    {
+        $this->site();
+        $app = $this->app();
+        $links = $app->container()->get(AccountLinks::class);
+        $boss = $this->staff('boss@site.test', $app);
+        $at = static fn (string $when): \Preflow\Core\Context\RenderContext => \Preflow\Core\Context\RenderContext::console($app->site(), new \Preflow\Core\Context\SystemClock())->at(new \DateTimeImmutable($when));
+        $in = static fn (string $when, \Closure $fn): mixed => \Preflow\Core\Context\Contexts::run($at($when), $fn);
+
+        $invite = $in('2030-01-01T12:00:00Z', static fn (): string => $links->issue($boss, StaffAccounts::INVITE, 3600));
+        $reset = $in('2030-01-01T12:00:00Z', static fn (): string => $links->issue($boss, StaffAccounts::RESET, 3600));
+
+        $this->assertNull($in('2030-01-01T13:00:01Z', static fn (): ?DynamicRecord => $links->consume($invite, StaffAccounts::INVITE)), 'an hour and a second later: expired');
+        $this->assertSame('boss@site.test', $in('2030-01-01T12:59:59Z', static fn (): ?DynamicRecord => $links->consume($reset, StaffAccounts::RESET))?->get('email'), 'within the hour: valid');
     }
 
     #[RunInSeparateProcess]

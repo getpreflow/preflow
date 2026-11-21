@@ -15,10 +15,13 @@ use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Notify\Notifier;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Login with the 30-day remember cookie, logout, forgot and reset password, resend the confirmation. */
 final class MemberLoginTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Preflow\View\Audit;
 
+use Preflow\Core\Context\SkippedWrite;
+
 /**
  * A page as the SEO audit rendered it: its absolute URL, locale, status, headers
- * (as PSR-7 getHeaders() gives them) and body. Checks read the HTML through
- * dom(), parsed on first use and kept.
+ * (as PSR-7 getHeaders() gives them), body, and the data writes its render tried
+ * and that were skipped (since 0.81; a view counter on GET). Checks read the HTML
+ * through dom(), parsed on first use and kept.
  *
  * @since 0.54
  */
@@ -16,13 +19,17 @@ final readonly class RenderedPage
     /** The parsed body, or false when it isn't HTML; unset until dom() is first called. */
     private \DOMDocument|false $document;
 
-    /** @param array<string, list<string>> $headers */
+    /**
+     * @param array<string, list<string>> $headers
+     * @param list<SkippedWrite> $skippedWrites since 0.81.0
+     */
     public function __construct(
         public string $url,
         public string $locale,
         public int $status,
         public array $headers,
         public string $body,
+        public array $skippedWrites = [],
     ) {}
 
     /** A header's values joined with ", " (any case of $name); '' when absent. */

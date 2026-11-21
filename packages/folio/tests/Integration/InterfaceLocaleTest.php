@@ -13,6 +13,7 @@ use Preflow\Folio\Users\UserPreferences;
 use Preflow\I18n\Translator;
 use Preflow\Notify\Notifier;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Each Folio user picks their own interface language (POST {prefix}/_locale, the sidebar
@@ -22,6 +23,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class InterfaceLocaleTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

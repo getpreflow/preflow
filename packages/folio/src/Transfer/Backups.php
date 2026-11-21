@@ -16,7 +16,7 @@ final class Backups
         if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
             throw new TransferException("Cannot create {$dir}");
         }
-        $path = $dir . '/' . $prefix . '-' . date('Ymd-His') . '.tar.gz';
+        $path = $dir . '/' . $prefix . '-' . date('Ymd-His') . '.tar.gz'; // clock: stamp
         $out = fopen('compress.zlib://' . $path, 'wb');
         if ($out === false) {
             throw new TransferException("Cannot write {$path}");

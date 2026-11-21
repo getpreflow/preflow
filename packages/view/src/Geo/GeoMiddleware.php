@@ -9,9 +9,8 @@ use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use Nyholm\Psr7\Stream;
 use Preflow\Core\Exceptions\HttpException;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionMiddleware;
-use Preflow\View\AssetCollector;
+use Preflow\Core\PageCache\PageCacheMiddleware;
 use Preflow\View\Seo\PageMeta;
 use Preflow\View\Seo\PageSignals;
 use Psr\Http\Message\ResponseInterface;
@@ -25,8 +24,9 @@ use Psr\Http\Server\RequestHandlerInterface;
  * `/llms-full.txt` (`/de/llms.txt`… for the other locales) from GeoEntries.
  *
  * The page is rendered internally as an anonymous visitor would see it (no
- * cookies, no session, no query) and converted; for pages that aren't a plain
- * 200 HTML page, are noindex or are excluded, the `.md` URL answers 404 and an
+ * cookies, no session, no query, nothing of the visitor's address; in an app, an
+ * internal Geo render through Application::render(), never stored) and converted; for pages that aren't a plain
+ * 200 HTML page, are noindex, say they are per visitor (Cache-Control no-store or private) or are excluded, the `.md` URL answers 404 and an
  * `Accept: text/markdown` request gets the normal response. HTML pages get a
  * `rel="alternate"` link to their Markdown, in the head and as a `Link` header.
  * Runs outermost, so the internal render passes through session, auth and
@@ -42,7 +42,11 @@ final class GeoMiddleware implements MiddlewareInterface
 
     /**
      * @param ?string       $appUrl the configured app.url; its origin makes links absolute (else the request's)
-     * @param ?RenderScopes  $scopes wrap each internal render (request-scoped state set and put back)
+     * @param \Closure(ServerRequestInterface, GeoCapture): ResponseInterface $render renders a page's clean
+     *                       request as an internal render of its own (the app: Application::render() in a Geo
+     *                       context, never stored; since 0.81) whose geo blocks go into the capture
+     *                       (GeoCollector::captureInto() in that render's frame). Required: rendered down
+     *                       the visitor's own pipeline instead, the page would see the visitor's frame
      * @param ?\Closure(\Throwable): void $report gets render failures that aren't HTTP answers (404, 403…)
      * @param bool           $debug  rethrow those failures, so the error page shows them
      * @param ?GeoEntries    $entries the pages llms.txt lists (none: no llms.txt)
@@ -57,9 +61,8 @@ final class GeoMiddleware implements MiddlewareInterface
         private readonly GeoConfig $config,
         private readonly GeoCollector $collector,
         private readonly MarkdownConverter $converter,
-        private readonly AssetCollector $assets,
-        private readonly ?string $appUrl = null,
-        private readonly ?RenderScopes $scopes = null,
+        private readonly ?string $appUrl,
+        private readonly \Closure $render,
         private readonly ?\Closure $report = null,
         private readonly bool $debug = false,
         private readonly ?GeoEntries $entries = null,
@@ -106,26 +109,26 @@ final class GeoMiddleware implements MiddlewareInterface
 
     /**
      * The Markdown of one page path, or null when it has none (not 200 HTML,
-     * noindex, an HTTP error). Rendered anonymously through $handler with its own
-     * assets and geo blocks, so several renders in one request stay independent.
+     * noindex, an HTTP error). Rendered anonymously as an internal render of its own
+     * (with its own assets; its geo blocks captured into a GeoCapture of its own), so several
+     * renders in one request stay independent. $handler is not used (kept for callers; the app renders the page).
      * Other failures are reported and give null; in debug mode they are rethrown.
      *
-     * @param bool $cached false (a page's own Markdown view): an internal render, which the page
-     *                     cache always renders, so the page's geo blocks are there; true
-     *                     (llms-full.txt): a page the page cache holds is served from it, without
-     *                     its geo blocks, so one request doesn't render every listed page
+     * @param bool $cached false (a page's own Markdown view): the page cache always renders it, so
+     *                     the page's geo blocks are there; true (llms-full.txt): a page the page
+     *                     cache holds is served from it, without its geo blocks, so one request
+     *                     doesn't render every listed page (one it doesn't hold is not stored)
      */
     public function render(ServerRequestInterface $request, RequestHandlerInterface $handler, string $path, bool $cached = false): ?string
     {
         $origin = PageSignals::origin($this->appUrl, $request);
-        $sub = $this->subRequest($request, $path, !$cached);
+        $sub = $this->subRequest($request, $path, $cached);
+        $capture = new GeoCapture();
 
-        $this->collector->reset();
-        $this->collector->capture(true);
         try {
-            $response = $this->assets->isolate(fn (): ResponseInterface => $this->scoped($sub, $handler));
+            $response = ($this->render)($sub, $capture);
 
-            return $this->markdownOf($response, $path, $origin);
+            return $this->markdownOf($response, $path, $origin, $capture);
         } catch (\Throwable $e) {
             if ($e instanceof HttpException && $e->statusCode < 500) {
                 return null; // not found, forbidden…: the page has no public view
@@ -136,9 +139,6 @@ final class GeoMiddleware implements MiddlewareInterface
             $this->report?->__invoke($e);
 
             return null;
-        } finally {
-            $this->collector->capture(false);
-            $this->collector->reset();
         }
     }
 
@@ -315,10 +315,15 @@ final class GeoMiddleware implements MiddlewareInterface
         }
     }
 
-    /** A clean GET for $path: no cookies, credentials, query or attributes, and no session; marked InternalRender if $internal. */
-    private function subRequest(ServerRequestInterface $request, string $path, bool $internal): ServerRequestInterface
+    /**
+     * A clean GET for $path on the request's origin: no cookies, credentials, query or attributes,
+     * no session, and nothing of the visitor's server parameters (its address is 127.0.0.1); with
+     * $cached, the page cache may serve it from a stored page (PageCacheMiddleware::SERVE_STORED).
+     */
+    private function subRequest(ServerRequestInterface $request, string $path, bool $cached): ServerRequestInterface
     {
         $uri = $request->getUri()->withPath($path)->withQuery('')->withFragment('');
+        $scheme = $uri->getScheme() !== '' ? $uri->getScheme() : 'http';
 
         $headers = ['Accept' => 'text/html'];
         foreach (self::KEPT_HEADERS as $name) {
@@ -327,33 +332,28 @@ final class GeoMiddleware implements MiddlewareInterface
             }
         }
 
-        $server = array_filter(
-            $request->getServerParams(),
-            static fn (string $key): bool => !str_starts_with($key, 'HTTP_')
-                && !in_array($key, ['PHP_AUTH_USER', 'PHP_AUTH_PW', 'PHP_AUTH_DIGEST', 'AUTH_TYPE', 'REMOTE_USER'], true),
-            ARRAY_FILTER_USE_KEY,
-        );
-        $server = ['REQUEST_METHOD' => 'GET', 'REQUEST_URI' => $path, 'QUERY_STRING' => ''] + $server;
+        $server = [
+            'REQUEST_METHOD' => 'GET',
+            'REQUEST_URI' => $path,
+            'QUERY_STRING' => '',
+            'SERVER_NAME' => $uri->getHost(),
+            'SERVER_PORT' => (string) ($uri->getPort() ?? ($scheme === 'https' ? 443 : 80)),
+            'REMOTE_ADDR' => '127.0.0.1',
+        ];
+        if ($scheme === 'https') {
+            $server['HTTPS'] = 'on';
+        }
 
         $sub = (new ServerRequest('GET', $uri, $headers, null, $request->getProtocolVersion(), $server))
             ->withAttribute(SessionMiddleware::WITHOUT_SESSION, true);
 
-        // An internal render: the page cache renders it (a stored page holds no geo blocks), and
-        // it leaves no trace (no redirect hit, no image variant, no debug toolbar).
-        return $internal ? InternalRender::mark($sub) : $sub;
+        return $cached ? $sub->withAttribute(PageCacheMiddleware::SERVE_STORED, true) : $sub;
     }
 
-    /** Handle $sub inside every render scope. */
-    private function scoped(ServerRequestInterface $sub, RequestHandlerInterface $handler): ResponseInterface
+    private function markdownOf(ResponseInterface $response, string $path, string $origin, GeoCapture $capture): ?string
     {
-        $render = static fn (): ResponseInterface => $handler->handle($sub);
-
-        return $this->scopes?->run($sub, $render) ?? $render();
-    }
-
-    private function markdownOf(ResponseInterface $response, string $path, string $origin): ?string
-    {
-        if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || PageSignals::noindexHeader($response)) {
+        if ($response->getStatusCode() !== 200 || !$this->isHtml($response) || PageSignals::noindexHeader($response)
+            || self::perVisitor($response)) {
             return null;
         }
 
@@ -371,7 +371,7 @@ final class GeoMiddleware implements MiddlewareInterface
         // Blocks a page or layout template declares outside components lead the converted page
         // (a page that wants only its block marks its own HTML data-geo="skip").
         $parts = array_filter(
-            [...$this->collector->pageBlocks(), $this->converter->convert($html, $origin . $path)],
+            [...$capture->pageBlocks(), $this->converter->convert($html, $origin . $path, $capture)],
             static fn (string $part): bool => $part !== '',
         );
         $body = implode("\n\n", $parts);
@@ -381,6 +381,15 @@ final class GeoMiddleware implements MiddlewareInterface
             . ($updated !== null ? 'Updated: ' . $updated . "\n" : '');
 
         return $body === '' ? $markdown : $markdown . "\n" . $body . "\n";
+    }
+
+    /**
+     * Whether the page said it is for one visitor only (Cache-Control no-store or private, e.g. a
+     * form's outcome page): like a noindex page it has no public Markdown view (since 0.81.0).
+     */
+    private static function perVisitor(ResponseInterface $response): bool
+    {
+        return preg_match('/(^|[\s,])(no-store|private)([\s,=]|$)/i', $response->getHeaderLine('Cache-Control')) === 1;
     }
 
     /** The day of an ISO 8601 time as written (its own offset), or null when it isn't one. */

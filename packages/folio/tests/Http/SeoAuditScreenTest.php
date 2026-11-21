@@ -15,6 +15,7 @@ use Preflow\View\Audit\Finding;
 use Preflow\View\Audit\Severity;
 use Preflow\View\Audit\Target;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Settings → SEO audit ({prefix}/seo-audit): the last report of the audit; the screen itself only
@@ -23,6 +24,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class SeoAuditScreenTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const string ASSET = '0123456789abcdef0123456789abcdef';

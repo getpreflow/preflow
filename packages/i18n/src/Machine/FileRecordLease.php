@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\I18n\Machine;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * One file per claimed record, named by a hash of collection and id (ids may hold any characters).
  * The file holds the claim's expiry, so a worker that died without releasing blocks the record only
@@ -20,7 +22,7 @@ final class FileRecordLease implements RecordLease
 
     public function __construct(private readonly string $dir, ?\Closure $now = null)
     {
-        $this->now = $now ?? static fn (): int => time();
+        $this->now = $now ?? static fn (): int => Contexts::clock()->now()->getTimestamp();
     }
 
     public function claim(string $collection, string $id, int $ttlSeconds = 600): bool

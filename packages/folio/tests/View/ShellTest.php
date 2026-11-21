@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\View;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Tests\Support\StaffScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The admin shell (_layout.twig, partials/_user_menu.twig, partials/_rail.twig): the sidebar with the
@@ -16,6 +17,8 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
  */
 final class ShellTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void
@@ -241,7 +244,7 @@ final class ShellTest extends TestCase
     {
         putenv('APP_ENV');
         foreach (['true' => 'Folio · development', 'on' => 'Folio · development', '1' => 'Folio · development', 'false' => 'Folio', '0' => 'Folio'] as $debug => $line) {
-            $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => $debug, 'engine' => 'twig', 'key' => 'folio-staff-test-key', 'url' => 'https://site.test'], true) . ";\n");
+            $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => $debug, 'engine' => 'twig', 'key' => 'folio-staff-test-key-0123456789abcdef', 'url' => 'https://site.test'], true) . ";\n");
             $this->flow = $this->app();
             $this->signIn();
 
@@ -254,7 +257,7 @@ final class ShellTest extends TestCase
     #[RunInSeparateProcess]
     public function test_the_environment_line_names_a_non_production_environment(): void
     {
-        $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'env' => 'staging', 'engine' => 'twig', 'key' => 'folio-staff-test-key', 'url' => 'https://site.test'], true) . ";\n");
+        $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'env' => 'staging', 'engine' => 'twig', 'key' => 'folio-staff-test-key-0123456789abcdef', 'url' => 'https://site.test'], true) . ";\n");
         $this->flow = $this->app();
         $this->signIn();
 

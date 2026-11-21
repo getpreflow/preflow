@@ -89,7 +89,7 @@ final class HypermediaProtocols
     /**
      * The page nonce a fragment request sent back (HypermediaProtocol::pageNonce()), or null:
      * never from a plain request or a history restore (those are whole pages). Untrusted input;
-     * core adopts it for that response only (NonceGenerator::adopt()) and never stores it.
+     * core adopts it for that response only (NonceGenerator::adoptInFrame()) and never stores it.
      */
     public function pageNonce(ServerRequestInterface $request): ?string
     {
@@ -106,6 +106,63 @@ final class HypermediaProtocols
     public function nonceHeaders(): array
     {
         return self::unique(array_merge(...array_map(static fn (HypermediaProtocol $p): array => $p->nonceHeaders(), $this->protocols)));
+    }
+
+    /**
+     * The headers of every client that owns some (OwnsResponseHeaders::ownedHeaders()), each name
+     * once (case-insensitive); a client without that interface owns none here.
+     *
+     * @since 0.81.0
+     * @return list<string>
+     */
+    public function ownedHeaders(): array
+    {
+        $owned = [];
+        foreach ($this->protocols as $protocol) {
+            if ($protocol instanceof OwnsResponseHeaders) {
+                array_push($owned, ...$protocol->ownedHeaders());
+            }
+        }
+
+        return self::unique($owned);
+    }
+
+    /**
+     * $html with every client that can (CarriesRequestHeaders) told to send $headers with each
+     * request it makes from the page; unchanged when none can.
+     *
+     * @since 0.81.0
+     * @param array<string, string> $headers
+     */
+    public function carryHeaders(string $html, array $headers): string
+    {
+        foreach ($this->protocols as $protocol) {
+            if ($protocol instanceof CarriesRequestHeaders) {
+                $html = $protocol->carryHeaders($html, $headers);
+            }
+        }
+
+        return $html;
+    }
+
+    /**
+     * Whether $name (any case) is one of $names, where a name ending in '*' stands for every
+     * header that starts with the rest.
+     *
+     * @since 0.81.0
+     * @param list<string> $names
+     */
+    public static function matches(string $name, array $names): bool
+    {
+        $lower = strtolower($name);
+        foreach ($names as $owned) {
+            $owned = strtolower($owned);
+            if (str_ends_with($owned, '*') ? str_starts_with($lower, substr($owned, 0, -1)) : $lower === $owned) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

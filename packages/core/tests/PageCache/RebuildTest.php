@@ -78,7 +78,8 @@ final class RebuildTest extends TestCase
                 $this->onQueue++;
             },
             rebuild: function (ServerRequestInterface $request) use ($store, $seconds, $during, $refuse): ResponseInterface {
-                $this->assertTrue(InternalRender::is($request));
+                // Not marked: the app renders it as an internal Rebuild render, whose purpose says it.
+                $this->assertNull($request->getAttribute(InternalRender::ATTRIBUTE));
                 $this->assertTrue($request->getAttribute(PageCacheMiddleware::REBUILD));
                 $this->rendered[] = (string) $request->getUri();
                 $this->now += 0.001;
@@ -557,7 +558,7 @@ final class RebuildTest extends TestCase
     {
         $request = Rebuild::request('http://example.com/x', ['locale' => 'de', 'proto' => 'https', 'host' => 'example.com', 'vary' => ['hx-target' => 'list']], 'abc', true);
 
-        $this->assertTrue(InternalRender::is($request));
+        $this->assertNull($request->getAttribute(InternalRender::ATTRIBUTE), 'not marked: the context says it is internal');
         $this->assertTrue($request->getAttribute(PageCacheMiddleware::REBUILD));
         $this->assertSame('abc', $request->getAttribute(Rebuild::EXPECTED_ID));
         $this->assertTrue($request->getAttribute(Rebuild::VERIFIED));

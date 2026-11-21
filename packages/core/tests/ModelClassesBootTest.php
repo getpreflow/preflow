@@ -8,10 +8,13 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Data\TypeRegistry;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** A model class marked #[Entity(type: …)] is a type, even for an app with no config/models folder. */
 final class ModelClassesBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void

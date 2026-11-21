@@ -13,7 +13,6 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Http\Csrf\StatelessCsrfToken;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\PageCache\DataTags;
 use Preflow\Core\PageCache\DependencyRecorder;
@@ -31,6 +30,7 @@ use Preflow\Core\Tests\PageCache\Fixtures\NegotiatedLocaleRedirect;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Serving and storing: the middleware on its own (a handler stands in for the pipeline inside
@@ -39,6 +39,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  */
 final class PageCacheMiddlewareTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     private string $root;
@@ -72,7 +74,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->store = new PageStore($this->root, 'aaaaaaaaaaaaaaaa');
         $this->recorder = new DependencyRecorder();
         $this->cache = new PageCache(recorder: $this->recorder);
-        $this->values = new PerRequestValues('test-secret');
+        $this->values = new PerRequestValues('test-secret-0123456789abcdef0123456789');
         // Earlier tests in this process may leave a $_SESSION; a cacheable request has none (verify checks).
         $this->sessionBefore = $_SESSION ?? null;
         unset($_SESSION);
@@ -250,7 +252,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('stream', $export->getHeaderLine('X-Page-Cache-Skip'));
         $this->assertSame('a,b,c', (string) $export->getBody(), 'the visitor still gets the whole body');
 
-        foreach (['', StatelessCsrfToken::DEFAULT_KEY] as $key) {
+        foreach (['', StatelessCsrfToken::DEFAULT_KEY, 'short-secret'] as $key) {
             $this->values = new PerRequestValues($key);
             $skip = $this->middleware()->process($this->get('/k' . strlen($key)), $this->handler(fn () => $this->html('x')))->getHeaderLine('X-Page-Cache-Skip');
             $this->assertSame('app-key', $skip, "key '{$key}'");
@@ -401,7 +403,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_per_request_values_handle_json_short_values_and_forged_placeholders(): void
     {
-        $values = new PerRequestValues('secret');
+        $values = new PerRequestValues('secret-0123456789abcdef0123456789');
         $nonce = 'ab/cd+ef==';
         $values->register('nonce', static function () use (&$nonce): string {
             return $nonce;
@@ -419,7 +421,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('<script nonce="zz/yy+xx==">{"n":"zz\/yy+xx=="}</script> 1 <!--pc:v:nonce:0000000000000000-->', $filled, 'an unsigned placeholder in the text is not filled');
 
         // Another app key signs other placeholders.
-        $other = new PerRequestValues('another-secret');
+        $other = new PerRequestValues('another-secret-0123456789abcdef0123456789');
         $other->register('nonce', static fn (): string => 'leaked-value');
         $this->assertStringNotContainsString('leaked-value', $other->fill($stored));
     }
@@ -466,7 +468,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('', $mw->process($this->get('/page')->withMethod('POST'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process($this->get('/folio/login'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process(new ServerRequest('GET', 'https://evil.test/page'), $handler)->getHeaderLine('X-Page-Cache'));
-        $this->assertSame('', $mw->process(InternalRender::mark($this->get('/page')), $handler)->getHeaderLine('X-Page-Cache'));
+        $this->assertSame('', self::internally(fn () => $mw->process($this->get('/page'), $handler))->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process($this->get('/page')->withHeader('X-Forwarded-Proto', 'gopher'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('', $mw->process($this->get('/page')->withHeader('X-Forwarded-Host', 'evil.test'), $handler)->getHeaderLine('X-Page-Cache'));
 
@@ -475,9 +477,12 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame('miss', $mw->process(new ServerRequest('GET', 'http://example.com/page'), $handler)->getHeaderLine('X-Page-Cache'));
         $this->assertSame('hit', $mw->process($this->get('/page')->withHeader('X-Forwarded-Proto', 'https'), $handler)->getHeaderLine('X-Page-Cache'));
 
-        // A rebuild renders and stores, never serves.
-        $rebuild = $mw->process(InternalRender::mark($this->get('/page'))->withAttribute(PageCacheMiddleware::REBUILD, true), $handler);
+        // A rebuild renders and stores, never serves; the REBUILD attribute under another internal
+        // purpose stores nothing (the purpose decides).
+        $rebuild = self::internally(fn () => $mw->process($this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true), $handler), \Preflow\Core\Context\Purpose::Rebuild);
         $this->assertSame('miss', $rebuild->getHeaderLine('X-Page-Cache'));
+        $audit = self::internally(fn () => $mw->process($this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true), $handler));
+        $this->assertSame('', $audit->getHeaderLine('X-Page-Cache'));
     }
 
     public function test_stale_pages_are_served_and_reported(): void
@@ -751,7 +756,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_live_parts_are_filled_for_each_visitor_on_the_miss_and_on_hits(): void
     {
-        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret-0123456789abcdef0123456789'), $this->cache, $this->recorder);
         $visitor = '';
         $live->register('greeting', function (array $recipe) use (&$visitor): string {
             $this->recorder->record('default:visitor#' . $visitor); // not the page's
@@ -907,7 +912,7 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertSame(2, $page->calls, 'the first store of the key renders twice');
 
         // A rebuild of the known key is not verified.
-        $rebuild = $this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true)->withAttribute(InternalRender::ATTRIBUTE, true);
+        $rebuild = $this->get('/page')->withAttribute(PageCacheMiddleware::REBUILD, true);
         $mw->process($rebuild, $page);
         $this->assertSame(3, $page->calls);
 
@@ -925,7 +930,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_live_placeholders_are_filled_into_html_only(): void
     {
-        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret-0123456789abcdef0123456789'), $this->cache, $this->recorder);
         $live->register('greeting', static fn (): string => "<b>\"hi\"\n</b>");
         $mw = $this->middleware(live: $live);
         $json = $this->handler(fn (): ResponseInterface => new Response(200, ['Content-Type' => 'application/json'], (string) json_encode(['html' => $live->placeholder('greeting', [])])));
@@ -938,7 +943,7 @@ final class PageCacheMiddlewareTest extends TestCase
 
     public function test_a_response_without_content_type_is_html_for_live_parts(): void
     {
-        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret'), $this->cache, $this->recorder);
+        $live = new \Preflow\Core\PageCache\LiveParts(new \Preflow\Core\PageCache\LivePlaceholder('test-secret-0123456789abcdef0123456789'), $this->cache, $this->recorder);
         $live->register('greeting', static fn (): string => '<b>hi</b>');
         $mw = $this->middleware(live: $live);
         // PHP sends text/html for a response that names no type.
@@ -1239,12 +1244,17 @@ final class PageCacheMiddlewareTest extends TestCase
         $this->assertFalse($this->store->get($this->key('/timed'))?->stale, 'a timed read ignores the write');
     }
 
-    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null, bool $reportsStale = true, ?\Closure $applyPending = null, bool $rebuildOnly = false): PageCacheMiddleware
+    /**
+     * The middleware on its own. Each request is handled as the application handles it: in a
+     * frame of its own under the visitor's context (RenderContext::fromRequest()), or in the
+     * current frame when one is open (a test's internal render).
+     */
+    private function middleware(?PageCacheConfig $config = null, ?\Closure $clock = null, ?\Closure $nonPublic = null, ?\Closure $sentHeaders = null, ?\Preflow\Core\PageCache\LiveParts $live = null, bool|string|null $verify = null, bool $reportsStale = true, ?\Closure $applyPending = null, bool $rebuildOnly = false): \Psr\Http\Server\MiddlewareInterface
     {
         $config ??= $this->config;
         $source = new PageCacheSource($this->root, static fn (): string => 'aaaaaaaaaaaaaaaa');
 
-        return new PageCacheMiddleware(
+        return self::inFrame(new PageCacheMiddleware(
             config: $config,
             store: fn (): PageStore => $this->store,
             cache: $this->cache,
@@ -1270,7 +1280,34 @@ final class PageCacheMiddlewareTest extends TestCase
             applyPending: $applyPending,
             rebuildOnly: $rebuildOnly,
             hypermedia: self::htmx(),
-        );
+        ));
+    }
+
+    private static function inFrame(PageCacheMiddleware $middleware): \Psr\Http\Server\MiddlewareInterface
+    {
+        return new class($middleware) implements \Psr\Http\Server\MiddlewareInterface {
+            public function __construct(private readonly PageCacheMiddleware $inner) {}
+
+            public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+            {
+                if (\Preflow\Core\Context\Contexts::depth() > 0) {
+                    return $this->inner->process($request, $handler);
+                }
+                $ctx = \Preflow\Core\Context\RenderContext::fromRequest(
+                    $request->withAttribute(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class, PageCacheMiddlewareTest::protocols()),
+                    new \Preflow\Core\Context\Site('https://example.com', ['en'], 'en'),
+                    new \Preflow\Core\Context\SystemClock(),
+                );
+
+                return \Preflow\Core\Context\Contexts::run($ctx, fn (): ResponseInterface => $this->inner->process($request, $handler));
+            }
+        };
+    }
+
+    /** @internal the frame wrapper above */
+    public static function protocols(): \Preflow\Core\Http\Hypermedia\HypermediaProtocols
+    {
+        return self::htmx();
     }
 
     // -----------------------------------------------------------------------
@@ -1592,5 +1629,14 @@ final class PageCacheMiddlewareTest extends TestCase
         $protocols->add(new \Preflow\Htmx\HtmxDriver(new \Preflow\Htmx\ResponseHeaders()));
 
         return $protocols;
+    }
+
+    /** $fn run as an internal render runs (by default the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn, \Preflow\Core\Context\Purpose $purpose = \Preflow\Core\Context\Purpose::Audit): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal($purpose, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

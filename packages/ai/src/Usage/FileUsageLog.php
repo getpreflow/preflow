@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Ai\Usage;
 
 use Preflow\Ai\TokenUsage;
+use Preflow\Core\Context\Writes;
 
 /**
  * One JSON line per call in {dir}/usage-YYYY-MM.jsonl. Append-only with an exclusive lock, so
@@ -17,6 +18,11 @@ final class FileUsageLog implements UsageLog
 
     public function record(UsageEntry $e): void
     {
+        // Accounting (Writes 'accounting'): the call and its cost happened, so the line is written
+        // under every write policy, in a preview or an audit too; this never skips.
+        if (!Writes::allowed('ai', 'usage', null, 'accounting')) {
+            return;
+        }
         if (!is_dir($this->dir) && !@mkdir($this->dir, 0775, true) && !is_dir($this->dir)) {
             throw new \RuntimeException('Cannot create the AI usage directory.');
         }

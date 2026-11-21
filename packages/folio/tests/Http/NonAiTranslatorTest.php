@@ -19,6 +19,7 @@ use Preflow\I18n\Machine\TextFormat;
 use Preflow\I18n\Machine\TranslationResult;
 use Preflow\I18n\Machine\UnitStatus;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A translator that is no AI (config/ai.php translation.translator, 0.66), with AI off: Folio's
@@ -26,6 +27,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class NonAiTranslatorTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void

@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\I18n\Translator;
 use Preflow\Members\Members;
 use Preflow\Folio\Tests\Members\Support\MembersScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The members admin in the admin's language: the "members-admin" group (scope admin, German
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Members\Support\MembersScaffold;
  */
 final class MembersAdminTranslationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MembersScaffold;
 
     protected function tearDown(): void

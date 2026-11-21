@@ -6,9 +6,11 @@ namespace Preflow\Members;
 
 use Preflow\Auth\PasswordHasherInterface;
 use Preflow\Auth\Remember\RememberMe;
+use Preflow\Core\Context\Contexts;
 use Preflow\Data\DataManager;
 use Preflow\Data\DeletedBy;
 use Preflow\Data\DeletePlan;
+use Preflow\Core\Context\RoleView;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
 use Preflow\Validation\ValidationException;
@@ -56,7 +58,7 @@ final class Members
         private readonly ?\Closure $mailer = null,
         private readonly ?\Preflow\Core\Activity\ActivityLog $activity = null,
     ) {
-        $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $this->now = $now ?? static fn (): \DateTimeImmutable => Contexts::clock()->now()->setTimezone(new \DateTimeZone('UTC'));
     }
 
     public static function normalizeEmail(string $email): string
@@ -83,6 +85,49 @@ final class Members
         return false;
     }
 
+    /**
+     * The member a role view (view as role) shows: an in-memory record of the member type with
+     * every field null, the role view's roles, and its reserved id ('preflow:synthetic:…'),
+     * which no account has. Nothing is read or stored: saving or deleting it inside the role view
+     * is skipped by its write policy, like every write there.
+     *
+     * The member type must have a string id (the default, "uuid"): on a number id the reserved id
+     * would compare as 0 in SQL (MySQL), so a "my records" query could find rows of owner 0.
+     *
+     * @since 0.81.0
+     *
+     * @throws \LogicException when the member type's id is not a string
+     */
+    public function synthetic(RoleView $view): DynamicRecord
+    {
+        $registry = $this->dm->getTypeRegistry();
+        $type = $registry->get(MembersConfig::TYPE);
+        if (!self::hasStringId($type, $registry->classFor(MembersConfig::TYPE))) {
+            throw new \LogicException("The member type's id \"{$type->idField}\" is not a string, so a member role view (view as role) cannot have a member: give the member type a string id (the default uuid).");
+        }
+        $data = array_fill_keys(array_keys($type->fields), null);
+        $data['roles'] = $view->roles;
+        $data[$type->idField] = $view->identity()->getAuthId();
+
+        return DynamicRecord::fromArray($type, $data);
+    }
+
+    /** Whether $type's id is a string: a class-backed type's id property is typed string; a model file's id is unless its field says otherwise. */
+    private static function hasStringId(TypeDefinition $type, ?string $class): bool
+    {
+        if ($class !== null) {
+            if (!property_exists($class, $type->idField)) {
+                return false;
+            }
+            $declared = (new \ReflectionProperty($class, $type->idField))->getType();
+
+            return $declared instanceof \ReflectionNamedType && $declared->getName() === 'string';
+        }
+        $field = $type->fields[$type->idField] ?? null;
+
+        return $field === null || $field->type === 'string';
+    }
+
     public function find(string $id): ?DynamicRecord
     {
         return $this->dm->findType(self::TYPE, $id);
@@ -96,19 +141,23 @@ final class Members
      * it, a sign-in elsewhere); Members never assumes so. The member is confirmed at once and the
      * admission decides as after a confirmation ({@see Confirmation}: a member, or pending with
      * the owner's notice); no confirmation mail is sent. Sign the member in with {@see SignIn}.
-     * The admission's afterConfirm() gets $request, else the current request as PHP sees it ($_SERVER).
+     * The admission's afterConfirm() gets $request, else the current render's request (Contexts::current()).
      *
      * Raises MemberEvents::REGISTERED (with $request, null when none was given), then for a
      * verified address CONFIRMED and DECIDED.
      *
      * @param array<string, mixed> $extra
      * @throws EmailTakenException when the address already has an account (check with findByEmail())
+     * @throws \Preflow\Core\Context\NoRenderContext with $emailVerified, no $request and no render open (nothing is stored)
      */
     public function register(string $email, string $name, string $password, string $language, array $extra = [], bool $emailVerified = false, ?ServerRequestInterface $request = null): DynamicRecord
     {
         if ($emailVerified && $this->confirmation === null) {
             throw new \LogicException('Members::register(emailVerified: true) needs the members services (Members from the container).');
         }
+        // The admission's request is resolved before anything is written: outside every render
+        // this throws, and nothing is stored (a retry would otherwise find the address taken).
+        $confirmRequest = $emailVerified ? $request ?? self::currentRequest() : null;
         $def = ($this->dm->getTypeRegistry() ?? throw new \LogicException('No type registry.'))->get(self::TYPE);
         $email = self::normalizeEmail($email);
         if ($this->findByEmail($email) !== null) {
@@ -144,25 +193,21 @@ final class Members
         }
         $this->events?->dispatch(MemberEvents::REGISTERED, ['member' => $record, 'request' => $request]);
         if ($emailVerified) {
-            ($this->confirmation)()->confirm($record, $request ?? self::currentRequest());
+            ($this->confirmation)()->confirm($record, $confirmRequest ?? self::currentRequest());
         }
 
         return $record;
     }
 
-    /** The request PHP is serving, for the admission's afterConfirm() outside a controller. */
-    private static function currentRequest(): ServerRequest
+    /**
+     * The request of the current render, for the admission's afterConfirm() outside a controller;
+     * a render without one (a console command) gets a bare GET of '/'.
+     *
+     * @throws \Preflow\Core\Context\NoRenderContext outside every render
+     */
+    private static function currentRequest(): ServerRequestInterface
     {
-        $server = $_SERVER;
-
-        return new ServerRequest(
-            is_string($server['REQUEST_METHOD'] ?? null) ? $server['REQUEST_METHOD'] : 'GET',
-            is_string($server['REQUEST_URI'] ?? null) ? $server['REQUEST_URI'] : '/',
-            [],
-            null,
-            '1.1',
-            $server,
-        );
+        return Contexts::current()->request?->request ?? new ServerRequest('GET', '/');
     }
 
     public function confirm(DynamicRecord $m): void

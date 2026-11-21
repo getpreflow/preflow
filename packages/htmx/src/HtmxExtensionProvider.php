@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Context\Preview\PreviewUrls;
 use Preflow\View\TemplateFunctionDefinition;
 use Preflow\View\TemplateExtensionProvider;
 
@@ -54,7 +55,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
      */
     public function actionUrl(string $action, string $componentClass, array $props = []): string
     {
-        return $this->endpoint() . '/action?token=' . urlencode($this->token->encode($componentClass, $props, $action));
+        return PreviewUrls::carry($this->endpoint() . '/action?token=' . urlencode($this->token->encode($componentClass, $props, $action)));
     }
 
     /**
@@ -104,7 +105,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     ): string {
         $this->assets?->require();
         $tokenStr = $this->token->encode($componentClass, $props, 'render');
-        $url = $this->endpoint() . '/render?token=' . urlencode($tokenStr);
+        $url = PreviewUrls::carry($this->endpoint() . '/render?token=' . urlencode($tokenStr));
 
         $attrs = $this->driver->listenAttrs($event, $url, $componentId);
 
@@ -139,7 +140,7 @@ final class HtmxExtensionProvider implements TemplateExtensionProvider
     ): string {
         $this->assets?->require();
         $tokenStr = $this->token->encode($componentClass, $props, $action);
-        $url = $this->endpoint() . '/action?token=' . urlencode($tokenStr);
+        $url = PreviewUrls::carry($this->endpoint() . '/action?token=' . urlencode($tokenStr));
 
         $attrs = $this->driver->actionAttrs($method, $url, $componentId, $swap, $extra);
 

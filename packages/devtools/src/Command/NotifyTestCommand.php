@@ -48,7 +48,7 @@ final class NotifyTestCommand implements CommandInterface
                 : new \Preflow\Notify\Email(
                     $to,
                     'Preflow notify test',
-                    'This is a test message sent by "php preflow notify:test" at ' . date(DATE_ATOM) . '.',
+                    'This is a test message sent by "php preflow notify:test" at ' . date(DATE_ATOM) . '.', // clock: stamp
                 );
 
             $sent = $app->container()->get(\Preflow\Notify\Notifier::class)->send($message);

@@ -272,7 +272,10 @@ final class AuditRun
     {
         $page = $this->renderer->render($path);
         if ($locale !== '' && $locale !== $page->locale) {
-            $page = new RenderedPage($page->url, $locale, $page->status, $page->headers, $page->body);
+            $page = new RenderedPage($page->url, $locale, $page->status, $page->headers, $page->body, $page->skippedWrites);
+        }
+        if ($page->skippedWrites !== []) {
+            $report->skippedWrites[$page->url] = $page->skippedWrites;
         }
 
         if ($page->status >= 300 && $page->status <= 399) {

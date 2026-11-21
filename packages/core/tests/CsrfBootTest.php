@@ -11,10 +11,13 @@ use Preflow\Core\Application;
 use Preflow\Core\Http\Csrf\CsrfSignInPaths;
 use Preflow\Core\Http\Csrf\StatelessCsrfToken;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The Application checks unsafe requests without a session too, configured by config/csrf.php. */
 final class CsrfBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     #[RunInSeparateProcess]
     public function test_post_without_session_is_checked(): void
     {

@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Publishing\PublishedModels;
 use Preflow\Folio\Tests\Fixtures\Models\Job;
 use Preflow\Folio\Tests\Support\StaffScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Staff edit a model class through Folio like a JSON type (its admin file config/models/job.json),
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Support\StaffScaffold;
  */
 final class ClassTypeAdminAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use StaffScaffold;
 
     protected function setUp(): void

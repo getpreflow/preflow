@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Core\Error;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\RefusedInPreview;
 use Preflow\Core\Http\Api\ApiConfig;
 use Preflow\Core\Http\InternalRender;
 use Psr\Http\Message\ResponseInterface;
@@ -32,6 +33,7 @@ final class ErrorHandler
         // Core names the validation package without requiring it; instanceof of a missing class is false.
         $statusCode = match (true) {
             $exception instanceof HttpException => $exception->statusCode,
+            $exception instanceof RefusedInPreview => 403, // a preview's write, sign-in…: "This preview does not change data."
             $exception instanceof \Preflow\Validation\ValidationException => 422,
             default => 500,
         };

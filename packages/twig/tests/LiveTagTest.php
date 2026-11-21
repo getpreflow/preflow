@@ -41,7 +41,7 @@ final class LiveTagTest extends TestCase
         mkdir($this->dir, 0777, true);
         $this->cache = new PageCache();
         $this->recorder = new DependencyRecorder();
-        $this->live = new LiveParts(new LivePlaceholder('live-test-key'), $this->cache, $this->recorder, function (string $m): void {
+        $this->live = new LiveParts(new LivePlaceholder('live-test-key-0123456789abcdef0123456789'), $this->cache, $this->recorder, function (string $m): void {
             $this->logged[] = $m;
         });
         $this->engine = new TwigEngine([$this->dir], new AssetCollector(new NonceGenerator()), liveParts: $this->live);
@@ -63,7 +63,7 @@ final class LiveTagTest extends TestCase
         $stored = $this->storing(fn (): string => $this->engine->render('page.twig', $context));
         $this->assertStringNotContainsString('[7', $stored, 'not rendered while storing');
         $this->assertSame(1, preg_match('/^<main>outer\|(<!--pc:l:[A-Za-z0-9_-]+:[0-9a-f]{32}-->)<\/main>$/', $stored, $m));
-        $this->assertSame([$m[1] => ['twig', ['t' => 'page.twig', 'b' => '__live_1', 'w' => ['number' => 7]]]], (new LivePlaceholder('live-test-key'))->find($stored));
+        $this->assertSame([$m[1] => ['twig', ['t' => 'page.twig', 'b' => '__live_1', 'w' => ['number' => 7]]]], (new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->find($stored));
 
         $this->assertSame('<main>outer|[7/none/none/Holz]</main>', $this->live->fill($stored), 'filled as in place');
     }
@@ -103,7 +103,7 @@ final class LiveTagTest extends TestCase
     {
         $this->template('page.twig', '{% live %}LIVE{% endlive %}{% block plain %}PLAIN{{ w|default("") }}{% endblock %}');
         $this->template('upload.txt', '{% live %}UPLOADED{% endlive %}');
-        $sign = new LivePlaceholder('live-test-key');
+        $sign = new LivePlaceholder('live-test-key-0123456789abcdef0123456789');
         $markers = [
             $sign->make('twig', ['t' => 'missing.twig', 'b' => '__live_1', 'w' => []]),
             $sign->make('twig', ['t' => 'page.twig', 'b' => 'plain', 'w' => ['w' => 'x']]),

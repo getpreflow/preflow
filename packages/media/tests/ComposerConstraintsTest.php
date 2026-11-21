@@ -7,6 +7,7 @@ namespace Preflow\Media\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.81: core 0.81.0 (Context\Writes: making a variant asks the render's write policy).
  * Since 0.78: data 0.78 (TypeFieldDefinition's exact, which MediaLibrary gives the asset columns that hold machine values).
  * Since 0.77: core 0.77 (Activity\ActivityLog, which MediaLibrary writes upload, replace and alt-text changes to); i18n 0.77 (Machine\WritesAs, which AltTextSource implements); data 0.77 (raised in step with the release; no 0.77-only data API is called from src).
  *
@@ -23,7 +24,7 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame(
-            ['preflow/core' => '<0.77', 'preflow/data' => '<0.78', 'preflow/i18n' => '<0.77', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
+            ['preflow/core' => '<0.81.0', 'preflow/data' => '<0.78', 'preflow/i18n' => '<0.77', 'preflow/routing' => '<0.59', 'preflow/view' => '<0.67'],
             $composer['conflict'] ?? null,
         );
         // Each conflict matches its require's lower bound; i18n is only suggested.

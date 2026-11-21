@@ -15,6 +15,7 @@ use Preflow\Folio\Http\AdminFormat;
 use Preflow\I18n\Machine\JobRunner;
 use Preflow\I18n\Machine\Scope;
 use Preflow\I18n\Machine\TextSources;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The Translate button on the edit form: only on a translation tab with AI on and the
@@ -22,6 +23,8 @@ use Preflow\I18n\Machine\TextSources;
  */
 final class AiTranslateFormTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 

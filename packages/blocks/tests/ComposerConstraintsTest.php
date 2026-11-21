@@ -7,6 +7,8 @@ namespace Preflow\Blocks\Tests;
 use PHPUnit\Framework\TestCase;
 
 /**
+ * Since 0.81.0: core 0.81.0 (Context\Contexts, RenderContext and Deprecations: blocks render in the render
+ * context's locale through ContextBlockLocale, and a BlockLocale without it is reported).
  * Since 0.75: data 0.75 (TypeFamily, which #[Block(family: …)] and BlockDefinition::$family carry).
  *
  * "^0.70 || @dev" in require matches any version (@dev is anything), so only "conflict" keeps
@@ -25,9 +27,10 @@ final class ComposerConstraintsTest extends TestCase
         $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
 
         $this->assertSame('^0.75 || @dev', $composer['require']['preflow/data'] ?? null);
+        $this->assertSame('^0.81.0 || @dev', $composer['require']['preflow/core'] ?? null);
         $this->assertSame([
             'preflow/components' => '<0.70',
-            'preflow/core' => '<0.70',
+            'preflow/core' => '<0.81.0',
             'preflow/data' => '<0.75',
             'preflow/folio' => '<0.71',
             'preflow/view' => '<0.70',

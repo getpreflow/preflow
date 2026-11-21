@@ -231,7 +231,7 @@ final class RedirectEntries implements ListedRedirectStore
             'source_type' => self::optional($row['source_type'] ?? null),
             'source_id' => self::optional($row['source_id'] ?? null),
             'hits' => (int) ($row['hits'] ?? 0),
-            'created_at' => self::optional($row['created_at'] ?? null) ?? (new \DateTimeImmutable())->format(DATE_ATOM),
+            'created_at' => self::optional($row['created_at'] ?? null) ?? (new \DateTimeImmutable())->format(DATE_ATOM), // clock: stamp
             'created_by' => self::optional($row['created_by'] ?? null),
             'last_hit_at' => self::optional($row['last_hit_at'] ?? null),
         ];

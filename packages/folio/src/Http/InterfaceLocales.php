@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Preflow\Folio\Http;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
+use Preflow\Core\Context\RenderContext;
 use Preflow\I18n\AcceptLanguage;
 use Preflow\I18n\LocaleNames;
 use Preflow\I18n\Translator;
@@ -11,13 +14,11 @@ use Preflow\I18n\Translator;
 /**
  * The languages of Folio's admin interface: those with Folio's texts delivered (lang/ of the
  * package) or in the site's lang/{locale}/folio.php. Also the default (config folio.locale,
- * else app.locale; English when that language isn't offered) and the locale of the current
- * admin request (AdminLocaleMiddleware sets it).
+ * else app.locale; English when that language isn't offered) and the interface locale of the
+ * current render (the admin surface's, RenderContext::admin(); AdminLocaleMiddleware enters it).
  */
 final class InterfaceLocales
 {
-    private ?string $current = null;
-
     /** @param list<string>|null $locales the languages, when known (the boot manifest); else from the translator's lang files */
     public function __construct(
         private readonly Translator $translator,
@@ -61,21 +62,39 @@ final class InterfaceLocales
         return AcceptLanguage::best($acceptLanguage, $this->all()) ?? $this->default();
     }
 
-    /** The interface locale of the admin request being handled (the default outside one). */
+    /**
+     * The interface locale of the current render: its admin surface's (Surface::$uiLocale); the
+     * default on the public surface and outside every render.
+     */
     public function current(): string
     {
-        return $this->current ?? $this->default();
+        return $this->currentOrNull() ?? $this->default();
     }
 
-    /** @internal AdminLocaleMiddleware: entering (a locale) and leaving (the one before) an admin request */
+    /**
+     * Enters $locale for the rest of the current render (its frame narrows to the admin surface
+     * in $locale, keeping its overrides switch, on by default); null leaves the admin surface.
+     * Outside every render it does nothing: there is no interface locale to keep there.
+     *
+     * @deprecated 0.81, removed in 0.83: Contexts::narrow(fn ($ctx) => $ctx->admin($locale)), or
+     *             Contexts::within($ctx->admin($locale), $fn) for a stretch of the render
+     */
     public function setCurrent(?string $locale): void
     {
-        $this->current = $locale;
+        Deprecations::once('Preflow\Folio\Http\InterfaceLocales::setCurrent() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->admin($locale)).');
+        if (Contexts::depth() === 0) {
+            return;
+        }
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $locale === null
+            ? $ctx->public()
+            : $ctx->admin($locale, $ctx->surface->admin ? $ctx->surface->overrides : true));
     }
 
-    /** @internal for restoring */
+    /** The current render's interface locale; null on the public surface and outside every render. */
     public function currentOrNull(): ?string
     {
-        return $this->current;
+        $surface = Contexts::peek()?->surface;
+
+        return $surface?->admin === true ? $surface->uiLocale : null;
     }
 }

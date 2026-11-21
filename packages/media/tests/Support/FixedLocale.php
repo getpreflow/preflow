@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Preflow\Media\Tests\Support;
 
-use Preflow\Media\LocaleProvider;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Media\ContextLocaleProvider;
 
 /** A settable locale for tests (the page's language changes per request). */
-final class FixedLocale implements LocaleProvider
+final class FixedLocale implements ContextLocaleProvider
 {
     public function __construct(private string $current, private readonly string $default = 'en') {}
 
@@ -17,6 +18,12 @@ final class FixedLocale implements LocaleProvider
     }
 
     public function current(): string
+    {
+        return $this->current;
+    }
+
+    /** The language the test set, whatever the context says. */
+    public function localeOf(RenderContext $ctx): string
     {
         return $this->current;
     }

@@ -57,6 +57,19 @@ TWIG);
         $this->flow = $this->app();
     }
 
+    /**
+     * $fn run in a console render of the flow site (code that needs a render context: a verified
+     * registration hands the admission the render's request).
+     *
+     * @template R
+     * @param \Closure(): R $fn
+     * @return R
+     */
+    private function rendering(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(\Preflow\Core\Context\RenderContext::console($this->flow->site(), new \Preflow\Core\Context\SystemClock()), $fn);
+    }
+
     /** Changes config/members.php of the flow site ($more wins) and boots a fresh app. @param array<string, mixed> $more */
     private function reconfigure(array $more): void
     {
@@ -145,7 +158,7 @@ TWIG);
     /** Like Application::run(): handle() leaves the queued mail alone until the test flushes it. */
     private function holdTheFlush(): void
     {
-        (new \ReflectionProperty(Application::class, 'emitting'))->setValue($this->flow, true);
+        $this->flow->holdMailForFlush();
     }
 
     private function linkToken(int $mail, string $page): string

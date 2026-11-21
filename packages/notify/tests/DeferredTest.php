@@ -222,4 +222,22 @@ final class DeferredTest extends TestCase
 
         $this->assertSame(['after@x.test'], $this->recipients());
     }
+
+    public function test_the_queue_is_the_one_given_else_notifys_own_and_deliver_sends_an_item(): void
+    {
+        $own = $this->notifier();
+        $this->assertInstanceOf(\Preflow\Notify\Deferred\InMemoryQueue::class, $own->queue());
+
+        $given = new \Preflow\Notify\Deferred\InMemoryQueue(static function (): void {});
+        $this->assertSame($given, (new Notifier($this->factory, ['email' => ['transport' => 'mem']], queue: $given))->queue());
+
+        // A durable queue sends what it stored through deliver(): the message goes out, a failure goes to onFailure.
+        $seen = null;
+        $this->assertTrue($own->deliver(new \Preflow\Notify\Deferred\Deferred($this->mail('stored@x.test'), 'email', null, 'Email to stored@x.test: S')));
+        $this->assertFalse($this->notifier('bad')->deliver(new \Preflow\Notify\Deferred\Deferred($this->mail('x@x.test'), 'email', static function (\Throwable $e) use (&$seen): void {
+            $seen = $e;
+        }, 'Email to x@x.test: S')));
+        $this->assertSame(['stored@x.test'], $this->recipients());
+        $this->assertInstanceOf(TransportException::class, $seen);
+    }
 }

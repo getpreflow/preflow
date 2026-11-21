@@ -14,6 +14,7 @@ use Preflow\Folio\Extension\Customization\Refused;
 use Preflow\Folio\Rbac\Types\StaffRules;
 use Preflow\Validation\ValidationException;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Staff accounts (rbac's opt-in model "staff") with delegated roles. Signed in through a chain
@@ -23,6 +24,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class StaffAccountsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     private const string GRANT = "You can't grant permissions you don't have: ";

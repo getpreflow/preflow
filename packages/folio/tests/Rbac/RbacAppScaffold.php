@@ -31,7 +31,7 @@ trait RbacAppScaffold
         $this->dir = sys_get_temp_dir() . '/rbac_app_' . bin2hex(random_bytes(4));
         @mkdir($this->dir, 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $hash = password_hash('secret', PASSWORD_DEFAULT);

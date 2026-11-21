@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Data\ModelLabelKeys;
 use Preflow\Folio\Extension\Attributes\FolioExtension;
 use Preflow\I18n\Translator;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The labels of rbac's models (staff accounts, roles) are keys of its admin group "rbac": the
@@ -16,6 +17,8 @@ use Preflow\I18n\Translator;
  */
 final class ModelLabelsTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function tearDown(): void

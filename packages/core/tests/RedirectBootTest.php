@@ -15,10 +15,13 @@ use Preflow\Core\Http\NonPublicPaths;
 use Preflow\Core\Tests\Fixtures\LegacyPageMiddleware;
 use Preflow\Core\Tests\Fixtures\RedirectStoreProvider;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** The Application switches redirects on when a provider binds a RedirectStore. */
 final class RedirectBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     #[RunInSeparateProcess]
     public function test_middleware_is_added_when_a_store_is_bound(): void
     {

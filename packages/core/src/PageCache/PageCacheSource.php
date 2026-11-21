@@ -7,6 +7,7 @@ namespace Preflow\Core\PageCache;
 use Preflow\Core\Cache\CacheCleared;
 use Preflow\Core\Cache\CacheSource;
 use Preflow\Core\Cache\CacheStats;
+use Preflow\Core\Context\Contexts;
 
 /**
  * The page cache in the CacheRegistry (key "pages"): `preflow cache:clear pages` and Folio's
@@ -106,7 +107,7 @@ final class PageCacheSource implements CacheSource
     {
         $index = TagIndex::in($dir, $this->clock, $this->sqlite);
         $index->clear();
-        $index->recordInvalidation([TagIndex::EVERYTHING], ($this->clock ?? static fn (): float => microtime(true))());
+        $index->recordInvalidation([TagIndex::EVERYTHING], ($this->clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u'))());
         $pdo = $index->pdo();
         if ($pdo !== null) {
             (new RefreshQueue($pdo, $this->clock))->clear();

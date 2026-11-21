@@ -7,6 +7,7 @@ namespace Preflow\Folio\Tests\Rbac;
 use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\I18n\Translator;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * rbac's admin texts (group "rbac", scope admin; German in "du") and the permissions on Folio's
@@ -15,6 +16,8 @@ use Preflow\I18n\Translator;
  */
 final class RbacTranslationTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function tearDown(): void

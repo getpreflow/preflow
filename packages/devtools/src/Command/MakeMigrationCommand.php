@@ -20,7 +20,7 @@ final class MakeMigrationCommand implements CommandInterface
         $dir = getcwd() . '/migrations';
         if (!is_dir($dir)) mkdir($dir, 0755, true);
 
-        $timestamp = date('Y_m_d_His');
+        $timestamp = date('Y_m_d_His'); // clock: stamp
         $filename = $timestamp . '_' . $name . '.php';
 
         $php = <<<'PHP'

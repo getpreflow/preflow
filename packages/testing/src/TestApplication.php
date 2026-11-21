@@ -14,6 +14,12 @@ use Preflow\Core\DebugLevel;
 use Preflow\Htmx\ComponentToken;
 use Preflow\Htmx\ResponseHeaders;
 
+/**
+ * A container with a component renderer, assets and htmx's token and response headers, for
+ * component tests without a booted app. The ResponseHeaders follow the render frames (since
+ * 0.81, as the app's do): inside Contexts::run() a component's HX-* headers are that frame's,
+ * outside every render they are the object's own.
+ */
 final class TestApplication
 {
     public readonly Container $container;

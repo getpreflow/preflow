@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Folio\Extension\ExtensionException;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * A full app with auth and preflow/roles and a "crm" extension (written by the test) whose
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class NavBadgeTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private \Closure $autoload;

@@ -3600,6 +3600,15 @@ a.folio-asset-use-row:hover { background: var(--c-row-hover); color: var(--c-tex
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
 }
+/* Live | Whole page (page-preview.js): one frame shows at a time. */
+.folio-preview-frame[hidden] { display: none; }
+.folio-preview-tabs { flex: none; background: var(--c-surface); }
+.folio-preview-tabs > button { min-height: 26px; padding: 0 10px; font-size: 12px; }
+.folio-preview-tabs > button:disabled { color: var(--c-text-subtle); cursor: not-allowed; }
+/* "View as": the role the whole page renders for (only with Whole page). */
+.folio-preview-as { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--c-text-muted); font-size: 12px; }
+.folio-preview-as[hidden] { display: none; }
+.folio-preview-as select { height: 30px; min-height: 30px; max-width: 200px; padding-block: 0; font-size: 12px; }
 
 @media (max-width: 1280px) {
   .folio-view-switch span { display: none; }

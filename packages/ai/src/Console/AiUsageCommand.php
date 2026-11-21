@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Preflow\Ai\Console;
 
 use Preflow\Ai\Usage\UsageLog;
+use Preflow\Core\Context\Contexts;
 use Preflow\DevTools\Command\CommandInterface;
 
 /** Calls, tokens and cost of a month (default: this one), per purpose and model. */
@@ -17,7 +18,7 @@ final class AiUsageCommand implements CommandInterface
 
     public function execute(array $args): int
     {
-        $month = date('Y-m');
+        $month = Contexts::clock()->now()->format('Y-m');
         foreach ($args as $arg) {
             if (str_starts_with($arg, '--month=')) {
                 $month = substr($arg, 8);

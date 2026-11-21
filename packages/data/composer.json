@@ -8,11 +8,11 @@
         "ext-intl": "*",
         "ext-pdo": "*",
         "ext-pdo_sqlite": "*",
-        "preflow/core": "^0.78 || @dev",
+        "preflow/core": "^0.81.0 || @dev",
         "preflow/validation": "^0.52 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.78",
+        "preflow/core": "<0.81.0",
         "preflow/validation": "<0.52",
         "preflow/folio": "<0.67",
         "preflow/publishing": "<0.72",

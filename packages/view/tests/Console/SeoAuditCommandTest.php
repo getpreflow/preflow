@@ -16,10 +16,13 @@ use Preflow\View\Audit\AuditReport;
 use Preflow\View\Console\SeoAuditCommand;
 use Preflow\View\Tests\Console\Fixtures\SeoAuditPages;
 use Preflow\View\Tests\Console\Fixtures\SeoAuditRoutes;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** preflow seo:audit [--fresh] [--limit=N] [--url=/path] [--budget=600] on a small app (JSON storage, no SQL). */
 final class SeoAuditCommandTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     /** @var resource */

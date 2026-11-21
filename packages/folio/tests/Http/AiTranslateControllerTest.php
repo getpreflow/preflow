@@ -16,6 +16,7 @@ use Preflow\Folio\Tests\Support\AiScaffold;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
 use Preflow\I18n\Machine\JobStore;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The edit form's estimate and queue endpoints and the suggestion endpoint: units come from the
@@ -23,6 +24,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class AiTranslateControllerTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
     use AiScaffold;
 

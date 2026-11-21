@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use Preflow\Folio\Content\FrontendConfigException;
 use Preflow\Folio\Content\TypeCatalog;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The editor's side panel (0.75): Publishing, Address, Languages, Search result, Revisions, System
@@ -17,6 +18,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class EditorSidePanelTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     protected function setUp(): void

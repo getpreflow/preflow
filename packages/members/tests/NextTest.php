@@ -16,6 +16,7 @@ use Preflow\Members\Tests\Support\Dom;
 use Preflow\Members\Tests\Support\MemberFlows;
 use Preflow\Members\Tests\Support\MembersScaffold;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * Where to go afterwards ("next"): the member pages by default, the paths of config/members.php
@@ -23,6 +24,8 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class NextTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 

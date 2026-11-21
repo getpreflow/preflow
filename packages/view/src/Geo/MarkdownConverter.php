@@ -45,14 +45,22 @@ final class MarkdownConverter
 
     private string $baseUrl = '';
 
+    /** Where the current convert() finds the blocks behind placeholders; null: the collector's. */
+    private ?GeoCapture $capture = null;
+
     public function __construct(private readonly ?GeoCollector $collector = null)
     {
     }
 
-    /** Convert a page's HTML; relative links and images resolve against $baseUrl. */
-    public function convert(string $html, string $baseUrl): string
+    /**
+     * Convert a page's HTML; relative links and images resolve against $baseUrl. The blocks
+     * behind geo placeholders come from $capture (since 0.81.0: the capture the page rendered
+     * into), else from the collector's current render.
+     */
+    public function convert(string $html, string $baseUrl, ?GeoCapture $capture = null): string
     {
         $this->baseUrl = $baseUrl;
+        $this->capture = $capture;
 
         $document = HTMLDocument::createFromString($html, LIBXML_NOERROR, 'UTF-8');
         $root = $document->querySelector('main') ?? $document->body;
@@ -67,7 +75,11 @@ final class MarkdownConverter
             }
         }
 
-        return trim(implode("\n\n", $this->blocks($root)));
+        try {
+            return trim(implode("\n\n", $this->blocks($root)));
+        } finally {
+            $this->capture = null;
+        }
     }
 
     /**
@@ -310,11 +322,11 @@ final class MarkdownConverter
     private function placeholder(Element $element): string
     {
         $n = $element->getAttribute('data-geo');
-        if ($this->collector === null || $n === null || !ctype_digit($n)) {
+        if ($n === null || !ctype_digit($n)) {
             return '';
         }
 
-        return $this->collector->block((int) $n);
+        return $this->capture?->block((int) $n) ?? $this->collector?->block((int) $n) ?? '';
     }
 
     private function fence(Element $pre): string

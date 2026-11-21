@@ -37,7 +37,7 @@ final class GeoChecksTest extends TestCase
             $this->rendered[] = $path;
 
             return $this->routes[$path] ?? new Response(404, ['Content-Type' => 'text/plain'], "Not Found\n");
-        }, 'https://site.test', null, null, ['en', 'de'], 'en');
+        }, 'https://site.test', ['en', 'de'], 'en');
     }
 
     private static function markdown(string $body): Response

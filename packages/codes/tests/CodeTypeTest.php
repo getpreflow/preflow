@@ -22,7 +22,7 @@ final class CodeTypeTest extends TestCase
     protected function setUp(): void
     {
         $this->dir = sys_get_temp_dir() . '/codetype_app_' . bin2hex(random_bytes(4));
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Codes\\CodesServiceProvider::class];\n");
         $this->write('config/data.php', "<?php\nreturn " . var_export([
             'default' => 'sqlite',

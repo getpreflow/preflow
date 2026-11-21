@@ -81,9 +81,10 @@ return [
             'translations' => ['edit' => 'Translations'],
             'seo' => ['audit' => 'SEO audit', 'audit_run' => 'Run the SEO audit'],
             'ai' => ['translate' => 'Use AI translation', 'draft' => 'Write drafts with AI', 'settings' => 'AI settings'],
+            'site' => ['view_as' => 'View the site as a role'],
         ],
         'verbs' => ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'publish' => 'Publish', 'delete' => 'Delete', 'upload' => 'Upload'],
-        'groups' => ['folio' => 'Folio', 'assets' => 'Assets', 'ai' => 'AI'],
+        'groups' => ['folio' => 'Folio', 'assets' => 'Assets', 'ai' => 'AI', 'site' => 'Site'],
     ],
     // The activity log: the dashboard's "Recent changes" and the All activity screen (0.77).
     'activity' => [
@@ -292,6 +293,32 @@ return [
         'record_id' => 'ID',
         'details' => 'Details',
         'delete_named' => 'Delete “:label”',
+    ],
+    // The editor's whole-page preview (0.81): the record's real page as a visitor will see it once published.
+    'preview' => [
+        'mode' => 'Preview',
+        'live' => 'Live',
+        'whole_page' => 'Whole page',
+        'whole_page_frame' => 'Whole page preview of this page',
+        'save_first' => 'Save once to preview the whole page',
+        'view_as' => 'View as',
+        'anonymous' => 'Visitor (not signed in)',
+        'member_roles' => 'Member roles',
+        'staff_roles' => 'Staff roles',
+        'report' => 'What this page would do',
+        'would_send' => 'This page would send :count mail|This page would send :count mails',
+        'would_write' => 'This page would write :count record|This page would write :count records',
+        'links_leave' => 'Links and forms do nothing in this preview.',
+        'redirects' => 'This page redirects to :target.',
+        'other_record' => 'Another page answers at :path, so visitors would see that one here, not this record. Give this record an address of its own.',
+        'frame_refused' => 'This site’s security settings don’t allow its pages inside a frame, so the preview can’t show here.',
+        'open_tab' => 'Open the preview in a new tab',
+        'parts_locked' => 'Interactive parts are switched off in this preview: the site’s app key can’t sign previews (it needs at least 32 characters).',
+        'locked_click' => 'Switched off in this preview.',
+    ],
+    // A shared preview link (anyone holding it sees the draft): said at the top of the page.
+    'share_preview' => [
+        'notice' => 'Preview of a draft. Forms on this page send to the live site.',
     ],
     // The editor's "SEO & sharing" section (with SEO on: records with a frontend route and the site).
     'seo' => [

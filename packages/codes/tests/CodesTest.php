@@ -38,7 +38,7 @@ final class CodesTest extends TestCase
     {
         $this->dir = sys_get_temp_dir() . '/codes_app_' . bin2hex(random_bytes(4));
         $this->now = new \DateTimeImmutable('2026-10-22 12:00:00');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $this->dataConfig(['codes' => 'sqlite']);
@@ -580,6 +580,59 @@ final class CodesTest extends TestCase
         $this->assertArrayNotHasKey('code', $summary['tables']);
         $this->assertArrayNotHasKey('code_redemption', $summary['tables']);
         $this->assertSame(['page'], array_values(array_diff(array_keys($summary['tables']), ['folio_assets', 'folio_translation_overrides'])));
+    }
+
+    /** In a preview (writes skipped) a redeem, a revoke and an update take the path a visit takes, and nothing is written. */
+    public function test_a_preview_redeems_revokes_and_updates_as_a_visit(): void
+    {
+        $codes = $this->codes();
+        $codes->issue('members.book', [], 'ONLYONCE', maxUses: 1);
+        $codes->issue('members.book', [], 'USEDUP', maxUses: 1);
+        $this->assertTrue($codes->redeem('USEDUP', 'members.book')->ok);
+        $id = (string) $codes->check('ONLYONCE', 'members.book')->codeId;
+        $dm = $this->app()->container()->get(DataManager::class);
+        $before = $dm->findType('code', $id)?->toArray();
+
+        \Preflow\Core\Context\Contexts::reset();
+        $frame = null;
+        $seen = \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->skippingWrites(), function () use ($codes, $id, &$frame): array {
+            $frame = \Preflow\Core\Context\Contexts::frame();
+            $redeemed = $codes->redeem('ONLYONCE', 'members.book', 'member-1');
+            $usedUp = $codes->redeem('USEDUP', 'members.book', 'member-1');
+            $codes->update($id, 'Changed', null, 5);
+            $codes->revoke($id);
+
+            return [$redeemed->ok, $usedUp->reason];
+        });
+        $this->assertSame([true, 'used_up'], $seen, 'the path a visit takes');
+        $this->assertSame($before, $dm->findType('code', $id)?->toArray(), 'nothing written');
+        $this->assertSame([], $codes->redemptions($id));
+        $this->assertNotSame([], $frame->skippedWrites());
+
+        try {
+            \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->refusingWrites(), fn () => $codes->redeem('ONLYONCE', 'members.book'));
+            $this->fail('refused');
+        } catch (\Preflow\Core\Context\WritesRefused) {
+        }
+        \Preflow\Core\Context\Contexts::reset();
+        $this->assertSame($before, $dm->findType('code', $id)?->toArray());
+
+        // On a visit the use is counted, once.
+        $this->assertTrue($codes->redeem('ONLYONCE', 'members.book')->ok);
+        $this->assertSame('used_up', $codes->redeem('ONLYONCE', 'members.book')->reason);
+    }
+
+    public function test_a_preview_redeems_revokes_and_updates_as_a_visit_on_json(): void
+    {
+        $this->dataConfig(['codes' => 'json']);
+        $this->test_a_preview_redeems_revokes_and_updates_as_a_visit();
+    }
+
+    #[Group('mysql')]
+    public function test_a_preview_redeems_revokes_and_updates_as_a_visit_on_mysql(): void
+    {
+        $this->onMysql();
+        $this->test_a_preview_redeems_revokes_and_updates_as_a_visit();
     }
 
     #[Group('mysql')]

@@ -16,6 +16,7 @@ use Preflow\Notify\Email;
 use Preflow\Notify\Notifier;
 use Preflow\Notify\TransportFactory;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The life of a staff account: invited on create, invite and reset links sent by those who may
@@ -26,6 +27,9 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class StaffLifecycleTest extends TestCase
 {
+    use ChecksFrameBalance;
+
+    use \Preflow\Folio\Tests\Support\AdminTexts;
     use RbacAppScaffold;
 
     private const string ACCOUNT = "You can't change an account with roles you can't grant.";
@@ -61,7 +65,7 @@ final class StaffLifecycleTest extends TestCase
             ],
             'session' => ['cookie' => 'rbac_lifecycle_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key'" . ($url ? ", 'url' => 'https://site.test'" : '') . "];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef'" . ($url ? ", 'url' => 'https://site.test'" : '') . "];\n");
         if ($mail) {
             $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
         }
@@ -77,7 +81,7 @@ final class StaffLifecycleTest extends TestCase
             $this->account('s-mgr', 'mgr', ['manager']);
         }
         // As run(): queued mails go out after the response (flush() sends them here).
-        (new \ReflectionProperty(\Preflow\Core\Application::class, 'emitting'))->setValue($this->session, true);
+        $this->session->holdMailForFlush();
     }
 
     /** @param list<string> $roles */
@@ -347,16 +351,13 @@ final class StaffLifecycleTest extends TestCase
         $this->container()->get(DataManager::class)->deleteType('staff', 's-help');
         $german = new \Preflow\I18n\Translator('/no/such/lang', 'de', 'en');
         $german->addDefaults('folio', dirname(__DIR__, 2) . '/lang');
-        $previous = \Preflow\Folio\FolioText::use($german);
-        try {
+        self::inAdmin($german, function () use ($admin, $stale, $request): void {
             foreach (['disable', 'enable'] as $action) {
                 $res = $admin->{$action}($stale, $request);
                 $this->assertSame(404, $res->getStatusCode(), $action);
                 $this->assertStringContainsString('Nicht gefunden', (string) $res->getBody(), $action);
             }
-        } finally {
-            \Preflow\Folio\FolioText::use($previous);
-        }
+        });
     }
 
     #[RunInSeparateProcess]

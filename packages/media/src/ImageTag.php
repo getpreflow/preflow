@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Media;
 
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Deprecations;
 use Preflow\Media\Color\ColorRules;
 use Preflow\Media\Image\BoxPlan;
 use Preflow\Media\Image\Formats;
@@ -116,6 +118,25 @@ final class ImageTag
         return $asset !== null ? $this->colorRules()->classFor($asset) : '';
     }
 
+    /**
+     * The alt-text language: the provider's for the current render context; a provider without
+     * ContextLocaleProvider is asked its deprecated current() (reported once). Outside every
+     * render (a script, a unit test) there is no context: current(), as before 0.81.
+     */
+    private function altLocale(): string
+    {
+        $ctx = Contexts::peek();
+        if ($ctx === null) {
+            return $this->locale->current();
+        }
+        if ($this->locale instanceof ContextLocaleProvider) {
+            return $this->locale->localeOf($ctx);
+        }
+        Deprecations::once('Preflow\Media\LocaleProvider::current() is deprecated since 0.81 and is removed in 0.83; use ContextLocaleProvider::localeOf().');
+
+        return $this->locale->current();
+    }
+
     /** @param array<string, mixed> $options */
     public function render(mixed $value, ?string $preset = null, array $options = []): string
     {
@@ -134,12 +155,12 @@ final class ImageTag
             return '';
         }
         $src = $this->library->url($asset);
-        $alt = $asset->altFor($this->locale->current(), $this->locale->default());
+        $alt = $asset->altFor($this->altLocale(), $this->locale->default());
         $record = $asset; // whose box plan: the image, the poster, or the video or document of a preview
         if ($asset->kind() !== 'image') {
             $poster = $asset->posterId !== null ? $this->library->find($asset->posterId) : null;
             if ($poster !== null && $poster->kind() === 'image') {
-                [$asset, $record, $src, $alt] = [$poster, $poster, $this->library->url($poster), $alt !== '' ? $alt : $poster->altFor($this->locale->current(), $this->locale->default())];
+                [$asset, $record, $src, $alt] = [$poster, $poster, $this->library->url($poster), $alt !== '' ? $alt : $poster->altFor($this->altLocale(), $this->locale->default())];
             } elseif (($preview = $this->library->previewAsset($asset)) !== null) {
                 [$asset, $src] = [$preview, (string) $this->library->previewUrl($asset)];
             }

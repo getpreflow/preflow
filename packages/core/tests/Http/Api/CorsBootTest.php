@@ -14,10 +14,13 @@ use Preflow\Core\PageCache\PageCacheConfig;
 use Preflow\Core\PageCache\PageKey;
 use Preflow\Core\PageCache\PageStore;
 use Psr\Http\Message\ResponseInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** CORS through a booted app: on error responses, and around the page cache. */
 final class CorsBootTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void
@@ -176,7 +179,8 @@ final class CorsBootTest extends TestCase
         $this->assertSame('hit', $second->getHeaderLine('X-Page-Cache'));
         $this->assertSame((string) $first->getBody(), (string) $second->getBody());
         $this->assertSame($b, $second->getHeaderLine('Access-Control-Allow-Origin'));
-        $this->assertSame(['Origin'], $second->getHeader('Vary'));
+        // The page cache's own Vary (a preview's token header, since 0.81) and CORS's Origin.
+        $this->assertSame(['X-Preflow-Preview', 'Origin'], $second->getHeader('Vary'));
 
         // The stored copy holds no CORS header, or another origin would get it.
         $config = $app->container()->get(PageCacheConfig::class);

@@ -14,7 +14,6 @@ use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Exceptions\NotFoundHttpException;
 use Preflow\Core\Error\JsonErrorRenderer;
 use Preflow\Core\Http\Api\ApiConfig;
-use Preflow\Core\Http\InternalRender;
 use Preflow\Validation\ValidationException;
 use Preflow\Validation\ValidationResult;
 
@@ -126,9 +125,9 @@ final class ErrorHandlerTest extends TestCase
     {
         $handler = new ErrorHandler(new DevErrorRenderer(), new ProdErrorRenderer());
 
-        $internal = $handler->handleException(new \RuntimeException('debug only detail'), InternalRender::mark($this->createRequest()));
+        $internal = self::internally(fn () => $handler->handleException(new \RuntimeException('debug only detail'), $this->createRequest()));
         $visitor = $handler->handleException(new \RuntimeException('debug only detail'), $this->createRequest());
-        $notFound = $handler->handleException(new NotFoundHttpException('Gone'), InternalRender::mark($this->createRequest()));
+        $notFound = self::internally(fn () => $handler->handleException(new NotFoundHttpException('Gone'), $this->createRequest()));
 
         $this->assertSame(500, $internal->getStatusCode());
         $this->assertStringNotContainsString('debug only detail', (string) $internal->getBody());
@@ -142,7 +141,7 @@ final class ErrorHandlerTest extends TestCase
     {
         $handler = new ErrorHandler(new DevErrorRenderer());
 
-        $response = $handler->handleException(new \RuntimeException('shown as usual'), InternalRender::mark($this->createRequest()));
+        $response = self::internally(fn () => $handler->handleException(new \RuntimeException('shown as usual'), $this->createRequest()));
 
         $this->assertStringContainsString('shown as usual', (string) $response->getBody());
     }
@@ -205,12 +204,21 @@ final class ErrorHandlerTest extends TestCase
     {
         $handler = new ErrorHandler(new DevErrorRenderer(), new ProdErrorRenderer(), new ApiConfig(), new JsonErrorRenderer(true));
 
-        $response = $handler->handleException(
+        $response = self::internally(static fn () => $handler->handleException(
             new \RuntimeException('debug only detail'),
-            InternalRender::mark((new Psr17Factory())->createServerRequest('GET', '/api/x')),
-        );
+            (new Psr17Factory())->createServerRequest('GET', '/api/x'),
+        ));
 
         $this->assertSame('text/html; charset=UTF-8', $response->getHeaderLine('Content-Type'));
         $this->assertStringNotContainsString('debug only detail', (string) $response->getBody());
+    }
+
+    /** $fn run as an internal render runs (the SEO audit: it leaves no trace); the purpose says it, not the request. */
+    private static function internally(\Closure $fn): mixed
+    {
+        return \Preflow\Core\Context\Contexts::run(
+            \Preflow\Core\Context\RenderContext::internal(\Preflow\Core\Context\Purpose::Audit, new \Preflow\Core\Context\Site('http://localhost', ['en'], 'en'), new \Preflow\Core\Context\SystemClock(), '/'),
+            $fn,
+        );
     }
 }

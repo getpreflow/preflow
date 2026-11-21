@@ -19,6 +19,7 @@ use Preflow\Rbac\Console\StaffResetCommand;
 use Preflow\Rbac\Staff\StaffAccounts;
 use Preflow\Rbac\Staff\StaffLinks;
 use Preflow\Rbac\Staff\StaffPopulation;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * The staff commands on a Folio site: they use Folio's staff guard, an invite mailed from a
@@ -27,6 +28,8 @@ use Preflow\Rbac\Staff\StaffPopulation;
  */
 final class StaffCommandsInFolioTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use RbacAppScaffold;
 
     protected function setUp(): void
@@ -56,7 +59,7 @@ final class StaffCommandsInFolioTest extends TestCase
                 : ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => []]],
             'session' => ['cookie' => 'rbac_folio_commands_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'site@site.test']]];\n");
         $this->install();
         $accounts = $this->container()->get(StaffAccounts::class);

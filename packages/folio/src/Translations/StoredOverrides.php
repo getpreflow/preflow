@@ -171,10 +171,13 @@ final class StoredOverrides implements TranslationOverrides
                 'key' => $key,
                 'text' => $text,
                 'updated_by' => $by ?? '',
-                'updated_at' => (new \DateTimeImmutable())->format(DATE_ATOM),
+                'updated_at' => (new \DateTimeImmutable())->format(DATE_ATOM), // clock: stamp
             ]), false);
         }
-        $this->forget($locale);
+        // A skipped write (a preview, a view as a role) changed no text: the compiled texts stay.
+        if (\Preflow\Core\Context\Writes::policy() === \Preflow\Core\Context\WritePolicy::Allow) {
+            $this->forget($locale);
+        }
     }
 
     /** Drops the compiled texts of a locale, or of every locale (after an import). */

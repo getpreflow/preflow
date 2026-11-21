@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * The cached pages of one release, one file each:
  * {root}/{releaseKey}/{id[0..1]}/{id}.page, where root is storage/cache/pages.
@@ -67,7 +69,7 @@ final class PageStore
         ?\Closure $clock = null,
     ) {
         $this->dir = rtrim($root, '/') . '/' . $releaseKey;
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
     }
 
     /**

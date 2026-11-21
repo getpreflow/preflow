@@ -59,7 +59,8 @@ final class PublishingServiceProvider extends ServiceProvider
             $c->get(DataManager::class),
             $c->get(Publisher::class),
         ));
-        // Request-scoped: public renders read published snapshots; an admin switches it to working copies.
+        // Reads what the current render's read mode says (published, or working copies in an admin
+        // route or a preview); one instance serves every render, since it keeps no render state.
         $container->singleton(LiveContent::class, static fn (Container $c): LiveContent => new LiveContent(
             $c->get(DataManager::class),
             $c->get(PublishingTypes::class),

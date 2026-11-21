@@ -14,7 +14,8 @@ composer require preflow/testing --dev
 - Fluent HTTP response assertions wrapping PSR-7 responses
 - In-memory SQLite and temporary JSON storage for isolated data tests
 - Minimal `TestApplication` bootstrap (container, renderer, token service)
-- Contract suites for your own template engine, hypermedia driver or storage driver
+- Contract suites for your own template engine, hypermedia driver or storage driver, and one
+  that proves internal renders leave no trace
 
 ## WebApplication
 
@@ -29,6 +30,64 @@ use Preflow\Testing\WebApplication;
 
 $response = WebApplication::boot($basePath)->handle($request); // one app per request, as on the server
 ```
+
+Since 0.81 a request can carry the render context it runs in, for that request only (the next one
+is a plain visit again). It works with any app's `handle()`:
+
+```php
+use Preflow\Core\Context\RenderContext;
+
+// "now" is this time for the whole request (and the page cache neither serves nor stores it)
+$app->handle(WebApplication::at(new \DateTimeImmutable('2026-03-01T09:00:00Z'), $request));
+// any other derivation of the request's context
+$app->handle(WebApplication::withContext(static fn (RenderContext $ctx) => $ctx->workingCopies(), $request));
+```
+
+`actingAs($user, $request, $guard = null)` (trait `Preflow\Testing\AuthTestHelpers`) signs the
+user in the same way: the frame `handle()` opens has them as its viewer from the start, before the
+first middleware runs. All three build on core's `Application::withDerivedContext()`.
+
+A request given a context that captures or discards (`->capturing()`, `->discarding()`, a role
+view) sends nothing, and what it captured is dropped when its frame ends: `handle()` returns only
+the response. To look at what a render would have sent, render it with `Application::render()`,
+whose `RenderResult` lists it (`captured`, `wouldSend()`).
+
+## Frame balance (0.81)
+
+`Preflow\Testing\FrameBalanceExtension` checks after every test that no render frame was left
+open (`Contexts::depth()` is 0 again). A test that leaves one open makes the run fail with a
+PHPUnit warning naming the test, and the frames are closed so the next test starts clean. Opt in
+from `phpunit.xml`:
+
+```xml
+<extensions>
+    <bootstrap class="Preflow\Testing\FrameBalanceExtension"/>
+</extensions>
+```
+
+PHPUnit starts no extension in a child process, so a test class that runs tests in separate
+processes (`#[RunInSeparateProcess]`, `#[RunTestsInSeparateProcesses]`) uses the trait
+`Preflow\Testing\ChecksFrameBalance` instead: it makes the same check after each test, in the
+test's own process.
+
+```php
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
+use PHPUnit\Framework\TestCase;
+use Preflow\Testing\ChecksFrameBalance;
+
+final class SessionPageTest extends TestCase
+{
+    use ChecksFrameBalance;
+
+    #[RunInSeparateProcess]
+    public function test_the_page_starts_a_session(): void { /* … */ }
+}
+```
+
+Code that sets a user, a locale or the read mode the 0.81 way needs an open frame. A unit test
+that calls such code directly opens one: `Contexts::run(ContextFactory::forTest(), fn () => …)`.
+`AuthManager::setUser()`, `LocaleMiddleware::process()`, `PdfRenderer`, `MembersView::render()`
+and console commands that read the context throw `NoRenderContext` outside every render.
 
 ## ComponentTestCase
 
@@ -157,7 +216,7 @@ hooks, and run it with PHPUnit like any other test. The built-in adapters run th
 | Suite | Interface | Hooks |
 |---|---|---|
 | `Preflow\Testing\Contract\TemplateEngineContract` | `Preflow\View\TemplateEngineInterface` | `createEngine(string $templateDir)`, `fixture(string $name)` |
-| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)` |
+| `Preflow\Testing\Contract\HypermediaDriverContract` | `Preflow\Htmx\HypermediaDriver` | `createDriver()`, `fragmentRequest(ServerRequestInterface $request)`, `targetRequest(ServerRequestInterface $request, string $targetId)`; optional `effects()`, `historyRestoreRequest($request)`, `pageNonceRequest($request, $nonce)`. Since 0.81 it also checks that effects stay in the render frame they were recorded in, and, for a driver that implements `OwnsResponseHeaders`, that `ownedHeaders()` names every header it writes (skipped otherwise) |
 | `Preflow\Testing\Contract\StorageDriverContract` | `Preflow\Data\StorageDriver` | `createDriver()`, `createType(string $type, array $fields)`; optional `supportsAutoIds()`, `reopenDriver()`, `emptyDriver()`, `declareFullText(string $type, array $fields)`, `declareUnique(string $type, string $field)`, `textRuleMissing()` (the last five since 0.78); capability tests run when the driver implements the interface |
 | `Preflow\Testing\Contract\DialectContract` (0.66.1) | `Preflow\Data\Driver\Dialect` | `createPdo()` (an empty database), `createDialect()`; optional `numberColumnType()` |
 
@@ -240,6 +299,123 @@ a boolean as 1/0, a JSON field as text), is in each suite's class docblock:
 
 Each test starts from a fresh adapter (`createEngine()` / `createDriver()` run in `setUp()`), so
 a storage driver needs an empty store per test.
+
+## Render isolation (0.81)
+
+A site renders pages for itself: the SEO audit, GEO's Markdown views, page-cache rebuilds and
+verify renders, previews, mails and PDFs. Such a render must leave no trace: it must not see the
+visitor's cookies, session, signed-in user or language, and it must not change what the request
+that asked for it queued or collected. `Preflow\Testing\Contract\RenderIsolationContract` checks
+this for every render path you give it. It needs no Folio: extend it in a site, a package or an
+adapter that renders internally.
+
+| Hook | What it returns |
+|---|---|
+| `app()` | a booted `Application`; called once per path in each test, so every path gets its own app and no outcome depends on the paths before it; return a new one each time |
+| `paths()` | path name => `Closure(Application, RenderContext): RenderResult`, the render under the context it is given; names from `RenderIsolationContract::PATHS`: `audit`, `geo`, `rebuild`, `verify`, `preview`, `mail`, `pdf` (cover the ones your app has) |
+| `pending()` (optional) | path => [test => reason]: the tests a path does not pass yet; tests are `poison`, `frame`, `interleave`, `frozen`, or `'*'` for all four (see below) |
+| `marker()` (optional) | the text planted in the ambient state, `zz-ambient-marker` by default |
+| `context()` (optional) | the context every render starts from, `ContextFactory::forTest()` by default; give your site's origin and locales |
+| `clockFormat()` (optional) | the date format your page prints its render time in; when given, the frozen-clock test checks the page printed its own frozen time |
+| `poisonApp(Application $app)` (optional) | plants the marker in your app's own ambient sources (a package's static locale, say); runs at the end of the poison |
+| `ambientState(Application $app)` (optional) | reads those sources back as an array; the outer-frame test compares it before and after each render. When it is not empty, it must change when `poisonApp()` runs, or the test fails (a constant state checks nothing) |
+| `restoreApp(Application $app)` (optional) | puts back what `poisonApp()` set; runs after each path and in `tearDown()`, also when the test failed, and `ambientState()` must then be back to its value from before the poison |
+
+`app()` must build a new app on every call. Anything that outlives the app, such as a static a
+package keeps, is restored in `restoreApp()`; a runner that cannot restore it runs its tests in
+separate processes (`#[RunTestsInSeparateProcesses]`, as core's own runner does). Between paths
+the contract puts the superglobals back. Before each path's `app()`, it drops (unsaved, with
+`session_abort()`) any native session that is open: the one the previous app started, and also one
+that was already open when the test started. So each app boots as the next request would.
+
+A pending test still runs. When it fails, the test is marked incomplete (not skipped), with the
+reason and the whole failure, diff included. When it passes, the test fails with
+`<path>/<test> passes: remove it from pending()`, so the list only shrinks. A test that is not
+pending must pass.
+
+```php
+protected function pending(): array
+{
+    return ['mail' => ['poison' => 'the mail layout still reads the translator']];
+}
+```
+
+```php
+use Nyholm\Psr7\ServerRequest;
+use Preflow\Core\Application;
+use Preflow\Core\Context\Purpose;
+use Preflow\Core\Context\RenderContext;
+use Preflow\Core\Context\RenderResult;
+use Preflow\Core\Context\Site;
+use Preflow\Testing\ContextFactory;
+use Preflow\Testing\Contract\RenderIsolationContract;
+
+final class SiteRenderIsolationTest extends RenderIsolationContract
+{
+    protected function app(): Application
+    {
+        $app = Application::create(dirname(__DIR__));
+        $app->boot();
+
+        return $app;
+    }
+
+    protected function context(): RenderContext
+    {
+        return ContextFactory::forTest(new Site('https://example.com', ['en', 'de'], 'en'));
+    }
+
+    protected function paths(): array
+    {
+        return [
+            'audit' => static fn (Application $app, RenderContext $ctx): RenderResult => $app->render(
+                RenderContext::internal(Purpose::Audit, $ctx->site, $ctx->clock, '/')->in($ctx->locale),
+                new ServerRequest('GET', '/'),
+            ),
+        ];
+    }
+}
+```
+
+Every render runs inside an outer frame of the test's own, as an internal render runs inside the
+request that asks for it. The four tests:
+
+- **Poisoned ambient state never reaches the render** (`poison`). The outer frame runs under a
+  poisoned visitor context: another locale, a signed-in viewer whose id is the marker, working
+  copies, the admin surface and another frozen time. Its request carries the cookie `m`, the
+  header `X-Marker` and `REMOTE_ADDR` set to the marker, and that request is bound as the
+  container's `RequestContext`, as every request binds it. The superglobals get the same markers
+  and `$_SESSION['m']`. Where the app has them, the contract calls the deprecated
+  `Translator::setLocale('xx')`, turns on translator overrides that answer every key with the
+  marker, signs in a user whose id is the marker with `AuthManager::setUser()`, and calls
+  `LiveContent::showWorkingCopies()`. It puts a CSS rule, a script and a page title holding the
+  marker into the asset registry and the SEO page meta, queues one cookie and one mail, and calls
+  `poisonApp()`. The render's status and body must equal the same render's under a clean outer
+  frame, and its body, headers and captured items must not contain the marker. A path that reads
+  the frame around it, the bound request or the outer collectors instead of its own context fails.
+  The outer frame's CSP nonce is `RenderIsolationContract::OUTER_NONCE` (every render's own is
+  `NONCE`), and no render may print it, except the `pdf` path (`PART_PATHS`): a PDF's HTML is part
+  of the page that shows it, so a nonce it prints must be that page's, never one of its own.
+- **The outer frame is byte-equal after each render** (`frame`). With the same poison, these are
+  the same before and after the render: the current context (serialized, without the PSR
+  request), the frame's queued cookies and mail, the `CookieQueue`, the bound `RequestContext`,
+  the asset registry, the SEO page meta, the translator's locale and overrides switch, the
+  signed-in user, `LiveContent`'s mode, the superglobals, the native session's status and id, and
+  `ambientState()`.
+- **Interleaved renders are independent** (`interleave`). A, B, A in one outer frame that runs
+  under B; B has another locale, a signed-in viewer and working copies. Both A renders give the
+  same status, headers (without `Date`), body and captured items, and B's differ from A's: the
+  page must show something of the locale or the viewer, so a path that ignores its context
+  cannot pass.
+- **A frozen clock renders identically** (`frozen`). Two renders of a context frozen with `at()`,
+  inside an outer frame at another time, give the same status and body; with `clockFormat()`,
+  the body holds the frozen time. A page that prints a nonce needs the nonce made deterministic
+  for this test.
+
+`Preflow\Testing\ContextFactory::forTest(?Site $site = null)` builds the context these tests start
+from: a visitor's GET of the home page (`http://localhost/` with the locale `en` without a site),
+purpose `Test`, on a `FrozenClock` at `2026-01-01T00:00:00Z`. Derive what a test needs from it
+(`->in('de')->workingCopies()`) and run code under it with `Contexts::run()`.
 
 ## Fast suites
 

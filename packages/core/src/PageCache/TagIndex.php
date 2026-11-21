@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Preflow\Core\PageCache;
 
+use Preflow\Core\Context\Contexts;
+
 /**
  * Which cached pages depend on which tags, in SQLite (WAL) next to the release's pages:
  * {root}/{releaseKey}/index.sqlite.
@@ -79,7 +81,7 @@ final class TagIndex
         private readonly int $maxQueryVariants = 0,
         private readonly ?\Closure $onEvict = null,
     ) {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
+        $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
         $this->sqlite = $sqlite ?? (extension_loaded('pdo_sqlite') && in_array('sqlite', \PDO::getAvailableDrivers(), true));
     }
 
@@ -137,7 +139,7 @@ final class TagIndex
 
                 return null;
             }
-            $aside = $this->file . '.corrupt-' . date('Ymd-His');
+            $aside = $this->file . '.corrupt-' . date('Ymd-His'); // clock: stamp
             @rename($this->file, $aside);
             @unlink($this->file . '-wal');
             @unlink($this->file . '-shm');

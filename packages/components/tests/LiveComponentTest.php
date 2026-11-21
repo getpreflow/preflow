@@ -40,7 +40,7 @@ final class LiveComponentTest extends TestCase
     {
         AlbumButton::reset();
         $this->cache = new PageCache();
-        $this->live = new LiveParts(new LivePlaceholder('live-test-key'), $this->cache, new DependencyRecorder(), function (string $m): void {
+        $this->live = new LiveParts(new LivePlaceholder('live-test-key-0123456789abcdef0123456789'), $this->cache, new DependencyRecorder(), function (string $m): void {
             $this->logged[] = $m;
         });
         $engine = new class implements TemplateEngineInterface {
@@ -113,8 +113,8 @@ final class LiveComponentTest extends TestCase
 
     public function test_a_signed_placeholder_naming_a_component_that_is_not_live_is_not_rendered(): void
     {
-        $marker = (new LivePlaceholder('live-test-key'))->make(ComponentRenderer::LIVE_KIND, ['c' => PlainCard::class, 'p' => []]);
-        $notAComponent = (new LivePlaceholder('live-test-key'))->make(ComponentRenderer::LIVE_KIND, ['c' => \stdClass::class, 'p' => []]);
+        $marker = (new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->make(ComponentRenderer::LIVE_KIND, ['c' => PlainCard::class, 'p' => []]);
+        $notAComponent = (new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->make(ComponentRenderer::LIVE_KIND, ['c' => \stdClass::class, 'p' => []]);
 
         $this->assertSame("<p>{$marker}{$notAComponent}</p>", $this->live->fill("<p>{$marker}{$notAComponent}</p>"), 'inert comments');
         $this->assertSame(['page cache: 2 live marker(s) left as comments: unsigned, forged or naming no declared live part'], $this->logged);

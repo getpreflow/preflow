@@ -11,6 +11,7 @@ use Preflow\Auth\Access\Access;
 use Preflow\I18n\Machine\AiPackage;
 use Preflow\Folio\Tests\Support\HiddenAiPackage;
 use Preflow\Folio\Tests\Support\PublishingScaffold;
+use Preflow\Testing\ChecksFrameBalance;
 
 /**
  * preflow/ai is only suggested: a Folio app without it boots and renders the dashboard, the editor
@@ -21,6 +22,8 @@ use Preflow\Folio\Tests\Support\PublishingScaffold;
  */
 final class FolioWithoutAiTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use PublishingScaffold;
 
     private const KEY_ENV = 'FOLIO_NO_AI_TEST_KEY';

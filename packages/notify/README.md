@@ -131,6 +131,13 @@ change it and name it in `layout`. A single mail can use another template with
 `$mailer->send($content, $to, template: '…')`. To replace the layout altogether, bind your own
 `Preflow\Notify\Mail\MailLayout` in a service provider.
 
+The `Mailer` calls the layout's `html()` inside its compose scope (below). With preflow/core that is a
+render of its own in the recipient's context, so a layout of your own, or your layout template, reads
+the reader's language from `$content->lang` (the template's `lang`) or from the current render
+(`current_locale()`, `t()`), and nobody is signed in there. It never reads the language from the
+request that sends the mail. CSS or scripts the template collects stay in the mail, and a cookie or
+mail it queues is dropped.
+
 The `Mailer` takes the `Notifier` itself or a `Closure` that returns it. Core passes a
 `Closure` that reads the container at each send, so a `Notifier` a provider or a test binds
 later is the one that sends, and its `flushDeferred()` sends what `sendLater()` queued.
@@ -216,15 +223,51 @@ and cannot be flushed deterministically in the CLI and in tests.
 
 `Notifier::discardingQueued(\Closure $work): mixed` (since 0.74) runs `$work` and returns its result. While
 it runs, `sendLater()` drops its message: it is not queued, not sent even with `'defer' => false`, and its
-`onFailure` is not called.
+`onFailure` is not called. Since 0.81 `send()` sends nothing inside it either.
 
-- Calls nest (a counter); the state is put back when `$work` throws.
+- Calls nest; the state is put back when `$work` throws.
 - What was queued before stays queued and is sent as usual: only the messages queued inside are dropped.
-- `send()` (and `Mailer::send()`) send at once and are not affected.
 
-Core uses it for every internal render (GEO's Markdown views and `llms-full.txt`, page cache rebuilds, the
-SEO audit's pages, also a step run from Folio inside an admin request): a page that queues mail on a visit
-sends none when the framework renders it for itself, and the request around it sends only its own.
+With preflow/core it is deprecated since 0.81 (removed in 0.83): render under a discarding render context
+instead (`Application::render()` or `Contexts::run()` with `RenderContext::discarding()`).
+
+### The queue and the compose scope (since 0.81)
+
+notify depends on no other package. The `Notifier` keeps what `sendLater()` queues in a
+`Preflow\Notify\Deferred\DeferredQueue` (the fifth constructor argument, `queue()` returns it;
+notify's own `InMemoryQueue` when none is given), and the queue's `policy()` (`deliver`, `discard` or
+`capture`) also decides whether `send()` delivers. Each queued message reaches the queue as a
+`Preflow\Notify\Deferred\Deferred` value: the `Message`, its channel, the `onFailure` closure and a
+one-line summary. A queue sends it with `Notifier::deliver($item)`, so a durable queue (a cron worker
+that sends later) can store the message itself. `deliver()` is for queues only: it sends whatever the
+current render's policy is, since the queue already decided the item may go. With a durable queue,
+`flushDeferred()` returns 0 (nothing was sent in this process); code that reads 0 as "not sent", such
+as rbac's `staff:create` message, has to be adapted when such a queue is added.
+
+The `Mailer` renders a mail's HTML part inside a `Preflow\Notify\Mail\ComposeScope` (its fourth
+argument; `DirectCompose` renders where it is called) for the content's language. `MailContent::$lang`
+may be null: the scope then picks the language (`DirectCompose`: `'en'`, as before 0.81) and the layout
+gets the content with that language.
+
+With preflow/core, core binds its own implementations of both:
+
+- What `sendLater()` queues joins the current render's outbox, on the outbox channel `notify`. A
+  visitor's request sends it after the response (also when the request failed), a console command
+  when it ends (also when it failed). A render that must send nothing (the SEO audit, GEO, page cache
+  rebuilds, verify) drops it; a preview or a view as a role lists it in its result and sends nothing.
+  `send()` follows the same rule: it records instead of sending and answers as if sent, so the code
+  around it takes the path it takes on a real visit.
+- A composed mail renders in its recipient's context: the texts and the locale of `MailContent::$lang`,
+  else of the current render's locale, an anonymous visitor, published content.
+- `flushDeferred()` in a command or a request sends that command's or request's mail now and returns
+  how many went out.
+- **A Notifier you bind yourself** (in a provider) must use the app's queue, or its mail would also
+  leave internal renders and previews: `new Notifier($factory, $channels, $logger, $defer,
+  $container->get(DeferredQueue::class))`. Core checks it once the providers booted: it throws in debug
+  mode and logs otherwise.
+- The outbox channel name `notify` belongs to notify: a channel of another package registered under
+  that name is refused (`LogicException`).
+- Sending through a transport directly (`TransportFactory::get(...)->send()`) bypasses all of this.
 
 ## Errors
 

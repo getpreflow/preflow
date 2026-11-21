@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Preflow\Folio\Http;
 
 use Nyholm\Psr7\Response;
+use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Purpose;
 use Preflow\Data\DataManager;
 use Preflow\Data\DynamicRecord;
 use Preflow\Data\TypeDefinition;
@@ -23,7 +25,10 @@ use Psr\Http\Message\ServerRequestInterface;
  * Renders a draft (in-progress, unsaved) record through the real frontend
  * template for live preview. Side-effect-free: never writes storage, never
  * persists uploads, never calls saveType (so no validation), and ignores the
- * published-status gate. Enabled only for the frontend type.
+ * published-status gate. Enabled only for the frontend type. It renders within a context
+ * of its own (since 0.81.0): an anonymous visitor on the public surface in the editing
+ * locale, reading working copies, purpose Preview, writes skipped and what it would send
+ * captured. The whole page (layout, navigation) is PagePreviewController's.
  */
 final class PreviewController
 {
@@ -38,9 +43,11 @@ final class PreviewController
         private readonly TemplateEngineInterface $engine,
         private readonly FrontendResolver $frontend,
         ?DraftRecordFactory $drafts = null,
+        /** not used since 0.81.0 (the preview renders in a context of its own); kept for the constructor's shape */
         private readonly ?ContentLocale $contentLocale = null,
         private readonly ?\Preflow\View\AssetCollector $assets = null,
         private readonly ?AdminAssetUrls $assetUrls = null,
+        /** not used since 0.81.0 (the translator follows the render context); kept for the constructor's shape */
         private readonly ?\Preflow\I18n\Translator $translator = null,
     ) {
         $this->drafts = $drafts ?? new DraftRecordFactory($fieldTypes);
@@ -60,37 +67,44 @@ final class PreviewController
         $requested = ((array) $request->getParsedBody())['_locale'] ?? null;
         $locale = is_string($requested) && $typeDef->locales->has($requested) ? $requested : $typeDef->locales->default;
         $draft = $this->drafts->build($typeDef, $request, $existing + [$typeDef->idField => $id], $locale, writeUploads: false);
-        $this->contentLocale?->set($locale);
 
-        // The frontend's template in the frontend's translator state (its locale, no admin
-        // overrides), not the editor's interface language.
-        $render = fn (): string => $this->engine->render(FrontendController::template($this->engine, $route), [
+        // The frontend's template as a visitor sees the page: nobody signed in (a member-only
+        // block stays out although the editor is signed in), the visitor's texts in the editing
+        // locale, working copies of referenced records. Nothing it renders leaves a trace
+        // (Purpose::Preview): the data writes it would make are skipped and what it would send
+        // (mail, cookies) is captured, never sent with the admin's request (since 0.81.0). Only
+        // for this stretch: the admin's own locale, identity and texts are back afterwards.
+        $preview = Contexts::current()->asVisitor()->public()->in($locale)->workingCopies()
+            ->capturing()->skippingWrites()->because(Purpose::Preview);
+        $html = Contexts::within($preview, fn (): string => $this->engine->render(FrontendController::template($this->engine, $route), [
             'record' => $draft->localized($locale)->toArray(),
             'rendered' => $this->records->renderedMap($draft, $locale),
             'type' => $type,
             'preview' => true,
             'locale' => $locale,
             'alternates' => [],
-        ]);
-        $html = $this->translator === null ? $render() : AdminLocaleMiddleware::asFrontend($this->translator, $request, $render);
+        ]));
 
         $html = $this->assets?->injectInto($html) ?? $html;
 
-        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], $this->withEditor($html));
+        return new Response(200, ['Content-Type' => 'text/html; charset=UTF-8'], self::withEditorBridge($html, $this->assetUrls));
     }
 
     /**
-     * The preview-only editor bridge (hover outlines, click-to-edit). External
-     * same-origin files, so the page's own CSP allows them without a nonce.
+     * $html with the preview-only editor bridge (hover outlines, click-to-edit) and $bodyEnd (the
+     * whole-page preview's bar: markup without scripts or styles of its own) before </body>.
+     * External same-origin files, so the page's own CSP allows them without a nonce.
+     *
+     * @internal Folio's previews
      */
-    private function withEditor(string $html): string
+    public static function withEditorBridge(string $html, ?AdminAssetUrls $assetUrls, string $bodyEnd = ''): string
     {
-        if ($this->assetUrls === null) {
+        if ($assetUrls === null) {
             return $html;
         }
         $e = static fn (string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
-        $css = '<link rel="stylesheet" href="' . $e(($this->assetUrls)('preview-editor.css')) . '">' . "\n";
-        $js = '<script src="' . $e(($this->assetUrls)('preview-editor.js')) . '" defer></script>' . "\n";
+        $css = '<link rel="stylesheet" href="' . $e($assetUrls('preview-editor.css')) . '">' . "\n";
+        $js = $bodyEnd . '<script src="' . $e($assetUrls('preview-editor.js')) . '" defer></script>' . "\n";
 
         $html = ($pos = stripos($html, '</head>')) !== false ? substr_replace($html, $css, $pos, 0) : $css . $html;
 

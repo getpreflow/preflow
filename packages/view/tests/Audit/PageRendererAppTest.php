@@ -11,16 +11,19 @@ use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use PHPUnit\Framework\TestCase;
 use Preflow\Core\Application;
 use Preflow\Core\Debug\DebugCollector;
-use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Context\Purpose;
 use Preflow\Core\Http\Session\SessionInterface;
 use Preflow\Core\Http\Session\SessionMiddleware;
 use Preflow\View\Audit\AuditRegistry;
 use Preflow\View\Audit\PageRenderer;
 use Preflow\View\Tests\Audit\Fixtures\AuditTestRoutes;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** PageRenderer as the app binds it: renders through the full pipeline, production-like, from the CLI. */
 final class PageRendererAppTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     private string $dir;
 
     protected function setUp(): void
@@ -44,6 +47,7 @@ final class PageRendererAppTest extends TestCase
     protected function tearDown(): void
     {
         AuditTestRoutes::$seen = null;
+        AuditTestRoutes::$purpose = null;
         $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($this->dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST);
         foreach ($it as $f) {
             $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
@@ -78,8 +82,12 @@ final class PageRendererAppTest extends TestCase
         $this->assertSame('de', $de->locale);
         $this->assertStringContainsString('<title>About de</title>', $de->body);
 
-        // One render after another: the second sees the same page, not what the first left behind.
-        $this->assertSame($page->body, $renderer->render('/about')->body);
+        // One render after another: the second sees the same page, not what the first left behind
+        // (each render has a nonce of its own: the same text, with the other nonce).
+        $nonce = static fn (string $body): string => preg_match('/nonce="([^"]+)"/', $body, $m) === 1 ? $m[1] : '';
+        $again = $renderer->render('/about')->body;
+        $this->assertNotSame($nonce($page->body), $nonce($again));
+        $this->assertSame($page->body, str_replace($nonce($again), $nonce($page->body), $again));
     }
 
     #[RunInSeparateProcess]
@@ -95,7 +103,7 @@ final class PageRendererAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_the_request_carries_the_marker_and_gets_no_session(): void
+    public function test_the_render_is_an_internal_audit_render_and_gets_no_session(): void
     {
         $app = $this->app();
 
@@ -103,7 +111,7 @@ final class PageRendererAppTest extends TestCase
 
         $this->assertSame(200, $page->status, $page->body);
         $this->assertNotNull(AuditTestRoutes::$seen);
-        $this->assertTrue(InternalRender::is(AuditTestRoutes::$seen));
+        $this->assertSame([Purpose::Audit, true], AuditTestRoutes::$purpose, 'an internal Audit render, which leaves no trace');
         $this->assertTrue(AuditTestRoutes::$seen->getAttribute(SessionMiddleware::WITHOUT_SESSION));
         // No session was started, so no session cookie (the locale cookie a first visit gets is the site's own).
         $this->assertNull(AuditTestRoutes::$seen->getAttribute(SessionInterface::class));
@@ -112,7 +120,7 @@ final class PageRendererAppTest extends TestCase
 
         // Proof the session middleware starts a session for a visitor's request.
         $app->handle((new Psr17Factory())->createServerRequest('GET', 'https://site.test/seen'));
-        $this->assertFalse(InternalRender::is(AuditTestRoutes::$seen));
+        $this->assertSame([Purpose::Visit, false], AuditTestRoutes::$purpose);
         $this->assertInstanceOf(SessionInterface::class, AuditTestRoutes::$seen->getAttribute(SessionInterface::class));
         $this->assertNotSame('', session_id());
     }
@@ -133,17 +141,19 @@ final class PageRendererAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_the_debug_collector_starts_empty_for_each_render(): void
+    public function test_the_debug_collector_records_nothing_of_the_audits_renders(): void
     {
         $container = $this->app()->container();
         $collector = $container->get(DebugCollector::class);
-        $collector->logQuery('SELECT left_over', [], 1.0);
+        $collector->logQuery('SELECT request_own', [], 1.0);
 
-        $page = $container->get(PageRenderer::class)->render('/about');
+        $page = $container->get(PageRenderer::class)->render('/seen');
+        $container->get(PageRenderer::class)->render('/seen');
 
         $this->assertSame(200, $page->status, $page->body);
-        // Hundreds of renders in one process don't pile up in the collector.
-        $this->assertNotContains('SELECT left_over', array_column($collector->getQueries(), 'sql'));
+        // Hundreds of renders in one process don't pile up in the collector, and the data of the
+        // request that ran them (an admin's audit step) stays.
+        $this->assertSame(['SELECT request_own'], array_column($collector->getQueries(), 'sql'));
     }
 
     #[RunInSeparateProcess]

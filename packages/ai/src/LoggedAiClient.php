@@ -12,6 +12,8 @@ use Preflow\Ai\Usage\UsageLog;
  * Writes a usage entry after every call, so no caller has to remember to. A request that failed
  * is logged too (with 0 tokens, as the provider gave no usage), because failed calls still count
  * when you look at how often a run needed retries. A broken log never breaks the call itself.
+ * The entry is accounting, not data (Writes 'accounting'): it is written under every write
+ * policy, in a preview or an audit too, because the call and its cost really happened.
  */
 final class LoggedAiClient implements AiClient
 {
@@ -53,7 +55,7 @@ final class LoggedAiClient implements AiClient
     private function record(string $purpose, string $provider, string $model, TokenUsage $usage, bool $failed): void
     {
         try {
-            $this->log->record(new UsageEntry(new \DateTimeImmutable(), $purpose, $provider, $model, $usage, $this->cost($model, $usage), $failed));
+            $this->log->record(new UsageEntry(new \DateTimeImmutable(), $purpose, $provider, $model, $usage, $this->cost($model, $usage), $failed)); // clock: stamp
         } catch (\RuntimeException) {
             // Bookkeeping must not turn a good answer into an error.
         }

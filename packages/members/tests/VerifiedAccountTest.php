@@ -19,10 +19,13 @@ use Preflow\Members\Tests\Support\MembersScaffold;
 use Preflow\Notify\Notifier;
 use Preflow\Testing\ArraySession;
 use Psr\Http\Message\ServerRequestInterface;
+use Preflow\Testing\ChecksFrameBalance;
 
 /** Accounts a project creates with an address it has proven itself, and signing them in. */
 final class VerifiedAccountTest extends TestCase
 {
+    use ChecksFrameBalance;
+
     use MemberFlows;
     use MembersScaffold;
 
@@ -37,7 +40,7 @@ final class VerifiedAccountTest extends TestCase
         $this->flowSite();
         $members = $this->flow->container()->get(Members::class);
 
-        $m = $members->register('Ada@Example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true);
+        $m = $this->rendering(fn () => $members->register('Ada@Example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true));
         $this->flow->container()->get(Notifier::class)->flushDeferred();
 
         $this->assertSame([], $this->mails(), 'no confirmation mail');
@@ -54,7 +57,7 @@ final class VerifiedAccountTest extends TestCase
         $this->flowSite(['admission' => OwnerApproval::class, 'notice_email' => 'owner@site.test']);
         $members = $this->flow->container()->get(Members::class);
 
-        $members->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true);
+        $this->rendering(fn () => $members->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true));
         $this->flow->container()->get(Notifier::class)->flushDeferred();
 
         $stored = $this->member('ada@example.com');
@@ -80,7 +83,7 @@ final class VerifiedAccountTest extends TestCase
     {
         $this->flowSite();
         $c = $this->flow->container();
-        $m = $c->get(Members::class)->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true);
+        $m = $this->rendering(fn () => $c->get(Members::class)->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true));
         $request = $this->sessionRequest();
 
         $c->get(SignIn::class)->in($m, $request);
@@ -95,7 +98,7 @@ final class VerifiedAccountTest extends TestCase
     {
         $this->flowSite(['admission' => OwnerApproval::class]);
         $c = $this->flow->container();
-        $m = $c->get(Members::class)->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true);
+        $m = $this->rendering(fn () => $c->get(Members::class)->register('ada@example.com', 'Ada Lovelace', self::PASSWORD, 'en', emailVerified: true));
 
         $this->expectException(\LogicException::class);
         $c->get(SignIn::class)->in($m, $this->sessionRequest());
