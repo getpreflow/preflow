@@ -68,7 +68,7 @@ final class MembersConfigTest extends TestCase
             'path' => 'konto/',
             'landing' => '/konto/objekte',
             'layout' => '@site/layout.twig',
-            'mail' => ['from_name' => 'Holz', 'accent' => '#333'],
+            'mail' => ['from_name' => 'Acme', 'accent' => '#333'],
             'admission' => AcceptOnConfirm::class,
             'throttle' => ['login' => [3, 60]],
             'password_min' => 12,
@@ -78,7 +78,7 @@ final class MembersConfigTest extends TestCase
         $this->assertSame('/konto', $config->path(), 'one leading slash, no trailing one');
         $this->assertSame('/konto/objekte', $config->landing());
         $this->assertSame('@site/layout.twig', $config->layout());
-        $this->assertSame('Holz', $config->mailFromName());
+        $this->assertSame('Acme', $config->mailFromName());
         $this->assertNull($config->mailLayout(), 'mail keys merge');
         $this->assertSame('#333', $config->accent());
         $this->assertSame(AcceptOnConfirm::class, $config->admission());

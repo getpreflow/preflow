@@ -95,10 +95,10 @@ final class MembersServiceTest extends TestCase
         $this->migrate();
 
         $members = $this->members();
-        $m = $members->register('ada@example.com', 'Ada', 'correct horse battery', 'de', ['company' => 'Holz AG', 'screening_answer' => 'I build things']);
+        $m = $members->register('ada@example.com', 'Ada', 'correct horse battery', 'de', ['company' => 'Acme AG', 'screening_answer' => 'I build things']);
 
         $stored = $members->find((string) $m->getId());
-        $this->assertSame('Holz AG', $stored?->get('company'));
+        $this->assertSame('Acme AG', $stored?->get('company'));
         $this->assertSame('I build things', $stored?->get('screening_answer'));
     }
 
@@ -107,7 +107,7 @@ final class MembersServiceTest extends TestCase
         $this->expectException(\LogicException::class);
         $this->expectExceptionMessage('"company" is not a field of the member type');
 
-        $this->members()->register('ada@example.com', 'Ada', 'correct horse battery', 'en', ['company' => 'Holz AG']);
+        $this->members()->register('ada@example.com', 'Ada', 'correct horse battery', 'en', ['company' => 'Acme AG']);
     }
 
     public function test_register_refuses_an_extra_key_it_sets_itself(): void

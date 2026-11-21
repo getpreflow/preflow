@@ -66,7 +66,7 @@ final class SeoAuditScreenTest extends TestCase
             new Finding('title.missing', Severity::Critical, 'The page has no <title>.', 'https://site.test/de/hallo', 'de', new Target('record', 'post', 'p1')),
             new Finding('og.image-alt-missing', Severity::Notice, 'The share image has no alt text.', 'https://site.test/media/2026/11/' . self::ASSET . '.jpg', '', new Target('asset', 'asset', self::ASSET)),
             new Finding('robots.missing', Severity::Warning, 'There is no robots.txt.'),
-            new Finding('holz.photo-credit', Severity::Warning, 'The object has no photo credit.', 'https://site.test/objekt', 'en'),
+            new Finding('site.photo-credit', Severity::Warning, 'The object has no photo credit.', 'https://site.test/objekt', 'en'),
             new Finding('description.missing', Severity::Warning, 'Sneaky.', 'javascript:alert(1)', 'en'),
         ];
 
@@ -134,7 +134,7 @@ final class SeoAuditScreenTest extends TestCase
         $this->assertNotFalse($notice);
         $this->assertLessThan($warning, $critical);
         $this->assertLessThan($notice, $warning);
-        $this->assertStringContainsString('<code>holz.photo-credit</code>', $body);
+        $this->assertStringContainsString('<code>site.photo-credit</code>', $body);
         $this->assertStringContainsString('robots.txt missing', $body);
         // The messages as the report has them (escaped).
         $this->assertStringContainsString('The page has no &lt;title&gt;.', $body);

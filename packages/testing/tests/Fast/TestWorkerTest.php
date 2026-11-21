@@ -64,10 +64,10 @@ final class TestWorkerTest extends TestCase
         };
 
         try {
-            TestWorker::createMysqlDatabase($server, 'holz_test_3', 'holz');
+            TestWorker::createMysqlDatabase($server, 'acme_test_3', 'acme');
             $this->fail('expected an exception');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('GRANT ALL PRIVILEGES ON `holz\_test\_%`.* TO \'holz\'@\'localhost\';', $e->getMessage());
+            $this->assertStringContainsString('GRANT ALL PRIVILEGES ON `acme\_test\_%`.* TO \'acme\'@\'localhost\';', $e->getMessage());
             $this->assertStringContainsString('Access denied', $e->getMessage());
         }
     }

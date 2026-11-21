@@ -29,7 +29,7 @@ final class GuestAlbumProvider extends ServiceProvider
 
             return is_string($value) && $value !== '' ? array_map('intval', explode('_', $value)) : [];
         };
-        // A form token from the visitor (as holz's FormToken, from the client's address): a registered
+        // A form token from the visitor (as a site's own form token, from the client's address): a registered
         // per-request value, so it may sit outside live parts.
         $token = static function () use ($container): string {
             $request = $container->get(RequestContext::class)->request;

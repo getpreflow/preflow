@@ -144,8 +144,8 @@ TWIG,
         $this->assertSame(1, CompanyAdmission::$validations);
         $this->assertSame(0, CompanyAdmission::$lookups, 'no costly check while the base fields fail');
 
-        $named = (string) $this->register(['name' => '', 'company' => 'Holz AG'])->getBody();
-        $this->assertSame('Holz AG', Dom::first($named, '//input[@name="company"]')?->getAttribute('value'), 'the admission\'s input is kept');
+        $named = (string) $this->register(['name' => '', 'company' => 'Acme AG'])->getBody();
+        $this->assertSame('Acme AG', Dom::first($named, '//input[@name="company"]')?->getAttribute('value'), 'the admission\'s input is kept');
         $this->assertNull(Dom::first($named, '//p[@class="company-error"]'));
         $this->assertSame(0, CompanyAdmission::$lookups, 'a given company is not looked up while the name is missing');
 
@@ -154,9 +154,9 @@ TWIG,
         $this->assertSame('Please name your company.', Dom::text((string) $missing->getBody(), '//p[@class="company-error"]'));
         $this->assertNull($this->flow->container()->get(Members::class)->findByEmail('ada@example.com'));
 
-        $this->assertSame(200, $this->register(['company' => ' Holz AG '])->getStatusCode());
+        $this->assertSame(200, $this->register(['company' => ' Acme AG '])->getStatusCode());
         $this->assertSame(1, CompanyAdmission::$lookups, 'looked up on the otherwise valid post');
-        $this->assertSame('Holz AG', $this->member('ada@example.com')->get('company'));
+        $this->assertSame('Acme AG', $this->member('ada@example.com')->get('company'));
     }
 
     #[RunInSeparateProcess]

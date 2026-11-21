@@ -41,7 +41,7 @@ final class ClassTypeAdminAppTest extends TestCase
         $uuid = $this->createJob('Carpenter');
         $this->assertStringContainsString('Carpenter', $this->html('/folio/job'), 'the list shows the new record');
 
-        $this->assertSame(302, $this->post("/folio/job/{$uuid}", ['title' => 'Senior carpenter', 'company' => 'Holz AG', '_version' => (string) $this->version($uuid), '_action' => 'publish'])->getStatusCode());
+        $this->assertSame(302, $this->post("/folio/job/{$uuid}", ['title' => 'Senior carpenter', 'company' => 'Acme AG', '_version' => (string) $this->version($uuid), '_action' => 'publish'])->getStatusCode());
 
         $job = $this->dm()->find(Job::class, $uuid);
         $this->assertInstanceOf(Job::class, $job);
@@ -49,7 +49,7 @@ final class ClassTypeAdminAppTest extends TestCase
         $published = $this->published()->find(Job::class, $uuid);
         $this->assertInstanceOf(Job::class, $published);
         $this->assertSame('Senior carpenter', $published->title);
-        $this->assertSame('Holz AG', $published->company);
+        $this->assertSame('Acme AG', $published->company);
     }
 
     #[RunInSeparateProcess]
