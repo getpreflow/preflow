@@ -40,7 +40,7 @@ final class StaffRolesCommandTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/rbac_staff_roles_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\" . ReportsProvider::class . '::class, \\' . \Preflow\Rbac\RbacServiceProvider::class . "::class];\n");
         $hash = password_hash('secret', PASSWORD_DEFAULT);
         $this->write('config/auth.php', "<?php\nreturn " . var_export([

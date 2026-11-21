@@ -102,7 +102,7 @@ final class PagePreviewFragmentsTest extends TestCase
         foreach (['lazy' => 'hx-get', 'members' => 'hx-post', 'save' => 'hx-post'] as $class => $attribute) {
             $this->assertStringContainsString(PreviewToken::PARAM . '=' . rawurlencode($token), $this->url($preview, $class, $attribute), "the {$class} URL carries the token");
         }
-        $this->assertSame(1, preg_match('#<body hx-headers="([^"]+)">#', $preview, $headers), 'the page tells htmx to send it');
+        $this->assertSame(1, preg_match('#<body hx-headers="([^"]+)" hx-history="false">#', $preview, $headers), 'the page tells htmx to send it, and keeps it out of its history cache');
         $this->assertSame([PreviewToken::HEADER => $token], json_decode(html_entity_decode($headers[1], ENT_QUOTES), true));
 
         // A visitor's page, and the admin's own screens: no token anywhere.
@@ -224,6 +224,24 @@ final class PagePreviewFragmentsTest extends TestCase
         $framed = (string) $this->send('GET', '/folio/preview/page/post/p1?locale=en', ['Sec-Fetch-Dest' => 'iframe'])->getBody();
 
         $this->assertStringContainsString('This site’s security settings don’t allow its pages inside a frame', $framed);
+    }
+
+    /**
+     * Task 22 M8: with an app key that cannot sign there is no token, so the page's interactive
+     * parts run as the live site; the preview bar says so.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_preview_without_a_signing_key_says_its_interactive_parts_are_live(): void
+    {
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Preview', 'debug' => 0, 'engine' => 'twig', 'key' => 'short-key', 'url' => 'https://site.test'];\n");
+        touch($this->dir . '/config/app.php', time() + 10); // newer than what the boot during setUp remembered
+        clearstatcache();
+        $this->signIn('admin@site.test');
+
+        $preview = (string) $this->send('GET', '/folio/preview/page/post/p1')->getBody();
+
+        $this->assertStringContainsString('<span class="folio-pp-note" data-folio-preview-live>Interactive parts of this preview run on the live site and save for real: the site’s app key is shorter than 32 characters.</span>', $preview);
+        $this->assertStringNotContainsString(PreviewToken::PARAM . '=', $preview, 'no token');
     }
 
     /** The token on the URL of a component request, from $html's element of class $class. */

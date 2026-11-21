@@ -42,11 +42,12 @@ final class PreviewUrls
     /**
      * $response with `Vary: X-Preflow-Preview` added (unless it names it, or `*`, already): a cache
      * that keeps it never answers a preview's request, which carries its token in that header, with
-     * it. A private or no-store response is left as it is (no cache keeps it).
+     * it. A no-store response is left as it is (no cache keeps it); a private one is not, as the
+     * browser's own cache may keep it.
      */
     public static function withVary(ResponseInterface $response): ResponseInterface
     {
-        if (preg_match('/(^|[\s,])(private|no-store)([\s,=]|$)/i', $response->getHeaderLine('Cache-Control')) === 1) {
+        if (preg_match('/(^|[\s,])no-store([\s,=]|$)/i', $response->getHeaderLine('Cache-Control')) === 1) {
             return $response;
         }
         foreach (explode(',', strtolower($response->getHeaderLine('Vary'))) as $name) {

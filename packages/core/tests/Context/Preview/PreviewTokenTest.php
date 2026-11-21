@@ -398,6 +398,33 @@ final class PreviewTokenTest extends TestCase
     }
 
     /** grant(): the issuer and session come from the staff request; the context gets the grant. */
+    /** Task 22 M2: the key belongs to one signer; a clone would hold none. */
+    public function test_a_signer_cannot_be_cloned(): void
+    {
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('cannot be cloned');
+
+        clone $this->tokens();
+    }
+
+    /** Task 22 M7: one identity signed in under two guards: the token names the primary guard, not the first by key. */
+    public function test_grant_issues_to_the_primary_guard_when_one_identity_holds_two_guards(): void
+    {
+        $session = new ArraySession();
+        $session->start();
+        $editor = $this->editor();
+        $staff = ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['alpha' => $editor, 'staff' => $editor], 'staff'))->admin('en');
+        $request = (new ServerRequest('GET', 'http://localhost/admin/preview'))
+            ->withAttribute(SessionInterface::class, $session)
+            ->withAttribute(RenderContext::class, $staff);
+
+        $granted = Contexts::run($staff, fn (): RenderContext => $this->tokens()->grant($this->previewContext(), $request, ['page.edit']));
+
+        $claims = $this->tokens()->verify((string) $granted->get(PreviewGrant::class)?->token(), $session->getId(), $this->viewer(), $this->now());
+        $this->assertSame('staff', $claims->issuerGuard);
+        $this->assertSame('staff', $staff->viewer->primaryGuardName());
+    }
+
     public function test_grant_issues_from_the_staff_request(): void
     {
         $session = new ArraySession();

@@ -2035,7 +2035,7 @@ final class FolioAppTest extends TestCase
                 'name'   => 'Folio Test',
                 'debug'  => (int) (getenv('APP_DEBUG') ?: 0),
                 'engine' => 'twig',
-                'key'    => 'folio-integration-test-key',
+                'key'    => 'folio-integration-test-key-0123456789abcdef',
             ];
             PHP);
 

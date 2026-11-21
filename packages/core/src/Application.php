@@ -521,6 +521,10 @@ final class Application
         // After the providers: one of them may bind the app's clock (in register() or boot()).
         $this->consoleOnTheAppsClock();
         $this->runProvidersBootedHooks();
+        // After the providers: one of them may bind the site's logger.
+        if ($debug->isDebug() && !\Preflow\Core\Security\AppKey::canSign((string) $secretKey)) {
+            $this->reportWeakKey();
+        }
         $this->checkNotifierQueue($debug);
 
         // The configured hypermedia driver, built now the providers ran: a failure stops the boot
@@ -2113,6 +2117,21 @@ final class Application
             ->for($request);
 
         return $this->render($ctx, $request)->response;
+    }
+
+    /**
+     * Said once, at boot, in development: what an app.key that cannot sign (AppKey::canSign())
+     * switches off. To the site's logger when one is bound, else PHP's error log; not to a console's
+     * stderr without a log file (a command's output, a test run).
+     */
+    private function reportWeakKey(): void
+    {
+        $message = 'app.key cannot sign (shorter than 32 bytes, or a public example key): page-cache storing and live-part signing, preview tokens (interactive parts of a preview run live) and share-preview links are off.';
+        if ($this->container->bound(\Psr\Log\LoggerInterface::class)) {
+            $this->container->get(\Psr\Log\LoggerInterface::class)->warning($message);
+        } elseif (PHP_SAPI !== 'cli' || (string) ini_get('error_log') !== '') {
+            error_log($message);
+        }
     }
 
     /** @return \Closure(string): void the site's logger (a warning), error_log() without one */

@@ -1726,6 +1726,10 @@ final class MediaLibrary
     public function replace(string $id, UploadedFileInterface|string $file, ?string $by): Asset
     {
         [$bytes, $name] = is_string($file) ? [$this->readFile($file, basename($file)), basename($file)] : $this->readUpload($file);
+        if (!self::writesFiles()) {
+            // Nothing is written (a preview): the asset as it is.
+            return $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+        }
         $this->requireVersionsDir($id, $name);
 
         $asset = $this->locked($id, fn (): Asset => $this->swapFile($id, $bytes, $name, $by, []));
@@ -1752,6 +1756,10 @@ final class MediaLibrary
      */
     public function restore(string $id, int $version, ?string $by): Asset
     {
+        if (!self::writesFiles()) {
+            // Nothing is written (a preview): the asset as it is.
+            return $this->find($id) ?? throw new \InvalidArgumentException("Unknown asset {$id}.");
+        }
         $this->requireVersionsDir($id, "Version {$version}");
 
         $restored = $this->locked($id, function () use ($id, $version, $by): Asset {
@@ -2044,6 +2052,15 @@ final class MediaLibrary
             }
         }
         @rmdir($dir . '/' . $id);
+    }
+
+    /**
+     * Whether the current render writes media files (Writes, since 0.81.0): an upload, a replace or a
+     * restore asks before it touches the disk. Throws WritesRefused under a refusing render.
+     */
+    private static function writesFiles(): bool
+    {
+        return \Preflow\Core\Context\Writes::allowed('media', 'assets', null, 'file');
     }
 
     /** Write $bytes (or copy $from) to a temp file and rename it into place, so the name never holds half a file. */
@@ -2588,15 +2605,18 @@ final class MediaLibrary
             throw new AssetUploadException("{$name}: no private directory is configured (assets.private_dir).");
         }
         $file = $private ? $this->privateDir() . '/' . $path : $this->absolute($path);
-        if (!is_dir(dirname($file)) && !mkdir(dirname($file), 0775, true) && !is_dir(dirname($file))) {
+        // A render that writes nothing (a preview, a view as a role, the SEO audit) stores no file,
+        // no record and no variant: Refuse throws here, Skip answers the asset as if it were stored.
+        $writes = self::writesFiles();
+        if ($writes && !is_dir(dirname($file)) && !mkdir(dirname($file), 0775, true) && !is_dir(dirname($file))) {
             throw new AssetUploadException('The media directory is not writable.');
         }
-        if (file_put_contents($file, $bytes) !== strlen($bytes)) {
+        if ($writes && file_put_contents($file, $bytes) !== strlen($bytes)) {
             @unlink($file);
             throw new AssetUploadException("{$name}: the file could not be written to the media directory.");
         }
 
-        [$width, $height] = self::dimensions($file, $mime);
+        [$width, $height] = $writes ? self::dimensions($file, $mime) : [null, null];
 
         $asset = new Asset(
             id: $id,
@@ -2618,6 +2638,9 @@ final class MediaLibrary
             private: $private,
             extra: $this->extraDefaults(),
         );
+        if (!$writes) {
+            return Asset::fromRecord(DynamicRecord::fromArray($this->definition(), $fields + $asset->toData()));
+        }
         // The record first: if variant generation dies (time or memory limit), the
         // file is still a usable asset whose variants can be made later.
         return $this->afterFileChange($this->save($fields + $asset->toData()));

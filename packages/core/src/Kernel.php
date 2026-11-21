@@ -61,6 +61,23 @@ final class Kernel
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
+        // Every answer to a request that carries a preview token, whichever middleware gives it (a
+        // redirect of the locale or the clean-path middleware, which run before the token is read),
+        // is private, no-store, no-referrer and noindex (since 0.81.0).
+        $plain = \Preflow\Core\Context\Preview\PreviewToken::strip($request);
+        $response = $this->answer($request, $plain);
+        if ($plain !== $request) {
+            foreach (\Preflow\Core\Context\Preview\PreviewToken::RESPONSE_HEADERS as $name => $value) {
+                $response = $response->withHeader($name, $value);
+            }
+        }
+
+        return $response;
+    }
+
+    /** The pipeline's answer, or the error page for what it threw ($plain: the request without a preview token). */
+    private function answer(ServerRequestInterface $request, ServerRequestInterface $plain): ResponseInterface
+    {
         try {
             return $this->pipeline->process($request, fn (ServerRequestInterface $req): ResponseInterface => $this->withHints($this->dispatch($req)));
         } catch (\Throwable $e) {
@@ -70,14 +87,8 @@ final class Kernel
             }
             // Error responses bypass the pipeline, so add the queued cookies (this frame's), its restrictive header hints, CORS and the security headers here.
             // A preview token is never shown on an error page (the debug page prints the request): it
-            // gets the request without it, and the answer is no-store, no-referrer, noindex.
-            $plain = \Preflow\Core\Context\Preview\PreviewToken::strip($request);
+            // gets the request without it (handle() makes the answer no-store, no-referrer, noindex).
             $response = $this->errorHandler->handleException($e, $plain);
-            if ($plain !== $request) {
-                foreach (\Preflow\Core\Context\Preview\PreviewToken::RESPONSE_HEADERS as $name => $value) {
-                    $response = $response->withHeader($name, $value);
-                }
-            }
             $response = $this->cookies?->apply($response) ?? $response;
             // Only hints that make the error less cacheable: a failure is never made cacheable.
             $response = $this->hints?->applyRestrictiveTo($response) ?? $response;

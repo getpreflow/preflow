@@ -256,7 +256,7 @@ final class TwoRolesTest extends TestCase
             ],
             'session' => ['cookie' => 'rbac_two_roles_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
         // AI on, so Folio registers the AI routes and the table covers them. The fake provider (0.66)
         // needs no key and answers locally: no request leaves the machine (an unknown provider now stops the boot).

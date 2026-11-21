@@ -107,7 +107,8 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      * hx-headers on the page's <body> element, which every htmx request from the page inherits.
      * The first `<body` outside comments, scripts, styles, templates and textareas is it, and its
      * quoted attributes may hold a `>`. A JSON hx-headers the body has already keeps its other
-     * headers. Where the page leaves it unsure (no <body>, an hx-headers that is not quoted plain
+     * headers. The body also gets hx-history="false" (replacing the page's own), so htmx keeps the
+     * page out of its history cache. Where the page leaves it unsure (no <body>, an hx-headers that is not quoted plain
      * JSON: a js: value, an unquoted one) nothing changes: the header is then simply not carried
      * (component URLs still carry the token), never doubled or broken.
      *
@@ -142,7 +143,10 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
             $headers += $own;
         }
         $json = json_encode($headers, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
-        $attribute = ' hx-headers="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '"';
+        // Kept out of htmx's history cache (localStorage): what the page carries (a preview token, a
+        // draft) never outlives it there. A value the page set itself is replaced.
+        $open = preg_replace('/\s(?:data-)?hx-history\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $open) ?? $open;
+        $attribute = ' hx-headers="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '" hx-history="false"';
         $open = preg_replace('#\s*/?>$#', $attribute . '>', $open, 1) ?? $open;
 
         return substr_replace($html, $open, $at, strlen($tag[0][0]));

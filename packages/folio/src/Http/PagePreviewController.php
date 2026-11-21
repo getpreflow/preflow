@@ -96,10 +96,10 @@ final class PagePreviewController
         // The preview's follow-ups (component actions, lazy parts) carry a token checked for what
         // this request was: the type's edit permission (FolioPermissionMiddleware), and view as.
         $viewer = Contexts::current()->viewer;
-        $guard = $viewer->primary() === null ? false : array_search($viewer->primary(), $viewer->identities, true);
+        $guard = $viewer->primaryGuardName();
         $requires = [$typeDef->key . '.edit'];
         if ($role !== null) {
-            $role = $role->by(is_string($guard) ? $guard : null);
+            $role = $role->by($guard);
             $requires[] = ViewAs::PERMISSION;
         }
         $result = $this->app->preview(Contexts::current(), self::encodedPath($path), $locale, $role, $request, $requires);
@@ -146,6 +146,8 @@ final class PagePreviewController
         $bar = $this->engine->render('@folio/admin/preview/bar.twig', [
             'mail' => $result->wouldSend(\Preflow\Core\Context\Bridge\NotifyChannel::NAME),
             'writes' => $result->wouldWrite(),
+            // Without a key that can sign, no preview token: the page's interactive parts run as the live site.
+            'tokens' => $this->app->container()->get(\Preflow\Core\Context\Preview\PreviewToken::class)->enabled(),
         ]);
 
         // Relative addresses in the page resolve against the page's own address, not the admin's.

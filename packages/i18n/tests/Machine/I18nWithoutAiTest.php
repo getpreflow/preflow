@@ -44,7 +44,7 @@ final class I18nWithoutAiTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->file('config/app.php', "<?php\nreturn ['name' => 'Machine', 'debug' => 1, 'engine' => 'twig', 'key' => 'machine-test-key'];\n");
+        $this->file('config/app.php', "<?php\nreturn ['name' => 'Machine', 'debug' => 1, 'engine' => 'twig', 'key' => 'machine-test-key-0123456789abcdef'];\n");
         $this->file('config/providers.php', "<?php\nreturn [\\" . MachineServiceProvider::class . "::class];\n");
         // AI switched on with a key: only the missing package keeps it off.
         $this->file('config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'claude', 'keys' => ['claude' => 'I18N_NO_AI_TEST_KEY']];\n");

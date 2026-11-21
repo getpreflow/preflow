@@ -75,6 +75,16 @@ final readonly class Viewer implements \JsonSerializable
         return $guard === null ? null : $this->identities[$guard];
     }
 
+    /**
+     * The guard of primary(): the primary guard, else the first guard by name; null when anonymous.
+     *
+     * @since 0.81.0
+     */
+    public function primaryGuardName(): ?string
+    {
+        return $this->primaryGuardOrFirst();
+    }
+
     /** The identity signed in with $guard, or null. */
     public function for(string $guard): ?Identity
     {

@@ -313,6 +313,7 @@ return [
         'other_record' => 'Another page answers at :path, so visitors would see that one here, not this record. Give this record an address of its own.',
         'frame_refused' => 'This site’s security settings don’t allow its pages inside a frame, so the preview can’t show here.',
         'open_tab' => 'Open the preview in a new tab',
+        'parts_live' => 'Interactive parts of this preview run on the live site and save for real: the site’s app key is shorter than 32 characters.',
     ],
     // A shared preview link (anyone holding it sees the draft): said at the top of the page.
     'share_preview' => [

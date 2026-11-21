@@ -503,7 +503,7 @@ final class RedirectsControllerTest extends TestCase
 
     public function test_typed_address_of_a_page_becomes_a_record_target(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://example.com'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef', 'url' => 'https://example.com'];\n");
         $this->publishPage('p1', ['en' => 'Team', 'de' => 'Team'], ['en' => 'b', 'de' => 'b-de']);
         $this->working('news', 'n1', ['title' => 'Hello', 'slug' => 'hello', 'status' => 'published']);
 

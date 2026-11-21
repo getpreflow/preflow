@@ -10,7 +10,7 @@ final class BladeBlocksTest extends BlocksAppTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Blocks', 'debug' => 1, 'engine' => 'blade', 'key' => 'blocks-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Blocks', 'debug' => 1, 'engine' => 'blade', 'key' => 'blocks-app-test-key-0123456789abcdef'];\n");
     }
 
     public function test_blocks_renders_in_blade(): void

@@ -270,7 +270,7 @@ final class AllScreensTranslatedTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/folio_all_screens_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'All screens', 'debug' => 0, 'engine' => 'twig', 'key' => 'all-screens-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'All screens', 'debug' => 0, 'engine' => 'twig', 'key' => 'all-screens-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $this->write('config/blocks.php', "<?php\nreturn " . var_export(['classes' => [

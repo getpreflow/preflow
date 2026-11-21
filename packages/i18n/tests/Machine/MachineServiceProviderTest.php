@@ -29,7 +29,7 @@ final class MachineServiceProviderTest extends TestCase
     {
         $this->dir = sys_get_temp_dir() . '/machine_provider_' . bin2hex(random_bytes(4));
         mkdir($this->dir . '/config', 0777, true);
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Machine', 'debug' => 1, 'engine' => 'twig', 'key' => 'machine-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Machine', 'debug' => 1, 'engine' => 'twig', 'key' => 'machine-test-key-0123456789abcdef'];\n");
         file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\" . MachineServiceProvider::class . "::class];\n");
     }
 

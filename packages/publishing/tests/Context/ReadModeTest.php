@@ -220,7 +220,7 @@ final class ReadModeTest extends PublishingAppTestCase
         date_default_timezone_set('UTC');
         try {
             $console = RenderContext::console($this->app()->site(), new SystemClock())->at(new \DateTimeImmutable('2026-03-01T00:00:00Z'));
-            $this->write('config/app.php', "<?php\nreturn ['name' => 'Publishing', 'debug' => 1, 'key' => 'publishing-app-test-key', 'timezone' => 'Pacific/Auckland'];\n");
+            $this->write('config/app.php', "<?php\nreturn ['name' => 'Publishing', 'debug' => 1, 'key' => 'publishing-app-test-key-0123456789abcdef', 'timezone' => 'Pacific/Auckland'];\n");
             $this->reboot();
             // 13:00 in Auckland (UTC+13): 12:00 there is due, 14:00 is not.
             $this->working('post', 'due', ['title' => ['en' => 'Due'], '_publish_at' => '2026-03-01T12:00']);

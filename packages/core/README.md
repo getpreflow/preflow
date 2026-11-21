@@ -1093,6 +1093,33 @@ return [
   layer removes the marker; the first request after switching it on again finds it missing and
   clears the cache before serving anything.
 
+### Preview tokens (0.81)
+
+A whole-page preview (`Application::preview()`, with the staff member's request and the permissions
+they were checked for) hands a signed preview token to the requests the previewed page makes later:
+component actions and renders, lazy parts and the page's own htmx calls. Component URLs carry it as
+the `_preview` parameter, and the page tells htmx to send it as the `X-Preflow-Preview` header
+(`PreviewUrls`, `CarriesRequestHeaders`). `PreviewTokenMiddleware`, right after auth resolves the
+user, admits such a request and renders it as the preview, in a frame of its own.
+
+**Security.** A preview token lets the requests a staff member's preview makes later render as that
+preview: the same role or anonymous visitor, the same language, and drafts or the published state.
+It is signed with a key derived from `app.key`, so it is off unless the key is at least 32 bytes and
+not a public example. It is bound to the issuer's session, so signing out, signing in or another
+browser ends it. It is bound to the signed-in staff member, lives at most 15 minutes, and its
+permissions are checked again on every request. Requests under a token never change data (they
+answer 403), never send mail, and never sign in or out. They never read or write the editor's
+session. Their cookies are dropped. Their answers are `private, no-store`, `no-referrer` and
+`noindex`, and neither the page cache nor htmx's history ever keeps them. On admin and API paths a
+token grants nothing, and a request there that would change something is refused. Only the
+framework's own channels are fenced. Site code that writes files, sets cookies with `setcookie()`,
+uses `$_SESSION` directly, sends mail without the notify package or calls outside services still
+does so during a preview. A token is plain text (it names the issuer's account id and role) and can
+appear in web server access logs. It is worthless without the issuer's session. Sites that share
+both an `app.key` and a session store accept each other's tokens. Each one checks permissions with
+its own rules, so give every site its own key. A CDN that caches regardless of `Cache-Control` must
+bypass requests with the `X-Preflow-Preview` header or the `_preview` parameter.
+
 ### Boot manifest (`preflow optimize`)
 
 `preflow optimize` (preflow/devtools) writes `bootstrap/cache/boot.php`: what boot otherwise

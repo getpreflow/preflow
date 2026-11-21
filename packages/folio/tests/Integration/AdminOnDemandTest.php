@@ -263,7 +263,7 @@ final class AdminOnDemandTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/folio_on_demand_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'On demand', 'debug' => 0, 'engine' => 'twig', 'key' => 'on-demand-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'On demand', 'debug' => 0, 'engine' => 'twig', 'key' => 'on-demand-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Rbac\\RbacServiceProvider::class, \\Preflow\\Members\\MembersServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => " . var_export($prefix, true) . "];\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([

@@ -1693,6 +1693,57 @@ abstract class StorageDriverContract extends TestCase
         $this->assertSame('7', (string) ($driver->findOne('versioned', 'none') ?? [])['version']);
     }
 
+    // --- the write policy (since 0.81.0) ---------------------------------------------------------
+
+    /**
+     * Every write through DataManager on this store is refused inside a render that refuses writes
+     * (a request under a preview token): saves (new and existing), deletes, counters, conditional
+     * updates and writes inside a transaction each throw WritesRefused, and the store is unchanged.
+     * The policy lives in DataManager above the driver; this pins that no write path of a driver's
+     * capabilities (InsertsNew, AtomicCounters, Transactions…) gets around it.
+     */
+    public function test_every_data_manager_write_is_refused_under_a_refusing_render(): void
+    {
+        $this->createRecords();
+        $this->driver->save('records', 'r1', ['uuid' => 'r1', 'label' => 'Kept', 'amount' => 1]);
+        $models = sys_get_temp_dir() . '/contract_models_' . bin2hex(random_bytes(4));
+        @mkdir($models, 0777, true);
+        $registry = new \Preflow\Data\TypeRegistry($models);
+        $def = $registry->define([
+            'key' => 'records', 'table' => 'records', 'storage' => 'default', 'id_field' => 'uuid',
+            'fields' => ['label' => ['type' => 'string'], 'amount' => ['type' => 'integer']],
+        ]);
+        $dm = new \Preflow\Data\DataManager(['default' => $this->driver], 'default', $registry);
+        $record = static fn (string $id, string $label): \Preflow\Data\DynamicRecord => \Preflow\Data\DynamicRecord::fromArray($def, ['uuid' => $id, 'label' => $label, 'amount' => 1]);
+        $writes = [
+            'save a new record' => static fn () => $dm->saveType($record('r2', 'New'), false),
+            'save an existing record' => static fn () => $dm->saveType($record('r1', 'Changed'), false),
+            'delete' => static fn () => $dm->deleteType('records', 'r1'),
+            'count' => static fn () => $dm->incrementIn($def, 'r1', 'amount', 1, ['label' => 'Kept']),
+            'update if' => static fn () => $dm->updateIf($def, 'r1', static fn (): array => ['label' => 'Changed']),
+            'write in a transaction' => static fn () => $dm->transaction(['default'], static fn () => $dm->saveType($record('r3', 'New'), false)),
+        ];
+
+        try {
+            foreach ($writes as $what => $write) {
+                try {
+                    \Preflow\Core\Context\Contexts::run(\Preflow\Testing\ContextFactory::forTest()->refusingWrites(), $write);
+                    $this->fail("{$what} was not refused");
+                } catch (\Preflow\Core\Context\WritesRefused) {
+                    $this->addToAssertionCount(1);
+                }
+            }
+        } finally {
+            @rmdir($models);
+        }
+
+        $kept = $this->driver->findOne('records', 'r1') ?? [];
+        $this->assertSame('Kept', $kept['label'] ?? null, 'the stored record is untouched');
+        $this->assertNumber(1, $kept['amount'] ?? null);
+        $this->assertNull($this->driver->findOne('records', 'r2'), 'nothing new');
+        $this->assertNull($this->driver->findOne('records', 'r3'));
+    }
+
     // --- insert only if new (InsertsNew, @since 0.79.0) -------------------------------------------
 
     private function inserting(): InsertsNew

@@ -28,7 +28,7 @@ final class CanonicalJsonSaveTest extends TestCase
             @mkdir(dirname($path), 0777, true);
             file_put_contents($path, $content);
         };
-        $w('config/app.php', "<?php\nreturn ['name' => 'Folio Test', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-canonical-test-key'];\n");
+        $w('config/app.php', "<?php\nreturn ['name' => 'Folio Test', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-canonical-test-key-0123456789abcdef'];\n");
         $w('config/data.php', <<<'PHP'
             <?php
             return [

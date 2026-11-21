@@ -38,7 +38,7 @@ final class CodesTest extends TestCase
     {
         $this->dir = sys_get_temp_dir() . '/codes_app_' . bin2hex(random_bytes(4));
         $this->now = new \DateTimeImmutable('2026-10-22 12:00:00');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Codes', 'debug' => 1, 'engine' => 'twig', 'key' => 'codes-app-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class, \\Preflow\\Codes\\CodesServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn ['path' => '/folio'];\n");
         $this->dataConfig(['codes' => 'sqlite']);

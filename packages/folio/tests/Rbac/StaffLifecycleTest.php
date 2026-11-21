@@ -65,7 +65,7 @@ final class StaffLifecycleTest extends TestCase
             ],
             'session' => ['cookie' => 'rbac_lifecycle_test', 'path' => '/', 'secure' => false],
         ], true) . ";\n");
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key'" . ($url ? ", 'url' => 'https://site.test'" : '') . "];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef'" . ($url ? ", 'url' => 'https://site.test'" : '') . "];\n");
         if ($mail) {
             $this->write('config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'folio@site.test']]];\n");
         }

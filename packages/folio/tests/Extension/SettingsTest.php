@@ -325,7 +325,7 @@ final class SettingsTest extends TestCase
         }
 
         // Not in debug: null.
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         putenv('APP_DEBUG=0');
         $quiet = $this->app()->container()->get(ExtensionSettings::class);
         $this->assertNull($quiet->get('members', 'nope'));

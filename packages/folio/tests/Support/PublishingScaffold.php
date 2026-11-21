@@ -31,7 +31,7 @@ trait PublishingScaffold
         putenv('APP_DEBUG=1');
         $this->dir = sys_get_temp_dir() . '/folio_pub_' . bin2hex(random_bytes(4));
 
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         $sqlite = $storage === 'sqlite' ? "'sqlite' => ['path' => __DIR__ . '/../storage/app.sqlite']," : '';
         $mysql = $storage === 'mysql' ? "'mysql' => " . var_export(MysqlTestDatabase::dataConfig(), true) . ',' : '';
         $classes = $modelPaths === [] ? '' : "'model_paths' => " . var_export($modelPaths, true) . ',';

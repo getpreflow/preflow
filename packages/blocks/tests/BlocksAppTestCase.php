@@ -38,7 +38,7 @@ abstract class BlocksAppTestCase extends TestCase
     {
         $this->dir = sys_get_temp_dir() . '/blocks_app_' . bin2hex(random_bytes(4));
         $this->copy(__DIR__ . '/Fixtures/app/app', $this->dir . '/app');
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Blocks', 'debug' => 1, 'engine' => 'twig', 'key' => 'blocks-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Blocks', 'debug' => 1, 'engine' => 'twig', 'key' => 'blocks-app-test-key-0123456789abcdef'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Blocks\\BlocksServiceProvider::class];\n");
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'prefix'];\n");
     }

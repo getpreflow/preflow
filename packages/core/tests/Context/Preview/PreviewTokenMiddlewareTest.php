@@ -290,7 +290,7 @@ final class PreviewTokenMiddlewareTest extends TestCase
             $this->assertSame(200, $response->getStatusCode(), 'neither granted nor refused');
             $seen = json_decode((string) $response->getBody(), true);
             $this->assertSame(['id:admin@site.test', 'published', false, '', false], [$seen['viewer'], $seen['reads'], $seen['grant'], $seen['query'], $seen['header']], 'the admin as themselves, the token taken off');
-            $this->assertNotSame('no-referrer', $response->getHeaderLine('Referrer-Policy'));
+            $this->assertSame(PreviewTokenMiddlewareTest::HEADERS, self::previewHeaders($response), 'and answered as a token request (Task 22 M1)');
         }
     }
 
@@ -523,6 +523,52 @@ final class PreviewTokenMiddlewareTest extends TestCase
         $this->assertContains(PreviewToken::HEADER, array_map('trim', explode(',', $app->handle(new ServerRequest('GET', 'https://site.test/public-page'))->getHeaderLine('Vary'))));
         $this->assertStringNotContainsString(PreviewToken::HEADER, $app->handle(new ServerRequest('GET', 'https://site.test/private-page'))->getHeaderLine('Vary'));
         $this->assertStringNotContainsString(PreviewToken::HEADER, $app->handle(new ServerRequest('GET', 'https://site.test/admin/probe'))->getHeaderLine('Vary'), 'not on the admin');
+    }
+
+    /** Task 22 I1: an admitted page is kept out of htmx's history cache, on the same <body> that carries the token. */
+    #[RunInSeparateProcess]
+    public function test_a_granted_page_is_kept_out_of_the_client_history_cache(): void
+    {
+        $app = $this->site();
+        $token = $this->token($app, new RoleView('member', ['gold']));
+
+        $page = (string) $app->handle($this->request('/', $token))->getBody();
+
+        $this->assertMatchesRegularExpression('#<body hx-headers="[^"]+" hx-history="false">#', $page);
+        $this->assertStringContainsString('<body><main>', (string) $app->handle(new ServerRequest('GET', 'https://site.test/'))->getBody(), 'a visitor\'s page is left alone');
+    }
+
+    /**
+     * Task 22 M1: every answer to a request with a token is the token's (no-store, no-referrer,
+     * noindex), also one a middleware gives before the token is read: the clean-path redirect's
+     * public max-age is replaced.
+     */
+    #[RunInSeparateProcess]
+    public function test_every_answer_to_a_token_request_is_no_store_even_from_outer_middleware(): void
+    {
+        $this->write('config/routing.php', "<?php\nreturn ['canonical_paths' => true];\n");
+        $app = $this->site();
+        $token = $this->token($app);
+
+        $redirect = $app->handle($this->request('/probe/', $token));
+        $plain = $app->handle(new ServerRequest('GET', 'https://site.test/probe/'));
+
+        $this->assertSame(301, $redirect->getStatusCode());
+        $this->assertSame(PreviewTokenMiddlewareTest::HEADERS, self::previewHeaders($redirect));
+        $this->assertSame(301, $plain->getStatusCode());
+        $this->assertNotSame('no-referrer', $plain->getHeaderLine('Referrer-Policy'), 'proof: without a token the redirect is an ordinary one');
+        $admin = $app->handle($this->request('/admin/probe', $token));
+        $this->assertSame(PreviewTokenMiddlewareTest::HEADERS, self::previewHeaders($admin), 'an admin answer to a token request too');
+    }
+
+    /** Task 22 M6: a private page that the browser may keep still says it differs for a preview's request. */
+    #[RunInSeparateProcess]
+    public function test_a_private_cacheable_page_still_varies_on_the_preview_header(): void
+    {
+        $app = $this->site();
+        PreviewRoutes::$routes['/mine'] = static fn (): ResponseInterface => new Response(200, ['Content-Type' => 'text/html', 'Cache-Control' => 'private, max-age=600'], '<p>mine</p>');
+
+        $this->assertContains(PreviewToken::HEADER, array_map('trim', explode(',', $app->handle(new ServerRequest('GET', 'https://site.test/mine'))->getHeaderLine('Vary'))));
     }
 
     /** The headers a token's answer must carry. */

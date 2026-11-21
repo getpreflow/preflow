@@ -25,7 +25,7 @@ final class AiServiceProviderTest extends TestCase
     {
         $this->dir = sys_get_temp_dir() . '/ai_provider_' . bin2hex(random_bytes(4));
         mkdir($this->dir . '/config', 0777, true);
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 1, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 1, 'engine' => 'twig', 'key' => 'ai-test-key-0123456789abcdef'];\n");
         file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\Preflow\\Ai\\AiServiceProvider::class];\n");
     }
 
@@ -193,7 +193,7 @@ final class AiServiceProviderTest extends TestCase
 
     public function test_on_a_live_site_the_fake_is_off_and_ai_check_says_why(): void
     {
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key-0123456789abcdef'];\n");
         file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'storage' => 'var/ai'];\n");
         $app = $this->app();
         $this->assertFalse($app->container()->get(Ai::class)->enabled());
@@ -211,7 +211,7 @@ final class AiServiceProviderTest extends TestCase
     #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
     public function test_the_warning_goes_to_the_app_s_bound_logger(): void
     {
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key-0123456789abcdef'];\n");
         file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'storage' => 'var/ai'];\n");
         file_put_contents($this->dir . '/config/providers.php', "<?php\nreturn [\\Preflow\\Ai\\AiServiceProvider::class, \\" . MemoryLoggerProvider::class . "::class];\n");
         ini_set('error_log', $this->dir . '/php.log');
@@ -228,7 +228,7 @@ final class AiServiceProviderTest extends TestCase
     #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
     public function test_without_a_logger_the_warning_goes_to_the_php_log(): void
     {
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key-0123456789abcdef'];\n");
         file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'storage' => 'var/ai'];\n");
         ini_set('error_log', $this->dir . '/php.log');
 
@@ -239,7 +239,7 @@ final class AiServiceProviderTest extends TestCase
 
     public function test_on_a_live_site_the_fake_answers_with_allow_live(): void
     {
-        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key'];\n");
+        file_put_contents($this->dir . '/config/app.php', "<?php\nreturn ['name' => 'Ai', 'debug' => 0, 'engine' => 'twig', 'key' => 'ai-test-key-0123456789abcdef'];\n");
         file_put_contents($this->dir . '/config/ai.php', "<?php\nreturn ['enabled' => true, 'provider' => 'fake', 'options' => ['fake' => ['allow_live' => true]], 'storage' => 'var/ai'];\n");
 
         $this->assertTrue($this->app()->container()->get(Ai::class)->enabled());

@@ -244,7 +244,7 @@ final class ShellTest extends TestCase
     {
         putenv('APP_ENV');
         foreach (['true' => 'Folio · development', 'on' => 'Folio · development', '1' => 'Folio · development', 'false' => 'Folio', '0' => 'Folio'] as $debug => $line) {
-            $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => $debug, 'engine' => 'twig', 'key' => 'folio-staff-test-key', 'url' => 'https://site.test'], true) . ";\n");
+            $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => $debug, 'engine' => 'twig', 'key' => 'folio-staff-test-key-0123456789abcdef', 'url' => 'https://site.test'], true) . ";\n");
             $this->flow = $this->app();
             $this->signIn();
 
@@ -257,7 +257,7 @@ final class ShellTest extends TestCase
     #[RunInSeparateProcess]
     public function test_the_environment_line_names_a_non_production_environment(): void
     {
-        $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'env' => 'staging', 'engine' => 'twig', 'key' => 'folio-staff-test-key', 'url' => 'https://site.test'], true) . ";\n");
+        $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'env' => 'staging', 'engine' => 'twig', 'key' => 'folio-staff-test-key-0123456789abcdef', 'url' => 'https://site.test'], true) . ";\n");
         $this->flow = $this->app();
         $this->signIn();
 

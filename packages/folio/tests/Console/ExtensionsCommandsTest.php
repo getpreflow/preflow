@@ -300,7 +300,7 @@ final class ExtensionsCommandsTest extends TestCase
     {
         $this->scaffoldPublishing();
         $this->counter();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
 
         [$code, $out] = $this->runCommand(new ExtensionsCheckCommand($this->dir));
         $this->assertSame(0, $code, $out);

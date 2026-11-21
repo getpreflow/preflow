@@ -65,7 +65,7 @@ final class FolioContextTest extends TestCase
         ContextProbeProvider::$seen = ContextProbeProvider::$after = [];
         ContextProbeProvider::$write = ContextProbeProvider::$fail = ContextProbeProvider::$mail = false;
         $this->scaffoldPublishing();
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 1, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         // Content in en (the default) and de; the visitor's locale comes from Accept-Language (send()).
         $this->write('config/i18n.php', "<?php\nreturn ['default' => 'en', 'available' => ['en', 'de'], 'fallback' => 'en', 'url_strategy' => 'cookie', 'cookie' => false];\n");
         $this->write('config/seo.php', "<?php\nreturn ['enabled' => true];\n");

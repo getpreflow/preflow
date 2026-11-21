@@ -65,7 +65,7 @@ final class CoreStaffTest extends TestCase
         $this->dir = sys_get_temp_dir() . '/rbac_staff_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Staff site', 'debug' => 0, 'engine' => 'twig', 'key' => 'rbac-staff-test-key-0123456789abcdef'];\n");
         $this->providers();
         $this->auth();
         $this->write('config/data.php', "<?php\nreturn " . var_export([

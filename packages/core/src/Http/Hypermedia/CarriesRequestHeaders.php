@@ -20,7 +20,9 @@ interface CarriesRequestHeaders
      * $html with the client told to send $headers (name => value) with every request it makes
      * from the page, values escaped for where they go. Unchanged when the page has no place for
      * it (no <body>), and never changes anything else in the page. Headers the page already told
-     * the client to send keep their own values unless $headers names them.
+     * the client to send keep their own values unless $headers names them. A page that carries
+     * headers is kept out of the client's history cache (htmx: hx-history="false"), so what it
+     * carries (a preview token) and shows (a draft) is never stored there.
      *
      * @param array<string, string> $headers
      */

@@ -44,7 +44,7 @@ trait StaffScaffold
         $this->dir = sys_get_temp_dir() . '/folio_staff_' . bin2hex(random_bytes(4));
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log');
-        $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-staff-test-key'] + ($url === null ? [] : ['url' => $url]), true) . ";\n");
+        $this->write('config/app.php', "<?php\nreturn " . var_export(['name' => 'Staff Site', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-staff-test-key-0123456789abcdef'] + ($url === null ? [] : ['url' => $url]), true) . ";\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Folio\\FolioServiceProvider::class];\n");
         $this->write('config/folio.php', "<?php\nreturn " . var_export(['path' => '/folio'] + $folio, true) . ";\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([

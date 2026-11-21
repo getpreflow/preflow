@@ -299,7 +299,7 @@ final class CacheScreenTest extends TestCase
     #[RunInSeparateProcess]
     public function test_the_page_cache_actions_flash_what_they_did(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/page_cache.php', "<?php\nreturn ['enabled' => true];\n");
         $this->signIn();
 
@@ -348,7 +348,7 @@ final class CacheScreenTest extends TestCase
     #[RunInSeparateProcess]
     public function test_cleared_extension_registry_rebuilds_on_next_request(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-integration-test-key-0123456789abcdef'];\n");
         $this->counter([]);
         $file = $this->dir . '/storage/cache/folio-extensions.cache';
 

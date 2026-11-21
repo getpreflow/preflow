@@ -166,4 +166,17 @@ final class HtmxDriverTest extends TestCase
         $this->assertSame(1, preg_match('# hx-headers="([^"]*)"#', $carried, $m));
         $this->assertSame($headers, json_decode(html_entity_decode($m[1], ENT_QUOTES), true));
     }
+
+    /** Task 22 I1: a page that carries the token is kept out of htmx's history cache; the page's own hx-history is replaced. */
+    public function test_carry_headers_keeps_the_page_out_of_history(): void
+    {
+        $driver = new HtmxDriver(new ResponseHeaders());
+
+        $carried = $driver->carryHeaders('<body hx-history="true" class="p"><p>x</p></body>', ['X-Preflow-Preview' => 't']);
+
+        $this->assertStringContainsString(' hx-history="false"', $carried);
+        $this->assertStringNotContainsString('hx-history="true"', $carried);
+        $this->assertSame(1, substr_count($carried, 'hx-history'));
+        $this->assertStringContainsString('class="p"', $carried);
+    }
 }

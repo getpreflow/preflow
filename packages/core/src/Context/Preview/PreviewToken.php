@@ -259,12 +259,12 @@ final class PreviewToken
         $staff = $staffRequest->getAttribute(RenderContext::class);
         $viewer = ($staff instanceof RenderContext ? $staff : Contexts::current())->viewer;
         $issuer = $viewer->isSynthetic() ? null : $viewer->primary();
-        $guard = $issuer === null ? false : array_search($issuer, $viewer->identities, true);
-        if ($issuer === null || $guard === false) {
+        $guard = $issuer === null ? null : $viewer->primaryGuardName();
+        if ($issuer === null || $guard === null) {
             throw new \LogicException('A preview token is issued to a signed-in staff member; nobody is signed in.');
         }
 
-        return $ctx->with(new PreviewGrant($this->issue($ctx, $session->getId(), (string) $guard, $issuer, $requires)));
+        return $ctx->with(new PreviewGrant($this->issue($ctx, $session->getId(), $guard, $issuer, $requires)));
     }
 
     /**
@@ -304,6 +304,12 @@ final class PreviewToken
     public function __debugInfo(): array
     {
         return ['enabled' => $this->enabled];
+    }
+
+    /** @throws \LogicException always: the key belongs to this signer only (a clone would hold none) */
+    public function __clone(): void
+    {
+        throw new \LogicException('A preview token signer cannot be cloned.');
     }
 
     /** @throws \LogicException always: a signer holds a key */

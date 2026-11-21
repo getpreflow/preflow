@@ -130,7 +130,7 @@ final class VersionFileTest extends TestCase
         $res = $this->fetch('/files/' . $id . '/v/1');
 
         $this->assertSame(404, $res->getStatusCode());
-        $this->assertStringNotContainsString('media-integration-test-key', (string) $res->getBody());
+        $this->assertStringNotContainsString('media-integration-test-key-0123456789abcdef', (string) $res->getBody());
     }
 }
 

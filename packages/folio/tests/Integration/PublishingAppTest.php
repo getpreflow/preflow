@@ -693,7 +693,7 @@ final class PublishingAppTest extends TestCase
         $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
         $this->shareToken('p1');
         $nonce = (string) $this->stored('post', 'p1')->get('_share_token');
-        $old = (new \Preflow\Publishing\PreviewLinks('folio-integration-test-key', 604800, fn (): int => time() - 8 * 86400))->create('post', 'p1', $nonce);
+        $old = (new \Preflow\Publishing\PreviewLinks('folio-integration-test-key-0123456789abcdef', 604800, fn (): int => time() - 8 * 86400))->create('post', 'p1', $nonce);
 
         $this->assertSame(404, $this->getWithPreview('/hello', $old)->getStatusCode());
     }

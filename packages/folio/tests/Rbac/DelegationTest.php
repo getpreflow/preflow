@@ -95,7 +95,7 @@ final class DelegationTest extends TestCase
     {
         // The admin speaks its interface language (here the site's: de); the site's
         // lang/{locale}/rbac.php still changes single keys.
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key', 'locale' => 'de'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Rbac', 'debug' => 1, 'engine' => 'twig', 'key' => 'rbac-app-test-key-0123456789abcdef', 'locale' => 'de'];\n");
         $this->write('lang/de/rbac.php', "<?php\nreturn ['delegation' => ['grant' => 'Nein: :patterns']];\n");
         $this->write('lang/en/rbac.php', "<?php\nreturn ['delegation' => ['last' => 'Keep one admin.']];\n");
         $this->editorSetup();

@@ -9,8 +9,9 @@ use Preflow\Core\Context\Contexts;
 /**
  * Signed share-preview tokens: base64url(json [type, id, nonce, expires]) "."
  * base64url(HMAC-SHA256). The nonce is the record's _share_token, so rotating
- * it revokes every link. Disabled without a real app key: links signed with an
- * empty or well-known key could be forged.
+ * it revokes every link. Disabled without a key that can sign (AppKey::canSign(): at
+ * least 32 bytes, not a public example; since 0.81.0): links signed with an empty, short
+ * or well-known key could be forged.
  */
 final class PreviewLinks
 {
@@ -34,7 +35,7 @@ final class PreviewLinks
 
     public function enabled(): bool
     {
-        return $this->key !== '' && $this->key !== self::DEFAULT_KEY;
+        return \Preflow\Core\Security\AppKey::canSign($this->key);
     }
 
     public function ttl(): int

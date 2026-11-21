@@ -301,6 +301,7 @@ return [
         'other_record' => 'Unter :path antwortet eine andere Seite: Besucher sähen hier jene, nicht diesen Eintrag. Gib diesem Eintrag eine eigene Adresse.',
         'frame_refused' => 'Die Sicherheitseinstellungen dieser Website erlauben ihre Seiten nicht in einem Rahmen, darum kann die Vorschau hier nichts zeigen.',
         'open_tab' => 'Vorschau in neuem Tab öffnen',
+        'parts_live' => 'Interaktive Teile dieser Vorschau laufen auf der öffentlichen Website und speichern wirklich: Der App-Schlüssel der Website ist kürzer als 32 Zeichen.',
     ],
     'share_preview' => [
         'notice' => 'Vorschau eines Entwurfs. Formulare auf dieser Seite senden an die öffentliche Website.',

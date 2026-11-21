@@ -44,7 +44,7 @@ trait MembersScaffold
         @mkdir($this->dir . '/storage/data', 0777, true);
         $this->errorLog = ini_set('error_log', $this->dir . '/error.log'); // stderr fails a separate-process test
         // debug 0: the debug toolbar would list the SQL (password hashes included) on every page.
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Members', 'debug' => 0, 'engine' => 'twig', 'key' => 'members-app-test-key', 'url' => 'https://site.test'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Members', 'debug' => 0, 'engine' => 'twig', 'key' => 'members-app-test-key-0123456789abcdef', 'url' => 'https://site.test'];\n");
         $this->write('config/providers.php', "<?php\nreturn [\\Preflow\\Members\\MembersServiceProvider::class];\n");
         $this->write('config/auth.php', "<?php\nreturn " . var_export([
             'default_guard' => 'session',

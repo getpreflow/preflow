@@ -195,7 +195,7 @@ final class BlocksAppTest extends BlocksAppTestCase
 
     public function test_the_cache_is_listed_and_kept_where_config_says(): void
     {
-        $this->write('config/app.php', "<?php\nreturn ['name' => 'Blocks', 'debug' => 0, 'engine' => 'twig', 'key' => 'blocks-app-test-key'];\n");
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Blocks', 'debug' => 0, 'engine' => 'twig', 'key' => 'blocks-app-test-key-0123456789abcdef'];\n");
         $this->write('config/blocks.php', "<?php\nreturn ['cache_path' => 'var/blocks'];\n");
         $c = $this->app()->container();
 
