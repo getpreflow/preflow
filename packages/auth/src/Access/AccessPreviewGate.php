@@ -7,12 +7,11 @@ namespace Preflow\Auth\Access;
 use Preflow\Core\Context\Contexts;
 use Preflow\Core\Context\Preview\PreviewGate;
 use Preflow\Core\Context\RenderContext;
-use Preflow\Core\Context\RoleView;
 
 /**
  * The preview gate auth binds (when config/auth.php exists): at every use of a preview token,
- * Access::can() for each permission the token requires, and Access::mayViewAs() for its role view,
- * both asked for the request's real viewer ($ctx's). A permission taken away or a role edited
+ * Access::can() for each permission the token requires (a role view's include site.view_as),
+ * asked for the request's real viewer ($ctx's). A permission taken away or a role edited
  * since the token was issued (in the admin, or with staff:roles) ends the preview at its next
  * request.
  *
@@ -40,11 +39,6 @@ final class AccessPreviewGate implements PreviewGate
 
             return true;
         });
-    }
-
-    public function mayViewAs(RenderContext $ctx, RoleView $view): bool
-    {
-        return $this->real($ctx) && $this->as($ctx, fn (): bool => $this->access->mayViewAs($view));
     }
 
     /** A real person is signed in on $ctx (not nobody, not a role view), and the gate is not asked from inside a role view. */

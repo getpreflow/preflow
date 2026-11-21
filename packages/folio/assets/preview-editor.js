@@ -101,9 +101,15 @@
         var edit = e.target.closest('[data-folio-edit]');
         var region = e.target.closest('[data-folio-field]');
         if (!block && !region) {
-            // Header, footer, pages without markers: stay on the preview.
+            // Header, footer, pages without markers: stay on the preview. An in-page anchor ("#team")
+            // scrolls here: the page's <base> (its own address) would make it load the live page.
             var link = e.target.closest('a[href]');
-            if (link && (link.getAttribute('href') || '').charAt(0) !== '#') { e.preventDefault(); }
+            if (link) {
+                e.preventDefault();
+                var href = link.getAttribute('href') || '';
+                var target = href.charAt(0) === '#' && href.length > 1 ? document.getElementById(decodeURIComponent(href.slice(1))) : null;
+                if (target && target.scrollIntoView) { target.scrollIntoView(); }
+            }
             return;
         }
         e.preventDefault();

@@ -170,6 +170,8 @@ final class FrontendController
      * current _share_token (rotating it revokes links), and the request path
      * must be the record's own path in the request's language. Anything else falls back to the public page.
      * A gated type's link is for staff review: the reviewer must pass the gate too.
+     * The page says, at the top of its body, that it is a draft and that its forms send to the
+     * live site (since 0.81.0): the link carries no preview token, so they do.
      */
     private function sharedPreview(ServerRequestInterface $request): ?ResponseInterface
     {
@@ -214,12 +216,25 @@ final class FrontendController
         $locale = $this->locale($request, $working);
         Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->skippingWrites()->in($locale));
         $html = Contexts::within(Contexts::current()->capturing(), fn (): string => $this->render($request, $working, $route, true));
+        // Whoever holds the link learns it is a draft, and that its forms are the live site's.
+        $html = self::withNotice($html, \Preflow\Folio\FolioText::get('folio.share_preview.notice'));
 
         return new Response(200, [
             'Content-Type' => 'text/html; charset=UTF-8',
             'X-Robots-Tag' => 'noindex',
             'Cache-Control' => 'private, no-store',
         ], $html);
+    }
+
+    /** $html with $text as a note at the start of its <body> (plain markup: the page's own styles apply). */
+    private static function withNotice(string $html, string $text): string
+    {
+        $note = '<p class="folio-share-notice" role="note">' . htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . '</p>';
+        if (preg_match('/<body\b[^>]*>/i', $html, $body, PREG_OFFSET_CAPTURE) !== 1) {
+            return $note . $html;
+        }
+
+        return substr_replace($html, $note, $body[0][1] + strlen($body[0][0]), 0);
     }
 
     /** First existing template of the route's chain (userland, per-type, generic). */

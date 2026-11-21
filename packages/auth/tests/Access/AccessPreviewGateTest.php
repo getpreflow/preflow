@@ -87,17 +87,16 @@ final class AccessPreviewGateTest extends TestCase
     }
 
     /**
-     * The role view a token carries is re-checked through mayViewAs() at every use: an editor
-     * reduced to viewer still holds the one permission the token requires, but may no longer view
-     * the site as an editor.
+     * Owner ruling (0.81): whoever holds site.view_as may view as any role, also one with more
+     * rights than their own. A viewer (no page.edit) keeps viewing as an editor; only the
+     * permissions the token requires are checked again.
      */
-    public function test_a_role_view_the_editor_may_no_longer_take_rejects_the_token(): void
+    public function test_a_role_view_with_more_rights_than_the_editors_own_is_admitted(): void
     {
         $role = new RoleView('staff', ['editor']);
         $token = $this->issue(['page.view', 'site.view_as'], $role);
-        $this->assertEquals($role, $this->admit($token)->role);
 
-        $this->assertRejected('permission', fn () => $this->admit($token, roles: ['viewer']));
+        $this->assertEquals($role->by('staff'), $this->admit($token, roles: ['viewer'])->role, 'a viewer views as an editor');
     }
 
     /**
@@ -108,7 +107,7 @@ final class AccessPreviewGateTest extends TestCase
     {
         $role = new RoleView('member', ['gold']);
         $token = $this->issue(['page.view', 'site.view_as'], $role);
-        $this->assertEquals($role, $this->admit($token)->role);
+        $this->assertEquals($role->by('staff'), $this->admit($token)->role);
 
         $this->grants['editor'] = ['page.edit', 'page.view']; // site.view_as revoked
 
@@ -151,18 +150,16 @@ final class AccessPreviewGateTest extends TestCase
 
             return [
                 'editor' => $gate->allows($editor, ['page.edit']),
-                'editor may view as' => $gate->mayViewAs($editor, new RoleView('staff', ['editor'])),
                 'nothing to check' => $gate->allows($editor, []),
                 'every one held' => $gate->allows($editor, ['page.edit', 'page.view']),
                 'anonymous' => $gate->allows($anonymous, ['page.view']),
-                'anonymous view as' => $gate->mayViewAs($anonymous, $role),
                 'a role view' => $gate->allows(ContextFactory::forTest()->asRole(new RoleView('staff', ['editor'])), ['page.view']),
             ];
         });
 
         $this->assertSame([
-            'editor' => true, 'editor may view as' => true, 'nothing to check' => false, 'every one held' => true,
-            'anonymous' => false, 'anonymous view as' => false, 'a role view' => false,
+            'editor' => true, 'nothing to check' => false, 'every one held' => true,
+            'anonymous' => false, 'a role view' => false,
         ], $answers);
 
         // Asked from inside a role view's frame: nothing.

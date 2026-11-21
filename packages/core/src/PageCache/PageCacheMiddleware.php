@@ -12,6 +12,7 @@ use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Context\RenderResult;
 use Preflow\Core\Context\WritePolicy;
 use Preflow\Core\Http\InternalRender;
+use Preflow\Core\Context\Preview\PreviewToken;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -26,8 +27,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  * the page's stale marker and the pending invalidations; no database, no SQLite.
  *
  * A request passes through untouched when:
- * - it carries a preview token (the `_preview` query parameter or the X-Preflow-Preview header):
- *   it is never served from the cache, and nothing it renders is stored;
+ * - it carries a preview token (the `_preview` query parameter or the X-Preflow-Preview header,
+ *   PreviewToken::PARAM and HEADER): it is never served from the cache, and nothing it renders is
+ *   stored; a response the cache serves or renders for storing says `Vary: X-Preflow-Preview`, so
+ *   a shared HTTP cache never answers a preview's request with it either;
  * - it has no key (not GET/HEAD, a host that isn't cached, a query while cache_query is off,
  *   an X-Forwarded-Proto other than http/https, an X-Forwarded-Host that isn't cached);
  * - its render context may not be stored (since 0.81, the context decides, not the request):
@@ -277,7 +280,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
         if ($page !== null) {
             try {
-                return $this->serve($key, $page);
+                return self::varyOnPreview($this->serve($key, $page));
             } catch (\Preflow\Core\Exceptions\HttpException $e) {
                 throw $e; // a live part refused this visitor: the answer, as on a miss
             } catch (\Throwable $e) {
@@ -289,18 +292,35 @@ final class PageCacheMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        return $this->render($request, $handler, $key, $store);
+        return self::varyOnPreview($this->render($request, $handler, $key, $store));
     }
 
     /** Whether $request carries a preview token (the query parameter or the header). */
     private static function previews(ServerRequestInterface $request): bool
     {
-        if ($request->hasHeader('X-Preflow-Preview') || array_key_exists('_preview', $request->getQueryParams())) {
+        if ($request->hasHeader(PreviewToken::HEADER) || array_key_exists(PreviewToken::PARAM, $request->getQueryParams())) {
             return true;
         }
         parse_str($request->getUri()->getQuery(), $query);
 
-        return array_key_exists('_preview', $query);
+        return array_key_exists(PreviewToken::PARAM, $query);
+    }
+
+    /**
+     * $response (one the cache served or may have stored) with Vary: X-Preflow-Preview, so a
+     * shared HTTP cache (a CDN) that keeps it never answers a preview's follow-up request, which
+     * carries its token in that header, with it (since 0.81.0). The stored page itself has no
+     * such Vary; a hit gets it here.
+     */
+    private static function varyOnPreview(ResponseInterface $response): ResponseInterface
+    {
+        foreach (explode(',', strtolower($response->getHeaderLine('Vary'))) as $name) {
+            if (in_array(trim($name), [strtolower(PreviewToken::HEADER), '*'], true)) {
+                return $response;
+            }
+        }
+
+        return $response->withAddedHeader('Vary', PreviewToken::HEADER);
     }
 
     /**

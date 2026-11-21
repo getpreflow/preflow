@@ -11,7 +11,7 @@ namespace Preflow\Core\Context;
  *
  * @since 0.81.0
  */
-final class WritesRefused extends \RuntimeException
+final class WritesRefused extends \RuntimeException implements RefusedInPreview
 {
     /** What the visitor reads on the 403 page. */
     public const string MESSAGE = 'This preview does not change data.';

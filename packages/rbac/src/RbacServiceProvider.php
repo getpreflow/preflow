@@ -41,8 +41,8 @@ use Preflow\Rbac\Staff\StaffType;
  */
 final class RbacServiceProvider extends ServiceProvider
 {
-    /** @since 0.81.0 the permission to view the site as a role (view as role) */
-    public const string VIEW_AS = 'site.view_as';
+    /** @since 0.81.0 the permission to view the site as a role (view as role): core's one name for it */
+    public const string VIEW_AS = \Preflow\Core\Context\Preview\PreviewGate::VIEW_AS;
 
     public function register(Container $container): void
     {

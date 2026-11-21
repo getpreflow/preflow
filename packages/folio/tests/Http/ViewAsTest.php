@@ -19,8 +19,9 @@ use Preflow\Folio\Http\ViewAs;
 use Preflow\Testing\ContextFactory;
 
 /**
- * The "View as" value of a whole-page preview: only the one role asked for is checked (never every
- * role, as the list of choices does), and only a listed role the editor may view as is accepted.
+ * The "View as" value of a whole-page preview: any role the resolver lists is accepted, also one
+ * with more rights than the editor's own (owner ruling, 0.81: roles are not compared), and nothing
+ * else is; without site.view_as nothing is.
  */
 final class ViewAsTest extends TestCase
 {
@@ -87,7 +88,8 @@ final class ViewAsTest extends TestCase
                 $viewAs->roleView('staff:writer'),
                 $viewAs->roleView('member:gold'),
                 $viewAs->roleView(''),
-                $refused('staff:admin'),
+                $viewAs->roleView('staff:admin'),
+                $viewAs->options(),
                 $refused('staff:owner'),
                 $refused('guest:gold'),
                 $refused('staff:'),
@@ -98,7 +100,46 @@ final class ViewAsTest extends TestCase
         $this->assertEquals(new RoleView('staff', ['writer']), $answers[0]);
         $this->assertEquals(new RoleView('member', ['gold']), $answers[1]);
         $this->assertNull($answers[2], 'the anonymous visitor');
-        $this->assertSame([true, true, true, true, true], array_slice($answers, 3), 'a role with more rights, an unknown role, population or empty role, and a list');
-        $this->assertSame([['writer'], ['admin']], $resolver->compared, 'one comparison per value asked, for its own role only');
+        $this->assertEquals(new RoleView('staff', ['admin']), $answers[3], 'a role with more rights than the editor\'s own');
+        $this->assertSame(['', 'member:gold', 'staff:admin', 'staff:editor', 'staff:writer'], array_column($answers[4], 'value'), 'every role is offered');
+        $this->assertSame([true, true, true, true], array_slice($answers, 5), 'an unknown role, population or empty role, and a list');
+        $this->assertSame([], $resolver->compared, 'no role is compared with the editor\'s');
+
+        // Without site.view_as nothing is accepted.
+        $resolver2 = new class implements PermissionResolver, ListsRoles {
+            public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
+            {
+                return $permission !== ViewAs::PERMISSION;
+            }
+
+            public function roles(string $population): array
+            {
+                return ['gold'];
+            }
+        };
+        $access->setResolver($resolver2);
+        $refusedWithout = Contexts::run(ContextFactory::forTest(), static function () use ($auth, $viewAs): bool {
+            @$auth->setUser(new class implements Authenticatable {
+                use \Preflow\Auth\AuthenticatableTrait;
+
+                public function getAuthId(): string
+                {
+                    return 'editor-1';
+                }
+
+                public function getRoles(): array
+                {
+                    return ['editor'];
+                }
+            }, 'staff');
+            try {
+                $viewAs->roleView('member:gold');
+
+                return false;
+            } catch (\DomainException) {
+                return true;
+            }
+        });
+        $this->assertTrue($refusedWithout);
     }
 }

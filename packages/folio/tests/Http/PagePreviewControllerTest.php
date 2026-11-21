@@ -169,18 +169,19 @@ final class PagePreviewControllerTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_view_as_lists_member_roles_and_staff_roles_the_editor_may_see(): void
+    public function test_view_as_lists_every_member_and_staff_role(): void
     {
         $this->signIn('lead@site.test');
         $form = (string) $this->send('GET', '/folio/post/p1/edit')->getBody();
 
         $this->assertSame(1, preg_match('#<select data-preview-as>(.*?)</select>#s', $form, $select), 'the View as control');
         preg_match_all('#<option value="([^"]*)">([^<]*)</option>#', $select[1], $options);
-        $this->assertSame(['', 'member:gold', 'member:member', 'member:pending', 'staff:lead', 'staff:writer'], $options[1], 'member roles, and staff roles with no more rights than the lead\'s own');
+        $this->assertSame(['', 'member:gold', 'member:member', 'member:pending', 'staff:admin', 'staff:lead', 'staff:writer'], $options[1], 'every role, also one with more rights than the lead\'s own (owner ruling, 0.81)');
         $this->assertSame('Visitor (not signed in)', $options[2][0]);
         $this->assertStringContainsString('<optgroup label="Member roles">', $select[1]);
         $this->assertStringContainsString('<optgroup label="Staff roles">', $select[1]);
-        $this->assertSame(403, $this->send('GET', '/folio/preview/page/post/p1?locale=en&as=staff:admin')->getStatusCode(), 'never as a role with more rights');
+        $admin = $this->send('GET', '/folio/preview/page/post/p1?locale=en&as=staff:admin');
+        $this->assertSame(200, $admin->getStatusCode(), 'a lead may view as the admin');
         $this->assertSame(200, $this->send('GET', '/folio/preview/page/post/p1?locale=en&as=staff:writer')->getStatusCode());
 
         // Without site.view_as there is nothing to choose.

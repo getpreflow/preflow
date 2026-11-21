@@ -255,11 +255,16 @@ final class SessionGuard implements GuardInterface
         return $this->dummyHash = $hash;
     }
 
-    /** @throws \LogicException when the current render is a role view (view as role) */
+    /**
+     * @throws PreviewRefusal (a LogicException) when the current render is a role view (view as role)
+     *         or, since 0.81.0, a render admitted by a preview token (PreviewGrant)
+     */
     private static function refuseInRoleView(string $method): void
     {
-        if (Contexts::peek()?->viewer->isSynthetic() === true) {
-            throw new \LogicException("SessionGuard::{$method}() is refused inside a role view (view as role): the session the request carries belongs to the editor viewing as the role.");
+        $ctx = Contexts::peek();
+        if ($ctx?->viewer->isSynthetic() === true || $ctx?->get(\Preflow\Core\Context\Preview\PreviewGrant::class) !== null) {
+            // SessionGuard::{$method}(): the session the request carries belongs to the editor viewing as the role.
+            throw PreviewRefusal::signIn();
         }
     }
 

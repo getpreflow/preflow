@@ -419,7 +419,8 @@ final class ViewerContextTest extends DataTestCase
                     $call();
                     $this->fail("{$name} must be refused in a role view");
                 } catch (\LogicException $e) {
-                    $this->assertStringContainsString('role view', $e->getMessage(), $name);
+                    $this->assertInstanceOf(\Preflow\Auth\PreviewRefusal::class, $e, $name);
+                    $this->assertSame(\Preflow\Auth\PreviewRefusal::SIGN_IN, $e->getMessage(), $name . ': in plain words (403)');
                 }
             }
         });
@@ -460,7 +461,7 @@ final class ViewerContextTest extends DataTestCase
                     $call();
                     $this->fail("{$what} must be refused inside a role view");
                 } catch (\LogicException $e) {
-                    $this->assertStringContainsString('role view', $e->getMessage(), $what);
+                    $this->assertInstanceOf(\Preflow\Auth\PreviewRefusal::class, $e, $what);
                 }
             }
             try {
@@ -548,6 +549,73 @@ final class ViewerContextTest extends DataTestCase
         $this->assertSame([0, 0], [$staffGuard->asked, $membersGuard->asked], 'no guard was asked');
         // Without Access a role view never passes, as before.
         $this->assertSame(401, $answer(new AuthMiddleware($auth, 'members'), new RoleView('member', ['gold']))[0]);
+    }
+
+    /**
+     * A staff role view that names the editor's guard passes that guard only, never a second staff
+     * guard ("ops") the editor has no account in; a member role view still passes every members
+     * guard, and one without a guard keeps the population rule (carried from the Task 18 re-review, M5).
+     */
+    public function test_a_staff_role_view_passes_only_the_editors_own_staff_guard(): void
+    {
+        $auth = new AuthManager(['staff' => new CountingGuard(null), 'ops' => new CountingGuard(null), 'members' => new CountingGuard(null)], 'staff');
+        $access = new \Preflow\Auth\Access\Access($auth, new \Preflow\Auth\Access\PermissionRegistry(), false, ['staff' => 'staff', 'ops' => 'staff', 'members' => 'members']);
+        $status = static function (string $guard, RoleView $view) use ($auth, $access): int {
+            return Contexts::run(ContextFactory::forTest()->asRole($view), static function () use ($guard, $auth, $access): int {
+                try {
+                    return (new AuthMiddleware($auth, $guard, access: $access))->process(self::request('/x'), new Capture(static fn () => null))->getStatusCode();
+                } catch (UnauthorizedHttpException) {
+                    return 401;
+                }
+            });
+        };
+
+        $this->assertSame(200, $status('staff', new RoleView('staff', ['editor'], 'staff')), 'the editor\'s own guard');
+        $this->assertSame(401, $status('ops', new RoleView('staff', ['editor'], 'staff')), 'never another staff guard');
+        $this->assertSame(200, $status('members', new RoleView('member', ['gold'], 'staff')), 'a member role view of a staff editor still passes the members guard');
+        $this->assertSame(200, $status('ops', new RoleView('staff', ['editor'])), 'without a guard: the population rule');
+        $this->assertTrue($access->roleViewCounts(new RoleView('staff', ['editor'], 'ops'), 'ops'));
+        $this->assertFalse($access->roleViewCounts(new RoleView('staff', ['editor'], 'ops'), 'staff'));
+    }
+
+    /**
+     * Under a preview token (a PreviewGrant on the context) no guard reads the editor's session, a
+     * sign-in or sign-out is refused in plain words (403), and a part behind a sign-in answers 403
+     * in plain words instead of sending the preview to the login.
+     */
+    public function test_a_granted_render_reads_no_guard_and_is_told_why_it_cannot_sign_in(): void
+    {
+        $staffGuard = new CountingGuard(new TestUser('editor', roles: ['admin']));
+        $auth = new AuthManager(['staff' => $staffGuard], 'staff');
+        $access = new \Preflow\Auth\Access\Access($auth, new \Preflow\Auth\Access\PermissionRegistry(), false, ['staff' => 'staff']);
+        $granted = ContextFactory::forTest()->because(Purpose::Fragment)->refusingWrites()->with(new \Preflow\Core\Context\Preview\PreviewGrant('v1.t.x.y'));
+
+        [$user, $refusals, $page] = Contexts::run($granted, static function () use ($auth, $access): array {
+            $user = $auth->guard('staff')->user(self::request('/x'));
+            $refusals = [];
+            foreach (['login' => static fn () => $auth->guard('staff')->login(new TestUser('editor'), self::request('/x')), 'logout' => static fn () => $auth->guard('staff')->logout(self::request('/x'))] as $what => $call) {
+                try {
+                    $call();
+                    $refusals[$what] = 'ran';
+                } catch (\Preflow\Auth\PreviewRefusal $e) {
+                    $refusals[$what] = $e->getMessage();
+                }
+            }
+            try {
+                (new AuthMiddleware($auth, 'staff', access: $access))->process(self::request('/x'), new Capture(static fn () => null));
+                $page = 'passed';
+            } catch (\Preflow\Auth\PreviewRefusal $e) {
+                $page = $e->getMessage();
+            }
+
+            return [$user, $refusals, $page];
+        });
+
+        $this->assertNull($user, 'the editor\'s session is never read');
+        $this->assertSame(0, $staffGuard->asked);
+        $this->assertSame(['login' => \Preflow\Auth\PreviewRefusal::SIGN_IN, 'logout' => \Preflow\Auth\PreviewRefusal::SIGN_IN], $refusals);
+        $this->assertSame(\Preflow\Auth\PreviewRefusal::SIGNED_OUT, $page);
+        $this->assertSame(403, (new \Preflow\Core\Error\ErrorHandler(new \Preflow\Core\Error\ProdErrorRenderer()))->handleException(\Preflow\Auth\PreviewRefusal::signIn(), self::request('/x'))->getStatusCode());
     }
 
     /** A template reading the user's fields renders in a role view, also with strict variables. */

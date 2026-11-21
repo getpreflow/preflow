@@ -9,7 +9,7 @@ use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Preflow\Components\Component;
 use Preflow\Components\ComponentRenderer;
-use Preflow\Core\Context\WritesRefused;
+use Preflow\Core\Context\RefusedInPreview;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\Exceptions\SecurityException;
 use Preflow\View\AssetCollector;
@@ -86,7 +86,7 @@ final class ComponentEndpoint
                 $html = $isFragmentRequest
                     ? $this->renderer->renderResolvedFragment($component)
                     : $this->renderer->renderResolved($component);
-            } catch (HttpException|WritesRefused $e) {
+            } catch (HttpException|RefusedInPreview $e) {
                 throw $e; // a deliberate refusal (403, 404…, a write a preview refuses) stays an HTTP error
             } catch (\Throwable $e) {
                 // Like a render error: the boundary's fallback replaces the component (200, so htmx swaps it).

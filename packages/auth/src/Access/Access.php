@@ -111,6 +111,25 @@ final class Access
     }
 
     /**
+     * Whether a role view (view as role) counts as signed in with $guard: its population is the
+     * guard's, and when it names the guard of the person viewing as it (RoleView::$guard) and that
+     * guard is of the same population, $guard is that guard. So an editor of the guard 'staff'
+     * viewing as a staff role passes 'staff' only, never a second staff guard ('ops') they have no
+     * account in; a member role view still passes every members guard.
+     *
+     * @since 0.81.0
+     */
+    public function roleViewCounts(RoleView $view, string $guard): bool
+    {
+        $population = self::populationOfRoleView($view);
+        if ($population !== $this->populationOf($guard)) {
+            return false;
+        }
+
+        return $view->guard === null || $view->guard === $guard || $this->populationOf($view->guard) !== $population;
+    }
+
+    /**
      * The population ('staff'|'members') of the user signed in for this request; null when nobody is, or no auth is configured.
      * A role view's is its RoleView's (populationOfRoleView()), never a guard's.
      */
@@ -170,6 +189,10 @@ final class Access
      * site with more rights than their own (an editor never as an admin). Nobody signed in, or a
      * role view itself, may not. Whether they may view as roles at all is the permission the
      * caller asks (site.view_as with rbac).
+     *
+     * Not used by Folio's View as, nor by the preview token's checks: the owner ruled (0.81) that
+     * whoever holds site.view_as may view as any role, also one with more rights. Kept for an app
+     * that wants the stricter rule for its own picker.
      *
      * @since 0.81.0
      */

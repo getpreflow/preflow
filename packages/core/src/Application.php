@@ -745,9 +745,17 @@ final class Application
      * stores nor serves it. With $as, the visitor is signed in with those roles (view as role,
      * RenderContext::asRole()).
      *
+     * With $staffRequest (the request of the staff member who asks for the preview, since
+     * 0.81.0), the preview hands a signed preview token on to the requests the page makes later
+     * (component actions, lazy parts, its own htmx calls: PreviewUrls), so they render as the
+     * preview too: PreviewToken::grant() issues it to that request's session and signed-in user
+     * for $requires, the permissions they were checked for (with $as, PreviewGate::VIEW_AS among
+     * them), re-checked at every use. Without a real app.key (PreviewToken::enabled()) no token is
+     * issued and those requests render as the live site.
+     *
      * The context derives from $from (the caller's own, Contexts::current() in an editor's
      * request), so the site, the clock (a frozen one too) and the facets carry over (never a
-     * PreviewGrant: a preview token of the caller's); the viewer,
+     * PreviewGrant: a preview token of the caller's; only the one $staffRequest grants); the viewer,
      * the surface, the locale, the read mode, both policies, the purpose and the request do not.
      * The request is a new GET of $path on the site's origin: nothing of the caller's (cookies,
      * session, headers, attributes, the locale prefix its URL carried) reaches the page. The
@@ -759,9 +767,13 @@ final class Application
      *
      * @since 0.81.0
      *
-     * @throws \InvalidArgumentException when $path is not a path starting with '/', or carries a query or a fragment
+     * @param list<string> $requires with $staffRequest: the permissions the staff member was checked for
+     *
+     * @throws \InvalidArgumentException when $path is not a path starting with '/', or carries a query or a fragment;
+     *         with $staffRequest, see PreviewToken::issue() (no permission named; a role view without PreviewGate::VIEW_AS)
+     * @throws \LogicException with $staffRequest, when it has no started session or nobody is signed in on it
      */
-    public function preview(RenderContext $from, string $path, string $locale, ?\Preflow\Core\Context\RoleView $as = null): RenderResult
+    public function preview(RenderContext $from, string $path, string $locale, ?\Preflow\Core\Context\RoleView $as = null, ?ServerRequestInterface $staffRequest = null, array $requires = []): RenderResult
     {
         if (!str_starts_with($path, '/') || str_starts_with($path, '//') || str_contains($path, '?') || str_contains($path, '#')) {
             throw new \InvalidArgumentException("A preview is a clean GET of a path starting with '/', without a query or fragment, got '{$path}'.");
@@ -774,7 +786,15 @@ final class Application
             ->asVisitor()->public()->in($locale)->workingCopies()->capturing()->skippingWrites()
             ->because(Purpose::Preview)->for($request)->prefixed('');
 
-        return $this->render($as !== null ? $ctx->asRole($as) : $ctx, $request);
+        $ctx = $as !== null ? $ctx->asRole($as) : $ctx;
+        if ($staffRequest !== null) {
+            $tokens = $this->container->get(\Preflow\Core\Context\Preview\PreviewToken::class);
+            if ($tokens->enabled()) {
+                $ctx = $tokens->grant($ctx, $staffRequest, $requires);
+            }
+        }
+
+        return $this->render($ctx, $request);
     }
 
     /**
@@ -808,6 +828,11 @@ final class Application
 
             return $response;
         });
+        $token = $ctx->get(\Preflow\Core\Context\Preview\PreviewGrant::class)?->token();
+        if ($token !== null && $response->getStatusCode() < 300) {
+            // A render under a preview token hands it to the page's hypermedia clients (ruling R5); an error page never shows it.
+            $response = \Preflow\Core\Context\Preview\PreviewUrls::inPage($response, $token, $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class));
+        }
         if ($handOver !== [] && Contexts::depth() > 0) {
             $queue = $this->container->get(\Preflow\Core\Http\CookieQueue::class);
             foreach ($handOver as $cookie) {
@@ -1015,6 +1040,7 @@ final class Application
      * another clock (a test's FrozenClock) keeps it. It reads what $outer reads (since 0.81): working
      * copies inside an admin request or a preview, the site as of a date inside such a render;
      * a request that should read published inside them renders with Application::render().
+     * It keeps a PreviewGrant $outer has (since 0.81.0), so its follow-ups carry the token too.
      */
     private function nestedContext(ServerRequestInterface $request, RenderContext $outer): RenderContext
     {
@@ -1049,6 +1075,12 @@ final class Application
             $outer->reads->readsWorkingCopies() => $ctx->workingCopies(),
             default => $ctx,
         };
+        // A request inside a render under a preview token renders under it too: what it emits
+        // (component URLs) carries the token on.
+        $grant = $outer->get(\Preflow\Core\Context\Preview\PreviewGrant::class);
+        if ($grant !== null) {
+            $ctx = $ctx->with($grant);
+        }
 
         return $outer->isFrozen() ? $ctx->at($outer->now) : $ctx;
     }
@@ -2036,6 +2068,11 @@ final class Application
     private function scheduleRebuilds(): void
     {
         if ($this->rebuildsScheduled) {
+            return;
+        }
+        if (Contexts::depth() > 0 && Contexts::current()->writes === \Preflow\Core\Context\WritePolicy::Refuse) {
+            // A frame that refuses writes (a follow-up under a preview token) never schedules them:
+            // the rebuild would run clamped to Refuse and fail on a page that writes on GET.
             return;
         }
         $this->rebuildsScheduled = true;
@@ -3767,6 +3804,9 @@ final class Application
         if ($guards !== []) {
             $ordered = isset($guards[$defaultGuard]) ? [$defaultGuard => $guards[$defaultGuard]] + $guards : $guards;
             $this->addMiddleware(new \Preflow\Auth\Http\ResolveUserMiddleware($authManager, $ordered));
+            // Right after it: the follow-ups of a staff member's preview that carry its signed token
+            // render as the preview (its role or visitor, read mode, locale), in a frame of their own.
+            $this->addMiddleware($this->previewTokenMiddleware($authManager));
         }
 
         // Register middleware instances in container for route-level use
@@ -3805,6 +3845,55 @@ final class Application
             );
             $this->registerExtensionProvider($engine, $authProvider);
         }
+    }
+
+    /**
+     * The middleware that admits a preview's follow-up requests (PreviewTokenMiddleware): the
+     * granted render's request carries the frame's own user (a role view's SyntheticUser, or
+     * none), never the editor's.
+     */
+    private function previewTokenMiddleware(\Preflow\Auth\AuthManager $authManager): \Preflow\Core\Context\Preview\PreviewTokenMiddleware
+    {
+        $container = $this->container;
+
+        return new \Preflow\Core\Context\Preview\PreviewTokenMiddleware(
+            tokens: $container->get(\Preflow\Core\Context\Preview\PreviewToken::class),
+            gate: static fn (): \Preflow\Core\Context\Preview\PreviewGate => $container->get(\Preflow\Core\Context\Preview\PreviewGate::class),
+            nonPublic: $container->get(\Preflow\Core\Http\NonPublicPaths::class),
+            render: $this->renderRestOfRequest(...),
+            errors: static fn (\Throwable $e, ServerRequestInterface $request): ResponseInterface => $container->get(ErrorHandler::class)->handleException($e, $request),
+            viewerAttributes: static function (ServerRequestInterface $request) use ($authManager): ServerRequestInterface {
+                $request = $request->withoutAttribute(\Preflow\Auth\Authenticatable::class)->withoutAttribute(\Preflow\Auth\AuthManager::GUARD_ATTRIBUTE);
+                $user = $authManager->user();
+
+                return $user === null ? $request : $request
+                    ->withAttribute(\Preflow\Auth\Authenticatable::class, $user)
+                    ->withAttribute(\Preflow\Auth\AuthManager::GUARD_ATTRIBUTE, $authManager->guardName());
+            },
+            log: $this->pageCacheLogger(),
+            clients: $container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class),
+        );
+    }
+
+    /**
+     * Runs $handle, the rest of the current request, in a frame of its own under $ctx
+     * (Contexts::run()): a render as someone else (a preview token's role or visitor) never
+     * narrows the request's frame. Its answer is the request's own, so it prints the request
+     * frame's CSP nonce, which the response's policy holds.
+     *
+     * @param \Closure(): ResponseInterface $handle
+     */
+    private function renderRestOfRequest(RenderContext $ctx, \Closure $handle): ResponseInterface
+    {
+        $outer = Contexts::frame();
+
+        return Contexts::run($ctx, function () use ($outer, $handle): ResponseInterface {
+            if (class_exists(\Preflow\View\NonceGenerator::class) && $this->container->bound(\Preflow\View\NonceGenerator::class)) {
+                $this->container->get(\Preflow\View\NonceGenerator::class)->share($outer);
+            }
+
+            return $handle();
+        });
     }
 
     private function registerExtensionProvider(

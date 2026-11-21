@@ -128,6 +128,24 @@ final class HypermediaProtocols
     }
 
     /**
+     * $html with every client that can (CarriesRequestHeaders) told to send $headers with each
+     * request it makes from the page; unchanged when none can.
+     *
+     * @since 0.81.0
+     * @param array<string, string> $headers
+     */
+    public function carryHeaders(string $html, array $headers): string
+    {
+        foreach ($this->protocols as $protocol) {
+            if ($protocol instanceof CarriesRequestHeaders) {
+                $html = $protocol->carryHeaders($html, $headers);
+            }
+        }
+
+        return $html;
+    }
+
+    /**
      * Whether $name (any case) is one of $names, where a name ending in '*' stands for every
      * header that starts with the rest.
      *

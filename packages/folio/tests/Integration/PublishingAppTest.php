@@ -657,6 +657,16 @@ final class PublishingAppTest extends TestCase
         $this->assertStringNotContainsString('preview-editor', (string) $this->get('/hello')->getBody());
     }
 
+    /** Whoever holds a share link learns it is a draft and that its forms send to the live site; a visitor reads no such note. */
+    public function test_a_share_preview_says_its_forms_send_to_the_live_site(): void
+    {
+        $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
+        $token = $this->shareToken('p1');
+
+        $this->assertMatchesRegularExpression('#<body[^>]*><p class="folio-share-notice" role="note">Preview of a draft\. Forms on this page send to the live site\.</p>#', (string) $this->getWithPreview('/hello', $token)->getBody());
+        $this->assertStringNotContainsString('folio-share-notice', (string) $this->get('/hello')->getBody());
+    }
+
     public function test_editor_assets_are_served(): void
     {
         $this->assertSame(200, $this->get('/folio/_assets/preview-editor.js')->getStatusCode());

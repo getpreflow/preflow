@@ -73,9 +73,10 @@ return [
             'translations' => ['edit' => 'Traductions'],
             'seo' => ['audit' => 'Audit SEO', 'audit_run' => 'Lancer l’audit SEO'],
             'ai' => ['translate' => 'Utiliser la traduction par IA', 'draft' => 'Rédiger des brouillons avec l’IA', 'settings' => 'Réglages IA'],
+            'site' => ['view_as' => 'Voir le site en tant que rôle'],
         ],
         'verbs' => ['view' => 'Voir', 'create' => 'Créer', 'edit' => 'Modifier', 'publish' => 'Publier', 'delete' => 'Supprimer', 'upload' => 'Importer'],
-        'groups' => ['folio' => 'Folio', 'assets' => 'Médias', 'ai' => 'IA'],
+        'groups' => ['folio' => 'Folio', 'assets' => 'Médias', 'ai' => 'IA', 'site' => 'Site'],
     ],
     'activity' => [
         'title' => 'Activité',
@@ -297,6 +298,12 @@ return [
         'would_write' => 'Cette page écrirait :count enregistrement|Cette page écrirait :count enregistrements',
         'links_leave' => 'Les liens et formulaires sont inactifs dans cet aperçu.',
         'redirects' => 'Cette page redirige vers :target.',
+        'other_record' => 'Une autre page répond à l’adresse :path : les visiteurs verraient celle-ci, pas cet enregistrement. Donnez à cet enregistrement sa propre adresse.',
+        'frame_refused' => 'Les réglages de sécurité de ce site n’autorisent pas ses pages dans un cadre : l’aperçu ne peut pas s’afficher ici.',
+        'open_tab' => 'Ouvrir l’aperçu dans un nouvel onglet',
+    ],
+    'share_preview' => [
+        'notice' => 'Aperçu d’un brouillon. Les formulaires de cette page envoient au site public.',
     ],
     'seo' => [
         'title' => 'SEO et partage',

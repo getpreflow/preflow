@@ -41,9 +41,15 @@ return [
             '$session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);' => 'outside every render there is no request and so no session: flash(), csrf_token() and old() read none (the documented default)',
         ],
     ],
+    'core/src/Context/Preview/PreviewUrls.php' => [
+        'peek' => [
+            '$token = Contexts::peek()?->get(PreviewGrant::class)?->token();' => 'outside every render there is no preview: a component URL carries no token (the documented default)',
+        ],
+    ],
     'auth/src/AuthManager.php' => [
         'peek' => [
             'return Contexts::peek()?->viewer;' => 'outside every render nobody is signed in: user() is null, users() empty (the documented default; Access::can() then denies)',
+            'return Contexts::peek()?->get(\\Preflow\\Core\\Context\\Preview\\PreviewGrant::class) !== null;' => 'outside every render there is no preview: guard() hands out the configured guards (the documented default)',
         ],
     ],
     'i18n/src/Translator.php' => [
@@ -220,7 +226,7 @@ return [
     ],
     'auth/src/SessionGuard.php' => [
         'peek' => [
-            'if (Contexts::peek()?->viewer->isSynthetic() === true) {' => 'outside every render there is no role view, so login() and logout() run (a script, a test), as before 0.81',
+            '$ctx = Contexts::peek();' => 'outside every render there is no role view and no preview, so login() and logout() run (a script, a test), as before 0.81',
         ],
         'static-state' => [
             'private static array $dummies = [];' => 'dummy password hashes per hasher option set, for timing-safe failed sign-ins',

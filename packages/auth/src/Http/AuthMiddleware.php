@@ -7,7 +7,9 @@ namespace Preflow\Auth\Http;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Authenticatable;
 use Preflow\Auth\AuthManager;
+use Preflow\Auth\PreviewRefusal;
 use Preflow\Core\Context\Contexts;
+use Preflow\Core\Context\Preview\PreviewGrant;
 use Preflow\Core\Context\RenderContext;
 use Preflow\Core\Exceptions\UnauthorizedHttpException;
 use Preflow\Core\Http\Api\ApiConfig;
@@ -27,6 +29,10 @@ use Psr\Http\Server\RequestHandlerInterface;
  * (Access, since 0.81.0, as GuestMiddleware decides), and is treated as signed out otherwise
  * (also without Access). An internal render (Purpose::isInternal(): audit, GEO, rebuild, verify,
  * preview) asks no guard either (since 0.81.0): it passes as the user its context has, if any.
+ * A staff role view that names the editor's guard (RoleView::$guard) passes that guard only
+ * (Access::roleViewCounts()). A request admitted by a preview token (PreviewGrant) asks no guard
+ * (AuthManager::guard() gives nobody there) and, when it does not pass, is answered 403
+ * (PreviewRefusal) instead of being sent to the login.
  */
 final class AuthMiddleware implements MiddlewareInterface
 {
@@ -54,7 +60,7 @@ final class AuthMiddleware implements MiddlewareInterface
         // session cannot sign the real user in under it. It passes a guard of its own population.
         $roleView = Contexts::current()->viewer->roleView;
         if ($roleView !== null) {
-            if ($this->access !== null && Access::populationOfRoleView($roleView) === $this->access->populationOf($name)) {
+            if ($this->access !== null && $this->access->roleViewCounts($roleView, $name)) {
                 $request = $request
                     ->withAttribute(Authenticatable::class, $this->authManager->user())
                     ->withAttribute(RenderContext::class, Contexts::current());
@@ -73,6 +79,11 @@ final class AuthMiddleware implements MiddlewareInterface
             }
         }
         if ($user === null) {
+            if (Contexts::current()->get(PreviewGrant::class) !== null && !Contexts::current()->purpose->isInternal()) {
+                // A follow-up of a preview (a preview token) is never sent to a login: the login would
+                // run under the editor's session, outside the preview. Said in plain words instead.
+                throw PreviewRefusal::signedOut();
+            }
             $login = $this->api === null ? null : $this->authManager->loginPath($name);
             if ($login !== null) {
                 // A hypermedia client would swap a redirected login page into a fragment; ask it to

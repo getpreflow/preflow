@@ -39,7 +39,7 @@ final class GuestMiddleware implements MiddlewareInterface
         $name = $this->guard ?? $this->authManager->defaultGuardName();
         $viewer = Contexts::current()->viewer;
         if ($viewer->roleView !== null) {
-            $user = $this->access === null || Access::populationOfRoleView($viewer->roleView) === $this->access->populationOf($name)
+            $user = $this->access === null || $this->access->roleViewCounts($viewer->roleView, $name)
                 ? $this->authManager->user()
                 : null;
         } else {

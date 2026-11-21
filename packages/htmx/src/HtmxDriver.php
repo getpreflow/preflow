@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Preflow\Htmx;
 
+use Preflow\Core\Http\Hypermedia\CarriesRequestHeaders;
 use Preflow\Core\Http\Hypermedia\OwnsResponseHeaders;
 use Preflow\View\FormHypermediaDriver;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 
-final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsResponseHeaders
+final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsResponseHeaders, CarriesRequestHeaders
 {
     private ?HtmxAssets $assets = null;
 
@@ -100,6 +101,34 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
     public function nonceHeaders(): array
     {
         return ['HX-Nonce'];
+    }
+
+    /**
+     * hx-headers on the page's first <body> tag, which every htmx request from the page inherits.
+     * A JSON hx-headers the body has already keeps its other headers; one that is not plain JSON
+     * (a js: or javascript: value) is left as it is, and so is a page without <body>.
+     *
+     * @since 0.81.0
+     */
+    public function carryHeaders(string $html, array $headers): string
+    {
+        if ($headers === [] || preg_match('/<body\b[^>]*>/i', $html, $tag, PREG_OFFSET_CAPTURE) !== 1) {
+            return $html;
+        }
+        [$open, $at] = $tag[0];
+        if (preg_match('/\shx-headers\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/i', $open, $existing) === 1) {
+            $own = json_decode(html_entity_decode(($existing[2] ?? '') !== '' ? $existing[2] : $existing[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), true);
+            if (!is_array($own) || ($own !== [] && array_is_list($own))) {
+                return $html;
+            }
+            $open = str_replace($existing[0], '', $open);
+            $headers += $own;
+        }
+        $json = json_encode($headers, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+        $attribute = ' hx-headers="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '"';
+        $open = preg_replace('#\s*/?>$#', $attribute . '>', $open, 1) ?? $open;
+
+        return substr_replace($html, $open, $at, strlen($tag[0][0]));
     }
 
     /** Every HX-* response header: htmx reads them (HX-Trigger, HX-Redirect, HX-Push-Url, HX-Retarget…). */

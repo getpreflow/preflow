@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Core\Context\Preview;
 
 use Preflow\Core\Context\RenderContext;
-use Preflow\Core\Context\RoleView;
 
 /**
  * Asks, at every use of a preview token, whether the person signed in for the request may still
@@ -31,10 +30,4 @@ interface PreviewGate
      * @param list<string> $permissions
      */
     public function allows(RenderContext $ctx, array $permissions): bool;
-
-    /**
-     * Whether $ctx's viewer may still view the site as $view by their roles (view as role).
-     * Whether they may view as roles at all is VIEW_AS, which the token requires and allows() checks.
-     */
-    public function mayViewAs(RenderContext $ctx, RoleView $view): bool;
 }

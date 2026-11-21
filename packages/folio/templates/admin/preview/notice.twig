@@ -1,0 +1,13 @@
+{# The whole-page preview's notice in place of the page (PagePreviewController): another record answers at
+   the address, or the site's security policy forbids showing its pages in a frame. With a link, it opens
+   the preview in a tab of its own. No script or inline style: preview-editor.css styles it. #}
+<!DOCTYPE html>
+<html lang="{{ current_locale() }}">
+<head><meta charset="utf-8"><title>{{ t('folio.preview.whole_page') }}</title></head>
+<body class="folio-pp-redirect-page">
+<main class="folio-pp-redirect" data-folio-preview-notice>
+    <p>{{ message }}</p>
+    {% if link %}<p><a href="{{ link }}" target="_blank" rel="noopener">{{ t('folio.preview.open_tab') }}</a></p>{% endif %}
+</main>
+</body>
+</html>

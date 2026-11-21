@@ -70,3 +70,20 @@ test('a message that does not come from the editor window is ignored', () => {
     p.send({ uid: 'aaaaaaaaaaaaaaaa', field: null, sticky: true });
     assert.equal(p.box('is-selected').hidden, false);
 });
+
+test('links leave nothing: an in-page anchor scrolls in the preview instead of loading the page address', () => {
+    const p = preview();
+    const team = p.doc.body.appendChild(p.doc.createElement('section'));
+    team.id = 'team';
+    let scrolled = 0;
+    team.scrollIntoView = () => { scrolled++; };
+    const anchor = p.doc.body.appendChild(p.doc.createElement('a'));
+    anchor.setAttribute('href', '#team');
+    const away = p.doc.body.appendChild(p.doc.createElement('a'));
+    away.setAttribute('href', 'other-page');
+
+    assert.equal(anchor.click().defaultPrevented, true, 'the page\'s <base> never turns it into a load');
+    assert.equal(scrolled, 1, 'it scrolls to its target');
+    assert.equal(away.click().defaultPrevented, true, 'any other link stays in the preview');
+    assert.equal(scrolled, 1);
+});

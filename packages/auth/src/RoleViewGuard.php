@@ -11,7 +11,9 @@ use Psr\Http\Message\ServerRequestInterface;
  * session or token the request carries belongs to the editor viewing as the role, so no guard may
  * read it there. The role view's own guard name (AuthManager::roleViewGuard()) gives its
  * SyntheticUser; a configured guard's name gives nobody (the role view did not sign in with it).
- * Nothing validates, signs in or signs out (a LogicException), as SessionGuard refuses it there.
+ * Nothing validates, signs in or signs out (PreviewRefusal, a LogicException answered 403 with a
+ * text for the editor), as SessionGuard refuses it there. Since 0.81.0 it also stands in inside a
+ * render admitted by a preview token as an anonymous visitor (PreviewGrant).
  *
  * @since 0.81.0
  */
@@ -33,16 +35,16 @@ final class RoleViewGuard implements GuardInterface
 
     /**
      * @param bool $remember as SessionGuard::login() takes it, so its callers reach the refusal
-     * @throws \LogicException always: a role view never signs anyone in
+     * @throws PreviewRefusal always: a role view never signs anyone in
      */
     public function login(Authenticatable $user, ServerRequestInterface $request, bool $remember = false): void
     {
-        throw new \LogicException('No guard signs in inside a role view (view as role): the session the request carries belongs to the editor viewing as the role.');
+        throw PreviewRefusal::signIn();
     }
 
-    /** @throws \LogicException always: a role view never signs anyone out */
+    /** @throws PreviewRefusal always: a role view never signs anyone out */
     public function logout(ServerRequestInterface $request): void
     {
-        throw new \LogicException('No guard signs out inside a role view (view as role): the session the request carries belongs to the editor viewing as the role.');
+        throw PreviewRefusal::signIn();
     }
 }

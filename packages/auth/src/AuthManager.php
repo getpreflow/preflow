@@ -85,6 +85,8 @@ final class AuthManager
      * The guard $name (null: the default guard). Under a role view (view as role) a RoleViewGuard
      * stands in for every name (since 0.81.0): roleViewGuard()'s gives the role view's user, any
      * other nobody, and none signs in or out, so the session the request carries is never read.
+     * So does a render admitted by a preview token (a PreviewGrant on the context): every guard
+     * gives nobody there (since 0.81.0).
      *
      * @throws \RuntimeException for a guard that is not configured
      */
@@ -92,13 +94,15 @@ final class AuthManager
     {
         $name ??= $this->defaultGuard;
         $viewer = self::viewer();
-        if ($viewer?->roleView !== null) {
-            if (!isset($this->guards[$name]) && $name !== self::roleViewGuard($viewer->roleView)) {
+        // A render admitted by a preview token (PreviewGrant: a visitor's or a role's view) reads no
+        // guard either: the session and cookies the request carries are the editor's (since 0.81.0).
+        if ($viewer?->roleView !== null || self::previewed()) {
+            if (!isset($this->guards[$name]) && ($viewer?->roleView === null || $name !== self::roleViewGuard($viewer->roleView))) {
                 throw new \RuntimeException("Auth guard [{$name}] is not configured.");
             }
             $user = $this->user();
 
-            return new RoleViewGuard($name === self::roleViewGuard($viewer->roleView) && $user instanceof SyntheticUser ? $user : null);
+            return new RoleViewGuard($viewer?->roleView !== null && $name === self::roleViewGuard($viewer->roleView) && $user instanceof SyntheticUser ? $user : null);
         }
         if (!isset($this->guards[$name])) {
             throw new \RuntimeException("Auth guard [{$name}] is not configured.");
@@ -265,6 +269,12 @@ final class AuthManager
     private static function viewer(): ?Viewer
     {
         return Contexts::peek()?->viewer;
+    }
+
+    /** Whether the current render was admitted by a preview token (it has a PreviewGrant); false outside every render. */
+    private static function previewed(): bool
+    {
+        return Contexts::peek()?->get(\Preflow\Core\Context\Preview\PreviewGrant::class) !== null;
     }
 
     /** The guard whose identity is $viewer's primary one; null for the anonymous viewer. */

@@ -35,8 +35,8 @@ use Psr\Http\Message\ServerRequestInterface;
  * claims no more than MAX_TTL ('expired'); the identity signed in now with the issuer's guard is
  * the issuer ('identity': a member signed in beside the staff member who issued it does not stop
  * it). admit() then asks the PreviewGate, as the issuer's guard, whether the issuer still holds
- * every required permission (for a role view: view-as included) and, for a role view, may still
- * view as it ('permission'). admit() is the one entry outside core: verify() alone skips the gate.
+ * every required permission (for a role view: view-as included) ('permission'). Whoever holds
+ * view-as may view as any role, also one with more rights than their own (owner ruling, 0.81). admit() is the one entry outside core: verify() alone skips the gate.
  * Within its session and lifetime the issuer
  * may replay it as often as needed (fragments need it); its id (jti) is for logs.
  *
@@ -136,6 +136,9 @@ final class PreviewToken
         if ($ctx->isFrozen()) {
             throw new \InvalidArgumentException('A preview token cannot grant a frozen time: its follow-ups render at the real time.');
         }
+        if ($ctx->viewer->roleView?->guard !== null && $ctx->viewer->roleView->guard !== $guard) {
+            throw new \InvalidArgumentException('A role view\'s preview token is issued to the guard the role view names.');
+        }
         if ($ctx->viewer->isSynthetic() && !in_array(PreviewGate::VIEW_AS, $requires, true)) {
             throw new \InvalidArgumentException('A role view\'s preview token must require ' . PreviewGate::VIEW_AS . ', so taking it away ends the role view.');
         }
@@ -204,8 +207,8 @@ final class PreviewToken
     /**
      * A follow-up request's admission: verify() against $current's viewer at the current render's
      * clock (Contexts::clock()), then $gate, asked as the issuer (the viewer with the issuer's guard
-     * as its primary one), for every required permission and, for a role view, whether the issuer
-     * may still view as it. Call it on every request that carries a token, in the request's own
+     * as its primary one), for every required permission (a role view's include VIEW_AS, so taking
+     * that away ends it; the role itself is not compared with the issuer's rights). Call it on every request that carries a token, in the request's own
      * frame, before any role view starts (the role view is rebuilt from its names here, never
      * taken from a serialized context).
      *
@@ -217,10 +220,10 @@ final class PreviewToken
     {
         $claims = $this->verify($token, $sessionId, $current->viewer, Contexts::clock()->now());
         $issuer = $current->as(new Viewer($current->viewer->identities, $claims->issuerGuard));
+        // A role view's token requires PreviewGate::VIEW_AS (issue() and the parser insist), so this
+        // also ends a role view whose issuer lost it. Which role is not compared with the issuer's
+        // own rights: whoever may view as roles may view as any (owner ruling, 0.81).
         if (!$gate->allows($issuer, $claims->requires)) {
-            throw new PreviewTokenRejected('permission');
-        }
-        if ($claims->role !== null && !$gate->mayViewAs($issuer, $claims->role)) {
             throw new PreviewTokenRejected('permission');
         }
 
@@ -321,7 +324,8 @@ final class PreviewToken
             return null;
         }
 
-        return new PreviewClaims($role, $c['l'], $c['w'], $c['i'][1], $c['i'][0], $c['q'], $c['e'], $c['j'], $token);
+        // The role view is the issuer's: viewed by someone signed in with the issuer's guard.
+        return new PreviewClaims($role?->by($c['i'][0]), $c['l'], $c['w'], $c['i'][1], $c['i'][0], $c['q'], $c['e'], $c['j'], $token);
     }
 
     /** The role view of claim r: null for none, false when it is not [population, [roles]] in canonical form. */

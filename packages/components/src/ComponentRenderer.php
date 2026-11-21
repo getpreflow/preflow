@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Preflow\Components;
 
-use Preflow\Core\Context\WritesRefused;
+use Preflow\Core\Context\RefusedInPreview;
 use Preflow\Core\Exceptions\HttpException;
 use Preflow\Core\PageCache\LiveParts;
 use Preflow\View\AssetCollector;
@@ -169,7 +169,7 @@ final class ComponentRenderer
      * The boundary catches every failure except an HttpException (a 403, a 404…): that one is
      * rethrown in every render method, so the page or the action answers with its status
      * (since 0.63.2; before, the boundary showed its fallback with a 200). So is a write the
-     * render refused (WritesRefused, since 0.81.0): the request answers 403.
+     * render refused, or anything else a preview refuses (RefusedInPreview, since 0.81.0): the request answers 403.
      */
     public function render(Component $component): string
     {
@@ -209,7 +209,7 @@ final class ComponentRenderer
                 );
             }
             return $this->wrapHtml($component, $innerHtml);
-        } catch (HttpException|WritesRefused $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -240,7 +240,7 @@ final class ComponentRenderer
                 );
             }
             return $html;
-        } catch (HttpException|WritesRefused $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -267,7 +267,7 @@ final class ComponentRenderer
                 );
             }
             return $html;
-        } catch (HttpException|WritesRefused $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));
@@ -294,7 +294,7 @@ final class ComponentRenderer
                 );
             }
             return $this->wrapHtml($component, $innerHtml);
-        } catch (HttpException|WritesRefused $e) {
+        } catch (HttpException|RefusedInPreview $e) {
             throw $e; // a 403/404 the component throws is the page's answer, not a broken component
         } catch (\Throwable $e) {
             return $this->errorBoundary->render($e, $component, $this->detectPhase($e));

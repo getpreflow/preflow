@@ -70,12 +70,12 @@ final class ProdErrorRenderer implements ErrorRendererInterface
      * A 404/405 message names the router's view of the request ("No route matches [GET /x]"), a
      * 403's the check that refused (a component class, a CSRF reason, a token check): a visitor
      * gets the plain status text; the debug page keeps the message. Any exception that is no
-     * HttpException shows only the status text, never its message; WritesRefused (since 0.81.0)
-     * shows its own, which is written for the visitor.
+     * HttpException shows only the status text, never its message; a RefusedInPreview (since 0.81.0:
+     * WritesRefused, a sign-in refused in a preview) shows its own, which is written for the visitor.
      */
     public static function message(\Throwable $exception, int $statusCode): string
     {
-        if ($exception instanceof \Preflow\Core\Context\WritesRefused) {
+        if ($exception instanceof \Preflow\Core\Context\RefusedInPreview) {
             return $exception->getMessage(); // written for the visitor: the preview changes no data
         }
         if ($exception instanceof HttpException && !in_array($statusCode, [403, 404, 405], true) && $exception->getMessage() !== '') {

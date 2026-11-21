@@ -146,13 +146,14 @@ final class DisplayLabels
 
     /**
      * The heading of a group of permissions on the roles screen, $permission being one of the
-     * group's: Folio's groups (folio.permissions.groups.*), a content type's label, an
+     * group's: Folio's groups (folio.permissions.groups.*; since 0.81.0 also rbac's Site group of
+     * site.view_as), a content type's label, an
      * extension's {group}.extension.label; else the group as declared.
      */
     public function permissionGroup(string $group, string $permission): string
     {
         $prefix = explode('.', $permission, 2)[0];
-        if (($group === 'Folio' && in_array($prefix, ['folio', 'translations'], true)) || ($group === 'Assets' && $prefix === 'assets') || ($group === 'AI' && $prefix === 'ai')) {
+        if (($group === 'Folio' && in_array($prefix, ['folio', 'translations'], true)) || ($group === 'Assets' && $prefix === 'assets') || ($group === 'AI' && $prefix === 'ai') || ($group === 'Site' && $prefix === 'site')) {
             return FolioText::get('folio.permissions.groups.' . strtolower($group));
         }
         $listing = $this->catalog->get($prefix);

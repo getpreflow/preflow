@@ -73,9 +73,10 @@ return [
             'translations' => ['edit' => 'Übersetzungen'],
             'seo' => ['audit' => 'SEO-Prüfung', 'audit_run' => 'SEO-Prüfung ausführen'],
             'ai' => ['translate' => 'KI-Übersetzung verwenden', 'draft' => 'Entwürfe mit KI schreiben', 'settings' => 'KI-Einstellungen'],
+            'site' => ['view_as' => 'Website als Rolle ansehen'],
         ],
         'verbs' => ['view' => 'Ansehen', 'create' => 'Erstellen', 'edit' => 'Bearbeiten', 'publish' => 'Veröffentlichen', 'delete' => 'Löschen', 'upload' => 'Hochladen'],
-        'groups' => ['folio' => 'Folio', 'assets' => 'Medien', 'ai' => 'KI'],
+        'groups' => ['folio' => 'Folio', 'assets' => 'Medien', 'ai' => 'KI', 'site' => 'Website'],
     ],
     'activity' => [
         'title' => 'Aktivität',
@@ -297,6 +298,12 @@ return [
         'would_write' => 'Diese Seite würde :count Datensatz schreiben|Diese Seite würde :count Datensätze schreiben',
         'links_leave' => 'Links und Formulare tun in dieser Vorschau nichts.',
         'redirects' => 'Diese Seite leitet weiter zu :target.',
+        'other_record' => 'Unter :path antwortet eine andere Seite: Besucher sähen hier jene, nicht diesen Eintrag. Gib diesem Eintrag eine eigene Adresse.',
+        'frame_refused' => 'Die Sicherheitseinstellungen dieser Website erlauben ihre Seiten nicht in einem Rahmen, darum kann die Vorschau hier nichts zeigen.',
+        'open_tab' => 'Vorschau in neuem Tab öffnen',
+    ],
+    'share_preview' => [
+        'notice' => 'Vorschau eines Entwurfs. Formulare auf dieser Seite senden an die öffentliche Website.',
     ],
     'seo' => [
         'title' => 'SEO & Teilen',

@@ -56,7 +56,7 @@ final class PreviewTokenTest extends TestCase
 
         $claims = $this->tokens()->verify($token, self::SESSION, $this->viewer(), $this->now());
 
-        $this->assertEquals($role, $claims->role);
+        $this->assertEquals($role->by('staff'), $claims->role, 'the role view, viewed by someone signed in with the issuer\'s guard');
         $this->assertSame('de', $claims->locale);
         $this->assertTrue($claims->workingCopies);
         $this->assertSame('editor-1', $claims->issuer);
@@ -318,7 +318,7 @@ final class PreviewTokenTest extends TestCase
         $ctx = $claims->apply($request);
 
         $this->assertTrue($ctx->viewer->isSynthetic());
-        $this->assertEquals($role, $ctx->viewer->roleView);
+        $this->assertEquals($role->by('staff'), $ctx->viewer->roleView);
         $this->assertSame('de', $ctx->locale);
         $this->assertFalse($ctx->surface->admin, 'the visitor\'s texts');
         $this->assertTrue($ctx->reads->readsWorkingCopies());
@@ -457,16 +457,16 @@ final class PreviewTokenTest extends TestCase
 
     /**
      * T7 and the role view, at every use (admit()): the gate is asked for each required permission
-     * and, for a role view, whether the person may still view as it; the default gate denies all.
+     * (a role view's include site.view_as); which role is not compared with the issuer's own
+     * rights (owner ruling, 0.81); the default gate denies all.
      */
-    public function test_admit_asks_the_gate_for_permissions_and_the_role_view_each_time(): void
+    public function test_admit_asks_the_gate_for_the_required_permissions_each_time(): void
     {
         $role = new RoleView('staff', ['editor']);
         $token = $this->issue($this->previewContext()->asRole($role), requires: ['page.edit', 'site.view_as']);
         $current = ContextFactory::forTest()->as(new \Preflow\Core\Context\Viewer(['staff' => $this->editor()], 'staff'));
         $gate = new class implements PreviewGate {
             public bool $permissions = true;
-            public bool $viewAs = true;
             /** @var list<string> */
             public array $asked = [];
 
@@ -476,22 +476,12 @@ final class PreviewTokenTest extends TestCase
 
                 return $this->permissions;
             }
-
-            public function mayViewAs(RenderContext $ctx, RoleView $view): bool
-            {
-                $this->asked[] = 'viewAs:' . implode(',', $view->roles) . '@' . $ctx->viewer->key();
-
-                return $this->viewAs;
-            }
         };
         $admit = fn (PreviewGate $gate): PreviewClaims => Contexts::run($current, fn (): PreviewClaims => $this->tokens()->admit($token, self::SESSION, Contexts::current(), $gate));
 
-        $this->assertEquals($role, $admit($gate)->role);
-        $this->assertSame(['allows:page.edit,site.view_as@id:staff:editor-1', 'viewAs:editor@id:staff:editor-1'], $gate->asked);
+        $this->assertEquals($role->by('staff'), $admit($gate)->role);
+        $this->assertSame(['allows:page.edit,site.view_as@id:staff:editor-1'], $gate->asked, 'the permissions only, site.view_as among them');
 
-        $gate->viewAs = false; // the editor's own roles shrank below the role viewed as
-        $this->assertRejected('permission', fn () => $admit($gate));
-        $gate->viewAs = true;
         $gate->permissions = false; // a permission revoked
         $this->assertRejected('permission', fn () => $admit($gate));
         $this->assertRejected('permission', fn () => $admit(new DenyAllPreviewGate()), 'the default gate grants nothing');
@@ -507,8 +497,8 @@ final class PreviewTokenTest extends TestCase
         // asked as the issuer: the same identities with the issuer's guard as the primary one.
         $gate->asked = [];
         $both = ContextFactory::forTest()->as(new Viewer(['web' => new IdentityId('member-7'), 'staff' => $this->editor()], 'web'));
-        $this->assertEquals($role, Contexts::run($both, fn (): PreviewClaims => $this->tokens()->admit($token, self::SESSION, Contexts::current(), $gate))->role);
-        $this->assertSame(['allows:page.edit,site.view_as@id:staff:editor-1;id:web:member-7@staff', 'viewAs:editor@id:staff:editor-1;id:web:member-7@staff'], $gate->asked);
+        $this->assertEquals($role->by('staff'), Contexts::run($both, fn (): PreviewClaims => $this->tokens()->admit($token, self::SESSION, Contexts::current(), $gate))->role);
+        $this->assertSame(['allows:page.edit,site.view_as@id:staff:editor-1;id:web:member-7@staff'], $gate->asked);
 
         // And its clock is the render's: past the expiry, the token is dead.
         $late = $current->withClock(new \Preflow\Core\Context\FrozenClock($this->now()->modify('+901 seconds')));

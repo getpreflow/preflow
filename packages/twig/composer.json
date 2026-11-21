@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": ">=8.4",
-        "preflow/core": "^0.60 || @dev",
+        "preflow/core": "^0.81.0 || @dev",
         "preflow/view": "^0.72 || @dev",
         "preflow/components": "^0.1 || @dev",
         "twig/twig": "^3.0"
@@ -18,7 +18,7 @@
         "preflow/testing": "^0.64 || @dev"
     },
     "conflict": {
-        "preflow/core": "<0.60",
+        "preflow/core": "<0.81.0",
         "preflow/view": "<0.72"
     },
     "autoload": {

@@ -50,7 +50,7 @@
         "preflow/members": "<0.77",
         "preflow/notify": "<0.69",
         "preflow/publishing": "<0.81.0",
-        "preflow/rbac": "<0.69.1",
+        "preflow/rbac": "<0.81.0",
         "preflow/routing": "<0.78.2",
         "preflow/twig": "<0.65",
         "preflow/validation": "<0.52",

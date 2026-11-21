@@ -139,5 +139,23 @@ final class HtmxDriverTest extends TestCase
 
         $this->assertSame($collector->getNonce(), $response->getHeaderLine('HX-Nonce'));
     }
-}
 
+    /** A preview token handed on in the page: hx-headers on <body>, every htmx request from the page sends it. */
+    public function test_carry_headers_puts_hx_headers_on_the_body(): void
+    {
+        $driver = new HtmxDriver(new ResponseHeaders());
+        $headers = ['X-Preflow-Preview' => 'v1.a"b\'c<d>&e'];
+        $decode = static fn (string $html): array => preg_match('#<body[^>]* hx-headers="([^"]*)"#', $html, $m) === 1 ? json_decode(html_entity_decode($m[1], ENT_QUOTES), true) : [];
+
+        $plain = $driver->carryHeaders('<html><body class="page"><p>x</p></body></html>', $headers);
+        $this->assertSame($headers, $decode($plain), 'escaped for the attribute, read back exactly');
+        $this->assertStringContainsString('<body class="page" hx-headers="', $plain);
+        $this->assertStringEndsWith('><p>x</p></body></html>', $plain, 'nothing else changes');
+
+        $own = $driver->carryHeaders("<body hx-headers='{\"X-Own\":\"1\"}'>", $headers);
+        $this->assertSame($headers + ['X-Own' => '1'], $decode($own), 'the page\'s own headers stay');
+
+        $this->assertSame('<p>fragment</p>', $driver->carryHeaders('<p>fragment</p>', $headers), 'no body, no change');
+        $this->assertSame('<body hx-headers="js:x()">', $driver->carryHeaders('<body hx-headers="js:x()">', $headers), 'a script value is left alone');
+    }
+}

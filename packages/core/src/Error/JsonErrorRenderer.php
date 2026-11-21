@@ -41,7 +41,7 @@ final class JsonErrorRenderer implements ErrorRendererInterface
         // An HttpException's message is written for the client; any other message may leak internals.
         if ($validation) {
             $message = self::STATUS_MESSAGES[422];
-        } elseif (($exception instanceof HttpException || $exception instanceof \Preflow\Core\Context\WritesRefused) && $exception->getMessage() !== '') {
+        } elseif (($exception instanceof HttpException || $exception instanceof \Preflow\Core\Context\RefusedInPreview) && $exception->getMessage() !== '') {
             $message = $exception->getMessage();
         } else {
             $message = self::STATUS_MESSAGES[$statusCode] ?? ($statusCode >= 400 && $statusCode < 500 ? 'Client Error' : 'Server Error');

@@ -14,6 +14,10 @@ use Preflow\Auth\Authenticatable;
  * grants depend on the subject answers false where it cannot tell. Without it, Access offers only
  * the staff roles the user holds themselves.
  *
+ * Not used by Folio's View as, nor by the preview token's checks (owner ruling, 0.81: whoever
+ * holds site.view_as may view as any role); Access::mayViewAs() still asks it for an app that wants
+ * the stricter rule.
+ *
  * @since 0.81.0
  */
 interface ComparesRoles
