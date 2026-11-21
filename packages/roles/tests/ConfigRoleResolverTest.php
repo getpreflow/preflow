@@ -111,18 +111,6 @@ final class ConfigRoleResolverTest extends TestCase
         $this->assertSame([], $this->resolver()->roles('nobody'));
     }
 
-    /** rolesWithin(): a role's patterns all covered by the user's own roles. */
-    public function test_roles_within_compares_the_roles_patterns_with_the_users(): void
-    {
-        $r = $this->resolver();
-
-        $this->assertInstanceOf(\Preflow\Auth\Access\ComparesRoles::class, $r);
-        $this->assertTrue($r->rolesWithin(['editor'], 'staff', $this->user('admin')));
-        $this->assertFalse($r->rolesWithin(['admin'], 'staff', $this->user('editor')));
-        $this->assertTrue($r->rolesWithin(['editor'], 'staff', $this->user('editor')));
-        $this->assertFalse($r->rolesWithin(['editor'], 'staff', $this->user()));
-    }
-
     /** A role view's grants: what config/roles.php lists for its roles, read from nobody's account. */
     public function test_grants_for_roles_lists_their_patterns(): void
     {

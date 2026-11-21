@@ -60,6 +60,16 @@ final class PreviewToken
     /** The longest a token may live, in seconds; longer TTLs are clamped to it. */
     public const int MAX_TTL = 3600;
 
+    /**
+     * The headers of every answer to a request that carries a token (PreviewTokenMiddleware, and the
+     * Kernel's error page for such a request).
+     */
+    public const array RESPONSE_HEADERS = [
+        'Cache-Control' => 'private, no-store',
+        'Referrer-Policy' => 'no-referrer',
+        'X-Robots-Tag' => 'noindex',
+    ];
+
     /** The longest token read, in bytes. */
     public const int MAX_LENGTH = 2048;
 
@@ -255,6 +265,39 @@ final class PreviewToken
         }
 
         return $ctx->with(new PreviewGrant($this->issue($ctx, $session->getId(), (string) $guard, $issuer, $requires)));
+    }
+
+    /**
+     * $request without a preview token: no X-Preflow-Preview header, and no query parameter that PHP
+     * reads as `_preview` (also spelled `.preview` or `_preview[]`: PHP's own reading decides), neither in
+     * its query params nor in its URI. The same request when it carries none. What an error page,
+     * a log or a granted render gets to see of a request.
+     *
+     * @since 0.81.0
+     */
+    public static function strip(ServerRequestInterface $request): ServerRequestInterface
+    {
+        $query = $request->getQueryParams();
+        $had = $request->hasHeader(self::HEADER) || array_key_exists(self::PARAM, $query);
+        unset($query[self::PARAM]);
+        $uri = $request->getUri();
+        $kept = [];
+        foreach ($uri->getQuery() === '' ? [] : explode('&', $uri->getQuery()) as $pair) {
+            parse_str($pair, $one);
+            if (array_key_exists(self::PARAM, $one)) {
+                $had = true;
+                continue;
+            }
+            $kept[] = $pair;
+        }
+        if (!$had) {
+            return $request;
+        }
+
+        return $request
+            ->withoutHeader(self::HEADER)
+            ->withQueryParams($query)
+            ->withUri($uri->withQuery(implode('&', $kept)), true);
     }
 
     /** @return array{enabled: bool} never the key */

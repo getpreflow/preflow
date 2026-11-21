@@ -157,5 +157,13 @@ final class HtmxDriverTest extends TestCase
 
         $this->assertSame('<p>fragment</p>', $driver->carryHeaders('<p>fragment</p>', $headers), 'no body, no change');
         $this->assertSame('<body hx-headers="js:x()">', $driver->carryHeaders('<body hx-headers="js:x()">', $headers), 'a script value is left alone');
+        $this->assertSame('<body hx-headers={}>', $driver->carryHeaders('<body hx-headers={}>', $headers), 'an unquoted one too: never a second attribute');
+
+        // The real <body>: not one in a comment or a script string; a quoted ">" in its attributes is fine.
+        $page = '<head><!-- <body class="old"> --><script>var t = "<body>";</script></head><body data-x="a>b"><p>x</p></body>';
+        $carried = $driver->carryHeaders($page, $headers);
+        $this->assertStringContainsString('<!-- <body class="old"> --><script>var t = "<body>";</script></head><body data-x="a>b" hx-headers="', $carried);
+        $this->assertSame(1, preg_match('# hx-headers="([^"]*)"#', $carried, $m));
+        $this->assertSame($headers, json_decode(html_entity_decode($m[1], ENT_QUOTES), true));
     }
 }

@@ -214,6 +214,18 @@ final class PagePreviewFragmentsTest extends TestCase
         $this->assertStringContainsString('<h1>Draft</h1>', (string) $tab->getBody(), 'in a tab of its own the page shows');
     }
 
+    /** M3: a frame-ancestors list that names only another origin refuses the admin's frame too. */
+    #[RunInSeparateProcess]
+    public function test_a_frame_ancestors_list_without_the_admins_origin_is_explained(): void
+    {
+        $this->write('config/security.php', "<?php\nreturn ['csp' => ['frame-ancestors' => ['https://cms.example']], 'headers' => ['X-Frame-Options' => 'SAMEORIGIN']];\n");
+        $this->signIn('admin@site.test');
+
+        $framed = (string) $this->send('GET', '/folio/preview/page/post/p1?locale=en', ['Sec-Fetch-Dest' => 'iframe'])->getBody();
+
+        $this->assertStringContainsString('This site’s security settings don’t allow its pages inside a frame', $framed);
+    }
+
     /** The token on the URL of a component request, from $html's element of class $class. */
     private function url(string $html, string $class, string $attribute): string
     {

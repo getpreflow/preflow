@@ -215,6 +215,8 @@ final class FrontendController
         // locale is narrowed first, so the response's middleware keeps it after the stretch.
         $locale = $this->locale($request, $working);
         Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->workingCopies()->skippingWrites()->in($locale));
+        // The note's own look (with the page's nonce, in <head>), which the site's CSS can't hide or restyle.
+        $this->assets?->addCss(self::NOTICE_CSS, 'folio-share-notice');
         $html = Contexts::within(Contexts::current()->capturing(), fn (): string => $this->render($request, $working, $route, true));
         // Whoever holds the link learns it is a draft, and that its forms are the live site's.
         $html = self::withNotice($html, \Preflow\Folio\FolioText::get('folio.share_preview.notice'));
@@ -226,7 +228,13 @@ final class FrontendController
         ], $html);
     }
 
-    /** $html with $text as a note at the start of its <body> (plain markup: the page's own styles apply). */
+    /** The share-preview note's style: everything reset, then a small fixed bar, all important. */
+    private const string NOTICE_CSS = 'p.folio-share-notice[role=note]{all:initial !important;display:block !important;box-sizing:border-box !important;'
+        . 'position:relative !important;z-index:2147483647 !important;margin:0 !important;padding:8px 16px !important;'
+        . 'background:#1f2937 !important;color:#fff !important;font:500 14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif !important;'
+        . 'text-align:center !important;visibility:visible !important;opacity:1 !important}';
+
+    /** $html with $text as a note at the start of its <body>, styled by NOTICE_CSS. */
     private static function withNotice(string $html, string $text): string
     {
         $note = '<p class="folio-share-notice" role="note">' . htmlspecialchars($text, ENT_QUOTES, 'UTF-8') . '</p>';

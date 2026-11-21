@@ -132,7 +132,7 @@ final class PagePreviewController
         if (!str_contains(strtolower($response->getHeaderLine('Content-Type')), 'text/html')) {
             return $response;
         }
-        if (self::refusesFrames($response) && strtolower($request->getHeaderLine('Sec-Fetch-Dest')) === 'iframe') {
+        if (self::refusesFrames($response, $this->adminOrigin($request)) && strtolower($request->getHeaderLine('Sec-Fetch-Dest')) === 'iframe') {
             // The browser would leave the frame empty: say why, and offer the page in a tab of its
             // own, where its policy allows it (the same address, loaded as a document).
             $uri = $request->getUri();
@@ -172,22 +172,52 @@ final class PagePreviewController
         ], PreviewController::withEditorBridge($html, $this->assetUrls));
     }
 
-    /** Whether the page's own headers forbid showing it in a frame (frame-ancestors 'none', X-Frame-Options DENY). */
-    private static function refusesFrames(ResponseInterface $response): bool
+    /**
+     * Whether the page's own headers forbid showing it in the admin's frame. The preview answers
+     * from the admin's address, so the frame and the admin share $origin: a frame-ancestors list
+     * that allows neither 'self', '*', $origin nor its scheme refuses it ('none' included), and so
+     * does X-Frame-Options other than SAMEORIGIN (DENY, ALLOW-FROM); SAMEORIGIN allows it.
+     */
+    private static function refusesFrames(ResponseInterface $response, string $origin): bool
     {
-        if (strtolower(trim($response->getHeaderLine('X-Frame-Options'))) === 'deny') {
+        $frameOptions = strtolower(trim($response->getHeaderLine('X-Frame-Options')));
+        if ($frameOptions !== '' && $frameOptions !== 'sameorigin') {
             return true;
         }
+        $origin = strtolower(rtrim($origin, '/'));
+        $scheme = $origin === '' ? '' : (string) parse_url($origin, PHP_URL_SCHEME) . ':';
         foreach ($response->getHeader('Content-Security-Policy') as $policy) {
-            foreach (explode(';', strtolower($policy)) as $directive) {
+            foreach (explode(';', $policy) as $directive) {
                 $parts = preg_split('/\s+/', trim($directive)) ?: [];
-                if (($parts[0] ?? '') === 'frame-ancestors' && array_slice($parts, 1) === ["'none'"]) {
+                if (strtolower($parts[0] ?? '') !== 'frame-ancestors') {
+                    continue;
+                }
+                $allowed = false;
+                foreach (array_slice($parts, 1) as $source) {
+                    $source = strtolower(rtrim($source, '/'));
+                    if (in_array($source, ["'self'", '*'], true) || ($origin !== '' && ($source === $origin || $source === $scheme))) {
+                        $allowed = true;
+                        break;
+                    }
+                }
+                if (!$allowed) {
                     return true;
                 }
             }
         }
 
         return false;
+    }
+
+    /** The admin's origin: the request's when it names a host, else the site's (app.url). */
+    private function adminOrigin(ServerRequestInterface $request): string
+    {
+        $uri = $request->getUri();
+        if ($uri->getHost() !== '') {
+            return $uri->getScheme() . '://' . $uri->getHost() . ($uri->getPort() !== null ? ':' . $uri->getPort() : '');
+        }
+
+        return $this->app->site()->origin;
     }
 
     /**

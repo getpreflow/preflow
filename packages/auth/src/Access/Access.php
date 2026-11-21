@@ -180,42 +180,6 @@ final class Access
         return false;
     }
 
-    /**
-     * Whether the user signed in for this request may view the site as $view (view as role) by
-     * their roles: a role view of the members' population always (a visitor's roles); a staff
-     * role view only when the resolver answers for roles (AllowsRoles) and its roles grant nothing
-     * the user may not do. A resolver that compares roles (ComparesRoles) says so by its own rules,
-     * on any subject; without it, only roles the user holds themselves count. So nobody sees the
-     * site with more rights than their own (an editor never as an admin). Nobody signed in, or a
-     * role view itself, may not. Whether they may view as roles at all is the permission the
-     * caller asks (site.view_as with rbac).
-     *
-     * Not used by Folio's View as, nor by the preview token's checks: the owner ruled (0.81) that
-     * whoever holds site.view_as may view as any role, also one with more rights. Kept for an app
-     * that wants the stricter rule for its own picker.
-     *
-     * @since 0.81.0
-     */
-    public function mayViewAs(RoleView $view): bool
-    {
-        $user = $this->auth?->user();
-        if ($user === null || $user instanceof SyntheticUser) {
-            return false;
-        }
-        if (self::populationOfRoleView($view) === 'members') {
-            return true;
-        }
-        if (!$this->resolver instanceof AllowsRoles) {
-            return false;
-        }
-        if ($this->resolver instanceof ComparesRoles) {
-            return $this->resolver->rolesWithin($view->roles, 'staff', $user);
-        }
-        $own = array_map('strval', array_filter($user->getRoles(), static fn (mixed $role): bool => is_string($role) || is_int($role)));
-
-        return array_diff($view->roles, $own) === [];
-    }
-
     /** Whether $view's roles allow $permission on $subject (AllowsRoles); false when the resolver cannot say. */
     private function grants(RoleView $view, string $permission, ?object $subject): bool
     {

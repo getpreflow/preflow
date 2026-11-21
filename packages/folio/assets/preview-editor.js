@@ -107,7 +107,11 @@
             if (link) {
                 e.preventDefault();
                 var href = link.getAttribute('href') || '';
-                var target = href.charAt(0) === '#' && href.length > 1 ? document.getElementById(decodeURIComponent(href.slice(1))) : null;
+                var id = null;
+                if (href.charAt(0) === '#' && href.length > 1) {
+                    try { id = decodeURIComponent(href.slice(1)); } catch (err) { id = href.slice(1); }
+                }
+                var target = id !== null ? document.getElementById(id) : null;
                 if (target && target.scrollIntoView) { target.scrollIntoView(); }
             }
             return;

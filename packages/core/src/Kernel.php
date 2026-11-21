@@ -69,7 +69,15 @@ final class Kernel
                 \Preflow\Core\Context\Contexts::frame()->recordFailure($e);
             }
             // Error responses bypass the pipeline, so add the queued cookies (this frame's), its restrictive header hints, CORS and the security headers here.
-            $response = $this->errorHandler->handleException($e, $request);
+            // A preview token is never shown on an error page (the debug page prints the request): it
+            // gets the request without it, and the answer is no-store, no-referrer, noindex.
+            $plain = \Preflow\Core\Context\Preview\PreviewToken::strip($request);
+            $response = $this->errorHandler->handleException($e, $plain);
+            if ($plain !== $request) {
+                foreach (\Preflow\Core\Context\Preview\PreviewToken::RESPONSE_HEADERS as $name => $value) {
+                    $response = $response->withHeader($name, $value);
+                }
+            }
             $response = $this->cookies?->apply($response) ?? $response;
             // Only hints that make the error less cacheable: a failure is never made cacheable.
             $response = $this->hints?->applyRestrictiveTo($response) ?? $response;
@@ -82,7 +90,7 @@ final class Kernel
     private function dispatch(ServerRequestInterface $req): ResponseInterface
     {
         // Component requests get the same middleware (headers, session, auth) as pages.
-        if ($this->componentEndpoint !== null && str_starts_with($req->getUri()->getPath(), '/--component')) {
+        if ($this->componentEndpoint !== null && str_starts_with($req->getUri()->getPath(), rtrim(\Preflow\Core\Http\Csrf\CsrfConfig::COMPONENT_PREFIX, '/'))) {
             return ($this->componentEndpoint)($req);
         }
         // Middleware that already matched (CSRF) leaves the route on the request.

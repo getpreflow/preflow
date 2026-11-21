@@ -107,6 +107,7 @@ final class PreviewTokenMiddlewareTest extends TestCase
             'members' => true,
             'query' => 'x=1',
             'header' => false,
+            'cookies' => false,
         ], $seen, 'the gold member\'s view of the working copies, without the editor\'s session, user or token');
         $this->assertSame(0, Contexts::depth());
 
@@ -357,6 +358,173 @@ final class PreviewTokenMiddlewareTest extends TestCase
         $this->assertSame(0, Contexts::depth());
     }
 
+    /**
+     * I1: an error raised outside the granted render (here the CSRF check, before the token is even
+     * looked at) never prints the token on the debug page, and the answer is the token's: no-store,
+     * no-referrer, noindex.
+     */
+    #[RunInSeparateProcess]
+    public function test_an_error_before_the_token_is_admitted_never_shows_it(): void
+    {
+        $app = $this->site(debug: true);
+        $token = $this->token($app);
+
+        $response = $app->handle($this->request('/', $token, method: 'POST', header: $token, headers: ['Sec-Fetch-Site' => 'cross-site', 'Origin' => 'https://elsewhere.test']));
+
+        $body = (string) $response->getBody();
+        $this->assertSame(403, $response->getStatusCode(), $body);
+        $this->assertStringNotContainsString($token, $body);
+        $this->assertStringNotContainsString(PreviewToken::PARAM, $body);
+        $this->assertStringNotContainsString(PreviewToken::HEADER, $body);
+        $this->assertSame(PreviewTokenMiddlewareTest::HEADERS, self::previewHeaders($response));
+    }
+
+    /** I1: a failure around the granted render (its frame, its context) is answered with the request without the token. */
+    public function test_a_failure_around_the_granted_render_never_shows_the_token(): void
+    {
+        $tokens = new PreviewToken(self::KEY);
+        $session = new \Preflow\Testing\ArraySession();
+        $session->start();
+        $editor = new \Preflow\Core\Context\IdentityId('editor-1');
+        $site = \Preflow\Testing\ContextFactory::forTest()->site;
+        $visitor = RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/'), $site, new SystemClock())->asVisitor()->workingCopies();
+        $token = Contexts::run(RenderContext::console($site, new SystemClock()), static fn (): string => $tokens->issue($visitor, $session->getId(), 'staff', $editor, ['pages.edit']));
+        $gate = new class implements \Preflow\Core\Context\Preview\PreviewGate {
+            public function allows(RenderContext $ctx, array $permissions): bool
+            {
+                return true;
+            }
+        };
+        $middleware = new \Preflow\Core\Context\Preview\PreviewTokenMiddleware(
+            tokens: $tokens,
+            gate: static fn () => $gate,
+            nonPublic: new NonPublicPaths(),
+            render: static fn (RenderContext $ctx, \Closure $handle): ResponseInterface => throw new \LogicException('The frame could not open.'),
+            errors: static fn (\Throwable $e, ServerRequestInterface $r): ResponseInterface => (new \Preflow\Core\Error\ErrorHandler(new \Preflow\Core\Error\DevErrorRenderer()))->handleException($e, $r),
+        );
+        $request = (new ServerRequest('GET', 'https://site.test/--component/x?a=1&' . PreviewToken::PARAM . '=' . rawurlencode($token), [PreviewToken::HEADER => $token]))
+            ->withQueryParams(['a' => '1', PreviewToken::PARAM => $token])
+            ->withAttribute(SessionInterface::class, $session);
+        $handler = new class implements RequestHandlerInterface {
+            public function handle(ServerRequestInterface $request): ResponseInterface
+            {
+                throw new \LogicException('never called');
+            }
+        };
+
+        $response = Contexts::run(RenderContext::fromRequest($request, $site, new SystemClock())->as(new Viewer(['staff' => $editor], 'staff')), static fn (): ResponseInterface => $middleware->process($request, $handler));
+
+        $body = (string) $response->getBody();
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertStringContainsString('The frame could not open.', $body);
+        $this->assertStringNotContainsString($token, $body);
+        $this->assertStringNotContainsString(PreviewToken::PARAM, $body);
+        $this->assertSame(PreviewTokenMiddlewareTest::HEADERS, self::previewHeaders($response));
+    }
+
+    /**
+     * I2: the container's session inside a granted render (and a role view) is an empty one of its
+     * own: the editor's values are not read, and what the render sets or flashes never reaches the
+     * editor's session.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_granted_render_never_reads_or_writes_the_editors_session(): void
+    {
+        $app = $this->site();
+        $session = $this->session($app);
+        $session->set('cart', 'editor-cart');
+        $session->flash('note', 'Saved.');
+        $session->ageFlash(); // as the editor's next request began: the flash is theirs to show
+        PreviewRoutes::$routes['/--component/session'] = static function (ServerRequestInterface $request, Container $container): ResponseInterface {
+            $s = $container->get(SessionInterface::class);
+            $seen = [$s->get('cart'), $s->getFlash('note'), $s->getId()];
+            $s->set('cart', 'preview-cart');
+            $s->flash('note', 'From the preview.');
+            $s->regenerate();
+            $s->invalidate();
+
+            return new Response(200, ['Content-Type' => 'application/json'], (string) json_encode($seen));
+        };
+        $id = $session->getId();
+
+        $seen = json_decode((string) $app->handle($this->request('/--component/session', $this->token($app, new RoleView('member', ['gold']))))->getBody(), true);
+
+        $this->assertSame([null, null], array_slice($seen, 0, 2), 'nothing of the editor\'s');
+        $this->assertNotSame($id, $seen[2], 'never the editor\'s session id');
+        $this->assertSame('editor-cart', $session->get('cart'), 'the editor\'s value is unchanged');
+        $this->assertSame('Saved.', $session->getFlash('note'), 'and their flash is still theirs');
+        $this->assertSame($id, $session->getId(), 'not regenerated');
+
+        // A whole-page role view (preview()) is fenced the same way.
+        PreviewRoutes::$routes['/'] = PreviewRoutes::$routes['/--component/session'];
+        $staff = $app->container()->get(AuthManager::class)->provider('staff')?->findById('admin@site.test');
+        $editorRequest = (new ServerRequest('GET', 'https://site.test/admin/editor'))->withAttribute(SessionInterface::class, $session);
+        $result = Contexts::run(
+            RenderContext::fromRequest($editorRequest, $app->site(), new SystemClock())->as(new Viewer(['staff' => $staff], 'staff')),
+            static fn (): RenderResult => $app->preview(Contexts::current(), '/', 'en', (new RoleView('member', ['gold']))->by('staff'), $editorRequest, ['pages.edit', 'site.view_as']),
+        );
+        $this->assertSame([null, null], array_slice(json_decode((string) $result->response->getBody(), true), 0, 2));
+        $this->assertSame('editor-cart', $session->get('cart'));
+        $this->assertSame('Saved.', $session->getFlash('note'));
+        $this->assertSame($id, $session->getId());
+    }
+
+    /**
+     * I3: on an admin or API path a token grants nothing; a GET runs as the editor, but a request
+     * that would change something (a previewed page's htmx POST to an API) is refused, nothing written or sent.
+     */
+    #[RunInSeparateProcess]
+    public function test_a_write_to_an_api_path_under_a_token_is_refused(): void
+    {
+        $app = $this->site();
+        $token = $this->token($app, new RoleView('member', ['gold']));
+        $visits = static fn (): int => count($app->container()->get(DataManager::class)->queryType('visit')->get()->items());
+        $before = $visits();
+
+        $this->session($app)->set('_csrf_token', str_repeat('c', 64)); // the editor's page passes the CSRF check
+        $csrf = ['Sec-Fetch-Site' => 'same-origin', 'X-CSRF-Token' => str_repeat('c', 64)];
+
+        $refused = $app->handle($this->request('/api/save', $token, method: 'POST', header: true, headers: $csrf));
+
+        $this->assertSame(403, $refused->getStatusCode());
+        $this->assertStringContainsString('This preview does not change data.', (string) $refused->getBody());
+        $this->assertSame(PreviewTokenMiddlewareTest::HEADERS, self::previewHeaders($refused));
+        $this->assertSame(0, PreviewRoutes::$calls);
+        $this->assertSame($before, $visits());
+        $this->assertSame([], $app->container()->get(TransportFactory::class)->get('mail')->sent());
+
+        $this->assertSame(200, $app->handle($this->request('/api/save', method: 'POST', headers: $csrf))->getStatusCode(), 'without the token it writes');
+        $this->assertSame($before + 1, $visits());
+        $read = json_decode((string) $app->handle($this->request('/api/probe', $token, header: true))->getBody(), true);
+        $this->assertSame(['id:admin@site.test', 'published', false, false], [$read['viewer'], $read['reads'], $read['grant'], $read['header']], 'a GET there runs as the editor, the token taken off');
+    }
+
+    /** M1: a parameter PHP reads as `_preview` (".preview") is admitted and taken off the inner request like `_preview`. */
+    #[RunInSeparateProcess]
+    public function test_every_spelling_of_the_parameter_is_taken_off(): void
+    {
+        $app = $this->site();
+        $token = $this->token($app);
+
+        foreach (['.preview', '_preview'] as $spelling) {
+            $seen = json_decode((string) $app->handle($this->request('/--component/probe?x=1', $token, param: $spelling))->getBody(), true);
+            $this->assertSame(['visitor', 'x=1'], [$seen['viewer'], $seen['query']], $spelling);
+        }
+    }
+
+    /** M2: a public page that a cache may keep says it differs for a preview's request; a private one is left alone. */
+    #[RunInSeparateProcess]
+    public function test_public_pages_vary_on_the_preview_header(): void
+    {
+        $app = $this->site();
+        PreviewRoutes::$routes['/public-page'] = static fn (): ResponseInterface => new Response(200, ['Content-Type' => 'text/html', 'Cache-Control' => 'public, max-age=600'], '<p>live</p>');
+        PreviewRoutes::$routes['/private-page'] = static fn (): ResponseInterface => new Response(200, ['Content-Type' => 'text/html', 'Cache-Control' => 'private, no-store'], '<p>mine</p>');
+
+        $this->assertContains(PreviewToken::HEADER, array_map('trim', explode(',', $app->handle(new ServerRequest('GET', 'https://site.test/public-page'))->getHeaderLine('Vary'))));
+        $this->assertStringNotContainsString(PreviewToken::HEADER, $app->handle(new ServerRequest('GET', 'https://site.test/private-page'))->getHeaderLine('Vary'));
+        $this->assertStringNotContainsString(PreviewToken::HEADER, $app->handle(new ServerRequest('GET', 'https://site.test/admin/probe'))->getHeaderLine('Vary'), 'not on the admin');
+    }
+
     /** The headers a token's answer must carry. */
     public const array HEADERS = ['Cache-Control' => 'private, no-store', 'Referrer-Policy' => 'no-referrer', 'X-Robots-Tag' => 'noindex'];
 
@@ -401,13 +569,14 @@ final class PreviewTokenMiddlewareTest extends TestCase
      * (null: nobody) with the staff guard, the token as `_preview` and, with $header, as the header
      * too (true: the token; a string: that value; the parameter then only when not true).
      */
-    private function request(string $uri, ?string $token = null, string $method = 'GET', bool|string $header = false, bool $cookie = true, ?string $as = 'admin@site.test'): ServerRequestInterface
+    /** @param array<string, string> $headers more request headers (they replace Sec-Fetch-Site: same-origin) */
+    private function request(string $uri, ?string $token = null, string $method = 'GET', bool|string $header = false, bool $cookie = true, ?string $as = 'admin@site.test', array $headers = ['Sec-Fetch-Site' => 'same-origin'], string $param = PreviewToken::PARAM): ServerRequestInterface
     {
         $app = $this->app ?? throw new \LogicException('site() first');
         if ($token !== null && $header !== true) {
-            $uri .= (str_contains($uri, '?') ? '&' : '?') . PreviewToken::PARAM . '=' . rawurlencode($token);
+            $uri .= (str_contains($uri, '?') ? '&' : '?') . $param . '=' . rawurlencode($token);
         }
-        $request = new ServerRequest($method, 'https://site.test' . $uri, ['Sec-Fetch-Site' => 'same-origin']);
+        $request = new ServerRequest($method, 'https://site.test' . $uri, $headers + ['Authorization' => 'Bearer editors-own']);
         parse_str((string) parse_url($uri, PHP_URL_QUERY), $query);
         $request = $request->withQueryParams($query);
         if ($header !== false && $token !== null) {
@@ -522,6 +691,7 @@ final class PreviewSiteProvider extends ServiceProvider
     {
         $container->get(PermissionRegistry::class)->declare('pages.edit', 'Edit pages', 'Pages');
         $container->get(NonPublicPaths::class)->add('/admin');
+        $container->get(NonPublicPaths::class)->add('/api');
     }
 }
 
@@ -567,11 +737,13 @@ final class PreviewRoutes implements MiddlewareInterface
                 'members' => $container->get(Access::class)->can('members.access'),
                 'query' => $request->getUri()->getQuery(),
                 'header' => $request->hasHeader(PreviewToken::HEADER),
+                'cookies' => $request->getCookieParams() !== [] || $request->hasHeader('Cookie') || $request->hasHeader('Authorization'),
             ]));
         };
         self::$routes['/--component/probe'] = $probe;
         self::$routes['/admin/probe'] = $probe;
-        self::$routes['/--component/save'] = static function (ServerRequestInterface $request, Container $container): ResponseInterface {
+        self::$routes['/api/probe'] = $probe;
+        self::$routes['/api/save'] = self::$routes['/--component/save'] = static function (ServerRequestInterface $request, Container $container): ResponseInterface {
             $dm = $container->get(DataManager::class);
             $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('visit'), ['uuid' => bin2hex(random_bytes(4)), 'path' => '/']), false);
             $container->get(Notifier::class)->sendLater(new Email('owner@site.test', 'Visited', 'Someone saved.'));

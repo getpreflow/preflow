@@ -3476,7 +3476,9 @@ final class Application
         if ($paths === null) {
             $session->start();
         }
-        $this->container->instance(\Preflow\Core\Http\Session\SessionInterface::class, $session);
+        // The container's session follows the render: a role view or a preview token's render gets an
+        // empty one of its own, never the editor's. The middleware keeps the real one.
+        $this->container->instance(\Preflow\Core\Http\Session\SessionInterface::class, new \Preflow\Core\Http\Session\RenderSession($session));
 
         $this->addMiddleware(new \Preflow\Core\Http\Session\SessionMiddleware($session, $paths, $this->sessionCookieName()));
     }

@@ -59,7 +59,11 @@ final class SessionMiddleware implements MiddlewareInterface
         }
 
         $this->session->start();
-        $this->session->ageFlash();
+        // A previewed page's follow-up (it carries a preview token) does not use up the editor's
+        // flash: it is meant for the editor's next own page (since 0.81.0).
+        if (\Preflow\Core\Context\Preview\PreviewToken::strip($request) === $request) {
+            $this->session->ageFlash();
+        }
 
         $request = $request->withAttribute(SessionInterface::class, $this->session);
         if (!$onPath) {

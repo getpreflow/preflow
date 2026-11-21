@@ -7,7 +7,6 @@ namespace Preflow\Folio\Tests\Http;
 use PHPUnit\Framework\TestCase;
 use Preflow\Auth\Access\Access;
 use Preflow\Auth\Access\AllowsRoles;
-use Preflow\Auth\Access\ComparesRoles;
 use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\PermissionRegistry;
 use Preflow\Auth\Access\PermissionResolver;
@@ -25,12 +24,9 @@ use Preflow\Testing\ContextFactory;
  */
 final class ViewAsTest extends TestCase
 {
-    public function test_a_value_is_checked_for_its_own_role_only(): void
+    public function test_any_listed_role_is_accepted_and_offered(): void
     {
-        $resolver = new class implements PermissionResolver, ListsRoles, AllowsRoles, ComparesRoles {
-            /** @var list<list<string>> */
-            public array $compared = [];
-
+        $resolver = new class implements PermissionResolver, ListsRoles, AllowsRoles {
             public function allows(Authenticatable $user, string $population, string $permission, ?object $subject): bool
             {
                 return true;
@@ -44,13 +40,6 @@ final class ViewAsTest extends TestCase
             public function allowsRoles(array $roles, string $population, string $permission, ?object $subject): bool
             {
                 return true;
-            }
-
-            public function rolesWithin(array $roles, string $population, Authenticatable $user): bool
-            {
-                $this->compared[] = $roles;
-
-                return $roles !== ['admin'];
             }
         };
         $registry = new PermissionRegistry();
@@ -103,7 +92,6 @@ final class ViewAsTest extends TestCase
         $this->assertEquals(new RoleView('staff', ['admin']), $answers[3], 'a role with more rights than the editor\'s own');
         $this->assertSame(['', 'member:gold', 'staff:admin', 'staff:editor', 'staff:writer'], array_column($answers[4], 'value'), 'every role is offered');
         $this->assertSame([true, true, true, true], array_slice($answers, 5), 'an unknown role, population or empty role, and a list');
-        $this->assertSame([], $resolver->compared, 'no role is compared with the editor\'s');
 
         // Without site.view_as nothing is accepted.
         $resolver2 = new class implements PermissionResolver, ListsRoles {

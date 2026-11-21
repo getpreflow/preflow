@@ -13,7 +13,7 @@ use Preflow\Folio\FolioText;
  * page as, and the role view a chosen value stands for. Folio only offers what auth answers:
  * the permission site.view_as (rbac declares it) and the roles a resolver lists (Access::roles()).
  * Whoever holds the permission may view as every member and staff role, also one with more
- * rights than their own (owner ruling, 0.81; Access::mayViewAs() is not asked). Without the
+ * rights than their own (owner ruling, 0.81: roles are not compared). Without the
  * permission, or without it declared, there is nothing to choose.
  *
  * A value is "{population}:{role}": "member:gold", "staff:editor"; '' is an anonymous visitor.

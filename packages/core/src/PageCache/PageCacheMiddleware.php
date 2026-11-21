@@ -150,7 +150,8 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * Vary and is not cached, unless vary_headers names it; the locale LocaleMiddleware resolved
      * from it (url_strategy none) is in the key anyway.
      */
-    private const array VARY_ALLOWED = ['accept-encoding'];
+    /** Vary names a response may carry and still be stored: X-Preflow-Preview is said on every public page (0.81). */
+    private const array VARY_ALLOWED = ['accept-encoding', 'x-preflow-preview'];
 
     /** @var \Closure(): float */
     private readonly \Closure $clock;
@@ -280,7 +281,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
 
         if ($page !== null) {
             try {
-                return self::varyOnPreview($this->serve($key, $page));
+                return \Preflow\Core\Context\Preview\PreviewUrls::withVary($this->serve($key, $page));
             } catch (\Preflow\Core\Exceptions\HttpException $e) {
                 throw $e; // a live part refused this visitor: the answer, as on a miss
             } catch (\Throwable $e) {
@@ -292,7 +293,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
             return $handler->handle($request);
         }
 
-        return self::varyOnPreview($this->render($request, $handler, $key, $store));
+        return \Preflow\Core\Context\Preview\PreviewUrls::withVary($this->render($request, $handler, $key, $store));
     }
 
     /** Whether $request carries a preview token (the query parameter or the header). */
@@ -304,23 +305,6 @@ final class PageCacheMiddleware implements MiddlewareInterface
         parse_str($request->getUri()->getQuery(), $query);
 
         return array_key_exists(PreviewToken::PARAM, $query);
-    }
-
-    /**
-     * $response (one the cache served or may have stored) with Vary: X-Preflow-Preview, so a
-     * shared HTTP cache (a CDN) that keeps it never answers a preview's follow-up request, which
-     * carries its token in that header, with it (since 0.81.0). The stored page itself has no
-     * such Vary; a hit gets it here.
-     */
-    private static function varyOnPreview(ResponseInterface $response): ResponseInterface
-    {
-        foreach (explode(',', strtolower($response->getHeaderLine('Vary'))) as $name) {
-            if (in_array(trim($name), [strtolower(PreviewToken::HEADER), '*'], true)) {
-                return $response;
-            }
-        }
-
-        return $response->withAddedHeader('Vary', PreviewToken::HEADER);
     }
 
     /**

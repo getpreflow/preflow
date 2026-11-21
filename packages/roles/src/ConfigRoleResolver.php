@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Preflow\Roles;
 
 use Preflow\Auth\Access\AllowsRoles;
-use Preflow\Auth\Access\ComparesRoles;
 use Preflow\Auth\Access\ListsRoles;
 use Preflow\Auth\Access\Pattern;
 use Preflow\Auth\Access\PermissionResolver;
@@ -17,7 +16,7 @@ use Preflow\Auth\Authenticatable;
  * population has a pattern matching X. Unknown roles grant nothing. A role view (view as
  * role) is answered for its roles alone (allowsRoles()).
  */
-final class ConfigRoleResolver implements PermissionResolver, ListsRoles, AllowsRoles, ComparesRoles
+final class ConfigRoleResolver implements PermissionResolver, ListsRoles, AllowsRoles
 {
     /** @var array<string, true> unknown roles already logged this request */
     private array $logged = [];
@@ -98,17 +97,6 @@ final class ConfigRoleResolver implements PermissionResolver, ListsRoles, Allows
         }
 
         return array_values(array_unique($patterns));
-    }
-
-    /**
-     * Whether $roles in $population grant no pattern the user's own roles do not cover
-     * (Pattern::covers()); config/roles.php grants do not depend on the subject.
-     *
-     * @since 0.81.0
-     */
-    public function rolesWithin(array $roles, string $population, Authenticatable $user): bool
-    {
-        return Pattern::covers($this->grantsFor($user->getRoles(), $population), $this->grantsFor($roles, $population));
     }
 
     public function roles(string $population): array

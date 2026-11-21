@@ -87,3 +87,11 @@ test('links leave nothing: an in-page anchor scrolls in the preview instead of l
     assert.equal(away.click().defaultPrevented, true, 'any other link stays in the preview');
     assert.equal(scrolled, 1);
 });
+
+test('an anchor that is no valid escape neither throws nor leaves the preview', () => {
+    const p = preview();
+    const broken = p.doc.body.appendChild(p.doc.createElement('a'));
+    broken.setAttribute('href', '#%E0');
+
+    assert.equal(broken.click().defaultPrevented, true);
+});

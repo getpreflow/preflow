@@ -164,6 +164,8 @@ final class DevErrorRenderer implements ErrorRendererInterface
 
     private function renderRequest(ServerRequestInterface $request): string
     {
+        // Never a preview token, however the page was asked for.
+        $request = \Preflow\Core\Context\Preview\PreviewToken::strip($request);
         $method = $this->escape($request->getMethod());
         $uri = $request->getUri();
         $path = $this->escape($uri->getPath());

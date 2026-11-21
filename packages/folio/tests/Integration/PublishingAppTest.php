@@ -663,7 +663,9 @@ final class PublishingAppTest extends TestCase
         $this->working('post', 'p1', ['title' => ['en' => 'Secret'], 'slug' => ['en' => 'hello']]);
         $token = $this->shareToken('p1');
 
-        $this->assertMatchesRegularExpression('#<body[^>]*><p class="folio-share-notice" role="note">Preview of a draft\. Forms on this page send to the live site\.</p>#', (string) $this->getWithPreview('/hello', $token)->getBody());
+        $shared = (string) $this->getWithPreview('/hello', $token)->getBody();
+        $this->assertMatchesRegularExpression('#<body[^>]*><p class="folio-share-notice" role="note">Preview of a draft\. Forms on this page send to the live site\.</p>#', $shared);
+        $this->assertMatchesRegularExpression('#<style nonce="[^"]+">[^<]*p\.folio-share-notice\[role=note\]\{all:initial !important;display:block !important;#', $shared, 'its own look, which the site\'s CSS cannot hide');
         $this->assertStringNotContainsString('folio-share-notice', (string) $this->get('/hello')->getBody());
     }
 

@@ -174,30 +174,4 @@ final class SyntheticMemberTest extends TestCase
         $this->assertFalse($access->allowsRoles(['admin'], 'staff', 'page.edit', null), 'auth\'s default resolver cannot answer for roles: a staff role view gets nothing');
     }
 
-    /** rolesWithin(): admitted member roles grant what an admitted member has; staff falls back to the user's own roles. */
-    public function test_member_access_roles_within(): void
-    {
-        $access = new MemberAccess(new \Preflow\Auth\Access\DefaultResolver());
-        $user = static fn (array $roles): \Preflow\Auth\Authenticatable => new class ($roles) implements \Preflow\Auth\Authenticatable {
-            use \Preflow\Auth\AuthenticatableTrait;
-
-            public function __construct(private readonly array $roles) {}
-
-            public function getAuthId(): string
-            {
-                return 'u';
-            }
-
-            public function getRoles(): array
-            {
-                return $this->roles;
-            }
-        };
-
-        $this->assertTrue($access->rolesWithin(['member'], 'members', $user(['member'])));
-        $this->assertFalse($access->rolesWithin(['member'], 'members', $user(['pending'])));
-        $this->assertTrue($access->rolesWithin(['pending'], 'members', $user([])), 'a role that grants nothing');
-        $this->assertTrue($access->rolesWithin(['editor'], 'staff', $user(['editor', 'admin'])), 'a resolver that cannot compare: the user\'s own roles');
-        $this->assertFalse($access->rolesWithin(['admin'], 'staff', $user(['editor'])));
-    }
 }

@@ -40,6 +40,25 @@ final class PreviewUrls
     }
 
     /**
+     * $response with `Vary: X-Preflow-Preview` added (unless it names it, or `*`, already): a cache
+     * that keeps it never answers a preview's request, which carries its token in that header, with
+     * it. A private or no-store response is left as it is (no cache keeps it).
+     */
+    public static function withVary(ResponseInterface $response): ResponseInterface
+    {
+        if (preg_match('/(^|[\s,])(private|no-store)([\s,=]|$)/i', $response->getHeaderLine('Cache-Control')) === 1) {
+            return $response;
+        }
+        foreach (explode(',', strtolower($response->getHeaderLine('Vary'))) as $name) {
+            if (in_array(trim($name), [strtolower(PreviewToken::HEADER), '*'], true)) {
+                return $response;
+            }
+        }
+
+        return $response->withAddedHeader('Vary', PreviewToken::HEADER);
+    }
+
+    /**
      * $response with $token handed to the page's hypermedia clients (CarriesRequestHeaders):
      * every request they make from the page sends it as the X-Preflow-Preview header. Only an
      * HTML response with a <body> changes; its Content-Length goes, as the body grew.

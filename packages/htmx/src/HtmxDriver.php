@@ -104,19 +104,36 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
     }
 
     /**
-     * hx-headers on the page's first <body> tag, which every htmx request from the page inherits.
-     * A JSON hx-headers the body has already keeps its other headers; one that is not plain JSON
-     * (a js: or javascript: value) is left as it is, and so is a page without <body>.
+     * hx-headers on the page's <body> element, which every htmx request from the page inherits.
+     * The first `<body` outside comments, scripts, styles, templates and textareas is it, and its
+     * quoted attributes may hold a `>`. A JSON hx-headers the body has already keeps its other
+     * headers. Where the page leaves it unsure (no <body>, an hx-headers that is not quoted plain
+     * JSON: a js: value, an unquoted one) nothing changes: the header is then simply not carried
+     * (component URLs still carry the token), never doubled or broken.
      *
      * @since 0.81.0
      */
     public function carryHeaders(string $html, array $headers): string
     {
-        if ($headers === [] || preg_match('/<body\b[^>]*>/i', $html, $tag, PREG_OFFSET_CAPTURE) !== 1) {
+        if ($headers === []) {
+            return $html;
+        }
+        // Comments and raw-text elements blanked out (same length, so offsets hold).
+        $masked = preg_replace_callback(
+            '#<!--.*?-->|<(script|style|template|textarea)\b[^>]*>.*?</\1\s*>#is',
+            static fn (array $m): string => str_repeat(' ', strlen($m[0])),
+            $html,
+        ) ?? '';
+        if (preg_match('/<body\b/i', $masked, $start, PREG_OFFSET_CAPTURE) !== 1
+            || preg_match('/\G<body\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/i', $html, $tag, PREG_OFFSET_CAPTURE, $start[0][1]) !== 1) {
             return $html;
         }
         [$open, $at] = $tag[0];
-        if (preg_match('/\shx-headers\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/i', $open, $existing) === 1) {
+        $quoted = preg_match('/\shx-headers\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/i', $open, $existing) === 1;
+        if (!$quoted && preg_match('/\shx-headers\b/i', $open) === 1) {
+            return $html;
+        }
+        if ($quoted) {
             $own = json_decode(html_entity_decode(($existing[2] ?? '') !== '' ? $existing[2] : $existing[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), true);
             if (!is_array($own) || ($own !== [] && array_is_list($own))) {
                 return $html;
