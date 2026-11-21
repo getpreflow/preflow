@@ -13,7 +13,7 @@ final class SqlTablesTest extends TestCase
     /** @return iterable<string, array{string, ?list<string>}> */
     public static function statements(): iterable
     {
-        yield 'holz catalog join' => [
+        yield 'catalog join' => [
             "SELECT o.*, m.name FROM `object__published` o JOIN `member` m ON m.uuid = o.member WHERE o.state = 'from x'",
             ['object__published', 'member'],
         ];

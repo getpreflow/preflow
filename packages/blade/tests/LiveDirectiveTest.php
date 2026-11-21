@@ -43,7 +43,7 @@ final class LiveDirectiveTest extends TestCase
             $this->logged[] = $m;
         });
         $this->engine = $this->engine();
-        $this->engine->addGlobal('site', 'Holz');
+        $this->engine->addGlobal('site', 'Acme');
     }
 
     protected function tearDown(): void
@@ -56,7 +56,7 @@ final class LiveDirectiveTest extends TestCase
         $this->template('page.blade.php', "<main>{{ \$secret }}|@live(['number' => \$object['number']])[{{ \$number }}/{{ \$secret ?? 'none' }}/{{ isset(\$object) ? 'object' : 'none' }}/{{ \$site }}]@endlive</main>");
         $context = ['secret' => 'outer', 'object' => ['number' => 7]];
 
-        $this->assertSame('<main>outer|[7/none/none/Holz]</main>', $this->engine->render('page', $context), 'in place');
+        $this->assertSame('<main>outer|[7/none/none/Acme]</main>', $this->engine->render('page', $context), 'in place');
 
         $stored = $this->storing(fn (): string => $this->engine->render('page', $context));
         $this->assertStringNotContainsString('[7', $stored, 'not rendered while storing');
@@ -65,7 +65,7 @@ final class LiveDirectiveTest extends TestCase
         $this->assertSame('blade', $found[0] ?? null);
         $this->assertSame(['n' => 'page', 'i' => 0, 'w' => ['number' => 7]], array_diff_key($found[1] ?? [], ['h' => true]));
 
-        $this->assertSame('<main>outer|[7/none/none/Holz]</main>', $this->live->fill($stored), 'filled as in place');
+        $this->assertSame('<main>outer|[7/none/none/Acme]</main>', $this->live->fill($stored), 'filled as in place');
     }
 
     public function test_live_blocks_in_layouts_loops_and_after_a_cleared_cache(): void

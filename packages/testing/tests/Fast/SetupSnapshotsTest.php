@@ -402,7 +402,7 @@ final class SetupSnapshotsTest extends TestCase
 
     public function test_a_root_given_as_a_closure_is_read_when_it_is_used(): void
     {
-        // holz: the image directory is made lazily, after the snapshots were set up.
+        // A site whose image directory is made lazily, after the snapshots were set up.
         $dir = '';
         $make = function () use (&$dir): SetupSnapshots {
             $dir = '';

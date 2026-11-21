@@ -68,13 +68,13 @@ final class ExtendedTypeAppTest extends TestCase
         $this->assertSame([], $this->migrateStep());
 
         $dm = $this->dm();
-        $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('member'), ['uuid' => 'm1', 'email' => 'ada@example.org', 'company' => 'Holz AG']), false);
-        $this->assertSame('Holz AG', $this->dm()->findType('member', 'm1')?->get('company'));
+        $dm->saveType(DynamicRecord::fromArray($dm->getTypeRegistry()->get('member'), ['uuid' => 'm1', 'email' => 'ada@example.org', 'company' => 'Acme AG']), false);
+        $this->assertSame('Acme AG', $this->dm()->findType('member', 'm1')?->get('company'));
 
         $edit = $this->get('/folio/member/m1/edit');
         $this->assertSame(200, $edit->getStatusCode());
         $page = (string) $edit->getBody();
-        $this->assertMatchesRegularExpression('#name="company"[^>]*value="Holz AG"|value="Holz AG"[^>]*name="company"#', $page);
+        $this->assertMatchesRegularExpression('#name="company"[^>]*value="Acme AG"|value="Acme AG"[^>]*name="company"#', $page);
         $this->assertStringContainsString('Company', $page);
     }
 

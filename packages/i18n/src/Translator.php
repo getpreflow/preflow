@@ -408,11 +408,12 @@ final class Translator
      * there). Outside every render it sets the translator's own default.
      *
      * @deprecated 0.81, removed in 0.83: Contexts::narrow(fn ($ctx) => $ctx->in($locale)) for the
-     *             rest of the render, Contexts::within($ctx->in($locale), $fn) for a stretch of it
+     *             rest of the render, Contexts::within($ctx->in($locale), $fn) for a stretch of it;
+     *             on the admin surface $ctx->admin($locale) in place of $ctx->in($locale)
      */
     public function setLocale(string $locale): void
     {
-        Deprecations::once('Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).');
+        Deprecations::once('Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)), or on the admin surface Contexts::narrow(fn ($ctx) => $ctx->admin($locale)).');
         if (Contexts::depth() === 0) {
             $this->locale = $locale;
             $this->forgetMemos();

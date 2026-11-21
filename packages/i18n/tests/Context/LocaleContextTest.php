@@ -190,7 +190,7 @@ final class LocaleContextTest extends TestCase
             });
         });
 
-        $this->assertContains('Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).', $messages);
+        $this->assertContains('Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)), or on the admin surface Contexts::narrow(fn ($ctx) => $ctx->admin($locale)).', $messages);
         $this->assertCount(3, $messages, 'once per call site, not per call');
 
         // Outside every render it sets the translator's own default (a script, a unit test).

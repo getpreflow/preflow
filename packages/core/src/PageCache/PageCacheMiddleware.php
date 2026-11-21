@@ -76,7 +76,8 @@ use Psr\Http\Server\RequestHandlerInterface;
  *   page but is never stored), or a fragment's key without one;
  * - `app-key`: app.key fails AppKey::canSign() (empty, shorter than 32 bytes, or public), so placeholders could be forged;
  * - `stream`: the body can't be read twice (a streamed export);
- * - `set-cookie`: the response sets a cookie (a header, or a native one through header());
+ * - `set-cookie`: the response sets a cookie (a header, or a native one through header()), or a
+ *   cookie is still queued in the render's frame (CookieQueue::pending(), since 0.81.1);
  * - `session`: the session was started during the request;
  * - `signed-in`: a guard resolved a user;
  * - `context`: the render's context was narrowed to one that may not be stored (working copies,
@@ -196,6 +197,9 @@ final class PageCacheMiddleware implements MiddlewareInterface
      * @param \Preflow\Core\Http\ResponseHeaderHints|null $hints since 0.81.0: the frame's header hints, put on
      *        the served response after its live parts were filled (they render after the route
      *        answered): only the restrictive ones, on a miss and a hit; never on the stored page
+     * @param \Preflow\Core\Http\CookieQueue|null $cookies since 0.81.1: the frame's cookie queue
+     *        (CookieQueue::ofCurrentFrame()); a page whose render left a cookie in it is not stored
+     *        (`set-cookie`), as one whose response sets one
      */
     public function __construct(
         private readonly PageCacheConfig $config,
@@ -222,6 +226,7 @@ final class PageCacheMiddleware implements MiddlewareInterface
         private readonly ?\Preflow\Core\Http\Hypermedia\HypermediaProtocols $hypermedia = null,
         private readonly ?\Closure $render = null,
         private readonly ?\Preflow\Core\Http\ResponseHeaderHints $hints = null,
+        private readonly ?\Preflow\Core\Http\CookieQueue $cookies = null,
     ) {
         $this->sentHeaders = $sentHeaders ?? static fn (): array => headers_sent() ? [] : headers_list();
         $this->clock = $clock ?? static fn (): float => (float) Contexts::clock()->now()->format('U.u');
@@ -795,7 +800,10 @@ final class PageCacheMiddleware implements MiddlewareInterface
         if (!$response->getBody()->isSeekable()) {
             return 'stream';
         }
-        if ($response->hasHeader('Set-Cookie') || $this->nativeCookie()) {
+        // A cookie still queued in the frame (middleware inside the cache queued it after the route,
+        // or a render that does not set them: verify's second render, a rebuild) would reach this
+        // visitor but never one served from the store.
+        if ($response->hasHeader('Set-Cookie') || $this->nativeCookie() || ($this->cookies?->pending() ?? false)) {
             return 'set-cookie';
         }
         if ($request->getAttribute(self::REBUILD) === true) {

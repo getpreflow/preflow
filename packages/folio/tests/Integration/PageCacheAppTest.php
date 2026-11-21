@@ -68,7 +68,7 @@ final class PageCacheAppTest extends TestCase
     #[RunInSeparateProcess]
     public function test_job_detail_with_other_jobs_next_visit(): void
     {
-        // The owner's example (forum-holzkarriere): the job itself fresh, "other jobs of this
+        // The owner's example (a job board): the job itself fresh, "other jobs of this
         // company" next visit, on the job's own Folio address. Rebuilds run behind each response.
         $this->afterResponse = true;
         $this->write('resources/folio/frontend/post.twig', '<html><body><h1>{{ record.title }}</h1>'

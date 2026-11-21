@@ -22,4 +22,12 @@ final class ComposerConstraintsTest extends TestCase
         $this->assertSame(['preflow/core' => '<0.81.0', 'preflow/view' => '<0.72'], $composer['conflict'] ?? null);
         $this->assertSame('^0.72 || @dev', $composer['require']['preflow/view'] ?? null);
     }
+
+    /** {% live %} calls Parser::parseExpression() (Twig 3.21) and builds a Twig\Node\EmptyNode (3.13). */
+    public function test_requires_the_twig_version_the_live_tag_uses(): void
+    {
+        $composer = json_decode((string) file_get_contents(dirname(__DIR__) . '/composer.json'), true);
+
+        $this->assertSame('^3.21', $composer['require']['twig/twig'] ?? null);
+    }
 }

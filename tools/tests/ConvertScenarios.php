@@ -215,7 +215,7 @@ trait ConvertScenarios
         $this->assertSame(['added column event.city', 'added index idx_event_city'], (new RecordTableSync($this->dm))->sync(self::event()));
     }
 
-    /** An index made by hand under another name (holz's idx_published_*) does the work: nothing to add. */
+    /** An index made by hand under another name (a site's idx_published_*) does the work: nothing to add. */
     public function testAHandMadeIndexUnderAnotherNameIsFound(): void
     {
         $this->handMade('number');
