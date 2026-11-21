@@ -193,6 +193,25 @@ final class LiveDirectiveTest extends TestCase
         $this->assertSame('1-|@live|livewire', $engine->render('page', ['b' => 2]));
     }
 
+    /**
+     * Twig compiles an {% embed %} as a template of its own; Blade has no such unit: a component's
+     * slot is compiled in the file that holds it, and @live is taken out of that file's source.
+     */
+    public function test_a_live_block_in_a_component_slot_names_the_file_that_holds_it(): void
+    {
+        $this->template('box.blade.php', '<div>{{ $slot }}</div>');
+        $this->template('page.blade.php', "@component('box')@live(['n' => 1])A{{ \$n }}@endlive @endcomponent\n@component('box')@live(['n' => 2])B{{ \$n }}@endlive @endcomponent");
+
+        $html = $this->engine->render('page');
+        $stored = $this->storing(fn (): string => $this->engine->render('page'));
+        $recipes = array_map(static fn (array $p): array => array_diff_key($p[1], ['h' => true]), array_values((new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->find($stored)));
+
+        $this->assertSame([['n' => 'page', 'i' => 0, 'w' => ['n' => 1]], ['n' => 'page', 'i' => 1, 'w' => ['n' => 2]]], $recipes);
+        $this->assertSame($html, $this->live->fill($stored));
+        $this->assertStringContainsString('<div>A1', $html);
+        $this->assertSame([], $this->logged);
+    }
+
     public function test_nested_live_blocks_are_refused(): void
     {
         $this->template('page.blade.php', '@live a @live b @endlive @endlive');

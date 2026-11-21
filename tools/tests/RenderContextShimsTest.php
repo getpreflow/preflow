@@ -708,7 +708,10 @@ final class RenderContextShimsTest extends TestCase
                     $after = $tokens[$i + 3] ?? null;
                     if (is_array($arg) && $arg[0] === T_CONSTANT_ENCAPSED_STRING && ($after === ',' || $after === ')')) {
                         $inner = substr($arg[1], 1, -1);
-                        $out['messages'][] = $arg[1][0] === "'" ? strtr($inner, ['\\\\' => '\\', "\\'" => "'"]) : stripcslashes($inner);
+                        $message = $arg[1][0] === "'" ? strtr($inner, ['\\\\' => '\\', "\\'" => "'"]) : stripcslashes($inner);
+                        if (str_contains($message, ' is deprecated since 0.81 ')) { // the table is the 0.81 release's; later shims test themselves
+                            $out['messages'][] = $message;
+                        }
                     } else {
                         $out['opaque'][] = $path . ':' . $t[2];
                     }

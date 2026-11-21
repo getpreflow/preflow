@@ -125,10 +125,14 @@ count) is a live part of a cached page (preflow/core's page cache):
 - While a page renders for the page cache, the tag prints a signed placeholder (template,
   block, values) instead of the body; the block is rendered for each visitor when the page is
   served. Otherwise it renders in place.
-- Live blocks don't nest. Not inside `{% embed %}`. Block names starting with `__live_` are
-  theirs: a template's own `{% block __live_… %}` is a syntax error.
+- Live blocks don't nest. Block names starting with `__live_` are theirs: a template's own
+  `{% block __live_… %}` is a syntax error.
+- Live blocks inside `{% embed %}` are filled too (since 0.82.0). As everywhere, the body sees
+  only its `with` values and the globals: the embed's `with` values and `only` don't reach it.
 - The placeholder names the template by its loader name (`page.twig`, `@folio/...`), or, in a
-  component's own template, by the component class. A template rendered by a path that is no
+  component's own template, by the component class. That class comes from the file the
+  component renders, not from the template's variables (since 0.82.0): an `only` or a
+  `with {componentClass: …}` changes nothing. A template rendered by a path that is no
   component's renders its live blocks in place and keeps the page from being stored.
 - Print the tag's output as it is: captured into `{% set %}` and printed escaped, or passed
   through `|striptags` or `|slice`, the placeholder is broken and the part is missing.

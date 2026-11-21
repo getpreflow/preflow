@@ -10,7 +10,7 @@ use Twig\Node\Expression\AbstractExpression;
 use Twig\Node\Node;
 use Twig\Node\NodeOutputInterface;
 
-/** A {% live %} tag (LiveTokenParser): its block, through LiveExtension::live(). */
+/** A {% live %} tag (LiveTokenParser): its block, through LiveExtension::part() (live() before 0.82). */
 #[YieldReady]
 final class LiveNode extends Node implements NodeOutputInterface
 {
@@ -23,9 +23,9 @@ final class LiveNode extends Node implements NodeOutputInterface
     {
         $compiler
             ->addDebugInfo($this)
-            ->write('yield $this->env->getExtension(' . var_export(LiveExtension::class, true) . ')->live($this->env, $this, ')
+            ->write('yield $this->env->getExtension(' . var_export(LiveExtension::class, true) . ')->part($this->env, $this, ')
             ->string($this->getAttribute('block'))
-            ->raw(", \$context['componentClass'] ?? null, ");
+            ->raw(', ');
         if ($this->hasNode('with')) {
             $compiler->subcompile($this->getNode('with'));
         } else {

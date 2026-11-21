@@ -19,6 +19,9 @@ final class TwigEngine implements TemplateEngineInterface
 {
     private readonly Environment $twig;
 
+    /** @var array<string, class-string> the component templates render() was given: Twig's name for the file => the component owning it */
+    private array $componentTemplates = [];
+
     /**
      * @param string[] $templateDirs Directories to search for templates
      */
@@ -43,7 +46,7 @@ final class TwigEngine implements TemplateEngineInterface
         ]);
 
         $this->twig->addExtension(new PreflowExtension($assetCollector, $geoCollector, $seoContext));
-        $this->twig->addExtension(new LiveExtension($liveParts));
+        $this->twig->addExtension(new LiveExtension($liveParts, fn (string $name): ?string => $this->componentTemplates[$name] ?? null));
         $this->twig->addExtension(new FreshnessExtension($pageCache));
         $liveParts?->register(LiveExtension::KIND, fn (array $recipe): string => $this->renderLiveBlock($recipe));
     }
@@ -69,9 +72,7 @@ final class TwigEngine implements TemplateEngineInterface
                 throw new LiveRecipeRejected("A live block recipe names no template of the loader: {$name}.");
             }
             $template = $this->twig->load($name);
-        } elseif (is_string($class) && is_subclass_of($class, \Preflow\Components\Component::class)) {
-            $ref = new \ReflectionClass($class);
-            $path = dirname((string) $ref->getFileName()) . '/' . $ref->getShortName() . '.twig';
+        } elseif (is_string($class) && ($path = self::componentTemplate($class)) !== null) {
             if (!is_file($path)) {
                 throw new LiveRecipeRejected("The component {$class} has no Twig template.");
             }
@@ -87,7 +88,22 @@ final class TwigEngine implements TemplateEngineInterface
         return $template->renderBlock($block, $with);
     }
 
+    /** The file of $class's own Twig template (as Component::getTemplatePath()), null when $class is no component. */
+    private static function componentTemplate(string $class): ?string
+    {
+        if (!is_subclass_of($class, \Preflow\Components\Component::class)) {
+            return null;
+        }
+        $ref = new \ReflectionClass($class);
+
+        return dirname((string) $ref->getFileName()) . '/' . $ref->getShortName() . '.twig';
+    }
+
     /**
+     * A file rendered with a `componentClass` whose own template it is (as ComponentRenderer
+     * renders one) is that component's template: its live blocks are named by that class (since
+     * 0.82.0), whatever the variables inside it say.
+     *
      * An HttpException (a 403, a 404…) thrown while the template renders, by a component or a
      * function it calls, comes out as itself, not wrapped in Twig's RuntimeError: the page
      * answers with its status.
@@ -99,6 +115,10 @@ final class TwigEngine implements TemplateEngineInterface
             if (str_starts_with($template, '/') && file_exists($template)) {
                 $source = file_get_contents($template);
                 $tpl = $this->twig->createTemplate($source, $template);
+                $class = $context['componentClass'] ?? null;
+                if (is_string($class) && !isset($this->componentTemplates[$tpl->getTemplateName()]) && self::componentTemplate($class) === $template) {
+                    $this->componentTemplates[$tpl->getTemplateName()] = $class; // the name holds the file and its source hash: one owner
+                }
                 return $tpl->render($context);
             }
 
