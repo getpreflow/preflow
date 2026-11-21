@@ -10,9 +10,11 @@ namespace Preflow\Core\Security;
  * (PUBLIC_KEYS: the built-in default and the skeleton's example). A short key can be found
  * offline from any MAC a visitor sees; a public one needs no finding.
  *
- * Signers that follow it: preview tokens (Context\Preview\PreviewToken) and the page cache's
- * signed placeholders (PageCache\LivePlaceholder, PageCache\PerRequestValues). They switch their
- * signing off with a key that fails it.
+ * Signers that follow it: preview tokens (Context\Preview\PreviewToken), share-preview links
+ * (publishing's PreviewLinks) and the page cache's signed placeholders (PageCache\LivePlaceholder,
+ * PageCache\PerRequestValues). They switch their signing off with a key that fails it. A web
+ * request never gets that far in production: Application::boot() refuses such a key there
+ * (WeakAppKey).
  *
  * @since 0.81.0
  */
@@ -27,8 +29,24 @@ final class AppKey
     /** Whether $key may sign (see the class docblock). */
     public static function canSign(#[\SensitiveParameter] string $key): bool
     {
+        return self::problem($key) === null;
+    }
+
+    /**
+     * What is wrong with $key, in words for the person who runs the site (never the key itself);
+     * null when it can sign.
+     *
+     * @since 0.81.0
+     */
+    public static function problem(#[\SensitiveParameter] string $key): ?string
+    {
         $trimmed = trim($key);
 
-        return strlen($trimmed) >= self::MIN_LENGTH && !in_array($trimmed, self::PUBLIC_KEYS, true);
+        return match (true) {
+            $trimmed === '' => 'app.key is empty',
+            in_array($trimmed, self::PUBLIC_KEYS, true) => 'app.key is a public example key that anyone can look up',
+            strlen($trimmed) < self::MIN_LENGTH => 'app.key is ' . strlen($trimmed) . ' bytes long; it needs at least ' . self::MIN_LENGTH,
+            default => null,
+        };
     }
 }

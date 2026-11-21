@@ -97,3 +97,25 @@
   font: 400 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   overflow-wrap: anywhere;
 }
+
+/* Interactive parts switched off (preview-editor.js): the short notice an attempted click or submit gets. */
+.folio-pe-notice {
+  --pe-inverse: #1b2320;
+  --pe-inverse-fg: #e9f0ec;
+  --pe-notice-shadow: 0 6px 20px rgb(0 0 0 / .25);
+  position: fixed;
+  left: 50%;
+  top: 16px;
+  z-index: 2147483001;
+  transform: translateX(-50%);
+  max-width: min(32rem, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--pe-inverse);
+  color: var(--pe-inverse-fg);
+  font: 500 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-shadow: var(--pe-notice-shadow);
+  text-align: center;
+}
+.folio-pe-notice[hidden] { display: none; }

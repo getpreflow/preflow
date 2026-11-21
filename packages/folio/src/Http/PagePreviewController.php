@@ -146,7 +146,7 @@ final class PagePreviewController
         $bar = $this->engine->render('@folio/admin/preview/bar.twig', [
             'mail' => $result->wouldSend(\Preflow\Core\Context\Bridge\NotifyChannel::NAME),
             'writes' => $result->wouldWrite(),
-            // Without a key that can sign, no preview token: the page's interactive parts run as the live site.
+            // Without a key that can sign there is no preview token: the bar marks the page's interactive parts as switched off (the bridge stops them).
             'tokens' => $this->app->container()->get(\Preflow\Core\Context\Preview\PreviewToken::class)->enabled(),
         ]);
 

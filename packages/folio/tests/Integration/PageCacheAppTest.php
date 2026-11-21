@@ -534,25 +534,15 @@ final class PageCacheAppTest extends TestCase
     }
 
     #[RunInSeparateProcess]
-    public function test_with_the_default_key_nothing_is_filled_or_stored(): void
+    public function test_with_the_default_key_the_app_does_not_start_so_nothing_is_filled_or_stored(): void
     {
-        $log = $this->captureLog();
+        // Since 0.81 (owner decision) a web app in production refuses a public key outright; the
+        // page cache's own refusal of such a key (LivePlaceholder::usable()) is pinned in core's tests.
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Pub', 'debug' => 0, 'engine' => 'twig', 'url' => 'https://site.test'];\n");
-        $this->write('app/pages/secret.twig', '<p>{% live %}TOP SECRET{% endlive %}</p>');
-        $public = new \Preflow\Core\PageCache\LivePlaceholder(\Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
-        $marker = $public->make('twig', ['t' => 'secret.twig', 'b' => '__live_1', 'w' => []]);
-        $this->album('<html><body>{% live %}<p class="album">{{ album_count() }} in your album</p>{% endlive %}<div>{{ record.body|raw }}</div></body></html>', body: $marker);
 
-        foreach (['1_2' => '2', '3' => '1'] as $album => $count) {
-            $response = $this->visit('/project', ['album' => (string) $album]);
-            $this->assertSame('miss', $response->getHeaderLine('X-Page-Cache'));
-            $this->assertSame('app-key', $response->getHeaderLine('X-Page-Cache-Skip'));
-            $body = (string) $response->getBody();
-            $this->assertStringContainsString("<p class=\"album\">{$count} in your album</p>", $body, 'live parts render in place');
-            $this->assertStringNotContainsString('TOP SECRET', $body, 'a marker signed with the public key is never filled');
-            $this->assertStringContainsString($marker, $body);
-        }
-        $this->assertNull($this->stored('/project'));
+        $this->expectException(\Preflow\Core\Security\WeakAppKey::class);
+        $this->expectExceptionMessage('public example key');
+        $this->app();
     }
 
     #[RunInSeparateProcess]

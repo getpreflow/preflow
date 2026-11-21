@@ -94,12 +94,43 @@
     });
     document.addEventListener('mouseleave', function () { hovered = null; hoveredField = null; schedule(); });
 
+    // Interactive parts switched off (the server marks it on the preview bar: the site's key can't
+    // sign a preview token, so its requests would run on the live site): every click on something
+    // interactive, every form and every htmx request is stopped, and an attempt says so.
+    var lockedMark = document.querySelector('[data-folio-preview-locked]');
+    var locked = !!lockedMark;
+    var notice = null;
+    var noticeTimer = 0;
+    var INTERACTIVE = 'a[href],button,input,select,textarea,summary,label,[role=button],[onclick],'
+        + '[hx-get],[hx-post],[hx-put],[hx-patch],[hx-delete],[data-hx-get],[data-hx-post],[data-hx-put],[data-hx-patch],[data-hx-delete]';
+    function tellLocked() {
+        if (!notice) {
+            notice = document.createElement('div');
+            notice.className = 'folio-pe-notice';
+            notice.setAttribute('role', 'status');
+            notice.textContent = lockedMark.getAttribute('data-folio-locked-text') || '';
+            document.body.appendChild(notice);
+        }
+        notice.hidden = false;
+        if (noticeTimer) { clearTimeout(noticeTimer); }
+        noticeTimer = setTimeout(function () { notice.hidden = true; noticeTimer = 0; }, 2500);
+    }
+    if (locked) {
+        document.addEventListener('htmx:beforeRequest', function (e) { e.preventDefault(); }, true);
+    }
+
     // Click: select instead of following links or pressing buttons.
     document.addEventListener('click', function (e) {
         if (!e.target.closest) { return; }
         var block = e.target.closest('[data-folio-block]');
         var edit = e.target.closest('[data-folio-edit]');
         var region = e.target.closest('[data-folio-field]');
+        if (locked && !block && !region && e.target.closest(INTERACTIVE)) {
+            e.preventDefault();
+            e.stopPropagation();
+            tellLocked();
+            return;
+        }
         if (!block && !region) {
             // Header, footer, pages without markers: stay on the preview. An in-page anchor ("#team")
             // scrolls here: the page's <base> (its own address) would make it load the live page.
@@ -128,8 +159,14 @@
         }
     }, true);
 
-    // Forms inside the preview never submit.
-    document.addEventListener('submit', function (e) { e.preventDefault(); }, true);
+    // Forms inside the preview never submit (and, switched off, never reach htmx either).
+    document.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (locked) {
+            e.stopPropagation();
+            tellLocked();
+        }
+    }, true);
 
     function find(uid, field) {
         if (uid) {

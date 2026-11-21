@@ -227,11 +227,12 @@ final class PagePreviewFragmentsTest extends TestCase
     }
 
     /**
-     * Task 22 M8: with an app key that cannot sign there is no token, so the page's interactive
-     * parts run as the live site; the preview bar says so.
+     * Owner decision (Task 22 fix 2): with an app key that cannot sign there is no token, so the
+     * page's interactive parts are switched off: the bar says so and marks the mode for the bridge
+     * (preview-select.test.mjs: clicks, forms and htmx requests stopped, a notice shown).
      */
     #[RunInSeparateProcess]
-    public function test_a_preview_without_a_signing_key_says_its_interactive_parts_are_live(): void
+    public function test_a_preview_without_a_signing_key_switches_its_interactive_parts_off(): void
     {
         $this->write('config/app.php', "<?php\nreturn ['name' => 'Preview', 'debug' => 0, 'engine' => 'twig', 'key' => 'short-key', 'url' => 'https://site.test'];\n");
         touch($this->dir . '/config/app.php', time() + 10); // newer than what the boot during setUp remembered
@@ -240,8 +241,16 @@ final class PagePreviewFragmentsTest extends TestCase
 
         $preview = (string) $this->send('GET', '/folio/preview/page/post/p1')->getBody();
 
-        $this->assertStringContainsString('<span class="folio-pp-note" data-folio-preview-live>Interactive parts of this preview run on the live site and save for real: the site’s app key is shorter than 32 characters.</span>', $preview);
+        $this->assertStringContainsString('<span class="folio-pp-note" data-folio-preview-locked data-folio-locked-text="Switched off in this preview.">Interactive parts are switched off in this preview: the site’s app key can’t sign previews (it needs at least 32 characters).</span>', $preview, 'the bar says so, and marks the mode for the bridge');
         $this->assertStringNotContainsString(PreviewToken::PARAM . '=', $preview, 'no token');
+
+        // With a key that signs, nothing is switched off.
+        $this->write('config/app.php', "<?php\nreturn ['name' => 'Preview', 'debug' => 0, 'engine' => 'twig', 'key' => 'folio-page-preview-fragments-key-0123', 'url' => 'https://site.test'];\n");
+        touch($this->dir . '/config/app.php', time() + 20);
+        clearstatcache();
+        $this->session = null;
+        $this->signIn('admin@site.test');
+        $this->assertStringNotContainsString('data-folio-preview-locked', (string) $this->send('GET', '/folio/preview/page/post/p1')->getBody());
     }
 
     /** The token on the URL of a component request, from $html's element of class $class. */

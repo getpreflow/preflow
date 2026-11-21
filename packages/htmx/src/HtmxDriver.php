@@ -107,10 +107,11 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
      * hx-headers on the page's <body> element, which every htmx request from the page inherits.
      * The first `<body` outside comments, scripts, styles, templates and textareas is it, and its
      * quoted attributes may hold a `>`. A JSON hx-headers the body has already keeps its other
-     * headers. The body also gets hx-history="false" (replacing the page's own), so htmx keeps the
-     * page out of its history cache. Where the page leaves it unsure (no <body>, an hx-headers that is not quoted plain
-     * JSON: a js: value, an unquoted one) nothing changes: the header is then simply not carried
-     * (component URLs still carry the token), never doubled or broken.
+     * headers. The body always gets hx-history="false" (replacing the page's own), so htmx keeps the
+     * page out of its history cache. An hx-headers of the page's own that is not quoted plain JSON
+     * (a js: value, an unquoted one) is left as it is and the headers are not carried there
+     * (component URLs still carry the token), never doubled or broken. A whole document without a
+     * <body> tag gets one; a fragment (no <html>) is left alone.
      *
      * @since 0.81.0
      */
@@ -127,29 +128,58 @@ final class HtmxDriver implements HypermediaDriver, FormHypermediaDriver, OwnsRe
         ) ?? '';
         if (preg_match('/<body\b/i', $masked, $start, PREG_OFFSET_CAPTURE) !== 1
             || preg_match('/\G<body\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/i', $html, $tag, PREG_OFFSET_CAPTURE, $start[0][1]) !== 1) {
-            return $html;
+            return self::withBody($html, $masked, $headers);
         }
         [$open, $at] = $tag[0];
         $quoted = preg_match('/\shx-headers\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/i', $open, $existing) === 1;
-        if (!$quoted && preg_match('/\shx-headers\b/i', $open) === 1) {
-            return $html;
-        }
+        // An hx-headers of the page's own that is not quoted plain JSON (a js: value, an unquoted
+        // one) is left as it is: the headers are not carried there, but the page still stays out of
+        // the history cache.
+        $carry = !(!$quoted && preg_match('/\shx-headers\b/i', $open) === 1);
         if ($quoted) {
             $own = json_decode(html_entity_decode(($existing[2] ?? '') !== '' ? $existing[2] : $existing[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'), true);
             if (!is_array($own) || ($own !== [] && array_is_list($own))) {
-                return $html;
+                $carry = false;
+            } else {
+                $open = str_replace($existing[0], '', $open);
+                $headers += $own;
             }
-            $open = str_replace($existing[0], '', $open);
-            $headers += $own;
         }
-        $json = json_encode($headers, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
         // Kept out of htmx's history cache (localStorage): what the page carries (a preview token, a
         // draft) never outlives it there. A value the page set itself is replaced.
         $open = preg_replace('/\s(?:data-)?hx-history\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $open) ?? $open;
-        $attribute = ' hx-headers="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '" hx-history="false"';
+        $attribute = ($carry ? self::headersAttribute($headers) : '') . ' hx-history="false"';
         $open = preg_replace('#\s*/?>$#', $attribute . '>', $open, 1) ?? $open;
 
         return substr_replace($html, $open, $at, strlen($tag[0][0]));
+    }
+
+    /**
+     * A whole document without a <body> tag (the browser makes one): a <body> with the headers and
+     * hx-history="false" after its </head> (else its <html> tag). A fragment (no <html>) is left as
+     * it is: it goes into a page that carries them already.
+     *
+     * @param array<string, string> $headers
+     */
+    private static function withBody(string $html, string $masked, array $headers): string
+    {
+        $body = '<body' . self::headersAttribute($headers) . ' hx-history="false">';
+        if (preg_match('#</head\s*>#i', $masked, $head, PREG_OFFSET_CAPTURE) === 1) {
+            return substr_replace($html, $body, $head[0][1] + strlen($head[0][0]), 0);
+        }
+        if (preg_match('/<html\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>/i', $masked, $root, PREG_OFFSET_CAPTURE) === 1) {
+            return substr_replace($html, $body, $root[0][1] + strlen($root[0][0]), 0);
+        }
+
+        return $html;
+    }
+
+    /** @param array<string, string> $headers */
+    private static function headersAttribute(array $headers): string
+    {
+        $json = json_encode($headers, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+
+        return ' hx-headers="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '"';
     }
 
     /** Every HX-* response header: htmx reads them (HX-Trigger, HX-Redirect, HX-Push-Url, HX-Retarget…). */

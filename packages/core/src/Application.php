@@ -416,6 +416,12 @@ final class Application
 
         $debug = DebugLevel::from((int) $this->config->get('app.debug', 0));
         $secretKey = $this->config->get('app.key', \Preflow\Core\Http\Csrf\StatelessCsrfToken::DEFAULT_KEY);
+        // No weak key in production (owner decision, 0.81): a web app refuses to start with one;
+        // debug mode warns once (reportWeakKey()); the console boots, so key:generate can fix it.
+        $keyProblem = \Preflow\Core\Security\AppKey::problem((string) $secretKey);
+        if ($keyProblem !== null && !$debug->isDebug() && !$this->runningInConsole()) {
+            throw \Preflow\Core\Security\WeakAppKey::because($keyProblem);
+        }
 
         // The render context's edges: debug mode reports a torn frame stack loudly; the system
         // clock (contexts take "now" from it; code reads Contexts::current()->clock); the request,

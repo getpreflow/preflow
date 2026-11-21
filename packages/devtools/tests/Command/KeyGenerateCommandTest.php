@@ -70,6 +70,30 @@ final class KeyGenerateCommandTest extends TestCase
         $this->assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $key);
     }
 
+    /**
+     * A site whose key is weak (production refuses to serve with it) fixes itself from the console:
+     * key:generate runs (the console boots with a weak key) and writes a key that can sign.
+     */
+    public function test_key_generate_runs_with_a_weak_key_and_writes_one_that_can_sign(): void
+    {
+        file_put_contents($this->tmpDir . '/.env', "APP_KEY=change-this-to-a-random-32-char-string!\n");
+        mkdir($this->tmpDir . '/config');
+        file_put_contents($this->tmpDir . '/config/app.php', "<?php\nreturn ['name' => 'k', 'debug' => 0, 'key' => 'change-this-to-a-random-32-char-string!'];\n");
+        $cwd = getcwd();
+        chdir($this->tmpDir);
+        try {
+            ob_start();
+            $code = (new \Preflow\DevTools\Console($this->tmpDir))->run(['preflow', 'key:generate']);
+            ob_end_clean();
+        } finally {
+            chdir((string) $cwd);
+        }
+
+        $this->assertSame(0, $code);
+        preg_match('/^APP_KEY=(.+)$/m', (string) file_get_contents($this->tmpDir . '/.env'), $matches);
+        $this->assertTrue(\Preflow\Core\Security\AppKey::canSign($matches[1] ?? ''), 'the new key can sign');
+    }
+
     private function deleteDir(string $dir): void
     {
         if (!is_dir($dir)) return;

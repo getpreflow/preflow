@@ -1105,7 +1105,11 @@ user, admits such a request and renders it as the preview, in a frame of its own
 **Security.** A preview token lets the requests a staff member's preview makes later render as that
 preview: the same role or anonymous visitor, the same language, and drafts or the published state.
 It is signed with a key derived from `app.key`, so it is off unless the key is at least 32 bytes and
-not a public example. It is bound to the issuer's session, so signing out, signing in or another
+not a public example. In production a web app does not start with such a weak key at all
+(`WeakAppKey`: run `php preflow key:generate`, then deploy again; console commands still run, so the
+key can be fixed). In debug mode the app starts and says once what is off; a whole-page preview then
+switches its interactive parts off (clicks, forms and htmx requests in the frame are stopped, and the
+preview bar says why) instead of letting them run on the live site. It is bound to the issuer's session, so signing out, signing in or another
 browser ends it. It is bound to the signed-in staff member, lives at most 15 minutes, and its
 permissions are checked again on every request. Requests under a token never change data (they
 answer 403), never send mail, and never sign in or out. They never read or write the editor's

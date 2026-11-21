@@ -301,7 +301,8 @@ return [
         'other_record' => 'Une autre page répond à l’adresse :path : les visiteurs verraient celle-ci, pas cet enregistrement. Donnez à cet enregistrement sa propre adresse.',
         'frame_refused' => 'Les réglages de sécurité de ce site n’autorisent pas ses pages dans un cadre : l’aperçu ne peut pas s’afficher ici.',
         'open_tab' => 'Ouvrir l’aperçu dans un nouvel onglet',
-        'parts_live' => 'Les parties interactives de cet aperçu fonctionnent sur le site public et enregistrent réellement : la clé d’application du site fait moins de 32 caractères.',
+        'parts_locked' => 'Les parties interactives sont désactivées dans cet aperçu : la clé d’application du site ne peut pas signer d’aperçu (il lui faut au moins 32 caractères).',
+        'locked_click' => 'Désactivé dans cet aperçu.',
     ],
     'share_preview' => [
         'notice' => 'Aperçu d’un brouillon. Les formulaires de cette page envoient au site public.',
