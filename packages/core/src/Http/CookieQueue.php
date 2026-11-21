@@ -16,11 +16,13 @@ use Psr\Http\Message\ResponseInterface;
  *
  * Since 0.81 each render frame has its own queue (a frame slot): the one the container gives,
  * ofCurrentFrame(), works on the queue of the frame current at each call, so a render in its own
- * frame (Application::render()) never sees or takes the cookies of the request around it. As
- * before 0.81, only ResolveUserMiddleware (on a request with a session) and the Kernel's error
- * path set queued cookies; what a request's frame still holds at its end is dropped with the
- * frame. A capturing render reports what it left (CookieChannel), a delivering one hands it to
- * the queue of the frame around it. A queue made with `new` is a plain list of its own.
+ * frame (Application::render()) never sees or takes the cookies of the request around it.
+ * Since 0.81.1 a request's frame that delivers sets what it queued, with or without auth or a
+ * session: the Kernel applies the queue to the route's response and to the pipeline's answer
+ * (ResolveUserMiddleware, on a request with a session, may have set them first), and to the error
+ * response. A capturing render reports what it left (CookieChannel), a delivering one hands it to
+ * the queue of the frame around it, a discarding one drops it. A queue made with `new` is a plain
+ * list of its own.
  */
 final class CookieQueue
 {

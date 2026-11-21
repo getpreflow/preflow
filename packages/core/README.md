@@ -590,11 +590,15 @@ $people = $log->people(['page', 'post']);                // who did something, t
 `Preflow\Core\Http\CookieQueue` holds `Set-Cookie` values queued during a request (the
 remember-me cookies of `preflow/auth`, whose tokens use the `auth` storage alias, else the
 default: with a JSON default and the auth tables in SQLite, set `'auth' => 'sqlite'` in
-`config/data.php`). It is bound when `config/auth.php` exists. The
-middleware that queued them applies them to its response; the Kernel applies what is left to
-an error response, which bypasses the pipeline, so a rotated cookie is never lost.
-`isolated(\Closure $render)` (since 0.75) runs `$render` with the queue empty, drops what it
-queued and puts the earlier values back; core's internal render scope uses it.
+`config/data.php`), or by the site. Each render frame has its own queue. Since 0.81.1 every
+request's response takes what its frame queued, with or without auth or a session: the Kernel
+applies the queue to the route's response inside the pipeline (so the page cache sees the
+`Set-Cookie` and does not store the page), what middleware queued on the way out to the
+pipeline's answer, and what is left to an error response, so a cookie is set once and never
+lost. `Application::render()` follows its outbox policy instead: a preview captures the cookies
+(`RenderResult::wouldSend('cookies')`), an internal render drops them, and a delivering render
+hands them to the request around it. `isolated(\Closure $render)` (since 0.75, deprecated since
+0.81) runs `$render` with the queue empty, drops what it queued and puts the earlier values back.
 
 ### Auth providers from config
 

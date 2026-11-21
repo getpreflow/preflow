@@ -93,6 +93,14 @@ final class Application
     private readonly MiddlewarePipeline $pipeline;
     private ?RouterInterface $router = null;
     private ?Kernel $kernel = null;
+
+    /**
+     * The frames render() opened: their response is the caller's result, so what they leave
+     * queued under Deliver goes to the frame around them, never on that response.
+     *
+     * @var \WeakMap<RenderFrame, true>
+     */
+    private \WeakMap $renderFrames;
     private ?\Preflow\Core\Http\SecurityHeadersMiddleware $securityHeaders = null;
     private string $basePath;
     /** @var list<\Preflow\Auth\LazyUserProvider> */
@@ -121,6 +129,7 @@ final class Application
 
     private function __construct(Config $config, string $basePath)
     {
+        $this->renderFrames = new \WeakMap();
         $this->config = $config;
         $this->basePath = rtrim($basePath, '/');
         $this->container = new Container();
@@ -617,6 +626,7 @@ final class Application
             cookies: $this->container->get(\Preflow\Core\Http\CookieQueue::class),
             cors: $cors,
             hints: $this->container->get(\Preflow\Core\Http\ResponseHeaderHints::class),
+            setsQueuedCookies: $this->setsQueuedCookies(...),
         );
     }
 
@@ -689,6 +699,26 @@ final class Application
         }
     }
 
+    /**
+     * Whether the current frame's response takes the cookies it queued (the Kernel applies them):
+     * a request's frame that delivers (a visit; a request of its own inside another frame). A
+     * render() frame never sets them on its result's response: renderWith() hands them to the frame
+     * around it under Deliver, captures them under Capture and drops them under Discard. A request's
+     * frame that captures or discards does not set them either.
+     */
+    private function setsQueuedCookies(): bool
+    {
+        if (Contexts::depth() === 0) {
+            return true;
+        }
+        $frame = Contexts::frame();
+        if ($frame->outboxPolicy() !== \Preflow\Core\Context\OutboxPolicy::Deliver) {
+            return false;
+        }
+
+        return !isset($this->renderFrames[$frame]);
+    }
+
     /** Whether the current frame delivers what it queued (OutboxPolicy::Deliver, as far as its parents let it). */
     private static function sends(): bool
     {
@@ -733,8 +763,8 @@ final class Application
      * of itself (the SEO audit, GEO, a page cache rebuild, a preview). The frame around it is
      * untouched: the render cannot see or take its cookies. Set-Cookie values the render left
      * queued (none of its middleware set them) are captured as 'cookies' items under Capture,
-     * dropped under Discard, and under Deliver go into the queue of the frame around it (where
-     * that request's ResolveUserMiddleware sets them, or they are dropped as its own would be);
+     * dropped under Discard, and under Deliver go into the queue of the frame around it (whose
+     * response takes them where it takes its own, since 0.81.1);
      * with no frame around it (depth 0) they are dropped, as 0.80 dropped cookies left queued.
      * What it queues under Deliver reaches the frame around it when its frame closes.
      *
@@ -820,6 +850,7 @@ final class Application
         $handOver = [];
         $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request, $ctx, $handle): ResponseInterface {
             $frame = Contexts::frame();
+            $this->renderFrames[$frame] = true;
             // Scopes a package added with the deprecated RenderScopes::add() run around an internal
             // render, inside its frame.
             $response = $ctx->purpose->isInternal() && $this->container->bound(\Preflow\View\Geo\RenderScopes::class)
@@ -3736,7 +3767,7 @@ final class Application
                 $sessionKeys[(string) $name] = $name === $defaultGuard ? '_auth_user_id' : '_auth_user_id.' . $name;
             }
         }
-        // The session guards' cookies go to the current render frame's queue: ResolveUserMiddleware and the Kernel's error path apply it.
+        // The session guards' cookies go to the current render frame's queue: ResolveUserMiddleware (with a session) and the Kernel apply it.
         $cookieQueue = $this->container->get(\Preflow\Core\Http\CookieQueue::class);
         $guards = [];
         foreach ($authConfig['guards'] ?? [] as $name => $guardConfig) {

@@ -38,15 +38,17 @@ use Psr\Http\Server\RequestHandlerInterface;
  *
  * A session guard with a remember-me cookie signs its user back in from the
  * cookie when its session has nobody (every such guard, not only up to the
- * winner, so a member stays remembered beside a signed-in staff user). Cookies
- * the guards queue (login, logout, rotation) go on the response, only where the
- * request has a session: public pages never get a Set-Cookie. The guards queue
- * into the render frame's own CookieQueue (the application's follows the frame),
- * so a render in its own frame inside this request (the SEO audit, a preview)
- * neither sees nor takes them. When the handler throws, the Kernel applies the
- * frame's CookieQueue to the error response. Cookies queued in the frame before
- * this middleware are dropped, and ones queued after the handler returned are
- * never set (the frame drops them at its end), as before 0.81.
+ * winner, so a member stays remembered beside a signed-in staff user). The
+ * guards queue cookies (login, logout, rotation) only where the request has a
+ * session. They queue into the render frame's own CookieQueue (the
+ * application's follows the frame), so a render in its own frame inside this
+ * request (the SEO audit, a preview) neither sees nor takes them. On a request
+ * with a session this middleware sets what that queue holds when the handler
+ * returns, the site's cookies included; without one it leaves the queue alone.
+ * Since 0.81.1 core sets the rest (the Kernel applies the frame's queue to the
+ * route's response and to the pipeline's answer, and to the error response
+ * when the handler throws), so a cookie is set once and none is dropped: a
+ * cookie queued before this middleware ran is no longer dropped.
  */
 final class ResolveUserMiddleware implements MiddlewareInterface
 {
@@ -69,9 +71,6 @@ final class ResolveUserMiddleware implements MiddlewareInterface
                 ->withAttribute(Authenticatable::class, $user)
                 ->withAttribute(AuthManager::GUARD_ATTRIBUTE, $this->authManager->guardName()));
         }
-
-        // What this frame queued before the guards ran is not this middleware's to set.
-        $this->pullCookies();
 
         $users = [];
         $name = null;
@@ -108,11 +107,11 @@ final class ResolveUserMiddleware implements MiddlewareInterface
 
         $response = $handler->handle($request);
 
-        $cookies = $this->pullCookies();
+        // Without a session the guards queued nothing; what the site queued is core's to set.
         if ($request->getAttribute(SessionInterface::class) === null) {
             return $response;
         }
-        foreach ($cookies as $cookie) {
+        foreach ($this->pullCookies() as $cookie) {
             $response = $response->withAddedHeader('Set-Cookie', $cookie);
         }
 

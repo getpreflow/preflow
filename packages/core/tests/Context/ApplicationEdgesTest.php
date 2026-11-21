@@ -271,8 +271,8 @@ final class ApplicationEdgesTest extends TestCase
         $this->assertSame(['outer=1; Path=/'], $left, 'the outer frame keeps its cookie');
     }
 
-    /** 0.80's rule: only ResolveUserMiddleware sets queued cookies, and only on a request with a session. */
-    public function test_a_sessionless_public_page_gets_no_set_cookie_even_with_a_queued_cookie(): void
+    /** Since 0.81.1 a request's queued cookies reach its response without auth or a session (core applies them). */
+    public function test_a_sessionless_public_page_sets_the_cookies_it_queued(): void
     {
         $app = $this->app();
         $seen = [];
@@ -293,8 +293,133 @@ final class ApplicationEdgesTest extends TestCase
         $response = $app->handle(new ServerRequest('GET', 'https://site.test/about'));
 
         $this->assertSame([[], 0, true, true], $seen, 'the nested render\'s cookie waits in the request\'s queue');
-        $this->assertSame([], $response->getHeader('Set-Cookie'), 'no session: dropped with the request\'s frame, as 0.80 dropped them');
-        $this->assertSame([], $app->handle(new ServerRequest('GET', 'https://site.test/nested'))->getHeader('Set-Cookie'));
+        $this->assertSame(['outer=1; Path=/', 'nested=1; Path=/'], $response->getHeader('Set-Cookie'), 'no auth, no session: the request sets what it queued, once');
+        $this->assertSame(['nested=1; Path=/'], $app->handle(new ServerRequest('GET', 'https://site.test/nested'))->getHeader('Set-Cookie'));
+    }
+
+    /** The route's response carries the cookie inside the pipeline: every middleware (the page cache's "set-cookie" skip) sees it. */
+    public function test_a_cookie_a_route_queues_is_on_the_response_the_middleware_sees(): void
+    {
+        $app = Application::create($this->dir);
+        $app->setRouter(new EdgeRouter());
+        $app->setActionDispatcher(static function () use ($app): ResponseInterface {
+            $app->container()->get(CookieQueue::class)->queue('flavour=mint; Path=/');
+
+            return new Response(200, [], 'action');
+        });
+        $app->boot();
+        $inside = null;
+        EdgeRoutes::$routes['/page'] = static function (ServerRequestInterface $r, Container $c, RequestHandlerInterface $next) use (&$inside): ResponseInterface {
+            $response = $next->handle($r);
+            $inside = $response->getHeader('Set-Cookie');
+
+            return $response;
+        };
+
+        $response = $app->handle(new ServerRequest('GET', 'https://site.test/page'));
+
+        $this->assertSame('action', (string) $response->getBody());
+        $this->assertSame(['flavour=mint; Path=/'], $inside, 'middleware around the route sees the cookie');
+        $this->assertSame(['flavour=mint; Path=/'], $response->getHeader('Set-Cookie'), 'applied once');
+    }
+
+    /** run() emits the cookies the request queued. */
+    #[RunInSeparateProcess]
+    public function test_run_emits_the_cookies_the_request_queued(): void
+    {
+        $app = $this->app();
+        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('seen=1; Path=/');
+
+            return new Response(200, [], 'about');
+        };
+        self::globals('/about');
+        $emitted = null;
+        $app->emitUsing(static function (ResponseInterface $r) use (&$emitted): void {
+            $emitted = $r->getHeader('Set-Cookie');
+        }, static function (): void {});
+
+        $app->run();
+
+        $this->assertSame(['seen=1; Path=/'], $emitted);
+    }
+
+    /** A request handled inside another frame (a command's, a test's) is a request of its own: its response carries its cookies, the frame around it keeps none. */
+    public function test_a_nested_request_sets_its_own_cookies(): void
+    {
+        $app = $this->app();
+        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('seen=1; Path=/');
+
+            return new Response(200, [], 'about');
+        };
+
+        [$response, $left] = Contexts::run(RenderContext::console($app->site(), new SystemClock()), static function () use ($app): array {
+            $response = $app->handle(new ServerRequest('GET', 'https://site.test/about'));
+
+            return [$response, $app->container()->get(CookieQueue::class)->pull()];
+        });
+
+        $this->assertSame(['seen=1; Path=/'], $response->getHeader('Set-Cookie'));
+        $this->assertSame([], $left);
+    }
+
+    /** An internal render drops what it queued; a preview captures it (test_render_returns_the_captured_outbox_and_skipped_writes). */
+    public function test_an_internal_render_drops_the_cookies_it_queued(): void
+    {
+        $app = $this->app();
+        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('seen=1; Path=/');
+
+            return new Response(200, [], 'about');
+        };
+
+        $result = $app->render(RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/about'), new ServerRequest('GET', '/about'));
+
+        $this->assertSame('about', (string) $result->response->getBody());
+        $this->assertSame([], $result->response->getHeader('Set-Cookie'));
+        $this->assertSame(0, $result->wouldSend('cookies'));
+    }
+
+    /** With auth on a public path without a session, the site's cookie still reaches the response. */
+    #[RunInSeparateProcess]
+    public function test_with_auth_a_sessionless_request_sets_the_cookies_it_queued(): void
+    {
+        $this->auth(['/members']);
+        $app = $this->app();
+        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('consent=1; Path=/');
+
+            return new Response(200, [], 'about');
+        };
+
+        $response = $app->handle(new ServerRequest('GET', 'https://site.test/about'));
+
+        $this->assertSame(PHP_SESSION_NONE, session_status(), 'no session was started');
+        $this->assertSame(['consent=1; Path=/'], $response->getHeader('Set-Cookie'));
+    }
+
+    /** With a session, the guard's cookie and the site's are each set once: what auth set, core does not set again. */
+    #[RunInSeparateProcess]
+    public function test_with_auth_and_a_session_every_cookie_is_set_once(): void
+    {
+        $this->auth(null);
+        $app = $this->app();
+        $this->assertSame(PHP_SESSION_ACTIVE, session_status());
+        $_SESSION['_auth_user_id'] = (string) (new \Preflow\Auth\ConfigUserProvider([['email' => 'admin@site.test', 'password_hash' => '']]))
+            ->findByCredentials(['email' => 'admin@site.test'])?->getAuthId();
+        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('consent=1; Path=/');
+
+            return new Response(200, [], 'about');
+        };
+        $request = (new Psr17Factory())->createServerRequest('GET', 'https://site.test/about')->withHeader('Cookie', 'edges=' . session_id());
+
+        $response = $app->handle($request);
+
+        $names = self::cookieNames($response);
+        sort($names);
+        $this->assertSame(['consent', SessionGuard::SIGNED_IN_COOKIE], $names);
     }
 
     /** A test's or a site's own frame knows no cookie channel: a delivering render inside it must still close cleanly. */
@@ -856,6 +981,19 @@ final class ApplicationEdgesTest extends TestCase
         return $app;
     }
 
+    /** @param list<string>|null $paths auth.session.paths (null: a session on every path) */
+    private function auth(?array $paths): void
+    {
+        file_put_contents($this->dir . '/config/auth.php', "<?php\nreturn " . var_export([
+            'default_guard' => 'session',
+            'guards' => ['session' => ['class' => SessionGuard::class, 'provider' => 'users']],
+            'providers' => ['users' => ['class' => \Preflow\Auth\ConfigUserProvider::class, 'users' => [
+                ['id' => 'admin', 'email' => 'admin@site.test', 'password_hash' => '', 'roles' => []],
+            ]]],
+            'session' => ['cookie' => 'edges', 'secure' => false] + ($paths === null ? [] : ['paths' => $paths]),
+        ], true) . ";\n");
+    }
+
     private function notify(): void
     {
         file_put_contents($this->dir . '/config/notify.php', "<?php\nreturn ['transports' => ['mail' => ['driver' => 'memory']], 'channels' => ['email' => ['transport' => 'mail', 'from' => 'site@site.test']]];\n");
@@ -912,7 +1050,7 @@ final class EdgeClockProvider extends \Preflow\Core\Container\ServiceProvider
 /** Answers the paths a test registers, else passes the request on. */
 final class EdgeRoutes implements MiddlewareInterface
 {
-    /** @var array<string, \Closure(ServerRequestInterface, Container): ResponseInterface> */
+    /** @var array<string, \Closure(ServerRequestInterface, Container, RequestHandlerInterface): ResponseInterface> */
     public static array $routes = [];
 
     public function __construct(private readonly Container $container) {}
@@ -921,7 +1059,16 @@ final class EdgeRoutes implements MiddlewareInterface
     {
         $route = self::$routes[$request->getUri()->getPath()] ?? null;
 
-        return $route !== null ? $route($request, $this->container) : $handler->handle($request);
+        return $route !== null ? $route($request, $this->container, $handler) : $handler->handle($request);
+    }
+}
+
+/** Matches every path to one action route (the app's action dispatcher answers it). */
+final class EdgeRouter implements \Preflow\Core\Routing\RouterInterface
+{
+    public function match(ServerRequestInterface $request): \Preflow\Core\Routing\Route
+    {
+        return new \Preflow\Core\Routing\Route(\Preflow\Core\Routing\RouteMode::Action, 'edge');
     }
 }
 

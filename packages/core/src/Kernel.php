@@ -43,7 +43,8 @@ final class Kernel
         /**
          * cookies queued before an exception (a rotated remember-me cookie) still reach the error
          * response: those of the current render frame only (CookieQueue::ofCurrentFrame()), never
-         * those of a request around a failed internal render
+         * those of a request around a failed internal render; since 0.81.1 also the response of a
+         * frame that sets them ($setsQueuedCookies)
          */
         private readonly ?\Preflow\Core\Http\CookieQueue $cookies = null,
         /** a cross-origin API call must be able to read its error (a 401, a 422) */
@@ -54,6 +55,15 @@ final class Kernel
          * so the page cache and every other middleware see them, and the restrictive ones on the error page
          */
         private readonly ?\Preflow\Core\Http\ResponseHeaderHints $hints = null,
+        /**
+         * since 0.81.1: whether the current render frame's response takes the cookies it queued
+         * ($cookies): when it does, they go on the route's response inside the pipeline (so the
+         * page cache and every other middleware see them) and what middleware queued on the way
+         * out on the pipeline's answer. Null: only the error response takes them, as before.
+         *
+         * @var (\Closure(): bool)|null
+         */
+        private readonly ?\Closure $setsQueuedCookies = null,
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
@@ -79,7 +89,10 @@ final class Kernel
     private function answer(ServerRequestInterface $request, ServerRequestInterface $plain): ResponseInterface
     {
         try {
-            return $this->pipeline->process($request, fn (ServerRequestInterface $req): ResponseInterface => $this->withHints($this->dispatch($req)));
+            $response = $this->pipeline->process($request, fn (ServerRequestInterface $req): ResponseInterface => $this->withQueuedCookies($this->withHints($this->dispatch($req))));
+
+            // What middleware queued after the route answered (or instead of it).
+            return $this->withQueuedCookies($response);
         } catch (\Throwable $e) {
             // The render answers with the error page; who asked for it (Application::render()) still learns why.
             if (\Preflow\Core\Context\Contexts::depth() > 0) {
@@ -134,6 +147,16 @@ final class Kernel
     private function withHints(ResponseInterface $response): ResponseInterface
     {
         return $this->hints?->applyTo($response) ?? $response;
+    }
+
+    /** $response with the cookies the current frame queued, where its response takes them ($setsQueuedCookies); applying empties the queue. */
+    private function withQueuedCookies(ResponseInterface $response): ResponseInterface
+    {
+        if ($this->cookies === null || $this->setsQueuedCookies === null || !($this->setsQueuedCookies)()) {
+            return $response;
+        }
+
+        return $this->cookies->apply($response);
     }
 
     /** A class name: the container's instance, else autowired. With arguments: a new instance, the arguments winning over autowiring. */
