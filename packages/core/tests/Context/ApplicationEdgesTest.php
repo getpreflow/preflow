@@ -249,26 +249,154 @@ final class ApplicationEdgesTest extends TestCase
         $this->assertContains(SessionGuard::SIGNED_IN_COOKIE, self::cookieNames($response), 'the marker the request queued reaches its response; the render in its own frame could not pull it');
     }
 
-    public function test_kernel_error_path_applies_only_its_own_frames_cookies(): void
+    /**
+     * Since 0.82.0 the cookies a render queued before it failed follow its outbox policy, as when
+     * it answers: a failing preview captures them. Until 0.81.1 the error page carried them.
+     */
+    public function test_a_failing_preview_captures_its_cookies_and_the_outer_frame_keeps_its_own(): void
     {
         $app = $this->app();
-        EdgeRoutes::$routes['/boom'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
-            $c->get(CookieQueue::class)->queue('inner=1; Path=/');
-            throw new \RuntimeException('render failed');
+        $this->boomQueuing('inner=1; Path=/');
+
+        [$result, $left] = $this->inOuterFrame($app, static fn (): RenderContext => Contexts::current()->for(new ServerRequest('GET', 'https://site.test/boom'))->capturing());
+
+        $this->assertSame(500, $result->response->getStatusCode());
+        $this->assertSame([], $result->response->getHeader('Set-Cookie'), 'the failing render\'s error page sets no cookie');
+        $this->assertSame(1, $result->wouldSend('cookies'), 'the preview captured its cookie');
+        $this->assertSame(['outer=1; Path=/'], $left, 'the outer frame keeps its cookie, and only its own');
+    }
+
+    public function test_a_failing_internal_render_drops_its_cookies(): void
+    {
+        $app = $this->app();
+        $this->boomQueuing('inner=1; Path=/');
+
+        [$result, $left] = $this->inOuterFrame($app, static fn (): RenderContext => RenderContext::internal(Purpose::Audit, $app->site(), new SystemClock(), '/boom'));
+
+        $this->assertSame(500, $result->response->getStatusCode());
+        $this->assertSame([], $result->response->getHeader('Set-Cookie'));
+        $this->assertSame(0, $result->wouldSend('cookies'));
+        $this->assertSame(['outer=1; Path=/'], $left, 'dropped: it never reaches the request around it');
+    }
+
+    public function test_a_failing_delivering_render_hands_its_cookies_to_the_frame_around_it(): void
+    {
+        $app = $this->app();
+        $this->boomQueuing('inner=1; Path=/');
+
+        [$result, $left] = $this->inOuterFrame($app, static fn (): RenderContext => Contexts::current()->for(new ServerRequest('GET', 'https://site.test/boom')));
+
+        $this->assertSame(500, $result->response->getStatusCode());
+        $this->assertSame([], $result->response->getHeader('Set-Cookie'), 'a render\'s result never sets them');
+        $this->assertSame(['outer=1; Path=/', 'inner=1; Path=/'], $left, 'the frame around it sets them on its own response');
+    }
+
+    /** A failing visit still sends what it queued (a rotated remember-me cookie is never lost), once. */
+    public function test_a_failing_visit_sets_its_cookies_on_the_error_page_once(): void
+    {
+        $app = $this->app();
+        $this->boomQueuing('inner=1; Path=/');
+
+        $response = $app->handle(new ServerRequest('GET', 'https://site.test/boom'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertSame(['inner=1; Path=/'], $response->getHeader('Set-Cookie'));
+    }
+
+    /** A request asked for in-process sets its cookies on its own response, also when it fails; the outer request keeps its own. */
+    public function test_a_failing_nested_request_sets_its_cookies_on_its_own_error_page(): void
+    {
+        $app = $this->app();
+        $this->boomQueuing('inner=1; Path=/');
+        $nested = null;
+        EdgeRoutes::$routes['/about'] = static function (ServerRequestInterface $r, Container $c) use ($app, &$nested): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('outer=1; Path=/');
+            $nested = $app->handle(new ServerRequest('GET', 'https://site.test/boom'));
+
+            return new Response(200, [], 'about');
         };
 
+        $response = $app->handle(new ServerRequest('GET', 'https://site.test/about'));
+
+        $this->assertSame(500, $nested?->getStatusCode());
+        $this->assertSame(['inner=1; Path=/'], $nested->getHeader('Set-Cookie'));
+        $this->assertSame(['outer=1; Path=/'], $response->getHeader('Set-Cookie'));
+    }
+
+    /** A cookie already set on the route's response is not lost when a middleware further out throws: the error page sets it, once. */
+    public function test_a_cookie_on_the_routes_response_reaches_the_error_page_when_an_outer_middleware_throws(): void
+    {
+        $app = Application::create($this->dir);
+        $app->setRouter(new EdgeRouter());
+        $app->setActionDispatcher(static function () use ($app): ResponseInterface {
+            $app->container()->get(CookieQueue::class)->queue('remember=rotated; Path=/');
+
+            return new Response(200, [], 'action');
+        });
+        $app->boot();
+        EdgeRoutes::$routes['/page'] = static function (ServerRequestInterface $r, Container $c, RequestHandlerInterface $next): ResponseInterface {
+            $next->handle($r);
+            throw new \RuntimeException('failed after the route answered');
+        };
+
+        $response = $app->handle(new ServerRequest('GET', 'https://site.test/page'));
+
+        $this->assertSame(500, $response->getStatusCode());
+        $this->assertSame(['remember=rotated; Path=/'], $response->getHeader('Set-Cookie'));
+    }
+
+    /** A request a preview asks for in-process captures what it queued (it is part of the preview): the preview reports it, no response sets it. */
+    public function test_a_nested_request_under_a_preview_captures_its_cookies(): void
+    {
+        $app = $this->app();
+        $nested = null;
+        EdgeRoutes::$routes['/nested'] = static function (ServerRequestInterface $r, Container $c): ResponseInterface {
+            $c->get(CookieQueue::class)->queue('nested=1; Path=/');
+
+            return new Response(200, [], 'nested');
+        };
+        EdgeRoutes::$routes['/page'] = static function () use ($app, &$nested): ResponseInterface {
+            $nested = $app->handle(new ServerRequest('GET', 'https://site.test/nested'));
+
+            return new Response(200, [], 'page');
+        };
+
+        $request = new ServerRequest('GET', 'https://site.test/page');
+        $result = Contexts::run(RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/admin'), $app->site(), new SystemClock()), static fn () => $app->render(Contexts::current()->for($request)->capturing()->because(Purpose::Preview), $request));
+
+        $this->assertSame('page', (string) $result->response->getBody());
+        $this->assertSame([], $nested?->getHeader('Set-Cookie'));
+        $this->assertSame([], $result->response->getHeader('Set-Cookie'));
+        $this->assertSame(1, $result->wouldSend('cookies'), 'the preview reports the cookie the nested request would set');
+    }
+
+    /** /boom queues $cookie and throws. */
+    private function boomQueuing(string $cookie): void
+    {
+        EdgeRoutes::$routes['/boom'] = static function (ServerRequestInterface $r, Container $c) use ($cookie): ResponseInterface {
+            $c->get(CookieQueue::class)->queue($cookie);
+            throw new \RuntimeException('render failed');
+        };
+    }
+
+    /**
+     * Renders /boom with Application::render() under the context $ctx makes, inside a frame of
+     * a request to /admin that queued a cookie of its own.
+     *
+     * @param \Closure(): RenderContext $ctx
+     * @return array{\Preflow\Core\Context\RenderResult, list<string>} the result and what the outer frame's queue holds afterwards
+     */
+    private function inOuterFrame(Application $app, \Closure $ctx): array
+    {
         $outer = RenderContext::fromRequest(new ServerRequest('GET', 'https://site.test/admin'), $app->site(), new SystemClock());
-        [$result, $left] = Contexts::run($outer, static function () use ($app): array {
+
+        return Contexts::run($outer, static function () use ($app, $ctx): array {
             $queue = $app->container()->get(CookieQueue::class);
             $queue->queue('outer=1; Path=/');
-            $result = $app->render(Contexts::current()->for(new ServerRequest('GET', 'https://site.test/boom'))->capturing(), new ServerRequest('GET', 'https://site.test/boom'));
+            $result = $app->render($ctx(), new ServerRequest('GET', 'https://site.test/boom'));
 
             return [$result, $queue->pull()];
         });
-
-        $this->assertSame(500, $result->response->getStatusCode());
-        $this->assertSame(['inner'], self::cookieNames($result->response), 'the error page carries the failed render\'s own cookie');
-        $this->assertSame(['outer=1; Path=/'], $left, 'the outer frame keeps its cookie');
     }
 
     /** Since 0.81.1 a request's queued cookies reach its response without auth or a session (core applies them). */

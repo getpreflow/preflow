@@ -93,14 +93,6 @@ final class Application
     private readonly MiddlewarePipeline $pipeline;
     private ?RouterInterface $router = null;
     private ?Kernel $kernel = null;
-
-    /**
-     * The frames render() opened: their response is the caller's result, so what they leave
-     * queued under Deliver goes to the frame around them, never on that response.
-     *
-     * @var \WeakMap<RenderFrame, true>
-     */
-    private \WeakMap $renderFrames;
     private ?\Preflow\Core\Http\SecurityHeadersMiddleware $securityHeaders = null;
     private string $basePath;
     /** @var list<\Preflow\Auth\LazyUserProvider> */
@@ -129,7 +121,6 @@ final class Application
 
     private function __construct(Config $config, string $basePath)
     {
-        $this->renderFrames = new \WeakMap();
         $this->config = $config;
         $this->basePath = rtrim($basePath, '/');
         $this->container = new Container();
@@ -626,7 +617,8 @@ final class Application
             cookies: $this->container->get(\Preflow\Core\Http\CookieQueue::class),
             cors: $cors,
             hints: $this->container->get(\Preflow\Core\Http\ResponseHeaderHints::class),
-            setsQueuedCookies: $this->setsQueuedCookies(...),
+            // No setsQueuedCookies: the frame-bound queue brings core's rule (since 0.82.0): a
+            // request's frame that delivers sets them, a render() frame never does.
         );
     }
 
@@ -700,26 +692,6 @@ final class Application
         }
     }
 
-    /**
-     * Whether the current frame's response takes the cookies it queued (the Kernel applies them):
-     * a request's frame that delivers (a visit; a request of its own inside another frame). A
-     * render() frame never sets them on its result's response: renderWith() hands them to the frame
-     * around it under Deliver, captures them under Capture and drops them under Discard. A request's
-     * frame that captures or discards does not set them either.
-     */
-    private function setsQueuedCookies(): bool
-    {
-        if (Contexts::depth() === 0) {
-            return true;
-        }
-        $frame = Contexts::frame();
-        if ($frame->outboxPolicy() !== \Preflow\Core\Context\OutboxPolicy::Deliver) {
-            return false;
-        }
-
-        return !isset($this->renderFrames[$frame]);
-    }
-
     /** Whether the current frame delivers what it queued (OutboxPolicy::Deliver, as far as its parents let it). */
     private static function sends(): bool
     {
@@ -766,7 +738,8 @@ final class Application
      * untouched: the render cannot see or take its cookies. Set-Cookie values the render left
      * queued (none of its middleware set them) are captured as 'cookies' items under Capture,
      * dropped under Discard, and under Deliver go into the queue of the frame around it (whose
-     * response takes them where it takes its own, since 0.81.1);
+     * response takes them where it takes its own, since 0.81.1); since 0.82.0 also when the render
+     * fails (its error page sets none: Contexts::runRender(), RenderFrame::$openedByRender);
      * with no frame around it (depth 0) they are dropped, as 0.80 dropped cookies left queued.
      * What it queues under Deliver reaches the frame around it when its frame closes.
      *
@@ -849,40 +822,22 @@ final class Application
     private function renderWith(RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult
     {
         $frame = null;
-        $handOver = [];
-        $response = Contexts::run($ctx, function () use (&$frame, &$handOver, $request, $ctx, $handle): ResponseInterface {
+        // A frame of a render entry: the Kernel never sets its cookies on the response (the result),
+        // also not on its error page; the frame settles what it left by its policy when it closes
+        // (CookieQueue::settle(): captured, handed to the frame around it, or dropped).
+        $response = Contexts::runRender($ctx, function () use (&$frame, $request, $ctx, $handle): ResponseInterface {
             $frame = Contexts::frame();
-            $this->renderFrames[$frame] = true;
             // Scopes a package added with the deprecated RenderScopes::add() run around an internal
             // render, inside its frame.
-            $response = $ctx->purpose->isInternal() && $this->container->bound(\Preflow\View\Geo\RenderScopes::class)
+            return $ctx->purpose->isInternal() && $this->container->bound(\Preflow\View\Geo\RenderScopes::class)
                 ? $this->container->get(\Preflow\View\Geo\RenderScopes::class)->run($request, $handle)
                 : $handle();
-            $left = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue())->pull();
-            if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Capture && $left !== []) {
-                // Only a capturing frame holds cookie items, and it knows their channel; they never move on.
-                $frame->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
-                foreach ($left as $cookie) {
-                    $frame->outbox()->queue(new \Preflow\Core\Http\QueuedCookie($cookie), \Preflow\Core\Http\CookieChannel::NAME);
-                }
-            } elseif ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Deliver) {
-                $handOver = $left;
-            }
-
-            return $response;
         });
         $token = $ctx->get(\Preflow\Core\Context\Preview\PreviewGrant::class)?->token();
         if ($token !== null && $response->getStatusCode() < 300) {
             // A render under a preview token hands it to the page's hypermedia clients (ruling R5); an error page never shows it.
             $response = \Preflow\Core\Context\Preview\PreviewUrls::inPage($response, $token, $this->container->get(\Preflow\Core\Http\Hypermedia\HypermediaProtocols::class));
         }
-        if ($handOver !== [] && Contexts::depth() > 0) {
-            $queue = $this->container->get(\Preflow\Core\Http\CookieQueue::class);
-            foreach ($handOver as $cookie) {
-                $queue->queue($cookie);
-            }
-        }
-
         // A frame that never made its outbox captured nothing (and makes none, nor its parent's, now).
         return new RenderResult($response, $frame->madeOutbox()?->drain() ?? [], $frame->skippedWrites(), $frame->failure());
     }

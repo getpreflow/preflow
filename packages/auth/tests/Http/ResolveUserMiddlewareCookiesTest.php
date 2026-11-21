@@ -72,6 +72,31 @@ final class ResolveUserMiddlewareCookiesTest extends TestCase
         $this->assertSame([], $left, 'nothing left for core to set again');
     }
 
+    /**
+     * Since 0.82.0, in a frame whose response does not take its cookies (a render entry's frame,
+     * a preview), it leaves them queued: the frame settles them by its policy when it closes.
+     */
+    public function test_in_a_render_frame_under_a_preview_it_leaves_the_queue_to_the_frame(): void
+    {
+        $queue = CookieQueue::ofCurrentFrame();
+        $resolve = self::middleware($queue);
+        $session = new ArraySession();
+        $session->start();
+        $request = (new ServerRequest('GET', '/about'))->withAttribute(SessionInterface::class, $session);
+
+        foreach (['preview' => ContextFactory::forTest()->capturing(), 'delivering render' => ContextFactory::forTest()] as $name => $ctx) {
+            [$response, $left] = Contexts::runRender($ctx, static function () use ($resolve, $queue, $request): array {
+                $queue->queue('early=1; Path=/');
+                $response = $resolve->process($request, self::handler(static fn () => $queue->queue('late=1; Path=/')));
+
+                return [$response, $queue->pull()];
+            });
+
+            $this->assertSame([], $response->getHeader('Set-Cookie'), $name . ': a render\'s response is its caller\'s result');
+            $this->assertSame(['early=1; Path=/', 'late=1; Path=/'], $left, $name . ': left to the frame');
+        }
+    }
+
     private static function middleware(CookieQueue $queue): ResolveUserMiddleware
     {
         $guard = new SessionGuard(new ConfigUserProvider([]), new NativePasswordHasher(), cookies: $queue);

@@ -600,9 +600,24 @@ the route's response inside the pipeline, what middleware queued on the way out 
 pipeline's answer, and what is left to an error response, so a cookie is set once and never
 lost. The page cache never stores a page whose render set a cookie or left one queued
 (`pending()`, since 0.81.1: middleware inside the cache queued it after the route, verify's
-second render, a rebuild): `X-Page-Cache-Skip: set-cookie`. `Application::render()` follows its outbox policy instead: a preview captures the cookies
-(`RenderResult::wouldSend('cookies')`), an internal render drops them, and a delivering render
-hands them to the request around it. `isolated(\Closure $render)` (since 0.75, deprecated since
+second render, a rebuild): `X-Page-Cache-Skip: set-cookie`.
+
+A render's response never sets its cookies (`Application::render()`: the response is the
+caller's result), also when it fails. What a frame left queued when it closes is settled by its
+outbox policy (since 0.82.0 for every frame; before, only for `render()`): a capturing frame
+captures it (a preview: `RenderResult::wouldSend('cookies')`), a discarding one (an internal
+render) drops it, and a delivering one hands it to the queue of the frame around it, whose
+response sets it. A visit's error page still sets what the visit queued, such as a rotated
+remember-me cookie, and since 0.82.0 also a cookie the route's response already carried when a
+middleware further out threw. A request asked for in-process inside another one
+(`Application::handle()` within a frame) sets its cookies on its own response, not on the outer
+one, where its frame delivers; under a preview they are captured into the preview's result,
+under an internal render dropped. `reachesResponse()` (since 0.82.0) is the rule: true for a
+queue made with `new` (whoever holds it sets it) and outside every frame; inside a frame, when
+it delivers and no render entry opened it. A `Kernel` given the frame-bound queue
+(`CookieQueue::ofCurrentFrame()`) follows that rule by default, so another runtime only opens
+its render frames with `Contexts::runRender()`; with a queue of its own and no
+`setsQueuedCookies`, it sets the queue on the error response only, as before. `isolated(\Closure $render)` (since 0.75, deprecated since
 0.81) runs `$render` with the queue empty, drops what it queued and puts the earlier values back.
 
 ### Auth providers from config

@@ -187,6 +187,18 @@ final class SessionGuard implements GuardInterface
     }
 
     /**
+     * Whether the response the current request answers takes this guard's queued cookies
+     * (CookieQueue::reachesResponse()): not in a render entry's frame or one that does not
+     * deliver, where the frame settles them when it closes.
+     *
+     * @since 0.82.0
+     */
+    public function cookiesReachResponse(): bool
+    {
+        return $this->cookies->reachesResponse();
+    }
+
+    /**
      * The queued Set-Cookie values, emptying the queue.
      *
      * @return list<string>

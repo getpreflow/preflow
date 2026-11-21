@@ -80,7 +80,25 @@ final class Contexts
      */
     public static function run(RenderContext $ctx, \Closure $render): mixed
     {
-        return self::open($ctx, $render, false);
+        return self::open($ctx, $render, false, false);
+    }
+
+    /**
+     * Runs $render in a new frame under $ctx, as run() does, for a render entry: a render whose
+     * response is its caller's result (Application::render(), another runtime's render entry),
+     * not an answer to a request. The frame records it (RenderFrame::$openedByRender), so the
+     * Kernel never sets the cookies the frame queued on that response (CookieQueue::reachesResponse()),
+     * also not on its error page: the frame settles what is left when it closes, by its outbox
+     * policy (CookieQueue::settle(): hand it to the frame around it, capture it, or drop it).
+     *
+     * @since 0.82.0
+     * @template R
+     * @param \Closure(): R $render
+     * @return R
+     */
+    public static function runRender(RenderContext $ctx, \Closure $render): mixed
+    {
+        return self::open($ctx, $render, false, true);
     }
 
     /**
@@ -91,7 +109,10 @@ final class Contexts
      * output as a whole (the page cache's recording and refusals, the CSP nonce) can join that
      * frame's from an onEnter() hook. Core's application registers that hook; any other
      * collector registers its own. A render that is never part of the caller's output (a mail)
-     * uses run().
+     * uses run(). Since 0.82.0 what a capturing part captured moves, captured only, to the frame
+     * it is part of when it closes, where that frame does not deliver, so that frame's result
+     * reports it (a request a preview asks for in-process: RenderResult::wouldSend()); a caller
+     * that drains the part's own outbox afterwards uses run() instead.
      *
      * @since 0.81.0
      * @template R
@@ -106,7 +127,7 @@ final class Contexts
             throw self::missing('part');
         }
 
-        return self::open($ctx, $render, true);
+        return self::open($ctx, $render, true, false);
     }
 
     /**
@@ -114,7 +135,7 @@ final class Contexts
      * @param \Closure(): R $render
      * @return R
      */
-    private static function open(RenderContext $ctx, \Closure $render, bool $part): mixed
+    private static function open(RenderContext $ctx, \Closure $render, bool $part, bool $byRender): mixed
     {
         $depth = count(self::$frames);
         $debug = self::$debug;
@@ -126,7 +147,7 @@ final class Contexts
                 WritePolicy::Allow => $ctx,
             };
         }
-        $frame = new RenderFrame($ctx, $parent, $part);
+        $frame = new RenderFrame($ctx, $parent, $part, $byRender);
         self::$frames[] = $frame;
         self::$top = $frame;
 
@@ -419,6 +440,8 @@ final class Contexts
     /** Applies the context's outbox policy to a frame whose render returned. */
     private static function close(RenderFrame $frame, ?RenderFrame $parent): void
     {
+        // Slots settle first (since 0.82.0: the cookies a frame left), so what they capture or hand on follows the policy below.
+        $frame->settleSlots($parent);
         // A frame whose outbox was never made queued nothing: nothing to send, move or drop.
         $outbox = $frame->madeOutbox();
         if ($outbox === null) {
@@ -426,11 +449,24 @@ final class Contexts
         }
         match ($frame->context->outbox) {
             OutboxPolicy::Discard => $outbox->discard(),
-            OutboxPolicy::Capture => $outbox->keepForCapture(),
+            // A capturing frame that is part of another's output (a request a preview asks for
+            // in-process) captures there, so that frame's result reports it (since 0.82.0); into a
+            // frame that delivers they would be dead weight (never sent, never reported), so the
+            // part keeps them.
+            OutboxPolicy::Capture => $parent !== null && $frame->partOf() === $parent && $parent->outboxPolicy() !== OutboxPolicy::Deliver
+                ? self::captureIn($outbox, $parent)
+                : $outbox->keepForCapture(),
             OutboxPolicy::Deliver => $parent !== null
                 ? $outbox->moveTo($parent->outbox())
                 : self::deliverOutermost($outbox),
         };
+    }
+
+    /** Moves a capturing part's items, captured only, to the frame it is part of; its after-response work is dropped. */
+    private static function captureIn(FrameOutbox $outbox, RenderFrame $parent): void
+    {
+        $outbox->keepForCapture();
+        $outbox->moveTo($parent->outbox());
     }
 
     private static function deliverOutermost(FrameOutbox $outbox): void

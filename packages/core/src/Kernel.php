@@ -26,6 +26,15 @@ final class Kernel
     private $componentRenderer;
 
     /**
+     * Whether the current frame's response takes the queued cookies: $setsQueuedCookies when
+     * given, else core's rule for a frame-bound queue (CookieQueue::reachesResponse()); null for a
+     * queue of its own without a rule (only the error response takes it, as before 0.82).
+     *
+     * @var (\Closure(): bool)|null
+     */
+    private readonly ?\Closure $rule;
+
+    /**
      * @param callable(Route, ServerRequestInterface): ResponseInterface $actionDispatcher
      * @param callable(Route, ServerRequestInterface): ResponseInterface $componentRenderer
      */
@@ -44,7 +53,8 @@ final class Kernel
          * cookies queued before an exception (a rotated remember-me cookie) still reach the error
          * response: those of the current render frame only (CookieQueue::ofCurrentFrame()), never
          * those of a request around a failed internal render; since 0.81.1 also the response of a
-         * frame that sets them ($setsQueuedCookies)
+         * frame that sets them ($setsQueuedCookies), and since 0.82.0 the error response too only
+         * where that frame sets them
          */
         private readonly ?\Preflow\Core\Http\CookieQueue $cookies = null,
         /** a cross-origin API call must be able to read its error (a 401, a 422) */
@@ -59,7 +69,11 @@ final class Kernel
          * since 0.81.1: whether the current render frame's response takes the cookies it queued
          * ($cookies): when it does, they go on the route's response inside the pipeline (so the
          * page cache and every other middleware see them) and what middleware queued on the way
-         * out on the pipeline's answer. Null: only the error response takes them, as before.
+         * out on the pipeline's answer; since 0.82.0 it decides for the error response as well,
+         * so the cookies of a failing render follow its outbox policy (core's rule:
+         * CookieQueue::reachesResponse()). Null: core's rule when $cookies is frame-bound
+         * (CookieQueue::ofCurrentFrame(), since 0.82.0); with a queue of its own only the error
+         * response takes them, as before.
          *
          * @var (\Closure(): bool)|null
          */
@@ -67,6 +81,9 @@ final class Kernel
     ) {
         $this->actionDispatcher = $actionDispatcher;
         $this->componentRenderer = $componentRenderer;
+        // Without a rule given, a frame-bound queue brings core's (since 0.82.0): a runtime that
+        // opens its render frames with Contexts::runRender() needs nothing more.
+        $this->rule = $setsQueuedCookies ?? ($cookies?->isFrameBound() === true ? $cookies->reachesResponse(...) : null);
     }
 
     public function handle(ServerRequestInterface $request): ResponseInterface
@@ -88,21 +105,36 @@ final class Kernel
     /** The pipeline's answer, or the error page for what it threw ($plain: the request without a preview token). */
     private function answer(ServerRequestInterface $request, ServerRequestInterface $plain): ResponseInterface
     {
+        // The cookies set on the route's response so far: a middleware further out that throws
+        // drops that response, so the error page sets them instead (since 0.82.0). A local, not a
+        // property: a request asked for in-process enters answer() again.
+        $applied = [];
         try {
-            $response = $this->pipeline->process($request, fn (ServerRequestInterface $req): ResponseInterface => $this->withQueuedCookies($this->withHints($this->dispatch($req))));
+            $response = $this->pipeline->process($request, function (ServerRequestInterface $req) use (&$applied): ResponseInterface {
+                return $this->withQueuedCookies($this->withHints($this->dispatch($req)), $applied);
+            });
 
             // What middleware queued after the route answered (or instead of it).
-            return $this->withQueuedCookies($response);
+            return $this->withQueuedCookies($response, $applied);
         } catch (\Throwable $e) {
             // The render answers with the error page; who asked for it (Application::render()) still learns why.
             if (\Preflow\Core\Context\Contexts::depth() > 0) {
                 \Preflow\Core\Context\Contexts::frame()->recordFailure($e);
             }
-            // Error responses bypass the pipeline, so add the queued cookies (this frame's), its restrictive header hints, CORS and the security headers here.
+            // Error responses bypass the pipeline, so add the queued cookies (this frame's, where its
+            // response takes them), its restrictive header hints, CORS and the security headers here.
             // A preview token is never shown on an error page (the debug page prints the request): it
             // gets the request without it (handle() makes the answer no-store, no-referrer, noindex).
             $response = $this->errorHandler->handleException($e, $plain);
-            $response = $this->cookies?->apply($response) ?? $response;
+            // After the error page rendered: what it queued follows the same rule.
+            if ($this->rule === null) {
+                $response = $this->cookies?->apply($response) ?? $response;
+            } elseif (($this->rule)()) {
+                foreach ($applied as $cookie) {
+                    $response = $response->withAddedHeader('Set-Cookie', $cookie);
+                }
+                $response = $this->withQueuedCookies($response, $applied);
+            }
             // Only hints that make the error less cacheable: a failure is never made cacheable.
             $response = $this->hints?->applyRestrictiveTo($response) ?? $response;
             $response = $this->cors?->decorate($request, $response) ?? $response;
@@ -149,14 +181,23 @@ final class Kernel
         return $this->hints?->applyTo($response) ?? $response;
     }
 
-    /** $response with the cookies the current frame queued, where its response takes them ($setsQueuedCookies); applying empties the queue. */
-    private function withQueuedCookies(ResponseInterface $response): ResponseInterface
+    /**
+     * $response with the cookies the current frame queued, where its response takes them (the
+     * rule); applying empties the queue, and what it set is added to $applied.
+     *
+     * @param list<string> $applied
+     */
+    private function withQueuedCookies(ResponseInterface $response, array &$applied): ResponseInterface
     {
-        if ($this->cookies === null || $this->setsQueuedCookies === null || !($this->setsQueuedCookies)()) {
+        if ($this->cookies === null || $this->rule === null || !($this->rule)()) {
             return $response;
         }
+        foreach ($this->cookies->pull() as $cookie) {
+            $response = $response->withAddedHeader('Set-Cookie', $cookie);
+            $applied[] = $cookie;
+        }
 
-        return $this->cookies->apply($response);
+        return $response;
     }
 
     /** A class name: the container's instance, else autowired. With arguments: a new instance, the arguments winning over autowiring. */

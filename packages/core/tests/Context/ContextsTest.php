@@ -212,6 +212,22 @@ final class ContextsTest extends TestCase
         $this->assertSame(0, Contexts::depth());
     }
 
+    /** Contexts::runRender() opens a frame for a render entry: the frame records it, run() and part() frames do not, and nothing else differs. */
+    public function test_a_frame_records_whether_a_render_entry_opened_it(): void
+    {
+        $seen = Contexts::run(self::ctx('/a'), static function (): array {
+            $seen = [Contexts::frame()->openedByRender];
+            $seen[] = Contexts::runRender(self::ctx('/b'), static fn (): array => [Contexts::depth(), Contexts::frame()->openedByRender, Contexts::frame()->partOf()]);
+            $seen[] = Contexts::part(self::ctx('/c'), static fn (): bool => Contexts::frame()->openedByRender);
+
+            return $seen;
+        });
+
+        $this->assertSame([false, [2, true, null], false], $seen);
+        $this->assertSame(['/d', true], Contexts::runRender(self::ctx('/d'), static fn (): array => [Contexts::current()->request?->path, Contexts::frame()->openedByRender]), 'also outside every frame');
+        $this->assertSame(0, Contexts::depth());
+    }
+
     public function test_narrow_cannot_outlive_its_frame(): void
     {
         $a = self::ctx('/a');
