@@ -374,7 +374,11 @@ return $result->response;
 
 **Upgrading from 0.80**: the deprecated setters (`Translator::setLocale()`, `AuthManager::setUser()`,
 `LiveContent::showWorkingCopies()`, …) change the current frame only and say so once per call site;
-use `narrow()` for "from here on" and `within()` for set-and-restore. The ROADMAP lists every change.
+use `narrow()` for "from here on" and `within()` for set-and-restore. `Translator::setLocale('de')`
+becomes `Contexts::narrow(fn ($c) => $c->in('de'))` on the public surface; on the admin surface
+(`$c->surface->admin`) it sets the admin's texts, so it becomes `$c->admin('de')` (keep the overrides
+with `$c->admin('de', $c->surface->overrides)`), not `in('de')`, which changes the content locale
+only. The ROADMAP lists every change.
 
 ### JsonBodyMiddleware
 
