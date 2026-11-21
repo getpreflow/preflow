@@ -81,6 +81,17 @@ final class CookieQueue
     }
 
     /**
+     * Whether any cookie is queued (not applied yet), without taking it: the page cache refuses a
+     * page whose render left one, as it refuses one whose response sets one.
+     *
+     * @since 0.81.1
+     */
+    public function pending(): bool
+    {
+        return $this->target()->cookies !== [];
+    }
+
+    /**
      * The queued values, emptying the queue.
      *
      * @return list<string>

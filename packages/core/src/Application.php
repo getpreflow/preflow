@@ -2263,6 +2263,8 @@ final class Application
             render: fn (RenderContext $ctx, ServerRequestInterface $request, \Closure $handle): RenderResult => $this->renderWith($ctx, $request, $this->withSiteDefaults($handle)),
             // Headers live parts add while the served page is filled (never on the stored page).
             hints: $container->get(\Preflow\Core\Http\ResponseHeaderHints::class),
+            // A cookie a render left queued keeps its page out of the store (since 0.81.1).
+            cookies: $container->get(\Preflow\Core\Http\CookieQueue::class),
         );
         $this->container->instance(\Preflow\Core\PageCache\PageCacheMiddleware::class, $middleware);
         $this->addMiddleware($middleware);
