@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-19 (v0.80.0)
+> Last updated: 2026-11-21 (v0.81.0)
 
 ## Current State
 
-**v0.80.0** — 9264 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.81.0** — 9890 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Render context (v0.81.0, not released):** every render runs under one immutable `RenderContext`: who is looking, the locale and the texts (public or admin), what it reads (published or working copies), the site, the clock, and what it may send and write. It is created at the edge: an HTTP request, a console command, an internal render, a preview, a mail, a PDF, a test. What a render collects (assets, SEO meta, GEO capture, page-cache tags, the CSP nonce, cookies, queued mail, after-response work, response headers) lives in a `RenderFrame` of its own, so nothing one render collects reaches another. Core only; Folio builds contexts and adds the screens. Core README, "Render context", has an example without Folio.
+- **Render context (v0.81.0, released 2026-11-21):** every render runs under one immutable `RenderContext`: who is looking, the locale and the texts (public or admin), what it reads (published or working copies), the site, the clock, and what it may send and write. It is created at the edge: an HTTP request, a console command, an internal render, a preview, a mail, a PDF, a test. What a render collects (assets, SEO meta, GEO capture, page-cache tags, the CSP nonce, cookies, queued mail, after-response work, response headers) lives in a `RenderFrame` of its own, so nothing one render collects reaches another. Core only; Folio builds contexts and adds the screens. Core README, "Render context", has an example without Folio.
   - **Fixed:** internal renders (the SEO audit, GEO, page-cache rebuild and verify) no longer see the signed-in user, the admin's texts, the visitor's cookies or superglobals, and never send mail or write data (the audit lists the writes a page tried, per page); a rebuild no longer inherits a fragment's assets; an audit run from the admin keeps the admin's debug collector; mail layouts render in the recipient's language; every render has its own CSP nonce; a site's step preview in another language no longer leaves the admin's language changed.
   - **View as a role:** render any page as a member or staff role (`$ctx->asRole(new RoleView('member', ['gold']))`) without an account; writes are skipped and listed, mail is captured. In Folio: "View as" in the preview bar, permission `site.view_as` (declared by rbac; admins hold it through `*`).
   - **Whole-page preview:** `Application::preview()` renders the autosaved working copy through the real route (layout, navigation, SEO, components) and reports what it would send and write. The page's interactive parts follow the preview through a signed preview token (session-bound, 15 minutes, permissions re-checked on every use); a write under it is refused with 403. Folio's Preview and Split use it.
