@@ -38,7 +38,8 @@ return [
     ],
     'core/src/Http/Session/SessionMiddleware.php' => [
         'peek' => [
-            '$session = Contexts::peek()?->request?->request?->getAttribute(SessionInterface::class);' => 'outside every render there is no request and so no session: flash(), csrf_token() and old() read none (the documented default)',
+            '$current = Contexts::peek();' => 'outside every render there is no request and so no session: process() starts the session without narrowing a frame (the documented default)',
+            '$ctx = Contexts::peek();' => 'outside every render there is no request and so no session: flash(), csrf_token() and old() (ofCurrentRender()) read none (the documented default)',
         ],
     ],
     'core/src/Context/Preview/PreviewUrls.php' => [

@@ -171,6 +171,47 @@ final class ContextsTest extends TestCase
         });
     }
 
+    /** A narrow() that gives the frame's own context back keeps it, and still counts a context that is not the public default as a departure. */
+    public function test_narrow_to_the_frames_own_context_keeps_it_and_counts_its_departure(): void
+    {
+        $a = self::ctx('/a');
+
+        Contexts::run($a, function () use ($a): void {
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c);
+            $this->assertSame($a, Contexts::current());
+            $this->assertSame(0, Contexts::frame()->departures(), 'the public default is no departure');
+        });
+
+        $drafts = $a->workingCopies();
+        Contexts::run($drafts, function () use ($drafts): void {
+            Contexts::narrow(static fn (RenderContext $c): RenderContext => $c);
+            $this->assertSame($drafts, Contexts::current());
+            $this->assertSame(1, Contexts::frame()->departures(), 'as a narrow() to working copies counts it');
+        });
+    }
+
+    /** A frame makes its outbox on first use, with the channels the frame around it knows; closing one that never made it sends, moves and drops nothing. */
+    public function test_a_frame_makes_its_outbox_on_first_use(): void
+    {
+        Contexts::run(self::ctx('/a'), function (): void {
+            $outer = Contexts::frame();
+            $this->assertNull($outer->madeOutbox());
+            $outer->outbox()->channel(self::mailChannel());
+            $this->assertSame($outer->outbox(), $outer->madeOutbox());
+
+            Contexts::run(self::ctx('/b'), function (): void {
+                $this->assertNull(Contexts::frame()->madeOutbox(), 'a nested frame too');
+            });
+            Contexts::run(self::ctx('/c'), function (): void {
+                $this->assertNotNull(Contexts::frame()->outbox()->channelNamed('mail'), "the outer frame's channel is known");
+                Contexts::frame()->outbox()->queue(new QueuedMail('c@example.test'), 'mail');
+            });
+            $this->assertSame([1, 0], $outer->outbox()->pending(), 'what the nested frame queued moved out when it closed');
+            $outer->outbox()->discard();
+        });
+        $this->assertSame(0, Contexts::depth());
+    }
+
     public function test_narrow_cannot_outlive_its_frame(): void
     {
         $a = self::ctx('/a');

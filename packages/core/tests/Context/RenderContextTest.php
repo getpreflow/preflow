@@ -394,6 +394,21 @@ final class RenderContextTest extends TestCase
         $this->assertSame(Purpose::Job, $ctx->purpose);
     }
 
+    /** fromRequest() builds what a fresh visit for() the request gives: its request part, the empty locale prefix. */
+    public function test_from_request_carries_the_request_and_no_locale_prefix(): void
+    {
+        $request = new ServerRequest('PUT', '/de/x');
+        $ctx = RenderContext::fromRequest($request, self::site(), new SystemClock());
+
+        $this->assertSame($request, $ctx->request?->request);
+        $this->assertSame('/de/x', $ctx->request?->path);
+        $this->assertSame('PUT', $ctx->request?->method);
+        $this->assertSame('', $ctx->request?->localePrefix);
+        $this->assertSame('/', RenderContext::fromRequest(new ServerRequest('GET', ''), self::site(), new SystemClock())->request?->path);
+        $this->assertTrue($ctx->isPublicDefault());
+        $this->assertSame(Purpose::Visit, $ctx->purpose);
+    }
+
     public function test_console_has_no_request(): void
     {
         $ctx = RenderContext::console(self::site(), new SystemClock());

@@ -94,10 +94,13 @@ final class ResolveUserMiddleware implements MiddlewareInterface
             }
         }
 
-        // Nobody this time: the frame's viewer is anonymous, whatever it was before.
-        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => $ctx->as(
-            $name === null ? Viewer::anonymous() : AuthManager::viewerOf($users, $name),
-        ));
+        // Nobody this time: the frame's viewer is anonymous, whatever it was before (since 0.82.0
+        // a frame that is anonymous already keeps its context: nothing to derive).
+        Contexts::narrow(static fn (RenderContext $ctx): RenderContext => match (true) {
+            $name !== null => $ctx->as(AuthManager::viewerOf($users, $name)),
+            $ctx->viewer->isAnonymous() => $ctx,
+            default => $ctx->as(Viewer::anonymous()),
+        });
         $request = $request->withAttribute(RenderContext::class, Contexts::current());
         if ($name !== null) {
             $request = $request

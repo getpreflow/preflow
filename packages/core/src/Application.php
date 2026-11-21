@@ -653,7 +653,8 @@ final class Application
         }
 
         $internal = self::marked($request);
-        $ctx = $this->requestContext($request);
+        $clients = $this->withHypermedia($request);
+        $ctx = $this->requestContext($request, $clients);
         if ($internal) {
             $ctx = self::asMarked($ctx);
         } else {
@@ -662,9 +663,9 @@ final class Application
 
         $held = [];
         try {
-            return Contexts::run($ctx, function () use ($request, $internal, &$held): ResponseInterface {
+            return Contexts::run($ctx, function () use ($request, $clients, $internal, &$held): ResponseInterface {
                 try {
-                    $response = $this->handleInFrame($request);
+                    $response = $this->handleInFrame($request, $clients);
                 } catch (\Throwable $e) {
                     if (!$internal && self::sends()) {
                         if (!$this->emitting) {
@@ -753,7 +754,8 @@ final class Application
      */
     private static function takeQueuedMail(RenderFrame $frame): array
     {
-        return $frame->outbox()->take(\Preflow\Core\Context\Bridge\NotifyChannel::NAME);
+        // A frame that never made its outbox queued nothing (and makes none now).
+        return $frame->madeOutbox()?->take(\Preflow\Core\Context\Bridge\NotifyChannel::NAME) ?? [];
     }
 
     /**
@@ -857,7 +859,7 @@ final class Application
                 ? $this->container->get(\Preflow\View\Geo\RenderScopes::class)->run($request, $handle)
                 : $handle();
             $left = $frame->slot(\Preflow\Core\Http\CookieQueue::class, static fn (): \Preflow\Core\Http\CookieQueue => new \Preflow\Core\Http\CookieQueue())->pull();
-            if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Capture) {
+            if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Capture && $left !== []) {
                 // Only a capturing frame holds cookie items, and it knows their channel; they never move on.
                 $frame->outbox()->channel(new \Preflow\Core\Http\CookieChannel());
                 foreach ($left as $cookie) {
@@ -881,7 +883,8 @@ final class Application
             }
         }
 
-        return new RenderResult($response, $frame->outbox()->drain(), $frame->skippedWrites(), $frame->failure());
+        // A frame that never made its outbox captured nothing (and makes none, nor its parent's, now).
+        return new RenderResult($response, $frame->madeOutbox()?->drain() ?? [], $frame->skippedWrites(), $frame->failure());
     }
 
     /**
@@ -972,8 +975,9 @@ final class Application
      */
     private static function handOnQueuedMail(RenderFrame $frame, RenderFrame $outer): void
     {
+        // A frame that never made its outbox has nothing to hand on (and makes none, nor $outer's, now).
         if ($frame->context->outbox === \Preflow\Core\Context\OutboxPolicy::Deliver) {
-            $frame->outbox()->handOn(\Preflow\Core\Context\Bridge\NotifyChannel::NAME, $outer->outbox());
+            $frame->madeOutbox()?->handOn(\Preflow\Core\Context\Bridge\NotifyChannel::NAME, $outer->outbox());
         }
     }
 
@@ -1002,9 +1006,10 @@ final class Application
 
     /**
      * The request's part of the application: hooks, the kernel and its pipeline, the page cache's
-     * invalidations, the HEAD body. Runs in the current frame.
+     * invalidations, the HEAD body. Runs in the current frame. $clients is $request with its
+     * hypermedia clients when the caller made it already (withHypermedia()).
      */
-    private function handleInFrame(ServerRequestInterface $request): ResponseInterface
+    private function handleInFrame(ServerRequestInterface $request, ?ServerRequestInterface $clients = null): ResponseInterface
     {
         foreach ($this->requestHooks as $hook) {
             $hook($request);
@@ -1018,7 +1023,7 @@ final class Application
             $this->adoptPageNonce($request);
         }
         // The hypermedia clients ride along, for middleware an app builds itself (AuthMiddleware).
-        $request = $this->withHypermedia($request);
+        $request = $clients ?? $this->withHypermedia($request);
 
         try {
             $response = $this->kernel?->handle($request) ?? throw new \RuntimeException('Application not booted. Call boot() first.');
@@ -1173,12 +1178,13 @@ final class Application
 
     /**
      * A visitor's request as the outermost render: Fragment or Visit, as its hypermedia client
-     * asks, derived as the request asks (withDerivedContext()).
+     * asks, derived as the request asks (withDerivedContext()). $clients is $request with its
+     * hypermedia clients (withHypermedia()), made once per request for this and the kernel.
      */
-    private function requestContext(ServerRequestInterface $request): RenderContext
+    private function requestContext(ServerRequestInterface $request, ServerRequestInterface $clients): RenderContext
     {
         return $this->derived(
-            RenderContext::fromRequest($this->withHypermedia($request), $this->site(), $this->container->get(\Psr\Clock\ClockInterface::class)),
+            RenderContext::fromRequest($clients, $this->site(), $this->container->get(\Psr\Clock\ClockInterface::class)),
             $request,
         );
     }
@@ -1361,15 +1367,16 @@ final class Application
             $creator = new \Nyholm\Psr7Server\ServerRequestCreator($factory, $factory, $factory, $factory);
             $request = $creator->fromGlobals();
             // Built once the request carries its hypermedia clients: a header-only fragment is no Visit.
-            $ctx = $this->requestContext($request);
+            $clients = $this->withHypermedia($request);
+            $ctx = $this->requestContext($request, $clients);
             $this->rebuildsScheduled = false;
 
-            Contexts::run($ctx, function () use ($request): void {
+            Contexts::run($ctx, function () use ($request, $clients): void {
                 // While run() handles the request, a request the site asks for in-process
                 // (handle()) leaves the deferred mail to run(), which sends it after the response.
                 $this->emitting = true;
                 try {
-                    $response = $this->handleInFrame($request);
+                    $response = $this->handleInFrame($request, $clients);
                     ($this->emitter ?? fn (ResponseInterface $r) => (new Emitter())->emit($r, $request))($response);
                 } catch (\Throwable $e) {
                     $this->emitting = false;
@@ -2814,8 +2821,10 @@ final class Application
             $this->addMiddleware(new class () implements \Psr\Http\Server\MiddlewareInterface {
                 public function process(ServerRequestInterface $request, \Psr\Http\Server\RequestHandlerInterface $handler): ResponseInterface
                 {
+                    // The locale middleware right before it narrows to this very request: then the
+                    // context stays as it is (since 0.82.0, nothing to derive).
                     if (Contexts::depth() > 0) {
-                        Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->for($request));
+                        Contexts::narrow(static fn (RenderContext $c): RenderContext => $c->request?->request === $request ? $c : $c->for($request));
                     }
 
                     return $handler->handle($request);

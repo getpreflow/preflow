@@ -33,7 +33,8 @@ final class RenderFrame
      */
     public readonly WritePolicy $openedWrites;
 
-    private FrameOutbox $outbox;
+    /** Made on first use (outbox()): a frame that queues nothing never builds one (since 0.82.0). */
+    private ?FrameOutbox $outbox = null;
 
     private readonly ?RenderFrame $parent;
 
@@ -63,15 +64,6 @@ final class RenderFrame
         $this->openedOutbox = $context->outbox;
         $this->openedWrites = $context->writes;
         $this->parent = $parent;
-        $outermost = $parent === null;
-        $this->outbox = new FrameOutbox(
-            $parent?->outbox->channels() ?? [],
-            fn (): bool => $outermost
-                && Contexts::depth() === 1
-                && Contexts::frame() === $this
-                && $this->context->outbox === OutboxPolicy::Deliver,
-            $this->outboxPolicy(...),
-        );
     }
 
     /**
@@ -87,7 +79,36 @@ final class RenderFrame
         return $this->part ? $this->parent : null;
     }
 
+    /**
+     * The frame's outbox, made on its first use (since 0.82.0) with the channels the frame around
+     * it knows at that moment.
+     */
     public function outbox(): FrameOutbox
+    {
+        if ($this->outbox !== null) {
+            return $this->outbox;
+        }
+        $outermost = $this->parent === null;
+
+        return $this->outbox = new FrameOutbox(
+            // A frame around it that made no outbox has no channels (and makes none for this).
+            $this->parent?->madeOutbox()?->channels() ?? [],
+            fn (): bool => $outermost
+                && Contexts::depth() === 1
+                && Contexts::frame() === $this
+                && $this->context->outbox === OutboxPolicy::Deliver,
+            $this->outboxPolicy(...),
+        );
+    }
+
+    /**
+     * The outbox if something used it already; null for a frame that never queued, scheduled or
+     * registered anything (closing it has nothing to send, move or drop).
+     *
+     * @internal Contexts
+     * @since 0.82.0
+     */
+    public function madeOutbox(): ?FrameOutbox
     {
         return $this->outbox;
     }

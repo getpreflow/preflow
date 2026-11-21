@@ -81,7 +81,8 @@ final readonly class RenderContext implements \JsonSerializable
             || str_starts_with($component, '/--component/')
             || ($protocols instanceof HypermediaProtocols && $protocols->wantsFragment($r));
 
-        return self::fresh($fragment ? Purpose::Fragment : Purpose::Visit, $site, $clock)->for($r);
+        // Built with its request part at once (what fresh()->for($r) gives, in one construction).
+        return self::fresh($fragment ? Purpose::Fragment : Purpose::Visit, $site, $clock, new RequestContext($path === '' ? '/' : $path, $r->getMethod(), $r, ''));
     }
 
     /** A console command: no request, anonymous, public, published, in the site's default locale. */
@@ -113,10 +114,10 @@ final readonly class RenderContext implements \JsonSerializable
             ->for(new ServerRequest('GET', $path));
     }
 
-    private static function fresh(Purpose $purpose, Site $site, ClockInterface $clock): self
+    private static function fresh(Purpose $purpose, Site $site, ClockInterface $clock, ?RequestContext $request = null): self
     {
         return new self(
-            request: null,
+            request: $request,
             purpose: $purpose,
             viewer: Viewer::anonymous(),
             locale: $site->defaultLocale,
