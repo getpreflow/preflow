@@ -376,9 +376,9 @@ return $result->response;
 `LiveContent::showWorkingCopies()`, …) change the current frame only and say so once per call site;
 use `narrow()` for "from here on" and `within()` for set-and-restore. `Translator::setLocale('de')`
 becomes `Contexts::narrow(fn ($c) => $c->in('de'))` on the public surface; on the admin surface
-(`$c->surface->admin`) it sets the admin's texts, so it becomes `$c->admin('de')` (keep the overrides
-with `$c->admin('de', $c->surface->overrides)`), not `in('de')`, which changes the content locale
-only. The ROADMAP lists every change.
+(`$c->surface->admin`) it sets the admin's texts, so it becomes
+`Contexts::narrow(fn ($c) => $c->admin('de', $c->surface->overrides))`, the exact equivalent (plain
+`admin('de')` turns the overrides on), not `in('de')`, which changes the content locale only. The ROADMAP lists every change.
 
 ### JsonBodyMiddleware
 
@@ -591,15 +591,16 @@ $people = $log->people(['page', 'post']);                // who did something, t
 
 ### Cookie queue
 
-`Preflow\Core\Http\CookieQueue` holds `Set-Cookie` values queued during a request (the
-remember-me cookies of `preflow/auth`, whose tokens use the `auth` storage alias, else the
+`Preflow\Core\Http\CookieQueue` holds `Set-Cookie` values queued during a request, by the site
+or by `preflow/auth` (remember-me cookies, whose tokens use the `auth` storage alias, else the
 default: with a JSON default and the auth tables in SQLite, set `'auth' => 'sqlite'` in
-`config/data.php`), or by the site. Each render frame has its own queue. Since 0.81.1 every
-request's response takes what its frame queued, with or without auth or a session: the Kernel
-applies the queue to the route's response inside the pipeline (so the page cache sees the
-`Set-Cookie` and does not store the page), what middleware queued on the way out to the
+`config/data.php`). Each render frame has its own queue. Since 0.81.1 every request's response
+takes what its frame queued, with or without auth or a session: the Kernel applies the queue to
+the route's response inside the pipeline, what middleware queued on the way out to the
 pipeline's answer, and what is left to an error response, so a cookie is set once and never
-lost. `Application::render()` follows its outbox policy instead: a preview captures the cookies
+lost. The page cache never stores a page whose render set a cookie or left one queued
+(`pending()`, since 0.81.1: middleware inside the cache queued it after the route, verify's
+second render, a rebuild): `X-Page-Cache-Skip: set-cookie`. `Application::render()` follows its outbox policy instead: a preview captures the cookies
 (`RenderResult::wouldSend('cookies')`), an internal render drops them, and a delivering render
 hands them to the request around it. `isolated(\Closure $render)` (since 0.75, deprecated since
 0.81) runs `$render` with the queue empty, drops what it queued and puts the earlier values back.
