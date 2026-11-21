@@ -26,7 +26,7 @@ final class LiveExtension extends AbstractExtension
 
     public function getNodeVisitors(): array
     {
-        return [new LiveBlockNames()];
+        return [new LiveBlockNames(), new LiveBlockNesting()];
     }
 
     /** The name of a block {% live %} declares (LiveTokenParser). */

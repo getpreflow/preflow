@@ -8,6 +8,7 @@ use Twig\Node\BlockNode;
 use Twig\Node\Node;
 use Twig\Token;
 use Twig\TokenParser\AbstractTokenParser;
+use Twig\TokenStream;
 
 /**
  * {% live with {number: object.number} %}…{% endlive %}: a live part of a cached page.
@@ -17,20 +18,25 @@ use Twig\TokenParser\AbstractTokenParser;
  * globals, never the variables around it. While a page renders for the page cache it prints the
  * signed placeholder of template, block and values instead (LiveExtension), and the block is
  * rendered for every visitor when the page is served. `with` may be left out ({% live %}).
- * Live blocks don't nest, and the block name prefix __live_ is theirs (LiveBlockNames).
+ * Live blocks don't nest (LiveBlockNesting refuses one inside another once the template is
+ * parsed), and the block name prefix __live_ is theirs (LiveBlockNames). The second live block
+ * on a line is named __live_{line}_2, the third __live_{line}_3, and so on. Since 0.81.1 this
+ * uses no Parser method deprecated in Twig 3.12 (getBlockStack(), hasBlock()).
  */
 final class LiveTokenParser extends AbstractTokenParser
 {
+    /** @var \WeakMap<TokenStream, array<string, true>> the block names given out per compiled source (its embedded templates included) */
+    private \WeakMap $names;
+
+    public function __construct()
+    {
+        $this->names = new \WeakMap();
+    }
+
     public function parse(Token $token): Node
     {
         $lineno = $token->getLine();
         $stream = $this->parser->getStream();
-
-        foreach ($this->parser->getBlockStack() as $open) {
-            if (str_starts_with((string) $open, '__live_')) {
-                throw new \Twig\Error\SyntaxError("{% live %} blocks can't be nested.", $lineno, $stream->getSourceContext());
-            }
-        }
 
         $with = null;
         if ($stream->nextIf(Token::NAME_TYPE, 'with')) {
@@ -38,10 +44,7 @@ final class LiveTokenParser extends AbstractTokenParser
         }
         $stream->expect(Token::BLOCK_END_TYPE);
 
-        $name = '__live_' . $lineno;
-        for ($n = 2; $this->parser->hasBlock($name); $n++) {
-            $name = '__live_' . $lineno . '_' . $n;
-        }
+        $name = $this->name($stream, $lineno);
         $block = new BlockNode($name, new \Twig\Node\EmptyNode(), $lineno);
         $block->setAttribute(LiveBlockNames::ATTRIBUTE, true); // a template's own __live_ block is an error
         $this->parser->setBlock($name, $block);
@@ -54,6 +57,23 @@ final class LiveTokenParser extends AbstractTokenParser
         $this->parser->popLocalScope();
 
         return new LiveNode($name, $with, $lineno);
+    }
+
+    /**
+     * The next free name for a live block on $line of the source $stream compiles. A template's own
+     * block never takes a name starting with __live_ (LiveBlockNames), so only live blocks compete.
+     */
+    private function name(TokenStream $stream, int $line): string
+    {
+        $taken = $this->names[$stream] ?? [];
+        $name = '__live_' . $line;
+        for ($n = 2; isset($taken[$name]); $n++) {
+            $name = '__live_' . $line . '_' . $n;
+        }
+        $taken[$name] = true;
+        $this->names[$stream] = $taken;
+
+        return $name;
     }
 
     public function decideLiveEnd(Token $token): bool

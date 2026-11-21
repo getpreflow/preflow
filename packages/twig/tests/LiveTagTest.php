@@ -140,6 +140,64 @@ final class LiveTagTest extends TestCase
         $this->engine->render('page.twig');
     }
 
+    public function test_live_blocks_do_not_nest_through_a_block_inside_them(): void
+    {
+        $this->template('page.twig', "{% live %}a\n{% block inner %}{% live %}b{% endlive %}{% endblock %}{% endlive %}");
+
+        try {
+            $this->engine->render('page.twig');
+            $this->fail('a live block inside a block inside a live block compiles');
+        } catch (\Twig\Error\SyntaxError $e) {
+            $this->assertStringContainsString("can't be nested", $e->getMessage());
+            $this->assertSame(2, $e->getTemplateLine(), 'the inner tag\'s line');
+        }
+    }
+
+    public function test_a_live_block_in_an_embed_inside_a_live_block_is_its_own_template(): void
+    {
+        $this->template('box.twig', '<div>{% block body %}{% endblock %}</div>');
+        $this->template('page.twig', '{% live %}{% embed "box.twig" %}{% block body %}{% live %}in{% endlive %}{% endblock %}{% endembed %}{% endlive %}');
+
+        $this->assertSame('<div>in</div>', $this->engine->render('page.twig'));
+    }
+
+    public function test_live_blocks_on_one_line_get_their_own_names(): void
+    {
+        $this->template('page.twig', '{% live with {a: 1} %}[{{ a }}]{% endlive %}{% live with {a: 2} %}({{ a }}){% endlive %}{% live %}<3>{% endlive %}');
+
+        $stored = $this->storing(fn (): string => $this->engine->render('page.twig'));
+        $blocks = array_map(static fn (array $p): string => $p[1]['b'], array_values((new LivePlaceholder('live-test-key-0123456789abcdef0123456789'))->find($stored)));
+
+        $this->assertSame(['__live_1', '__live_1_2', '__live_1_3'], $blocks);
+        $this->assertSame('[1](2)<3>', $this->live->fill($stored));
+    }
+
+    /** Deprecations as failures: compiling {% live %} calls no Twig API deprecated since 3.12 (Parser::getBlockStack(), hasBlock()). */
+    public function test_live_compiles_without_deprecated_twig_apis(): void
+    {
+        $this->template('box.twig', '<div>{% block body %}{% endblock %}</div>');
+        $this->template('page.twig', "{% live %}a{% endlive %}{% live with {n: 1} %}{{ n }}{% endlive %}\n{% embed \"box.twig\" %}{% block body %}{% live %}e{% endlive %}{% endblock %}{% endembed %}");
+        $this->template('nested.twig', '{% live %}a{% live %}b{% endlive %}{% endlive %}');
+        $deprecations = [];
+        set_error_handler(static function (int $no, string $message) use (&$deprecations): bool {
+            $deprecations[] = $message;
+
+            return true;
+        }, E_USER_DEPRECATED | E_DEPRECATED);
+        try {
+            $html = $this->engine->render('page.twig');
+            try {
+                $this->engine->render('nested.twig');
+            } catch (\Twig\Error\SyntaxError) {
+            }
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame('a1<div>e</div>', $html);
+        $this->assertSame([], $deprecations);
+    }
+
     public function test_the_live_block_prefix_is_reserved(): void
     {
         foreach (['{% block __live_3 %}x{% endblock %}', '{% live %}a{% endlive %}{% block __live_extra %}x{% endblock %}'] as $i => $source) {
