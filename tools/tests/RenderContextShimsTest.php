@@ -146,7 +146,7 @@ final class RenderContextShimsTest extends TestCase
 
         $rows = [
             'Translator::setLocale' => [
-                'messages' => ['Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)).'],
+                'messages' => ['Preflow\I18n\Translator::setLocale() is deprecated since 0.81 and is removed in 0.83; use Contexts::narrow(fn ($ctx) => $ctx->in($locale)), or on the admin surface Contexts::narrow(fn ($ctx) => $ctx->admin($locale)).'],
                 'doc' => [[Translator::class, 'setLocale']],
                 'service' => self::translator(...),
                 'act' => static function (Translator $t) use ($locale): string {
