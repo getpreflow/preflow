@@ -153,6 +153,26 @@ final class LiveTagTest extends TestCase
         }
     }
 
+    public function test_live_blocks_do_not_nest_through_a_macro_defined_inside_them(): void
+    {
+        $this->template('page.twig', "{% live %}a{% macro m() %}\n{% live %}x{% endlive %}{% endmacro %}{% endlive %}");
+
+        try {
+            $this->engine->render('page.twig');
+            $this->fail('a live block inside a macro inside a live block compiles');
+        } catch (\Twig\Error\SyntaxError $e) {
+            $this->assertStringContainsString("can't be nested", $e->getMessage());
+            $this->assertSame(2, $e->getTemplateLine(), 'the inner tag\'s line');
+        }
+    }
+
+    public function test_a_live_block_in_a_macro_outside_every_live_block_compiles(): void
+    {
+        $this->template('page.twig', '{% macro m() %}{% live %}x{% endlive %}{% endmacro %}{{ _self.m() }}');
+
+        $this->assertSame('x', $this->engine->render('page.twig'));
+    }
+
     public function test_a_live_block_in_an_embed_inside_a_live_block_is_its_own_template(): void
     {
         $this->template('box.twig', '<div>{% block body %}{% endblock %}</div>');
