@@ -130,7 +130,9 @@ final class RenderContextShimsTest extends TestCase
      * - expect: what act returns, every time;
      * - from: turns both frames' contexts into what the shim needs (null: as they are);
      * - outside: calls it outside every render and returns what it gave (null: it throws
-     *   NoRenderContext there, which `throws` documents); outsideExpect: that value.
+     *   NoRenderContext there, which `throws` documents); outsideExpect: that value;
+     * - outsideMessages: the notices it raises there (default: messages; [] where it is silent
+     *   outside a render by design).
      *
      * @return array<string, array{array{messages: list<string>, doc: list<array{class-string, ?string}>, service: ?\Closure, act: \Closure, look: \Closure, expect: mixed, from: ?\Closure, outside: ?\Closure, outsideExpect: mixed, throws?: array{class-string, string}}}>
      */
@@ -244,7 +246,7 @@ final class RenderContextShimsTest extends TestCase
             ],
             'Notifier::discardingQueued (with core)' => [
                 'messages' => ['Preflow\Notify\Notifier::discardingQueued() is deprecated since 0.81 and is removed in 0.83; use Application::render() or Contexts::run() with RenderContext::discarding().'],
-                'doc' => [[NotifyOutbox::class, 'discarding']],
+                'doc' => [[NotifyOutbox::class, 'discarding'], [Notifier::class, 'discardingQueued']],
                 'service' => self::notifier(...),
                 'act' => static fn (Notifier $n): string => $n->discardingQueued(static fn (): string => Contexts::current()->outbox->name),
                 'look' => static fn (): string => Contexts::current()->outbox->name,
@@ -445,6 +447,7 @@ final class RenderContextShimsTest extends TestCase
                 'look' => $locale,
                 'expect' => 'de',
                 // Outside every render ImageTag asks current(), as before 0.81, without a notice.
+                'outsideMessages' => [],
                 'outside' => static fn (ImageTag $tag): string => (new \ReflectionMethod($tag, 'altLocale'))->invoke($tag),
                 'outsideExpect' => 'none',
             ],
@@ -456,6 +459,7 @@ final class RenderContextShimsTest extends TestCase
                 'look' => $locale,
                 'expect' => 'de',
                 // Outside every render it is how ImageTag gets the alt-text language: no notice there.
+                'outsideMessages' => [],
                 'outside' => static fn (ConfigLocaleProvider $provider): string => $provider->current(),
                 'outsideExpect' => 'en',
             ],
@@ -476,12 +480,14 @@ final class RenderContextShimsTest extends TestCase
                 'look' => $locale,
                 'expect' => 'told fr, rendering in fr',
                 'throws' => [MembersView::class, 'render'],
+                // MembersView needs a render before it tells the PageLocale anything.
+                'outsideMessages' => [],
             ],
         ];
 
         $cases = [];
         foreach ($rows as $name => $row) {
-            $cases[$name] = [$row + ['from' => null, 'outside' => null, 'outsideExpect' => null]];
+            $cases[$name] = [$row + ['from' => null, 'outside' => null, 'outsideExpect' => null, 'outsideMessages' => $row['messages']]];
         }
 
         return $cases;
@@ -529,18 +535,18 @@ final class RenderContextShimsTest extends TestCase
 
         if ($shim['outside'] === null) {
             [$class, $method] = $shim['throws'] ?? $shim['doc'][0];
-            $this->assertStringContainsString('@throws \Preflow\Core\Context\NoRenderContext', (string) (new \ReflectionMethod($class, (string) $method))->getDocComment(), "{$class}::{$method}() documents that it needs a render");
-            $this->expectException(NoRenderContext::class);
-            ($shim['act'])($service);
-
-            return;
+            $this->assertStringContainsString('@throws \\Preflow\\Core\\Context\\NoRenderContext', (string) (new \ReflectionMethod($class, (string) $method))->getDocComment(), "{$class}::{$method}() documents that it needs a render");
+            try {
+                ($shim['act'])($service);
+                $this->fail('outside every render it throws NoRenderContext');
+            } catch (NoRenderContext) {
+            }
+        } else {
+            $this->assertSame($shim['outsideExpect'], ($shim['outside'])($service));
         }
 
-        $this->assertSame($shim['outsideExpect'], ($shim['outside'])($service));
         $this->assertSame(0, Contexts::depth(), 'it opened no frame');
-        foreach (array_count_values($this->notices) as $message => $count) {
-            $this->assertSame(1, $count, "reported once: {$message}");
-        }
+        $this->assertEqualsCanonicalizing($shim['outsideMessages'], $this->notices, 'outside a render it announces its removal too, once (or stays silent by design)');
     }
 
     /** @param array{doc: list<array{class-string, ?string}>} $shim */
@@ -554,36 +560,164 @@ final class RenderContextShimsTest extends TestCase
     }
 
     /**
-     * Every deprecation notice the release added is in the table: a shim added later without a row
-     * fails here.
+     * Every deprecation the release added is in the table, both ways: each 0.81 message a package
+     * raises has a row, each row's message is raised, each `@deprecated 0.81` tag sits on a
+     * method (or interface) some row lists in `doc`, and every Deprecations::once() call passes its
+     * message as one string literal, so this check can read it. A shim added later without a row,
+     * or tagged without a notice, fails here.
      */
     public function test_every_0_81_deprecation_in_the_packages_is_in_the_table(): void
     {
-        $inTable = [];
+        $messages = [];
+        $docs = [];
         foreach (self::shims() as [$shim]) {
             foreach ($shim['messages'] as $message) {
-                $inTable[$message] = true;
+                $messages[$message] = true;
+            }
+            foreach ($shim['doc'] as [$class, $method]) {
+                $docs[$method === null ? $class : "{$class}::{$method}"] = true;
             }
         }
-        $found = [];
+        $found = ['messages' => [], 'tagged' => [], 'opaque' => []];
         foreach (glob(dirname(__DIR__, 2) . '/packages/*/src') ?: [] as $src) {
-            $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($src, \FilesystemIterator::SKIP_DOTS));
-            foreach ($it as $file) {
-                if ($file->getExtension() !== 'php') {
-                    continue;
+            $found = array_merge_recursive($found, self::deprecationsIn($src));
+        }
+
+        $this->assertNotEmpty($found['messages']);
+        $this->assertNotEmpty($found['tagged']);
+        $this->assertSame([], $found['opaque'], 'write the message as one string literal');
+        $this->assertSame([], array_values(array_diff($found['messages'], array_keys($messages))), 'deprecations without a row in shims()');
+        $this->assertSame([], array_values(array_diff(array_keys($messages), $found['messages'])), 'rows whose message no package raises');
+        $this->assertSame([], array_values(array_diff($found['tagged'], array_keys($docs))), '@deprecated 0.81 tags on methods no row lists in doc');
+        $this->assertSame([], array_values(array_diff(array_keys($docs), $found['tagged'])), 'rows whose doc names a method without the @deprecated 0.81 tag');
+    }
+
+    /** The scan behind the table check sees a tag without a notice, a double-quoted message and a message it cannot read. */
+    public function test_the_table_check_sees_tag_only_and_double_quoted_shims(): void
+    {
+        $this->shimDir = sys_get_temp_dir() . '/render_shims_scan_' . bin2hex(random_bytes(4));
+        @mkdir($this->shimDir . '/src', 0777, true);
+        file_put_contents($this->shimDir . '/src/Old.php', <<<'PHP'
+            <?php
+
+            declare(strict_types=1);
+
+            namespace Acme\Shims;
+
+            use Preflow\Core\Context\Deprecations;
+
+            /** @deprecated 0.81, removed in 0.83: the whole interface */
+            interface OldHook
+            {
+                public function set(string $locale): void;
+            }
+
+            final class Old
+            {
+                /** @var string a property, never a shim */
+                private string $name = Old::class;
+
+                /** @deprecated 0.81, removed in 0.83: tagged, but it never tells anyone */
+                public function tagOnly(): void {}
+
+                /** @deprecated 0.81, removed in 0.83: a method named like a keyword */
+                public static function use(?string $translator): void {}
+
+                public function quoted(): void
+                {
+                    Deprecations::once("Acme\\Shims\\Old::quoted() is deprecated since 0.81 and is removed in 0.83; use \"new\".");
                 }
-                foreach (token_get_all((string) file_get_contents($file->getPathname())) as $token) {
-                    if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING && $token[1][0] === "'" && str_contains($token[1], 'is deprecated since 0.81')) {
-                        $found[strtr(substr($token[1], 1, -1), ['\\\\' => '\\', "\\'" => "'"])] = true;
+
+                public function built(): void
+                {
+                    Deprecations::once(sprintf('%s::built() is deprecated since 0.81 and is removed in 0.83; use x.', self::class));
+                }
+
+                public function single(): void
+                {
+                    Deprecations::once('Acme\Shims\Old::single() is deprecated since 0.81 and is removed in 0.83; use \'y\'.', 3);
+                }
+            }
+            PHP);
+
+        $found = self::deprecationsIn($this->shimDir . '/src');
+
+        $this->assertSame(['Acme\Shims\OldHook', 'Acme\Shims\Old::tagOnly', 'Acme\Shims\Old::use'], $found['tagged']);
+        $this->assertSame([
+            'Acme\Shims\Old::quoted() is deprecated since 0.81 and is removed in 0.83; use "new".',
+            'Acme\Shims\Old::single() is deprecated since 0.81 and is removed in 0.83; use \'y\'.',
+        ], $found['messages']);
+        $this->assertCount(1, $found['opaque']);
+        $this->assertStringEndsWith('Old.php:33', $found['opaque'][0]);
+    }
+
+    /**
+     * What $root's PHP files say about deprecations: the messages Deprecations::once() is given
+     * (single- or double-quoted literals), the `Class::method` (or `Class`, for an interface or
+     * class) each `@deprecated 0.81` docblock sits on, and every once() call whose message is not
+     * one literal (file:line).
+     *
+     * @return array{messages: list<string>, tagged: list<string>, opaque: list<string>}
+     */
+    private static function deprecationsIn(string $root): array
+    {
+        $out = ['messages' => [], 'tagged' => [], 'opaque' => []];
+        $files = [];
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->getExtension() === 'php') {
+                $files[] = $file->getPathname();
+            }
+        }
+        sort($files);
+        foreach ($files as $path) {
+            $tokens = array_values(array_filter(
+                token_get_all((string) file_get_contents($path)),
+                static fn (array|string $t): bool => !is_array($t) || !in_array($t[0], [T_WHITESPACE, T_COMMENT], true) || $t[0] === T_DOC_COMMENT,
+            ));
+            $namespace = '';
+            $class = '';
+            $tag = false;
+            foreach ($tokens as $i => $t) {
+                $id = is_array($t) ? $t[0] : $t;
+                $next = $tokens[$i + 1] ?? null;
+                if ($id === T_NAMESPACE && is_array($next)) {
+                    $namespace = $next[1];
+                } elseif ($id === T_DOC_COMMENT) {
+                    $tag = str_contains($t[1], '@deprecated 0.81');
+                } elseif (in_array($id, [T_CLASS, T_INTERFACE, T_TRAIT, T_ENUM], true) && is_array($next) && $next[0] === T_STRING
+                    && !(is_array($tokens[$i - 1] ?? null) && $tokens[$i - 1][0] === T_DOUBLE_COLON)) {
+                    $class = $namespace . '\\' . $next[1];
+                    if ($tag) {
+                        $out['tagged'][] = $class;
+                    }
+                    $tag = false;
+                } elseif ($id === T_FUNCTION && is_array($next)) {
+                    // The name's token: T_STRING, or a keyword's (FolioText::use()); a closure has '(' here.
+                    if ($tag) {
+                        $out['tagged'][] = $class . '::' . $next[1];
+                    }
+                    $tag = false;
+                } elseif ($id === T_VARIABLE || $id === T_CONST) {
+                    if ($tag) {
+                        $out['tagged'][] = $class . '::' . (is_array($next) && $id === T_CONST ? $next[1] : $t[1]);
+                    }
+                    $tag = false;
+                } elseif ($id === T_STRING && $t[1] === 'once' && is_array($tokens[$i - 2] ?? null) && str_ends_with($tokens[$i - 2][1], 'Deprecations')
+                    && is_array($tokens[$i - 1] ?? null) && $tokens[$i - 1][0] === T_DOUBLE_COLON && $next === '(') {
+                    $arg = $tokens[$i + 2] ?? null;
+                    $after = $tokens[$i + 3] ?? null;
+                    if (is_array($arg) && $arg[0] === T_CONSTANT_ENCAPSED_STRING && ($after === ',' || $after === ')')) {
+                        $inner = substr($arg[1], 1, -1);
+                        $out['messages'][] = $arg[1][0] === "'" ? strtr($inner, ['\\\\' => '\\', "\\'" => "'"]) : stripcslashes($inner);
+                    } else {
+                        $out['opaque'][] = $path . ':' . $t[2];
                     }
                 }
             }
         }
-        $found = array_keys($found);
+        $out['messages'] = array_values(array_unique($out['messages']));
 
-        $this->assertNotEmpty($found);
-        $this->assertSame([], array_values(array_diff($found, array_keys($inTable))), 'deprecations without a row in shims()');
-        $this->assertSame([], array_values(array_diff(array_keys($inTable), $found)), 'rows whose message no package raises');
+        return $out;
     }
 
     /** A Folio site boots and answers a visitor and the sign-in page without calling a deprecated shim. */

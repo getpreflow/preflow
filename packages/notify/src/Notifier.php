@@ -92,6 +92,9 @@ final class Notifier
      * and this is a deprecated shim over it.
      *
      * @since 0.74
+     * @deprecated 0.81, removed in 0.83 with preflow/core 0.81+ (it reports through core; use
+     *             Application::render() or Contexts::run() with RenderContext::discarding()).
+     *             Without core it stays: notify on its own is not deprecated.
      *
      * @template T
      * @param \Closure(): T $work

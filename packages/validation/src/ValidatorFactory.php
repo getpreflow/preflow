@@ -33,8 +33,10 @@ final class ValidatorFactory
 
     /**
      * Sets the translator of the validators made from now on (null: none) in the current render
-     * frame, until it closes; returns the one before. A render in its own frame (an internal
-     * render, a mail) starts without it. Outside every render it sets the factory's own
+     * frame, until it closes; returns the one before. Unlike the narrowing shims it lasts to the
+     * end of the frame, not only to the end of an enclosing Contexts::within(), and a frame of its
+     * own (an internal render, a mail) or a part() frame (a PDF preview printed into the page)
+     * starts without it, from the factory's own. Outside every render it sets the factory's own
      * translator, which validators made outside renders get and every frame starts from (a call
      * at boot still sets it for every form). Its messages are in the language the render context
      * gives the translator.

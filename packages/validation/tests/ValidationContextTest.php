@@ -142,4 +142,26 @@ final class ValidationContextTest extends TestCase
         $this->assertSame(['This field is required.'], $after, 'the next render starts without it');
         $this->assertSame(['This field is required.'], self::required($factory), 'and so do validators outside every render');
     }
+
+    /** The documented scope: it outlasts an enclosing within() (to the end of the frame); a part() frame starts from the factory's own. */
+    public function test_use_translator_outlasts_within_and_skips_part_frames(): void
+    {
+        $factory = new ValidatorFactory(new RuleFactory());
+        $translator = self::translator();
+        set_error_handler(static fn (): bool => true, E_USER_DEPRECATED);
+        try {
+            $seen = Contexts::run(self::visit()->in('de'), static function () use ($factory, $translator): array {
+                Contexts::within(Contexts::current(), static fn (): ?Translator => $factory->useTranslator($translator));
+
+                return [
+                    self::required($factory),
+                    Contexts::part(Contexts::current(), static fn (): array => self::required($factory)),
+                ];
+            });
+        } finally {
+            restore_error_handler();
+        }
+
+        $this->assertSame([['Dieses Feld ist erforderlich.'], ['This field is required.']], $seen);
+    }
 }
