@@ -1,10 +1,10 @@
 # Preflow Roadmap
 
-> Last updated: 2026-11-21 (v0.81.0)
+> Last updated: 2026-11-21 (v0.81.1)
 
 ## Current State
 
-**v0.81.0** — 9890 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
+**v0.81.1** — 9909 tests, 27 packages, production-validated via the stress-test site (admin CRUD, public forms, HTMX inline validation, custom validators with DB/rate-limiting).
 
 The validation package has been stress-tested end-to-end: model attributes, standalone validation, custom container-resolved rules, ErrorBag with field-level template display, HTMX blur-based inline field validation, and DataManager auto-validation on save.
 
@@ -525,7 +525,7 @@ member pages. Later, as generic mechanisms (a site's own wording and data stay i
       done in 0.59 (one query per 200 ids)
     - Live, every site now answers in ~35 ms of server time (best of 6, minus ~15 ms network), down from 50–130 ms.
       The rest is the host's floor, which only the page cache (step 3) removes.
-- **Render context patch (v0.81.1, not released):** the follow-ups found while upgrading the sites to 0.81.0.
+- **Render context patch (v0.81.1, released 2026-11-21):** the follow-ups found while upgrading the sites to 0.81.0.
   - **Fixed:** cookies a site queues (`CookieQueue`) reach the response without auth or a session: core applies a request's queued cookies to the route's response inside the pipeline, what middleware queued on the way out to the pipeline's answer, and each cookie once. The page cache does not store a page whose render set a cookie or left one queued (new `CookieQueue::pending()`): middleware inside the cache that queues after the route, verify's second render and a rebuild are covered. `ResolveUserMiddleware` no longer drops cookies queued before it ran, nor, on a request without a session, the site's. `Application::render()` keeps its outbox policy: a preview captures the cookies, an internal render drops them, a delivering render hands them to the request around it.
   - **Fixed:** `{% live %}` (preflow/twig) uses no Twig API deprecated since 3.12 (`Parser::getBlockStack()`, `hasBlock()`): each live block records the live tag open around it and `LiveBlockNesting` refuses one nested in the same template once it is parsed (directly, through a `{% block %}` or a `{% macro %}`; an `{% embed %}` is a template of its own, as before), with the same error at the inner tag's line; block names come from the tag's own per-source bookkeeping and are as before, except two live tags on one line on either side of an `{% embed %}` boundary, which now get different names (`__live_N`, `__live_N_2`).
   - **Fixed:** preflow/twig requires Twig 3.21 or later (`^3.21`, was `^3.0`): `{% live %}` calls `Parser::parseExpression()` (3.21) and builds a `Twig\Node\EmptyNode` (3.13), so an older Twig never worked with it.
